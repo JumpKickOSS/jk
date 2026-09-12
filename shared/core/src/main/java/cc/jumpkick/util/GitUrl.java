@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Git dependency URL expansion and canonicalization. Shorthands ({@code gh:}, {@code gl:},
@@ -49,11 +50,12 @@ public final class GitUrl {
         String normalized = normalizeScpForm(expanded);
         URI uri = URI.create(normalized);
         String scheme = uri.getScheme() == null ? "https" : uri.getScheme().toLowerCase(Locale.ROOT);
-        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-        int port = uri.getPort();
+        Authority authority = Authority.of(uri);
+        String host = authority.host().toLowerCase(Locale.ROOT);
+        int port = authority.port();
         if (defaultPort(scheme) == port) port = -1;
 
-        String userInfo = uri.getUserInfo();
+        String userInfo = authority.userInfo();
         String path = uri.getPath() == null ? "" : uri.getPath();
         // Strip trailing slashes first so .git/ also becomes .git.
         while (path.endsWith("/") && path.length() > 1) {
@@ -81,6 +83,29 @@ public final class GitUrl {
             case "ssh", "git" -> 22;
             default -> -1;
         };
+    }
+
+    /**
+     * The user-info, host and port of a URL. {@link URI#getHost} is {@code null} for a host the RFC
+     * grammar rejects — an underscore label, say — and the URL is still a remote; reading an empty
+     * host there would merge every such remote into one clone directory, so the authority is split
+     * by hand in that case.
+     */
+    private record Authority(@Nullable String userInfo, String host, int port) {
+        static Authority of(URI uri) {
+            if (uri.getHost() != null) return new Authority(uri.getUserInfo(), uri.getHost(), uri.getPort());
+            String raw = uri.getRawAuthority();
+            if (raw == null || raw.isEmpty()) return new Authority(null, "", -1);
+            int at = raw.lastIndexOf('@');
+            String userInfo = at >= 0 ? raw.substring(0, at) : null;
+            String hostPort = raw.substring(at + 1);
+            int colon = hostPort.lastIndexOf(':');
+            String portText = colon >= 0 ? hostPort.substring(colon + 1) : "";
+            if (!portText.isEmpty() && portText.chars().allMatch(Character::isDigit)) {
+                return new Authority(userInfo, hostPort.substring(0, colon), Integer.parseInt(portText));
+            }
+            return new Authority(userInfo, hostPort, -1);
+        }
     }
 
     /**

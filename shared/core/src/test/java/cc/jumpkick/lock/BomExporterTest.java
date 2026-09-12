@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.resolver.Versions;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -35,7 +36,7 @@ class BomExporterTest {
                                 "testonly-2.0.jar",
                                 List.of(Scope.TEST),
                                 List.of())));
-        String xml = BomExporter.render(project, lock, BomExporter.MAIN_SCOPES);
+        String xml = BomExporter.render(project, lock, BomExporter.MAIN_SCOPES, Versions::compare);
         assertThat(xml).contains("<artifactId>demo-bom</artifactId>");
         assertThat(xml).contains("<groupId>com.example</groupId>");
         assertThat(xml).contains("<version>1.2.3</version>");
@@ -59,8 +60,41 @@ class BomExporterTest {
                         null,
                         List.of(Scope.TEST),
                         List.of())));
-        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES);
+        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES, Versions::compare);
         assertThat(xml).contains("junit-jupiter");
         assertThat(xml).contains("5.10.0");
+    }
+
+    /**
+     * Two test-scope rows of one module at different versions collapse to the higher one, and
+     * "higher" is a version order, not a string order: {@code 1.10.0} outranks {@code 1.9.0}.
+     */
+    @Test
+    void a_dual_keeps_the_higher_version_by_version_order() {
+        JkBuild project = JkBuild.of(new Project("com.example", "demo", "1.2.3", 25));
+        Lockfile lock = new Lockfile(
+                1,
+                "jk test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(
+                        new Lockfile.Artifact(
+                                "com.foo:widget:jar:",
+                                "1.10.0",
+                                "central+",
+                                "sha256:aa",
+                                "widget-1.10.0.jar",
+                                List.of(Scope.TEST),
+                                List.of()),
+                        new Lockfile.Artifact(
+                                "com.foo:widget:jar:",
+                                "1.9.0",
+                                "central+",
+                                "sha256:bb",
+                                "widget-1.9.0.jar",
+                                List.of(Scope.TEST),
+                                List.of())));
+        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES, Versions::compare);
+        assertThat(xml).contains("<version>1.10.0</version>");
+        assertThat(xml).doesNotContain("<version>1.9.0</version>");
     }
 }

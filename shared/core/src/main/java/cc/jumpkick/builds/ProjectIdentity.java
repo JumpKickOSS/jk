@@ -11,16 +11,17 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -357,28 +358,44 @@ public record ProjectIdentity(
     }
 
     private static @Nullable String git(Path cwd, String... args) {
+        List<String> command = new ArrayList<>(args.length + 1);
+        command.add("git");
+        command.addAll(List.of(args));
+        return run(cwd, GIT_TIMEOUT, command);
+    }
+
+    /** How long one git probe may take before the identity falls back to the path tier. */
+    private static final Duration GIT_TIMEOUT = Duration.ofSeconds(5);
+
+    /**
+     * {@code command}'s output (stderr merged) when it exits 0 within {@code timeout}; {@code null}
+     * on a non-zero exit, a timeout, or a command that cannot start. The output is drained on its
+     * own thread so the bound holds for a command that neither exits nor closes its pipe — a git
+     * blocked on a credential prompt or a hung filesystem must not hang a lock write with it. A
+     * timed-out command is killed with its descendants.
+     */
+    static @Nullable String run(Path cwd, Duration timeout, List<String> command) {
         try {
-            ProcessBuilder pb = new ProcessBuilder();
-            pb.command(new ArrayList<>() {
-                {
-                    add("git");
-                    for (String a : args) add(a);
-                }
-            });
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(cwd.toFile());
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            String out;
-            try (BufferedReader br =
-                    new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8))) {
-                out = br.lines().reduce((a, b) -> a + "\n" + b).orElse("");
-            }
-            if (!p.waitFor(5, TimeUnit.SECONDS)) {
+            CompletableFuture<String> output = CompletableFuture.supplyAsync(
+                    () -> {
+                        try (var in = p.getInputStream()) {
+                            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                        } catch (IOException e) {
+                            return "";
+                        }
+                    },
+                    r -> Thread.ofPlatform().daemon().name("jk-identity-probe").start(r));
+            if (!p.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                p.descendants().forEach(ProcessHandle::destroyForcibly);
                 p.destroyForcibly();
                 return null;
             }
             if (p.exitValue() != 0) return null;
-            return out;
+            return output.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             return null;
         }

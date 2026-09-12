@@ -8,9 +8,14 @@ import cc.jumpkick.lock.LockfileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class ProjectIdentityTest {
@@ -199,5 +204,44 @@ class ProjectIdentityTest {
         assertThat(read.coord()).isEqualTo(coord);
         assertThat(read.gitRemote()).isEqualTo(remote);
         assertThat(read.gitRelPath()).isEqualTo(rel);
+    }
+
+    /**
+     * A git that neither exits nor closes its pipe (a credential prompt, a hung filesystem) must
+     * fall to the probe's bound rather than hang the lock write that asked for the identity.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void a_stuck_probe_falls_to_its_timeout(@TempDir Path dir) throws Exception {
+        Path stuck = script(dir, "stuck", "#!/bin/sh\necho partial\nsleep 30\n");
+        long t0 = System.nanoTime();
+
+        String out = ProjectIdentity.run(dir, Duration.ofMillis(300), List.of(stuck.toString()));
+
+        assertThat(out).isNull();
+        assertThat(Duration.ofNanos(System.nanoTime() - t0)).isLessThan(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void a_finished_probe_returns_its_output_and_a_failed_one_nothing(@TempDir Path dir) throws Exception {
+        Path ok = script(dir, "ok", "#!/bin/sh\nprintf 'top\\n'\n");
+        Path failing = script(dir, "failing", "#!/bin/sh\necho nope\nexit 1\n");
+
+        assertThat(ProjectIdentity.run(dir, Duration.ofSeconds(5), List.of(ok.toString())))
+                .isEqualTo("top\n");
+        assertThat(ProjectIdentity.run(dir, Duration.ofSeconds(5), List.of(failing.toString())))
+                .isNull();
+        assertThat(ProjectIdentity.run(
+                        dir,
+                        Duration.ofSeconds(5),
+                        List.of(dir.resolve("absent").toString())))
+                .isNull();
+    }
+
+    private static Path script(Path dir, String name, String body) throws IOException {
+        Path file = Files.writeString(dir.resolve(name), body);
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwx------"));
+        return file;
     }
 }

@@ -175,4 +175,26 @@ class JsonlTest {
         // error either way, and a no-op that swallows it hides the bug until the next caller.
         assertThatThrownBy(() -> Jsonl.append("not-json", null)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    /**
+     * Every scalar reader finds a key the way {@link Jsonl#str} does: a quoted name in key position,
+     * outside any string, with whitespace allowed before the colon. A key spelled inside another
+     * string is text, and a pretty-printed {@code "count" : 42} is a field.
+     */
+    @Test
+    void scalarReadersLocateKeysOutsideStringsAndTolerateWhitespace() {
+        String json = "{\"x\\\"count\":5,\"count\" : 42,\"big\" : 7000000000,\"ratio\" : 1.5,"
+                + "\"ok\" : true,\"tags\" : [\"a\"],\"rows\" : [{\"k\":1}],\"inner\" : {\"k\":2}}";
+        assertThat(Jsonl.intValue(json, "count", -1)).isEqualTo(42);
+        assertThat(Jsonl.longValue(json, "big", -1)).isEqualTo(7_000_000_000L);
+        assertThat(Jsonl.doubleValue(json, "ratio", -1)).isEqualTo(1.5);
+        assertThat(Jsonl.bool(json, "ok", false)).isTrue();
+        assertThat(Jsonl.has(json, "ok")).isTrue();
+        assertThat(Jsonl.strArray(json, "tags")).containsExactly("a");
+        assertThat(Jsonl.objectArray(json, "rows")).containsExactly("{\"k\":1}");
+        assertThat(Jsonl.nested(json, "inner")).isEqualTo("{\"k\":2}");
+        assertThat(Jsonl.has("{\"note\":\"count\"}", "count"))
+                .as("a value is not a key")
+                .isFalse();
+    }
 }

@@ -75,7 +75,8 @@ public final class RepositoryToml {
                 continue;
             }
             try {
-                RepositorySpec spec = entry(name, repos.get(name), vars, onBad);
+                // The list form: a quoted name such as "nexus.internal" is one key, not a path.
+                RepositorySpec spec = entry(name, repos.get(List.of(name)), vars, onBad);
                 if (spec != null) result.add(spec);
             } catch (JkBuildParseException e) {
                 if (onBad == OnBad.REJECT) throw e;

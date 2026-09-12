@@ -15,9 +15,9 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.IntConsumer;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Write via temp sibling + move ({@code REPLACE_EXISTING} fallback).
@@ -65,8 +65,8 @@ public final class AtomicWrites {
      * Linux's ~1.5.
      */
     public static void replace(Path target, byte[] bytes) throws IOException {
-        Path parent = target.getParent();
-        if (parent != null) Files.createDirectories(parent);
+        Path parent = directoryOf(target);
+        Files.createDirectories(parent);
         Path tmp = staging(parent, target);
         boolean moved = false;
         try {
@@ -87,8 +87,8 @@ public final class AtomicWrites {
      * would cost more than it protects — see the class javadoc.
      */
     public static void replaceDurably(Path target, byte[] bytes) throws IOException {
-        Path parent = target.getParent();
-        if (parent != null) Files.createDirectories(parent);
+        Path parent = directoryOf(target);
+        Files.createDirectories(parent);
         Path tmp = staging(parent, target);
         boolean moved = false;
         try {
@@ -144,7 +144,18 @@ public final class AtomicWrites {
      * <p>Non-POSIX filesystems take neither branch and get the JDK's default: nothing to set, and
      * nothing to throw.
      */
-    private static Path staging(@Nullable Path parent, Path target) throws IOException {
+    /**
+     * The directory {@code target} lives in: its parent, or for a bare file name such as
+     * {@code jk-lock.toml} the working directory, which is where the staging sibling must land for
+     * the rename to stay on one filesystem.
+     */
+    private static Path directoryOf(Path target) {
+        Path parent = target.getParent();
+        if (parent != null) return parent;
+        return Objects.requireNonNull(target.toAbsolutePath().getParent(), "a file has a directory");
+    }
+
+    private static Path staging(Path parent, Path target) throws IOException {
         String prefix = "." + target.getFileName() + "-";
         if (Files.getFileAttributeView(parent, PosixFileAttributeView.class) == null) {
             return Files.createTempFile(parent, prefix, ".tmp"); // non-POSIX: no modes to manage

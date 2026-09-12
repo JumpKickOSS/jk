@@ -26,6 +26,18 @@ class JkBuildParserRepositoryTest {
                 .allSatisfy(r -> assertThat(r.credentialOpt()).isEmpty());
     }
 
+    /** A quoted table key with dots names one repository: {@code [repositories."nexus.internal"]}. */
+    @Test
+    void a_quoted_dotted_repository_name_is_one_repository() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories."nexus.internal"]
+                url = "https://nexus.internal/repository/maven-releases/"
+                """);
+        assertThat(parsed.repositories())
+                .extracting(r -> r.name(), r -> r.url().toString())
+                .containsExactly(Tuple.tuple("nexus.internal", "https://nexus.internal/repository/maven-releases/"));
+    }
+
     @Test
     void parses_repository_exclusive_groups() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """

@@ -87,7 +87,7 @@ public final class Interpolation {
      */
     public static void guard(TomlTable root) {
         List<String> offenders = new ArrayList<>();
-        walk(root, "", offenders);
+        walk(root, List.of(), offenders);
         if (offenders.isEmpty()) return;
         throw new JkBuildParseException("environment references are not allowed here: "
                 + String.join("; ", offenders)
@@ -96,10 +96,10 @@ public final class Interpolation {
                 + " literal, or the same commit would build differently on different machines.");
     }
 
-    private static void walk(TomlTable table, String prefix, List<String> offenders) {
+    private static void walk(TomlTable table, List<String> prefix, List<String> offenders) {
         for (String key : table.keySet()) {
             Object value = table.get(List.of(key));
-            String path = prefix.isEmpty() ? key : prefix + "." + key;
+            List<String> path = append(prefix, key);
             if (value instanceof TomlTable nested) {
                 walk(nested, path, offenders);
             } else if (value instanceof TomlArray array) {
@@ -110,17 +110,32 @@ public final class Interpolation {
         }
     }
 
-    private static void walkArray(TomlArray array, String path, List<String> offenders) {
+    private static void walkArray(TomlArray array, List<String> path, List<String> offenders) {
         for (int i = 0; i < array.size(); i++) {
             Object element = array.get(i);
+            List<String> indexed = indexed(path, i);
             if (element instanceof TomlTable nested) {
-                walk(nested, path + "[" + i + "]", offenders);
+                walk(nested, indexed, offenders);
             } else if (element instanceof TomlArray nested) {
-                walkArray(nested, path + "[" + i + "]", offenders);
+                walkArray(nested, indexed, offenders);
             } else if (element instanceof String s) {
-                check(s, path + "[" + i + "]", offenders);
+                check(s, indexed, offenders);
             }
         }
+    }
+
+    private static List<String> append(List<String> prefix, String key) {
+        List<String> out = new ArrayList<>(prefix.size() + 1);
+        out.addAll(prefix);
+        out.add(key);
+        return out;
+    }
+
+    /** {@code path} with its last segment subscripted: {@code env} becomes {@code env[3]}. */
+    private static List<String> indexed(List<String> path, int i) {
+        List<String> out = new ArrayList<>(path);
+        out.set(out.size() - 1, out.getLast() + "[" + i + "]");
+        return out;
     }
 
     /**
@@ -138,31 +153,39 @@ public final class Interpolation {
         return found;
     }
 
-    private static void check(String value, String path, List<String> offenders) {
+    private static void check(String value, List<String> path, List<String> offenders) {
         Set<String> found = references(value);
         if (found.isEmpty() || allowed(path)) return;
-        for (String var : found) offenders.add(path + " (${" + var + "})");
+        for (String var : found) offenders.add(String.join(".", path) + " (${" + var + "})");
     }
 
-    /** True when {@code path} matches an allowed pattern; array indices never match. */
-    static boolean allowed(String path) {
+    /**
+     * True when {@code path} — one element per table key, so a quoted key such as
+     * {@code "nexus.internal"} is a single segment however many dots it carries — matches an
+     * allowed pattern; array indices never match.
+     */
+    static boolean allowed(List<String> path) {
         for (String pattern : ALLOWED) {
-            if (matches(pattern, path)) return true;
+            if (matches(pattern.split("\\."), path)) return true;
         }
         return false;
     }
 
-    private static boolean matches(String pattern, String path) {
-        String[] p = pattern.split("\\.");
-        String[] a = path.split("\\.");
-        if (p.length != a.length) return false;
+    /** {@link #allowed(List)} for a dotted spelling whose keys carry no dots of their own. */
+    static boolean allowed(String path) {
+        return allowed(List.of(path.split("\\.")));
+    }
+
+    private static boolean matches(String[] p, List<String> a) {
+        if (p.length != a.size()) return false;
         for (int i = 0; i < p.length; i++) {
+            String actual = a.get(i);
             if (p[i].equals("*")) {
-                if (a[i].indexOf('[') >= 0) return false; // an array element is never a whitelisted slot
+                if (actual.indexOf('[') >= 0) return false; // an array element is never a whitelisted slot
                 continue;
             }
-            if (p[i].endsWith("[*]") && indexedMatch(p[i], a[i])) continue;
-            if (!p[i].equals(a[i])) return false;
+            if (p[i].endsWith("[*]") && indexedMatch(p[i], actual)) continue;
+            if (!p[i].equals(actual)) return false;
         }
         return true;
     }

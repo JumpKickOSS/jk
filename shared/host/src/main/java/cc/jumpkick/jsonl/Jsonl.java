@@ -148,14 +148,26 @@ public final class Jsonl {
         return -1;
     }
 
+    /**
+     * Index of the first character of {@code key}'s value — past the colon and any whitespace — or
+     * {@code -1} when the key is not a field. Every scalar reader goes through here, so all of them
+     * agree with {@link #str}: a name quoted inside another string is text, not a key, and a
+     * pretty-printed {@code "key" : value} is a field.
+     */
+    private static int valueStart(@Nullable String json, String key) {
+        int keyAt = indexOfKey(json, key, false);
+        if (json == null || keyAt < 0) return -1;
+        int colon = json.indexOf(':', keyAt + key.length() + 2);
+        if (colon < 0) return -1;
+        int start = colon + 1;
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        return start;
+    }
+
     /** Extract a JSON integer field, returning {@code defaultVal} when absent or non-numeric. */
     public static int intValue(@Nullable String json, String key, int defaultVal) {
-        if (json == null) return defaultVal;
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return defaultVal;
-        start += needle.length();
-        while (start < json.length() && json.charAt(start) == ' ') start++;
+        int start = valueStart(json, key);
+        if (json == null || start < 0) return defaultVal;
         int end = start;
         boolean neg = end < json.length() && json.charAt(end) == '-';
         if (neg) end++;
@@ -170,12 +182,8 @@ public final class Jsonl {
 
     /** Extract a JSON long field, returning {@code defaultVal} when absent or non-numeric. */
     public static long longValue(@Nullable String json, String key, long defaultVal) {
-        if (json == null) return defaultVal;
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return defaultVal;
-        start += needle.length();
-        while (start < json.length() && json.charAt(start) == ' ') start++;
+        int start = valueStart(json, key);
+        if (json == null || start < 0) return defaultVal;
         int end = start;
         boolean neg = end < json.length() && json.charAt(end) == '-';
         if (neg) end++;
@@ -190,12 +198,8 @@ public final class Jsonl {
 
     /** Extract a JSON number field (int or decimal), returning {@code defaultVal} when absent. */
     public static double doubleValue(@Nullable String json, String key, double defaultVal) {
-        if (json == null) return defaultVal;
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return defaultVal;
-        start += needle.length();
-        while (start < json.length() && json.charAt(start) == ' ') start++;
+        int start = valueStart(json, key);
+        if (json == null || start < 0) return defaultVal;
         if (json.startsWith("null", start)) return defaultVal;
         int end = start;
         if (end < json.length() && (json.charAt(end) == '-' || json.charAt(end) == '+')) end++;
@@ -221,21 +225,16 @@ public final class Jsonl {
 
     /** Extract a JSON boolean field, returning {@code defaultVal} when absent. */
     public static boolean bool(@Nullable String json, String key, boolean defaultVal) {
-        if (json == null) return defaultVal;
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return defaultVal;
-        start += needle.length();
-        while (start < json.length() && json.charAt(start) == ' ') start++;
+        int start = valueStart(json, key);
+        if (json == null || start < 0) return defaultVal;
         if (json.startsWith("true", start)) return true;
         if (json.startsWith("false", start)) return false;
         return defaultVal;
     }
 
-    /** Returns {@code true} when the key is present with any non-null, non-"null" value. */
+    /** Returns {@code true} when {@code key} is a field of {@code json}, whatever its value. */
     public static boolean has(@Nullable String json, String key) {
-        if (json == null) return false;
-        return json.contains("\"" + key + "\":");
+        return indexOfKey(json, key, false) >= 0;
     }
 
     /**
@@ -244,15 +243,11 @@ public final class Jsonl {
      * elements.
      */
     public static List<String> strArray(String json, String key) {
-        if (json == null) return Collections.emptyList();
-        // Tolerate whitespace after the colon: jk's own encoders emit compact JSON, but MCP and
+        // Whitespace around the colon is tolerated: jk's own encoders emit compact JSON, but MCP and
         // hand-written requests may be pretty-printed, and a reader that only accepts `"k":[`
         // silently returns empty for `"k": [` — which reads as "the caller passed no tags".
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return Collections.emptyList();
-        start += needle.length();
-        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        int start = valueStart(json, key);
+        if (json == null || start < 0) return Collections.emptyList();
         if (start >= json.length() || json.charAt(start) != '[') return Collections.emptyList();
         start++;
         // The array's closing ']' is the first one that isn't inside a quoted element — a naive
@@ -313,12 +308,8 @@ public final class Jsonl {
      * key is absent or the array holds no objects. Braces inside strings do not count.
      */
     public static List<String> objectArray(String json, String key) {
-        if (json == null) return Collections.emptyList();
-        String needle = "\"" + key + "\":";
-        int start = json.indexOf(needle);
-        if (start < 0) return Collections.emptyList();
-        start += needle.length();
-        while (start < json.length() && Character.isWhitespace(json.charAt(start))) start++;
+        int start = valueStart(json, key);
+        if (json == null || start < 0) return Collections.emptyList();
         if (start >= json.length() || json.charAt(start) != '[') return Collections.emptyList();
         List<String> out = new ArrayList<>();
         int i = start + 1;
@@ -355,18 +346,11 @@ public final class Jsonl {
      * absent.
      */
     public static @Nullable String nested(@Nullable String json, String key) {
-        if (json == null) return null;
-        String needle = "\"" + key + "\":{";
-        int start = json.indexOf(needle);
-        if (start < 0) {
-            // Also handle "key": { with a space
-            needle = "\"" + key + "\": {";
-            start = json.indexOf(needle);
-            if (start < 0) return null;
+        int braceStart = valueStart(json, key);
+        if (json == null || braceStart < 0 || braceStart >= json.length() || json.charAt(braceStart) != '{') {
+            return null;
         }
         // Walk forward to find the matching closing brace.
-        int braceStart = json.indexOf('{', start + needle.length() - 1);
-        if (braceStart < 0) return null;
         int depth = 1;
         int i = braceStart + 1;
         while (i < json.length() && depth > 0) {

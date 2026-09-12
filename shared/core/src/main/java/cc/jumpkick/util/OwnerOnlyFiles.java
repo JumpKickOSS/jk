@@ -3,10 +3,8 @@ package cc.jumpkick.util;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -25,28 +23,38 @@ public final class OwnerOnlyFiles {
      * Write {@code content} to {@code file} readable only by the owner, ensuring {@code dir} is
      * {@code 0700}.
      *
-     * <p>A fresh file is <em>created</em> {@code 0600} rather than created-then-tightened: these
-     * files hold secrets, and the gap between an umask-default create and the chmod is a window in
-     * which another local user can read one.
+     * <p>The bytes go into a sibling <em>created</em> {@code 0600} and renamed over {@code file}:
+     * these files hold secrets, and both an umask-default create followed by a chmod and an in-place
+     * rewrite of an existing looser file are windows in which another local user can read one. An
+     * existing file is never written through — a second name for its inode would carry the secret
+     * at the old mode — it is replaced.
      */
     public static void write(Path dir, Path file, String content) throws IOException {
-        Files.createDirectories(dir);
-        setOwnerOnly(dir, "rwx------");
-        if (!Files.exists(file) && Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
-            try {
-                Files.createFile(file, PosixFilePermissions.asFileAttribute(OWNER_ONLY));
-            } catch (FileAlreadyExistsException | UnsupportedOperationException ignored) {
-                // raced or non-POSIX — the tighten below still applies
-            }
+        directory(dir);
+        Path parent = file.toAbsolutePath().getParent();
+        Path tmp = staging(parent == null ? dir : parent, file);
+        boolean moved = false;
+        try {
+            Files.writeString(tmp, content, StandardCharsets.UTF_8);
+            AtomicWrites.moveInto(tmp, file);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
         }
-        Files.writeString(
-                file,
-                content,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE);
         setOwnerOnly(file, "rw-------");
+    }
+
+    /** A sibling of {@code file} created {@code 0600}; on a non-POSIX filesystem, a plain temp file. */
+    private static Path staging(Path parent, Path file) throws IOException {
+        String prefix = "." + file.getFileName() + "-";
+        if (Files.getFileAttributeView(parent, PosixFileAttributeView.class) == null) {
+            return Files.createTempFile(parent, prefix, ".tmp");
+        }
+        try {
+            return Files.createTempFile(parent, prefix, ".tmp", PosixFilePermissions.asFileAttribute(OWNER_ONLY));
+        } catch (UnsupportedOperationException noPosixAttrs) {
+            return Files.createTempFile(parent, prefix, ".tmp");
+        }
     }
 
     private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rw-------");

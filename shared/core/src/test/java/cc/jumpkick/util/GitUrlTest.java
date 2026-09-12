@@ -50,4 +50,18 @@ class GitUrlTest {
         assertThat(a).isEqualTo(GitUrl.canonicalHash("gh:foo/bar.git"));
         assertThat(a).hasSize(64);
     }
+
+    /**
+     * A host {@link java.net.URI} cannot parse (an underscore label is not a hostname) is still
+     * the host: two such remotes must not collapse into one clone directory.
+     */
+    @Test
+    void canonicalize_keeps_a_host_the_uri_parser_rejects() {
+        assertThat(GitUrl.canonicalize("https://my_host.example/foo/bar.git"))
+                .isEqualTo("https://my_host.example/foo/bar");
+        assertThat(GitUrl.canonicalize("https://user@My_Host.example:8443/foo/"))
+                .isEqualTo("https://user@my_host.example:8443/foo");
+        assertThat(GitUrl.canonicalHash("https://my_host.example/foo/bar"))
+                .isNotEqualTo(GitUrl.canonicalHash("https://other_host.example/foo/bar"));
+    }
 }

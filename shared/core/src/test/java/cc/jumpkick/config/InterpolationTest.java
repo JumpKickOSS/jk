@@ -208,4 +208,25 @@ class InterpolationTest {
         assertThat(Interpolation.expand("plain", "pos", name -> null)).isEqualTo("plain");
         assertThat(Interpolation.expand(null, "pos", name -> null)).isNull();
     }
+
+    /**
+     * A quoted table key may contain dots — {@code [repositories."nexus.internal"]} is one
+     * repository named {@code nexus.internal} — and its credentials sit at the whitelisted
+     * position however many dots the name carries.
+     */
+    @Test
+    void a_dotted_repository_name_still_allows_credentials() {
+        assertThatCode(() -> parse(PROJECT + """
+                        [repositories."nexus.internal"]
+                        url = "https://nexus.internal/repo/"
+                        username = "${REPO_USER}"
+                        password = "${REPO_PASS}"
+                        """)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> parse(PROJECT + """
+                        [repositories."nexus.internal"]
+                        url = "${REPO_URL}"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("nexus.internal");
+    }
 }

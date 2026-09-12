@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.IntConsumer;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -321,5 +322,19 @@ class AtomicWritesTest {
         assertThatIOException().isThrownBy(() -> AtomicWrites.replaceDurably(target, "payload"));
 
         assertThat(names(dir)).containsExactly("occupied");
+    }
+
+    /** A target given as a bare file name lives in the working directory; the staging sibling does too. */
+    @Test
+    void replace_accepts_a_bare_relative_target() throws IOException {
+        Path target = Path.of(".atomic-writes-test-" + UUID.randomUUID() + ".tmp");
+        try {
+            AtomicWrites.replace(target, "bare");
+            assertThat(Files.readString(target)).isEqualTo("bare");
+            AtomicWrites.replaceDurably(target, "again");
+            assertThat(Files.readString(target)).isEqualTo("again");
+        } finally {
+            Files.deleteIfExists(target);
+        }
     }
 }
