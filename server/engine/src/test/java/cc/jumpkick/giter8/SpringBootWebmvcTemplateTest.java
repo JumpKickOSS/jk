@@ -5,16 +5,36 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class SpringBootWebmvcTemplateTest {
+
+    // The registry is process-wide. Installing a bare spring-boot descriptor over the real one
+    // leaves every later test in this JVM without its contributions — the packager-dependency
+    // suite saw none — so the real entry is put back after each test.
+    private @Nullable PluginDescriptor previous;
+    private @Nullable Path previousArchive;
+
+    @BeforeEach
+    void rememberSpringBoot() {
+        previous = PluginTableRegistry.byTable("spring-boot").orElse(null);
+        previousArchive = PluginTableRegistry.archive("spring-boot");
+    }
+
+    @AfterEach
+    void restoreSpringBoot() {
+        if (previous != null) PluginTableRegistry.restoreBuiltIn(previous, previousArchive);
+    }
 
     @Test
     void java_webmvc_applies_workspace_tree(@TempDir Path dir) throws Exception {

@@ -131,6 +131,17 @@ public final class PluginTableRegistry {
      * Register or replace a built-in manifest loaded from a self-describing plugin jar.
      * {@code archive} is the zip {@link #resourceText} reads plugin resources from.
      */
+    /**
+     * Put {@code manifest} back exactly as an earlier {@link #putBuiltIn} left it, archive
+     * included — a {@code null} archive means the entry had none. The registry is process-wide,
+     * so a caller that replaced a built-in and is done must hand it back, or every later reader in
+     * the process sees the replacement.
+     */
+    public static void restoreBuiltIn(PluginDescriptor manifest, @Nullable Path archive) {
+        putBuiltIn(manifest, archive);
+        if (archive == null) ARCHIVES.remove(manifest.id());
+    }
+
     public static void putBuiltIn(PluginDescriptor manifest, @Nullable Path archive) {
         Objects.requireNonNull(manifest, "manifest");
         synchronized (PluginTableRegistry.class) {
