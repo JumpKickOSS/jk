@@ -9,12 +9,14 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,6 +27,14 @@ import org.junit.jupiter.api.io.TempDir;
  * lock pinned that platform to. The selector string never reaches a repository.
  */
 class PackagerDependencyVersionTest {
+
+    @BeforeEach
+    void forgetProcessCaches() {
+        // The repository group's hit and version caches are process-wide; a fetch another test made
+        // for the same coordinate would answer from memory and never reach the stub this test watches.
+        RepoGroup.clearProcessFetchCache();
+        RepoGroup.clearProcessVersionsCache();
+    }
 
     private static final String BOOT = "org.springframework.boot";
 
