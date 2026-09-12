@@ -4,6 +4,7 @@ package cc.jumpkick.kotlin.compiler;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Linking;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
@@ -11,11 +12,18 @@ import cc.jumpkick.plugin.protocol.CompilerProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.jetbrains.kotlin.buildtools.api.CompilationResult;
 import org.jetbrains.kotlin.buildtools.api.ExecutionPolicy;
@@ -100,7 +108,12 @@ public final class KotlinCompiler implements Plugin {
                 // the working dir under SourcesChanges.ToBeCalculated regardless.
                 File snapshotDir = spec.snapshotDir;
                 List<Path> depSnapshots = snapshotDir != null
-                        ? snapshotClasspath(jvm, session, policy, logger, spec, snapshotDir.toPath())
+                        ? snapshotClasspath(spec.classpath, snapshotDir.toPath(), (entry, out) -> {
+                            org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmClasspathSnapshottingOperation
+                                    snapOp = jvm.classpathSnapshottingOperationBuilder(entry)
+                                            .build();
+                            session.executeOperation(snapOp, policy, logger).saveSnapshot(out);
+                        })
                         : List.of();
                 Builder ic = op.snapshotBasedIcConfigurationBuilder(
                         workingDir.toPath(), SourcesChanges.ToBeCalculated.INSTANCE, depSnapshots);
@@ -119,33 +132,45 @@ public final class KotlinCompiler implements Plugin {
         };
     }
 
+    /** Writes one classpath entry's ABI snapshot to {@code out}; the BTA operation in production. */
+    @FunctionalInterface
+    interface Snapshotter {
+        void snapshot(Path entry, Path out) throws Exception;
+    }
+
+    private static final String SNAPSHOT_SUFFIX = ".snapshot";
+
     /**
      * Compute (and cache) a classpath ABI snapshot file per compile-classpath entry, returning the
-     * snapshot file list for the IC config. Snapshots are keyed by the entry's path — jk's classpath
-     * entries are content-addressed (CAS) paths, so a given file is immutable and its snapshot can be
-     * reused across builds. On any failure we degrade to no snapshots (still source-incremental),
-     * preserving the pre-snapshot behaviour.
+     * snapshot file list for the IC config. A snapshot is named by the entry's path and its
+     * current shape: a jar's size and mtime, a directory's listing (relative path, size, mtime of
+     * every file). A store jar never changes, so its snapshot is reused across builds; a sibling
+     * module's {@code target/classes/main} is rewritten at the same path by every build, and its
+     * snapshot is recomputed exactly then — which is what lets the incremental compile see that a
+     * dependency's API moved and recompile the sources that use it. Only the current snapshot of
+     * an entry is kept, so the shared snapshot cache stays bounded. On any failure the compile runs
+     * with no snapshots and stays source-incremental.
      */
-    private static List<Path> snapshotClasspath(
-            JvmPlatformToolchain jvm,
-            KotlinToolchains.BuildSession session,
-            ExecutionPolicy policy,
-            org.jetbrains.kotlin.buildtools.api.KotlinLogger logger,
-            CompileSpec spec,
-            Path dir) {
+    static List<Path> snapshotClasspath(List<File> classpath, Path dir, Snapshotter snapshotter) {
         try {
             Files.createDirectories(dir);
-            List<Path> out = new ArrayList<>(spec.classpath.size());
-            for (File entry : spec.classpath) {
+            List<Path> out = new ArrayList<>(classpath.size());
+            for (File entry : classpath) {
                 if (!entry.exists()) continue;
-                Path snapshot = dir.resolve(snapshotName(entry));
+                String prefix = Hashing.sha256Hex(entry.getAbsolutePath()) + "-";
+                Path snapshot = dir.resolve(prefix + shapeDigest(entry.toPath()) + SNAPSHOT_SUFFIX);
                 if (!Files.isRegularFile(snapshot)) {
-                    org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmClasspathSnapshottingOperation snapOp =
-                            jvm.classpathSnapshottingOperationBuilder(entry.toPath())
-                                    .build();
-                    org.jetbrains.kotlin.buildtools.api.jvm.ClasspathEntrySnapshot computed =
-                            session.executeOperation(snapOp, policy, logger);
-                    computed.saveSnapshot(snapshot);
+                    dropStale(dir, prefix);
+                    // Written beside and moved in whole: a concurrent compile of another module
+                    // reading the same entry sees either no snapshot or a complete one.
+                    Path staging = dir.resolve(prefix + UUID.randomUUID() + ".tmp");
+                    try {
+                        snapshotter.snapshot(entry.toPath(), staging);
+                        Files.move(
+                                staging, snapshot, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    } finally {
+                        Files.deleteIfExists(staging);
+                    }
                 }
                 out.add(snapshot);
             }
@@ -155,9 +180,42 @@ public final class KotlinCompiler implements Plugin {
         }
     }
 
-    /** Stable snapshot filename for a classpath entry (its path is content-unique in the CAS). */
-    private static String snapshotName(File entry) {
-        return Hashing.sha256Hex(entry.getAbsolutePath()) + ".snapshot";
+    /**
+     * A digest of what a classpath entry looks like right now: for a jar its size and mtime, for a
+     * classes directory the sorted (relative path, size, mtime) of every file in it. Cheap to
+     * compute against snapshotting, which reads every class file, and changes whenever a compiler
+     * rewrote, added or deleted a class.
+     */
+    private static String shapeDigest(Path entry) throws IOException {
+        MessageDigest digest = Hashing.newSha256();
+        if (Files.isDirectory(entry)) {
+            List<String> listing = new ArrayList<>();
+            PathUtil.forEachRegularFile(
+                    entry,
+                    (file, attrs) -> listing.add(
+                            entry.relativize(file).toString().replace(File.separatorChar, '/') + shape(attrs)));
+            Collections.sort(listing);
+            for (String line : listing) digest.update((line + "\n").getBytes(StandardCharsets.UTF_8));
+        } else {
+            digest.update(shape(Files.readAttributes(entry, BasicFileAttributes.class))
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        return Hashing.hex(digest.digest());
+    }
+
+    private static String shape(BasicFileAttributes attrs) {
+        return "\t" + attrs.size() + "\t" + attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
+    }
+
+    /** Remove the snapshots of an entry that describe a shape it no longer has. */
+    private static void dropStale(Path dir, String prefix) throws IOException {
+        List<Path> stale = new ArrayList<>();
+        PathUtil.forEachChild(dir, (file, attrs) -> {
+            String name = file.getFileName().toString();
+            if (name.startsWith(prefix) && name.endsWith(SNAPSHOT_SUFFIX)) stale.add(file);
+            return true;
+        });
+        for (Path file : stale) Files.deleteIfExists(file);
     }
 
     /**
