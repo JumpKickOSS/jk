@@ -296,6 +296,7 @@ public final class JdkInstaller {
     private void downloadAndExtractBuffered(
             URI uri, @Nullable String sha256, String displayName, String archiveType, Path target)
             throws IOException, InterruptedException {
+        String expected = requireDigest(sha256, displayName, uri);
         Path downloads = prepareDownloadDir();
         Path archive = Files.createTempFile(downloads, DOWNLOAD_PREFIX, "-" + extensionFor(archiveType));
         try {
@@ -304,12 +305,10 @@ public final class JdkInstaller {
                 throw new IOException("JDK download " + uri + " returned " + response.statusCode());
             }
             byte[] body = response.body();
-            if (sha256 != null && !sha256.isEmpty()) {
-                String actual = Hashing.sha256Hex(body);
-                if (!actual.equalsIgnoreCase(sha256)) {
-                    throw new IOException(
-                            "sha256 mismatch for " + displayName + " — expected " + sha256 + ", got " + actual);
-                }
+            String actual = Hashing.sha256Hex(body);
+            if (!actual.equalsIgnoreCase(expected)) {
+                throw new IOException(
+                        "sha256 mismatch for " + displayName + " — expected " + expected + ", got " + actual);
             }
             Files.write(archive, body);
             SessionContext.current().io().remoteDown(archive);
@@ -390,13 +389,28 @@ public final class JdkInstaller {
     }
 
     /**
+     * The digest a catalog entry must carry before its archive is fetched. The feed is the trust
+     * anchor for every JDK jk installs and runs; an entry that names no sha256 cannot be verified,
+     * so it is refused rather than installed on TLS alone.
+     */
+    private static String requireDigest(@Nullable String sha256, String displayName, URI uri) throws IOException {
+        if (sha256 == null || sha256.isBlank()) {
+            throw new IOException("JDK " + displayName + " (" + uri
+                    + ") carries no sha256 in its catalog entry; refusing to install an archive that cannot be"
+                    + " verified");
+        }
+        return sha256.trim();
+    }
+
+    /**
      * Stream {@code uri} into {@code archive} while updating a SHA-256 digest and forwarding
      * cumulative byte counts to {@code onBytesRead}. Verifies the digest against {@code
-     * expectedSha256} on completion (when set).
+     * expectedSha256} on completion; an entry without one is refused before the request goes out.
      */
     private long streamingDownload(
             URI uri, @Nullable String expectedSha256, String displayName, Path archive, LongConsumer onBytesRead)
             throws IOException, InterruptedException {
+        String expected = requireDigest(expectedSha256, displayName, uri);
         HttpResponse<InputStream> response = http.getStream(uri);
         if (response.statusCode() != 200) {
             try (var body = response.body()) {
@@ -417,12 +431,9 @@ public final class JdkInstaller {
                 onBytesRead.accept(total);
             }
         }
-        if (expectedSha256 != null && !expectedSha256.isEmpty()) {
-            String actual = Hashing.hex(sha.digest());
-            if (!actual.equalsIgnoreCase(expectedSha256)) {
-                throw new IOException(
-                        "sha256 mismatch for " + displayName + " — expected " + expectedSha256 + ", got " + actual);
-            }
+        String actual = Hashing.hex(sha.digest());
+        if (!actual.equalsIgnoreCase(expected)) {
+            throw new IOException("sha256 mismatch for " + displayName + " — expected " + expected + ", got " + actual);
         }
         return total;
     }

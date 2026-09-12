@@ -370,6 +370,34 @@ class MavenRepoTest {
     }
 
     @Test
+    void bytes_a_lock_pin_rejects_are_discarded_before_they_reach_the_store(@TempDir Path tempDir) throws Exception {
+        // The repository vouches for the bytes (a matching .sha1 sidecar) but the lock pins
+        // something else: the pin decides, and the rejected bytes must not be materialised.
+        byte[] jar = "republished-bytes".getBytes(StandardCharsets.UTF_8);
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        String relPath = MavenLayout.artifactPath(coord);
+        serveArtifact("/" + relPath, jar);
+        MavenRepo repo = new MavenRepo("mirror", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, false);
+
+        assertThatThrownBy(() -> repo.fetchArtifact(coord, "0".repeat(64), () -> false))
+                .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
+                .hasMessageContaining("jk-lock.toml pins sha256");
+
+        assertThat(RepoArtifactStore.forRepoName(tempDir, "mirror").locate(relPath))
+                .as("rejected bytes are never placed in repos/<name>/")
+                .isEmpty();
+        Path shard = tempDir.resolve("repos").resolve("mirror");
+        if (Files.isDirectory(shard)) {
+            try (var files = Files.walk(shard)) {
+                assertThat(files.filter(Files::isRegularFile))
+                        .as("no download temp survives the refusal")
+                        .isEmpty();
+            }
+        }
+        assertThat(repo.verifiedUpstream()).isZero();
+    }
+
+    @Test
     void a_file_repository_needs_no_sidecar(@TempDir Path tempDir) throws Exception {
         Path repoDir = tempDir.resolve("repo");
         Path jar = repoDir.resolve(MavenLayout.artifactPath(Coordinate.of("com.example", "widget", "1.0")));

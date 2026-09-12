@@ -253,6 +253,27 @@ class JdkInstallerTest {
     }
 
     @Test
+    void an_entry_without_a_sha256_is_refused_before_anything_is_downloaded(@TempDir Path tempDir) throws Exception {
+        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+
+        for (String missing : new String[] {null, "", "   "}) {
+            JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), missing);
+            assertThatThrownBy(() -> installer.install(entry))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("carries no sha256")
+                    .hasMessageContaining("temurin-21.0.5");
+        }
+        assertThat(jdksRoot.resolve("temurin-21.0.5")).doesNotExist();
+        // The refusal happens before the request: nothing was staged or left half-downloaded.
+        try (var files = Files.walk(jdksRoot)) {
+            assertThat(files.filter(Files::isRegularFile)).isEmpty();
+        }
+    }
+
+    @Test
     void second_install_is_idempotent(@TempDir Path tempDir) throws Exception {
         byte[] archive = buildTarGz("jdk", Map.of("bin/java", "x", "bin/javac", "x"));
         served.put("/jdk.tar.gz", archive);

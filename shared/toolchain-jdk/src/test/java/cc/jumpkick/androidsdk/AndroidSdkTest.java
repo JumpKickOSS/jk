@@ -5,6 +5,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.http.OfflineException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -93,6 +97,21 @@ class AndroidSdkTest {
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("not in Google's repository feed");
         } finally {
+            System.clearProperty(AndroidSdkInstaller.FEED_URL_PROPERTY);
+        }
+    }
+
+    @Test
+    void installer_honours_offline_before_asking_google_for_the_feed(@TempDir Path tmp) throws Exception {
+        // Port 1 on loopback refuses every connection; offline must refuse before even trying.
+        System.setProperty(AndroidSdkInstaller.FEED_URL_PROPERTY, "http://127.0.0.1:1/repository2-3.xml");
+        SessionContext.installConfig(JkConfig.empty().withOffline(true));
+        try {
+            AndroidSdk sdk = AndroidSdk.resolve(var -> null, tmp.resolve("android-sdk"));
+            AndroidSdkInstaller installer = new AndroidSdkInstaller(sdk, Http.failFast());
+            assertThatThrownBy(() -> installer.ensure("platforms;android-28")).isInstanceOf(OfflineException.class);
+        } finally {
+            SessionContext.reset();
             System.clearProperty(AndroidSdkInstaller.FEED_URL_PROPERTY);
         }
     }

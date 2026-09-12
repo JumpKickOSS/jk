@@ -4,12 +4,12 @@ package cc.jumpkick.androidsdk;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -17,15 +17,17 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
-import java.time.Duration;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures Android SDK components under {@link AndroidSdk}: reuse installed, else download from
- * Google's {@code repository2} feed (sha1-verified, license-gated via {@code licenses/}).
+ * Google's {@code repository2} feed (sha1-verified, license-gated via {@code licenses/}) through
+ * jk's {@link Http}, so the feed and the archives honour {@code --offline} and the shared
+ * retry/cooldown policy.
  */
 public final class AndroidSdkInstaller {
 
@@ -33,15 +35,21 @@ public final class AndroidSdkInstaller {
     public static final String FEED_URL_PROPERTY = "jk.android.feedUrl";
 
     private final AndroidSdk sdk;
-    private final HttpClient http;
+    private final Http http;
     private @Nullable AndroidRepoFeed feed; // fetched once per installer instance
 
     public AndroidSdkInstaller(AndroidSdk sdk) {
-        this.sdk = sdk;
-        this.http = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(Duration.ofSeconds(30))
-                .build();
+        this(sdk, new Http());
+    }
+
+    /**
+     * Google's feed and archives travel through jk's own {@link Http} like every other remote:
+     * {@code --offline} refuses them up front, and retries, host cooldowns and transfer metering
+     * apply. A private client would answer to none of that.
+     */
+    public AndroidSdkInstaller(AndroidSdk sdk, Http http) {
+        this.sdk = Objects.requireNonNull(sdk, "sdk");
+        this.http = Objects.requireNonNull(http, "http");
     }
 
     /**
@@ -116,8 +124,7 @@ public final class AndroidSdkInstaller {
             if (url.startsWith("file:")) {
                 feed = AndroidRepoFeed.parse(Files.readAllBytes(Path.of(URI.create(url))));
             } else {
-                HttpResponse<byte[]> response = http.send(
-                        HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+                HttpResponse<byte[]> response = http.get(URI.create(url));
                 if (response.statusCode() != 200) {
                     throw new IOException("Android SDK feed " + url + " returned " + response.statusCode());
                 }
@@ -140,9 +147,11 @@ public final class AndroidSdkInstaller {
         Path downloads = Files.createDirectories(sdk.root().resolve(".downloads"));
         Path target = Files.createTempFile(downloads, "jk-sdk-", ".zip");
         URI uri = URI.create(AndroidRepoFeed.REPOSITORY_BASE + archive.url());
-        HttpResponse<InputStream> response =
-                http.send(HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<InputStream> response = http.getStream(uri);
         if (response.statusCode() != 200) {
+            try (InputStream body = response.body()) {
+                body.transferTo(OutputStream.nullOutputStream());
+            }
             Files.deleteIfExists(target);
             throw new IOException("Android SDK download " + uri + " returned " + response.statusCode());
         }

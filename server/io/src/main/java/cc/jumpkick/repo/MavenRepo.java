@@ -467,12 +467,14 @@ public final class MavenRepo {
 
             // Prefer the collision-resistant .sha256 sidecar; fall back to .sha1 only when the repo
             // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
-            // for bytes any `mvn install` could have seeded).
+            // for bytes any `mvn install` could have seeded). The SHA-256 is computed once: it is
+            // both the comparison and the memo the adoption records.
+            String sha256 = Hashing.sha256Hex(candidate);
             String vouchAlgo;
             Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
             if (advertised.isPresent()) {
                 vouchAlgo = "sha256";
-                if (!Hashing.sha256Hex(candidate).equalsIgnoreCase(advertised.get())) {
+                if (!sha256.equalsIgnoreCase(advertised.get())) {
                     return Optional.empty();
                 }
             } else {
@@ -484,7 +486,6 @@ public final class MavenRepo {
                 }
             }
 
-            String sha256 = Hashing.sha256Hex(candidate);
             repoStore.writeMemo(relativePath, candidate, sha256);
             if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
             if (SessionContext.current().config().verboseOr(false)) {
@@ -631,12 +632,15 @@ public final class MavenRepo {
     }
 
     /**
-     * Check the download against the checksum this repository publishes beside it: {@code .sha256}
-     * first, else {@code .sha1}; a mismatch fails closed. With no sidecar at all the bytes are
-     * accepted only when a lock pin vouches for them, when the repository is on local disk
-     * ({@code file://} has no network path to tamper with), or when the repository table says
-     * {@code allow-unverified = true}; otherwise the fetch is refused, because a pin taken from
-     * unverified bytes would protect every later build with a checksum of whatever arrived.
+     * Check the download against the lock pin when there is one, then against the checksum this
+     * repository publishes beside it: {@code .sha256} first, else {@code .sha1}; a mismatch fails
+     * closed. The pin is compared first so bytes the lock rejects are discarded here, before
+     * anything places them in the store or {@code ~/.m2} — placed bytes would be copied on and
+     * re-downloaded on every later sync. With no sidecar at all the bytes are accepted only when
+     * the pin vouches for them, when the repository is on local disk ({@code file://} has no
+     * network path to tamper with), or when the repository table says {@code allow-unverified =
+     * true}; otherwise the fetch is refused, because a pin taken from unverified bytes would
+     * protect every later build with a checksum of whatever arrived.
      */
     private void verifyUpstreamChecksum(
             Coordinate coord,
@@ -647,6 +651,10 @@ public final class MavenRepo {
             @Nullable String expectedSha256)
             throws IOException, InterruptedException {
         String actualSha256 = stored.sha256();
+        if (expectedSha256 != null && !expectedSha256.equalsIgnoreCase(actualSha256)) {
+            throw new ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " (" + relativePath
+                    + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
+        }
         Optional<byte[]> sha256Side = transport.fetch(sidecarUri(artifactUri, ".sha256"), credential);
         if (sha256Side.isPresent()) {
             Optional<String> parsed =
@@ -694,14 +702,9 @@ public final class MavenRepo {
                 return;
             }
         }
-        if (expectedSha256 != null) {
-            // Post-lock: the pin is the authority, and it was taken when the sidecar was checked.
-            if (!expectedSha256.equalsIgnoreCase(actualSha256)) {
-                throw new ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " ("
-                        + relativePath + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
-            }
-            return;
-        }
+        // Post-lock: the pin is the authority, and it was taken when the sidecar was checked; it
+        // matched above, so a sidecar-less repository needs no further vouching.
+        if (expectedSha256 != null) return;
         if ("file".equalsIgnoreCase(baseUrl.getScheme())) return;
         if (!allowUnverified) {
             throw new MissingChecksumException("no upstream checksum for " + coord + " from " + name + " ("
