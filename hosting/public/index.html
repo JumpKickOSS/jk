@@ -422,14 +422,6 @@
     html:not(.os-mac):not(.os-win) .code-chrome-win { display: inline-flex; }
     html:not(.os-mac):not(.os-win) .code-chrome-title { text-align: left; padding-left: 0.35rem; }
 
-    /* Content-forced chrome (e.g. Homebrew is always macOS-style) */
-    html .code-block--mac .code-chrome-orbs { display: inline-flex; }
-    html .code-block--mac .code-chrome-win { display: none; }
-    html .code-block--mac .code-chrome-title {
-      text-align: center;
-      padding-left: 0;
-    }
-
     .code-block pre {
       margin: 0;
       padding: 0.85rem 2.5rem 0.85rem 1rem;
@@ -450,7 +442,7 @@
       font-size: inherit;
     }
 
-    /* Winget → dark window chrome (same as Linux/Windows Terminal), PowerShell-blue body */
+    /* PowerShell → dark window chrome (same as Linux/Windows Terminal), PowerShell-blue body */
     .code-block--powershell {
       background: #012456;
       border-color: var(--bd);
@@ -538,7 +530,7 @@
         <span>JumpKick</span>
       </a>
       <span class="nav-spacer"></span>
-      <a class="nav-link" href="#">Documentation</a>
+      <a class="nav-link" href="https://github.com/JumpKickOSS/jk/tree/main/docs" target="_blank" rel="noopener noreferrer">Documentation</a>
       <a class="nav-github" href="https://github.com/JumpKickOSS/jk" target="_blank" rel="noopener noreferrer" aria-label="JumpKick on GitHub">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
@@ -645,55 +637,6 @@
       </div>
     </div>
 
-    <div class="install-block">
-      <h3>Homebrew</h3>
-      <p>With <a href="https://brew.sh/" target="_blank" rel="noopener noreferrer">Homebrew</a>:</p>
-      <div class="code-block code-block--mac">
-        <div class="code-chrome" aria-hidden="true">
-          <div class="code-chrome-orbs">
-            <span class="code-chrome-orb close"></span>
-            <span class="code-chrome-orb min"></span>
-            <span class="code-chrome-orb max"></span>
-          </div>
-          <div class="code-chrome-title">Terminal</div>
-          <div class="code-chrome-win">
-            <span class="win-min"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></span>
-            <span class="win-max"><svg viewBox="0 0 10 10"><rect x="1.25" y="1.25" width="7.5" height="7.5"/></svg></span>
-            <span class="win-close"><svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg></span>
-          </div>
-        </div>
-        <pre><code>brew install jumpkick</code></pre>
-        <button type="button" class="copy-btn" aria-label="Copy to clipboard" title="Copy">
-          <svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <svg class="icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        </button>
-      </div>
-    </div>
-
-    <div class="install-block">
-      <h3>Winget</h3>
-      <p>With <a href="https://github.com/microsoft/winget-cli" target="_blank" rel="noopener noreferrer">Winget</a>:</p>
-      <div class="code-block code-block--powershell">
-        <div class="code-chrome" aria-hidden="true">
-          <div class="code-chrome-orbs">
-            <span class="code-chrome-orb close"></span>
-            <span class="code-chrome-orb min"></span>
-            <span class="code-chrome-orb max"></span>
-          </div>
-          <div class="code-chrome-title">Terminal</div>
-          <div class="code-chrome-win">
-            <span class="win-min"><svg viewBox="0 0 10 10"><path d="M1 5h8"/></svg></span>
-            <span class="win-max"><svg viewBox="0 0 10 10"><rect x="1.25" y="1.25" width="7.5" height="7.5"/></svg></span>
-            <span class="win-close"><svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg></span>
-          </div>
-        </div>
-        <pre><code>winget install jumpkick</code></pre>
-        <button type="button" class="copy-btn" aria-label="Copy to clipboard" title="Copy">
-          <svg class="icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          <svg class="icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        </button>
-      </div>
-    </div>
   </section>
 
   <script>
