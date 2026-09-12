@@ -95,7 +95,9 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
    way is hosted. Windows still ships from `./gradlew dist` (its self-host lane is not green yet).
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs +
    `SHA256SUMS` + `.sig`.
-4. Merge job re-signs the combined tree, then **`gsutil rsync`** to GCS when secrets are set.
+4. Merge job flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial
+   matrix or a differing engine jar), re-signs the combined `SHA256SUMS`, then **`gsutil rsync`**
+   to GCS when secrets are set.
 5. Update `releases/latest/VERSION` (no-cache headers).
 
 ### Required secrets

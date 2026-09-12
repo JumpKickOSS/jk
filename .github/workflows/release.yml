@@ -184,59 +184,12 @@ jobs:
           pattern: maven-repo-*
           merge-multiple: true
 
-      # One tree from five: each platform's client, and the engine jar from linux-x86_64 alone —
-      # every platform builds the same jar, and one whose bytes differ is a build to explain, not
-      # a copy to overwrite. A platform whose artifact is missing fails the release here.
+      # One tree from five: each platform's client, and the engine jar from linux-x86_64 alone.
+      # The refusals (a missing platform, an engine jar whose bytes differ, two trees carrying one
+      # name) live in the script, which scripts/test-flatten-release.sh exercises in the gate.
       - name: Flatten into version directory
         shell: bash
-        run: |
-          set -euo pipefail
-          VER="$JK_VERSION"
-          ENGINE="jk-engine-${VER}.jar"
-          mkdir -p "out/${VER}"
-          canonical="staging/release-${VER}-linux-x86_64/${ENGINE}"
-          if [[ ! -f "$canonical" ]]; then
-            echo "missing $canonical — the linux-x86_64 build did not produce the engine jar" >&2
-            exit 1
-          fi
-          canonical_sha="$(sha256sum "$canonical" | awk '{print $1}')"
-          while IFS= read -r -d '' f; do
-            base="$(basename "$f")"
-            case "$base" in
-              SHA256SUMS|SHA256SUMS.sig) continue ;;
-              "$ENGINE")
-                sha="$(sha256sum "$f" | awk '{print $1}')"
-                if [[ "$sha" != "$canonical_sha" ]]; then
-                  echo "$f differs from $canonical ($sha vs $canonical_sha) — the platforms built different engines" >&2
-                  exit 1
-                fi
-                [[ "$f" == "$canonical" ]] || continue
-                ;;
-            esac
-            if [[ -e "out/${VER}/$base" ]]; then
-              echo "two platform trees carry $base — the flatten would pick one by listing order" >&2
-              exit 1
-            fi
-            cp -f "$f" "out/${VER}/$base"
-          done < <(find staging -type f -print0)
-          missing=0
-          for client in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
-            if [[ ! -f "out/${VER}/jk-${client}-${VER}.xz" ]]; then
-              echo "missing client jk-${client}-${VER}.xz — the ${client} build did not finish" >&2
-              missing=$((missing + 1))
-            fi
-          done
-          [[ -f "out/${VER}/jk-windows-x86_64-${VER}.zip" ]] || { echo "missing jk-windows-x86_64-${VER}.zip" >&2; missing=$((missing + 1)); }
-          if [[ "$missing" -gt 0 ]]; then
-            echo "$missing artifact(s) missing: a partial matrix is not a release; re-run the failed builds and this job" >&2
-            exit 1
-          fi
-          (
-            cd "out/${VER}"
-            sha256sum * >SHA256SUMS
-          )
-          echo "=== out/${VER} ==="
-          ls -la "out/${VER}"
+        run: scripts/flatten-release.sh staging "out/${JK_VERSION}" "$JK_VERSION"
 
       - name: Re-sign combined SHA256SUMS
         shell: bash
