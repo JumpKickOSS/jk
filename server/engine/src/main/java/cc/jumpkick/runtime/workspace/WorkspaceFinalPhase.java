@@ -100,16 +100,35 @@ final class WorkspaceFinalPhase {
         medianRate(run.observedRates()).ifPresent(rate -> Calibration.refine(rate, now));
 
         if (shouldStoreCleanMemo(request)) {
-            Map<Path, String> fingerprints = PreflightMemo.snapshotFingerprints(graph, request.skipTests())
-                    .fingerprints();
-            if (!fingerprints.isEmpty()) {
-                PreflightMemo.storeDirty(request.entryDir(), graph, request.skipTests(), Set.of(), fingerprints);
-                // One snapshot, two records: the memo says these inputs are clean, and this says
-                // the outputs on disk are the ones they produce. The second is what lets preflight
-                // tell "nothing to do" from "the artifacts here are from another run".
-                ModuleInputProvenance.record(request.entryDir(), graph, fingerprints);
-            }
+            certifyClean(
+                    request.entryDir(),
+                    graph,
+                    request.skipTests(),
+                    resources.preflight().forecast());
         }
+    }
+
+    /**
+     * Record every module clean under the fingerprints the preflight captured before the walk.
+     *
+     * <p>Those are the only inputs this build is known to have consumed. A source saved while the
+     * build ran is not among them, so the next preflight misses the memo and schedules the module;
+     * fingerprinting the tree now instead would record that edit as built and ship a jar without
+     * it until some other change to the same module. A preflight that captured nothing — a forced
+     * rebuild skips the walk — falls back to a snapshot, the same one the restore path takes.
+     */
+    static void certifyClean(
+            Path entryDir, BuildGraph.Result graph, boolean skipTests, Optional<BuildForecasting.Preflight> forecast) {
+        Map<Path, String> fingerprints = forecast.map(BuildForecasting.Preflight::fingerprints)
+                .filter(captured -> !captured.isEmpty())
+                .orElseGet(() ->
+                        PreflightMemo.snapshotFingerprints(graph, skipTests).fingerprints());
+        if (fingerprints.isEmpty()) return;
+        PreflightMemo.storeDirty(entryDir, graph, skipTests, Set.of(), fingerprints);
+        // One set of fingerprints, two records: the memo says these inputs are clean, and this
+        // says the outputs on disk are the ones they produce. The second is what lets preflight
+        // tell "nothing to do" from "the artifacts here are from another run".
+        ModuleInputProvenance.record(entryDir, graph, fingerprints);
     }
 
     /** Only a complete, unhinted PACKAGE build can certify the whole graph clean. */
