@@ -248,15 +248,21 @@ public final class RepoGroup {
                 + "\0"
                 + (coord.classifier() == null ? "" : coord.classifier());
         RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
-        if (hit != null && expectedSha256Hex.equalsIgnoreCase(hit.fetched().sha256())) {
-            return Optional.of(hit);
+        if (hit != null) {
+            if (expectedSha256Hex.equalsIgnoreCase(hit.fetched().sha256())) return Optional.of(hit);
+            // The memo describes bytes the pin no longer accepts. The re-fetch below evicts and
+            // replaces the file at the same path, and a memo left in place would then answer the
+            // next unpinned fetch with the old digest for the new bytes — which the lock records,
+            // and every later sync fails against.
+            ARTIFACT_HIT_CACHE.remove(key, hit);
         }
         Optional<RepoFetched> found = tryFetch(
                 coord,
                 (repo, c) -> repo.tryLocalArtifact(c).filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
                 (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT));
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
-            ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
+            // put, not putIfAbsent: a pinned fetch is the authority on what is on disk now.
+            ARTIFACT_HIT_CACHE.put(key, found.get());
         }
         return found;
     }
