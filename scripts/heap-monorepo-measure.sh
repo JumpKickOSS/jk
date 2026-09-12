@@ -151,11 +151,11 @@ wait "$POLL_PID" 2>/dev/null || true
 trap - EXIT
 
 read -r peak_u peak_c peak_r <"$peak_file" || true
+cleanup
 final_used=$(field "$final_json" heapUsedBytes)
 final_commit=$(field "$final_json" heapCommittedBytes)
 final_rss=$(field "$final_json" rssBytes)
 peak_plans=$(field "$final_json" peakActiveBuildPlans)
-# peakActiveBuildPlans may not be in CLI json — ignore if empty
 
 echo
 echo "## During / after build ($MODULES modules, exit=$build_ec)"
@@ -166,7 +166,10 @@ echo "| peak heapCommitted (polled) | $peak_c | $(mib "${peak_c:-0}") |"
 echo "| final heapUsed | $final_used | $(mib "${final_used:-0}") |"
 echo "| final heapCommitted | $final_commit | $(mib "${final_commit:-0}") |"
 echo "| peak rss (polled) | $peak_r | $(mib "${peak_r:--1}") |"
+echo "| final rss | $final_rss | $(mib "${final_rss:--1}") |"
 echo "| heapMax | $idle_max | $(mib "${idle_max:-0}") |"
+# peakActiveBuildPlans is absent from older engines' status json.
+[[ -n "$peak_plans" ]] && echo "| peak active build plans | $peak_plans | |"
 echo
 pct=$(python3 -c "print(f\"{100.0*int('$peak_u' or 0)/max(int('$idle_max' or 1),1):.1f}\")" 2>/dev/null || echo "?")
 echo "peak heapUsed / heapMax ≈ ${pct}%"

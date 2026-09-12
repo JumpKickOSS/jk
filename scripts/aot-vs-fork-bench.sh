@@ -6,7 +6,6 @@
 # Env: RUNS (default 5), JK_BIN
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JK_BIN="${JK_BIN:-jk}"
 PROJECT="${1:-}"
 RUNS="${RUNS:-5}"
@@ -56,8 +55,8 @@ run_median() {
   shift
   local times=()
   local rss_samples=()
-  local i t r
-  for i in $(seq 1 "$RUNS"); do
+  local t r
+  for _ in $(seq 1 "$RUNS"); do
     t=$(time_ms "$@")
     times+=("$t")
     r=$(sample_engine_rss_kb)

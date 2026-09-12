@@ -55,8 +55,8 @@ run_median() {
   local label="$1"
   shift
   local times=()
-  local i t
-  for i in $(seq 1 "$RUNS"); do
+  local t
+  for _ in $(seq 1 "$RUNS"); do
     t=$(time_ms "$@")
     times+=("$t")
   done

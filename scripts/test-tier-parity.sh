@@ -78,6 +78,7 @@ run_gradle() {
   # Results from an earlier tier run would be read as this run's: clear them first.
   find "$root" -type d -path '*/build/test-results/integrationTest' -not -path "$root/target/*" \
     -exec rm -rf {} + 2>/dev/null || true
+  # shellcheck disable=SC2086 # GRADLE_ARGS is a space-separated list of extra Gradle arguments
   (cd "$root" && ./gradlew integrationTest --continue --no-daemon ${GRADLE_ARGS:-}) || echo "Gradle tier finished red (verdicts are compared below)"
 }
 

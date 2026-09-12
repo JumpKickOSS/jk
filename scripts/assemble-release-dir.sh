@@ -79,20 +79,25 @@ if [[ "$os" == "windows" ]]; then
   (cd "$DIST" && zip -q "$OUT/${name}.zip" "$(basename "$src")")
 fi
 
-engine="$(ls "$DIST"/lib/jk-engine-*.jar 2>/dev/null | head -1 || true)"
+engine=""
+for candidate in "$DIST"/lib/jk-engine-*.jar; do
+  [[ -f "$candidate" ]] && engine="$candidate" && break
+done
 if [[ -z "$engine" ]]; then
   echo "assemble-release-dir: no engine jar under $DIST/lib" >&2
   exit 2
 fi
 cp "$engine" "$OUT/jk-engine-${VERSION}.jar"
 
-# SHA256SUMS (coreutils format: hash two spaces name)
+# SHA256SUMS (coreutils format: hash two spaces name). The file list is fixed before the manifest
+# exists, so the manifest never names itself.
 (
   cd "$OUT"
+  files=(*)
   if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 * 2>/dev/null | grep -v SHA256SUMS | sed 's/  /  /' >SHA256SUMS
+    shasum -a 256 -- "${files[@]}" >SHA256SUMS
   else
-    sha256sum * 2>/dev/null | grep -v SHA256SUMS >SHA256SUMS
+    sha256sum -- "${files[@]}" >SHA256SUMS
   fi
 )
 

@@ -33,8 +33,8 @@ took_ms() {
 run_median_rebuild() {
   local label="$1"
   shift
-  local times=() i t
-  for i in $(seq 1 "$RUNS"); do
+  local times=() t
+  for _ in $(seq 1 "$RUNS"); do
     t=$(took_ms "$@")
     [[ -n "$t" ]] || t=0
     times+=("$t")
@@ -73,7 +73,7 @@ case "$MODE" in
     sleep 4
     "$JK_BIN" build --skip-tests --redo --jdk "$JDK_SPEC" >/dev/null 2>&1 || true
     echo "kotlinc aot files:"
-    ls -la "${HOME}/.jk/state/aot"/kotlinc-*.aot 2>/dev/null | sed 's/^/  /' || echo "  (none yet)"
+    find "${HOME}/.jk/state/aot" -maxdepth 1 -name 'kotlinc-*.aot' -exec ls -la {} + 2>/dev/null | sed 's/^/  /' || echo "  (none yet)"
     echo
     echo "| arm | median rebuild | samples |"
     echo "|---|---|---|"

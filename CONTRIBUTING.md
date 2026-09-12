@@ -190,6 +190,8 @@ stays off unless asked for, so `checkFast` does not pay for it.
 
 ```bash
 ./gradlew checkFast                          # same as push/PR CI
+scripts/shellcheck.sh                        # CI's shell lint: installers, scripts/, the wrapper (skips with a notice when shellcheck is absent)
+for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer, Maven repo, release version, flatten)
 ./gradlew integrationTest                    # nightly Linux integration
 ./gradlew benchTest                          # nightly microbenchmarks
 ./gradlew coverageReport -Pjk.coverage       # nightly coverage inventory

@@ -56,8 +56,8 @@ jk-macos-aarch64-$VER.xz
 jk-macos-x86_64-$VER.xz
 jk-windows-x86_64-$VER.xz
 jk-windows-x86_64-$VER.zip"
-[[ "$(ls "$WORK/out" | LC_ALL=C sort)" == "$expected_listing" ]] || {
-  ls "$WORK/out" >&2
+[[ "$(cd "$WORK/out" && printf '%s\n' * | LC_ALL=C sort)" == "$expected_listing" ]] || {
+  (cd "$WORK/out" && printf '%s\n' *) >&2
   echo "test-flatten-release: the flattened tree does not hold exactly the seven artifacts plus SHA256SUMS" >&2
   exit 1
 }

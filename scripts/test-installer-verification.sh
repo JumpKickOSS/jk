@@ -177,8 +177,11 @@ if command -v xz >/dev/null 2>&1; then
   xz -kc "$RELEASE/$ARTIFACT" >"$RELEASE/$LATEST_ARTIFACT"
   write_pointer 1.0.0
   [[ "$(cat "$LATEST_DIR/VERSION")" == "1.0.0" ]] || { echo "the pointer script did not write the bare VERSION" >&2; exit 1; }
-  grep -qE '^version 1\.0\.0$' "$LATEST_DIR/LATEST" && grep -qE '^issued [0-9]+$' "$LATEST_DIR/LATEST" \
-    || { cat "$LATEST_DIR/LATEST" >&2; echo "the pointer script did not write a two-line LATEST" >&2; exit 1; }
+  if ! { grep -qE '^version 1\.0\.0$' "$LATEST_DIR/LATEST" && grep -qE '^issued [0-9]+$' "$LATEST_DIR/LATEST"; }; then
+    cat "$LATEST_DIR/LATEST" >&2
+    echo "the pointer script did not write a two-line LATEST" >&2
+    exit 1
+  fi
   latest_hash="$(openssl dgst -sha256 "$RELEASE/$LATEST_ARTIFACT" | awk '{print tolower($NF)}')"
   write_evidence "$latest_hash  $LATEST_ARTIFACT"$'\n'
   run_installer "$WORK/home-latest" || {
@@ -289,6 +292,7 @@ check_truncated_prefix() {
 export -f check_truncated_prefix
 export WORK TRUNCATED
 installer_size="$(wc -c <"$WORK/install.sh" | tr -d '[:space:]')"
+# shellcheck disable=SC2016 # the loop body is bash -c's script; its "$n" expands in the child
 seq 1 "$((installer_size - 2))" |
   xargs -P "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" -n 64 \
     bash -c 'for n; do check_truncated_prefix "$n"; done' _

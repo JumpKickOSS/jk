@@ -51,13 +51,13 @@ echo "|----------|----------:|------------|"
 
   # cold: wipe target, keep lock + global cache
   rm -rf target
-  time_cmd "cold jk build --skip-tests" $JK_BIN build --skip-tests --no-progress --no-ansi
+  time_cmd "cold jk build --skip-tests" "$JK_BIN" build --skip-tests --no-progress --no-ansi
 
-  time_cmd "warm no-op jk build --skip-tests" $JK_BIN build --skip-tests --no-progress --no-ansi
+  time_cmd "warm no-op jk build --skip-tests" "$JK_BIN" build --skip-tests --no-progress --no-ansi
 
   # dirty: touch one source
   touch src/main/java/com/example/echo/EchoServer.java
-  time_cmd "warm single-file dirty" $JK_BIN build --skip-tests --no-progress --no-ansi
+  time_cmd "warm single-file dirty" "$JK_BIN" build --skip-tests --no-progress --no-ansi
 )
 
 echo
