@@ -61,8 +61,16 @@ class LockTrustTest {
         assertThat(trust.verified()).isEqualTo(rowsWithChecksum(lock)).isPositive();
         assertThat(trust.unverifiedAllowed()).isZero();
         assertThat(trust.insecureRepos())
-                .as("a loopback http:// stub is a plaintext repository")
-                .containsExactly("maven-stub");
+                .as("a loopback stub needs no opt-in and is not reported as insecure")
+                .isEmpty();
+    }
+
+    @Test
+    void a_repository_that_opted_into_plaintext_is_named_in_the_summary(@TempDir Path dir) throws Exception {
+        upstream.leaf("com.foo", "lib", "1.0");
+        RepoGroup repos = repos(dir, false, true);
+        new LockOrchestrator(repos).lock(project("com.foo:lib", "=1.0"), "test");
+        assertThat(repos.trust().insecureRepos()).containsExactly("maven-stub");
     }
 
     @Test
@@ -91,6 +99,10 @@ class LockTrustTest {
     }
 
     private RepoGroup repos(Path dir, boolean allowUnverified) {
+        return repos(dir, allowUnverified, false);
+    }
+
+    private RepoGroup repos(Path dir, boolean allowUnverified, boolean allowInsecure) {
         Http client = new Http();
         return RepoGroup.of(MavenRepo.overTransport(
                 "maven-stub",
@@ -100,7 +112,8 @@ class LockTrustTest {
                 RepoCredential.ANONYMOUS,
                 client,
                 false,
-                allowUnverified));
+                allowUnverified,
+                allowInsecure));
     }
 
     private static long rowsWithChecksum(Lockfile lock) {

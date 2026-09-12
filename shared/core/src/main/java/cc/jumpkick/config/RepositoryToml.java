@@ -7,7 +7,6 @@ import cc.jumpkick.model.RepositorySpec;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -287,15 +286,8 @@ public final class RepositoryToml {
         }
         return List.copyOf(out);
     }
-    /**
-     * A repository on this machine's loopback interface has no network path for anyone to sit
-     * on, so plaintext to it is not the threat the refusal names: a local mirror, an ssh-tunnelled
-     * Nexus, a test stub.
-     */
+    /** See {@link RepositorySpec#loopback}. */
     static boolean loopback(@Nullable String host) {
-        if (host == null) return false;
-        String h = host.toLowerCase(Locale.ROOT);
-        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
-        return h.equals("localhost") || h.equals("::1") || h.startsWith("127.");
+        return RepositorySpec.loopback(host);
     }
 }

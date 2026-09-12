@@ -390,7 +390,19 @@ class MavenRepoTest {
                 "/com/example/widget/1.0/widget-1.0.jar.sha256",
                 200,
                 Hashing.sha256Hex(jar).getBytes(StandardCharsets.UTF_8));
-        MavenRepo repo = new MavenRepo("mirror", base, new Http(), new Cas(tempDir));
+        // The stub is on loopback, which needs no opt-in and reports nothing; opting in reports it.
+        Http http = new Http();
+        MavenRepo quiet = new MavenRepo("mirror", base, http, new Cas(tempDir));
+        MavenRepo repo = MavenRepo.overTransport(
+                "mirror",
+                base,
+                RepoTransports.forUrl(base, http),
+                new Cas(tempDir),
+                RepoCredential.ANONYMOUS,
+                http,
+                false,
+                false,
+                true);
         var err = new ByteArrayOutputStream();
         var original = System.err;
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
@@ -399,6 +411,7 @@ class MavenRepoTest {
         } finally {
             System.setErr(original);
         }
+        assertThat(quiet.isPlaintext()).isFalse();
         assertThat(repo.isPlaintext()).isTrue();
         assertThat(err.toString(StandardCharsets.UTF_8))
                 .as("the manifest already refused or allowed http://; the fetch says nothing")
@@ -415,7 +428,8 @@ class MavenRepoTest {
                 RepoCredential.ANONYMOUS,
                 http,
                 false,
-                true);
+                true,
+                false);
     }
 
     /** An artifact and the {@code .sha1} every repository publishes beside it. */

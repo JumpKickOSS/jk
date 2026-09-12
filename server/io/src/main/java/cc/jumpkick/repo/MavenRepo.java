@@ -14,6 +14,7 @@ import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.io.InputStream;
@@ -70,6 +71,8 @@ public final class MavenRepo {
      */
     private final boolean allowUnverified;
 
+    private final boolean allowInsecure;
+
     /**
      * Artifacts this run whose bytes the repository's published checksum confirmed — downloads and
      * Maven-local adoptions alike.
@@ -103,6 +106,7 @@ public final class MavenRepo {
                 credential,
                 http,
                 m2integration,
+                false,
                 false);
     }
 
@@ -112,7 +116,7 @@ public final class MavenRepo {
      * status/headers to revalidate against). {@code m2integration} defaults to {@code true}.
      */
     public MavenRepo(String name, URI baseUrl, RepoTransport transport, Cas cas, RepoCredential credential) {
-        this(name, baseUrl, transport, cas, credential, null, true, false);
+        this(name, baseUrl, transport, cas, credential, null, true, false, false);
     }
 
     /** As above, with an explicit {@code m2integration}. */
@@ -123,7 +127,7 @@ public final class MavenRepo {
             Cas cas,
             RepoCredential credential,
             boolean m2integration) {
-        this(name, baseUrl, transport, cas, credential, null, m2integration, false);
+        this(name, baseUrl, transport, cas, credential, null, m2integration, false, false);
     }
 
     /**
@@ -149,8 +153,10 @@ public final class MavenRepo {
             RepoCredential credential,
             @Nullable Http httpOrNull,
             boolean m2integration,
-            boolean allowUnverified) {
-        return new MavenRepo(name, baseUrl, transport, cas, credential, httpOrNull, m2integration, allowUnverified);
+            boolean allowUnverified,
+            boolean allowInsecure) {
+        return new MavenRepo(
+                name, baseUrl, transport, cas, credential, httpOrNull, m2integration, allowUnverified, allowInsecure);
     }
 
     /**
@@ -167,7 +173,8 @@ public final class MavenRepo {
             RepoCredential credential,
             @Nullable Http httpOrNull,
             boolean m2integration,
-            boolean allowUnverified) {
+            boolean allowUnverified,
+            boolean allowInsecure) {
         this.name = Objects.requireNonNull(name, "name");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.transport = Objects.requireNonNull(transport, "transport");
@@ -177,6 +184,7 @@ public final class MavenRepo {
         this.credential = Objects.requireNonNull(credential, "credential");
         this.m2integration = m2integration;
         this.allowUnverified = allowUnverified;
+        this.allowInsecure = allowInsecure;
         this.http = httpOrNull;
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
@@ -209,12 +217,14 @@ public final class MavenRepo {
     }
 
     /**
-     * True for a plaintext {@code http://} base URL. Such a repository only reaches here when its
-     * table said {@code allow-insecure = true} (or a test pinned it), so this is what the lock
-     * summary reports as {@code insecure (allowed)}.
+     * True for a plaintext {@code http://} base URL over a network path. Such a repository only
+     * reaches here when its table said {@code allow-insecure = true} (or a test pinned it), so this
+     * is what the lock summary reports as {@code insecure (allowed)}. A loopback repository that
+     * did not opt in is plaintext to nobody but this machine and is not reported.
      */
     public boolean isPlaintext() {
-        return "http".equalsIgnoreCase(baseUrl.getScheme());
+        return "http".equalsIgnoreCase(baseUrl.getScheme())
+                && (allowInsecure || !RepositorySpec.loopback(baseUrl.getHost()));
     }
 
     public Fetched fetchPom(Coordinate coord) throws IOException, InterruptedException {

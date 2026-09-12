@@ -133,7 +133,15 @@ public final class RepoGroupBuilder {
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
                 // build.
                 repos.add(MavenRepo.overTransport(
-                        spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2, spec.allowUnverified()));
+                        spec.name(),
+                        spec.url(),
+                        transport,
+                        cas,
+                        cred,
+                        http,
+                        mirrorToM2,
+                        spec.allowUnverified(),
+                        spec.allowInsecure()));
                 exclusiveGroups.add(exclusiveGroupsFor(spec));
             }
             maybeWarnMultiRepoWithoutBindings(effective, exclusiveGroups);

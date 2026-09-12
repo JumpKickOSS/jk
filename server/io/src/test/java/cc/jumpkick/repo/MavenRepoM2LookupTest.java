@@ -79,7 +79,8 @@ class MavenRepoM2LookupTest {
                 RepoCredential.ANONYMOUS,
                 http,
                 true,
-                true);
+                true,
+                false);
     }
 
     /** Put {@code bytes} at the coordinate's Maven-layout path inside a throwaway {@code ~/.m2}. */

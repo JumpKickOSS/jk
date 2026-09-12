@@ -57,10 +57,12 @@ class LockTrustPipelineTest {
     @Test
     void a_plaintext_repository_without_allow_insecure_fails_where_the_manifest_is_read(@TempDir Path tmp)
             throws IOException {
-        project(tmp, "");
+        // A remote host: loopback repositories have no network path and need no opt-in.
+        String remote = "http://nexus.corp.example/maven";
+        project(tmp, remote, "");
         assertThatThrownBy(() -> LockPlans.lockScope(tmp))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("repositories.mirror uses plaintext http:// (" + http.baseUrl() + ")")
+                .hasMessageContaining("repositories.mirror uses plaintext http:// (" + remote + ")")
                 .hasMessageContaining("allow-insecure = true");
     }
 
@@ -124,6 +126,10 @@ class LockTrustPipelineTest {
 
     /** The only remote is the loopback stub; it claims every group the lock will ask for. */
     private void project(Path tmp, String trustKeys) throws IOException {
+        project(tmp, http.baseUrl(), trustKeys);
+    }
+
+    private void project(Path tmp, String url, String trustKeys) throws IOException {
         Files.writeString(tmp.resolve("jk.toml"), """
                 group = "com.example"
                 name  = "demo"
@@ -137,6 +143,6 @@ class LockTrustPipelineTest {
                 url = "%s"
                 groups = ["com.foo", "org.junit.*"]
                 %s
-                """.formatted(http.baseUrl(), trustKeys));
+                """.formatted(url, trustKeys));
     }
 }

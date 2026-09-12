@@ -4,6 +4,7 @@ package cc.jumpkick.model;
 import cc.jumpkick.credential.RepoCredential;
 import java.net.URI;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -187,5 +188,17 @@ public record RepositorySpec(
     /** {@code true} when this repo claims exclusive ownership of at least one group pattern. */
     public boolean hasExclusiveGroups() {
         return !groups.isEmpty();
+    }
+    /**
+     * A host on this machine's loopback interface. Plaintext to it is not the threat the
+     * insecure-repository refusal names — there is no network path for anyone to sit on — so a
+     * local mirror, an ssh-tunnelled Nexus or a test stub needs no opt-in and is not reported as
+     * insecure.
+     */
+    public static boolean loopback(@Nullable String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.ROOT);
+        if (h.startsWith("[") && h.endsWith("]")) h = h.substring(1, h.length() - 1);
+        return h.equals("localhost") || h.equals("::1") || h.startsWith("127.");
     }
 }
