@@ -320,25 +320,36 @@ tasks.register("installLocal") {
         val pomTarget = mavenLocalDir(storeRoot, "cc.jumpkick", artifact, ver).resolve("$artifact-$ver.pom")
         val hex = sha256Hex(jar)
         deleteStaleSidecars(jar, target)
-        if (target.isFile &&
+        val workerUnchanged = target.isFile &&
                 pomTarget.isFile &&
                 sha256Hex(target) == hex &&
-                sha256Hex(pomTarget) == sha256Hex(pomXml.toByteArray(Charsets.UTF_8))) {
-            writeJkMemo(target, "cc.jumpkick", artifact, ver, hex)
-            writeJkMemo(pomTarget, "cc.jumpkick", artifact, ver, sha256Hex(pomTarget))
-            println("Already installed $artifact $ver (sha256 match)")
-            println("  path:   $target")
-            return@doLast
-        }
+                sha256Hex(pomTarget) == sha256Hex(pomXml.toByteArray(Charsets.UTF_8))
+        // The worker's own jar being current says nothing about its closure: a change to a
+        // first-party library the worker links (core, model, host) leaves this jar byte-identical
+        // while the shelf copy of the library goes stale, and the worker then runs old code. The
+        // staged repo is copied on every install; identical bytes are skipped file by file.
         val staged = workerRepoDir.get().asFile
+        var replaced = 0
         if (staged.isDirectory) {
             Trees.regularFiles(staged).forEach { src ->
-                copyReplacing(src, storeRoot.resolve(src.relativeTo(staged).path))
+                val dest = storeRoot.resolve(src.relativeTo(staged).path)
+                val before = if (dest.isFile) sha256Hex(dest) else ""
+                copyReplacing(src, dest)
+                if (before != sha256Hex(dest)) replaced++
             }
         } else {
             stageWorkerMavenRepo(storeRoot, jar, pomXml)
+            replaced = -1
         }
-        println("Installed $artifact $ver ${jar.length()} bytes")
+        if (workerUnchanged && replaced == 0) {
+            writeJkMemo(target, "cc.jumpkick", artifact, ver, hex)
+            writeJkMemo(pomTarget, "cc.jumpkick", artifact, ver, sha256Hex(pomTarget))
+            println("Already installed $artifact $ver (sha256 match, closure current)")
+            println("  path:   $target")
+            return@doLast
+        }
+        println("Installed $artifact $ver ${jar.length()} bytes" +
+                if (replaced > 0) " ($replaced closure file(s) refreshed)" else "")
         println("  sha256: $hex")
         println("  path:   $target")
     }
