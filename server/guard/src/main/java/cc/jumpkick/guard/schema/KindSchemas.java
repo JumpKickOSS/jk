@@ -6,6 +6,7 @@ import static cc.jumpkick.guard.schema.KeySpec.optional;
 import static cc.jumpkick.guard.schema.KeySpec.required;
 import static cc.jumpkick.guard.schema.KeyType.BOOL;
 import static cc.jumpkick.guard.schema.KeyType.INT;
+import static cc.jumpkick.guard.schema.KeyType.NUMBER;
 import static cc.jumpkick.guard.schema.KeyType.NUMBER_OR_TABLE;
 import static cc.jumpkick.guard.schema.KeyType.STRING;
 import static cc.jumpkick.guard.schema.KeyType.STRING_LIST;
@@ -276,6 +277,10 @@ final class KindSchemas {
                                 "lines, fqcn, matches:<rule>, comment-lines, methods, params, public-members, cyclomatic, coverage.line, coverage.branch, jar-size, native-size"),
                         optional("cap", NUMBER_OR_TABLE, "maximum, scalar or per-language table"),
                         optional("min", NUMBER_OR_TABLE, "minimum, scalar or per-language table"),
+                        optional(
+                                "band",
+                                NUMBER,
+                                "with baseline: how far a unit may move either side of its entry and still hold it (default 0)"),
                         choice("per", false, "the unit measured", "file", "class", "method", "module", "comment"),
                         optional("files", STRING_LIST, "file globs for text measures")),
                 List.of(new KeyGroup(List.of("cap", "min"), true)),

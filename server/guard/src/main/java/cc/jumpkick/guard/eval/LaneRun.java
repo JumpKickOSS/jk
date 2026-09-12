@@ -89,7 +89,8 @@ public final class LaneRun {
             RuleBaseline before = Evaluators.acceptsBaseline(rule) ? current.of(rule.id()) : RuleBaseline.EMPTY;
             if (ev.outcome() == Outcome.CLEAN || ev.outcome() == Outcome.VIOLATIONS) {
                 String slice = sliceOf(lane, rule, ctx.module());
-                Reconciliation rec = Reconciliation.of(rule.id(), before, ev.observations(), ev.population(), slice);
+                Reconciliation rec = Reconciliation.of(
+                        rule.id(), before, ev.observations(), ev.population(), slice, Evaluators.toleranceOf(rule));
                 if (rec.scopeShrunk() != null) {
                     reports.add(
                             new RuleReport(rule, Outcome.SCOPE_SHRUNK, ev, rec, "scope-shrunk: " + rec.scopeShrunk()));

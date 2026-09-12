@@ -101,7 +101,8 @@ public final class Freezer {
                         baseline.entryCount());
             }
             String slice = LaneRun.sliceOf(lane, rule, ctx.module());
-            Reconciliation rec = Reconciliation.of(ruleId, current, e.observations(), e.population(), slice);
+            Reconciliation rec = Reconciliation.of(
+                    ruleId, current, e.observations(), e.population(), slice, Evaluators.toleranceOf(rule));
             if (rec.fresh().isEmpty()) continue;
             accepted += rec.fresh().size();
             current = rec.frozen(reason == null ? "" : reason);

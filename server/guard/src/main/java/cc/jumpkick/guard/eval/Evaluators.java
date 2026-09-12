@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.guard.baseline.Tolerance;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
+import org.tomlj.TomlTable;
 
 /**
  * Kind → evaluator. A kind with no evaluator loads (the schema is complete on day one) and reports
@@ -70,6 +73,19 @@ public final class Evaluators {
      * Whether a rule's baseline entries apply to it at all. Every ratcheting kind's do; an {@code api}
      * rule with {@code breaking = "forbid"} stays red no matter what the baseline says.
      */
+    /**
+     * How a metric rule's baselined entries are read: a floor when it names {@code min} and no
+     * {@code cap}, with its {@code band}; every other rule is a plain cap.
+     */
+    public static Tolerance toleranceOf(Rule rule) {
+        if (rule.kind() != Kind.METRIC) return Tolerance.CAP;
+        TomlTable t = rule.table();
+        boolean floor = t.contains("min") && !t.contains("cap");
+        Object band = t.contains("band") ? t.get(List.of("band")) : null;
+        double width = band instanceof Number n ? n.doubleValue() : 0;
+        return new Tolerance(floor, width);
+    }
+
     public static boolean acceptsBaseline(Rule rule) {
         return rule.kind() != Kind.API || ApiEvaluator.acceptsBaseline(rule);
     }

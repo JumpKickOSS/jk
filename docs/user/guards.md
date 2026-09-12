@@ -148,6 +148,12 @@ Every key the loader accepts, by kind; `common` keys apply to every kind.
 | metric | measure | yes | string | lines, fqcn, matches:<rule>, comment-lines, methods, params, public-members, cyclomatic, coverage.line, coverage.branch, jar-size, native-size |
 | metric | cap |  | number or table | maximum, scalar or per-language table |
 | metric | min |  | number or table | minimum, scalar or per-language table |
+| metric | band |  | number | with baseline: how far a unit may move either side of its entry and still hold it (default 0) |
+
+A baselined `metric` with `min` and no `cap` is a floor: a unit is red when it falls more than
+`band` below its entry, and the entry rises when the unit climbs more than `band` above it. That is
+the shape of a coverage ratchet — `measure = "coverage.line"`, `min = 100`, `band = 0.5` — read from
+the `jacoco.xml` a `jk test --coverage` run leaves under each module's reports.
 | metric | per |  | string | the unit measured [file \| class \| method \| module \| comment] |
 | metric | files |  | string list | file globs for text measures |
 | vocabulary | owner | yes | string | the class whose static final Strings are the vocabulary |

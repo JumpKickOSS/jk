@@ -15,8 +15,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Sites: an observed fingerprint with an entry is {@code baselined}; without one it is {@code
  * fresh} (red); an entry nobody observed is {@code stale} and is dropped on tightening. Metrics: a
- * unit at or under its entry is baselined and the entry lowers to the measured value; over it is
- * fresh; a unit with no entry and no cap breach is nothing. Population: recorded when the rule ran
+ * unit that has not moved past its entry in the bad direction is baselined, and the entry follows
+ * a move in the good direction; past it is fresh; a unit with no entry and no bound breach is
+ * nothing. Which direction is bad, and how far a unit may drift either way and still hold, is the
+ * rule's {@link Tolerance}. Population: recorded when the rule ran
  * clean-or-baselined; a run examining under 80 % of it is {@code scope-shrunk} and the baseline is
  * left alone — a shrink is a question, not a fact.
  */
@@ -45,6 +47,17 @@ public record Reconciliation(
      */
     public static Reconciliation of(
             String ruleId, RuleBaseline before, List<Observation> observed, Map<String, Long> population, String lane) {
+        return of(ruleId, before, observed, population, lane, Tolerance.CAP);
+    }
+
+    /** As above, reading metric entries through {@code tolerance}. */
+    public static Reconciliation of(
+            String ruleId,
+            RuleBaseline before,
+            List<Observation> observed,
+            Map<String, Long> population,
+            String lane,
+            Tolerance tolerance) {
         String shrunk = scopeShrunk(before.population(lane), population);
         Map<String, Entry> byKey = new LinkedHashMap<>();
         List<Entry> slice = before.entries(lane);
@@ -60,12 +73,12 @@ public record Reconciliation(
                 fresh.add(o);
             } else if (o.isMetric() && e instanceof Entry.Metric m) {
                 double v = o.value() == null ? 0 : o.value();
-                if (v > m.value()) {
+                if (tolerance.worse(v, m.value())) {
                     fresh.add(o);
                     kept.add(m);
                 } else {
                     baselined.add(o);
-                    kept.add(v < m.value() ? new Entry.Metric(m.unit(), v, m.reason()) : m);
+                    kept.add(tolerance.better(v, m.value()) ? new Entry.Metric(m.unit(), v, m.reason()) : m);
                 }
             } else {
                 baselined.add(o);

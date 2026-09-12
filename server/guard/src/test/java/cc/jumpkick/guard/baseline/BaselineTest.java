@@ -140,6 +140,50 @@ class BaselineTest {
     }
 
     @Test
+    void a_floor_metric_is_red_below_its_entry_and_tightens_upward_beyond_the_band() {
+        Tolerance floor = new Tolerance(true, 0.5);
+        RuleBaseline before = RuleBaseline.of(Map.of("units", 1L), List.of(new Entry.Metric("shared/host", 80.0, "r")));
+        Reconciliation held = Reconciliation.of(
+                "c",
+                before,
+                List.of(Observation.metric("shared/host", 79.7, null, "")),
+                Map.of("units", 1L),
+                "",
+                floor);
+        assertThat(held.red()).as("within the band the entry holds").isFalse();
+        assertThat(held.tighteningNeeded()).isFalse();
+        Reconciliation dropped = Reconciliation.of(
+                "c",
+                before,
+                List.of(Observation.metric("shared/host", 79.4, null, "")),
+                Map.of("units", 1L),
+                "",
+                floor);
+        assertThat(dropped.red()).as("past the band below is a regression").isTrue();
+        assertThat(dropped.tightened().entries()).hasSize(1);
+        Reconciliation rose = Reconciliation.of(
+                "c",
+                before,
+                List.of(Observation.metric("shared/host", 80.6, null, "")),
+                Map.of("units", 1L),
+                "",
+                floor);
+        assertThat(rose.red()).isFalse();
+        assertThat(rose.tighteningNeeded())
+                .as("past the band above banks the improvement")
+                .isTrue();
+        assertThat(((Entry.Metric) rose.tightened().entries().get(0)).value()).isEqualTo(80.6);
+    }
+
+    @Test
+    void a_cap_with_no_band_reads_exactly_as_before() {
+        assertThat(Tolerance.CAP.worse(1001, 1000)).isTrue();
+        assertThat(Tolerance.CAP.better(999, 1000)).isTrue();
+        assertThat(Tolerance.CAP.worse(1000, 1000)).isFalse();
+        assertThat(Tolerance.CAP.better(1000, 1000)).isFalse();
+    }
+
+    @Test
     void scope_shrunk_below_eighty_percent_is_red_and_never_tightens() {
         RuleBaseline before = RuleBaseline.of(Map.of("classes", 100L), List.of(new Entry.Site("a", "r")));
         Reconciliation r = Reconciliation.of("x", before, List.of(), Map.of("classes", 70L));
