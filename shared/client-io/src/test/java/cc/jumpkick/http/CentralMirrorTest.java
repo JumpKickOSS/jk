@@ -15,7 +15,9 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -183,6 +185,59 @@ class CentralMirrorTest {
                             "central/maven2/org/tomlj/tomlj/maven-metadata.xml",
                             "mirror/mirror/org/tomlj/tomlj/maven-metadata.xml");
             assertThat(m.active()).isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A streamed 429 has a body nobody will read. The reissue to the mirror drains it first, as a
+     * retried 5xx is drained: the server here runs its handlers on one thread and answers with a
+     * body far larger than the socket buffers, so an undrained refusal leaves that thread blocked
+     * in its write and the mirror request is never served.
+     */
+    @Test
+    void a_streamed_central_429_is_drained_before_the_mirror_is_asked(@TempDir Path dir) throws Exception {
+        byte[] big = new byte[64 << 20];
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/maven2/", ex -> {
+            ex.sendResponseHeaders(429, big.length);
+            ex.getResponseBody().write(big);
+            ex.close();
+        });
+        server.createContext("/mirror/", ex -> {
+            byte[] b = "jar-bytes".getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1)},
+                    m);
+            URI uri = URI.create("http://127.0.0.1:" + port + "/maven2/org/tomlj/tomlj/1.0/tomlj-1.0.jar");
+
+            var response = CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return http.getStream(uri, Map.of());
+                        } catch (Exception e) {
+                            throw new IllegalStateException(e);
+                        }
+                    })
+                    .get(20, TimeUnit.SECONDS);
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            try (var body = response.body()) {
+                assertThat(new String(body.readAllBytes(), StandardCharsets.UTF_8))
+                        .isEqualTo("jar-bytes");
+            }
         } finally {
             server.stop(0);
         }

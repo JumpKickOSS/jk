@@ -289,6 +289,9 @@ public final class Http {
                     centralMirror.noteRateLimited();
                     URI mirrored = centralMirror.route(request.uri());
                     if (!mirrored.equals(request.uri())) {
+                        // The refusal's body is abandoned like a retried 5xx's: a streamed one left
+                        // unread holds its connection open for as long as the caller holds the stream.
+                        if (drain != null) drain.handle(response);
                         return send(reissue(request, mirrored).build(), handler, drain);
                     }
                 }
