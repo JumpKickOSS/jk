@@ -85,6 +85,25 @@ jobs:
           ./install.sh build/dist/jk
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
+      # The first-party plugins (formatter, compilers, test runner, guard packs, …) that `installLocal`
+      # just put in this runner's store, laid out as the Maven repository jumpkick.build/repo/ serves.
+      # Staged here and uploaded by `publish`, which runs on a runner with no store.
+      - name: Stage the first-party Maven repository
+        if: matrix.arch_label == 'linux-x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=out/repo scripts/publish-maven-repo.sh
+          find out/repo -name '*.jar' | sed 's|out/repo/||' | sort
+
+      - name: Upload the Maven repository (artifact)
+        if: matrix.arch_label == 'linux-x86_64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-repo-${{ env.JK_VERSION }}
+          path: out/repo
+          if-no-files-found: error
+
       - name: Dist (native client + engine), built by jk
         if: runner.os != 'Windows'
         shell: bash
@@ -146,6 +165,13 @@ jobs:
           path: staging
           pattern: release-*
           merge-multiple: false
+
+      - name: Download the Maven repository
+        uses: actions/download-artifact@v4
+        with:
+          path: out/repo
+          pattern: maven-repo-*
+          merge-multiple: true
 
       - name: Flatten into version directory
         shell: bash
@@ -215,9 +241,18 @@ jobs:
           gsutil -m rsync -r -d "out/${VER}/" "gs://${BUCKET}/releases/${VER}/"
           gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
             "gs://${BUCKET}/releases/latest/VERSION"
+          # The plugin jars the engine fetches from jumpkick.build/repo/: additive, so earlier versions stay.
+          if [[ -d out/repo/cc ]]; then
+            gsutil -m rsync -r "out/repo/" "gs://${BUCKET}/repo/"
+            echo "  gs://${BUCKET}/repo/cc/jumpkick/ ($(find out/repo -name '*.jar' | wc -l) jars)"
+          else
+            echo "no staged Maven repository (the linux-x86_64 build did not run?)" >&2
+            exit 1
+          fi
           echo "Published:"
           echo "  gs://${BUCKET}/releases/${VER}/"
           echo "  gs://${BUCKET}/releases/latest/VERSION"
           echo "  https://storage.googleapis.com/${BUCKET}/releases/latest/VERSION"
+          echo "  https://jumpkick.build/repo/cc/jumpkick/jk-formatter/${VER}/jk-formatter-${VER}.jar"
           gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
           gsutil cat "gs://${BUCKET}/releases/latest/VERSION"
