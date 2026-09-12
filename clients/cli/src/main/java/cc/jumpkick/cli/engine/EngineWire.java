@@ -163,6 +163,11 @@ public final class EngineWire {
      * reply in time.
      */
     static String exchange(SocketChannel ch, String line) throws IOException {
+        return exchange(ch, line, SOCKET_TIMEOUT_MILLIS);
+    }
+
+    /** {@link #exchange(SocketChannel, String)} with the reply wait chosen by the caller. */
+    static String exchange(SocketChannel ch, String line, int replyTimeoutMillis) throws IOException {
         BufferedWriter writer =
                 new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
         writer.write(line);
@@ -172,7 +177,7 @@ public final class EngineWire {
         Thread watchdog = new Thread(
                 () -> {
                     try {
-                        Thread.sleep(SOCKET_TIMEOUT_MILLIS);
+                        Thread.sleep(replyTimeoutMillis);
                         ch.close();
                     } catch (InterruptedException ignored) {
                         // exchange finished in time — nothing to do
@@ -188,7 +193,7 @@ public final class EngineWire {
             if (reply == null) throw new IOException("engine closed the connection without replying");
             return reply;
         } catch (AsynchronousCloseException e) {
-            throw new IOException("engine did not reply within " + SOCKET_TIMEOUT_MILLIS + "ms", e);
+            throw new IOException("engine did not reply within " + replyTimeoutMillis + "ms", e);
         } finally {
             watchdog.interrupt();
         }

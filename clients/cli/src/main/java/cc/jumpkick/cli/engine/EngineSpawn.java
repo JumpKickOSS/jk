@@ -71,7 +71,7 @@ public final class EngineSpawn {
 
     static EngineProbe.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
         Path socket = EnginePaths.activeSocket(paths);
-        Reachability reach = probe(socket, clientVersion);
+        Reachability reach = probePatiently(socket, clientVersion, Patience.DEFAULT);
         if (reach instanceof Reachability.Live live) {
             EngineProbe.Handshake hs = live.handshake();
             // A draining engine has unbound its listener; this branch is the race before unbind.
@@ -88,45 +88,86 @@ public final class EngineSpawn {
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
             // a kill: spawn this client's engine; its startup atomically repoints the endpoint and
             // drains the displaced engine — in-flight jobs finish untouched.
-        } else if (reach instanceof Reachability.Silent silent) {
-            // Accepts connections but never replies. Displace so startWithSelfHeal
-            // can bind — do not wait for the 60m stream idle on the next build.
-            long pid = silent.pidHint() > 0 ? silent.pidHint() : EngineProcessControl.readPidForSocket(socket);
-            logReason(
-                    paths,
-                    "displacing unresponsive engine"
-                            + (pid > 0 ? " (pid " + pid + ")" : "")
-                            + " — handshake timed out");
-            if (pid > 0) EngineProcessControl.hardKill(pid);
-            else EngineProcessControl.forceStop(socket); // best-effort; may still be false
-            EngineProcessControl.waitForDeathOrKill(pid, STOP_DEATH_WAIT);
+        } else if (reach instanceof Reachability.Silent) {
+            displaceSilent(paths, socket);
         }
         // Absent / unusable / version skew → spawn (takeover or cold start).
         return startWithSelfHeal(paths, clientVersion);
     }
 
     /**
-     * Outcome of a one-shot ensure probe: live handshake, nothing listening, silent peer (connect
-     * works, no reply within {@link EngineWire#SOCKET_TIMEOUT_MILLIS}), or connected-but-not-usable (e.g.
-     * newer protocol).
+     * How long ensure tolerates a silent peer before believing the silence. The engine runs
+     * SerialGC under a user-sized heap, so a stop-the-world pause of several seconds in the middle
+     * of a large parallel build is an ordinary event, not a wedge — and a client arriving inside
+     * that pause must wait it out, because displacing the engine kills every other terminal's
+     * build with it. Each probe waits {@code replyTimeoutMillis} for the hello-ack; a silent one is
+     * repeated {@code reprobes} more times with {@code backoff} between them, and only a peer
+     * silent through all of them is displaced.
      */
-    private sealed interface Reachability {
+    record Patience(int replyTimeoutMillis, int reprobes, Duration backoff) {
+        static final Patience DEFAULT = new Patience(EngineWire.SOCKET_TIMEOUT_MILLIS, 3, Duration.ofSeconds(2));
+
+        /** Every probe this patience allows, counting the first. */
+        int probes() {
+            return 1 + reprobes;
+        }
+    }
+
+    /** Probe, and give a silent peer {@code patience} before reporting it silent. */
+    static Reachability probePatiently(Path socket, String clientVersion, Patience patience) {
+        Reachability reach = probe(socket, clientVersion, patience.replyTimeoutMillis());
+        for (int again = 0; again < patience.reprobes() && reach instanceof Reachability.Silent; again++) {
+            sleepQuietly(patience.backoff().toMillis());
+            reach = probe(socket, clientVersion, patience.replyTimeoutMillis());
+        }
+        return reach;
+    }
+
+    /**
+     * Displace a peer that accepted every probe's connection and answered none: the socket is held
+     * by something that will never serve, and the next build would otherwise wait out the stream
+     * idle instead of starting an engine that can bind. The pid file's process is hard-killed only
+     * when it is visibly a JVM ({@link EngineProcessControl#unresponsiveHolderPid}); a recycled pid
+     * never gets an engine's kill — the peer is merely asked to stop, over the socket, and the
+     * spawn's election arbitrates from there.
+     */
+    static void displaceSilent(EnginePaths.Paths paths, Path socket) {
+        long pid = EngineProcessControl.unresponsiveHolderPid(socket);
+        logReason(
+                paths,
+                "displacing unresponsive engine"
+                        + (pid > 0 ? " (pid " + pid + ")" : "")
+                        + " — handshake stayed silent through " + Patience.DEFAULT.probes() + " probes");
+        if (pid > 0) {
+            EngineProcessControl.hardKill(pid);
+            EngineProcessControl.waitForDeathOrKill(pid, STOP_DEATH_WAIT);
+        } else {
+            EngineProcessControl.stop(socket);
+        }
+    }
+
+    /**
+     * Outcome of one ensure probe: live handshake, nothing listening, silent peer (connect works,
+     * no reply within the probe's wait), or connected-but-not-usable (e.g. newer protocol).
+     */
+    sealed interface Reachability {
         record Live(EngineProbe.Handshake handshake) implements Reachability {}
 
         record Absent() implements Reachability {}
 
         /** Socket accepted the connection but never completed handshake. */
-        record Silent(long pidHint) implements Reachability {}
+        record Silent() implements Reachability {}
 
         /** Reached something that is not a usable same-generation engine. */
         record Unusable() implements Reachability {}
     }
 
     /**
-     * Probe liveness beyond "socket exists": connect + hello with the short exchange watchdog.
-     * Distinguishes a wedged peer (silent) from a missing engine so ensure can hard-kill once.
+     * Probe liveness beyond "socket exists": connect + hello, waiting {@code replyTimeoutMillis}
+     * for the ack. Distinguishes a silent peer from a missing engine; {@link #probePatiently} decides
+     * how much silence counts.
      */
-    private static Reachability probe(Path socket, String clientVersion) {
+    private static Reachability probe(Path socket, String clientVersion, int replyTimeoutMillis) {
         SocketChannel ch;
         try {
             ch = EngineWire.connect(socket);
@@ -134,7 +175,7 @@ public final class EngineSpawn {
             return new Reachability.Absent();
         }
         try (ch) {
-            String ack = EngineWire.exchange(ch, ProtoLifecycle.hello(clientVersion));
+            String ack = EngineWire.exchange(ch, ProtoLifecycle.hello(clientVersion), replyTimeoutMillis);
             if (!EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) {
                 return new Reachability.Unusable();
             }
@@ -156,7 +197,7 @@ public final class EngineSpawn {
             if (msg.contains("did not reply")
                     || msg.contains("closed the connection without replying")
                     || msg.contains("no protocol traffic")) {
-                return new Reachability.Silent(EngineProcessControl.readPidForSocket(socket));
+                return new Reachability.Silent();
             }
             // Connect worked but mid-exchange failure (reset, etc.) — treat as unusable and let
             // spawn/takeover decide; avoid hard-killing a healthy peer on a flaky read.
