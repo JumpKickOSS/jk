@@ -246,30 +246,11 @@ public final class PluginProcess {
                 new BoundedLineReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         AtomicBoolean abandoned = new AtomicBoolean();
         AtomicReference<IOException> pumpError = new AtomicReference<>();
+        AtomicReference<RuntimeException> handlerError = new AtomicReference<>();
         CountDownLatch pumpDone = new CountDownLatch(1);
         try (BufferedWriter stdin =
                 new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
-            Conversation convo = new Conversation() {
-                @Override
-                public void send(String line) {
-                    try {
-                        stdin.write(line);
-                        stdin.write('\n');
-                        stdin.flush();
-                    } catch (IOException ignored) {
-                        // Plugin is gone / pipe broken; the read loop will end.
-                    }
-                }
-
-                @Override
-                public void closeInput() {
-                    try {
-                        stdin.close();
-                    } catch (IOException ignored) {
-                        // Already closed is fine.
-                    }
-                }
-            };
+            Conversation convo = conversationOver(stdin);
             // One-shot plugins never read stdin; close it so accidental System.in.readLine()
             // (confirm prompts in suite tests) gets EOF instead of hanging on an open pipe.
             if (closeStdinImmediately) {
@@ -288,12 +269,21 @@ public final class PluginProcess {
                         // whose finish it announced was never recorded. The marker is found
                         // wherever it sits; what precedes it is the chatter it was glued to.
                         int at = line.indexOf(prefix);
-                        if (at < 0) {
-                            if (onPassthrough != null) onPassthrough.accept(line);
-                            continue;
+                        try {
+                            if (at < 0) {
+                                if (onPassthrough != null) onPassthrough.accept(line);
+                                continue;
+                            }
+                            if (at > 0 && onPassthrough != null) onPassthrough.accept(line.substring(0, at));
+                            onProtocol.accept(line.substring(at + prefix.length()), convo);
+                        } catch (RuntimeException e) {
+                            // A handler that throws is the parent's bug, and the conversation ends
+                            // on it by name. Left to escape, it would only kill this thread: the
+                            // worker stays alive with nobody reading, the job force-stops it as a
+                            // hung child, and the kill's exit code stands in for the real cause.
+                            handlerError.set(e);
+                            return;
                         }
-                        if (at > 0 && onPassthrough != null) onPassthrough.accept(line.substring(0, at));
-                        onProtocol.accept(line.substring(at + prefix.length()), convo);
                     }
                 } catch (IOException e) {
                     pumpError.set(e);
@@ -319,6 +309,12 @@ public final class PluginProcess {
                     }
                     break;
                 }
+            }
+            RuntimeException handler = handlerError.get();
+            if (handler != null) {
+                // The finally below stops the worker; the exit code of a kill we asked for says
+                // nothing, so the diagnostic carries the handler's own exception instead.
+                throw new IOException("plugin protocol handler threw " + handler, handler);
             }
             IOException e = pumpError.get();
             if (e != null && !abandoned.get()) {
@@ -352,6 +348,31 @@ public final class PluginProcess {
             }
         }
         return process.waitFor();
+    }
+
+    /** The handle a protocol handler talks back through: one line per send, flushed, on the child's stdin. */
+    private static Conversation conversationOver(BufferedWriter stdin) {
+        return new Conversation() {
+            @Override
+            public void send(String line) {
+                try {
+                    stdin.write(line);
+                    stdin.write('\n');
+                    stdin.flush();
+                } catch (IOException ignored) {
+                    // Plugin is gone / pipe broken; the read loop will end.
+                }
+            }
+
+            @Override
+            public void closeInput() {
+                try {
+                    stdin.close();
+                } catch (IOException ignored) {
+                    // Already closed is fine.
+                }
+            }
+        };
     }
 
     /**

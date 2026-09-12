@@ -299,4 +299,26 @@ class JUnitLauncherAggregatorTest {
         assertThat(text).contains("line 999").doesNotContain("line 0\n");
         assertThat(text.split("\n")).hasSizeLessThanOrEqualTo(400);
     }
+
+    /**
+     * A runner-side warning without its {@code code} or {@code message} is still a warning: a
+     * decoder that throws on the missing field kills the worker's pump, and the suite then reports
+     * the worker as crashed instead of surfacing what it tried to warn about.
+     */
+    @Test
+    void a_warning_event_missing_its_fields_is_still_delivered_as_a_warning() {
+        var warnings = new ArrayList<String>();
+        var agg = new JUnitLauncher.ResultAggregator(
+                new TestProgressListener() {
+                    @Override
+                    public void onWarning(String code, String message) {
+                        warnings.add(code + ":" + message);
+                    }
+                },
+                0);
+        agg.accept("{\"event\":\"warning\"}");
+        agg.accept("{\"event\":\"warning\",\"message\":\"only a message\"}");
+        agg.accept("{\"event\":\"warning\",\"code\":\"jupiter-parallel\",\"message\":\"both\"}");
+        assertThat(warnings).containsExactly("warning:", "warning:only a message", "jupiter-parallel:both");
+    }
 }

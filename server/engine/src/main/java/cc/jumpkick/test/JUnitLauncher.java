@@ -917,7 +917,11 @@ public final class JUnitLauncher {
                     }
                 }
                 case "warning" ->
-                    listener.onWarning(Jsonl.requiredStr(json, "code"), Jsonl.requiredStr(json, "message"));
+                    // Both fields are optional on arrival: a warning the runner half-filled is
+                    // still worth surfacing, and a decoder that throws here ends the worker's pump.
+                    listener.onWarning(
+                            Objects.requireNonNullElse(Jsonl.str(json, "code"), "warning"),
+                            Objects.requireNonNullElse(Jsonl.str(json, "message"), ""));
                 case "started" -> onStarted(json);
                 case "finished" -> onFinished(json);
                 case "skipped" -> onSkipped(json);

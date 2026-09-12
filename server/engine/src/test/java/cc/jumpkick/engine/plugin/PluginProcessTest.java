@@ -2,8 +2,10 @@
 package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -142,5 +144,24 @@ class PluginProcessTest {
                 null);
         assertThat(exit).isZero();
         assertThat(ran).isEmpty();
+    }
+
+    /**
+     * A protocol handler that throws is the parent's bug, and the diagnostic has to say so. The
+     * pump must not die quietly: a dead pump leaves the worker alive, the job force-stops it as a
+     * hung child and reports the kill's exit code in place of the exception that caused it.
+     */
+    @Test
+    void a_handler_that_throws_ends_the_conversation_with_a_diagnostic_naming_the_exception() {
+        assertThatThrownBy(() -> PluginProcess.converse(
+                        cmd(),
+                        "##T:",
+                        (json, convo) -> {
+                            throw new IllegalStateException("handler boom");
+                        },
+                        null))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("handler boom")
+                .hasCauseInstanceOf(IllegalStateException.class);
     }
 }
