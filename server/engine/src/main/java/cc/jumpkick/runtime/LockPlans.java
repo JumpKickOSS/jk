@@ -29,6 +29,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import java.io.IOException;
 import java.net.URI;
@@ -369,6 +370,23 @@ public final class LockPlans {
      * actually refreshed.
      */
     private static int updateGitOnlyForScope(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            List<Dependency> targeted)
+            throws Exception {
+        // The read-splice-write below is one lock resolution of this checkout like any other, so
+        // it takes the same monitor the cascade, the HTTP lock job and the pre-build freshen do;
+        // otherwise a concurrent freshen and this splice write the same file from different reads.
+        synchronized (LockGate.monitorFor(dir)) {
+            return spliceGitOnly(dir, effective, cache, repoUrl, features, withDefaultFeatures, targeted);
+        }
+    }
+
+    private static int spliceGitOnly(
             Path dir,
             JkBuild effective,
             Path cache,
