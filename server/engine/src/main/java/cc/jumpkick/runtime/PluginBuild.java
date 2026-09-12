@@ -44,6 +44,7 @@ import cc.jumpkick.resolver.Resolution;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.runtime.base.PluginLaunch;
 import cc.jumpkick.runtime.base.SdkComponents;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.tool.TrustedPlugins;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -222,7 +223,7 @@ public final class PluginBuild {
     public static Declarations declarations(
             Active active, JkBuild project, Path moduleDir, Path cache, Path layoutTarget)
             throws IOException, InterruptedException {
-        String key = describeKey(active, project);
+        String key = describeKey(active, project, locateWorkerJar(active, cache));
         Path cacheFile =
                 layoutTarget.resolve("plugin").resolve(active.manifest().id() + "-describe-" + key + ".jsonl");
         List<String> lines;
@@ -279,19 +280,24 @@ public final class PluginBuild {
     }
 
     /**
-     * What a describe reply depends on: the engine, the plugin's own version and config, and the
-     * project facts — through the same {@link ProjectFacts#token()} the action keys use, so this
-     * cache and the step/packager keys cannot disagree about which facts matter. Package-visible so
-     * tests can pre-seed the describe cache without forking a worker.
+     * What a describe reply depends on: the engine, the plugin's own version and config, the
+     * content of the worker jar that answers, and the project facts — through the same {@link
+     * ProjectFacts#token()} the action keys use, so this cache and the step/packager keys cannot
+     * disagree about which facts matter. The jar's content is what the manifest version stands
+     * for; a rebuilt plugin without a version bump declares different steps under the same
+     * version, and keying on the version alone kept serving its previous describe reply. Package-
+     * visible so tests can pre-seed the describe cache without forking a worker.
      */
-    static String describeKey(Active active, JkBuild project) {
+    static String describeKey(Active active, JkBuild project, @Nullable Path workerJar) throws IOException {
         String key = BuildIdentity.cacheKeyVersion()
                 + '|'
                 + active.manifest().version()
                 + '|'
                 + configToken(active.config())
                 + '|'
-                + facts(project, project.mainClass()).token();
+                + facts(project, project.mainClass()).token()
+                + '|'
+                + (workerJar == null ? "worker:absent" : ClasspathFingerprint.entry(workerJar));
         return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 16);
     }
 
@@ -829,22 +835,41 @@ public final class PluginBuild {
      */
     static Path workerJarFor(Active active, Path cache) throws IOException {
         PluginDeclaration declaration = active.declaration();
-        if (declaration != null) {
-            if (!"cc.jumpkick".equals(declaration.group())) {
-                String stateOverride = System.getProperty("jk.trust.state.dir");
-                Path stateDir = stateOverride != null ? Path.of(stateOverride) : JkDirs.state();
-                TrustedPlugins trust;
-                try {
-                    trust = TrustedPlugins.load(stateDir);
-                } catch (IOException e) {
-                    trust = null;
-                }
-                if (trust == null || !trust.isTrusted(declaration.coordinate())) {
-                    throw new IOException("plugin " + declaration.coordinateWithVersion()
-                            + " is not trusted to run build code on this machine.\n"
-                            + "Trust it first: jk trust plugin " + declaration.coordinate());
-                }
+        if (declaration != null && !"cc.jumpkick".equals(declaration.group())) {
+            String stateOverride = System.getProperty("jk.trust.state.dir");
+            Path stateDir = stateOverride != null ? Path.of(stateOverride) : JkDirs.state();
+            TrustedPlugins trust;
+            try {
+                trust = TrustedPlugins.load(stateDir);
+            } catch (IOException e) {
+                trust = null;
             }
+            if (trust == null || !trust.isTrusted(declaration.coordinate())) {
+                throw new IOException("plugin " + declaration.coordinateWithVersion()
+                        + " is not trusted to run build code on this machine.\n"
+                        + "Trust it first: jk trust plugin " + declaration.coordinate());
+            }
+        }
+        return workerJarPath(active, cache);
+    }
+
+    /**
+     * The worker jar's location with no trust judgement, or {@code null} when it is nowhere on
+     * this machine: the describe cache keys on the jar's content before anything forks, and a
+     * plugin whose jar is missing simply keys as absent and fails at the fork with the message
+     * that names the remedy.
+     */
+    static @Nullable Path locateWorkerJar(Active active, Path cache) {
+        try {
+            return workerJarPath(active, cache);
+        } catch (IOException | RuntimeException absent) {
+            return null;
+        }
+    }
+
+    private static Path workerJarPath(Active active, Path cache) throws IOException {
+        PluginDeclaration declaration = active.declaration();
+        if (declaration != null) {
             return PluginDescriptorOps.jarFor(active.moduleDir(), declaration, cache)
                     .orElseThrow(() -> new IOException("plugin " + declaration.coordinateWithVersion()
                             + " is not in the local cache — run `jk sync` first"));

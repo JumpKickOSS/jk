@@ -853,6 +853,24 @@ public final class PlannerSupport {
             Path lockFile,
             List<Path> testRuntimeCp)
             throws IOException {
+        return runTestsStampKey(
+                dir, project, compact, mainClasses, mainClassesFingerprint, lockFile, testRuntimeCp, null);
+    }
+
+    /**
+     * {@code compileTestKey} is the test compile's action key when the module compiles javac test
+     * sources — the same input the live run-tests folds through {@link TestStamp#withCompileTest}.
+     */
+    public static @Nullable String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            @Nullable String mainClassesFingerprint,
+            Path lockFile,
+            List<Path> testRuntimeCp,
+            @Nullable String compileTestKey)
+            throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps.
@@ -865,7 +883,7 @@ public final class PlannerSupport {
                 PlannerTest.TestSources.collect(project, dir, compact, suites).all();
         BuildLayout layout = BuildLayout.of(dir, project);
         List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
-        List<String> stampExtras = testStampExtras(dir, project);
+        List<String> stampExtras = TestStamp.withCompileTest(testStampExtras(dir, project), compileTestKey);
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras);

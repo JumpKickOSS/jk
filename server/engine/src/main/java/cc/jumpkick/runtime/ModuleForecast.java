@@ -67,6 +67,7 @@ final class ModuleForecast {
     private boolean compileDepDirty;
     private boolean compileDirty;
     private @Nullable String compileMainKey;
+    private @Nullable String compileTestKey;
     private final Path dir;
     private boolean haveTests;
     private @Nullable Boolean knownResourceDrift;
@@ -548,6 +549,7 @@ final class ModuleForecast {
                     testOut);
             TaskForecast.Task p = TaskForecaster.compileStep(TaskNames.COMPILE_TEST, pred, false, req);
             steps.add(p);
+            compileTestKey = pred.actionKey();
             if (!p.cached()) testDirty = true;
         } else {
             // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
@@ -585,7 +587,7 @@ final class ModuleForecast {
                 if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
             }
             String stampKey = PlannerSupport.runTestsStampKey(
-                    dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt);
+                    dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt, compileTestKey);
             Perf.end("  test-stamp-key", ts);
             Optional<ActionCache.ActionRecord> marker =
                     stampKey == null ? Optional.empty() : TaskForecaster.presentRecord(actionCache, stampKey);

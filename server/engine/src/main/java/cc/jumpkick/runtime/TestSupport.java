@@ -722,6 +722,11 @@ public final class TestSupport {
             }
             return false;
         }
+        if (TaskNames.COMPILE_TEST.equals(taskId)) {
+            // run-tests folds this into its stamp: the test javac configuration is an input to
+            // the suite's outcome, and nothing else in the stamp reads it.
+            ctx.put(BuildPlanner.COMPILE_TEST_ACTION_KEY, r.actionKey());
+        }
         if (r.cacheHit()) {
             ctx.label(taskId + ": cache hit " + r.actionKey().substring(0, 8));
             ctx.cached(); // SKIPPED — pure restore didWork accounting)

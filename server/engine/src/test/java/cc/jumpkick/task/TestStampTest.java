@@ -125,6 +125,39 @@ class TestStampTest {
                 .isNotEqualTo(base);
     }
 
+    /**
+     * The test javac configuration reaches the stamp through the test compile's action key: an
+     * edit to {@code [javac.test]} that recompiles the tests also re-runs them.
+     */
+    @Test
+    void the_test_compile_key_is_a_stamp_input(@TempDir Path dir) throws IOException {
+        Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
+        List<String> extras = List.of("jk:1.0");
+
+        String bare = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), extras);
+        String underOneCompile = TestStamp.computeKey(
+                List.of(testSrc),
+                mainClasses,
+                List.of(),
+                lock,
+                List.of(),
+                TestStamp.withCompileTest(extras, "compile-key-one"));
+        String underAnotherCompile = TestStamp.computeKey(
+                List.of(testSrc),
+                mainClasses,
+                List.of(),
+                lock,
+                List.of(),
+                TestStamp.withCompileTest(extras, "compile-key-two"));
+
+        assertThat(underOneCompile).isNotEqualTo(bare).isNotEqualTo(underAnotherCompile);
+        assertThat(TestStamp.withCompileTest(extras, null))
+                .as("a module with no javac test sources has no compile key and stamps as before")
+                .isEqualTo(extras);
+    }
+
     @Test
     void resource_fixture_change_busts_but_identical_rewrite_does_not(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");

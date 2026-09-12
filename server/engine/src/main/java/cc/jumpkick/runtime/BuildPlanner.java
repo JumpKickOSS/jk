@@ -75,6 +75,10 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
 
+    /** The test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
+    public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
+            BuildPlanKey.scalar("compile-test-action-key", String.class);
+
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
     /** Suite resource dirs copied into classes/test — a TestStamp input. */
@@ -120,6 +124,7 @@ public final class BuildPlanner {
             COMPILE_TEST_CP,
             TEST_RUNTIME_CP,
             ACTION_KEY,
+            COMPILE_TEST_ACTION_KEY,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
             BUILD_OUTCOME,

@@ -34,6 +34,22 @@ public final class TestStamp {
     public static final String SKIPPED = "tests.skipped";
     public static final String FAILED = "tests.failed";
 
+    /** Prefix of the run-tests input that names the test compile's action key. */
+    public static final String COMPILE_TEST = "compile-test:";
+
+    /**
+     * {@code extras} with the test compile as a run-tests input. Its action key covers the test
+     * javac options, processor path, release and compile classpath, so an edit to {@code
+     * [javac.test]} that recompiles the tests also re-runs them; nothing else in the stamp reads
+     * those. A module with no javac test sources has no such key and adds nothing.
+     */
+    public static List<String> withCompileTest(List<String> extras, @Nullable String compileTestKey) {
+        if (compileTestKey == null || compileTestKey.isBlank()) return extras;
+        List<String> out = new ArrayList<>(extras);
+        out.add(COMPILE_TEST + compileTestKey);
+        return List.copyOf(out);
+    }
+
     /**
      * The record a finished suite stores under its key, red or green. Storing the red run too is
      * what lets the next build tell "this suite failed under exactly these inputs" from "the key

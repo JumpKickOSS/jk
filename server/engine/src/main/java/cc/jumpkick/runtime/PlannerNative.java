@@ -25,7 +25,9 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.ReachabilityMetadata;
+import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.tool.GraalHomeLookup;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -116,7 +118,8 @@ public final class PlannerNative {
         List<String> allArgs = imageArgs(ctx, project, dir, nativeCfg, extra, frameworkSources);
         List<Path> classpath = imageClasspath(project, dir, cache, lockFile, layout, mainJar);
         allArgs = withReachabilityMetadata(ctx, dir, project, layout, lockFile, javaHome, frameworkSources, allArgs);
-        ImageKey key = imageKey(javaHome, classpath, allArgs, mainClass, shared, out, frameworkSources);
+        ImageKey key = imageKey(
+                javaHome, classpath, allArgs, mainClass, shared, out, frameworkSources, trainReachabilityDir(layout));
         if (!shared && restorePackaged(cache, key.key(), out.getParent())) {
             // Shrink only: cache restore is a token touch. Never reweight *up* mid-run
             // (bar must not jump; accurate native weight is reserved up front).
@@ -335,11 +338,8 @@ public final class PlannerNative {
         if (frameworkSources != null) {
             metadataDirs = List.of();
         }
-        Path trainReach = layout.moduleTargetDir()
-                .resolve(cc.jumpkick.surface.TrainLayout.ROOT)
-                .resolve("merged")
-                .resolve(cc.jumpkick.surface.TrainLayout.REACHABILITY);
-        if (Files.isDirectory(trainReach) && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"))) {
+        Path trainReach = trainReachabilityDir(layout);
+        if (trainReach != null) {
             ArrayList<Path> withTrain = new ArrayList<>(metadataDirs);
             withTrain.add(0, trainReach);
             metadataDirs = withTrain;
@@ -371,29 +371,46 @@ public final class PlannerNative {
         return withMeta;
     }
 
+    /**
+     * The trained reachability metadata {@code jk train} merged under the module target, when it
+     * is complete enough to feed native-image; {@code null} otherwise. One predicate for both the
+     * args that name the dir and the key that must follow its content.
+     */
+    static @Nullable Path trainReachabilityDir(BuildLayout layout) {
+        Path trainReach = layout.moduleTargetDir()
+                .resolve(TrainLayout.ROOT)
+                .resolve("merged")
+                .resolve(TrainLayout.REACHABILITY);
+        boolean present =
+                Files.isDirectory(trainReach) && Files.isRegularFile(trainReach.resolve("reachability-metadata.json"));
+        return present ? trainReach : null;
+    }
+
     /** An executable image's packaging-cache identity: task id, action key and the tokens behind it. */
-    private record ImageKey(String task, String key, List<String> tokens) {}
+    record ImageKey(String task, String key, List<String> tokens) {}
 
     /**
      * Packaging cache (executable only): the binary is a pure function of the runtime classpath,
-     * the build args, the main class, and the GraalVM toolchain. Shared libraries (+ generated C
-     * headers) aren't cached yet.
+     * the build args, the main class, the GraalVM toolchain and the content of the trained
+     * reachability metadata the args name. Shared libraries (+ generated C headers) aren't
+     * cached yet.
      */
-    private static ImageKey imageKey(
+    static ImageKey imageKey(
             Path javaHome,
             List<Path> classpath,
             List<String> allArgs,
             @Nullable String mainClass,
             boolean shared,
             Path out,
-            @Nullable Path frameworkSources)
+            @Nullable Path frameworkSources,
+            @Nullable Path trainReach)
             throws Exception {
         Path releaseFile = javaHome.resolve("release");
         String graalTok = Files.isRegularFile(releaseFile)
                 ? cc.jumpkick.host.Hashing.sha256Hex(releaseFile)
                 : javaHome.toString();
         List<String> nativeTokens = List.of(
-                "cp:" + cc.jumpkick.task.ClasspathFingerprint.of(classpath),
+                "cp:" + ClasspathFingerprint.of(classpath),
                 "args:" + String.join(" ", allArgs),
                 "main:" + (mainClass == null ? "" : mainClass),
                 "shared:" + shared,
@@ -401,10 +418,11 @@ public final class PlannerNative {
                 "graal:" + graalTok,
                 // Framework mode consumes the whole native-sources tree (computed args,
                 // runner jar) — a plugin-only change to it must miss the cache.
-                "framework:"
-                        + (frameworkSources == null
-                                ? ""
-                                : cc.jumpkick.task.ClasspathFingerprint.entry(frameworkSources)));
+                "framework:" + (frameworkSources == null ? "" : ClasspathFingerprint.entry(frameworkSources)),
+                // The args name the train dir by path; its content is what shapes the image, so a
+                // `jk train` with another workload must miss the cache rather than restore the
+                // binary the previous workload produced.
+                "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach)));
         String nTask = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
         String nKey = ActionKey.forArtifact(nTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), nativeTokens);
         return new ImageKey(nTask, nKey, nativeTokens);

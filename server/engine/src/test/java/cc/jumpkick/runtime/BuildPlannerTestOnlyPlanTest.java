@@ -261,13 +261,37 @@ class BuildPlannerTestOnlyPlanTest {
     }
 
     /** Pre-seed the content-keyed describe cache so coreBuilder never forks a plugin worker. */
-    private static void seedDescribeCache(Path dir, JkBuild build, List<String> declLines) throws Exception {
+    private void seedDescribeCache(Path dir, JkBuild build, List<String> declLines) throws Exception {
         PluginBuild.Active active = PluginBuild.activeCodePlugin(build, dir).orElseThrow();
         Path target = BuildLayout.of(dir, build).moduleTargetDir();
-        String key = PluginBuild.describeKey(active, build);
+        // The same jar lookup the planner makes, so the seeded key is the one it computes.
+        String key = PluginBuild.describeKey(active, build, PluginBuild.locateWorkerJar(active, tmp.resolve("cache")));
         Path cacheFile = target.resolve("plugin").resolve("fake-describe-" + key + ".jsonl");
         Files.createDirectories(cacheFile.getParent());
         Files.write(cacheFile, declLines, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * A rebuilt plugin without a manifest version bump declares different steps under the same
+     * version; the describe reply is keyed on the worker jar's content so it is asked again.
+     */
+    @Test
+    void describe_key_follows_the_worker_jar_content() throws Exception {
+        Path dir = pluginProject();
+        JkBuild build = JkBuildParser.reparse(dir.resolve("jk.toml"));
+        PluginBuild.Active active = PluginBuild.activeCodePlugin(build, dir).orElseThrow();
+        Path shipped = tmp.resolve("vendor").resolve("fake-1.0.0.jar");
+        Path rebuilt = Files.writeString(tmp.resolve("vendor").resolve("fake-1.0.0-rebuilt.jar"), "other bytes");
+        Path sameBytes = Files.copy(shipped, tmp.resolve("vendor").resolve("fake-1.0.0-copy.jar"));
+
+        String key = PluginBuild.describeKey(active, build, shipped);
+        assertThat(PluginBuild.describeKey(active, build, sameBytes))
+                .as("the jar's content is the input, not its path")
+                .isEqualTo(key);
+        assertThat(PluginBuild.describeKey(active, build, rebuilt)).isNotEqualTo(key);
+        assertThat(PluginBuild.describeKey(active, build, null))
+                .as("a jar that is nowhere keys as absent, never as the shipped one")
+                .isNotEqualTo(key);
     }
 
     private Set<String> planNames(Path dir, boolean testOnly) {
