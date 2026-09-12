@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.DeterministicZip;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
@@ -36,27 +37,32 @@ final class AabPackager {
                 .orElseThrow(() -> new IllegalStateException("bundletool tool artifact not provided"));
 
         Path out = io.artifactPath();
+        // The base module and the unsigned bundle are intermediates: they exist only to be signed
+        // into the artifact, so their directory does not outlive this call.
         Path work = Files.createTempDirectory("jk-aab-");
+        try {
+            io.label("assemble base module");
+            Path baseZip = work.resolve("base.zip");
+            assembleBase(io, protoPackage, dexDir, baseZip);
 
-        io.label("assemble base module");
-        Path baseZip = work.resolve("base.zip");
-        assembleBase(io, protoPackage, dexDir, baseZip);
+            io.label("bundletool build-bundle");
+            Path unsigned = work.resolve("unsigned.aab");
+            TaskExec.ToolRun.Result bundle = io.java()
+                    .classpath(ManifestStep.jarsIn(bundletool))
+                    .mainClass("com.android.tools.build.bundletool.BundleToolMain")
+                    .arg("build-bundle")
+                    .arg("--modules=" + baseZip.toAbsolutePath())
+                    .arg("--output=" + unsigned.toAbsolutePath())
+                    .run();
+            if (bundle.exit() != 0) {
+                throw new IllegalStateException("bundletool build-bundle failed:\n" + bundle.output());
+            }
 
-        io.label("bundletool build-bundle");
-        Path unsigned = work.resolve("unsigned.aab");
-        TaskExec.ToolRun.Result bundle = io.java()
-                .classpath(ManifestStep.jarsIn(bundletool))
-                .mainClass("com.android.tools.build.bundletool.BundleToolMain")
-                .arg("build-bundle")
-                .arg("--modules=" + baseZip.toAbsolutePath())
-                .arg("--output=" + unsigned.toAbsolutePath())
-                .run();
-        if (bundle.exit() != 0) {
-            throw new IllegalStateException("bundletool build-bundle failed:\n" + bundle.output());
+            io.label("sign bundle");
+            signBundle(io, unsigned, out);
+        } finally {
+            PathUtil.deleteRecursively(work);
         }
-
-        io.label("sign bundle");
-        signBundle(io, unsigned, out);
         AndroidDeps.copyRetraceArtifacts(io);
     }
 

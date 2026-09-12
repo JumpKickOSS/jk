@@ -16,6 +16,9 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -208,6 +211,34 @@ class AabPackagerTest {
         assertThatThrownBy(() -> AabPackager.produce(io))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("bundletool");
+    }
+
+    /**
+     * The base module and the unsigned bundle are intermediates in a scratch directory that exists
+     * only until the signed artifact does — on the refused build too, which is the one a developer
+     * repeats.
+     */
+    @Test
+    void a_refused_bundle_leaves_no_scratch_directory_behind(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = release(tmp);
+        Path packaged = Files.createDirectories(io.step("android-res").resolve("packaged"));
+        Files.copy(protoLink(tmp), packaged.resolve("resources-proto.ap_"));
+        Files.createDirectories(io.step("android-dex").resolve("dex")); // the step ran; no dex came out
+        io.extra("bundletool", Files.createDirectories(tmp.resolve("bundletool")));
+        Set<Path> before = scratchDirs();
+
+        assertThatThrownBy(() -> AabPackager.produce(io)).hasMessageContaining("no .dex files");
+
+        assertThat(scratchDirs()).isEqualTo(before);
+    }
+
+    /** Every {@code jk-aab-*} directory in the JVM's temp dir right now. */
+    private static Set<Path> scratchDirs() throws IOException {
+        Path tmpdir = Path.of(Objects.requireNonNull(System.getProperty("java.io.tmpdir")));
+        try (var children = Files.list(tmpdir)) {
+            return children.filter(p -> p.getFileName().toString().startsWith("jk-aab-"))
+                    .collect(Collectors.toSet());
+        }
     }
 
     // ---- fixtures -----------------------------------------------------------------------

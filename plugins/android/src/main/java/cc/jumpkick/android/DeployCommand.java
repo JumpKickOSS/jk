@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,28 +28,33 @@ final class DeployCommand {
             exec.out("jk run: no APK/AAB built yet — run `jk build` first");
             return 1;
         }
-        // A release AAB deploys locally through bundletool: build-apks --mode universal against
-        // the debug identity (local testing — Play signs the real install artifacts), then the
-        // extracted universal.apk installs like any APK.
-        Path apk = artifact.toString().endsWith(".aab") ? universalApk(exec, artifact) : artifact;
         Path adb = adbPath(exec);
         String namespace = exec.config().string("namespace");
         String activity = launcherActivity(AndroidDeps.androidFile(exec.moduleDir(), "AndroidManifest.xml"), namespace);
+        // A release AAB deploys locally through bundletool: build-apks --mode universal against
+        // the debug identity (local testing — Play signs the real install artifacts), then the
+        // extracted universal.apk installs like any APK. The directory it is built in lives
+        // exactly as long as the install needs it.
+        Path work = artifact.toString().endsWith(".aab") ? Files.createTempDirectory("jk-deploy-") : null;
+        try {
+            Path apk = work != null ? universalApk(exec, artifact, work) : artifact;
 
-        exec.label("adb install");
-        exec.out("Installing " + apk.getFileName() + " …");
-        int install = adb(exec, adb, "install", "-r", apk.toAbsolutePath().toString());
-        if (install != 0) return install;
+            exec.label("adb install");
+            exec.out("Installing " + apk.getFileName() + " …");
+            int install = adb(exec, adb, "install", "-r", apk.toAbsolutePath().toString());
+            if (install != 0) return install;
 
-        exec.label("am start");
-        exec.out("Launching " + namespace + "/" + activity + " …");
-        return adb(exec, adb, "shell", "am", "start", "-n", namespace + "/" + activity);
+            exec.label("am start");
+            exec.out("Launching " + namespace + "/" + activity + " …");
+            return adb(exec, adb, "shell", "am", "start", "-n", namespace + "/" + activity);
+        } finally {
+            if (work != null) PathUtil.deleteRecursively(work);
+        }
     }
 
-    /** bundletool build-apks --mode universal over the AAB; the extracted universal.apk. */
-    private static Path universalApk(PluginCommandExec exec, Path aab) throws Exception {
+    /** bundletool build-apks --mode universal over the AAB, under {@code work}; the extracted universal.apk. */
+    private static Path universalApk(PluginCommandExec exec, Path aab, Path work) throws Exception {
         Path bundletool = exec.requireExtra("bundletool");
-        Path work = Files.createTempDirectory("jk-deploy-");
         Path apks = work.resolve("universal.apks");
         // The Maven bundletool library embeds no aapt2 — hand it the plugin's own; local-deploy
         // installs sign with the SAME stable debug identity the apk/aab packagers use, so a

@@ -18,7 +18,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -181,6 +184,44 @@ class GroovyCompilerTest {
                 new URLClassLoader(new URL[] {out.toUri().toURL()}, GroovyCompilerTest.class.getClassLoader())) {
             Method add = loader.loadClass("Adder").getDeclaredMethod("add", int.class, int.class);
             assertThat(add.getParameters()[0].isNamePresent()).isFalse();
+        }
+    }
+
+    /**
+     * A joint compile's stubs and swept javac output are side products. With no workdir in the spec
+     * they go to a temp directory that exists only for the compile.
+     */
+    @Test
+    void a_joint_compile_without_a_workdir_leaves_no_scratch_directory_behind(@TempDir Path dir) throws Exception {
+        Path j = write(dir.resolve("src/J.java"), """
+                public class J {
+                    public String name() { return "j"; }
+                }
+                """);
+        Path g = write(dir.resolve("src/Wraps.groovy"), """
+                class Wraps {
+                    String name() { new J().name() }
+                }
+                """);
+        Path out = dir.resolve("classes");
+        Set<Path> before = scratchDirs();
+
+        Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out))
+                .configString("jvmTarget", "25")
+                .source(g)
+                .source(j));
+
+        assertThat(run.exit).as("diagnostics: %s", run.protocol).isZero();
+        assertThat(out.resolve("Wraps.class")).isRegularFile();
+        assertThat(scratchDirs()).isEqualTo(before);
+    }
+
+    /** Every {@code jk-groovyc-*} directory in the JVM's temp dir right now. */
+    private static Set<Path> scratchDirs() throws IOException {
+        Path tmpdir = Path.of(Objects.requireNonNull(System.getProperty("java.io.tmpdir")));
+        try (var children = Files.list(tmpdir)) {
+            return children.filter(p -> p.getFileName().toString().startsWith("jk-groovyc-"))
+                    .collect(Collectors.toSet());
         }
     }
 

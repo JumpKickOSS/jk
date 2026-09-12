@@ -2,6 +2,7 @@
 package cc.jumpkick.groovy.compiler;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
@@ -68,70 +69,77 @@ public final class GroovyCompiler implements Plugin {
         boolean joint = files.stream().anyMatch(CompileSpec::isJava);
 
         CompilerConfiguration cfg = configure(spec, proto);
-        CompilationUnit unit;
-        if (joint) {
-            File scratch = scratchDir(spec);
-            File stubDir = spec.stubsOut != null ? spec.stubsOut : new File(scratch, "stubs");
-            stubDir.mkdirs();
-            // javac output is resolution-only: divert it to a discard dir (the trailing -d wins),
-            // NOT the output dir — jk's javac step owns the real Java outputs.
-            File discard = new File(scratch, "javac-classes");
-            discard.mkdirs();
-            Map<String, Object> joint0 = new LinkedHashMap<>();
-            joint0.put("stubDir", stubDir);
-            joint0.put("keepStubs", spec.stubsOut != null);
-            // Pin the swept javac pass to the project's releasewithout it the
-            // sweep typechecks at the worker JVM's level — newer-language sources pass here
-            // and fail in jk's real javac lane (or vice versa). namedValues keys are javac
-            // flags minus the leading dash; -source/-target is the pairing groovy's javac
-            // tool spells natively.
-            List<String> named = new ArrayList<>(List.of(
-                    "d", discard.getAbsolutePath(),
-                    "source", spec.jvmTarget,
-                    "target", spec.jvmTarget));
-            if (!spec.processorPath.isEmpty()) {
-                // Mixed module with annotation processors (Lombok, source generators): the swept
-                // javac pass must run them or references to generated members fail resolution
-                // . Generated sources land in scratch; their classes go to the discard
-                // dir like all swept output.
-                File generated = new File(scratch, "javac-generated");
-                generated.mkdirs();
-                named.addAll(List.of(
-                        "processorpath",
-                        Classpaths.join(
-                                spec.processorPath.stream().map(File::toPath).toList()),
-                        "s",
-                        generated.getAbsolutePath()));
-            }
-            joint0.put("namedValues", named.toArray(String[]::new));
-            cfg.setJointCompilationOptions(joint0);
-            JavaAwareCompilationUnit jacu = new JavaAwareCompilationUnit(cfg);
-            // Post-javac re-resolution loads the Java classes through the unit's loader; the
-            // discard dir must be visible there since the output dir never receives them.
-            jacu.getClassLoader().addClasspath(discard.getAbsolutePath());
-            unit = jacu;
-        } else {
-            unit = new CompilationUnit(cfg);
-        }
-        unit.addSources(files.toArray(File[]::new));
-
+        // Joint-mode side products (stubs, the swept javac output) live in the spec's workdir,
+        // else in a temp directory that exists only for this compile.
+        File scratch = joint ? scratchDir(spec) : null;
         try {
-            unit.compile();
-        } catch (OutOfMemoryError | GroovyBugError e) {
-            proto.diagnostic("ERROR", "internal compiler error: " + e);
-            proto.result("COMPILER_INTERNAL_ERROR");
-            return CompilerProtocol.COMPILER_FAULT;
-        } catch (CompilationFailedException e) {
-            if (!emitDiagnostics(unit.getErrorCollector(), proto)) {
-                proto.diagnostic("ERROR", String.valueOf(e.getMessage()));
+            CompilationUnit unit;
+            if (scratch != null) {
+                File stubDir = spec.stubsOut != null ? spec.stubsOut : new File(scratch, "stubs");
+                stubDir.mkdirs();
+                // javac output is resolution-only: divert it to a discard dir (the trailing -d wins),
+                // NOT the output dir — jk's javac step owns the real Java outputs.
+                File discard = new File(scratch, "javac-classes");
+                discard.mkdirs();
+                Map<String, Object> joint0 = new LinkedHashMap<>();
+                joint0.put("stubDir", stubDir);
+                joint0.put("keepStubs", spec.stubsOut != null);
+                // Pin the swept javac pass to the project's releasewithout it the
+                // sweep typechecks at the worker JVM's level — newer-language sources pass here
+                // and fail in jk's real javac lane (or vice versa). namedValues keys are javac
+                // flags minus the leading dash; -source/-target is the pairing groovy's javac
+                // tool spells natively.
+                List<String> named = new ArrayList<>(List.of(
+                        "d", discard.getAbsolutePath(),
+                        "source", spec.jvmTarget,
+                        "target", spec.jvmTarget));
+                if (!spec.processorPath.isEmpty()) {
+                    // Mixed module with annotation processors (Lombok, source generators): the swept
+                    // javac pass must run them or references to generated members fail resolution
+                    // . Generated sources land in scratch; their classes go to the discard
+                    // dir like all swept output.
+                    File generated = new File(scratch, "javac-generated");
+                    generated.mkdirs();
+                    named.addAll(List.of(
+                            "processorpath",
+                            Classpaths.join(spec.processorPath.stream()
+                                    .map(File::toPath)
+                                    .toList()),
+                            "s",
+                            generated.getAbsolutePath()));
+                }
+                joint0.put("namedValues", named.toArray(String[]::new));
+                cfg.setJointCompilationOptions(joint0);
+                JavaAwareCompilationUnit jacu = new JavaAwareCompilationUnit(cfg);
+                // Post-javac re-resolution loads the Java classes through the unit's loader; the
+                // discard dir must be visible there since the output dir never receives them.
+                jacu.getClassLoader().addClasspath(discard.getAbsolutePath());
+                unit = jacu;
+            } else {
+                unit = new CompilationUnit(cfg);
             }
-            proto.result("COMPILATION_ERROR");
-            return Exit.FAILURE;
-        }
+            unit.addSources(files.toArray(File[]::new));
 
-        emitDiagnostics(unit.getErrorCollector(), proto);
-        proto.result("COMPILATION_SUCCESS");
-        return Exit.SUCCESS;
+            try {
+                unit.compile();
+            } catch (OutOfMemoryError | GroovyBugError e) {
+                proto.diagnostic("ERROR", "internal compiler error: " + e);
+                proto.result("COMPILER_INTERNAL_ERROR");
+                return CompilerProtocol.COMPILER_FAULT;
+            } catch (CompilationFailedException e) {
+                if (!emitDiagnostics(unit.getErrorCollector(), proto)) {
+                    proto.diagnostic("ERROR", String.valueOf(e.getMessage()));
+                }
+                proto.result("COMPILATION_ERROR");
+                return Exit.FAILURE;
+            }
+
+            emitDiagnostics(unit.getErrorCollector(), proto);
+            proto.result("COMPILATION_SUCCESS");
+            return Exit.SUCCESS;
+        } finally {
+            if (scratch != null && spec.workDir == null) PathUtil.deleteRecursively(scratch.toPath());
+        }
     }
 
     /**
