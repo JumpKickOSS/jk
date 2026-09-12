@@ -1,9 +1,12 @@
 # Tag-triggered release build + sign for the jumpkick.build layout.
 #
-# Trigger: push tag v0.13.3 (or any vX.Y.Z matching JkVersion without the v).
+# Trigger: push tag v0.13.3 (or any vX.Y.Z matching JkVersion without the v). The tag or the
+# dispatch input is a request; JkVersion.java is the answer, and a request that differs from it
+# fails before anything is built (scripts/release-version.sh).
 #
 # Secrets:
-#   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key (required for .sig)
+#   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key; only the publish job
+#                                sees it, since only the combined SHA256SUMS is signed
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
 #
@@ -38,7 +41,7 @@ jobs:
             arch_label: linux-x86_64
           - os: ubuntu-24.04-arm
             arch_label: linux-aarch64
-          - os: macos-13
+          - os: macos-15-intel
             arch_label: macos-x86_64
           - os: macos-14
             arch_label: macos-aarch64
@@ -62,14 +65,17 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      # The dispatch input reaches the shell as a variable, never as text spliced into the script.
       - name: Resolve version
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VER="${{ inputs.version }}"
-          else
-            VER="${GITHUB_REF_NAME#v}"
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            REQUESTED_VERSION="${GITHUB_REF_NAME#v}"
           fi
+          VER="$(scripts/release-version.sh "$REQUESTED_VERSION")"
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building release $VER (${{ matrix.arch_label }})"
 
@@ -121,14 +127,15 @@ jobs:
           ./gradlew clean dist --no-daemon
           ls -la build/dist build/dist/lib
 
-      - name: Assemble + sign release dir
+      # Unsigned: the per-platform SHA256SUMS is discarded when the trees are merged, and the
+      # signing key stays with the one job whose signature ships.
+      - name: Assemble release dir
         shell: bash
         env:
-          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
           DIST_DIR: ${{ runner.os == 'Windows' && 'build/dist' || 'target/dist' }}
         run: |
           set -euo pipefail
-          chmod +x scripts/sign-release.sh scripts/assemble-release-dir.sh
+          chmod +x scripts/assemble-release-dir.sh
           OUT="build/release/${JK_VERSION}-${{ matrix.arch_label }}"
           scripts/assemble-release-dir.sh "$OUT"
           ls -la "$OUT"
@@ -144,19 +151,23 @@ jobs:
     name: Merge + publish to GCS
     needs: build
     runs-on: ubuntu-latest
-    # Run after matrix finishes; publish whatever platform artifacts succeeded.
+    # Runs once the matrix has finished, whatever its outcome, so a missing platform is reported
+    # here by name instead of the job being skipped; the flatten step refuses a partial tree.
     if: ${{ always() && !cancelled() }}
     steps:
       - uses: actions/checkout@v4
 
+      # The dispatch input reaches the shell as a variable, never as text spliced into the script.
       - name: Resolve version
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VER="${{ inputs.version }}"
-          else
-            VER="${GITHUB_REF_NAME#v}"
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            REQUESTED_VERSION="${GITHUB_REF_NAME#v}"
           fi
+          VER="$(scripts/release-version.sh "$REQUESTED_VERSION")"
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
 
       - name: Download platform artifacts
@@ -173,31 +184,59 @@ jobs:
           pattern: maven-repo-*
           merge-multiple: true
 
+      # One tree from five: each platform's client, and the engine jar from linux-x86_64 alone —
+      # every platform builds the same jar, and one whose bytes differ is a build to explain, not
+      # a copy to overwrite. A platform whose artifact is missing fails the release here.
       - name: Flatten into version directory
         shell: bash
         run: |
           set -euo pipefail
           VER="$JK_VERSION"
-          mkdir -p "out/${VER}" "out/latest"
-          # Copy every file from every platform dir (skip nested SHA256SUMS until recompute).
+          ENGINE="jk-engine-${VER}.jar"
+          mkdir -p "out/${VER}"
+          canonical="staging/release-${VER}-linux-x86_64/${ENGINE}"
+          if [[ ! -f "$canonical" ]]; then
+            echo "missing $canonical — the linux-x86_64 build did not produce the engine jar" >&2
+            exit 1
+          fi
+          canonical_sha="$(sha256sum "$canonical" | awk '{print $1}')"
           while IFS= read -r -d '' f; do
             base="$(basename "$f")"
             case "$base" in
               SHA256SUMS|SHA256SUMS.sig) continue ;;
+              "$ENGINE")
+                sha="$(sha256sum "$f" | awk '{print $1}')"
+                if [[ "$sha" != "$canonical_sha" ]]; then
+                  echo "$f differs from $canonical ($sha vs $canonical_sha) — the platforms built different engines" >&2
+                  exit 1
+                fi
+                [[ "$f" == "$canonical" ]] || continue
+                ;;
             esac
+            if [[ -e "out/${VER}/$base" ]]; then
+              echo "two platform trees carry $base — the flatten would pick one by listing order" >&2
+              exit 1
+            fi
             cp -f "$f" "out/${VER}/$base"
           done < <(find staging -type f -print0)
+          missing=0
+          for client in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+            if [[ ! -f "out/${VER}/jk-${client}-${VER}.xz" ]]; then
+              echo "missing client jk-${client}-${VER}.xz — the ${client} build did not finish" >&2
+              missing=$((missing + 1))
+            fi
+          done
+          [[ -f "out/${VER}/jk-windows-x86_64-${VER}.zip" ]] || { echo "missing jk-windows-x86_64-${VER}.zip" >&2; missing=$((missing + 1)); }
+          if [[ "$missing" -gt 0 ]]; then
+            echo "$missing artifact(s) missing: a partial matrix is not a release; re-run the failed builds and this job" >&2
+            exit 1
+          fi
           (
             cd "out/${VER}"
-            rm -f SHA256SUMS SHA256SUMS.sig
-            if command -v sha256sum >/dev/null; then sha256sum * >SHA256SUMS
-            else shasum -a 256 * >SHA256SUMS
-            fi
+            sha256sum * >SHA256SUMS
           )
-          printf '%s\n' "$VER" > out/latest/VERSION
           echo "=== out/${VER} ==="
           ls -la "out/${VER}"
-          echo "VERSION=$(cat out/latest/VERSION)"
 
       - name: Re-sign combined SHA256SUMS
         shell: bash
@@ -227,6 +266,8 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
+      # Preconditions first, then the version tree and the Maven repository, and the latest pointer
+      # as the very last object: an installer that reads it finds everything it names already there.
       - name: Upload to GCS
         env:
           BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
@@ -238,17 +279,19 @@ jobs:
             echo "JK_RELEASE_GCS_BUCKET empty"
             exit 1
           fi
-          gsutil -m rsync -r -d "out/${VER}/" "gs://${BUCKET}/releases/${VER}/"
-          gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
-            "gs://${BUCKET}/releases/latest/VERSION"
-          # The plugin jars the engine fetches from jumpkick.build/repo/: additive, so earlier versions stay.
-          if [[ -d out/repo/cc ]]; then
-            gsutil -m rsync -r "out/repo/" "gs://${BUCKET}/repo/"
-            echo "  gs://${BUCKET}/repo/cc/jumpkick/ ($(find out/repo -name '*.jar' | wc -l) jars)"
-          else
-            echo "no staged Maven repository (the linux-x86_64 build did not run?)" >&2
+          if [[ ! -d out/repo/cc ]]; then
+            echo "no staged Maven repository (the linux-x86_64 build did not stage it)" >&2
             exit 1
           fi
+          [[ -f "out/${VER}/SHA256SUMS.sig" ]] || { echo "out/${VER}/SHA256SUMS.sig missing — not publishing an unsigned tree" >&2; exit 1; }
+          gsutil -m rsync -r -d "out/${VER}/" "gs://${BUCKET}/releases/${VER}/"
+          # The plugin jars the engine fetches from jumpkick.build/repo/: additive, so earlier versions stay.
+          gsutil -m rsync -r "out/repo/" "gs://${BUCKET}/repo/"
+          echo "  gs://${BUCKET}/repo/cc/jumpkick/ ($(find out/repo -name '*.jar' | wc -l) jars)"
+          mkdir -p out/latest
+          printf '%s\n' "$VER" > out/latest/VERSION
+          gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
+            "gs://${BUCKET}/releases/latest/VERSION"
           echo "Published:"
           echo "  gs://${BUCKET}/releases/${VER}/"
           echo "  gs://${BUCKET}/releases/latest/VERSION"

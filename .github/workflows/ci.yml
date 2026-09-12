@@ -54,6 +54,9 @@ jobs:
       - name: Maven-repository publish fixtures
         run: bash scripts/test-publish-maven-repo.sh
 
+      - name: Release-version fixtures
+        run: bash scripts/test-release-version.sh
+
   # The boundary lane. `checkFast` is network-free and fast but runs no integration class, so a
   # wire, spawn, worker, workspace, install or lock regression can merge with a deterministic
   # integration test sitting in the nightly tier that would have caught it. Membership is
