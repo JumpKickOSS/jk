@@ -17,6 +17,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -151,6 +152,63 @@ class WorkspaceSchedulerTest {
         // (Whether the workspace finish follows is the lifecycle's sequencing, not the scheduler's,
         // and calling finish() here proved only the order this test would call it in.)
         assertThat(lifecycle).containsExactly("module-finish:slow");
+    }
+
+    /**
+     * A probe that reads cancelled only off the scheduler thread. The admission gate is the one
+     * place off that thread the scheduler consults it, so the cancel lands exactly between a
+     * unit's admission and its gate — the window under test — with no timing race.
+     */
+    private static BooleanSupplier cancelledAtTheGateOnly() {
+        Thread scheduler = Thread.currentThread();
+        return () -> Thread.currentThread() != scheduler;
+    }
+
+    /** A unit whose gate saw the cancel ran nothing; the sink must never be handed that gap. */
+    @Test
+    void bounded_unit_cancelled_between_admission_and_its_gate_reaches_no_sink() {
+        AtomicInteger ran = new AtomicInteger();
+        List<List<String>> sunk = Collections.synchronizedList(new ArrayList<>());
+        String stop = WorkspaceScheduler.run(
+                List.of("a"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("a"), Set.of()),
+                unit -> {
+                    ran.incrementAndGet();
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> {
+                    sunk.add(new ArrayList<>(results));
+                    return null;
+                },
+                1,
+                cancelledAtTheGateOnly());
+        assertThat(stop).as("a cancelled schedule finishes clean").isNull();
+        assertThat(ran).hasValue(0);
+        assertThat(sunk).as("nothing completed, so nothing reaches the sink").isEmpty();
+    }
+
+    @Test
+    void unbounded_level_cancelled_between_admission_and_its_gate_reaches_no_sink() {
+        AtomicInteger ran = new AtomicInteger();
+        List<List<String>> sunk = Collections.synchronizedList(new ArrayList<>());
+        String stop = WorkspaceScheduler.run(
+                List.of("a", "b"),
+                WorkspaceSchedulerTest::p,
+                Map.of(p("a"), Set.of(), p("b"), Set.of()),
+                unit -> {
+                    ran.incrementAndGet();
+                    return unit;
+                },
+                (justCompleted, results, remaining) -> {
+                    sunk.add(new ArrayList<>(results));
+                    return null;
+                },
+                0,
+                cancelledAtTheGateOnly());
+        assertThat(stop).isNull();
+        assertThat(ran).hasValue(0);
+        assertThat(sunk).isEmpty();
     }
 
     /** Assert every unit ran only after its prereqs finished (positional check on completion order). */

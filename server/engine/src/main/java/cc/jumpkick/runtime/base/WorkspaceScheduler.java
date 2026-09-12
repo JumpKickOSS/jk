@@ -61,7 +61,9 @@ public final class WorkspaceScheduler {
     public interface LevelSink<U, R> {
         /**
          * After completed units: unbounded → once per topological level; bounded → once per unit.
-         * Non-null return stops the schedule (fail-fast); {@code null} continues.
+         * Every entry of {@code results} is a unit that ran — a unit the cancel stopped at its gate
+         * never reaches here. Non-null return stops the schedule (fail-fast); {@code null}
+         * continues.
          */
         @Nullable
         R after(List<U> justCompleted, List<R> results, List<U> remaining);
@@ -148,42 +150,7 @@ public final class WorkspaceScheduler {
         for (U u : units) unitDirs.add(dirOf.apply(u));
         Set<Path> done = ConcurrentHashMap.newKeySet();
         if (maxConcurrency <= 0) {
-            List<U> remaining = new ArrayList<>(units);
-            while (!remaining.isEmpty()) {
-                if (stop.getAsBoolean()) return null;
-                List<U> ready = remaining.stream()
-                        .filter(u -> edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
-                                .filter(unitDirs::contains)
-                                .allMatch(done::contains))
-                        .toList();
-                // Cycle / filtered-dep hole: remaining units but none are ready → spin forever
-                // without this guard (BuildPlan.topoSort detects cycles; this path did not).
-                if (ready.isEmpty()) {
-                    throw unsatisfiable(remaining, dirOf, edges, unitDirs, done);
-                }
-                List<CompletableFuture<R>> futures = new ArrayList<>();
-                for (U u : ready) {
-                    if (stop.getAsBoolean()) {
-                        drainCancelled(futures);
-                        return null;
-                    }
-                    // Batch-per-level path: no early admission to feed, publish is a no-op.
-                    futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u, () -> {}), JkThreads.io()));
-                }
-                List<R> results = new ArrayList<>(futures.size());
-                for (CompletableFuture<R> f : futures) {
-                    if (stop.getAsBoolean()) {
-                        drainCancelled(futures);
-                        return null;
-                    }
-                    results.add(f.join());
-                }
-                for (U u : ready) done.add(dirOf.apply(u));
-                remaining.removeAll(ready);
-                R sinkStop = sink.after(ready, results, remaining);
-                if (sinkStop != null) return sinkStop;
-            }
-            return null;
+            return runUnbounded(units, dirOf, edges, task, sink, stop, unitDirs, done);
         }
         // Critical-path-first admission: the ready scan below takes the FIRST ready
         // unit, so order the backlog by longest remaining dependent chain, descending. With 13
@@ -261,6 +228,12 @@ public final class WorkspaceScheduler {
             if (d.error() != null) {
                 throw d.error() instanceof CompletionException ce ? ce : new CompletionException(d.error());
             }
+            if (d.result() == null) {
+                // The gate saw the cancel after admission and ran nothing. This is the cancel path
+                // reached one event late: settle the rest, hand the sink nothing.
+                drainCancelled(inflight);
+                return null;
+            }
             done.add(dirOf.apply(d.unit()));
             // Completion always publishes: a unit that failed before its package steps (or has
             // none) must still unblock — or accurately fail — its dependents, never wedge them.
@@ -271,6 +244,65 @@ public final class WorkspaceScheduler {
                 return sinkStop;
             }
         }
+    }
+
+    /**
+     * The batch-per-level schedule: every ready unit of a level runs at once, the sink sees the
+     * level as one batch, and a cancel — before, during or at the gate of a level — ends the
+     * schedule with {@code null} and nothing handed to the sink.
+     */
+    private static <U, R> @Nullable R runUnbounded(
+            List<U> units,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            PhasedUnitTask<U, R> task,
+            LevelSink<U, R> sink,
+            BooleanSupplier stop,
+            Set<Path> unitDirs,
+            Set<Path> done) {
+        List<U> remaining = new ArrayList<>(units);
+        while (!remaining.isEmpty()) {
+            if (stop.getAsBoolean()) return null;
+            List<U> ready = remaining.stream()
+                    .filter(u -> edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
+                            .filter(unitDirs::contains)
+                            .allMatch(done::contains))
+                    .toList();
+            // Cycle / filtered-dep hole: remaining units but none are ready → spin forever
+            // without this guard (BuildPlan.topoSort detects cycles; this path did not).
+            if (ready.isEmpty()) {
+                throw unsatisfiable(remaining, dirOf, edges, unitDirs, done);
+            }
+            List<CompletableFuture<R>> futures = new ArrayList<>();
+            for (U u : ready) {
+                if (stop.getAsBoolean()) {
+                    drainCancelled(futures);
+                    return null;
+                }
+                // Batch-per-level path: no early admission to feed, publish is a no-op.
+                futures.add(CompletableFuture.supplyAsync(() -> gated(stop, task, u, () -> {}), JkThreads.io()));
+            }
+            List<R> results = new ArrayList<>(futures.size());
+            for (CompletableFuture<R> f : futures) {
+                if (stop.getAsBoolean()) {
+                    drainCancelled(futures);
+                    return null;
+                }
+                R result = f.join();
+                if (result == null) {
+                    // The gate saw the cancel after admission and ran nothing: this level is
+                    // cancelled, not completed, and the sink must not be handed the gap.
+                    drainCancelled(futures);
+                    return null;
+                }
+                results.add(result);
+            }
+            for (U u : ready) done.add(dirOf.apply(u));
+            remaining.removeAll(ready);
+            R sinkStop = sink.after(ready, results, remaining);
+            if (sinkStop != null) return sinkStop;
+        }
+        return null;
     }
 
     /**
@@ -314,7 +346,10 @@ public final class WorkspaceScheduler {
      */
     static final long CANCEL_DRAIN_MS = 2_000L;
 
-    /** Admission gate: a queued task starting after cancel must do nothing (and emit nothing). */
+    /**
+     * Admission gate: a queued task starting after cancel must do nothing (and emit nothing). Its
+     * {@code null} is the one the completion loops read as "cancelled, never ran".
+     */
     private static <U, R> @Nullable R gated(
             BooleanSupplier stop, PhasedUnitTask<U, R> task, U unit, Runnable artifactsReady) {
         if (stop.getAsBoolean()) return null;
