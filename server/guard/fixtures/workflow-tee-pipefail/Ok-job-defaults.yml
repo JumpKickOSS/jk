@@ -1,0 +1,16 @@
+name: Ok
+on: push
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Ratchet
+        run: python3 scripts/band.py out/row.jsonl | tee -a "$GITHUB_STEP_SUMMARY"
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No pipe here
+        run: echo plain

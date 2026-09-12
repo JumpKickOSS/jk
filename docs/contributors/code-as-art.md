@@ -972,6 +972,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G96 | `engine-log-owner` (jk-guards.toml, `forbid`) | a write to System.out / System.err, printStackTrace() or dumpStack() in server or shared main code outside `cc.jumpkick.host.Log` — a print has no level, misses the engine log's size cap and skips its redaction | forbid, `@jdk-system-out`, scope `server/*` and `shared/*` | `engine-log-owner` (forbid) |
 | G97 | `swallowed-broad-catch` (jk-guards.toml, `text`) | a catch of Exception, Throwable or RuntimeException whose body is only a comment, in main code; measured here, held by G98 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `swallowed-broad-catch` (text) |
 | G98 | `swallowed-broad-catch-ratchet` (jk-guards.toml, `metric`) | a file's count of comment-only broad catches growing past its baseline — zero since every one got a debug line carrying the exception | metric, `matches:swallowed-broad-catch` per file, baselined and tightened on every build | `swallowed-broad-catch-ratchet` (metric) |
+| G99 | — | a workflow `run:` step pipes into `tee` without pipefail — no `shell: bash` on the step or under a `defaults.run`, and no `set -o pipefail` in the script — so the piped command's failure is tee's success | workflow text scan in both builds; a fixture proves the bite | guard test `workflow-tee-pipefail` |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

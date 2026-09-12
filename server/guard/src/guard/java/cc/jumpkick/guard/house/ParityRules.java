@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.house;
 
 import cc.jumpkick.guard.api.Blank;
+import cc.jumpkick.guard.api.Fixture;
 import cc.jumpkick.guard.api.Guard;
 import cc.jumpkick.guard.api.GuardSuite;
 import cc.jumpkick.guard.api.Model;
@@ -484,6 +485,135 @@ final class ParityRules {
                     new TextSite(p.startsWith(".github") || p.startsWith("build.gradle") ? p.split(" ")[0] : CI, 0, p),
                     p);
         v.population(3);
+    }
+
+    // ---- G99 ---------------------------------------------------------------------------------
+
+    private static final Pattern PIPE_TO_TEE = Pattern.compile("\\|\\s*tee\\b");
+    private static final Pattern SETS_PIPEFAIL = Pattern.compile("\\bset\\b[^\\n]*-[a-zA-Z]*o\\s+pipefail");
+    /** A bare {@code bash} is GitHub's {@code bash --noprofile --norc -eo pipefail {0}}; a custom command must say pipefail itself. */
+    private static final Pattern BASH_SHELL = Pattern.compile("^bash$|pipefail");
+
+    @Guard(
+            id = "workflow-tee-pipefail",
+            why =
+                    "a `run:` step without a `shell:` runs `bash -e {0}` with pipefail off, so `cmd | tee` exits with tee's status and a red command goes green",
+            instead =
+                    "`shell: bash` on the step or under the workflow's or job's `defaults.run`, or `set -o pipefail` at the top of the script")
+    @Fixture("server/guard/fixtures/workflow-tee-pipefail")
+    void workflowTeePipefail(Text text, Violations v) {
+        List<String> workflows = text.files(".github/workflows/*.yml");
+        for (String wf : workflows) {
+            List<String> lines = text.lines(wf);
+            String workflowShell = defaultShell(lines, 0, 0, lines.size());
+            String jobShell = workflowShell;
+            int jobIndent = -1;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                int indent = indentOf(line);
+                if (line.isBlank() || line.strip().startsWith("#")) continue;
+                if (line.startsWith("jobs:")) {
+                    jobIndent = -2;
+                    continue;
+                }
+                if (jobIndent == -2
+                        && indent > 0
+                        && line.strip().endsWith(":")
+                        && !line.strip().startsWith("- ")) {
+                    jobIndent = indent;
+                }
+                if (jobIndent >= 0 && indent == jobIndent && line.strip().endsWith(":")) {
+                    int end = i + 1;
+                    while (end < lines.size() && (lines.get(end).isBlank() || indentOf(lines.get(end)) > jobIndent))
+                        end++;
+                    String own = defaultShell(lines, jobIndent + 2, i + 1, end);
+                    jobShell = own != null ? own : workflowShell;
+                    continue;
+                }
+                if (!line.strip().startsWith("- ")) continue;
+                int stepEnd = i + 1;
+                while (stepEnd < lines.size()
+                        && (lines.get(stepEnd).isBlank() || indentOf(lines.get(stepEnd)) > indent)) stepEnd++;
+                List<String> step = lines.subList(i, stepEnd);
+                String script = runScript(step, indent);
+                if (script == null) continue;
+                Matcher tee = PIPE_TO_TEE.matcher(script);
+                if (!tee.find()) continue;
+                String shell = keyValue(step, indent + 2, "shell");
+                boolean covered = shell != null
+                        ? BASH_SHELL.matcher(shell).find()
+                        : (jobShell != null && BASH_SHELL.matcher(jobShell).find())
+                                || SETS_PIPEFAIL.matcher(script).find();
+                if (!covered)
+                    v.add(
+                            new TextSite(wf, i + 1, tee.group()),
+                            wf
+                                    + ": a run: step pipes into tee without pipefail — tee's exit status becomes the step's");
+            }
+        }
+        v.population(workflows.size());
+    }
+
+    private static int indentOf(String line) {
+        int n = 0;
+        while (n < line.length() && line.charAt(n) == ' ') n++;
+        return n;
+    }
+
+    /** The {@code shell:} under a {@code defaults: run:} block at {@code indent} within {@code [from, to)}, or null. */
+    private static @Nullable String defaultShell(List<String> lines, int indent, int from, int to) {
+        for (int i = from; i < to; i++) {
+            String line = lines.get(i);
+            if (indentOf(line) != indent || !line.strip().equals("defaults:")) continue;
+            int end = i + 1;
+            while (end < to && (lines.get(end).isBlank() || indentOf(lines.get(end)) > indent)) end++;
+            for (int j = i + 1; j < end; j++) {
+                if (!lines.get(j).strip().equals("run:")) continue;
+                int runIndent = indentOf(lines.get(j));
+                int runEnd = j + 1;
+                while (runEnd < end && (lines.get(runEnd).isBlank() || indentOf(lines.get(runEnd)) > runIndent))
+                    runEnd++;
+                return keyValue(lines.subList(j + 1, runEnd), runIndent + 2, "shell");
+            }
+        }
+        return null;
+    }
+
+    /** The scalar value of {@code key:} at exactly {@code indent} in {@code lines}, unquoted, or null. */
+    private static @Nullable String keyValue(List<String> lines, int indent, String key) {
+        for (String line : lines) {
+            if (indentOf(line) != indent) continue;
+            String body = line.strip();
+            if (!body.startsWith(key + ":")) continue;
+            String value = body.substring(key.length() + 1).strip();
+            if (value.length() >= 2 && (value.startsWith("'") || value.startsWith("\"")))
+                value = value.substring(1, value.length() - 1);
+            return value;
+        }
+        return null;
+    }
+
+    /**
+     * The script of a step's {@code run:} — a block scalar's lines or its inline value — or null when the step has
+     * none. The step's keys sit at {@code indent + 2}, aligned with the text after its {@code "- "}.
+     */
+    private static @Nullable String runScript(List<String> step, int indent) {
+        for (int i = 0; i < step.size(); i++) {
+            String line = step.get(i);
+            String body = i == 0 ? line.strip().substring(2).strip() : line.strip();
+            int at = i == 0 ? indent + 2 : indentOf(line);
+            if (at != indent + 2 || !body.startsWith("run:")) continue;
+            String value = body.substring(4).strip();
+            if (!value.isEmpty() && !value.startsWith("|") && !value.startsWith(">")) return value;
+            StringBuilder script = new StringBuilder();
+            for (int j = i + 1; j < step.size(); j++) {
+                String l = step.get(j);
+                if (!l.isBlank() && indentOf(l) <= indent + 2) break;
+                script.append(l.strip()).append('\n');
+            }
+            return script.toString();
+        }
+        return null;
     }
 
     // ---- G58 ---------------------------------------------------------------------------------

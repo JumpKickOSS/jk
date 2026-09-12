@@ -1,0 +1,12 @@
+name: Ok
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Self-host build
+        run: |
+          set -euo pipefail
+          jk build --skip-tests 2>&1 | tee build.log
+      - name: Not a pipe
+        run: echo "tee is only a word here"

@@ -1,0 +1,9 @@
+name: Bad
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        shell: sh
+        run: make report | tee report.txt

@@ -1010,6 +1010,15 @@ object Guards {
                 ruleId = "swallowed-broad-catch-ratchet",
             ),
             spec(
+                99,
+                "checkWorkflowTeePipefail",
+                "a workflow `run:` step pipes into `tee` without pipefail — no `shell: bash` on the step or under a `defaults.run`, and no `set -o pipefail` in the script — so the piped command's failure is tee's success",
+                "workflow text scan in both builds; a fixture proves the bite",
+                GuardHome.SELF_HOSTED,
+                description = "Fail when a workflow step pipes into tee without pipefail",
+                guardTestId = "workflow-tee-pipefail",
+            ),
+            spec(
                 91,
                 "coverage-band",
                 "a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything",

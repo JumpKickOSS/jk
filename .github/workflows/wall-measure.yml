@@ -21,6 +21,11 @@ concurrency:
   group: wall-measure
   cancel-in-progress: true
 
+# Every run: step is bash with pipefail, so the ratchet's `… | tee` exits with the ratchet's status.
+defaults:
+  run:
+    shell: bash
+
 env:
   TERM: xterm-256color
 

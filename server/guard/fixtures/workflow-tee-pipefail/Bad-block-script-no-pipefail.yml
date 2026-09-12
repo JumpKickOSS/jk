@@ -1,0 +1,10 @@
+name: Bad
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Self-host build
+        run: |
+          set -eu
+          jk build --skip-tests 2>&1 | tee build.log
