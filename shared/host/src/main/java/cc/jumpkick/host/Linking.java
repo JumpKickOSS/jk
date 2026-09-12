@@ -2,10 +2,13 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.jspecify.annotations.Nullable;
@@ -37,28 +40,88 @@ public final class Linking {
      * supported on this filesystem pair. Replaces any existing entry at {@code target}.
      */
     public static void linkOrCopy(Path source, Path target) throws IOException {
+        linkOrCopy(source, target, () -> {});
+    }
+
+    /**
+     * Test seam: {@code betweenDeleteAndLink} runs in the window where a racing materialiser of the
+     * same target can land, between the delete of {@code target} and the link attempt.
+     */
+    static void linkOrCopy(Path source, Path target, Interleave betweenDeleteAndLink) throws IOException {
         if (target.getParent() != null) {
             Files.createDirectories(target.getParent());
         }
         Files.deleteIfExists(target);
+        betweenDeleteAndLink.run();
         VolumePair pair = VolumePair.of(source, target);
         if (linkable(pair)) {
             try {
-                Files.createLink(target, source);
+                createLinkRetryingOnce(source, target);
                 return;
-            } catch (UnsupportedOperationException | FileSystemException notLinkable) {
-                // Remember it for this volume pair rather than rediscovering it per file. On a mount
-                // that refuses links, a failed createLink is 79.6 us on Windows (17x Linux) before
-                // the 305 us copy — answer the capability question once per pair, not once per file.
-                if (pair != null) LINKABLE.put(pair, Boolean.FALSE);
+            } catch (UnsupportedOperationException notLinkable) {
+                markUnlinkable(pair);
+            } catch (NoSuchFileException gone) {
+                // The blob is missing (pruned concurrently) — a copy cannot succeed either, and the
+                // volume pair has said nothing about links.
+                throw gone;
+            } catch (FileSystemException failed) {
+                // Only a verdict about the volume pair is worth remembering. A lost race for the same
+                // target, a permissions problem or a full volume is about this file, not about
+                // whether the pair can link; caching those would demote every later materialisation
+                // on the pair to a copy for the rest of the process.
+                if (isVolumeVerdict(failed)) markUnlinkable(pair);
             }
         }
         Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
     }
 
+    /**
+     * Link {@code target} to {@code source}. Two materialisers of the same blob into the same target
+     * can interleave between the delete and the link; the loser sees {@link
+     * FileAlreadyExistsException}, deletes what the winner wrote and links again. The second attempt
+     * raising it again means a writer is still busy — the caller's copy replaces the entry.
+     */
+    private static void createLinkRetryingOnce(Path source, Path target) throws IOException {
+        try {
+            Files.createLink(target, source);
+        } catch (FileAlreadyExistsException raced) {
+            Files.deleteIfExists(target);
+            Files.createLink(target, source);
+        }
+    }
+
+    /**
+     * True when the failure describes the (source, target) volume pair rather than this file:
+     * a cross-device link, or a filesystem that does not implement hard links at all.
+     */
+    static boolean isVolumeVerdict(FileSystemException failed) {
+        if (failed instanceof FileAlreadyExistsException || failed instanceof NoSuchFileException) return false;
+        String reason = failed.getReason();
+        if (reason == null) return false;
+        String r = reason.toLowerCase(Locale.ROOT);
+        return r.contains("cross-device")
+                || r.contains("cross device")
+                || r.contains("not supported")
+                || r.contains("not permitted")
+                || r.contains("incorrect function")
+                || r.contains("invalid function");
+    }
+
     /** Whether this volume pair is still believed to support hard links. Unknown pairs are tried. */
     private static boolean linkable(@Nullable VolumePair pair) {
         return pair == null || LINKABLE.getOrDefault(pair, Boolean.TRUE);
+    }
+
+    private static void markUnlinkable(@Nullable VolumePair pair) {
+        // Remember it for this volume pair rather than rediscovering it per file. On a mount that
+        // refuses links, a failed createLink is 79.6 us on Windows (17x Linux) before the 305 us
+        // copy — answer the capability question once per pair, not once per file.
+        if (pair != null) LINKABLE.put(pair, Boolean.FALSE);
+    }
+
+    /** Test seam: forget every cached verdict. */
+    static void forgetVerdicts() {
+        LINKABLE.clear();
     }
 
     /**
@@ -68,6 +131,12 @@ public final class Linking {
      * became a link.
      */
     private static final ConcurrentMap<VolumePair, Boolean> LINKABLE = new ConcurrentHashMap<>();
+
+    /** A step that may touch the filesystem, run between the delete and the link. */
+    @FunctionalInterface
+    interface Interleave {
+        void run() throws IOException;
+    }
 
     /** The (source, target) filesystem pair, or {@code null} when either store cannot be read. */
     private record VolumePair(String source, String target) {
