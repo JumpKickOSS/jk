@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.RunNotices;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,16 +52,18 @@ class RepoGroupFallThroughTest {
                 new MavenRepo("dead", REFUSING, new Http(), cas),
                 new MavenRepo("good", good.toUri(), new Http(), cas)));
 
+        // The warning is a log line: bind the log to this stream rather than swapping System.err,
+        // which the logging backend captured when the first test in this JVM touched it.
         var err = new ByteArrayOutputStream();
-        var original = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
         List<String> versions;
         try {
             versions = group.availableVersions(Coordinate.of("com.example", "lib", "0"));
             RepoGroup.clearProcessVersionsCache();
             group.availableVersions(Coordinate.of("com.example", "lib", "0"));
         } finally {
-            System.setErr(original);
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
         }
         assertThat(versions).containsExactlyInAnyOrder("1.0", "2.0");
         String out = err.toString(StandardCharsets.UTF_8);
