@@ -212,7 +212,8 @@ final class BaseJre {
     }
 
     /** Unpack a (possibly gzipped) tar, skipping anything that would escape {@code dest}. */
-    private static void unpack(Path archive, Path dest, boolean tolerate) throws IOException {
+    static void unpack(Path archive, Path dest, boolean tolerate) throws IOException {
+        dest = dest.toAbsolutePath().normalize();
         try (InputStream raw = Files.newInputStream(archive);
                 InputStream in = isGzip(archive) ? new GZIPInputStream(raw) : raw;
                 TarArchiveInputStream tar = new TarArchiveInputStream(in)) {
@@ -235,8 +236,13 @@ final class BaseJre {
                     continue;
                 }
                 if (name.startsWith(".wh.")) {
-                    Path victim = target.resolveSibling(name.substring(".wh.".length()));
-                    if (victim.startsWith(dest)) PathUtil.deleteRecursivelyOrThrow(victim);
+                    // The layer is a registry's: a whiteout may only reach a sibling of where it
+                    // sits. `.wh.`, `.wh..` and `.wh...` name the directory itself or a parent —
+                    // for a top-level entry that is every cached extraction on the machine.
+                    String whited = name.substring(".wh.".length());
+                    if (whited.isEmpty() || whited.equals(".") || whited.equals("..")) continue;
+                    Path victim = target.resolveSibling(whited).normalize();
+                    if (victim.startsWith(dest) && !victim.equals(dest)) PathUtil.deleteRecursivelyOrThrow(victim);
                     continue;
                 }
                 if (entry.isDirectory()) {
