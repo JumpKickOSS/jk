@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.JkDirs;
@@ -63,13 +64,14 @@ final class KtsSession {
     private static @Nullable KtsSession current;
     private static boolean hookRegistered;
     private static long idleTimeoutNanos = IDLE_TIMEOUT.toNanos();
+    private static volatile Clock clock = Clock.SYSTEM;
 
     private final Process process;
     private final BufferedWriter toChild;
     private final BufferedReader fromChild;
 
     /** When the last script finished, on the monotonic clock; the reaper measures idleness from it. */
-    private long lastUsedNanos = System.nanoTime();
+    private long lastUsedNanos = clock.nanos();
 
     private KtsSession(Process process) {
         this.process = process;
@@ -97,7 +99,7 @@ final class KtsSession {
                                 + (e.tail().isEmpty() ? "" : ":\n" + e.tail()),
                         e);
             } finally {
-                session.lastUsedNanos = System.nanoTime();
+                session.lastUsedNanos = clock.nanos();
             }
         }
     }
@@ -131,6 +133,11 @@ final class KtsSession {
         synchronized (LOCK) {
             idleTimeoutNanos = timeout.toNanos();
         }
+    }
+
+    /** Test seam: the clock idleness is measured on. */
+    static void clockForTests(Clock c) {
+        clock = c;
     }
 
     /** Ask the child to exit and wait briefly; a child that does not go is killed. */
@@ -231,7 +238,7 @@ final class KtsSession {
                     current = null;
                     return;
                 }
-                long idle = System.nanoTime() - session.lastUsedNanos;
+                long idle = clock.nanos() - session.lastUsedNanos;
                 if (idle >= idleTimeoutNanos) {
                     current = null;
                     session.exit();
