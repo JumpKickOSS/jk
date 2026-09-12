@@ -31,17 +31,17 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
-version  = "2.21"
+version  = "2.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b"
+checksum = "sha256:21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 
 [[artifact]]
 name     = "com.github.javaparser:javaparser-core:jar:"
-version  = "3.28.2"
+version  = "3.28.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b5499a3b1c40b16c0671fabe478c9aafeab38160c6fde74a6c13f42d86716ecd"
+checksum = "sha256:d3852d78461c02602eb9bfc15e9fc21ad7c765e6013a1b6d5809a5d0e7db5309"
 scopes   = ["processor"]
 
 [[artifact]]
@@ -52,7 +52,7 @@ checksum = "sha256:f7bd9d75c66977d8888851f75dc031397274e73f96e5352472edd4cd3a56a
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "com.github.javaparser:javaparser-core:jar:@3.28.2",
+  "com.github.javaparser:javaparser-core:jar:@3.28.0",
   "org.checkerframework:checker-qual:jar:@4.2.1",
 ]
 
@@ -66,9 +66,9 @@ scopes   = ["processor"]
 deps = [
   "io.micronaut.sourcegen:micronaut-sourcegen-model:jar:@2.1.0",
   "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.ow2.asm:asm-commons:jar:@9.10.1",
-  "org.ow2.asm:asm-util:jar:@9.10.1",
-  "org.ow2.asm:asm:jar:@9.10.1",
+  "org.ow2.asm:asm-commons:jar:@9.9.1",
+  "org.ow2.asm:asm-util:jar:@9.9.1",
+  "org.ow2.asm:asm:jar:@9.9.1",
 ]
 
 [[artifact]]
@@ -149,7 +149,7 @@ deps = [
   "io.micronaut:micronaut-aop:jar:@5.1.15",
   "io.micronaut:micronaut-core-reactive:jar:@5.1.15",
   "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.ow2.asm:asm:jar:@9.10.1",
+  "org.ow2.asm:asm:jar:@9.9.1",
   "org.slf4j:slf4j-api:jar:@2.0.18",
 ]
 
@@ -263,7 +263,7 @@ scopes   = ["main", "processor"]
 deps = [
   "io.micronaut:micronaut-core:jar:@5.1.15",
   "jakarta.annotation:jakarta.annotation-api:jar:@2.1.1",
-  "jakarta.inject:jakarta.inject-api:jar:@2.0.1.MR",
+  "jakarta.inject:jakarta.inject-api:jar:@2.0.1",
   "org.slf4j:slf4j-api:jar:@2.0.18",
 ]
 
@@ -275,7 +275,7 @@ checksum = "sha256:a6f1919b4c6589c9d2293b2fbbdeefe8ac8f80b3f687dac4c2a38e9dc4f08
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micronaut:micronaut-json-core:jar:@5.1.15",
   "org.slf4j:slf4j-api:jar:@2.0.18",
   "tools.jackson.core:jackson-core:jar:@3.1.6",
@@ -533,9 +533,9 @@ scopes   = ["main", "processor"]
 
 [[artifact]]
 name     = "jakarta.inject:jakarta.inject-api:jar:"
-version  = "2.0.1.MR"
+version  = "2.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:c6020d26574f3c5eca0a4f28861408d947b663b977450987ec4e265dfaf168a2"
+checksum = "sha256:f7dc98062fccf14126abb751b64fab12c312566e8cbdc8483598bffcea93af7c"
 scopes   = ["main", "processor"]
 
 [[artifact]]
@@ -571,7 +571,7 @@ scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
   "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
 
@@ -604,9 +604,9 @@ deps = [
 
 [[artifact]]
 name     = "org.junit.jupiter:junit-jupiter:jar:"
-version  = "6.1.3"
+version  = "6.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:6b0a14075c74221de53047e363860b7d19fce802bebc152df2c35c4089c6c379"
+checksum = "sha256:2a7877196573a1d32fa726313deffdde2e90cca764647e605093020b08973616"
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
@@ -617,9 +617,9 @@ deps = [
 
 [[artifact]]
 name     = "org.junit.platform:junit-platform-commons:jar:"
-version  = "6.1.3"
+version  = "6.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a4774ae923c109544034aeae7c762cf017fbcdd1342403ba90e0921984b608c3"
+checksum = "sha256:204894c039d321743ee11e7d1dc8360170d7c64391fbea1211178a645c33a92a"
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
@@ -637,7 +637,7 @@ scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
   "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
 
@@ -663,54 +663,54 @@ scopes   = ["test"]
 
 [[artifact]]
 name     = "org.ow2.asm:asm-analysis:jar:"
-version  = "9.10.1"
+version  = "9.9.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dede75a21306b65974ecd8f87114ff6970f09fb794157a4ca09ab25c888c2bfc"
+checksum = "sha256:6260bffc8ec008dd1b713702c7994e2c94d188a3da5bef9e87278a16df6a7522"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm-tree:jar:@9.10.1",
+  "org.ow2.asm:asm-tree:jar:@9.9.1",
 ]
 
 [[artifact]]
 name     = "org.ow2.asm:asm-commons:jar:"
-version  = "9.10.1"
+version  = "9.9.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:6d0abefb7cbf972ea16edb37ec14835372505063a45f976ab7ea889ed9497895"
+checksum = "sha256:c2319e014ce7199f2b7f7d56d6bb991863168c3f4b6cd6c9f542a4937ef7ef88"
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm-tree:jar:@9.10.1",
-  "org.ow2.asm:asm:jar:@9.10.1",
+  "org.ow2.asm:asm-tree:jar:@9.9.1",
+  "org.ow2.asm:asm:jar:@9.9.1",
 ]
 
 [[artifact]]
 name     = "org.ow2.asm:asm-tree:jar:"
-version  = "9.10.1"
+version  = "9.9.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3dfb0d5b6a106cd40b5b250e39935fbf2f927f4477546a5369a3ac609cf0506b"
+checksum = "sha256:0f3555096b720b820bbacab0b515589bee0200bee099bda14c561738ae837ba1"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm:jar:@9.10.1",
+  "org.ow2.asm:asm:jar:@9.9.1",
 ]
 
 [[artifact]]
 name     = "org.ow2.asm:asm-util:jar:"
-version  = "9.10.1"
+version  = "9.9.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1bb99d091fba2597dc6d51193e9bbcf0d8447e7ed96bd8f0198b18152f09655c"
+checksum = "sha256:c5ebbbeaf68126af094b42fa4800f59bc4413abd02d95b9aefad722cd257e207"
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm-analysis:jar:@9.10.1",
-  "org.ow2.asm:asm-tree:jar:@9.10.1",
-  "org.ow2.asm:asm:jar:@9.10.1",
+  "org.ow2.asm:asm-analysis:jar:@9.9.1",
+  "org.ow2.asm:asm-tree:jar:@9.9.1",
+  "org.ow2.asm:asm:jar:@9.9.1",
 ]
 
 [[artifact]]
 name     = "org.ow2.asm:asm:jar:"
-version  = "9.10.1"
+version  = "9.9.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
+checksum = "sha256:6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd"
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 
@@ -746,7 +746,7 @@ checksum = "sha256:f0ff64eaa9f1c4bca9d720cd70c542297b0b19fc8ad08531bc55e36c8eab8
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "tools.jackson.core:jackson-core:jar:@3.1.6",
 ]
 
