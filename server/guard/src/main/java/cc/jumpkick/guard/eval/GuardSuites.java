@@ -292,9 +292,17 @@ public final class GuardSuites {
         return out;
     }
 
-    /** One report line as an evaluation, with the guard's allows applied. */
-    @SuppressWarnings("unchecked")
+    /** One report line as an evaluation, with the guard's allows applied; bytecode sites spelled under {@code src/main/java}. */
     public static Evaluation evaluate(Rule rule, @Nullable Object line, String module) {
+        return evaluate(rule, line, module, null);
+    }
+
+    /**
+     * One report line as an evaluation, with the guard's allows applied. A bytecode site's file is
+     * resolved against the source roots under {@code moduleDir} when the lane has it.
+     */
+    @SuppressWarnings("unchecked")
+    public static Evaluation evaluate(Rule rule, @Nullable Object line, String module, @Nullable Path moduleDir) {
         if (line == null)
             return Evaluation.failed(
                     "the guard suite left no report for `" + rule.id() + "`: the run did not reach it");
@@ -318,7 +326,7 @@ public final class GuardSuites {
                 // a bytecode site names its file under the module's source root; every other kind from the workspace
                 // root
                 boolean fromRoot = "workspace".equals(MiniJson.str(v, "root"));
-                file = fromRoot ? reportedFile : sourcePath(module, reportedFile);
+                file = fromRoot ? reportedFile : SourcePaths.resolve(module, moduleDir, reportedFile);
             }
             int at = MiniJson.get(v, "line") instanceof Number n ? n.intValue() : 0;
             String detail = Objects.requireNonNull(MiniJson.str(v, "detail"), "detail");
@@ -363,10 +371,6 @@ public final class GuardSuites {
             if (in.equals(cls) || Rule.globMatches(in, cls)) return a;
         }
         return null;
-    }
-
-    static String sourcePath(String module, String sourceRootRelative) {
-        return (module.isEmpty() ? "" : module + "/") + "src/main/java/" + sourceRootRelative;
     }
 
     private static String first(AnnotationFacts a, String key) {

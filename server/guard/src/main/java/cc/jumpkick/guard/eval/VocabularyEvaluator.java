@@ -14,7 +14,6 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.host.CodeText;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -285,13 +284,10 @@ final class VocabularyEvaluator implements BatchEvaluator {
 
     /** The owner's own source file inside module {@code moduleDir}, when it lives there: it is exempt. */
     private static @Nullable String ownerSourceRel(ClassFacts owner, Path moduleDir) {
-        if (owner.sourceFile() == null) return null;
-        String pkgPath = owner.packageName().replace('.', '/');
-        String tail = (pkgPath.isEmpty() ? "" : pkgPath + "/") + owner.sourceFile();
-        for (String root : List.of("src/main/java/", "src/main/kotlin/", "src/")) {
-            if (Files.isRegularFile(moduleDir.resolve(root + tail))) return root + tail;
-        }
-        return null;
+        String tail = SourcePaths.tail(owner);
+        if (tail == null) return null;
+        String root = SourcePaths.rootHolding(moduleDir, tail);
+        return root == null ? null : root + "/" + tail;
     }
 
     private static boolean inSourceSet(String rel, boolean all) {

@@ -43,9 +43,13 @@ class TiersEvaluatorTest {
 
     /** A JUnit test class in package {@code p} whose one field has type {@code fieldType}, tagged as given. */
     private static ClassFacts testClass(String simple, String fieldType, String... tags) {
+        return testClassFrom(simple, simple + ".java", fieldType, tags);
+    }
+
+    private static ClassFacts testClassFrom(String simple, String sourceFile, String fieldType, String... tags) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "p/" + simple, null, "java/lang/Object", null);
-        cw.visitSource(simple + ".java", null);
+        cw.visitSource(sourceFile, null);
         for (String tag : tags) {
             AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
             av.visit("value", tag);
@@ -71,9 +75,13 @@ class TiersEvaluatorTest {
     }
 
     private static void source(Path root, String suite, String simple) throws IOException {
-        Path f = root.resolve("m/src/" + suite + "/java/p/" + simple + ".java");
+        source(root, suite, "java", simple + ".java");
+    }
+
+    private static void source(Path root, String suite, String language, String file) throws IOException {
+        Path f = root.resolve("m/src/" + suite + "/" + language + "/p/" + file);
         Files.createDirectories(f.getParent());
-        Files.writeString(f, "package p; class " + simple + " {}\n");
+        Files.writeString(f, "package p; class " + file.substring(0, file.indexOf('.')) + " {}\n");
     }
 
     private static LoadResult load(Path root, String body) throws IOException {
@@ -129,6 +137,19 @@ class TiersEvaluatorTest {
         Evaluation moved = eval(root, r, index(container, plain));
         assertThat(moved.outcome()).isEqualTo(Outcome.CLEAN);
         assertThat(moved.population()).containsEntry("test-classes", 2L);
+    }
+
+    @Test
+    void a_site_names_the_source_root_that_holds_the_class(@TempDir Path root) throws Exception {
+        ClassFacts kotlin = testClassFrom(
+                "KtContainerTest", "KtContainerTest.kt", "org/testcontainers/containers/GenericContainer");
+        source(root, "test", "kotlin", "KtContainerTest.kt");
+        Rule r = rule(root, "uses  = [\"org.testcontainers.**\"]\nsuite = \"integration\"\n");
+        Evaluation e = eval(root, r, index(kotlin));
+        assertThat(e.observations()).singleElement().satisfies(o -> {
+            assertThat(o.file()).isEqualTo("m/src/test/kotlin/p/KtContainerTest.kt");
+            assertThat(o.detail()).contains("lives in src/test");
+        });
     }
 
     @Test

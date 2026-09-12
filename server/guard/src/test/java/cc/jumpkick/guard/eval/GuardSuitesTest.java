@@ -238,6 +238,44 @@ class GuardSuitesTest {
     }
 
     @Test
+    void a_bytecode_site_names_the_source_root_that_holds_it(@TempDir Path root) throws Exception {
+        FactsIndex idx = index(suite("rules/R", "MODULE", "kt|w||" + FACTS_V));
+        Rule rule = GuardSuites.rule(GuardSuites.declared(idx).get(0), root, "m");
+        Path report = GuardSuites.report(root.resolve("target/m"));
+        Files.createDirectories(report.getParent());
+        Files.writeString(report, """
+                {"id":"kt","outcome":"ok","population":1,"violations":[{"fingerprint":"a.K#f()V -> java.lang.System#exit(I)V","file":"a/K.kt","line":4,"detail":"exit"}]}
+                """);
+        Object line = GuardSuites.readReport(report).get("kt");
+        Path source = root.resolve("m/src/main/kotlin/a/K.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "");
+        assertThat(GuardSuites.evaluate(rule, line, "m", root.resolve("m"))
+                        .observations()
+                        .get(0)
+                        .file())
+                .isEqualTo("m/src/main/kotlin/a/K.kt");
+        assertThat(GuardSuites.evaluate(rule, line, "m").observations().get(0).file())
+                .as("without the module directory the spelling is the default layout")
+                .isEqualTo("m/src/main/java/a/K.kt");
+        EvalContext ctx = new EvalContext(
+                Lane.MODULE,
+                root,
+                "m",
+                root.resolve("m"),
+                List.of(root.resolve("m")),
+                () -> FactsIndex.EMPTY,
+                () -> null,
+                List::of);
+        assertThat(Evaluators.forKind(Kind.TEST)
+                        .evaluate(rule, ctx)
+                        .observations()
+                        .get(0)
+                        .file())
+                .isEqualTo("m/src/main/kotlin/a/K.kt");
+    }
+
+    @Test
     void kind_test_is_not_written_in_toml(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve(GuardsPresence.RULES_FILE), "[guards.x]\nkind = \"test\"\nwhy = \"w\"\n");
         var load = GuardRules.load(root, GuardsConfig.ABSENT);

@@ -217,4 +217,39 @@ class ToolchainEvaluatorTest {
                 .contains("lib declares repository `shady`")
                 .contains("jk guard explain repos");
     }
+
+    @Test
+    void a_member_outside_the_root_is_keyed_by_its_relative_spelling(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        workspace(root);
+        Path sibling = Files.createDirectories(tmp.resolve("sib"));
+        Files.writeString(sibling.resolve(ManifestPaths.MANIFEST), """
+                name = "sib"
+                group = "acme"
+                version = "1.0.0"
+                java = 17
+                """);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.floor]
+                kind = "toolchain"
+                java = ">=21"
+                why  = "w"
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx = new EvalContext(
+                Lane.MODEL,
+                root,
+                "",
+                null,
+                List.of(root.resolve("app"), root.resolve("lib"), sibling),
+                () -> FactsIndex.EMPTY,
+                () -> null,
+                List::of);
+        Evaluation e = ev(LaneRun.evaluate(LaneRun.rulesFor(Lane.MODEL, load.rules(), ""), ctx), "floor");
+        assertThat(e.observations())
+                .extracting(Observation::key)
+                .containsExactlyInAnyOrder("java root", "java app", "java ../sib");
+        assertThat(e.observations()).extracting(Observation::file).contains("../sib/jk.toml");
+    }
 }

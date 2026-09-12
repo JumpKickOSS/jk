@@ -245,4 +245,43 @@ class DependEvaluatorTest {
         assertThat(ev(r, "scoped-floor").outcome()).isEqualTo(Outcome.NOT_EVALUATED);
         assertThat(ev(r, "scoped-floor").note()).contains("workspace-wide");
     }
+
+    @Test
+    void a_module_outside_the_root_is_keyed_by_its_relative_spelling_not_an_absolute_path(@TempDir Path tmp)
+            throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        workspace(root);
+        Path sibling = Files.createDirectories(tmp.resolve("sib"));
+        Files.writeString(sibling.resolve(ManifestPaths.MANIFEST), """
+                name = "sib"
+                group = "acme"
+                version = "1.0.0"
+
+                [dependencies]
+                junit = { group = "junit", name = "junit", version = "=4.13.2" }
+                """);
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.no-junit4]
+                kind = "depend"
+                ban = ["junit:junit"]
+                instead = "junit-jupiter"
+                why = "w"
+                """);
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        EvalContext ctx = new EvalContext(
+                Lane.MODEL,
+                root,
+                "",
+                null,
+                List.of(root.resolve("app"), root.resolve("lib"), sibling),
+                () -> FactsIndex.EMPTY,
+                () -> null,
+                List::of);
+        Evaluation e = ev(LaneRun.evaluate(LaneRun.rulesFor(Lane.MODEL, load.rules(), ""), ctx), "no-junit4");
+        assertThat(e.observations())
+                .extracting(Observation::key)
+                .contains("../sib [dependencies] junit:junit")
+                .noneMatch(k -> k.contains(tmp.toString()));
+    }
 }

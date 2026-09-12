@@ -20,6 +20,6 @@ final class TestEvaluator implements Evaluator {
         Path moduleDir = ctx.moduleDir() == null ? ctx.root() : ctx.moduleDir();
         Path report = GuardSuites.report(BuildLayout.moduleTargetDir(ctx.root(), moduleDir));
         Map<String, Object> lines = GuardSuites.readReport(report);
-        return GuardSuites.evaluate(rule, lines.get(rule.id()), ctx.module());
+        return GuardSuites.evaluate(rule, lines.get(rule.id()), ctx.module(), moduleDir);
     }
 }

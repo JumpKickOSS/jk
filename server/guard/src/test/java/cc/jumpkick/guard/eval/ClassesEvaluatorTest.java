@@ -129,6 +129,28 @@ class ClassesEvaluatorTest {
     }
 
     @Test
+    void a_site_is_spelled_from_the_workspace_root_through_the_source_root_that_holds_it(@TempDir Path dir)
+            throws Exception {
+        FactsIndex idx = facts(Sample.class);
+        Path kotlinRooted = dir.resolve("m/src/main/kotlin/" + FIXTURE.replace('.', '/') + "/Sample.java");
+        Files.createDirectories(kotlinRooted.getParent());
+        Files.writeString(kotlinRooted, "");
+        Evaluation inModule = run(dir, "that = { named = \"Sample\" }\nshould = { be = \"abstract\" }\n", idx);
+        assertThat(inModule.observations().get(0).file())
+                .isEqualTo("m/src/main/kotlin/" + FIXTURE.replace('.', '/') + "/Sample.java");
+
+        Path atRoot = dir.resolve("src/main/java/" + FIXTURE.replace('.', '/') + "/Sample.java");
+        Files.createDirectories(atRoot.getParent());
+        Files.writeString(atRoot, "");
+        Rule rule = rule(dir, "that = { named = \"Sample\" }\nshould = { be = \"abstract\" }\n");
+        EvalContext root = new EvalContext(Lane.MODULE, dir, "", dir, List.of(dir), () -> idx, () -> null, List::of);
+        Evaluation rootModule = Evaluators.forKind(rule.kind()).evaluate(rule, root);
+        assertThat(rootModule.observations().get(0).file())
+                .as("the root module's site is a file that exists, not a bare package path")
+                .isEqualTo("src/main/java/" + FIXTURE.replace('.', '/') + "/Sample.java");
+    }
+
+    @Test
     void the_closed_sets_are_closed_and_an_empty_that_is_blind(@TempDir Path dir) throws Exception {
         FactsIndex idx = facts(Sample.class, Tier.class);
         Evaluation unknown = run(dir, "that = { named = \"Sample\" }\nshould = { colour = \"red\" }\n", idx);

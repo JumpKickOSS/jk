@@ -88,6 +88,11 @@ public final class WorkspaceModel {
         return out;
     }
 
+    /**
+     * The workspace-relative spelling of a module directory, the one every model kind keys its
+     * sites and baseline entries by: {@code ""} for the root, {@code ../sibling} for a member outside
+     * it — never an absolute path, which would make the baseline machine-specific.
+     */
     static String rel(Path root, Path dir) {
         Path r = root.toAbsolutePath().normalize();
         Path d = dir.toAbsolutePath().normalize();

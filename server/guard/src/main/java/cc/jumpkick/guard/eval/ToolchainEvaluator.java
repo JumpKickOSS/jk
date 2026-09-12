@@ -59,7 +59,7 @@ final class ToolchainEvaluator implements Evaluator {
             Path f = m.resolve(ManifestPaths.MANIFEST);
             if (Files.isRegularFile(f) && !f.equals(rootManifest)) {
                 // The member as written, not as inherited: what the root says is judged once, at the root.
-                manifests.add(new Manifest(rel(ctx.root(), m), JkBuildParser.parseLocal(f)));
+                manifests.add(new Manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parseLocal(f)));
             }
         }
         Path lockFile = ctx.root().resolve(ManifestPaths.LOCK);
@@ -187,11 +187,5 @@ final class ToolchainEvaluator implements Evaluator {
         if (jdk == null || jdk.isBlank()) return null;
         String major = jdk.split("[.+-]")[0];
         return major.chars().allMatch(Character::isDigit) ? major : null;
-    }
-
-    private static String rel(Path root, Path dir) {
-        Path r = root.toAbsolutePath().normalize();
-        Path d = dir.toAbsolutePath().normalize();
-        return d.startsWith(r) ? r.relativize(d).toString().replace('\\', '/') : d.toString();
     }
 }

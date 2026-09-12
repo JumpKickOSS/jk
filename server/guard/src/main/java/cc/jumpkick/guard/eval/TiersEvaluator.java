@@ -56,18 +56,19 @@ final class TiersEvaluator implements Evaluator {
             examined++;
             String cause = cause(c, typeGlobs, tagged);
             if (cause == null) continue;
-            String own = suiteOf(c, moduleDir, compact, suites);
+            Home home = homeOf(c, moduleDir, compact, suites);
+            String own = home == null ? null : home.suite();
             String where = own == null ? "an unknown suite" : "src/" + own;
             if (suite != null && !suite.equals(own)) {
                 sites.add(Observation.site(
                         c.binaryName(),
-                        source(ctx, c, own),
+                        source(ctx, c, home),
                         0,
                         c.binaryName() + " " + cause + " but lives in " + where + ", not src/" + suite));
             } else if (tag != null && !tags(c).contains(tag)) {
                 sites.add(Observation.site(
                         c.binaryName(),
-                        source(ctx, c, own),
+                        source(ctx, c, home),
                         0,
                         c.binaryName() + " " + cause + " but carries no @Tag(\"" + tag + "\")"));
             }
@@ -96,27 +97,26 @@ final class TiersEvaluator implements Evaluator {
         return out;
     }
 
-    /** The suite whose source root holds this class's source file; {@code null} when none does. */
-    static @Nullable String suiteOf(ClassFacts c, Path moduleDir, boolean compact, List<String> suites) {
-        String file = c.sourceFile();
-        if (file == null) return null;
-        String rel = c.packageName().replace('.', '/') + (c.packageName().isEmpty() ? "" : "/") + file;
+    /** The suite whose source root holds a class's source file, and that root. */
+    record Home(String suite, Path root) {}
+
+    /** Where this class's source file lives across the module's suites; {@code null} when no root holds it. */
+    static @Nullable Home homeOf(ClassFacts c, Path moduleDir, boolean compact, List<String> suites) {
+        String tail = SourcePaths.tail(c);
+        if (tail == null) return null;
         for (String s : suites) {
-            List<Path> roots = new ArrayList<>(TestSuites.javaRoots(moduleDir, compact, s));
-            roots.addAll(TestSuites.kotlinRoots(moduleDir, compact, s));
-            roots.addAll(TestSuites.groovyRoots(moduleDir, compact, s));
-            roots.addAll(TestSuites.scalaRoots(moduleDir, compact, s));
-            for (Path r : roots) if (Files.isRegularFile(r.resolve(rel))) return s;
+            for (Path r : SourcePaths.suiteRoots(moduleDir, compact, s)) {
+                if (Files.isRegularFile(r.resolve(tail))) return new Home(s, r);
+            }
         }
         return null;
     }
 
-    private static @Nullable String source(EvalContext ctx, ClassFacts c, @Nullable String suite) {
-        String file = c.sourceFile();
-        if (file == null || suite == null) return null;
-        String pkgPath = c.packageName().replace('.', '/');
-        String rel = (pkgPath.isEmpty() ? "" : pkgPath + "/") + file;
-        return (ctx.module().isEmpty() ? "" : ctx.module() + "/") + "src/" + suite + "/java/" + rel;
+    private static @Nullable String source(EvalContext ctx, ClassFacts c, @Nullable Home home) {
+        String tail = SourcePaths.tail(c);
+        Path moduleDir = ctx.moduleDir();
+        if (tail == null || home == null || moduleDir == null) return null;
+        return SourcePaths.under(ctx.module(), moduleDir, home.root(), tail);
     }
 
     /** {@code org.testcontainers.**} → any type under that package; {@code *} stays within one segment. */

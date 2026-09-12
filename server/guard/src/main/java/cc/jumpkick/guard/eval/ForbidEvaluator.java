@@ -413,11 +413,7 @@ final class ForbidEvaluator implements Evaluator {
 
     /** The source path a class compiled from, when its {@code SourceFile} attribute survived. */
     static @Nullable String source(EvalContext ctx, ClassFacts c) {
-        String file = c.sourceFile();
-        if (file == null) return null;
-        String pkgPath = c.packageName().replace('.', '/');
-        String rel = (pkgPath.isEmpty() ? "" : pkgPath + "/") + file;
-        return ctx.module().isEmpty() ? rel : ctx.module() + "/src/main/java/" + rel;
+        return SourcePaths.of(ctx, c);
     }
 
     private static String display(CallSite s) {

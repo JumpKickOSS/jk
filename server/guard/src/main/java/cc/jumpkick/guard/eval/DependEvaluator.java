@@ -50,7 +50,8 @@ final class DependEvaluator implements Evaluator {
         if (Files.isRegularFile(rootManifest)) manifests.add(manifest("", JkBuildParser.parse(rootManifest)));
         for (Path m : ctx.modules()) {
             Path f = m.resolve(ManifestPaths.MANIFEST);
-            if (Files.isRegularFile(f)) manifests.add(manifest(rel(ctx.root(), m), JkBuildParser.parse(f)));
+            if (Files.isRegularFile(f))
+                manifests.add(manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parse(f)));
         }
         // A scoped rule reads the scoped manifests. The lock is workspace-wide and names no module,
         // so it is read only by an unscoped rule: a ban scoped to one module cannot judge it honestly.
@@ -307,11 +308,5 @@ final class DependEvaluator implements Evaluator {
             if (!module.isEmpty() && (a.in().equals(module) || Rule.globMatches(a.in(), module))) return a;
         }
         return null;
-    }
-
-    private static String rel(Path root, Path dir) {
-        Path r = root.toAbsolutePath().normalize();
-        Path d = dir.toAbsolutePath().normalize();
-        return d.startsWith(r) ? r.relativize(d).toString().replace('\\', '/') : d.toString();
     }
 }
