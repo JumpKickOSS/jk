@@ -99,6 +99,42 @@ public final class ReleaseVerifier {
     }
 
     /**
+     * The latest-release pointer: the one mutable object under {@code releases/}, so it is signed
+     * data rather than a bare version string. {@code version} is the release directory the pointer
+     * names; {@code issued} is when the pointer was written, in Unix seconds.
+     */
+    public record Pointer(String version, long issued) {}
+
+    private static final Pattern POINTER =
+            Pattern.compile("version ([0-9]+\\.[0-9]+\\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\\nissued ([0-9]{1,18})\\n");
+
+    /**
+     * Parse the exact bytes of a {@code LATEST} pointer: precisely {@code version <v>} and {@code
+     * issued <unix-seconds>}, each LF-terminated, nothing else. The signature is over these bytes,
+     * so the verifier's reading has to be as literal as the signer's writing — a CRLF, a third
+     * line or a version that is not a plain version token is refused, not tolerated.
+     */
+    public static Pointer parsePointer(byte[] pointerBytes) throws IOException {
+        String text;
+        try {
+            text = StandardCharsets.US_ASCII
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(pointerBytes))
+                    .toString();
+        } catch (CharacterCodingException e) {
+            throw new IOException("latest-release pointer is not ASCII", e);
+        }
+        var match = POINTER.matcher(text);
+        if (!match.matches()) {
+            throw new IOException("latest-release pointer is malformed — expected exactly"
+                    + " 'version <x.y.z>' and 'issued <unix-seconds>', LF-terminated");
+        }
+        return new Pointer(match.group(1), Long.parseLong(match.group(2)));
+    }
+
+    /**
      * Return the unique digest for {@code artifactName} from a strict coreutils checksum manifest.
      * Every non-final line must be {@code <64 hex><two spaces><plain filename>}.
      */

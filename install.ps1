@@ -83,6 +83,10 @@ function Write-Err([string] $Message) {
 }
 function Die([string] $Message) {
     Write-Err $Message
+    # The download scratch directory exists from source resolution on; a refusal must not leave it.
+    if ($script:tmpRoot -and (Test-Path -LiteralPath $script:tmpRoot)) {
+        Remove-Item -LiteralPath $script:tmpRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
     exit 1
 }
 
@@ -100,6 +104,10 @@ $InstallDir = Join-Path $JkHome "bin"
 $ReleasesUrl = if ($env:JK_RELEASES_URL) { $env:JK_RELEASES_URL.TrimEnd("/") } else { "https://jumpkick.build/releases" }
 $ReleaseRsaModulus = "ztiftv1t1l9vI1xebPHGe/MAapolNPiYE/elvRFT2OL3SyawfN19L+qxiyHGsJUF52+zGhVLU2s5RR+b5bj9Cjey2wDs+AAL4nR0FSzo8seXNoahOMZfv+gJY386YenXGAxbElwuw3LqTIlfQvPwiX+9m/RBltKk7WOQI9z35/a17P1i7sj8hC/QHtRCnhsX73wGFKP9jng1Ftk+v/U5gvzSOcGawYyQJ0iP/p2nyiBIrxTLSJDx4u+gHVdk1PUmW8p5h31GsDqBUzkTX0GUut2gVolaPpW/9rP/QyNv9vtxtnby6T1xVSAkP5rL+rIedr52mSwiUDOTl9WxJzGZdIREvSMn6H37pAFATbokYETCEQQ33MelCWFMjfQYBxSU0dVrigmiQOYIhYOR9IcuFM22w5Lkq2jick7u/TKZGy9Nq0F2/jxNF28CQj7S5nkpoQTrHIfg86/upXMtU3QK/Zfes37TGptB3wuPjXm3b09iiquOqrClJ6TN9Yz1tbu7"
 $ReleaseRsaExponent = "AQAB"
+# The release this installer ships with. A signed latest-release pointer naming anything older is
+# a rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
+# refused; JK_VERSION remains the deliberate way to install a specific release.
+$ReleaseFloor = "0.13.3"
 
 # irm|iex cannot pass positional args; allow JK_LOCAL_PATH as the local-dist seam.
 if (-not $LocalPath -and $env:JK_LOCAL_PATH) {
@@ -135,16 +143,6 @@ function Get-JkTarget {
 # Windows PowerShell 5.1 repaints its progress bar on every received chunk, which makes a
 # multi-megabyte Invoke-WebRequest many times slower. The preference is set in the function
 # scope, so the caller's session keeps its own value.
-
-function Get-TextUrl([string] $Url) {
-    $ProgressPreference = "SilentlyContinue"
-    # PS 5.1 may return a byte[] for some content types; normalize to string.
-    $resp = Invoke-WebRequest -UseBasicParsing -Uri $Url
-    if ($resp.Content -is [byte[]]) {
-        return [Text.Encoding]::UTF8.GetString($resp.Content).Trim()
-    }
-    return ([string]$resp.Content).Trim()
-}
 
 function Save-Url([string] $Url, [string] $OutFile) {
     $ProgressPreference = "SilentlyContinue"
@@ -188,6 +186,78 @@ function Get-StrictManifestHash {
     return $found
 }
 
+# Verify the release key's RSA/SHA-256 signature in $Signature over the exact $SignedBytes, or
+# throw naming $What. Every remote input that steers the install — the latest-release pointer and
+# the version directory's SHA256SUMS — passes through here before anything it names is trusted.
+function Test-ReleaseSignature {
+    param(
+        [Parameter(Mandatory = $true)][byte[]] $SignedBytes,
+        [Parameter(Mandatory = $true)][string] $Signature,
+        [Parameter(Mandatory = $true)][string] $Modulus,
+        [Parameter(Mandatory = $true)][string] $Exponent,
+        [Parameter(Mandatory = $true)][string] $What
+    )
+    $signatureBytes = [IO.File]::ReadAllBytes($Signature)
+    $signatureText = [Text.Encoding]::ASCII.GetString($signatureBytes)
+    if ($signatureText -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$') {
+        throw "$What signature is malformed"
+    }
+    try {
+        $signatureValue = [Convert]::FromBase64String($signatureText.TrimEnd([char[]]"`r`n"))
+    } catch {
+        throw "$What signature is not valid base64"
+    }
+    if ($signatureValue.Length -ne ([Convert]::FromBase64String($Modulus)).Length) {
+        throw "$What signature has the wrong RSA length"
+    }
+
+    $parameters = New-Object System.Security.Cryptography.RSAParameters
+    $parameters.Modulus = [Convert]::FromBase64String($Modulus)
+    $parameters.Exponent = [Convert]::FromBase64String($Exponent)
+    $rsa = [Security.Cryptography.RSA]::Create()
+    try {
+        $rsa.ImportParameters($parameters)
+        $valid = $rsa.VerifyData(
+            $SignedBytes,
+            $signatureValue,
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    } finally {
+        $rsa.Dispose()
+    }
+    if (-not $valid) {
+        throw "$What signature verification failed; refusing the download"
+    }
+}
+
+# The version a verified latest-release pointer names. The signature covers the exact bytes, so
+# the reading is as literal as the writing: precisely `version <x.y.z>` then `issued <seconds>`,
+# LF-terminated, or a refusal. A pointer older than $Floor is a rollback and is refused too.
+function Get-ReleasePointerVersion {
+    param(
+        [Parameter(Mandatory = $true)][string] $Pointer,
+        [Parameter(Mandatory = $true)][string] $Signature,
+        [Parameter(Mandatory = $true)][string] $Modulus,
+        [Parameter(Mandatory = $true)][string] $Exponent,
+        [Parameter(Mandatory = $true)][string] $Floor
+    )
+    $pointerBytes = [IO.File]::ReadAllBytes($Pointer)
+    Test-ReleaseSignature -SignedBytes $pointerBytes -Signature $Signature -Modulus $Modulus -Exponent $Exponent `
+        -What "latest-release pointer"
+    foreach ($byte in $pointerBytes) {
+        if ($byte -gt 127) { throw "latest-release pointer is not ASCII" }
+    }
+    $text = [Text.Encoding]::ASCII.GetString($pointerBytes)
+    if ($text -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$') {
+        throw "latest-release pointer is malformed; refusing"
+    }
+    $version = $Matches[1]
+    if ([version]($version -replace '-.*', '') -lt [version]($Floor -replace '-.*', '')) {
+        throw "latest-release pointer names $version, older than the $Floor this installer ships with; refusing a rolled-back pointer (set JK_VERSION to install a specific release)"
+    }
+    return $version
+}
+
 function Test-ReleaseEvidence {
     param(
         [Parameter(Mandatory = $true)][string] $Artifact,
@@ -198,37 +268,8 @@ function Test-ReleaseEvidence {
         [Parameter(Mandatory = $true)][string] $Exponent
     )
     $manifestBytes = [IO.File]::ReadAllBytes($Manifest)
-    $signatureBytes = [IO.File]::ReadAllBytes($Signature)
-    $signatureText = [Text.Encoding]::ASCII.GetString($signatureBytes)
-    if ($signatureText -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$') {
-        throw "release signature is malformed"
-    }
-    try {
-        $signatureValue = [Convert]::FromBase64String($signatureText.TrimEnd([char[]]"`r`n"))
-    } catch {
-        throw "release signature is not valid base64"
-    }
-    if ($signatureValue.Length -ne ([Convert]::FromBase64String($Modulus)).Length) {
-        throw "release signature has the wrong RSA length"
-    }
-
-    $parameters = New-Object System.Security.Cryptography.RSAParameters
-    $parameters.Modulus = [Convert]::FromBase64String($Modulus)
-    $parameters.Exponent = [Convert]::FromBase64String($Exponent)
-    $rsa = [Security.Cryptography.RSA]::Create()
-    try {
-        $rsa.ImportParameters($parameters)
-        $valid = $rsa.VerifyData(
-            $manifestBytes,
-            $signatureValue,
-            [Security.Cryptography.HashAlgorithmName]::SHA256,
-            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
-    } finally {
-        $rsa.Dispose()
-    }
-    if (-not $valid) {
-        throw "release signature verification failed; refusing the download"
-    }
+    Test-ReleaseSignature -SignedBytes $manifestBytes -Signature $Signature -Modulus $Modulus -Exponent $Exponent `
+        -What "release"
 
     $expected = Get-StrictManifestHash -ManifestBytes $manifestBytes -ArtifactName $ArtifactName
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -441,6 +482,9 @@ function Ensure-ProfileExecutionPolicy {
 
 # ---- resolve source (URL or local file) ------------------------------------
 
+$tmpRoot = Join-Path ([IO.Path]::GetTempPath()) ("jk-install-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
+
 $ArchiveUrl = $null
 $ArchiveFile = $null
 $IsRemote = $false
@@ -461,14 +505,29 @@ if ($LocalPath) {
     $target = Get-JkTarget
     $version = $env:JK_VERSION
     if (-not $version) {
+        # The pointer is signed data and the only mutable input: verified against the release key,
+        # read literally, and refused when it names a release older than this installer's own.
+        $pointerFile = Join-Path $tmpRoot "LATEST"
+        $pointerSignature = Join-Path $tmpRoot "LATEST.sig"
         try {
-            $version = Get-TextUrl "$ReleasesUrl/latest/VERSION"
+            Save-Url "$ReleasesUrl/latest/LATEST" $pointerFile
         } catch {
-            Die "could not resolve the latest jk version from $ReleasesUrl/latest/VERSION ($($_.Exception.Message))"
+            Die "could not resolve the latest jk version from $ReleasesUrl/latest/LATEST ($($_.Exception.Message))"
+        }
+        try {
+            Save-Url "$ReleasesUrl/latest/LATEST.sig" $pointerSignature
+        } catch {
+            Die "could not download the latest-release pointer signature from $ReleasesUrl/latest/LATEST.sig ($($_.Exception.Message))"
+        }
+        try {
+            $version = Get-ReleasePointerVersion -Pointer $pointerFile -Signature $pointerSignature `
+                -Modulus $ReleaseRsaModulus -Exponent $ReleaseRsaExponent -Floor $ReleaseFloor
+        } catch {
+            Die $_.Exception.Message
         }
     }
     if (-not $version) {
-        Die "could not resolve the latest jk version from $ReleasesUrl/latest/VERSION"
+        Die "could not resolve the latest jk version from $ReleasesUrl/latest/LATEST"
     }
     # Windows installer prefers .zip (no system xz). Self-update uses .xz via the engine.
     $ArchiveUrl = "$ReleasesUrl/$version/jk-$target-$version.zip"
@@ -496,8 +555,6 @@ if ($IsRemote) {
 
 # ---- download & install ----------------------------------------------------
 
-$tmpRoot = Join-Path ([IO.Path]::GetTempPath()) ("jk-install-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
 try {
     if ($IsRemote) {
         $ArchiveFile = Join-Path $tmpRoot "jk.archive"

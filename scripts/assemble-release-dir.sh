@@ -15,7 +15,7 @@
 # jk-engine-<version>.jar
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
-# ../latest/VERSION pointer is the caller's job (CI).
+# The ../latest/ pointer (LATEST, LATEST.sig, VERSION) is the caller's job: scripts/sign-latest-pointer.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

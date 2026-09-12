@@ -13,6 +13,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.Signature;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -39,7 +43,12 @@ class WrapperTemplateTest {
     void posix_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String sh = template("jk.sh");
         // The two frozen dependencies: the release layout and the lock's optional floor.
-        assertThat(sh).contains("latest/VERSION").contains("SHA256SUMS.sig");
+        assertThat(sh).contains("latest/LATEST").contains("latest/LATEST.sig").contains("SHA256SUMS.sig");
+        // The pointer is signed data, verified before the version it names is used for anything.
+        assertThat(sh.indexOf("verify_release_signature \"$TMP/LATEST\""))
+                .isLessThan(sh.indexOf("jk-$OS-$ARCH-$VERSION.xz"));
+        assertThat(sh).contains("/^version [0-9]+").contains("/^issued [0-9]+$/");
+        assertThat(sh).doesNotContain("latest/VERSION");
         assertThat(sh).contains(ReleaseVerifier.BUILT_IN_KEY);
         assertThat(sh).contains("\"jk-min = \"*").contains("$SEARCH/jk-lock.toml");
         // Bin resolution mirrors install.sh/JkDirs: one home, one bin, no cascade to drift from.
@@ -57,7 +66,7 @@ class WrapperTemplateTest {
         // A jk found on PATH is exec'd only when it is not this wrapper by identity or by content.
         assertThat(sh).contains("real_path \"$PATH_JK\"").contains("is_wrapper \"$PATH_JK\"");
         // A failed or empty VERSION fetch is an error that names the URL, never a bare download.
-        assertThat(sh).contains("could not read $RELEASES/latest/VERSION").contains("is empty");
+        assertThat(sh).contains("could not read $RELEASES/latest/LATEST").contains("is not a release pointer");
         assertThat(sh).doesNotContain(".zip");
         // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness.
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
@@ -66,7 +75,9 @@ class WrapperTemplateTest {
     @Test
     void windows_wrapper_bootstraps_and_touches_only_the_frozen_surfaces() throws Exception {
         String bat = template("jk.bat");
-        assertThat(bat).contains("latest/VERSION").contains("SHA256SUMS.sig");
+        assertThat(bat).contains("'/latest/'").contains("'LATEST.sig'").contains("SHA256SUMS.sig");
+        assertThat(bat).contains("^version ([0-9]+").contains("if not defined VERSION");
+        assertThat(bat).doesNotContain("latest/VERSION");
         assertThat(bat).contains("RSASignaturePadding]::Pkcs1").contains("$count -ne 1");
         assertThat(bat).contains(ReleaseVerifier.BUILT_IN_RSA_MODULUS).contains(ReleaseVerifier.BUILT_IN_RSA_EXPONENT);
         assertThat(bat).contains("jk-min");
@@ -142,7 +153,7 @@ class WrapperTemplateTest {
                     .isEqualTo(1);
             assertThat(run.stderr())
                     .as("PATH=%s", onPath)
-                    .contains("could not read file://" + tmp.resolve("no-such-releases") + "/latest/VERSION");
+                    .contains("could not read file://" + tmp.resolve("no-such-releases") + "/latest/LATEST");
         }
     }
 
@@ -161,42 +172,88 @@ class WrapperTemplateTest {
     }
 
     /**
-     * A failed fetch of {@code latest/VERSION} names the URL and stops. In a pipeline the shell
-     * saw only {@code tr}'s status, so an offline host carried an empty VERSION into a vacuous
-     * floor check and asked the host for {@code jk-linux-x86_64-.xz}.
+     * The latest-release pointer is signed data. A pointer that cannot be read stops with its URL;
+     * one whose body is not exactly {@code version <v>} / {@code issued <n>} is refused after its
+     * signature verifies; one signed by another key is refused before its body is read. So a
+     * hostile body never names a download, whatever it says, and a verified pointer names exactly
+     * the version it carries.
      */
     @Test
-    void posix_wrapper_reports_an_unreachable_or_empty_version_instead_of_downloading(@TempDir Path tmp)
-            throws Exception {
+    void posix_wrapper_refuses_an_unreachable_malformed_or_foreign_signed_pointer(@TempDir Path tmp) throws Exception {
         if (Os.isWindows()) return;
-        Path repo = materialize(tmp.resolve("repo"));
+        KeyPair release = rsa3072();
+        Path repo = materialize(tmp.resolve("repo"), spki(release));
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
 
         Run offline = runWrapper(repo, tmp, empty, "file://" + tmp.resolve("no-such-releases"));
         assertThat(offline.exit()).isEqualTo(1);
-        assertThat(offline.stderr()).contains("could not read").doesNotContain("fetching jk");
+        assertThat(offline.stderr())
+                .contains("could not read")
+                .contains("latest/LATEST")
+                .doesNotContain("fetching jk");
 
-        Path releases = tmp.resolve("releases");
-        Files.createDirectories(releases.resolve("latest"));
-        Files.writeString(releases.resolve("latest/VERSION"), "\n");
-        Run blank = runWrapper(repo, tmp, empty, "file://" + releases);
+        Path latest = Files.createDirectories(tmp.resolve("releases/latest"));
+        String releases = "file://" + tmp.resolve("releases");
+
+        signedPointer(latest, "\n", release);
+        Run blank = runWrapper(repo, tmp, empty, releases);
         assertThat(blank.exit()).isEqualTo(1);
-        assertThat(blank.stderr()).contains("is empty").doesNotContain("fetching jk");
+        assertThat(blank.stderr()).contains("is not a release pointer").doesNotContain("fetching jk");
 
-        Files.writeString(releases.resolve("latest/VERSION"), "1.0'; echo pwned; '\n");
-        Run hostile = runWrapper(repo, tmp, empty, "file://" + releases);
+        signedPointer(latest, "version 1.0'; echo pwned; '\nissued 1\n", release);
+        Run hostile = runWrapper(repo, tmp, empty, releases);
         assertThat(hostile.exit()).isEqualTo(1);
-        assertThat(hostile.stderr()).contains("is not a version").doesNotContain("fetching jk");
+        assertThat(hostile.stderr()).contains("is not a release pointer").doesNotContain("fetching jk");
         assertThat(hostile.stdout()).doesNotContain("pwned");
+
+        signedPointer(latest, "version 1.0.0\nissued 1\n", rsa3072());
+        Run foreign = runWrapper(repo, tmp, empty, releases);
+        assertThat(foreign.exit()).isEqualTo(1);
+        assertThat(foreign.stderr()).contains("signature verification failed").doesNotContain("fetching jk");
+
+        signedPointer(latest, "version 1.0.0\nissued 1\n", release);
+        Run named = runWrapper(repo, tmp, empty, releases);
+        assertThat(named.stderr())
+                .as("a verified pointer names the version to fetch")
+                .contains("fetching jk 1.0.0");
+    }
+
+    private static KeyPair rsa3072() throws Exception {
+        KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
+        gen.initialize(3072);
+        return gen.generateKeyPair();
+    }
+
+    /** The public key as the wrapper bakes it in: base64 of the X.509 SubjectPublicKeyInfo. */
+    private static String spki(KeyPair key) {
+        return Base64.getEncoder().encodeToString(key.getPublic().getEncoded());
+    }
+
+    /**
+     * {@code LATEST} holding exactly {@code body} and {@code LATEST.sig} over those bytes from
+     * {@code signer}, laid out as sign-latest-pointer.sh writes them.
+     */
+    private static void signedPointer(Path latestDir, String body, KeyPair signer) throws Exception {
+        byte[] bytes = body.getBytes(StandardCharsets.US_ASCII);
+        Files.write(latestDir.resolve("LATEST"), bytes);
+        Signature signature = Signature.getInstance("SHA256withRSA");
+        signature.initSign(signer.getPrivate());
+        signature.update(bytes);
+        Files.writeString(latestDir.resolve("LATEST.sig"), Base64.getEncoder().encodeToString(signature.sign()) + "\n");
     }
 
     private record Run(int exit, String stdout, String stderr) {}
 
     /** The committed wrapper as {@code jk wrapper} writes it: {@code <dir>/jk}, executable. */
     private static Path materialize(Path dir) throws Exception {
+        return materialize(dir, ReleaseVerifier.BUILT_IN_KEY);
+    }
+
+    /** As above, trusting {@code spki} as the release key so a test can sign what the wrapper reads. */
+    private static Path materialize(Path dir, String spki) throws Exception {
         Files.createDirectories(dir);
         Path jk = dir.resolve("jk");
-        Files.writeString(jk, template("jk.sh"));
+        Files.writeString(jk, template("jk.sh").replace(ReleaseVerifier.BUILT_IN_KEY, spki));
         Files.setPosixFilePermissions(jk, PosixFilePermissions.fromString("rwxr-xr-x"));
         return dir;
     }

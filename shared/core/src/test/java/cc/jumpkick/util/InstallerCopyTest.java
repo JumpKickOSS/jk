@@ -86,6 +86,31 @@ class InstallerCopyTest {
     }
 
     /**
+     * The installers refuse a signed latest-release pointer older than the release they ship
+     * with, so the floor they embed is the declared version — bumped with it, or a freshly
+     * published installer refuses the pointer it was published to read.
+     */
+    @Test
+    void installers_embed_the_declared_version_as_the_pointer_floor() throws IOException {
+        Path repo = findRepoRoot();
+        String declared = capture(
+                Files.readString(repo.resolve("shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java")),
+                "VERSION\\s*=\\s*\"([^\"]+)\"");
+        String shell = Files.readString(repo.resolve("install.sh"));
+        String powershell = Files.readString(repo.resolve("install.ps1"));
+
+        assertThat(capture(shell, "RELEASE_FLOOR=\"([^\"]+)\"")).isEqualTo(declared);
+        assertThat(capture(powershell, "\\$ReleaseFloor = \"([^\"]+)\"")).isEqualTo(declared);
+        // Verified before the version directory is named: the pointer check precedes the archive URL.
+        assertThat(shell.indexOf("verify_signature \"$TMPDIR_JK/LATEST\""))
+                .isLessThan(shell.indexOf("ARCHIVE_URL=\"$RELEASES_URL/$VERSION/"));
+        assertThat(powershell.indexOf("Get-ReleasePointerVersion -Pointer"))
+                .isLessThan(powershell.indexOf("$ArchiveUrl = \"$ReleasesUrl/$version/"));
+        assertThat(shell).doesNotContain("latest/VERSION");
+        assertThat(powershell).doesNotContain("latest/VERSION");
+    }
+
+    /**
      * {@code scripts/install.ps1} predates the repo-root entrypoint and was once a full duplicate
      * — a third copy to keep in step. It must stay a forwarder.
      */

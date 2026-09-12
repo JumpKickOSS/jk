@@ -11,7 +11,7 @@
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
 #
 # Hosting: objects in GCS; public CDN will be Firebase later. Path:
-#   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/VERSION
+#   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/{LATEST,LATEST.sig,VERSION}
 # Public HTTPS (until Firebase): https://storage.googleapis.com/$BUCKET/releases/…
 
 name: Release
@@ -220,10 +220,13 @@ jobs:
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
       # Preconditions first, then the version tree and the Maven repository, and the latest pointer
-      # as the very last object: an installer that reads it finds everything it names already there.
+      # as the very last objects: an installer that reads it finds everything it names already there.
+      # The pointer is signed data (scripts/sign-latest-pointer.sh); its signature goes up before
+      # the pointer, so a client reading mid-publish gets a refusal, never an unverified version.
       - name: Upload to GCS
         env:
           BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
+          JK_RELEASE_RSA_SIGNING_KEY: ${{ secrets.JK_RELEASE_RSA_SIGNING_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -241,14 +244,15 @@ jobs:
           # The plugin jars the engine fetches from jumpkick.build/repo/: additive, so earlier versions stay.
           gsutil -m rsync -r "out/repo/" "gs://${BUCKET}/repo/"
           echo "  gs://${BUCKET}/repo/cc/jumpkick/ ($(find out/repo -name '*.jar' | wc -l) jars)"
-          mkdir -p out/latest
-          printf '%s\n' "$VER" > out/latest/VERSION
-          gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
-            "gs://${BUCKET}/releases/latest/VERSION"
+          scripts/sign-latest-pointer.sh "$VER" out/latest
+          for object in LATEST.sig LATEST VERSION; do
+            gsutil -h "Cache-Control:no-cache,max-age=0" cp "out/latest/$object" \
+              "gs://${BUCKET}/releases/latest/$object"
+          done
           echo "Published:"
           echo "  gs://${BUCKET}/releases/${VER}/"
-          echo "  gs://${BUCKET}/releases/latest/VERSION"
-          echo "  https://storage.googleapis.com/${BUCKET}/releases/latest/VERSION"
+          echo "  gs://${BUCKET}/releases/latest/{LATEST,LATEST.sig,VERSION}"
+          echo "  https://storage.googleapis.com/${BUCKET}/releases/latest/LATEST"
           echo "  https://jumpkick.build/repo/cc/jumpkick/jk-formatter/${VER}/jk-formatter-${VER}.jar"
           gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
-          gsutil cat "gs://${BUCKET}/releases/latest/VERSION"
+          gsutil cat "gs://${BUCKET}/releases/latest/LATEST"

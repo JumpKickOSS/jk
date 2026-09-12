@@ -25,6 +25,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.ByteArrayInputStream;
@@ -281,11 +282,13 @@ public final class SelfCommand extends GroupCommand {
             URI base = releasesBase();
             String target = in.positionals().isEmpty() ? null : in.positionals().get(0);
             Http http = new Http();
+            String running = JkVersion.VERSION;
             if (target == null) {
-                target = new String(
-                                get(http, URI.create(base + "/latest/VERSION"), "latest version pointer"),
-                                StandardCharsets.UTF_8)
-                        .trim();
+                target = latestVersion(
+                        ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()),
+                        get(http, URI.create(base + "/latest/LATEST"), "latest-release pointer"),
+                        get(http, URI.create(base + "/latest/LATEST.sig"), "latest-release pointer signature"),
+                        running);
             }
             if (target.isEmpty()) {
                 CommandWedge.printFail("Self", "could not resolve a target version");
@@ -293,7 +296,6 @@ public final class SelfCommand extends GroupCommand {
             }
             EngineInstall install = EngineInstall.current();
             Cas cas = JkStores.storeCas();
-            String running = JkVersion.VERSION;
             if (target.equals(running) && install.resolve(target).isPresent()) {
                 CommandWedge.printOk("Self", target + " is already current");
                 return 0;
@@ -321,6 +323,25 @@ public final class SelfCommand extends GroupCommand {
         }
 
         record Fetched(EngineInstall.Materialized engine, String clientSha) {}
+
+        /**
+         * The version the signed latest-release pointer names, once its signature verifies and it
+         * is not older than {@code running}. The pointer is the one mutable input of an update, so
+         * a bucket writer or a mirror that rolls it back to an older, validly signed release must
+         * get a refusal here rather than a downgrade; an explicit {@code jk self update <version>}
+         * never reads the pointer and stays the deliberate way down.
+         */
+        static String latestVersion(ReleaseVerifier verifier, byte[] pointer, byte[] signature, String running)
+                throws IOException {
+            verifier.verify(pointer, new String(signature, StandardCharsets.UTF_8));
+            String latest = ReleaseVerifier.parsePointer(pointer).version();
+            if (Versions.compare(latest, running) < 0) {
+                throw new IOException("the latest-release pointer names " + latest + ", older than the " + running
+                        + " this jk runs — REFUSING a rolled-back pointer (a mirror or the release site may be"
+                        + " stale or compromised; `jk self update " + latest + "` downgrades deliberately)");
+            }
+            return latest;
+        }
 
         static Path pathClient(Path binDir) {
             Path exe = binDir.resolve("jk.exe");

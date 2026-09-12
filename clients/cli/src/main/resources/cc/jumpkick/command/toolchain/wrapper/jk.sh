@@ -3,8 +3,8 @@
 #
 # Bootstraps CURRENT jk, never a historical one: uses the locally installed jk that
 # satisfies the lock's optional `jk-min` floor, else fetches the latest published release
-# (verified against the signed release SHA256SUMS) and execs it. The lock pins inputs, not the
-# operator — there is no version pin here and none in jk-lock.toml.
+# (its signed latest/LATEST pointer, then the signed release SHA256SUMS) and execs it. The lock
+# pins inputs, not the operator — there is no version pin here and none in jk-lock.toml.
 set -eu
 
 # Where jk lives / gets installed — the SAME answer as install.sh and JkDirs, which is now
@@ -99,25 +99,57 @@ if command -v jk >/dev/null 2>&1; then
   fi
 fi
 
-# Nothing suitable installed — bootstrap the latest published release. The fetch is checked
-# on its own: in a pipeline `set -e` would see only tr's status, and an offline host would
-# carry an empty VERSION into a vacuous floor check and a download of `jk-…-.xz`.
-if ! VERSION_RAW="$(curl -fsSL "$RELEASES/latest/VERSION")"; then
-  echo "jk wrapper: could not read $RELEASES/latest/VERSION — offline, or JK_RELEASES_URL is wrong." >&2
-  exit 1
-fi
-VERSION="$(printf '%s' "$VERSION_RAW" | tr -d '[:space:]')"
-if [ -z "$VERSION" ]; then
-  echo "jk wrapper: $RELEASES/latest/VERSION is empty — check JK_RELEASES_URL." >&2
-  exit 1
-fi
-# The version names a directory and a file below; accept only a version token.
-case "$VERSION" in
-  *[!0-9A-Za-z._-]*)
-    echo "jk wrapper: $RELEASES/latest/VERSION is not a version: $VERSION — refusing." >&2
+# Verify the release key's signature in $2 over the exact bytes of $1, or exit naming $3.
+verify_release_signature() {
+  if ! command -v openssl >/dev/null 2>&1; then
+    echo "jk wrapper: OpenSSL is required to authenticate the release." >&2
     exit 1
-    ;;
-esac
+  fi
+  [ -f "$TMP/release-public.pem" ] || {
+    printf '%s\n' "-----BEGIN PUBLIC KEY-----"
+    printf '%s' "$RELEASE_RSA_SPKI" | fold -w 64
+    printf '\n'
+    printf '%s\n' "-----END PUBLIC KEY-----"
+  } >"$TMP/release-public.pem"
+  VS_TEXT="$(tr -d '\r' <"$2")"
+  VS_LINES="$(wc -l <"$2" | tr -d '[:space:]')"
+  if { [ "$VS_LINES" != "0" ] && [ "$VS_LINES" != "1" ]; } ||
+    [ "${#VS_TEXT}" -ne 512 ] ||
+    ! printf '%s' "$VS_TEXT" | LC_ALL=C grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
+    echo "jk wrapper: $3 signature is malformed — refusing." >&2
+    exit 1
+  fi
+  printf '%s' "$VS_TEXT" | openssl base64 -d -A >"$2.bin" 2>/dev/null || {
+    echo "jk wrapper: $3 signature is not valid base64 — refusing." >&2
+    exit 1
+  }
+  openssl dgst -sha256 -verify "$TMP/release-public.pem" -signature "$2.bin" "$1" >/dev/null 2>&1 || {
+    echo "jk wrapper: $3 signature verification failed — refusing." >&2
+    exit 1
+  }
+}
+
+# Nothing suitable installed — bootstrap the latest published release. The pointer is signed
+# data — LATEST (`version <v>` / `issued <unix-seconds>`) and LATEST.sig over its exact bytes —
+# and is read literally once the signature verifies; the lock's jk-min floor below is what
+# refuses a pointer rolled back to a release too old for this checkout.
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+if ! curl -fsSL -o "$TMP/LATEST" "$RELEASES/latest/LATEST" ||
+  ! curl -fsSL -o "$TMP/LATEST.sig" "$RELEASES/latest/LATEST.sig"; then
+  echo "jk wrapper: could not read $RELEASES/latest/LATEST — offline, or JK_RELEASES_URL is wrong." >&2
+  exit 1
+fi
+verify_release_signature "$TMP/LATEST" "$TMP/LATEST.sig" "latest-release pointer"
+VERSION="$(awk '
+  NR == 1 && $0 ~ /^version [0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9]+)*$/ { v = substr($0, 9); next }
+  NR == 2 && $0 ~ /^issued [0-9]+$/ { next }
+  { bad = 1 }
+  END { if (bad || NR != 2 || v == "") exit 1; print v }
+' "$TMP/LATEST")" || {
+  echo "jk wrapper: $RELEASES/latest/LATEST is not a release pointer — refusing." >&2
+  exit 1
+}
 if [ -n "$FLOOR" ] && ! ver_ge "$VERSION" "$FLOOR"; then
   echo "jk wrapper: this lock requires jk >= $FLOOR but the latest release is $VERSION — check JK_RELEASES_URL." >&2
   exit 1
@@ -128,8 +160,6 @@ case "$OS" in darwin) OS=macos ;; esac
 ARCH="$(uname -m)"
 case "$ARCH" in amd64) ARCH=x86_64 ;; arm64) ARCH=aarch64 ;; esac
 FILE="jk-$OS-$ARCH-$VERSION.xz"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 echo "jk wrapper: fetching jk $VERSION ..." >&2
 curl -fsSL -o "$TMP/$FILE" "$RELEASES/$VERSION/$FILE"
 curl -fsSL -o "$TMP/SHA256SUMS" "$RELEASES/$VERSION/SHA256SUMS"

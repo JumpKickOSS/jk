@@ -29,10 +29,11 @@ main() {
   JK_HOME_DIR="${JK_HOME:-${HOME}/.jk}"
   INSTALL_DIR="${JK_HOME_DIR}/bin"
   # One immutable directory per version (jk-<os>-<arch>-<version>[.xz] + jk-engine-<version>.jar
-  # + SHA256SUMS); `latest/VERSION` is the only mutable pointer. The version is
-  # resolved ONCE and both artifacts come from the frozen directory, so a release
-  # published mid-install can never hand out a binary and an engine jar that
-  # disagree (the client refuses to launch a version-skewed jar).
+  # + SHA256SUMS); `latest/LATEST` is the only mutable pointer, and it is signed data
+  # (`version <v>` / `issued <unix-seconds>` + LATEST.sig) verified before anything it
+  # names is fetched. The version is resolved ONCE and both artifacts come from the
+  # frozen directory, so a release published mid-install can never hand out a binary
+  # and an engine jar that disagree (the client refuses to launch a version-skewed jar).
   RELEASES_URL="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 
   # Optional positional argument: local path to jk, jk.xz, or jk.zip.
@@ -92,15 +93,65 @@ main() {
   have() { command -v "$1" >/dev/null 2>&1; }
 
   RELEASE_RSA_SPKI="MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAztiftv1t1l9vI1xebPHGe/MAapolNPiYE/elvRFT2OL3SyawfN19L+qxiyHGsJUF52+zGhVLU2s5RR+b5bj9Cjey2wDs+AAL4nR0FSzo8seXNoahOMZfv+gJY386YenXGAxbElwuw3LqTIlfQvPwiX+9m/RBltKk7WOQI9z35/a17P1i7sj8hC/QHtRCnhsX73wGFKP9jng1Ftk+v/U5gvzSOcGawYyQJ0iP/p2nyiBIrxTLSJDx4u+gHVdk1PUmW8p5h31GsDqBUzkTX0GUut2gVolaPpW/9rP/QyNv9vtxtnby6T1xVSAkP5rL+rIedr52mSwiUDOTl9WxJzGZdIREvSMn6H37pAFATbokYETCEQQ33MelCWFMjfQYBxSU0dVrigmiQOYIhYOR9IcuFM22w5Lkq2jick7u/TKZGy9Nq0F2/jxNF28CQj7S5nkpoQTrHIfg86/upXMtU3QK/Zfes37TGptB3wuPjXm3b09iiquOqrClJ6TN9Yz1tbu7AgMBAAE="
+  # The release this installer ships with. A signed pointer naming anything older is a
+  # rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
+  # refused; JK_VERSION remains the deliberate way to install a specific release.
+  RELEASE_FLOOR="0.13.3"
+
+  # Verify the release key's RSA/SHA-256 signature in <sig-file> over the exact bytes of
+  # <signed-file>, or die naming <what>. Every remote input that steers the install — the
+  # latest-release pointer and the version directory's SHA256SUMS — passes through here
+  # before anything it names is trusted.
+  verify_signature() {
+    local signed="$1" sig="$2" what="$3" sig_text sig_lines
+    have openssl || die "OpenSSL is required to authenticate remote JumpKick releases."
+    [ -f "$TMPDIR_JK/release-public.pem" ] || {
+      printf '%s\n' "-----BEGIN PUBLIC KEY-----"
+      printf '%s' "$RELEASE_RSA_SPKI" | fold -w 64
+      printf '\n'
+      printf '%s\n' "-----END PUBLIC KEY-----"
+    } >"$TMPDIR_JK/release-public.pem"
+    sig_text="$(tr -d '\r' <"$sig")"
+    sig_lines="$(wc -l <"$sig" | tr -d '[:space:]')"
+    if { [ "$sig_lines" != "0" ] && [ "$sig_lines" != "1" ]; } ||
+      [ "${#sig_text}" -ne 512 ] ||
+      ! printf '%s' "$sig_text" | LC_ALL=C grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
+      die "$what signature is malformed."
+    fi
+    printf '%s' "$sig_text" | openssl base64 -d -A >"$sig.bin" 2>/dev/null \
+      || die "$what signature is not valid base64."
+    [ "$(wc -c <"$sig.bin" | tr -d '[:space:]')" = "384" ] \
+      || die "$what signature has the wrong RSA-3072 length."
+    openssl dgst -sha256 -verify "$TMPDIR_JK/release-public.pem" \
+      -signature "$sig.bin" "$signed" >/dev/null 2>&1 \
+      || die "$what signature verification failed; refusing the download."
+  }
+
+  # The version a verified LATEST pointer names. The signature covers the exact bytes, so the
+  # reading is as literal as the writing: precisely `version <x.y.z>` then `issued <seconds>`,
+  # LF-terminated, or nothing.
+  pointer_version() {
+    awk '
+      NR == 1 && $0 ~ /^version [0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9]+)*$/ { v = substr($0, 9); next }
+      NR == 2 && $0 ~ /^issued [0-9]+$/ { next }
+      { bad = 1 }
+      END { if (bad || NR != 2 || v == "") exit 1; print v }
+    ' "$1"
+  }
+
+  # True when $1 >= $2 as dotted versions (pre-release suffixes compare by their numeric core).
+  ver_ge() {
+    local a="${1%%-*}" b="${2%%-*}" hi
+    hi="$(printf '%s\n%s\n' "$a" "$b" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)"
+    [ "$hi" = "$a" ]
+  }
 
   # Pick a downloader (not needed when a local file is provided).
   if [ -z "$LOCAL_FILE" ]; then
     if have curl; then
       download() { curl -fsSL "$1" -o "$2"; }
-      fetch_text() { curl -fsSL "$1"; }
     elif have wget; then
       download() { wget -q "$1" -O "$2"; }
-      fetch_text() { wget -qO- "$1"; }
     else
       die "neither curl nor wget found on PATH; cannot download jk."
     fi
@@ -152,6 +203,10 @@ main() {
 
   # ---- resolve source (URL or local file) ------------------------------------
 
+  TMPDIR_JK="$(mktemp -d "${TMPDIR:-/tmp}/jk-install.XXXXXX")"
+  cleanup() { rm -rf "$TMPDIR_JK"; }
+  trap cleanup EXIT
+
   # Sets decompress() based on the file/URL extension.
   # Plain binary (no .xz/.zip — the local dist flow) is installed with cp.
   infer_decompress() {
@@ -182,12 +237,20 @@ main() {
     if [ -n "${JK_VERSION:-}" ]; then
       VERSION="$JK_VERSION"
     else
-      # `|| die` keeps a 404 / DNS failure inside the substitution from exiting under set -e
-      # before anything names the URL.
-      VERSION="$(fetch_text "$RELEASES_URL/latest/VERSION" | tr -d '[:space:]')" \
-        || die "could not resolve the latest jk version from $RELEASES_URL/latest/VERSION"
+      # The pointer is signed data and the only mutable input: verified against the release key,
+      # read literally, and refused when it names a release older than this installer's own.
+      download "$RELEASES_URL/latest/LATEST" "$TMPDIR_JK/LATEST" \
+        || die "could not resolve the latest jk version from $RELEASES_URL/latest/LATEST"
+      download "$RELEASES_URL/latest/LATEST.sig" "$TMPDIR_JK/LATEST.sig" \
+        || die "could not download the latest-release pointer signature from $RELEASES_URL/latest/LATEST.sig"
+      verify_signature "$TMPDIR_JK/LATEST" "$TMPDIR_JK/LATEST.sig" "latest-release pointer"
+      VERSION="$(pointer_version "$TMPDIR_JK/LATEST")" \
+        || die "latest-release pointer at $RELEASES_URL/latest/LATEST is malformed; refusing."
+      ver_ge "$VERSION" "$RELEASE_FLOOR" \
+        || die "latest-release pointer names $VERSION, older than the $RELEASE_FLOOR this installer ships with;" \
+               "refusing a rolled-back pointer (set JK_VERSION to install a specific release)."
     fi
-    [ -n "$VERSION" ] || die "could not resolve the latest jk version from $RELEASES_URL/latest/VERSION"
+    [ -n "$VERSION" ] || die "could not resolve the latest jk version from $RELEASES_URL/latest/LATEST"
     ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET-$VERSION.$EXT"
     infer_decompress "$ARCHIVE_URL"
   fi
@@ -206,10 +269,6 @@ main() {
 
   # ---- download & install ----------------------------------------------------
 
-  TMPDIR_JK="$(mktemp -d "${TMPDIR:-/tmp}/jk-install.XXXXXX")"
-  cleanup() { rm -rf "$TMPDIR_JK"; }
-  trap cleanup EXIT
-
   if [ -n "$LOCAL_FILE" ]; then
     ARCHIVE_FILE="$LOCAL_FILE"
   else
@@ -221,28 +280,7 @@ main() {
     download "$RELEASE_VERSION_URL/SHA256SUMS.sig" "$TMPDIR_JK/SHA256SUMS.sig" \
       || die "failed to download release signature evidence."
 
-    have openssl || die "OpenSSL is required to authenticate remote JumpKick releases."
-    {
-      printf '%s\n' "-----BEGIN PUBLIC KEY-----"
-      printf '%s' "$RELEASE_RSA_SPKI" | fold -w 64
-      printf '\n'
-      printf '%s\n' "-----END PUBLIC KEY-----"
-    } >"$TMPDIR_JK/release-public.pem"
-
-    SIG_TEXT="$(tr -d '\r' <"$TMPDIR_JK/SHA256SUMS.sig")"
-    SIG_LINES="$(wc -l <"$TMPDIR_JK/SHA256SUMS.sig" | tr -d '[:space:]')"
-    if { [ "$SIG_LINES" != "0" ] && [ "$SIG_LINES" != "1" ]; } ||
-      [ "${#SIG_TEXT}" -ne 512 ] ||
-      ! printf '%s' "$SIG_TEXT" | LC_ALL=C grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
-      die "release signature is malformed."
-    fi
-    printf '%s' "$SIG_TEXT" | openssl base64 -d -A >"$TMPDIR_JK/SHA256SUMS.sig.bin" 2>/dev/null \
-      || die "release signature is not valid base64."
-    [ "$(wc -c <"$TMPDIR_JK/SHA256SUMS.sig.bin" | tr -d '[:space:]')" = "384" ] \
-      || die "release signature has the wrong RSA-3072 length."
-    openssl dgst -sha256 -verify "$TMPDIR_JK/release-public.pem" \
-      -signature "$TMPDIR_JK/SHA256SUMS.sig.bin" "$TMPDIR_JK/SHA256SUMS" >/dev/null 2>&1 \
-      || die "release signature verification failed; refusing the download."
+    verify_signature "$TMPDIR_JK/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS.sig" "release"
 
     if ! EXPECTED_SHA="$(awk -v wanted="$ARTIFACT_NAME" '
       {

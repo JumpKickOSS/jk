@@ -17,7 +17,9 @@ $rsa.PersistKeyInCsp = $false
 $public = $rsa.ExportParameters($false)
 $modulus = [Convert]::ToBase64String($public.Modulus)
 $exponent = [Convert]::ToBase64String($public.Exponent)
-$powershell = (Get-Process -Id $PID).Path
+# The interpreter that re-runs the installer in verify-only mode: this process, unless the host
+# launches PowerShell through a runtime shim (a dotnet global tool) and names the real one instead.
+$powershell = if ($env:JK_TEST_POWERSHELL) { $env:JK_TEST_POWERSHELL } else { (Get-Process -Id $PID).Path }
 
 # The installer's functions are lifted from install.ps1 by their AST, so the script body never runs
 # here; the cmdlets they call are shadowed below by recording functions.
@@ -47,7 +49,6 @@ function script:Invoke-WebRequest {
     param([switch] $UseBasicParsing, [string] $Uri, [string] $OutFile)
     $script:seenProgress += [string] $ProgressPreference
     if ($OutFile) { [IO.File]::WriteAllText($OutFile, "fixture", [Text.Encoding]::ASCII) }
-    return [pscustomobject] @{ Content = "1.2.3`n" }
 }
 
 $script:policies = @()
@@ -160,6 +161,70 @@ try {
     Remove-Item -LiteralPath $signature -Force
     Assert-Fails "missing signature"
 
+    # ---- the signed latest-release pointer -------------------------------------------------
+    Import-InstallerFunction "Test-ReleaseSignature"
+    Import-InstallerFunction "Get-ReleasePointerVersion"
+    $pointer = Join-Path $work "LATEST"
+    $pointerSignature = Join-Path $work "LATEST.sig"
+    function Write-Pointer([string] $Text, [Security.Cryptography.RSA] $Signer = $rsa) {
+        [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes($Text))
+        $sig = $Signer.SignData(
+            [IO.File]::ReadAllBytes($pointer),
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        [IO.File]::WriteAllText($pointerSignature, [Convert]::ToBase64String($sig) + "`n", [Text.Encoding]::ASCII)
+    }
+    function Resolve-Pointer([string] $Floor = "1.0.0") {
+        return Get-ReleasePointerVersion -Pointer $pointer -Signature $pointerSignature `
+            -Modulus $modulus -Exponent $exponent -Floor $Floor
+    }
+    function Assert-PointerRefused([string] $Case, [string] $Expected) {
+        try {
+            $got = Resolve-Pointer
+            throw "$Case unexpectedly resolved to $got"
+        } catch {
+            if ($_.Exception.Message -notmatch [regex]::Escape($Expected)) { throw "$Case was refused for another reason: $($_.Exception.Message)" }
+        }
+    }
+
+    Write-Pointer "version 1.0.0`nissued 1757700000`n"
+    if ((Resolve-Pointer) -cne "1.0.0") { throw "a valid pointer did not resolve to its version" }
+    Write-Pointer "version 1.2.0-rc.1`nissued 1757700000`n"
+    if ((Resolve-Pointer) -cne "1.2.0-rc.1") { throw "a pre-release pointer did not resolve to its version" }
+
+    Remove-Item -LiteralPath $pointerSignature -Force
+    Assert-PointerRefused "unsigned pointer" "Could not find file"
+
+    Write-Pointer "version 1.0.0`nissued 1757700000`n"
+    [IO.File]::WriteAllBytes($pointer, [Text.Encoding]::ASCII.GetBytes("version 1.0.1`nissued 1757700000`n"))
+    Assert-PointerRefused "tampered pointer" "latest-release pointer signature verification failed"
+
+    # Rollback: an older release's pointer, validly signed, re-served as the latest one.
+    Write-Pointer "version 0.9.0`nissued 1757700000`n"
+    Assert-PointerRefused "rolled-back pointer" "names 0.9.0, older than the 1.0.0 this installer ships with"
+
+    $foreign = New-Object Security.Cryptography.RSACryptoServiceProvider -ArgumentList 3072
+    try {
+        $foreign.PersistKeyInCsp = $false
+        Write-Pointer "version 1.0.0`nissued 1757700000`n" $foreign
+    } finally {
+        $foreign.Dispose()
+    }
+    Assert-PointerRefused "pointer signed by an untrusted key" "latest-release pointer signature verification failed"
+
+    # Signed, but not the two-line form the signer writes.
+    foreach ($malformed in @(
+            "version 1.0.0`r`nissued 1757700000`r`n",
+            "1.0.0`n",
+            "version 1.0.0`n",
+            "version 1.0.0`nissued 1757700000",
+            "version 1.0.0`nissued 1757700000`nversion 0.9.0`n",
+            "version ../1.0.0`nissued 1757700000`n",
+            "version 1.0.0`nissued soon`n")) {
+        Write-Pointer $malformed
+        Assert-PointerRefused "malformed pointer '$($malformed -replace "`r", '\r' -replace "`n", '\n')'" "latest-release pointer is malformed"
+    }
+
     # ---- host mapping: releases publish windows-x86_64 only ---------------------------------
     Import-InstallerFunction "Get-JkTarget"
     $script:notes = @()
@@ -180,11 +245,10 @@ try {
 
     # ---- downloads run with the progress bar off, without touching the caller's preference ---
     Import-InstallerFunction "Save-Url"
-    Import-InstallerFunction "Get-TextUrl"
     $script:seenProgress = @()
     $ProgressPreference = "Continue"
     Save-Url "https://fixture/releases/1.0.0/x.zip" (Join-Path $work "download.zip")
-    if ((Get-TextUrl "https://fixture/releases/latest/VERSION") -cne "1.2.3") { throw "Get-TextUrl did not return the trimmed body" }
+    Save-Url "https://fixture/releases/latest/LATEST" (Join-Path $work "download-pointer")
     if (($script:seenProgress -join ",") -cne "SilentlyContinue,SilentlyContinue") {
         throw "downloads ran with ProgressPreference $($script:seenProgress -join ',')"
     }

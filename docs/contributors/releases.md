@@ -11,8 +11,10 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 | Prior | **`0.13.0`** — previous tagged release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.13.3`, `0.14.0`, … |
 
-Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, and workspace `jk.toml`
-coordinates together (search for the old version string).
+Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, workspace `jk.toml`
+coordinates and the installers' pointer floor (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor`
+in `install.ps1`, mirrored under `hosting/public/`) together — search for the old version string.
+`InstallerCopyTest` fails when the floor and `JkVersion` disagree.
 
 ## Hosting (GCS + Firebase CDN)
 
@@ -44,7 +46,10 @@ Layout under the bucket (and under the CDN path `/releases`):
 ```text
 releases/
   latest/
-    VERSION                 # single line, e.g. 0.13.3  (Cache-Control: no-cache)
+    LATEST                  # signed pointer: `version 0.13.3` + `issued <unix-seconds>`, LF each
+    LATEST.sig              # base64 RSA/SHA-256 signature over the exact LATEST bytes
+    VERSION                 # bare version — a redirect-compatible convenience nothing verifies
+                            # (all three: Cache-Control: no-cache)
   0.13.3/
     jk-linux-x86_64-0.13.3.xz
     jk-linux-aarch64-0.13.3.xz
@@ -63,9 +68,19 @@ manifest is signed but not bound to its directory, so a valid manifest copied fr
 release into a newer version's directory names only the older artifacts and satisfies no
 request for the newer one. `jk self update` prefers `.xz` on every OS
 (the engine jar inflates; the native CLI does not link tukaani) and falls back to
-`.zip` on Windows when the sums have no xz entry. All three read `latest/VERSION`,
-then fetch **only** from that version directory so a mid-install publish cannot mix
-artifacts.
+`.zip` on Windows when the sums have no xz entry. All of them read `latest/LATEST` and
+`latest/LATEST.sig`, verify the signature, read the pointer literally (exactly the two lines
+above; a CRLF, a bare version or a third line is refused), then fetch **only** from the version
+directory it names so a mid-install publish cannot mix artifacts.
+
+The pointer is the one mutable object under `releases/`, so it is the one a bucket writer or an
+interposed `JK_RELEASES_URL` mirror would rewrite. Signing it stops an edited pointer; the floor
+stops a rolled-back one — a valid old pointer re-served as current. The installers refuse a
+pointer older than the release they ship with (`RELEASE_FLOOR` / `$ReleaseFloor`, equal to
+`JkVersion.VERSION`); `jk self update` refuses one older than the version it runs. The
+committed wrappers refuse one below the lock's `jk-min` floor. `JK_VERSION` and
+`jk self update <version>` never read the pointer and remain the deliberate way to a specific
+release, down included.
 
 Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
@@ -73,17 +88,22 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
 
 ## Signing
 
-- Algorithm: **SHA256withRSA**, RSA-3072, PKCS#1 v1.5, over the exact `SHA256SUMS` bytes.
+- Algorithm: **SHA256withRSA**, RSA-3072, PKCS#1 v1.5, over the exact `SHA256SUMS` bytes and,
+  with the same key, over the exact `latest/LATEST` bytes.
 - Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI), with the same
   modulus/exponent embedded in the stock PowerShell verifier.
 - Private key: GitHub Actions secret **`JK_RELEASE_RSA_SIGNING_KEY`** (base64 PKCS#8 DER).
 - Local sign: `scripts/sign-release.sh path/to/SHA256SUMS /owner-only/path/release-key.pem`
+- Pointer: `scripts/sign-latest-pointer.sh <version> <out-dir> /owner-only/path/release-key.pem`
+  writes `LATEST`, `LATEST.sig` and `VERSION` (fixtures: `scripts/test-installer-verification.sh`
+  and `.ps1` cover an unsigned, a tampered, a rolled-back and a malformed pointer).
 - Additional host keys: `[release] trusted-keys` in `~/.jk/config.toml`.
 
-Remote installers, wrappers, self-update, and engine materialization all require the signature.
-They verify the manifest signature first, require one strict exact artifact entry, then verify the
-artifact hash before extracting, parking an existing binary, writing, or executing downloaded
-bytes. Local file installs remain an explicit unsigned development path.
+Remote installers, wrappers, self-update, and engine materialization all require the signatures.
+They verify the pointer signature and its floor first, then the manifest signature, require one
+strict exact artifact entry, then verify the artifact hash before extracting, parking an existing
+binary, writing, or executing downloaded bytes. Local file installs remain an explicit unsigned
+development path.
 
 ## CI release (tag-triggered)
 
@@ -98,7 +118,9 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 4. Merge job flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial
    matrix or a differing engine jar), re-signs the combined `SHA256SUMS`, then **`gsutil rsync`**
    to GCS when secrets are set.
-5. Update `releases/latest/VERSION` (no-cache headers).
+5. Sign and upload the pointer (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then
+   `LATEST`, then `VERSION`, all with no-cache headers. A client reading between the two copies
+   gets a signature refusal and retries; it never gets an unverified version.
 
 ### Required secrets
 
@@ -113,12 +135,32 @@ workflow artifacts for a staged dry-run.
 
 ### Manual upload (ops)
 
+Releases are published by hand today; the workflow is not dispatched. Order matters: the
+version tree, then the pointer (signature before pointer), then the website — a freshly
+deployed `install.sh` carries the new floor and refuses the old pointer until step 2 is done.
+
 ```bash
-# After assemble-release-dir.sh (or downloading the merged workflow artifact):
+# 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
 gsutil -m rsync -r -d build/release/0.13.3/ gs://$BUCKET/releases/0.13.3/
-echo 0.13.3 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
-  gs://$BUCKET/releases/latest/VERSION
+
+# 2. The signed pointer: LATEST.sig, then LATEST, then the VERSION convenience.
+scripts/sign-latest-pointer.sh 0.13.3 build/release/latest /owner-only/path/release-key.pem
+for object in LATEST.sig LATEST VERSION; do
+  gsutil -h "Cache-Control:no-cache,max-age=0" cp "build/release/latest/$object" \
+    "gs://$BUCKET/releases/latest/$object"
+done
+
+# 3. Verify through the public edge the installers use, with the baked-in public key:
+curl -fsSL https://jumpkick.build/releases/latest/LATEST -o LATEST
+curl -fsSL https://jumpkick.build/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
+openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST   # "Verified OK"
+cat LATEST                                                                        # version 0.13.3 / issued …
+
+# 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
 ```
+
+`release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in
+`-----BEGIN PUBLIC KEY-----` / `-----END PUBLIC KEY-----` at 64 columns.
 
 ## Local dry-run
 

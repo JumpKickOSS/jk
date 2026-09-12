@@ -17,8 +17,10 @@ JK_RELEASE_RSA_SIGNING_KEY="$TEST_PKCS8" \
 openssl base64 -d -A -in "$WORK/secret-form-sums.sig" -out "$WORK/secret-form-sums.sig.bin"
 openssl dgst -sha256 -verify "$WORK/test-public.pem" \
   -signature "$WORK/secret-form-sums.sig.bin" "$WORK/secret-form-sums" >/dev/null
+# The fixture installer trusts the throwaway key and ships with the fixture release as its floor.
 awk -v key="$TEST_SPKI" '
   /^ *RELEASE_RSA_SPKI=/ { sub(/"[^"]*"/, "\"" key "\""); print; next }
+  /^ *RELEASE_FLOOR=/ { sub(/"[^"]*"/, "\"1.0.0\""); print; next }
   { print }
 ' "$ROOT/install.sh" >"$WORK/install.sh"
 chmod +x "$WORK/install.sh"
@@ -158,41 +160,102 @@ grep -q "JK_HOME must be an absolute path" "$WORK/last-install.log" || {
 }
 [[ ! -e "$WORK/rel-home" ]] || { echo "relative JK_HOME created a directory" >&2; exit 1; }
 
-# Without JK_VERSION the installer reads latest/VERSION and takes the host's artifact from that
-# release directory. A missing pointer (404, DNS) is reported with its URL instead of leaving the
-# user with curl's bare exit status.
+# Without JK_VERSION the installer reads the signed latest/LATEST pointer and takes the host's
+# artifact from the release directory it names. A missing pointer (404, DNS) is reported with its
+# URL instead of leaving the user with curl's bare exit status.
 host_os="$(uname -s)"
 case "$host_os" in Linux) host_os=linux ;; Darwin) host_os=macos ;; esac
 host_arch="$(uname -m)"
 case "$host_arch" in x86_64|amd64) host_arch=x86_64 ;; aarch64|arm64) host_arch=aarch64 ;; esac
 LATEST_ARTIFACT="jk-$host_os-$host_arch-1.0.0.xz"
+LATEST_DIR="$WORK/http/releases/latest"
+write_pointer() {
+  rm -rf "$LATEST_DIR"
+  "$ROOT/scripts/sign-latest-pointer.sh" "$1" "$LATEST_DIR" "${2:-$WORK/test-key.pem}" >/dev/null
+}
 if command -v xz >/dev/null 2>&1; then
   xz -kc "$RELEASE/$ARTIFACT" >"$RELEASE/$LATEST_ARTIFACT"
-  mkdir -p "$WORK/http/releases/latest"
-  printf '1.0.0\n' >"$WORK/http/releases/latest/VERSION"
+  write_pointer 1.0.0
+  [[ "$(cat "$LATEST_DIR/VERSION")" == "1.0.0" ]] || { echo "the pointer script did not write the bare VERSION" >&2; exit 1; }
+  grep -qE '^version 1\.0\.0$' "$LATEST_DIR/LATEST" && grep -qE '^issued [0-9]+$' "$LATEST_DIR/LATEST" \
+    || { cat "$LATEST_DIR/LATEST" >&2; echo "the pointer script did not write a two-line LATEST" >&2; exit 1; }
   latest_hash="$(openssl dgst -sha256 "$RELEASE/$LATEST_ARTIFACT" | awk '{print tolower($NF)}')"
   write_evidence "$latest_hash  $LATEST_ARTIFACT"$'\n'
   run_installer "$WORK/home-latest" || {
     cat "$WORK/last-install.log" >&2
-    echo "latest/VERSION install failed" >&2
+    echo "latest/LATEST install failed" >&2
     exit 1
   }
   cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-latest/bin/jk" || {
-    echo "latest/VERSION install did not unpack the host artifact" >&2
+    echo "latest/LATEST install did not unpack the host artifact" >&2
     exit 1
   }
   rm -f "$RELEASE/$LATEST_ARTIFACT"
 fi
 
+# Every pointer refusal happens before the version directory is even named, so these cases need
+# no artifact and no xz. The prior installation must stay untouched each time.
+assert_pointer_refused() {
+  local case_name="$1" expected="$2"
+  local home="$WORK/home-$case_name"
+  mkdir -p "$home/bin"
+  printf 'prior-install' >"$home/bin/jk"
+  if run_installer "$home"; then
+    cat "$WORK/last-install.log" >&2
+    echo "$case_name unexpectedly installed" >&2
+    exit 1
+  fi
+  grep -qF -- "$expected" "$WORK/last-install.log" || {
+    cat "$WORK/last-install.log" >&2
+    echo "$case_name was refused, but not for '$expected'" >&2
+    exit 1
+  }
+  [[ "$(cat "$home/bin/jk")" == "prior-install" ]] || {
+    echo "$case_name changed the prior installation" >&2
+    exit 1
+  }
+}
+
+write_pointer 1.0.0
+rm -f "$LATEST_DIR/LATEST.sig"
+assert_pointer_refused "unsigned-pointer" "could not download the latest-release pointer signature"
+
+write_pointer 1.0.0
+sed -i.bak 's/^version 1\.0\.0$/version 1.0.1/' "$LATEST_DIR/LATEST"
+assert_pointer_refused "tampered-pointer" "latest-release pointer signature verification failed"
+
+# Rollback: an older release's pointer, validly signed, re-served as the latest one.
+write_pointer 0.9.0
+assert_pointer_refused "rolled-back-pointer" "names 0.9.0, older than the 1.0.0 this installer ships with"
+
+write_pointer 1.0.0 "$WORK/other-key.pem"
+assert_pointer_refused "untrusted-key-pointer" "latest-release pointer signature verification failed"
+
+# Signed, but not the two-line form the signer writes: CRLF, a bare version, a third line.
+write_pointer 1.0.0
+printf 'version 1.0.0\r\nissued 1\r\n' >"$LATEST_DIR/LATEST"
+"$ROOT/scripts/sign-release.sh" "$LATEST_DIR/LATEST" "$WORK/test-key.pem" >/dev/null
+assert_pointer_refused "crlf-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+printf '1.0.0\n' >"$LATEST_DIR/LATEST"
+"$ROOT/scripts/sign-release.sh" "$LATEST_DIR/LATEST" "$WORK/test-key.pem" >/dev/null
+assert_pointer_refused "bare-version-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+printf 'version 1.0.0\nissued 1\nversion 0.9.0\n' >"$LATEST_DIR/LATEST"
+"$ROOT/scripts/sign-release.sh" "$LATEST_DIR/LATEST" "$WORK/test-key.pem" >/dev/null
+assert_pointer_refused "three-line-pointer" "latest-release pointer at https://fixture/releases/latest/LATEST is malformed"
+
+# The bare VERSION is a convenience nothing verifies: on its own it resolves nothing.
+rm -rf "$LATEST_DIR" && mkdir -p "$LATEST_DIR" && printf '1.0.0\n' >"$LATEST_DIR/VERSION"
+assert_pointer_refused "version-only-pointer" "could not resolve the latest jk version from https://fixture/releases/latest/LATEST"
+
 if run_installer "$WORK/home-no-latest" JK_RELEASES_URL="https://fixture/releases-missing"; then
   cat "$WORK/last-install.log" >&2
-  echo "a missing latest/VERSION unexpectedly installed" >&2
+  echo "a missing latest/LATEST unexpectedly installed" >&2
   exit 1
 fi
-grep -q "could not resolve the latest jk version from https://fixture/releases-missing/latest/VERSION" \
+grep -q "could not resolve the latest jk version from https://fixture/releases-missing/latest/LATEST" \
   "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2
-  echo "a missing latest/VERSION was not reported with its URL" >&2
+  echo "a missing latest/LATEST was not reported with its URL" >&2
   exit 1
 }
 

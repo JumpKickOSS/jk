@@ -103,6 +103,38 @@ class ReleaseVerifierTest {
         assertThatThrownBy(() -> ReleaseVerifier.find(duplicate, "other.xz")).isInstanceOf(IOException.class);
     }
 
+    @Test
+    void latest_pointer_is_exactly_a_version_line_and_an_issued_line() throws Exception {
+        var pointer =
+                ReleaseVerifier.parsePointer("version 0.13.3\nissued 1757700000\n".getBytes(StandardCharsets.US_ASCII));
+        assertThat(pointer.version()).isEqualTo("0.13.3");
+        assertThat(pointer.issued()).isEqualTo(1757700000L);
+        assertThat(ReleaseVerifier.parsePointer("version 1.0.0-rc.2\nissued 7\n".getBytes(StandardCharsets.US_ASCII))
+                        .version())
+                .isEqualTo("1.0.0-rc.2");
+
+        for (String malformed : List.of(
+                "0.13.3\n",
+                "version 0.13.3\n",
+                "version 0.13.3\nissued 1757700000",
+                "version 0.13.3\r\nissued 1757700000\r\n",
+                "version 0.13.3\nissued 1757700000\nextra\n",
+                "version ../0.13.3\nissued 1757700000\n",
+                "version 0.13\nissued 1757700000\n",
+                "version 0.13.3\nissued soon\n",
+                "issued 1757700000\nversion 0.13.3\n",
+                "")) {
+            assertThatThrownBy(() -> ReleaseVerifier.parsePointer(malformed.getBytes(StandardCharsets.UTF_8)))
+                    .as("pointer %s", malformed.replace("\n", "\\n"))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("malformed");
+        }
+        assertThatThrownBy(() ->
+                        ReleaseVerifier.parsePointer("version 0.13.3\nissued 1\n".getBytes(StandardCharsets.UTF_16)))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("not ASCII");
+    }
+
     private static KeyPair rsaPair() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(3072);
