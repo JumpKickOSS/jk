@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Network-free fixture test for publish-maven-repo.sh's maven-metadata.xml merge.
+# Network-free fixture test for publish-maven-repo.sh: the maven-metadata.xml merge and the
+# worker-POM check.
 #
 # A store holding three artifacts is staged against a fixture repository served by a curl on PATH
 # that answers from a directory. The staged metadata must carry the union of the repository's
 # versions and the staged ones, name the merged maximum, leave alone an artifact the store does not
-# hold at JK_VERSION, treat a 404 as a new artifact, and refuse any other failure to read.
+# hold at JK_VERSION, treat a 404 as a new artifact, and refuse any other failure to read. A plugin
+# worker's POM must declare dependencies, and every first-party one it names must be staged.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,12 +39,29 @@ if [[ -f "$src" ]]; then cp "$src" "$out"; printf 200; else : >"$out"; printf 40
 EOF
 chmod +x "$WORK/bin/curl"
 
-# artifact <group path under cc/jumpkick> <artifact> <version>: a jar + POM pair in the store
+# artifact <group path under cc/jumpkick> <artifact> <version> [pom xml]: a jar + POM pair in the store
 artifact() {
   local dir="$LOCAL/$1/$2/$3"
   mkdir -p "$dir"
   printf 'jar %s %s\n' "$2" "$3" >"$dir/$2-$3.jar"
-  printf '<project/>\n' >"$dir/$2-$3.pom"
+  printf '%s\n' "${4:-<project/>}" >"$dir/$2-$3.pom"
+}
+# worker_pom <dependency xml...>: a worker POM in the shape the build writes — declared
+# dependencies, with the closure pinned under dependencyManagement
+worker_pom() {
+  cat <<POM
+<project>
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>33.7.1-jre</version></dependency>
+      <dependency><groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>0.1.0</version></dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+$(printf '    %s\n' "$@")
+  </dependencies>
+</project>
+POM
 }
 # metadata <artifact path under the repo root> <version>...: what the repository already serves
 metadata() {
@@ -74,6 +93,14 @@ element() {
 artifact . jk-alpha "$VERSION"          # published at this version; the repository lists two others
 artifact . jk-beta 0.13.2               # held at an older version only: metadata untouched
 artifact guards spring "$VERSION"       # nested group, new to the repository (its read is a 404)
+# A plugin worker (its module is plugins/image-builder in this checkout) with the POM the build
+# writes: what it declares, first-party rungs included, plus a test-scope first-party dependency
+# that a launch never fetches and the check therefore ignores.
+artifact . jk-image-builder "$VERSION" "$(worker_pom \
+  '<dependency><groupId>com.google.cloud.tools</groupId><artifactId>jib-core</artifactId><version>0.28.2</version></dependency>' \
+  '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>0.1.0</version></dependency>' \
+  '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-host</artifactId><version>9.9.9</version><scope>test</scope></dependency>')"
+artifact . jk-plugin-sdk 0.1.0          # the first-party rung the worker declares, staged
 metadata cc/jumpkick/jk-alpha 0.13.1 0.13.10
 metadata cc/jumpkick/jk-beta 0.13.1
 
@@ -97,6 +124,8 @@ spring="$STAGE/cc/jumpkick/guards/spring/maven-metadata.xml"
 [[ "$(element version "$spring" | paste -sd' ')" == "$VERSION" ]] || fail "guards/spring versions: $(element version "$spring" | paste -sd' ')"
 [[ "$(element latest "$spring")" == "$VERSION" ]] || fail "guards/spring latest: $(element latest "$spring")"
 
+grep -q "checked jk-image-builder:$VERSION (declares 2 dependencies)" "$WORK/out.log" || fail "the worker POM was not checked, or its test-scope dependency was counted"
+[[ -f "$STAGE/cc/jumpkick/jk-image-builder/$VERSION/jk-image-builder-$VERSION.pom" ]] || fail "the worker POM was not staged"
 grep -q "jk-alpha -> latest 0.13.10 (3 versions, merged)" "$WORK/out.log" || fail "log does not report the merge"
 grep -q "jk-beta unchanged" "$WORK/out.log" || fail "log does not report jk-beta as unchanged"
 grep -q "spring -> latest $VERSION (1 versions, new)" "$WORK/out.log" || fail "log does not report guards/spring as new"
@@ -114,5 +143,24 @@ echo 6 >"$REPO/cc/jumpkick/jk-alpha/maven-metadata.xml.curl-exit"
 if publish "$WORK/stage-curl"; then fail "a curl failure on the repository's metadata was accepted"; fi
 grep -q "cannot read $alpha_url (curl exit 6)" "$WORK/out.log" || fail "the curl failure was not reported with its URL"
 rm "$REPO/cc/jumpkick/jk-alpha/maven-metadata.xml.curl-exit"
+
+# A worker POM naming a first-party artifact the stage does not hold is refused: the published
+# worker would fetch that coordinate at launch and fail to start.
+artifact . jk-formatter "$VERSION" "$(worker_pom \
+  '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-core</artifactId><version>0.13.3</version></dependency>')"
+if publish "$WORK/stage-missing"; then fail "a worker POM naming an unstaged first-party dependency was accepted"; fi
+grep -q "jk-formatter:$VERSION depends on cc.jumpkick:jk-core:0.13.3, which this stage does not hold" "$WORK/out.log" \
+  || fail "the missing first-party dependency was not named"
+rm -r "$LOCAL/jk-formatter"
+
+# A worker POM that declares nothing is a stub, not the POM the build wrote.
+artifact . jk-formatter "$VERSION" '<project><dependencies></dependencies></project>'
+if publish "$WORK/stage-stub"; then fail "a worker POM with no declared dependencies was accepted"; fi
+grep -q "jk-formatter:$VERSION declares no dependencies" "$WORK/out.log" || fail "the stub worker POM was not refused by name"
+rm -r "$LOCAL/jk-formatter"
+
+# A first-party library is not a worker: its POM shape is its own business.
+artifact . jk-model "$VERSION" '<project/>'
+publish "$WORK/stage-library" || fail "a dependency-free library POM was refused as if it were a worker"
 
 echo "test-publish-maven-repo: ok"

@@ -63,6 +63,24 @@ scripts/publish-maven-repo.sh
 CI (when Actions billing works) should call `publish-maven-repo.sh` after `installLocal` in the
 same tag job that uploads `releases/`.
 
+### The worker POM
+
+A worker's POM is the one its launch classpath is rebuilt from, and both builds write the same
+shape. `<dependencies>` names what the worker declares — for the Gradle build its direct runtime
+dependencies, first-party rungs included because that jar is thin; for `jk install` the module's
+jk.toml with vendored siblings hoisted — and `<dependencyManagement>` pins every coordinate of
+the resolved runtime closure, so a launch runs on the versions the build tested whatever a
+transitive POM asks for. The engine walks that POM nearest-wins (Maven's rule) and applies the
+pins at every depth. Each first-party rung the Gradle build stages carries a POM declaring its
+own direct dependencies, so the walk reaches a rung's third-party needs without the worker
+listing them; `installLocal` replaces a dependency-free rung POM an earlier staging left and
+keeps one `jk install` wrote.
+
+`publish-maven-repo.sh` refuses to stage a worker POM (an artifact whose module lives under
+`plugins/`) that declares no dependencies, or that names a `cc.jumpkick` artifact the stage does
+not hold at that version — either way the published worker could not start. The fixture test
+covers both refusals and a well-formed worker.
+
 Every `maven-metadata.xml` the script writes is a merge: it fetches the artifact's current
 metadata from the repository over the public origin (no credentials needed to read), unions
 the version list with what is staged, and names the merged maximum as `<latest>` (`<release>`

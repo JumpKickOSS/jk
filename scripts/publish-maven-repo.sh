@@ -112,6 +112,47 @@ if [[ "$count" -eq 0 ]]; then
   exit 2
 fi
 
+# The `<dependencies>` of a POM as `groupId|artifactId|version|scope` rows — the declared
+# dependencies only, never the `<dependencyManagement>` pins.
+declared_dependencies() {
+  awk '
+    /<dependencyManagement>/ { managed = 1 }
+    /<\/dependencyManagement>/ { managed = 0 }
+    /<dependency>/ { g = ""; a = ""; v = ""; sc = "" }
+    /<groupId>/ { if (match($0, /<groupId>[^<]*<\/groupId>/)) g = substr($0, RSTART + 9, RLENGTH - 19) }
+    /<artifactId>/ { if (match($0, /<artifactId>[^<]*<\/artifactId>/)) a = substr($0, RSTART + 12, RLENGTH - 25) }
+    /<version>/ { if (match($0, /<version>[^<]*<\/version>/)) v = substr($0, RSTART + 9, RLENGTH - 19) }
+    /<scope>/ { if (match($0, /<scope>[^<]*<\/scope>/)) sc = substr($0, RSTART + 7, RLENGTH - 15) }
+    /<\/dependency>/ { if (!managed && a != "") print g "|" a "|" v "|" sc }
+  ' "$1"
+}
+
+# A plugin worker publishes the dependencies it declares, and every first-party one it names has
+# to be in this stage at that version: a launch rebuilds the worker classpath from this POM and
+# fetches each coordinate from the repository, so a worker whose POM declares nothing, or names a
+# `cc.jumpkick` artifact the repository does not serve, cannot start once installed. A worker is
+# an artifact whose source module lives under plugins/ in this checkout.
+while IFS= read -r -d '' pom; do
+  ver_dir="$(dirname "$pom")"
+  art="$(basename "$(dirname "$ver_dir")")"
+  ver="$(basename "$ver_dir")"
+  [[ -f "$ROOT/plugins/${art#jk-}/jk.toml" ]] || continue
+  declared="$(declared_dependencies "$pom" | grep -v '|test$' || true)"
+  if [[ -z "$declared" ]]; then
+    echo "publish-maven-repo: $art:$ver declares no dependencies in $pom — a worker POM names what the worker runs on; publish the POM the build wrote, not a stub" >&2
+    exit 2
+  fi
+  while IFS='|' read -r g a v _; do
+    [[ "$g" == cc.jumpkick* ]] || continue
+    dep_jar="$STAGE/${g//.//}/$a/$v/$a-$v.jar"
+    if [[ ! -f "$dep_jar" ]]; then
+      echo "publish-maven-repo: $art:$ver depends on $g:$a:$v, which this stage does not hold ($dep_jar) — the published worker could not start; install the closure (installLocal / jk install) before publishing" >&2
+      exit 2
+    fi
+  done <<<"$declared"
+  echo "checked $art:$ver (declares $(wc -l <<<"$declared" | tr -d ' ') dependencies)"
+done < <(find "$STAGE/cc/jumpkick" -type f -name "*.pom" -print0)
+
 # The repository's current maven-metadata.xml for an artifact directory (relative to the repo
 # root), written to $2; "absent" on stdout when the repository has none (HTTP 404). Any other
 # failure is fatal: a version list rebuilt without the repository's answer is the drop this merge

@@ -23,20 +23,20 @@ version = "0.13.3"
 
 val workerArtifact = "jk-${project.name}"
 
-// No `maven-publish` here, deliberately. A worker's POM is the flattened one
-// `writeWorkerPom` builds further down: it resolves the entire runtime classpath itself, names
-// every coordinate in it, and `stageWorkerRepo` / `installLocal` stage a jar for each — which is
-// what lands in store/repos/jk-local and what scripts/publish-maven-repo.sh uploads. A
-// `MavenPublication` alongside it was a second producer of a POM for the same GAV that nothing in
-// the tree, the scripts or CI ever read, and its answer disagreed: Gradle renders a project
-// dependency from the target's own coordinates, so `:core`, `:io` and `:dynamic-surface` — no
-// group, no version, no publication — came out as `jk:core:unspecified`, which no repository can
-// serve. The `pom.withXml` block meant to repair that never matched a node in its life:
-// `asNode()` parses namespace-aware, so `node.name()` is a `groovy.namespace.QName` whose
-// `toString()` is `{http://maven.apache.org/POM/4.0.0}artifactId`, never the bare `"artifactId"`
-// it was compared against. Had it matched it would have written `jk:jk-core:unspecified`, no more
-// resolvable than before. One producer, the one that ships; PublishedWorkerPomTest in :auditor
-// resolves its closure the way a worker launch does.
+// No `maven-publish` here, deliberately. A worker's POM is the one `writeWorkerPom` builds further
+// down — the same shape `jk install` renders for the module from jk.toml: `<dependencies>` names
+// what the worker declares (its direct runtime dependencies, first-party rungs included, since
+// this jar is thin), and `<dependencyManagement>` pins every coordinate of the runtime closure
+// Gradle resolved, so a launch rebuilt from the POM runs on the versions this build compiled and
+// tested against whatever a transitive POM asks for. `stageWorkerRepo` / `installLocal` stage a
+// jar for every pinned coordinate and a POM for every first-party one — which is what lands in
+// store/repos/jk-local and what scripts/publish-maven-repo.sh uploads. A `MavenPublication`
+// alongside it was a second producer of a POM for the same GAV that nothing in the tree, the
+// scripts or CI ever read, and its answer disagreed: Gradle renders a project dependency from the
+// target's own coordinates, so `:core`, `:io` and `:dynamic-surface` — no group, no version, no
+// publication — came out as `jk:core:unspecified`, which no repository can serve. One producer,
+// the one that ships; PublishedWorkerPomTest in :auditor resolves its closure the way a worker
+// launch does.
 
 // Table-owning plugins ship their own jk-plugin.toml (+ scaffold/) at the jar root —
 // the same shape as a third-party plugin. Sibling catalogs are not copied here.
@@ -101,7 +101,27 @@ data class WorkerGav(
         val classifier: String?,
         val file: File)
 
-/** Resolved runtime jars with Maven coordinates. First-party projects publish as {@code jk-<name>}. */
+/** The published coordinate of one resolved artifact. First-party projects publish as `jk-<name>`. */
+fun gavOf(art: org.gradle.api.artifacts.ResolvedArtifact): WorkerGav {
+    val id = art.moduleVersion.id
+    val cid = art.id.componentIdentifier
+    return if (cid is org.gradle.api.artifacts.component.ProjectComponentIdentifier) {
+        val proj = rootProject.findProject(cid.projectPath)
+        val artifactId = publishedArtifactId(proj?.name ?: id.name)
+        val raw = proj?.version?.toString() ?: id.version
+        val ver = if (raw.isBlank() || raw == "unspecified") project.version.toString() else raw
+        WorkerGav("cc.jumpkick", artifactId, ver, null, art.file)
+    } else {
+        // Classifier is part of the artifact identity: dropping it either lost the dep (netty
+        // natives, protoc binaries) or overwrote the unclassified jar's store entry with the
+        // wrong bytes, iteration-order dependent.
+        WorkerGav(id.group, id.name, id.version, art.classifier?.takeIf { it.isNotBlank() }, art.file)
+    }
+}
+
+fun gavKey(g: WorkerGav) = "${g.group}:${g.artifact}:${g.classifier.orEmpty()}"
+
+/** Resolved runtime jars with Maven coordinates, in classpath order — the closure `<dependencyManagement>` pins. */
 fun runtimeGavs(): List<WorkerGav> {
     val runtime = configurations.findByName("runtimeClasspath") ?: return emptyList()
     val artifacts = runCatching { runtime.resolvedConfiguration.resolvedArtifacts }.getOrDefault(emptySet())
@@ -109,27 +129,57 @@ fun runtimeGavs(): List<WorkerGav> {
     val out = linkedMapOf<String, WorkerGav>()
     runtime.files.filter { it.isFile && it.name.endsWith(".jar") }.forEach { f ->
         val art = byFile[f.absoluteFile] ?: return@forEach
-        val id = art.moduleVersion.id
-        val cid = art.id.componentIdentifier
-        val gav =
-                if (cid is org.gradle.api.artifacts.component.ProjectComponentIdentifier) {
-                    val proj = rootProject.findProject(cid.projectPath)
-                    val artifactId = publishedArtifactId(proj?.name ?: id.name)
-                    val raw = proj?.version?.toString() ?: id.version
-                    val ver = if (raw.isBlank() || raw == "unspecified") project.version.toString() else raw
-                    WorkerGav("cc.jumpkick", artifactId, ver, null, f)
-                } else {
-                    // Classifier is part of the artifact identity: dropping it either lost the
-                    // dep (netty natives, protoc binaries) or overwrote the unclassified jar's
-                    // store entry with the wrong bytes, iteration-order dependent.
-                    WorkerGav(id.group, id.name, id.version, art.classifier?.takeIf { it.isNotBlank() }, f)
-                }
-        out.putIfAbsent("${gav.group}:${gav.artifact}:${gav.version}:${gav.classifier.orEmpty()}", gav)
+        val gav = gavOf(art)
+        out.putIfAbsent("${gavKey(gav)}:${gav.version}", gav)
     }
     return out.values.toList()
 }
 
+/**
+ * The resolved runtime graph as Gradle settled it: the worker's direct dependencies in declaration
+ * order (`firstLevel`), and for every first-party node the coordinates of its own direct
+ * dependencies (`childrenOf`, keyed by [gavKey]) — what that module's staged POM declares, so a
+ * launch walking from the worker's declared deps reaches the third-party jars a first-party rung
+ * needs (tomlj under jk-core, for one) without the worker POM listing them itself.
+ */
+data class RuntimeGraph(val firstLevel: List<WorkerGav>, val childrenOf: Map<String, List<WorkerGav>>)
+
+fun runtimeGraph(): RuntimeGraph {
+    val runtime = configurations.findByName("runtimeClasspath") ?: return RuntimeGraph(emptyList(), emptyMap())
+    val roots = runCatching { runtime.resolvedConfiguration.firstLevelModuleDependencies }.getOrDefault(emptySet())
+    fun gavsOf(dep: org.gradle.api.artifacts.ResolvedDependency): List<WorkerGav> =
+            runCatching { dep.moduleArtifacts }.getOrDefault(emptySet())
+                    .filter { it.file.name.endsWith(".jar") }
+                    .map(::gavOf)
+                    .distinctBy(::gavKey)
+    val childrenOf = linkedMapOf<String, List<WorkerGav>>()
+    val visited = hashSetOf<String>()
+    fun visit(dep: org.gradle.api.artifacts.ResolvedDependency) {
+        if (!visited.add(dep.name)) return
+        val self = gavsOf(dep)
+        if (self.any { it.group == "cc.jumpkick" }) {
+            val kids = dep.children.flatMap(::gavsOf).distinctBy(::gavKey)
+            self.forEach { childrenOf.putIfAbsent(gavKey(it), kids) }
+        }
+        dep.children.forEach(::visit)
+    }
+    roots.forEach(::visit)
+    return RuntimeGraph(roots.flatMap(::gavsOf).distinctBy(::gavKey), childrenOf)
+}
+
+fun StringBuilder.appendDependency(g: WorkerGav, indent: String) {
+    appendLine("$indent<dependency>")
+    appendLine("$indent  <groupId>${xmlEsc(g.group)}</groupId>")
+    appendLine("$indent  <artifactId>${xmlEsc(g.artifact)}</artifactId>")
+    appendLine("$indent  <version>${xmlEsc(g.version)}</version>")
+    if (g.classifier != null) {
+        appendLine("$indent  <classifier>${xmlEsc(g.classifier)}</classifier>")
+    }
+    appendLine("$indent</dependency>")
+}
+
 fun workerPomXml(): String {
+    val graph = runtimeGraph()
     val sb = StringBuilder()
     sb.appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
     sb.appendLine("""<project xmlns="http://maven.apache.org/POM/4.0.0">""")
@@ -143,17 +193,13 @@ fun workerPomXml(): String {
     if (desc.isNotEmpty()) {
         sb.appendLine("  <description>${xmlEsc(desc)}</description>")
     }
+    sb.appendLine("  <dependencyManagement>")
+    sb.appendLine("    <dependencies>")
+    runtimeGavs().forEach { sb.appendDependency(it, "      ") }
+    sb.appendLine("    </dependencies>")
+    sb.appendLine("  </dependencyManagement>")
     sb.appendLine("  <dependencies>")
-    runtimeGavs().forEach { g ->
-        sb.appendLine("    <dependency>")
-        sb.appendLine("      <groupId>${xmlEsc(g.group)}</groupId>")
-        sb.appendLine("      <artifactId>${xmlEsc(g.artifact)}</artifactId>")
-        sb.appendLine("      <version>${xmlEsc(g.version)}</version>")
-        if (g.classifier != null) {
-            sb.appendLine("      <classifier>${xmlEsc(g.classifier)}</classifier>")
-        }
-        sb.appendLine("    </dependency>")
-    }
+    graph.firstLevel.forEach { sb.appendDependency(it, "    ") }
     sb.appendLine("  </dependencies>")
     sb.appendLine("</project>")
     return sb.toString()
@@ -202,36 +248,48 @@ fun installPom(storeRoot: File, group: String, artifact: String, version: String
 }
 
 /**
- * The POM a first-party dependency jar carries in the staged repo. Minimal on purpose: the
- * worker's flattened POM is the closure of record and already names every coordinate, so this one
- * only has to make `cc.jumpkick:<artifact>` resolvable to a Maven/Gradle consumer — and to
- * scripts/publish-maven-repo.sh, which refuses to upload a first-party jar without a sibling POM.
+ * The POM a first-party dependency jar carries in the staged repo: the module's own direct
+ * runtime dependencies at the versions Gradle resolved, so a launch walking down from the
+ * worker's declared deps reaches everything the rung needs. `jk install` writes a richer POM for
+ * the same GAV from the module's jk.toml; this one exists so `cc.jumpkick:<artifact>` resolves for
+ * a Maven/Gradle consumer and for scripts/publish-maven-repo.sh, which refuses a first-party jar
+ * without a sibling POM.
  */
-fun minimalPomXml(group: String, artifact: String, version: String): String = buildString {
+fun firstPartyPomXml(g: WorkerGav, children: List<WorkerGav>): String = buildString {
     appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
     appendLine("""<project xmlns="http://maven.apache.org/POM/4.0.0">""")
     appendLine("  <modelVersion>4.0.0</modelVersion>")
-    appendLine("  <groupId>${xmlEsc(group)}</groupId>")
-    appendLine("  <artifactId>${xmlEsc(artifact)}</artifactId>")
-    appendLine("  <version>${xmlEsc(version)}</version>")
+    appendLine("  <groupId>${xmlEsc(g.group)}</groupId>")
+    appendLine("  <artifactId>${xmlEsc(g.artifact)}</artifactId>")
+    appendLine("  <version>${xmlEsc(g.version)}</version>")
     appendLine("  <packaging>jar</packaging>")
+    appendLine("  <dependencies>")
+    children.forEach { appendDependency(it, "    ") }
+    appendLine("  </dependencies>")
     appendLine("</project>")
 }
+
+/** A POM that declares nothing: the shape an earlier staging left for a first-party dependency. */
+fun isDependencyFreePom(pom: File): Boolean = pom.isFile && !pom.readText().contains("<dependencies>")
 
 fun stageWorkerMavenRepo(storeRoot: File, jar: File, pomXml: String) {
     val ver = project.version.toString()
     installJar(storeRoot, "cc.jumpkick", workerArtifact, ver, jar)
     installPom(storeRoot, "cc.jumpkick", workerArtifact, ver, pomXml)
+    val graph = runtimeGraph()
     runtimeGavs().forEach { g ->
         installJar(storeRoot, g.group, g.artifact, g.version, g.file, g.classifier)
         // First-party dependency jars need a POM too — the published repo serves them to real
-        // Maven resolvers, and the publish script hard-refuses a first-party jar without one.
-        // Never overwrite: `jk install` writes a richer POM for the same GAV, and clobbering it
-        // with this stub would degrade transitive resolution for consumers of that module.
+        // Maven resolvers, the publish script hard-refuses a first-party jar without one, and a
+        // launch walking down from the worker's declared deps reads it for the rung's own deps.
+        // A POM that already declares dependencies is kept: `jk install` writes a richer one for
+        // the same GAV from the module's jk.toml. A dependency-free one is a stub an earlier
+        // staging left, and a worker launched over it would miss everything under that rung.
         val pomDest = mavenLocalDir(storeRoot, g.group, g.artifact, g.version)
                 .resolve("${g.artifact}-${g.version}.pom")
-        if (g.group == "cc.jumpkick" && !pomDest.isFile) {
-            installPom(storeRoot, g.group, g.artifact, g.version, minimalPomXml(g.group, g.artifact, g.version))
+        if (g.group == "cc.jumpkick" && (!pomDest.isFile || isDependencyFreePom(pomDest))) {
+            val children = graph.childrenOf[gavKey(g)] ?: emptyList()
+            installPom(storeRoot, g.group, g.artifact, g.version, firstPartyPomXml(g, children))
         }
     }
 }

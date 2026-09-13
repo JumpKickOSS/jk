@@ -11,15 +11,20 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,10 +45,14 @@ import org.w3c.dom.Element;
  * the string changed; this resolves the closure the way {@code PomRuntimeClasspath} does at worker
  * launch and then compiles against the jars that came back.
  *
- * <p>The worker POM is deliberately <em>flat</em>: {@code writeWorkerPom} resolves the whole
- * runtime classpath itself and names every coordinate, so a consumer needs one POM and no
- * recursion. The contract this asserts is therefore "every coordinate the POM names has a jar in
- * the repository", not "every dependency has a POM of its own".
+ * <p>The worker POM has the shape {@code jk install} renders from a module's jk.toml: {@code
+ * <dependencies>} names what the worker declares — its direct dependencies, first-party rungs
+ * included, since the jar is thin — and {@code <dependencyManagement>} pins every coordinate of
+ * the runtime closure Gradle resolved, so a launch runs on the versions this build tested. A
+ * first-party rung's own staged POM declares its direct dependencies in turn. The contract this
+ * asserts is therefore threefold: every pinned coordinate has a jar in the repository, the walk
+ * from the declared dependencies through the staged first-party POMs reaches every first-party
+ * rung, and a plugin compiles against exactly the jars that walk collects.
  */
 class PublishedWorkerPomTest {
 
@@ -107,40 +116,60 @@ class PublishedWorkerPomTest {
         assertThat(DomXml.childText(project, "groupId")).isEqualTo(GROUP);
         assertThat(DomXml.childText(project, "version")).isEqualTo(version);
 
-        Map<String, Path> jars = new LinkedHashMap<>();
         List<String> broken = new ArrayList<>();
-        List<Element> dependencies = DomXml.childElements(DomXml.childElement(project, "dependencies"), "dependency");
-        assertThat(dependencies)
-                .as("a flat worker POM names its whole runtime closure; an empty list would let"
-                        + " every assertion below pass having checked nothing")
+        Element management = DomXml.childElement(project, "dependencyManagement");
+        assertThat(management)
+                .as("the worker POM pins its resolved closure under dependencyManagement")
+                .isNotNull();
+        List<Element> pins = DomXml.childElements(DomXml.childElement(management, "dependencies"), "dependency");
+        assertThat(pins)
+                .as("the pins are the whole runtime closure; an empty list would let every assertion below pass"
+                        + " having checked nothing")
                 .hasSizeGreaterThanOrEqualTo(4);
+        Map<String, String> pinned = new LinkedHashMap<>();
+        for (Element pin : pins) {
+            String coordinate = coordinateOf(pin, broken);
+            if (coordinate == null) continue;
+            pinned.put(moduleOf(pin), DomXml.childText(pin, "version"));
+            if (!Files.isRegularFile(jarOf(repo, pin))) {
+                broken.add(coordinate + " — no " + repo.relativize(jarOf(repo, pin)));
+            }
+        }
 
-        for (Element dependency : dependencies) {
-            String g = DomXml.childText(dependency, "groupId");
-            String a = DomXml.childText(dependency, "artifactId");
-            String v = DomXml.childText(dependency, "version");
-            String coordinate = g + ":" + a + ":" + v;
-            if (g == null || g.isBlank() || a == null || a.isBlank() || v == null || v.isBlank()) {
-                broken.add(coordinate + " — a coordinate field is empty");
-                continue;
+        List<Element> declared = DomXml.childElements(DomXml.childElement(project, "dependencies"), "dependency");
+        assertThat(declared)
+                .as("the worker declares its direct dependencies; a worker that declares nothing runs on nothing")
+                .isNotEmpty();
+        for (Element dependency : declared) {
+            String module = moduleOf(dependency);
+            if (!pinned.containsKey(module)) {
+                broken.add(module + " — declared but not pinned under dependencyManagement");
             }
-            // The two shapes Gradle renders from its own defaults when a module sets no
-            // coordinates: `jk` is rootProject.name, `unspecified` is Project.DEFAULT_VERSION.
-            if ("jk".equals(g) || g.startsWith("jk.")) {
-                broken.add(coordinate + " — groupId is the rootProject.name fallback");
-            }
-            if ("unspecified".equals(v)) {
-                broken.add(coordinate + " — version is Gradle's unspecified default");
-            }
-            if (GROUP.equals(g) && !a.startsWith("jk-")) {
-                broken.add(coordinate + " — first-party artifacts publish as jk-<module>");
-            }
-            Path dir = repo.resolve(g.replace('.', '/')).resolve(a).resolve(v);
-            Path jar = dir.resolve(a + "-" + v + ".jar");
+        }
+
+        // The walk a launch performs: declared dependencies, then each first-party rung's own
+        // staged POM, versions taken from the pins. A dependency with no staged POM is a
+        // third-party leaf — its jar is in the closure, its own POM lives on Central.
+        Map<String, Path> jars = new LinkedHashMap<>();
+        Deque<Element> queue = new ArrayDeque<>(declared);
+        Set<String> walked = new HashSet<>();
+        while (!queue.isEmpty()) {
+            Element dependency = queue.removeFirst();
+            String module = moduleOf(dependency);
+            if (!walked.add(module)) continue;
+            String coordinate = coordinateOf(dependency, broken);
+            if (coordinate == null) continue;
+            Path jar = jarOf(repo, dependency);
             if (Files.isRegularFile(jar)) {
-                jars.put(g + ":" + a, jar);
+                jars.put(module, jar);
             } else {
                 broken.add(coordinate + " — no " + repo.relativize(jar));
+            }
+            Path rungPom = jar.resolveSibling(jar.getFileName().toString().replace(".jar", ".pom"));
+            if (Files.isRegularFile(rungPom)) {
+                Element rung = DomXml.parse(rungPom).getDocumentElement();
+                Element deps = DomXml.childElement(rung, "dependencies");
+                if (deps != null) queue.addAll(DomXml.childElements(deps, "dependency"));
             }
         }
 
@@ -151,10 +180,50 @@ class PublishedWorkerPomTest {
                         pom.getFileName())
                 .isEmpty();
         assertThat(jars.keySet())
-                .as("the first-party rungs of the closure, from the worker POM alone")
+                .as("the first-party rungs of the closure, reached from the worker's declared dependencies"
+                        + " through the staged first-party POMs")
                 .contains(GROUP + ":jk-core", GROUP + ":jk-plugin-sdk", GROUP + ":jk-host", GROUP + ":jk-api");
 
         compileAgainst(jars.values(), work);
+    }
+
+    private static String moduleOf(Element dependency) {
+        return DomXml.childText(dependency, "groupId") + ":" + DomXml.childText(dependency, "artifactId");
+    }
+
+    private static Path jarOf(Path repo, Element dependency) {
+        String g = String.valueOf(DomXml.childText(dependency, "groupId"));
+        String a = String.valueOf(DomXml.childText(dependency, "artifactId"));
+        String v = String.valueOf(DomXml.childText(dependency, "version"));
+        String classifier = DomXml.childText(dependency, "classifier");
+        String suffix = classifier == null || classifier.isBlank() ? "" : "-" + classifier;
+        return repo.resolve(g.replace('.', '/')).resolve(a).resolve(v).resolve(a + "-" + v + suffix + ".jar");
+    }
+
+    /**
+     * {@code g:a:v} for a well-formed entry, else {@code null} after recording why. The two
+     * shapes Gradle renders from its own defaults when a module sets no coordinates: {@code jk}
+     * is rootProject.name, {@code unspecified} is Project.DEFAULT_VERSION.
+     */
+    private static @Nullable String coordinateOf(Element dependency, List<String> broken) {
+        String g = DomXml.childText(dependency, "groupId");
+        String a = DomXml.childText(dependency, "artifactId");
+        String v = DomXml.childText(dependency, "version");
+        String coordinate = g + ":" + a + ":" + v;
+        if (g == null || g.isBlank() || a == null || a.isBlank() || v == null || v.isBlank()) {
+            broken.add(coordinate + " — a coordinate field is empty");
+            return null;
+        }
+        if ("jk".equals(g) || g.startsWith("jk.")) {
+            broken.add(coordinate + " — groupId is the rootProject.name fallback");
+        }
+        if ("unspecified".equals(v)) {
+            broken.add(coordinate + " — version is Gradle's unspecified default");
+        }
+        if (GROUP.equals(g) && !a.startsWith("jk-")) {
+            broken.add(coordinate + " — first-party artifacts publish as jk-<module>");
+        }
+        return coordinate;
     }
 
     /**
