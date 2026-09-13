@@ -4,10 +4,12 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Sidecar;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /** {@code [dev.sidecars]}: the table jk dev reads and nothing else does. */
@@ -41,6 +43,67 @@ class JkBuildParserDevTest {
         assertThat(docs.readyPattern()).isEqualTo("Serving on");
         assertThat(docs.readyTimeoutMillis()).isEqualTo(120_000);
         assertThat(docs.restart()).isEqualTo(Sidecar.Restart.ON_EXIT);
+    }
+
+    @Test
+    void the_app_s_own_probe_is_the_dev_table_s_ready_keys() {
+        JkBuild url = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                [dev]
+                ready = "http://localhost:8080/health"
+                ready-timeout = "90s"
+                """);
+        DevReady probe = Objects.requireNonNull(url.build().devReady());
+        assertThat(probe.url()).isEqualTo("http://localhost:8080/health");
+        assertThat(probe.pattern()).isNull();
+        assertThat(probe.timeoutMillis()).isEqualTo(90_000);
+
+        JkBuild pattern = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                [dev]
+                ready-pattern = "Started .* in"
+
+                [dev.sidecars]
+                web = { command = "npm run dev" }
+                """);
+        DevReady byPattern = Objects.requireNonNull(pattern.build().devReady());
+        assertThat(byPattern.pattern()).isEqualTo("Started .* in");
+        assertThat(byPattern.timeoutMillis()).isEqualTo(DevReady.DEFAULT_TIMEOUT_MILLIS);
+        assertThat(pattern.build().devSidecars()).extracting(Sidecar::name).containsExactly("web");
+
+        assertThat(JkBuildParser.parse(JkBuildParserFixtures.PROJECT).build().devReady())
+                .as("no table, no probe: the app is ready once forked")
+                .isNull();
+    }
+
+    @Test
+    void the_app_s_probe_is_one_probe_with_a_valid_regex_and_a_timeout_needs_one() {
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev]
+                        ready = "http://localhost:8080"
+                        ready-pattern = "Started"
+                        """))
+                .hasMessageContaining("[dev] sets both ready and ready-pattern");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev]
+                        ready-pattern = "Started ("
+                        """))
+                .hasMessageContaining("[dev].ready-pattern is not a regex");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev]
+                        ready-timeout = "2m"
+                        """))
+                .hasMessageContaining("[dev] ready-timeout needs a probe");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [dev]
+                        redy = "http://localhost:8080"
+                        """))
+                .hasMessageContaining("[dev] unknown key `redy`")
+                .hasMessageContaining("ready-pattern");
     }
 
     @Test

@@ -230,10 +230,10 @@ class SidecarsTest {
 
     @Test
     void localhost_is_probed_on_both_loopbacks_and_other_hosts_as_given() {
-        assertThat(Sidecars.readyCandidates(URI.create("http://localhost:5173/app?x=1")))
+        assertThat(ReadyProbe.readyCandidates(URI.create("http://localhost:5173/app?x=1")))
                 .extracting(URI::toString)
                 .containsExactly("http://127.0.0.1:5173/app?x=1", "http://[::1]:5173/app?x=1");
-        assertThat(Sidecars.readyCandidates(URI.create("http://0.0.0.0:8001")))
+        assertThat(ReadyProbe.readyCandidates(URI.create("http://0.0.0.0:8001")))
                 .extracting(URI::toString)
                 .containsExactly("http://0.0.0.0:8001");
     }

@@ -28,8 +28,12 @@ java    = 25
 [application]
 main = "demo.Api"
 
-# The frontend's own dev server runs beside the JVM under `jk dev` — and only there. `jk run`,
-# `jk build`, and `jk test` never read this table; nothing about it enters the action cache.
+# Under `jk dev` — and only there — the JVM counts as ready once /api/hello answers, and the
+# frontend's own dev server runs beside it. `jk run`, `jk build`, and `jk test` never read this
+# table; nothing about it enters the action cache.
+[dev]
+ready = "http://localhost:8080/api/hello"
+
 [dev.sidecars]
 web = { command = "npm run dev", cwd = "web", ready = "http://localhost:5173", front-door = true }
 
@@ -38,8 +42,11 @@ junit-jupiter = "=6.1.3"
 ```
 
 `command` is split like a shell would and run without one; `cwd` is relative to this manifest;
-`ready` is polled until Vite answers; `front-door = true` makes 5173 the URL jk prints when the
-whole stack is up. Every key and its default: [Run — Sidecars](../../run.md#sidecars-devsidecars).
+the sidecar's `ready` is polled until Vite answers; `front-door = true` makes 5173 the URL jk prints
+when the whole stack is up. `[dev] ready` is the JVM's own probe: the `ready ·` line (and
+`dev-ready` under `--output json`) waits until `/api/hello` answers, after the first start and
+after every restart, so a fetch on `dev-ready` never races the JVM. Every key and its default:
+[Run — Sidecars](../../run.md#sidecars-devsidecars).
 
 ## Run it
 
@@ -79,7 +86,8 @@ Edit `Api.java`: jk recompiles and restarts the JVM; Vite is untouched and keeps
 Edit `web/main.js`: Vite hot-reloads the page; the JVM is untouched. Ctrl-C stops the JVM and Vite
 together — nothing is left on 8080 or 5173.
 
-`jk dev --no-sidecars` runs the JVM alone. `jk dev --output json` turns every line into an event
+`jk dev --no-sidecars` runs the JVM alone; the `ready ·` line then carries `[dev] ready`'s address,
+`http://localhost:8080/api/hello`. `jk dev --output json` turns every line into an event
 with its source (`sidecar-output`, `app-output`) and the lifecycle into `sidecar-started`,
 `sidecar-ready`, `sidecar-exited` — [Machine output](../../machine-output.md#jk-dev).
 

@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DenyPolicy;
+import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.Features;
@@ -35,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
@@ -375,6 +377,8 @@ public final class JkBuildParser {
         // [dev] is a live-loop concern, not a build input; it folds into the same block as [test].
         List<Sidecar> devSidecars = ManifestBuild.parseDevSidecars(result);
         if (!devSidecars.isEmpty()) build = build.withDevSidecars(devSidecars);
+        Optional<DevReady> devReady = ManifestBuild.parseDevReady(result);
+        if (devReady.isPresent()) build = build.withDevReady(devReady.get());
         // [audit] is a report policy, not a build input; it folds into the same block as [test] and [dev].
         List<JkBuild.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
         if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);

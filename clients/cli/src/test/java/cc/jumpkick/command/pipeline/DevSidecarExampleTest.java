@@ -31,8 +31,10 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The manual's {@code examples/vite-sidecar} under {@code jk dev}: the JVM API and the sidecar come
- * up, the front door answers, every sidecar line is an event with its source, a source change
- * restarts the JVM and leaves the sidecar alone, and Ctrl-C takes both processes down. Vite itself
+ * up, {@code dev-ready} waits for the JVM's own {@code [dev] ready} probe so the API answers the
+ * moment it is announced, the front door answers, every sidecar line is an event with its source,
+ * a source change restarts the JVM and leaves the sidecar alone, and Ctrl-C takes both processes
+ * down. Vite itself
  * needs {@code npm install}, which this tier does not have, so the sidecar's command is swapped for
  * a single-file Java HTTP server that plays the dev server's part: it listens on the example's
  * port, prints a line and a carriage-return progress bar, and answers {@code /}. Everything else —
@@ -61,7 +63,7 @@ class DevSidecarExampleTest {
     void the_example_serves_its_front_door_and_its_api_and_ctrl_c_stops_both(@TempDir Path dir) throws Exception {
         int webPort = freePort();
         int apiPort = freePort();
-        Path project = stage(dir.resolve("vite-sidecar"), webPort);
+        Path project = stage(dir.resolve("vite-sidecar"), webPort, apiPort);
         Session session = Session.spawn(project, dir, apiPort);
         Process jk = session.jk;
         Path out = session.out;
@@ -103,13 +105,15 @@ class DevSidecarExampleTest {
             assertThat(devReady)
                     .as("the ready line has its event\n%s", read(out))
                     .isPresent();
+            // The front door is fetched the instant dev-ready shows, no wait for the JVM's own
+            // "listening" line: [dev] ready held the announcement until /api/hello answered.
+            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
             assertThat(Jsonl.str(devReady.get(), "url")).isEqualTo("http://localhost:" + webPort);
             assertThat(Jsonl.str(devReady.get(), "app")).contains("demo.Api");
             assertThat(awaitText(err, READY_LINE + "http://localhost:" + webPort, jk))
                     .as("the one ready line names the front door\n%s", read(err))
                     .isTrue();
             assertThat(get("http://127.0.0.1:" + webPort + "/")).contains("stub dev server");
-            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
 
             // A source change restarts the JVM. The sidecar is the front door and survives the
             // restart, so its address is still true and the ready line is not said again.
@@ -150,29 +154,31 @@ class DevSidecarExampleTest {
     @Test
     void with_the_app_as_the_front_door_the_ready_line_returns_after_every_restart(@TempDir Path dir) throws Exception {
         int apiPort = freePort();
-        Path project = stage(dir.resolve("vite-sidecar"), freePort());
+        Path project = stage(dir.resolve("vite-sidecar"), freePort(), apiPort);
         Session session = Session.spawn(project, dir, apiPort, "--no-sidecars");
         Process jk = session.jk;
         Path out = session.out;
         Path err = session.err;
         try {
+            String appUrl = "http://localhost:" + apiPort + "/api/hello";
             Optional<String> ready = awaitLine(out, typed("dev-ready"), jk);
             assertThat(ready)
                     .as("no dev-ready within the wait\nstdout:\n%s\nstderr:\n%s", read(out), read(err))
                     .isPresent();
-            assertThat(Jsonl.has(ready.get(), "url"))
-                    .as("the app is the front door: no url")
-                    .isFalse();
+            // The app is the front door and fetched at once: no wait for its "listening" line.
+            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
+            assertThat(Jsonl.str(ready.get(), "url"))
+                    .as("the app is the front door: its [dev] ready address")
+                    .isEqualTo(appUrl);
             assertThat(Jsonl.str(ready.get(), "app")).contains("demo.Api");
             assertThat(lines(out)).noneMatch(typed("sidecar-started"));
-            assertThat(awaitText(err, READY_LINE + "java", jk)).isTrue();
+            assertThat(awaitText(err, READY_LINE + appUrl + " (java", jk)).isTrue();
             assertThat(count(read(err), READY_LINE)).isEqualTo(1);
 
             String started =
                     lines(out).stream().filter(typed("app-started")).findFirst().orElseThrow();
             long appPid = pid(started);
             assertThat(awaitCount(out, listening(), 1, jk)).isTrue();
-            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
 
             touchSource(project);
             Optional<String> restarted = awaitLine(out, typed("app-started").and(l -> pid(l) != appPid), jk);
@@ -182,17 +188,18 @@ class DevSidecarExampleTest {
             assertThat(awaitCount(out, typed("dev-ready"), 2, jk))
                     .as("the ready event returns with the restarted app\n%s", read(out))
                     .isTrue();
+            // Fetched at once again: the probe ran after the restart too.
+            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
             List<String> events = lines(out);
             int secondStart = events.indexOf(restarted.get());
             int secondReady = indexOfNth(events, typed("dev-ready"), 2);
             assertThat(secondReady)
                     .as("dev-ready follows the restarted app's start")
                     .isGreaterThan(secondStart);
-            assertThat(Jsonl.has(events.get(secondReady), "url")).isFalse();
+            assertThat(Jsonl.str(events.get(secondReady), "url")).isEqualTo(appUrl);
+            assertThat(awaitCount(out, listening(), 2, jk)).isTrue();
             assertThat(awaitText(err, "restarting app", jk)).isTrue();
             assertThat(count(read(err), READY_LINE)).as(read(err)).isEqualTo(2);
-            assertThat(awaitCount(out, listening(), 2, jk)).isTrue();
-            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
 
             interrupt(jk);
             assertThat(jk.waitFor(30, TimeUnit.SECONDS))
@@ -268,19 +275,24 @@ class DevSidecarExampleTest {
      * free port instead of {@code npm run dev} on 5173, and the test-dependency table is dropped so
      * the copy builds with no lockfile and no repository.
      */
-    private static Path stage(Path project, int webPort) throws IOException {
+    private static Path stage(Path project, int webPort, int apiPort) throws IOException {
         Files.createDirectories(project.resolve("web"));
         copyTree(EXAMPLE.resolve("src/main"), project.resolve("src/main"));
         String manifest = Files.readString(EXAMPLE.resolve("jk.toml"));
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String sidecar = "web = { command = [\"" + java + "\", \"StubDevServer.java\", \"" + webPort
                 + "\"], cwd = \"web\", ready = \"http://localhost:" + webPort + "\", front-door = true }";
+        String appReady = "ready = \"http://localhost:" + apiPort + "/api/hello\"";
         String edited = manifest.lines()
                 .map(l -> l.startsWith("web = {") ? sidecar : l)
+                .map(l -> l.startsWith("ready = \"http://localhost:8080") ? appReady : l)
                 .filter(l -> !l.startsWith("[test-dependencies]") && !l.startsWith("junit-jupiter"))
                 .reduce((a, b) -> a + "\n" + b)
                 .orElseThrow();
-        assertThat(edited).contains("[dev.sidecars]").contains("main = \"demo.Api\"");
+        assertThat(edited)
+                .contains("[dev]\n" + appReady)
+                .contains("[dev.sidecars]")
+                .contains("main = \"demo.Api\"");
         Files.writeString(project.resolve("jk.toml"), edited + "\n");
         Files.writeString(project.resolve("web/StubDevServer.java"), """
                 import com.sun.net.httpserver.HttpServer;

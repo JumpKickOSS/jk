@@ -38,7 +38,10 @@ import org.jspecify.annotations.Nullable;
  * name. Under {@code --output json} the app is piped too, so stdout stays one JSONL stream: its
  * lines become {@code app-output} events beside the sidecars' {@code sidecar-output}, and its
  * starts and exits {@code app-started} / {@code app-exited}. {@code dev-ready} says the whole stack
- * is up, and says it again after a process restart of the app when the app is the front door.
+ * is up — every sidecar's probe and, when {@code [dev] ready} or {@code ready-pattern} names one,
+ * the app's own ({@link ReadyProbe}, run after every start and restart) — and says it again after
+ * a process restart of the app when the app is the front door. A pattern probe on a terminal pipes
+ * the app through jk, since a probe cannot read a terminal the app owns.
  *
  * <p>The session keeps one {@link CliSessionTranscript} for its whole life: the loop's builds — each
  * an engine job with its own {@code job} line — the sidecar and app events, and the finish — on
@@ -122,7 +125,7 @@ public final class AppWatchLoop {
                 json() ? recorder : SidecarOutput.both(SidecarOutput.terminal(CliOutput::err), recorder);
         Sidecars sidecars =
                 Sidecars.start(noSidecars ? List.of() : sidecarSpecs, listener, Clock.SYSTEM, Sidecars.Sleeper.REAL);
-        Process app;
+        App app;
         try {
             app = startApp(plan, appArgs);
         } catch (IOException | RuntimeException e) {
@@ -132,7 +135,7 @@ public final class AppWatchLoop {
         // Ctrl-C halts this process without unwinding, so the children are stopped from the
         // signal handler, and the transcript is finished there or never; the finally below does
         // the same on every other way out.
-        AtomicReference<Process> running = new AtomicReference<>(app);
+        AtomicReference<Process> running = new AtomicReference<>(app.process());
         try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> {
                     sidecars.stopAlongside(List.of(running.get()));
                     CliSessionTranscript.finish(session, Exit.INTERRUPTED, false);
@@ -145,13 +148,14 @@ public final class AppWatchLoop {
                     return Exit.SOFTWARE;
                 }
             }
+            if (!appReady(app)) return Exit.SOFTWARE;
             ready(sidecars, plan);
             while (true) {
                 Optional<SourceWatch.Changes> maybe = watch.pollChange(500, TimeUnit.MILLISECONDS);
                 if (maybe.isEmpty()) {
-                    if (!app.isAlive()) {
-                        int exit = app.exitValue();
-                        appExited(app);
+                    if (!app.process().isAlive()) {
+                        int exit = app.process().exitValue();
+                        appExited(app.process());
                         CliOutput.err(logPrefix + ": app exited with code " + exit + " — stopping.");
                         return exit;
                     }
@@ -171,7 +175,8 @@ public final class AppWatchLoop {
                             CliOutput.err(logPrefix + ": sidecars changed — restart jk dev to apply");
                         }
                         app = restartApp(app, plan, appArgs);
-                        running.set(app);
+                        running.set(app.process());
+                        if (!appReady(app)) return Exit.SOFTWARE;
                         if (sidecars.frontDoor().isEmpty()) ready(sidecars, plan);
                     }
                     continue;
@@ -185,25 +190,40 @@ public final class AppWatchLoop {
                     CliOutput.err(logPrefix + ": recompiled — DevTools restarts the context.");
                 } else {
                     app = restartApp(app, plan, appArgs);
-                    running.set(app);
+                    running.set(app.process());
+                    if (!appReady(app)) return Exit.SOFTWARE;
                     if (sidecars.frontDoor().isEmpty()) ready(sidecars, plan);
                 }
             }
         } finally {
-            sidecars.stopAlongside(List.of(app));
+            sidecars.stopAlongside(List.of(app.process()));
         }
     }
 
     /**
+     * Wait for the app's own probe, when {@code [dev]} declares one. A probe that fails — the JVM
+     * exited first, or the timeout passed — ends the session the way a sidecar's does, with the
+     * same sentence shape: the whole stack was asked for and did not come up.
+     */
+    private boolean appReady(App app) throws InterruptedException {
+        String failure = app.probe().await();
+        if (failure == null) return true;
+        CliOutput.err(logPrefix + ": " + failure);
+        return false;
+    }
+
+    /**
      * The one line that says the stack is up, and its {@code dev-ready} event under {@code --output
-     * json}: once every sidecar's probe has passed, and again after each process restart of the app
-     * when the app itself is the front door. A sidecar outlives the restart, so its address stays
-     * true; the app's process is new, and the terminal would otherwise keep pointing at the old one.
+     * json}: once every sidecar's probe and the app's own have passed, and again after each process
+     * restart of the app when the app itself is the front door. A sidecar outlives the restart, so
+     * its address stays true; the app's process is new, and the terminal would otherwise keep
+     * pointing at the old one. The address shown is the front-door sidecar's, else the app's own
+     * {@code [dev] ready} URL — the one place a reader learns where the app answers.
      */
     private void ready(Sidecars sidecars, ExecPlan plan) {
-        Optional<String> frontDoor = sidecars.frontDoor();
-        CliOutput.err(logPrefix + ": " + SidecarOutput.readyLine(frontDoor.orElse(""), plan.display()));
-        events.accept(SidecarOutput.devReady(Clock.SYSTEM, frontDoor.orElse(""), plan.display()));
+        String url = sidecars.frontDoor().orElse(plan.appReady().ready());
+        CliOutput.err(logPrefix + ": " + SidecarOutput.readyLine(url, plan.display()));
+        events.accept(SidecarOutput.devReady(Clock.SYSTEM, url, plan.display()));
     }
 
     private int deviceLoop(Path projectDir, Path cache, ExecPlan plan, List<String> appArgs)
@@ -289,29 +309,55 @@ public final class AppWatchLoop {
         return global.outputIsJson();
     }
 
-    private Process startApp(ExecPlan plan, List<String> appArgs) throws IOException {
+    /** The running app and the probe that says when it is listening; a new pair per start. */
+    private record App(Process process, ReadyProbe probe) {}
+
+    private App startApp(ExecPlan plan, List<String> appArgs) throws IOException {
         List<String> command = new ArrayList<>(plan.argv());
         command.addAll(appArgs);
         ProcessBuilder pb =
                 new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile());
         // Under --output json stdout is a JSONL stream, so the app is piped and its lines ride the
-        // stream as events, after its app-started; stdin is still the user's. On a terminal the app
-        // owns the terminal — no skipTrailingBlank: watch keeps printing after the app starts, so
-        // the envelope's closing blank is still jk's to emit.
-        Process app =
-                json() ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb);
-        events.accept(SidecarOutput.appStarted(Clock.SYSTEM, app.pid()));
-        if (json()) {
-            pumpApp("stdout", app.getInputStream());
-            pumpApp("stderr", app.getErrorStream());
+        // stream as events, after its app-started; stdin is still the user's. A pattern probe pipes
+        // the app on a terminal too — a probe cannot read a terminal the app owns — and relays each
+        // line as it arrives. Otherwise the app owns the terminal — no skipTrailingBlank: watch
+        // keeps printing after the app starts, so the envelope's closing blank is still jk's to emit.
+        boolean piped = json() || !plan.appReady().readyPattern().isEmpty();
+        Process process =
+                piped ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb);
+        ReadyProbe probe = new ReadyProbe(
+                "app",
+                plan.appReady().ready(),
+                plan.appReady().readyPattern(),
+                plan.appReady().readyTimeoutMillis(),
+                0,
+                process,
+                Clock.SYSTEM);
+        events.accept(SidecarOutput.appStarted(Clock.SYSTEM, process.pid()));
+        if (piped) {
+            pumpApp("stdout", process.getInputStream(), probe);
+            pumpApp("stderr", process.getErrorStream(), probe);
         }
-        return app;
+        return new App(process, probe);
     }
 
-    private void pumpApp(String stream, InputStream in) {
+    /**
+     * One of the app's piped streams, line by line: an {@code app-output} event on the JSONL stream,
+     * or the line itself on a terminal, and either way fed to the probe after it has been shown.
+     */
+    private void pumpApp(String stream, InputStream in, ReadyProbe probe) {
         Thread.ofVirtual().name("app-" + stream).start(() -> {
             try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                OutputLines.read(reader, line -> events.accept(SidecarOutput.appOutput(Clock.SYSTEM, stream, line)));
+                OutputLines.read(reader, line -> {
+                    if (json()) {
+                        events.accept(SidecarOutput.appOutput(Clock.SYSTEM, stream, line));
+                    } else if ("stderr".equals(stream)) {
+                        CliOutput.err(line);
+                    } else {
+                        CliOutput.out(line);
+                    }
+                    probe.sawLine(line);
+                });
             } catch (IOException ignored) {
                 // the pipe closes with the app; its exit is reported by the loop
             }
@@ -326,10 +372,9 @@ public final class AppWatchLoop {
         events.accept(SidecarOutput.appExited(Clock.SYSTEM, app.pid(), app.exitValue()));
     }
 
-    private Process restartApp(Process app, ExecPlan plan, List<String> appArgs)
-            throws IOException, InterruptedException {
-        stop(app);
-        appExited(app);
+    private App restartApp(App app, ExecPlan plan, List<String> appArgs) throws IOException, InterruptedException {
+        stop(app.process());
+        appExited(app.process());
         CliOutput.err(logPrefix + ": restarting app");
         return startApp(plan, appArgs);
     }

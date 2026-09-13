@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.host.time.Clock;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.BufferedReader;
@@ -10,21 +9,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -34,13 +26,12 @@ import org.jspecify.annotations.Nullable;
  * torn down with the session — together with the app and with everything it spawned, in one pass. A sidecar that exits on its own is reported once, or
  * restarted with backoff when its manifest says {@code restart = "on-exit"}; five failures in a
  * row is the limit, and a run that passed its probe or stayed up {@link #STABLE_RUN_MILLIS} starts
- * the count over. {@link #awaitReady} runs the probes: an HTTP URL polled for 2xx/3xx, a regex over
- * the output, or a second of staying alive; a probe that times out is a failure of the session, not
- * a warning.
+ * the count over. {@link #awaitReady} runs the probes ({@link ReadyProbe}: an HTTP URL polled for
+ * 2xx/3xx, a regex over the output, or a second of staying alive); a probe that times out is a
+ * failure of the session, not a warning.
  */
 public final class Sidecars implements AutoCloseable {
 
-    static final long NO_PROBE_ALIVE_MILLIS = 1_000;
     static final int MAX_RESTARTS = 5;
     /** A run that lasted this long was a working sidecar; its exit is the first failure, not the next. */
     static final long STABLE_RUN_MILLIS = 30_000;
@@ -213,7 +204,7 @@ public final class Sidecars implements AutoCloseable {
             Thread.currentThread().interrupt();
             return;
         }
-        boolean stable = r.exited(exit);
+        boolean stable = r.proven();
         if (closing) return;
         long pid = r.process.pid();
         if (r.spec.restart() != Sidecar.Restart.ON_EXIT) {
@@ -250,9 +241,7 @@ public final class Sidecars implements AutoCloseable {
         final int failures;
         final Clock clock;
         final long startedAt;
-        private final CountDownLatch patternSeen = new CountDownLatch(1);
-        private final @Nullable Pattern pattern;
-        private volatile int exit = Integer.MIN_VALUE;
+        private final ReadyProbe probe;
         private volatile boolean ready;
 
         Running(ExecPlan.Sidecar spec, Process process, int failures, Clock clock) {
@@ -261,106 +250,30 @@ public final class Sidecars implements AutoCloseable {
             this.failures = failures;
             this.clock = clock;
             this.startedAt = clock.nanos();
-            this.pattern = spec.readyPattern().isEmpty() ? null : Pattern.compile(spec.readyPattern());
+            this.probe = new ReadyProbe(
+                    "sidecar `" + spec.name() + "`",
+                    spec.ready(),
+                    spec.readyPattern(),
+                    spec.readyTimeoutMillis(),
+                    ReadyProbe.NO_PROBE_ALIVE_MILLIS,
+                    process,
+                    clock);
         }
 
         void sawLine(String line) {
-            if (pattern != null && pattern.matcher(line).find()) patternSeen.countDown();
+            probe.sawLine(line);
         }
 
-        /** Record the exit; true when this run had proven itself — probe passed or a stable stretch alive. */
-        boolean exited(int code) {
-            exit = code;
+        /** True when this run had proven itself — probe passed or a stable stretch alive — by the time it exited. */
+        boolean proven() {
             return ready || clock.nanos() - startedAt >= TimeUnit.MILLISECONDS.toNanos(STABLE_RUN_MILLIS);
         }
 
         @Nullable
         String awaitReady() throws InterruptedException {
-            String failure = probe();
+            String failure = probe.await();
             if (failure == null) ready = true;
             return failure;
-        }
-
-        @Nullable
-        private String probe() throws InterruptedException {
-            long deadline = startedAt + TimeUnit.MILLISECONDS.toNanos(spec.readyTimeoutMillis());
-            if (pattern != null) {
-                while (clock.nanos() < deadline) {
-                    if (patternSeen.await(100, TimeUnit.MILLISECONDS)) return null;
-                    if (exit != Integer.MIN_VALUE) return exitedEarly();
-                }
-                return timedOut("output never matched /" + spec.readyPattern() + "/");
-            }
-            if (!spec.ready().isEmpty()) {
-                // HTTP/1.1 only: a dev server that ignores the h2c upgrade would otherwise hang the
-                // probe until its timeout, and none of them speak HTTP/2 on plain TCP anyway. Not
-                // Http's verbs — a probe must answer in one attempt and take a 3xx as alive — but
-                // Http's client builder, so a front door off loopback is reached through the proxy
-                // the shell names, and bypassed where no_proxy says so.
-                try (HttpClient client = Http.proxiedClientBuilder()
-                        .version(HttpClient.Version.HTTP_1_1)
-                        .connectTimeout(Duration.ofSeconds(2))
-                        .followRedirects(HttpClient.Redirect.NEVER)
-                        .build()) {
-                    List<HttpRequest> requests = new ArrayList<>();
-                    for (URI candidate : readyCandidates(URI.create(spec.ready()))) {
-                        requests.add(Http.proxiedRequest(candidate)
-                                .timeout(Duration.ofSeconds(2))
-                                .GET()
-                                .build());
-                    }
-                    while (clock.nanos() < deadline) {
-                        if (exit != Integer.MIN_VALUE) return exitedEarly();
-                        for (HttpRequest request : requests) {
-                            try {
-                                int status = client.send(request, HttpResponse.BodyHandlers.discarding())
-                                        .statusCode();
-                                if (status >= 200 && status < 400) return null;
-                            } catch (IOException | RuntimeException notYet) {
-                                // not listening on this address yet
-                            }
-                        }
-                        Thread.sleep(250);
-                    }
-                }
-                return timedOut(spec.ready() + " never answered 2xx/3xx");
-            }
-            long aliveUntil = startedAt + TimeUnit.MILLISECONDS.toNanos(NO_PROBE_ALIVE_MILLIS);
-            while (clock.nanos() < aliveUntil) {
-                if (exit != Integer.MIN_VALUE) return exitedEarly();
-                Thread.sleep(50);
-            }
-            return null;
-        }
-
-        private String exitedEarly() {
-            return "sidecar `" + spec.name() + "` exited with " + exit + " before it was ready";
-        }
-
-        private String timedOut(String what) {
-            return "sidecar `" + spec.name() + "` was not ready after " + spec.readyTimeoutMillis() / 1000 + " s: "
-                    + what;
-        }
-    }
-
-    /**
-     * The addresses a {@code ready} URL is tried on. {@code localhost} becomes both loopbacks:
-     * Node binds {@code ::1} alone on a dual-stack host while the JDK client resolves the name to
-     * {@code 127.0.0.1}, and a probe that only tried one of them would call a serving Vite "not
-     * ready" for the whole timeout.
-     */
-    static List<URI> readyCandidates(URI url) {
-        String host = url.getHost();
-        if (host == null || !host.equalsIgnoreCase("localhost")) return List.of(url);
-        return List.of(withHost(url, "127.0.0.1"), withHost(url, "[::1]"));
-    }
-
-    private static URI withHost(URI url, String host) {
-        String authority = url.getPort() < 0 ? host : host + ":" + url.getPort();
-        try {
-            return new URI(url.getScheme(), authority, url.getPath(), url.getQuery(), url.getFragment());
-        } catch (URISyntaxException e) {
-            throw new IllegalArgumentException(e);
         }
     }
 }

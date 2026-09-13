@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -16,14 +17,26 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code [dev.sidecars]} for one module's dev plan: the workspace root's entries first, then the
- * module's, the module winning a name clash; {@code cwd} made absolute against the manifest that
- * declared it; {@code env} the {@code .env} values the real environment does not already set, then
- * the entry's own table on top. Nothing here touches an action key — sidecars are not tasks.
+ * {@code [dev]} for one module's dev plan. The sidecars: the workspace root's entries first, then
+ * the module's, the module winning a name clash; {@code cwd} made absolute against the manifest
+ * that declared it; {@code env} the {@code .env} values the real environment does not already set,
+ * then the entry's own table on top. The app's own probe: the module's alone — the root does not
+ * know which of its members' apps is running. Nothing here touches an action key — none of it is
+ * a task.
  */
 final class DevSidecars {
 
     private DevSidecars() {}
+
+    /** {@code [dev] ready} / {@code ready-pattern} / {@code ready-timeout} on the wire, or {@link ExecPlan.Probe#NONE}. */
+    static ExecPlan.Probe appReady(JkBuild module) {
+        DevReady ready = module.build().devReady();
+        if (ready == null) return ExecPlan.Probe.NONE;
+        return new ExecPlan.Probe(
+                ready.url() == null ? "" : ready.url(),
+                ready.pattern() == null ? "" : ready.pattern(),
+                ready.timeoutMillis());
+    }
 
     static List<ExecPlan.Sidecar> resolve(Path moduleDir, JkBuild module, Map<String, String> clientEnv)
             throws IOException {

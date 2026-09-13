@@ -114,6 +114,28 @@ entries, the module winning a name clash. `jk run`, `jk build`, and `jk test` ne
 and nothing about a sidecar enters an action key: `jk.toml` and `jk-lock.toml` still fully describe
 the artifact.
 
+### The app's own readiness (`[dev] ready`)
+
+Sidecars have probes; without one of its own the app counts as ready the moment its JVM is forked,
+and a consumer that fetches the front door on `dev-ready` races the app's startup. The same three
+keys on `[dev]` itself give the app a probe, run after every start **and every restart**:
+
+```toml
+[dev]
+ready = "http://localhost:8080/health"     # or: ready-pattern = "Started \\w+ in"
+ready-timeout = "90s"
+```
+
+| Key | Meaning | Default |
+|---|---|---|
+| `ready` | An HTTP(S) URL polled every 250 ms until it answers 2xx/3xx, both loopbacks for `localhost`, exactly as for a sidecar. When no sidecar is the front door, this is the address the `ready ·` line and `dev-ready` carry | none |
+| `ready-pattern` | A regex over the app's stdout and stderr — the other probe; one or the other. On a terminal this pipes the app's output through jk (the app no longer owns the terminal), since a probe cannot read a terminal it does not hold | none |
+| `ready-timeout` | The same spellings as a sidecar's. A probe that times out, or a JVM that exits first, **fails the session** with the sidecar's wording: `app was not ready after 90 s: …` | `"60s"` |
+
+With no `[dev]` probe nothing changes: `dev-ready` means every sidecar is ready and the JVM was
+started. With one, `dev-ready` and the `ready ·` line wait for the app too, so a fetch on
+`dev-ready` finds the JVM listening.
+
 ## jshell / REPL
 
 ```bash

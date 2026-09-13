@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParser.*;
 
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JavacConfig;
@@ -307,6 +308,7 @@ public final class ManifestBuild {
                     policies.unmapped(),
                     List.of(),
                     List.of(),
+                    null,
                     List.of(),
                     EnvConfig.EMPTY);
         }
@@ -328,6 +330,7 @@ public final class ManifestBuild {
                 policies.unmapped(),
                 List.of(),
                 List.of(),
+                null,
                 List.of(),
                 EnvConfig.EMPTY);
     }
@@ -367,8 +370,80 @@ public final class ManifestBuild {
     public static final List<String> SIDECAR_KEYS =
             List.of("command", "cwd", "env", "ready", "ready-pattern", "ready-timeout", "front-door", "restart");
 
-    /** The keys {@code [dev]} itself may carry. */
-    public static final List<String> DEV_KEYS = List.of("sidecars");
+    /**
+     * The keys {@code [dev]} itself may carry: the sidecars, and the application's own probe —
+     * {@code ready}, {@code ready-pattern}, {@code ready-timeout} — with the meanings a sidecar's
+     * have, so {@code dev-ready} can mean the app is listening rather than forked.
+     */
+    public static final List<String> DEV_KEYS = List.of("sidecars", "ready", "ready-pattern", "ready-timeout");
+
+    /**
+     * {@code [dev] ready} / {@code ready-pattern} / {@code ready-timeout} — the app's readiness
+     * probe, or empty when the table names none:
+     *
+     * <pre>
+     * [dev]
+     * ready = "http://localhost:8080/health"
+     * </pre>
+     */
+    static Optional<DevReady> parseDevReady(TomlTable root) {
+        TomlTable dev = devTable(root);
+        if (dev == null) return Optional.empty();
+        if (!dev.contains("ready") && !dev.contains("ready-pattern")) {
+            if (dev.contains("ready-timeout")) {
+                throw new JkBuildParseException("[dev] ready-timeout needs a probe: ready or ready-pattern");
+            }
+            return Optional.empty();
+        }
+        Probe probe = probe(dev, "[dev]", DevReady.DEFAULT_TIMEOUT_MILLIS);
+        return Optional.of(new DevReady(probe.url(), probe.pattern(), probe.timeoutMillis()));
+    }
+
+    /** The three probe values as a table states them; a sidecar may state none, the app may not. */
+    private record Probe(@Nullable String url, @Nullable String pattern, long timeoutMillis) {}
+
+    /** {@code [dev]} as a table with only known keys, or null when absent. */
+    private static @Nullable TomlTable devTable(TomlTable root) {
+        Object rawDev = root.get(List.of("dev"));
+        if (rawDev == null) return null;
+        if (!(rawDev instanceof TomlTable dev)) {
+            throw new JkBuildParseException("[dev] must be a table: [dev.sidecars] web = { command = \"…\" }");
+        }
+        for (String key : dev.keySet()) {
+            if (!DEV_KEYS.contains(key)) {
+                throw new JkBuildParseException(
+                        "[dev] unknown key `" + key + "` — expected one of: " + String.join(", ", DEV_KEYS));
+            }
+        }
+        return dev;
+    }
+
+    /**
+     * The one probe shape both a sidecar and the app declare: {@code ready} (a URL), {@code
+     * ready-pattern} (a regex, checked here so a typo fails the parse and not the session), at most
+     * one of them, and {@code ready-timeout} defaulting to {@code defaultTimeout}. The caller has
+     * already established that at least one of the two probes is present when it must be.
+     */
+    private static Probe probe(TomlTable table, String where, long defaultTimeout) {
+        String ready = table.contains("ready") ? scalar(table.get(List.of("ready")), where + ".ready") : null;
+        String pattern = table.contains("ready-pattern")
+                ? scalar(table.get(List.of("ready-pattern")), where + ".ready-pattern")
+                : null;
+        if (ready != null && pattern != null) {
+            throw new JkBuildParseException(where + " sets both ready and ready-pattern — one probe per process");
+        }
+        if (pattern != null) {
+            try {
+                Pattern.compile(pattern);
+            } catch (PatternSyntaxException e) {
+                throw new JkBuildParseException(where + ".ready-pattern is not a regex: " + e.getDescription());
+            }
+        }
+        long timeout = table.contains("ready-timeout")
+                ? durationMillis(table.get(List.of("ready-timeout")), where + ".ready-timeout")
+                : defaultTimeout;
+        return new Probe(ready, pattern, timeout);
+    }
 
     /**
      * {@code [dev.sidecars]} — one table per sidecar, keyed by name, in manifest order:
@@ -384,16 +459,8 @@ public final class ManifestBuild {
      * sidecar silently unprobed.
      */
     static List<Sidecar> parseDevSidecars(TomlTable root) {
-        Object rawDev = root.get(List.of("dev"));
-        if (rawDev == null) return List.of();
-        if (!(rawDev instanceof TomlTable dev)) {
-            throw new JkBuildParseException("[dev] must be a table: [dev.sidecars] web = { command = \"…\" }");
-        }
-        for (String key : dev.keySet()) {
-            if (!DEV_KEYS.contains(key)) {
-                throw new JkBuildParseException("[dev] unknown key `" + key + "` — expected sidecars");
-            }
-        }
+        TomlTable dev = devTable(root);
+        if (dev == null) return List.of();
         Object rawSidecars = dev.get(List.of("sidecars"));
         if (rawSidecars == null) return List.of();
         if (!(rawSidecars instanceof TomlTable sidecars)) {
@@ -449,23 +516,7 @@ public final class ManifestBuild {
                 env.put(key, value);
             }
         }
-        String ready = table.contains("ready") ? scalar(table.get(List.of("ready")), where + ".ready") : null;
-        String pattern = table.contains("ready-pattern")
-                ? scalar(table.get(List.of("ready-pattern")), where + ".ready-pattern")
-                : null;
-        if (ready != null && pattern != null) {
-            throw new JkBuildParseException(where + " sets both ready and ready-pattern — a sidecar has one probe");
-        }
-        if (pattern != null) {
-            try {
-                Pattern.compile(pattern);
-            } catch (PatternSyntaxException e) {
-                throw new JkBuildParseException(where + ".ready-pattern is not a regex: " + e.getDescription());
-            }
-        }
-        long timeout = table.contains("ready-timeout")
-                ? durationMillis(table.get(List.of("ready-timeout")), where + ".ready-timeout")
-                : Sidecar.DEFAULT_READY_TIMEOUT_MILLIS;
+        Probe probe = probe(table, where, Sidecar.DEFAULT_READY_TIMEOUT_MILLIS);
         boolean frontDoor = false;
         if (table.contains("front-door")) {
             if (!(table.get(List.of("front-door")) instanceof Boolean b)) {
@@ -481,7 +532,8 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(where + ".restart " + e.getMessage());
             }
         }
-        return new Sidecar(name, command, cwd, env, ready, pattern, timeout, frontDoor, restart);
+        return new Sidecar(
+                name, command, cwd, env, probe.url(), probe.pattern(), probe.timeoutMillis(), frontDoor, restart);
     }
 
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*(ms|s|m)?");

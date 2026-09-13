@@ -176,7 +176,8 @@ public final class ExecPlans {
                 List.of(),
                 paths,
                 "",
-                List.of());
+                List.of(),
+                ExecPlan.Probe.NONE);
     }
 
     /**
@@ -313,7 +314,8 @@ public final class ExecPlans {
                 List.of(),
                 List.of(),
                 deployCommand,
-                sidecars);
+                sidecars,
+                ExecPlan.Probe.NONE);
     }
 
     /**
@@ -338,7 +340,8 @@ public final class ExecPlans {
                     false,
                     false,
                     List.of(),
-                    List.of());
+                    List.of(),
+                    ExecPlan.Probe.NONE);
         }
         Path assemblyJar = layout.assemblyJar();
         if (Files.isRegularFile(assemblyJar)) {
@@ -351,7 +354,8 @@ public final class ExecPlans {
                     false,
                     false,
                     List.of(),
-                    List.of());
+                    List.of(),
+                    ExecPlan.Probe.NONE);
         }
         // Self-contained packager output (Quarkus fast-jar / Boot fat-jar): run via -jar.
         // Do not fall through to -cp + scanned main — the thin Class-Path layout or nested
@@ -370,7 +374,8 @@ public final class ExecPlans {
                         false,
                         false,
                         List.of(),
-                        List.of());
+                        List.of(),
+                        ExecPlan.Probe.NONE);
             }
             return ExecPlan.error(
                     "run",
@@ -462,7 +467,16 @@ public final class ExecPlans {
         if (dev && Files.isDirectory(dir.resolve("src")))
             watchRoots.add(dir.resolve("src").toString());
         return runAck(
-                dev ? "dev" : "run", argv, dir, javaHome, display, hotReload, devtoolsInjected, watchRoots, sidecars);
+                dev ? "dev" : "run",
+                argv,
+                dir,
+                javaHome,
+                display,
+                hotReload,
+                devtoolsInjected,
+                watchRoots,
+                sidecars,
+                dev ? DevSidecars.appReady(project) : ExecPlan.Probe.NONE);
     }
 
     /** Whether the lock already carries Spring Boot DevTools, in any of the spellings a lock uses. */
@@ -581,7 +595,8 @@ public final class ExecPlans {
             boolean hotReload,
             boolean devtoolsInjected,
             List<String> watchRoots,
-            List<ExecPlan.Sidecar> sidecars) {
+            List<ExecPlan.Sidecar> sidecars,
+            ExecPlan.Probe appReady) {
         return new ExecPlan(
                 null,
                 "",
@@ -605,7 +620,8 @@ public final class ExecPlans {
                 List.of(),
                 List.of(),
                 "",
-                sidecars);
+                sidecars,
+                appReady);
     }
 
     /**
@@ -759,7 +775,8 @@ public final class ExecPlans {
                 List.of(),
                 List.of(),
                 "",
-                List.of());
+                List.of(),
+                ExecPlan.Probe.NONE);
     }
 
     /** {@code jk build --aot-cache}: everything the client's layout/training step needs. */
@@ -818,7 +835,8 @@ public final class ExecPlans {
                 libNames,
                 libPaths,
                 "",
-                List.of());
+                List.of(),
+                ExecPlan.Probe.NONE);
     }
 
     // ------------------------------------------------------------- helpers

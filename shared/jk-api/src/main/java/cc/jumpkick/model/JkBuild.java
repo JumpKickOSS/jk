@@ -771,6 +771,12 @@ public record JkBuild(
              */
             List<Sidecar> devSidecars,
             /**
+             * {@code [dev] ready} / {@code ready-pattern} / {@code ready-timeout} — the probe that
+             * says the application itself is listening under {@code jk dev}; null means none, and
+             * the app counts as ready once forked. Dev-only, like {@code devSidecars}.
+             */
+            @Nullable DevReady devReady,
+            /**
              * {@code [audit] ignore} — advisories {@code jk audit} reports but does not gate on,
              * each with its reason and an optional expiry date. Read by the audit alone; never an
              * action-key input.
@@ -802,6 +808,7 @@ public record JkBuild(
                 UnmappedPolicy.MEDIATE,
                 List.of(),
                 List.of(),
+                null,
                 List.of(),
                 EnvConfig.EMPTY);
 
@@ -863,6 +870,7 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
+                    devReady,
                     auditIgnores,
                     env);
         }
@@ -885,6 +893,7 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
+                    devReady,
                     auditIgnores,
                     env);
         }
@@ -908,6 +917,7 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
+                    devReady,
                     auditIgnores,
                     env);
         }
@@ -931,6 +941,7 @@ public record JkBuild(
                     unmappedPolicy,
                     decls,
                     devSidecars,
+                    devReady,
                     auditIgnores,
                     env);
         }
@@ -954,6 +965,31 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     sidecars,
+                    devReady,
+                    auditIgnores,
+                    env);
+        }
+
+        /** The same block with the {@code [dev]} probe of the application set. */
+        public Build withDevReady(@Nullable DevReady ready) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    debug,
+                    kotlinPlugins,
+                    kspOptions,
+                    javac,
+                    extraSrc,
+                    testExtraSrc,
+                    fixtures,
+                    testWorkers,
+                    testSerialTags,
+                    platformPolicy,
+                    unmappedPolicy,
+                    testEnv,
+                    devSidecars,
+                    ready,
                     auditIgnores,
                     env);
         }
@@ -977,6 +1013,7 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
+                    devReady,
                     auditIgnores,
                     env);
         }
@@ -1000,6 +1037,7 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
+                    devReady,
                     auditIgnores,
                     config);
         }
@@ -1023,6 +1061,7 @@ public record JkBuild(
                     unmappedPolicy,
                     testEnv,
                     devSidecars,
+                    devReady,
                     ignores,
                     env);
         }

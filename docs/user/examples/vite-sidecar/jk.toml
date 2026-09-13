@@ -6,8 +6,12 @@ java    = 25
 [application]
 main = "demo.Api"
 
-# The frontend's own dev server runs beside the JVM under `jk dev` — and only there. `jk run`,
-# `jk build`, and `jk test` never read this table; nothing about it enters the action cache.
+# Under `jk dev` — and only there — the JVM counts as ready once /api/hello answers, and the
+# frontend's own dev server runs beside it. `jk run`, `jk build`, and `jk test` never read this
+# table; nothing about it enters the action cache.
+[dev]
+ready = "http://localhost:8080/api/hello"
+
 [dev.sidecars]
 web = { command = "npm run dev", cwd = "web", ready = "http://localhost:5173", front-door = true }
 

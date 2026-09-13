@@ -40,7 +40,33 @@ public record ExecPlan(
         List<String> libPaths,
         String deployCommand,
         /** {@code [dev.sidecars]} resolved for this module — dev plans only; every other kind carries none. */
-        List<Sidecar> sidecars) {
+        List<Sidecar> sidecars,
+        /** {@code [dev] ready} — the app's own probe; {@link Probe#NONE} on every plan but a dev plan that declares one. */
+        Probe appReady) {
+
+    /**
+     * The application's readiness probe, as {@code [dev]} states it: {@code ready} a URL polled
+     * for 2xx/3xx, {@code readyPattern} a regex over the app's output, one or neither, and the
+     * timeout bounding whichever is set. Written flat beside the plan's other scalars.
+     */
+    public record Probe(String ready, String readyPattern, long readyTimeoutMillis) {
+
+        /** No probe: the app is ready once forked. */
+        public static final Probe NONE = new Probe("", "", 0);
+
+        public boolean isEmpty() {
+            return ready.isEmpty() && readyPattern.isEmpty();
+        }
+
+        static Probe decode(String line) {
+            String ready = Jsonl.str(line, "appReady");
+            String pattern = Jsonl.str(line, "appReadyPattern");
+            return new Probe(
+                    ready == null ? "" : ready,
+                    pattern == null ? "" : pattern,
+                    Jsonl.longValue(line, "appReadyTimeoutMillis", 0));
+        }
+    }
 
     /**
      * One sidecar the client is to run beside the app: {@code cwd} absolute, {@code env} the
@@ -150,7 +176,8 @@ public record ExecPlan(
                 libNames,
                 libPaths,
                 deployCommand,
-                sidecars);
+                sidecars,
+                appReady);
     }
 
     /** As {@link #error(String, String)}, tagging the failure as an unresolved main-class scan. */
@@ -178,7 +205,8 @@ public record ExecPlan(
                 List.of(),
                 List.of(),
                 "",
-                List.of());
+                List.of(),
+                Probe.NONE);
     }
 
     public String encode() {
@@ -206,6 +234,9 @@ public record ExecPlan(
                 .array("libPaths", libPaths)
                 .string("deployCommand", deployCommand)
                 .token("sidecars", Sidecar.encodeAll(sidecars))
+                .string("appReady", appReady.ready())
+                .string("appReadyPattern", appReady.readyPattern())
+                .number("appReadyTimeoutMillis", appReady.readyTimeoutMillis())
                 .finish();
     }
 
@@ -233,7 +264,8 @@ public record ExecPlan(
                 Jsonl.strArray(line, "libNames"),
                 Jsonl.strArray(line, "libPaths"),
                 orEmptyDeploy(Jsonl.str(line, "deployCommand")),
-                Sidecar.decodeAll(line));
+                Sidecar.decodeAll(line),
+                Probe.decode(line));
     }
 
     private static String orEmptyDeploy(@Nullable String s) {

@@ -265,7 +265,7 @@
     },
     "dev": {
       "type": "object",
-      "description": "[dev] table: what `jk dev` runs beside the application. Read by no other verb; never part of an action key.",
+      "description": "[dev] table: what `jk dev` runs beside the application, and how it tells the application itself is listening. Read by no other verb; never part of an action key.",
       "properties": {
         "sidecars": {
           "type": "object",
@@ -288,6 +288,21 @@
             "required": ["command"],
             "additionalProperties": false
           }
+        },
+        "ready": {
+          "type": "string",
+          "description": "The application's own probe: an HTTP(S) URL polled every 250 ms (HTTP/1.1) after each start and restart until it answers 2xx/3xx; `localhost` is tried on both loopbacks. `dev-ready` and the `ready \u00b7` line wait for it. Default: no probe \u2014 the app counts as ready once forked."
+        },
+        "ready-pattern": {
+          "type": "string",
+          "description": "Regex matched against the application's stdout and stderr lines; the alternative to `ready`. On a terminal this pipes the app's output through jk so it can be read. Default: none."
+        },
+        "ready-timeout": {
+          "description": "How long the application's probe may take: \"60s\", \"2m\", \"500ms\", or a bare number of seconds. A probe that times out fails the `jk dev` session, as a sidecar's does. Default \"60s\".",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "integer" }
+          ]
         }
       },
       "additionalProperties": false

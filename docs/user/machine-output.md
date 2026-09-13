@@ -92,7 +92,7 @@ is one JSONL stream from the first byte to the last; on a terminal the app owns 
 | `app-started` | `pid` | The app JVM was started or restarted |
 | `app-output` | `stream`, `line` | One line of the app's stdout or stderr |
 | `app-exited` | `pid`, `exit` | The app exited or was stopped for a restart |
-| `dev-ready` | `url` (the `front-door` sidecar's `ready` URL; absent when the app itself is the front door), `app` (the app's command as displayed) | The whole stack is up: every sidecar's probe passed. Emitted again after each process restart of the app when the app is the front door — a sidecar outlives the restart, the app's process does not |
+| `dev-ready` | `url` (the `front-door` sidecar's `ready` URL, else the app's own `[dev] ready` URL; absent when neither names one), `app` (the app's command as displayed) | The whole stack is up: every sidecar's probe passed, and the app's own `[dev] ready` / `ready-pattern` probe when it declares one — without it the app counts as ready once forked. Emitted again after each process restart of the app when the app is the front door — a sidecar outlives the restart, the app's process does not |
 
 ```json
 {"schema":1,"ts":1721664002000,"type":"sidecar-started","name":"web","pid":48213}
