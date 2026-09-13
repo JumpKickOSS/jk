@@ -16,6 +16,25 @@ always a **dry-run** so tokens never enter the engine — [MCP](mcp.md).
 
 Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md).
 
+## SBOM
+
+`jk publish --sbom` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact and
+writes the same two files under the module's build output — `target/sbom/<name>-<version>.cdx.json`
+and `target/sbom/<name>-<version>.spdx.json`; a workspace member's build output sits under the
+root's `target/<module>/` — printing their paths. With `--dry-run` nothing is uploaded and no
+`--repo-url` is needed, so a release script takes the bill of materials from disk:
+
+```bash
+jk publish --sbom --dry-run
+#   wrote target/sbom/widget-1.0.0.cdx.json
+#   wrote target/sbom/widget-1.0.0.spdx.json
+```
+
+The CycloneDX document is deterministic (no serial number, no timestamp) and is written by the
+same code that embeds `META-INF/sbom/application.cdx.json` in every application jar
+([Packaging](packaging.md)), so the sidecar of a module is the document its jar carries: the
+production runtime rows of `jk-lock.toml`, one per module, each with its SHA-256.
+
 ## Deny policy
 
 ```toml

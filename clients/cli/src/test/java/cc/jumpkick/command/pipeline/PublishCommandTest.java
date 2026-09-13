@@ -238,6 +238,31 @@ class PublishCommandTest {
     }
 
     @Test
+    void sbom_dry_run_writes_the_documents_under_target_and_needs_no_repo_url(@TempDir Path tempDir) throws Exception {
+        writeJkBuild(tempDir);
+        writeJar(tempDir.resolve("target/lib/widget-1.0.0.jar"));
+
+        int exit = run("publish", "-C", tempDir.toString(), "--sbom", "--dry-run");
+        assertThat(exit).isEqualTo(0);
+        assertThat(received).isEmpty();
+        Path cdx = tempDir.resolve("target/sbom/widget-1.0.0.cdx.json");
+        assertThat(cdx).exists();
+        assertThat(tempDir.resolve("target/sbom/widget-1.0.0.spdx.json")).exists();
+        assertThat(Files.readString(cdx))
+                .contains("\"specVersion\": \"1.6\"")
+                .contains("pkg:maven/com.example/widget@1.0.0");
+    }
+
+    @Test
+    void publish_without_a_repo_url_is_refused_unless_dry_run(@TempDir Path tempDir) throws Exception {
+        writeJkBuild(tempDir);
+        writeJar(tempDir.resolve("target/lib/widget-1.0.0.jar"));
+
+        assertThat(run("publish", "-C", tempDir.toString())).isNotZero();
+        assertThat(received).isEmpty();
+    }
+
+    @Test
     void sigstore_dry_run_does_not_call_fulcio(@TempDir Path tempDir) throws Exception {
         // --dry-run must not attempt to initialise the keyless signer, which
         // would otherwise need network + OIDC. Same goes for --sign without a

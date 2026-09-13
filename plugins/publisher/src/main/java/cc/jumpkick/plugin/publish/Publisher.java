@@ -99,6 +99,9 @@ public final class Publisher implements Plugin, PublishExtension {
             fields.put("files", result.files());
             if (result.bytes() > 0) fields.put("bytes", result.bytes());
             if (result.dryRun()) fields.put("dry_run", true);
+            if (!result.written().isEmpty())
+                fields.put(
+                        "written", result.written().stream().map(Path::toString).toList());
             out.emit(PluginReply.result(fields));
             return 0;
         } catch (InterruptedException e) {
@@ -116,7 +119,6 @@ public final class Publisher implements Plugin, PublishExtension {
         PluginConfig c = ctx.config();
         Path projectDir = ctx.moduleDir();
         Path jar = ctx.mainArtifact().orElseThrow(() -> new IOException("publish goal needs a built main artifact"));
-        URI repoUrl = URI.create(c.string("repoUrl"));
 
         c.stringOpt("pluginJars")
                 .ifPresent(joined -> Classpaths.split(joined).forEach(PluginTableRegistry::installFromJar));
@@ -182,24 +184,18 @@ public final class Publisher implements Plugin, PublishExtension {
                     + project.project().version() + ".intoto.json");
         }
 
-        if (c.bool("sbom", false)) {
-            Path lockPath = LockPaths.lockFile(projectDir);
-            Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
-            byte[] cdx = Sbom.cyclonedx(project, lock);
-            byte[] spdxBytes = Sbom.spdx(project, lock);
-            artifacts.add(new MavenPublisher.Artifact("-cyclonedx.json", cdx));
-            artifacts.add(new MavenPublisher.Artifact("-spdx.json", spdxBytes));
-            ctx.label("artifact cyclonedx+spdx (" + (cdx.length + spdxBytes.length) + " bytes)");
-        }
+        List<Path> written = new ArrayList<>();
+        if (c.bool("sbom", false)) sbom(ctx, projectDir, project, artifacts, written);
 
         if (c.bool("dryRun", false)) {
-            return PublishResult.dryRun(artifacts.size());
+            return PublishResult.dryRun(artifacts.size()).withWritten(written);
         }
 
         // Everything past here talks to someone else's server — the PUTs, and Sigstore's Fulcio/
         // Rekor round trip when keyless signing is on. Refuse before any of it, naming the target,
         // rather than discovering it one layer down: `--offline` that uploads anyway is worse than
         // no `--offline` at all.
+        URI repoUrl = URI.create(c.string("repoUrl"));
         if (ctx.offline()) {
             throw new OfflineException(repoUrl);
         }
@@ -240,7 +236,8 @@ public final class Publisher implements Plugin, PublishExtension {
             }
             // No partial-failure check: publish() throws on the first non-2xx PUT, so a Result here
             // is a fully successful upload.
-            return PublishResult.uploaded(result.statusByPath().size(), result.bytes());
+            return PublishResult.uploaded(result.statusByPath().size(), result.bytes())
+                    .withWritten(written);
         } finally {
             if (signing.sigstore() instanceof AutoCloseable closeable) {
                 try {
@@ -250,6 +247,33 @@ public final class Publisher implements Plugin, PublishExtension {
                 }
             }
         }
+    }
+
+    /**
+     * The SBOM sidecars: uploaded beside the artifact, and the same documents left under the
+     * module's target/ so a release takes the bill of materials from disk — with or without an
+     * upload — instead of unzipping a jar.
+     */
+    private static void sbom(
+            PublishContext ctx,
+            Path projectDir,
+            JkBuild project,
+            List<MavenPublisher.Artifact> artifacts,
+            List<Path> written)
+            throws IOException {
+        Path lockPath = LockPaths.lockFile(projectDir);
+        Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
+        byte[] cdx = Sbom.cyclonedx(project, lock);
+        byte[] spdxBytes = Sbom.spdx(project, lock);
+        artifacts.add(new MavenPublisher.Artifact("-cyclonedx.json", cdx));
+        artifacts.add(new MavenPublisher.Artifact("-spdx.json", spdxBytes));
+        ctx.label("artifact cyclonedx+spdx (" + (cdx.length + spdxBytes.length) + " bytes)");
+        Path sbomDir =
+                Files.createDirectories(BuildLayout.of(projectDir, project).sbomDir());
+        String stem = project.project().name() + "-" + project.project().version();
+        written.add(Files.write(sbomDir.resolve(stem + ".cdx.json"), cdx));
+        written.add(Files.write(sbomDir.resolve(stem + ".spdx.json"), spdxBytes));
+        for (Path p : written) ctx.label("wrote " + projectDir.relativize(p));
     }
 
     /** The generic terminal context assembled from the plugin spec. */

@@ -56,5 +56,46 @@ class PublisherDryRunTest {
         assertThat(output).contains("\"t\":\"result\"").contains("\"dry_run\":true");
         // jar + pom at minimum (sources/slsa/sbom off) → files >= 2.
         assertThat(output).containsPattern("\"files\":[2-9]");
+        assertThat(output).doesNotContain("\"written\"");
+    }
+
+    @Test
+    void dry_run_with_sbom_writes_both_documents_under_target_and_names_them(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "widget"
+                version = "1.2.3"
+                """);
+        Path jar = dir.resolve("widget-1.2.3.jar");
+        Files.write(jar, new byte[] {0x50, 0x4b, 0x05, 0x06});
+
+        // No repository URL: a dry run publishes nowhere, so it needs none.
+        Path spec = dir.resolve("publish.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
+                        .configString("repoAuthType", "anonymous")
+                        .configBool("dryRun", true)
+                        .configBool("sbom", true)
+                        .artifact(jar)
+                        .layout(Map.of("moduleDir", dir))
+                        .lines());
+
+        var buffer = new ByteArrayOutputStream();
+        ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
+        int exit = new Publisher().run(List.of(spec.toString()), out);
+
+        assertThat(exit).isZero();
+        Path cdx = dir.resolve("target/sbom/widget-1.2.3.cdx.json");
+        Path spdx = dir.resolve("target/sbom/widget-1.2.3.spdx.json");
+        assertThat(cdx).exists();
+        assertThat(spdx).exists();
+        assertThat(Files.readString(cdx))
+                .contains("\"specVersion\": \"1.6\"")
+                .contains("pkg:maven/com.example/widget@1.2.3");
+        assertThat(Files.readString(spdx)).contains("\"spdxVersion\":\"SPDX-2.3\"");
+        String output = buffer.toString(StandardCharsets.UTF_8);
+        assertThat(output).contains("\"written\":[").contains(cdx.toString()).contains(spdx.toString());
     }
 }

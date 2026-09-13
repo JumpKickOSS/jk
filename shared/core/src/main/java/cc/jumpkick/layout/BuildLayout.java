@@ -506,9 +506,9 @@ public final class BuildLayout {
         return artifactDir().resolve(artifact + ".oci.tar");
     }
 
-    /** {@code <artifactDir>/<artifact>-<version>-sbom/} — CycloneDX / SPDX outputs. */
+    /** {@code <moduleTargetDir>/sbom/} — the CycloneDX and SPDX documents {@code jk publish --sbom} writes. */
     public Path sbomDir() {
-        return artifactDir().resolve(artifact + "-" + version + "-sbom");
+        return moduleTargetDir().resolve("sbom");
     }
 
     /** {@code <artifactDir>/<artifact>-<version>-provenance/} — SLSA in-toto attestations. */

@@ -18,7 +18,8 @@
 # Public HTTPS (until Firebase): https://storage.googleapis.com/$BUCKET/releases/…
 #
 # Beside the bucket, a GitHub Release for the tag: the same version tree (clients, engine jar,
-# SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of itself into the engine jar, notes
+# SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of its engine (`jk publish --sbom
+# --dry-run`, the document the engine jar embeds), notes
 # from scripts/release-notes.sh (the version's highlights in docs/contributors/releases.md, then
 # the commits since the previous tag) and a build-provenance attestation per artifact. It is a
 # draft until the GCS tree and pointer are up; a tag push publishes it, a dispatch leaves the draft.
@@ -123,6 +124,32 @@ jobs:
         if: matrix.arch_label == 'linux-x86_64'
         shell: bash
         run: jk install --skip-tests
+
+      # The bill of materials of the engine, written by the jk that built it: `jk publish --sbom
+      # --dry-run` leaves the CycloneDX document in the module's build output (a workspace
+      # member's sits under the root's target/) without an upload, and it is the one the engine
+      # jar embeds under META-INF/sbom/ (one writer, derived from jk-lock.toml;
+      # docs/user/packaging.md). Staged beside the version tree, never in it, so the signed
+      # SHA256SUMS the installers verify stays byte for byte what the publish job signs.
+      - name: Write the SBOM of the engine
+        if: matrix.arch_label == 'linux-x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd server/engine && jk publish --sbom --dry-run --no-ansi)
+          mkdir -p out/sbom
+          sbom="out/sbom/jk-${JK_VERSION}.cdx.json"
+          cp "target/server/engine/sbom/jk-engine-${JK_VERSION}.cdx.json" "$sbom"
+          jq -e '.bomFormat == "CycloneDX" and .specVersion == "1.6" and (.components | length) > 0 and (.metadata.component.name == "jk-engine")' "$sbom" >/dev/null
+          echo "SBOM: $(jq '.components | length' "$sbom") components, CycloneDX $(jq -r .specVersion "$sbom")"
+
+      - name: Upload the SBOM (artifact)
+        if: matrix.arch_label == 'linux-x86_64'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ env.JK_VERSION }}
+          path: out/sbom
+          if-no-files-found: error
 
       - name: Stage the first-party Maven repository
         if: matrix.arch_label == 'linux-x86_64'
@@ -242,19 +269,22 @@ jobs:
           scripts/sign-release.sh "out/${JK_VERSION}/SHA256SUMS"
           ls -la "out/${JK_VERSION}/SHA256SUMS"*
 
-      # The SBOM jk wrote of itself: every application jar jk packages carries
-      # META-INF/sbom/application.cdx.json, CycloneDX derived from jk-lock.toml at build time
-      # (docs/user/packaging.md), so the engine jar in the flattened tree already holds the
-      # release's bill of materials. It is lifted out beside the tree, not into it: the signed
-      # SHA256SUMS the installers verify stays byte for byte what the build job signed.
-      - name: Lift the SBOM out of the engine jar
+      # The SBOM the linux-x86_64 build job wrote of the engine (`jk publish --sbom --dry-run`),
+      # beside the tree, not in it: the signed SHA256SUMS the installers verify stays byte for
+      # byte what this job signs.
+      - name: Download the SBOM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: out/sbom
+          pattern: sbom-*
+          merge-multiple: true
+
+      - name: The SBOM is here
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p out/sbom
           sbom="out/sbom/jk-${JK_VERSION}.cdx.json"
-          unzip -p "out/${JK_VERSION}/jk-engine-${JK_VERSION}.jar" META-INF/sbom/application.cdx.json > "$sbom"
-          jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0 and (.metadata.component.name == "jk-engine")' "$sbom" >/dev/null
+          [[ -f "$sbom" ]] || { echo "$sbom missing — the linux-x86_64 build did not write it" >&2; exit 1; }
           echo "SBOM: $(jq '.components | length' "$sbom") components, CycloneDX $(jq -r .specVersion "$sbom")"
 
       - name: Upload merged release tree (artifact)

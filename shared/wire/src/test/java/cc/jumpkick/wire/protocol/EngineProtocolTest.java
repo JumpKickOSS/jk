@@ -468,9 +468,13 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(json, "pass")).isEqualTo("hunter2");
         assertThat(Jsonl.str(json, "token")).isNull();
 
-        String finish = ProtoEvents.planFinishPublish("", true, 9);
+        String finish = ProtoEvents.planFinishPublish("", true, 9, List.of("/w/target/sbom/a-1.cdx.json"));
         assertThat(EngineProtocol.typeOf(finish)).isEqualTo(EngineProtocol.BUILDPLAN_FINISH);
         assertThat(Jsonl.intValue(finish, "publishFiles", -1)).isEqualTo(9);
+        assertThat(PlanFinishPublishEvent.decode(finish).written()).containsExactly("/w/target/sbom/a-1.cdx.json");
+        assertThat(PlanFinishPublishEvent.decode(ProtoEvents.planFinishPublish("", true, 9))
+                        .written())
+                .isEmpty();
     }
 
     @Test

@@ -51,8 +51,7 @@ public final class PublishCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<Opt>(List.of(
-                Opt.value("<url>", "Target Maven repository base URL.", "--repo-url")
-                        .require(),
+                Opt.value("<url>", "Target Maven repository URL (none on --dry-run).", "--repo-url"),
                 Opt.value("<user>", "HTTP Basic username (PUBLISH_USER env).", "--user"),
                 Opt.value("<pass>", "HTTP Basic password (PUBLISH_PASSWORD env).", "--password"),
                 Opt.value("<REGION>", "Object-store region for s3:// / gs://.", "--region"),
@@ -132,6 +131,10 @@ public final class PublishCommand implements CliCommand {
             CommandWedge.printFail("Publish", "--sign requires --key-file <path>.");
             return Exit.USAGE;
         }
+        if (repoUrl == null && !dryRun) {
+            CommandWedge.printFail("Publish", "--repo-url <url> is required; only a --dry-run publishes nowhere.");
+            return Exit.USAGE;
+        }
         Path cache = JkDirs.cache();
 
         // Project facts via PROJECT_INFO; inline repo credential is a deliberate client-side
@@ -155,10 +158,11 @@ public final class PublishCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        // Resolve everything env/keychain-shaped here — never inside the engine.
+        // Resolve everything env/keychain-shaped here — never inside the engine. A dry run with no
+        // repository has nothing to authenticate to.
         RepoCredential cred;
         try {
-            cred = resolvePublishCredential(jkBuildPath);
+            cred = repoUrl == null ? RepoCredential.ANONYMOUS : resolvePublishCredential(jkBuildPath);
         } catch (RuntimeException e) {
             CommandWedge.printFail("Publish", e.getMessage());
             return Exit.CONFIG;
@@ -208,6 +212,12 @@ public final class PublishCommand implements CliCommand {
         if (!global.outputIsJson()) {
             String summary = dryRun ? "(dry-run)" : "(" + files + " files)";
             CliOutput.out("Published " + Coords.gav(info.group(), info.name(), info.version()) + " " + summary);
+            // The documents the run left under target/ (the SBOMs), by path, so a release script
+            // or a reader takes them from here without an upload.
+            for (String written : outcome.written()) {
+                Path p = Path.of(written);
+                CliOutput.out("  wrote " + (p.startsWith(projectDir) ? projectDir.relativize(p) : p));
+            }
         }
         return 0;
     }

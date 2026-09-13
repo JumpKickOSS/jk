@@ -167,11 +167,10 @@ final class EngineHosted {
                 listenerFactory,
                 (type, line) -> {});
         // An absent file count is unknown (-1) here, where the record reads 0.
-        return new EngineRequests.PublishOutcome(
-                finish.result(),
-                Jsonl.has(finish.finishLine(), "publishFiles")
-                        ? PlanFinishPublishEvent.decode(finish.finishLine()).files()
-                        : -1);
+        if (!Jsonl.has(finish.finishLine(), "publishFiles"))
+            return new EngineRequests.PublishOutcome(finish.result(), -1, List.of());
+        PlanFinishPublishEvent event = PlanFinishPublishEvent.decode(finish.finishLine());
+        return new EngineRequests.PublishOutcome(finish.result(), event.files(), event.written());
     }
 
     /**

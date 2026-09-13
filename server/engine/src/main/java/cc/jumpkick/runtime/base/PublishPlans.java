@@ -31,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -50,7 +51,7 @@ public final class PublishPlans {
      * {@code --sign} was set (the command already enforced {@code --sign} ⇒ {@code --key-file}).
      */
     public record Request(
-            URI repoUrl,
+            @Nullable URI repoUrl,
             @Nullable String region,
             @Nullable String endpoint,
             @Nullable Path jarPath,
@@ -68,6 +69,9 @@ public final class PublishPlans {
 
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
     public static final BuildPlanKey<Integer> FILES = BuildPlanKey.scalar("pub-files", Integer.class);
+
+    /** The files the plugin wrote under the module's target/ (the SBOM documents), for the client to name. */
+    public static final BuildPlanKey<List<String>> WRITTEN = BuildPlanKey.list("pub-written", String.class);
 
     /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
     public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
@@ -127,7 +131,9 @@ public final class PublishPlans {
                     Path jar = ctx.require(JAR);
                     ctx.label(req.dryRun() ? "dry-run — assembling publish bundle" : "publish to " + req.repoUrl());
                     try {
-                        ctx.put(FILES, runWorker(workerJar, projectDir, jar, req));
+                        WorkerOutcome out = runWorker(workerJar, projectDir, jar, req);
+                        ctx.put(FILES, out.files());
+                        ctx.put(WRITTEN, out.written());
                     } catch (RuntimeException e) {
                         ctx.error("publish", Errors.text(e));
                         throw e;
@@ -137,23 +143,28 @@ public final class PublishPlans {
                 .build();
 
         return BuildPlan.builder("publish")
-                .stateKeys(PROJECT, JAR, FILES)
+                .stateKeys(PROJECT, JAR, FILES, WRITTEN)
                 .addTask(parseBuild)
                 .addTask(publish)
                 .build();
     }
 
-    /** Fork the {@code jk-publisher} plugin; returns the uploaded-file count. */
-    private static int runWorker(Path workerJar, Path projectDir, Path jar, Request req) {
+    /** What the worker reported: the uploaded-file count and the files it wrote under target/. */
+    private record WorkerOutcome(int files, List<String> written) {}
+
+    /** Fork the {@code jk-publisher} plugin; returns what it reported. */
+    private static WorkerOutcome runWorker(Path workerJar, Path projectDir, Path jar, Request req) {
         try {
             Path spec = writeSpec(projectDir, jar, req);
             try {
                 int[] files = {0};
+                List<String> written = new ArrayList<>();
                 @Nullable String[] error = {null};
                 StringBuilder workerDiag = new StringBuilder();
                 int exit = new PluginClient("##JKPU:")
                         .on(PluginProtocol.RESULT, json -> {
                             files[0] = Jsonl.intValue(json, "files", 0);
+                            written.addAll(Jsonl.strArray(json, "written"));
                             // The worker knows what it PUT (body lengths); the run's ledger shows it
                             // as remote-up on the dashboard.
                             SessionContext.current().io().remoteUp(Jsonl.longValue(json, "bytes", 0L));
@@ -169,7 +180,7 @@ public final class PublishPlans {
                                     ? ": " + error[0]
                                     : diag != null ? ": " + diag : " (exit " + exit + ")"));
                 }
-                return files[0];
+                return new WorkerOutcome(files[0], written);
             } finally {
                 Files.deleteIfExists(spec);
             }
@@ -184,7 +195,6 @@ public final class PublishPlans {
     private static Path writeSpec(Path projectDir, Path jar, Request req) throws IOException {
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
-                .configString("repoUrl", req.repoUrl().toString())
                 .configBool("dryRun", req.dryRun())
                 .configBool("slsa", req.slsa())
                 .configBool("sbom", req.sbom())
@@ -206,6 +216,8 @@ public final class PublishPlans {
                     .configString("gpgKeyFile", req.keyFile().toAbsolutePath().toString());
             if (req.gpgPassphrase() != null) sw.secret("gpgPassphrase", req.gpgPassphrase());
         }
+        // A dry run publishes nowhere, so it may name no repository.
+        if (req.repoUrl() != null) sw.configString("repoUrl", req.repoUrl().toString());
         if (req.region() != null && !req.region().isBlank()) sw.configString("objectStoreRegion", req.region());
         if (req.endpoint() != null && !req.endpoint().isBlank()) sw.configString("objectStoreEndpoint", req.endpoint());
         sw.artifact(jar);

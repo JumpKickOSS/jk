@@ -113,7 +113,7 @@ public final class PublishVerb implements HostedVerb {
                 // the session below does not exist yet.
                 ResolvedSecrets.recordFor(entryDir, credential.secret());
                 PublishPlans.Request req = new PublishPlans.Request(
-                        URI.create(body.repoUrl()),
+                        body.repoUrl() == null ? null : URI.create(body.repoUrl()),
                         body.region(),
                         body.endpoint(),
                         body.jar() != null ? Path.of(body.jar()) : null,
@@ -135,7 +135,8 @@ public final class PublishVerb implements HostedVerb {
                         result -> ProtoEvents.planFinishPublish(
                                 dir,
                                 result.success(),
-                                plan.get(PublishPlans.FILES).orElse(-1)));
+                                plan.get(PublishPlans.FILES).orElse(-1),
+                                plan.get(PublishPlans.WRITTEN).orElse(List.of())));
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);

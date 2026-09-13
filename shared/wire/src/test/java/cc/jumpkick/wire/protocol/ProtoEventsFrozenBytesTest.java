@@ -140,6 +140,9 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.planFinishPublish("a/b", true, 7))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"publish\",\"dir\":\"a/b\",\"success\":true,\"publishFiles\":7}");
+        assertThat(ProtoEvents.planFinishPublish("a/b", true, 7, List.of("/w/target/sbom/a-1.cdx.json")))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-finish\",\"kind\":\"publish\",\"dir\":\"a/b\",\"success\":true,\"publishFiles\":7,\"publishWritten\":[\"/w/target/sbom/a-1.cdx.json\"]}");
         assertThat(ProtoEvents.planFinishImport("a/b", false, 2, 1, "bad pom", null))
                 .isEqualTo(
                         "{\"type\":\"buildplan-finish\",\"kind\":\"import\",\"dir\":\"a/b\",\"success\":false,\"importExit\":2,\"importWarnings\":1,\"importError\":\"bad pom\",\"importDiag\":null}");

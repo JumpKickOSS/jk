@@ -74,7 +74,7 @@ class BuildLayoutTest {
         assertThat(layout.nativeLibrary()).isEqualTo(dir.resolve("target/lib/libwidget"));
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/lib/widget.oci.tar"));
         assertThat(layout.testReportsDir("core")).isEqualTo(dir.resolve("target/reports/core"));
-        assertThat(layout.sbomDir()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-sbom"));
+        assertThat(layout.sbomDir()).isEqualTo(dir.resolve("target/sbom"));
         assertThat(layout.provenanceDir()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-provenance"));
     }
 

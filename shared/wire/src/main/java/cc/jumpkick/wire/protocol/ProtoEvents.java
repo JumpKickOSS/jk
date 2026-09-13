@@ -328,7 +328,11 @@ public final class ProtoEvents {
     }
 
     public static String planFinishPublish(String dir, boolean success, int files) {
-        return new PlanFinishPublishEvent(dir, success, files).encode();
+        return planFinishPublish(dir, success, files, List.of());
+    }
+
+    public static String planFinishPublish(String dir, boolean success, int files, List<String> written) {
+        return new PlanFinishPublishEvent(dir, success, files, written).encode();
     }
 
     public static String planFinishImport(

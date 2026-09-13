@@ -416,8 +416,8 @@ public final class EngineRequests {
             boolean offline,
             boolean verbose) {}
 
-    /** A hosted {@code jk publish} run's summary, decoded from the terminal plan-finish. */
-    public record PublishOutcome(BuildPlanResult result, int files) {}
+    /** A hosted {@code jk publish} run's summary, decoded from the terminal plan-finish: the upload count and the files written under target/. */
+    public record PublishOutcome(BuildPlanResult result, int files, List<String> written) {}
 
     /** Everything an engine-hosted {@code jk image} needs — mirrors {@code ImageCommand}'s local fields. */
     public record ImageRequest(

@@ -151,12 +151,14 @@ refuses a floating tag or a writing top-level `permissions:` on every pull reque
    version's entry under [Highlights](#highlights), then the commits since the previous tag) and
    refuses a version with no entry before anything is downloaded.
 5. It flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial matrix
-   or a differing engine jar), re-signs the combined `SHA256SUMS`, lifts the CycloneDX SBOM jk
-   wrote of itself out of the engine jar (`META-INF/sbom/application.cdx.json`, derived from
-   `jk-lock.toml` at build time) to `out/sbom/jk-<version>.cdx.json` — beside the tree, so the
-   signed `SHA256SUMS` the installers verify is untouched — and drafts the GitHub Release for the
-   tag with the tree, the SBOM and the notes (`scripts/publish-github-release.sh draft`; the tag
-   must exist, the script never cuts one).
+   or a differing engine jar), re-signs the combined `SHA256SUMS`, takes the CycloneDX SBOM the
+   linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in `server/engine`,
+   which leaves `target/server/engine/sbom/jk-engine-<version>.cdx.json` at the workspace root —
+   the document the engine jar embeds
+   under `META-INF/sbom/`, derived from `jk-lock.toml`) as `out/sbom/jk-<version>.cdx.json` —
+   beside the tree, so the signed `SHA256SUMS` the installers verify is untouched — and drafts the
+   GitHub Release for the tag with the tree, the SBOM and the notes
+   (`scripts/publish-github-release.sh draft`; the tag must exist, the script never cuts one).
 6. **`gsutil rsync`** to GCS when secrets are set, then the pointer
    (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then `LATEST`, then `VERSION`, all
    with no-cache headers. A client reading between the two copies gets a signature refusal and
@@ -230,7 +232,8 @@ cat LATEST                                                                      
 # 5. The GitHub Release, from the same tree: the highlights entry must exist (step 4 of the CI
 #    flow refuses without it), the tag must be pushed, GH_TOKEN must be able to write releases.
 scripts/release-notes.sh 0.13.3 > RELEASE_NOTES.md
-unzip -p build/release/0.13.3/jk-engine-0.13.3.jar META-INF/sbom/application.cdx.json > jk-0.13.3.cdx.json
+(cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
+cp target/server/engine/sbom/jk-engine-0.13.3.cdx.json jk-0.13.3.cdx.json
 scripts/publish-github-release.sh draft 0.13.3 RELEASE_NOTES.md build/release/0.13.3/* jk-0.13.3.cdx.json
 scripts/publish-github-release.sh publish 0.13.3
 ```
