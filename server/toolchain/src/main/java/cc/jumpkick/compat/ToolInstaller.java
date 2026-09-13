@@ -155,7 +155,7 @@ public final class ToolInstaller {
         return new ExpectedDigest(sidecar.label(), sidecar.algorithm(), hex, "published at " + sidecarUri);
     }
 
-    private static void extract(Path archive, Path destDir, String archiveType) throws IOException {
+    static void extract(Path archive, Path destDir, String archiveType) throws IOException {
         Files.createDirectories(destDir);
         switch (archiveType) {
             case "zip" -> unzip(archive, destDir);
@@ -164,19 +164,21 @@ public final class ToolInstaller {
         }
     }
 
+    /**
+     * Every entry is judged by where it really lands, as the tar path judges its entries:
+     * directories through {@link MinimalTar#createDirectoryInside}, file parents through {@link
+     * MinimalTar#requireParentInside} — one judge for one destination.
+     */
     private static void unzip(Path archive, Path destDir) throws IOException {
         try (InputStream in = Files.newInputStream(archive);
                 ZipInputStream zis = new ZipInputStream(in)) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                Path out = destDir.resolve(entry.getName()).normalize();
-                if (!out.startsWith(destDir)) {
-                    throw new IOException("zip entry escapes destination: " + entry.getName());
-                }
+                Path out = destDir.resolve(entry.getName());
                 if (entry.isDirectory()) {
-                    Files.createDirectories(out);
+                    MinimalTar.createDirectoryInside(destDir, out);
                 } else {
-                    if (out.getParent() != null) Files.createDirectories(out.getParent());
+                    MinimalTar.requireParentInside(destDir, out);
                     Files.copy(zis, out);
                 }
             }

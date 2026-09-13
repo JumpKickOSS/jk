@@ -446,7 +446,7 @@ public final class JdkInstaller {
         };
     }
 
-    private static void extract(Path archive, Path destDir, String archiveType) throws IOException {
+    static void extract(Path archive, Path destDir, String archiveType) throws IOException {
         Files.createDirectories(destDir);
         switch (archiveType) {
             case "zip" -> unzip(archive, destDir);
@@ -491,31 +491,31 @@ public final class JdkInstaller {
      * independently, so we fan out across {@link JkThreads#cpu()} workers — meaningful on JDK zips
      * with several thousand entries (Windows JDK builds typically ship as zip).
      *
+     * <p>Every entry is judged by where it really lands, the same way the tar path judges its
+     * entries: directories through {@link MinimalTar#createDirectoryInside}, file parents through
+     * {@link MinimalTar#requireParentInside}. That happens in the calling thread, entry by entry,
+     * before any worker writes a byte — so a refused archive has created nothing beneath the
+     * offending path, and the workers never race on creating the same parent.
+     *
      * <p>Tar.gz can't be parallelized this way: gunzip is a single sequential stream and the tar
      * metadata is interleaved with the file data.
      */
     private static void unzip(Path archive, Path destDir) throws IOException {
         try (ZipFile zip = new ZipFile(archive.toFile())) {
             List<? extends ZipEntry> entries = Collections.list(zip.entries());
-            // Pre-create directories in the main thread so workers don't race
-            // on createDirectories for the same parent path.
             for (ZipEntry e : entries) {
-                if (e.isDirectory()) {
-                    Path out = safeResolve(destDir, e.getName());
-                    Files.createDirectories(out);
-                }
+                Path out = destDir.resolve(e.getName());
+                if (e.isDirectory()) MinimalTar.createDirectoryInside(destDir, out);
+                else MinimalTar.requireParentInside(destDir, out);
             }
             List<CompletableFuture<Void>> futures = new ArrayList<>(entries.size());
             for (ZipEntry entry : entries) {
                 if (entry.isDirectory()) continue;
+                Path out = destDir.resolve(entry.getName());
                 futures.add(CompletableFuture.runAsync(
                         () -> {
-                            try {
-                                Path out = safeResolve(destDir, entry.getName());
-                                if (out.getParent() != null) Files.createDirectories(out.getParent());
-                                try (InputStream in = zip.getInputStream(entry)) {
-                                    Files.copy(in, out);
-                                }
+                            try (InputStream in = zip.getInputStream(entry)) {
+                                Files.copy(in, out);
                             } catch (IOException e) {
                                 throw new UncheckedIOException(e);
                             }
@@ -532,15 +532,6 @@ public final class JdkInstaller {
                 throw new IOException("zip extraction failed: " + cause.getMessage(), cause);
             }
         }
-    }
-
-    /** Resolve a zip/tar entry path against {@code destDir} and reject zip-slip escapes. */
-    private static Path safeResolve(Path destDir, String entryName) throws IOException {
-        Path out = destDir.resolve(entryName).normalize();
-        if (!out.startsWith(destDir)) {
-            throw new IOException("zip entry escapes destination: " + entryName);
-        }
-        return out;
     }
 
     /**

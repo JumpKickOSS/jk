@@ -23,6 +23,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -253,6 +255,76 @@ class JdkInstallerTest {
     }
 
     @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_zip_directory_entry_routed_through_a_planted_link_is_refused_before_anything_is_created(
+            @TempDir Path tempDir) throws Exception {
+        // A zip carries no links of its own; the link is already in the tree it is unpacked into.
+        Path dest = Files.createDirectories(tempDir.resolve("stage"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        Files.createSymbolicLink(dest.resolve("lib"), outside);
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+            {"lib/pwn/", null},
+            {"lib/pwn/owned", "outside"},
+        }));
+
+        assertThatThrownBy(() -> JdkInstaller.extract(zip, dest, "zip"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("outside the destination")
+                .hasMessageContaining("lib/pwn");
+        assertThat(outside).isEmptyDirectory();
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_zip_file_entry_routed_through_a_planted_link_is_refused_before_anything_is_written(@TempDir Path tempDir)
+            throws Exception {
+        Path dest = Files.createDirectories(tempDir.resolve("stage"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        Files.createSymbolicLink(dest.resolve("lib"), outside);
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+            {"bin/java", "#!/fake"},
+            {"lib/owned", "outside"},
+        }));
+
+        assertThatThrownBy(() -> JdkInstaller.extract(zip, dest, "zip"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("outside the destination")
+                .hasMessageContaining("lib");
+        assertThat(outside).isEmptyDirectory();
+        assertThat(dest.resolve("bin/java"))
+                .as("nothing is written before every entry is judged")
+                .doesNotExist();
+    }
+
+    @Test
+    void a_zip_entry_that_climbs_out_lexically_is_refused(@TempDir Path tempDir) throws Exception {
+        Path dest = Files.createDirectories(tempDir.resolve("stage"));
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+            {"../owned", "outside"},
+        }));
+
+        assertThatThrownBy(() -> JdkInstaller.extract(zip, dest, "zip"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("outside the destination");
+        assertThat(tempDir.resolve("owned")).doesNotExist();
+    }
+
+    @Test
+    void a_zip_unpacks_its_tree(@TempDir Path tempDir) throws Exception {
+        Path dest = Files.createDirectories(tempDir.resolve("stage"));
+        Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
+            {"jdk/", null},
+            {"jdk/bin/", null},
+            {"jdk/bin/java", "#!/fake"},
+            {"jdk/lib/modules", "mods"},
+        }));
+
+        JdkInstaller.extract(zip, dest, "zip");
+        assertThat(dest.resolve("jdk/bin/java")).hasContent("#!/fake");
+        assertThat(dest.resolve("jdk/lib/modules")).hasContent("mods");
+    }
+
+    @Test
     void an_entry_without_a_sha256_is_refused_before_anything_is_downloaded(@TempDir Path tempDir) throws Exception {
         byte[] archive = buildTarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
         served.put("/jdk.tar.gz", archive);
@@ -465,6 +537,19 @@ class JdkInstallerTest {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (GZIPOutputStream gz = new GZIPOutputStream(bytes)) {
             gz.write(raw.toByteArray());
+        }
+        return bytes.toByteArray();
+    }
+
+    /** A zip with the entries named verbatim; a {@code null} body is a directory entry. */
+    private static byte[] buildZip(String[][] entries) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            for (String[] e : entries) {
+                zip.putNextEntry(new ZipEntry(e[0]));
+                if (e[1] != null) zip.write(e[1].getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
         }
         return bytes.toByteArray();
     }

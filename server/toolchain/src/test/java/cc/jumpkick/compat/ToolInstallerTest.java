@@ -17,6 +17,8 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -178,6 +180,22 @@ class ToolInstallerTest {
         InstalledTool first = installer.install(dist);
         InstalledTool second = installer.install(dist);
         assertThat(second.home()).isEqualTo(first.home());
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_zip_entry_routed_through_a_planted_link_is_refused_before_anything_is_written(@TempDir Path tempDir)
+            throws Exception {
+        Path dest = Files.createDirectories(tempDir.resolve("stage"));
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        Files.createSymbolicLink(dest.resolve("apache-maven-3.9.9"), outside);
+        Path zip = Files.write(
+                tempDir.resolve("maven.zip"), buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n")));
+
+        assertThatThrownBy(() -> ToolInstaller.extract(zip, dest, "zip"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("outside the destination");
+        assertThat(outside).isEmptyDirectory();
     }
 
     private static byte[] buildZip(String topLevelDir, Map<String, String> entries) throws IOException {

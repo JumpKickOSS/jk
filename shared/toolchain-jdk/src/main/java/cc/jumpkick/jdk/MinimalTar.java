@@ -203,8 +203,12 @@ public final class MinimalTar {
     }
 
     /**
-     * Create {@code dir} and any missing parents, refusing when the path resolves — through links
-     * the archive planted earlier — outside {@code destDir}. Returns {@code dir}'s real path.
+     * Create {@code dir} and any missing parents, refusing when the path resolves — lexically
+     * through {@code ..}, or through links the archive planted earlier — outside {@code destDir}.
+     * Returns {@code dir}'s real path. Every archive format the installers unpack judges its
+     * directory entries here: zip entries carry no links of their own, but they land in the same
+     * tree a tar may have planted one in, and one judge for one destination is what keeps the
+     * two extractors from disagreeing.
      *
      * <p>The check runs on the nearest ancestor that already exists, <em>before</em> anything is
      * created: creating first and comparing real paths afterwards leaves the escaped directory in
@@ -215,27 +219,26 @@ public final class MinimalTar {
         Path existing = dir;
         while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
             Path up = existing.getParent();
-            if (up == null) throw new IOException("tar entry has no existing ancestor: " + dir);
+            if (up == null) throw new IOException("archive entry has no existing ancestor: " + dir);
             existing = up;
         }
         Path existingReal;
         try {
             existingReal = existing.toRealPath();
         } catch (IOException dangling) {
-            throw new IOException("tar entry resolves through a dangling link: " + describe(destDir, dir), dangling);
+            throw new IOException(
+                    "archive entry resolves through a dangling link: " + describe(destDir, dir), dangling);
         }
         if (!existingReal.startsWith(destReal)) {
-            throw new IOException(
-                    "tar entry resolves through a link outside the destination: " + describe(destDir, dir));
+            throw new IOException("archive entry resolves outside the destination: " + describe(destDir, dir));
         }
         if (!Files.isDirectory(existingReal)) {
-            throw new IOException("tar entry resolves through a file: " + describe(destDir, dir));
+            throw new IOException("archive entry resolves through a file: " + describe(destDir, dir));
         }
         Files.createDirectories(dir);
         Path real = dir.toRealPath();
         if (!real.startsWith(destReal)) {
-            throw new IOException(
-                    "tar entry resolves through a link outside the destination: " + describe(destDir, dir));
+            throw new IOException("archive entry resolves outside the destination: " + describe(destDir, dir));
         }
         return real;
     }
