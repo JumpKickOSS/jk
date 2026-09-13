@@ -17,9 +17,15 @@ $rsa.PersistKeyInCsp = $false
 $public = $rsa.ExportParameters($false)
 $modulus = [Convert]::ToBase64String($public.Modulus)
 $exponent = [Convert]::ToBase64String($public.Exponent)
-# The interpreter that re-runs the installer in verify-only mode: this process, unless the host
-# launches PowerShell through a runtime shim (a dotnet global tool) and names the real one instead.
-$powershell = if ($env:JK_TEST_POWERSHELL) { $env:JK_TEST_POWERSHELL } else { (Get-Process -Id $PID).Path }
+# The interpreter that re-runs the installer in verify-only mode. $PSHOME is the running engine's
+# own directory on every host, so the executable beside it is this PowerShell; the process path is
+# not when the host starts PowerShell through a runtime shim (a dotnet global tool, a container).
+$powershell = if ($PSVersionTable.PSEdition -eq "Core") {
+    Join-Path $PSHOME $(if ($IsWindows) { "pwsh.exe" } else { "pwsh" })
+} else {
+    Join-Path $PSHOME "powershell.exe"
+}
+if (-not (Test-Path -LiteralPath $powershell -PathType Leaf)) { throw "no PowerShell executable at $powershell" }
 
 # The installer's functions are lifted from install.ps1 by their AST, so the script body never runs
 # here; the cmdlets they call are shadowed below by recording functions.
