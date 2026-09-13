@@ -131,7 +131,8 @@ class WrapperTemplateTest {
                 .as("INSTALLED is checked before it is compared")
                 .isLessThan(bat.indexOf("call :version_ge INSTALLED"));
         // No PowerShell command line carries a wrapper variable; values travel as $env:.
-        Pattern spliced = Pattern.compile("[%!](VERSION|FLOOR|INSTALLED|FILE|TMP|JK_RELEASES_URL)[%!]");
+        Pattern spliced = Pattern.compile(
+                "[%!](VERSION|FLOOR|INSTALLED|FILE|JK_WRAPPER_TMP|JK_WRAPPER_PTMP|JK_RELEASES_URL)[%!]");
         for (String line : bat.split("\\R")) {
             if (!line.contains("powershell")) continue;
             assertThat(spliced.matcher(line).find())
@@ -141,6 +142,22 @@ class WrapperTemplateTest {
         // %VAR% expands when cmd parses the line, before any check could run and with & | " live.
         // Only delayed expansion (!VAR!) is inert, so the untrusted values are never read that way.
         assertThat(bat).doesNotContain("%VERSION%").doesNotContain("%FLOOR%").doesNotContain("%INSTALLED%");
+    }
+
+    /**
+     * {@code TMP} and {@code TEMP} are Windows' own temp variables. Every {@code powershell} child
+     * the wrapper starts inherits them and writes its temp files wherever they point; the wrapper
+     * {@code rmdir}s its scratch directory while a child may still hold a file there. So the scratch
+     * directory lives in wrapper-prefixed variables and the Windows ones are only ever read.
+     */
+    @Test
+    void windows_wrapper_never_sets_the_temp_variables_its_children_inherit() throws Exception {
+        String bat = template("jk.bat");
+        assertThat(bat).doesNotContainPattern("(?i)set \\\"?TMP=").doesNotContainPattern("(?i)set \\\"?TEMP=");
+        assertThat(bat).contains("set \"JK_WRAPPER_TMP=%TEMP%\\").contains("rmdir /s /q \"!JK_WRAPPER_TMP!\"");
+        assertThat(bat).contains("set \"JK_WRAPPER_PTMP=%TEMP%\\").contains("rmdir /s /q \"!JK_WRAPPER_PTMP!\"");
+        // The scratch path reaches PowerShell the same way every other wrapper value does.
+        assertThat(bat).contains("$env:JK_WRAPPER_TMP").contains("$env:JK_WRAPPER_PTMP");
     }
 
     /**

@@ -55,9 +55,11 @@ call :version_ge INSTALLED FLOOR && goto run
 rem Bootstrap the latest published release. The pointer is signed data - LATEST (`version <v>` /
 rem `issued <unix-seconds>`) and LATEST.sig over its exact bytes - verified against the release
 rem key and read literally; the jk-min floor below refuses one rolled back too far for this lock.
-set "PTMP=%TEMP%\jk-wrapper-latest-%RANDOM%"
-mkdir "!PTMP!"
-set "JK_WRAPPER_PTMP=!PTMP!"
+rem Scratch directories live in JK_WRAPPER_* variables only. TMP and TEMP are Windows' own: every
+rem powershell child inherits them and writes its temp files wherever they point, and this script
+rem deletes its scratch directory while a child may still hold a file there. They are read, never set.
+set "JK_WRAPPER_PTMP=%TEMP%\jk-wrapper-latest-%RANDOM%"
+mkdir "!JK_WRAPPER_PTMP!"
 powershell -NoProfile -Command "$d=$env:JK_WRAPPER_PTMP; $b=$env:JK_RELEASES_URL + '/latest/'; Invoke-WebRequest -UseBasicParsing ($b + 'LATEST') -OutFile (Join-Path $d 'LATEST'); Invoke-WebRequest -UseBasicParsing ($b + 'LATEST.sig') -OutFile (Join-Path $d 'LATEST.sig')" || (
   echo jk wrapper: could not read !JK_RELEASES_URL!/latest/LATEST - offline, or JK_RELEASES_URL is wrong. 1>&2
   exit /b 1
@@ -66,7 +68,7 @@ set "VERSION="
 call :verify_signature JK_WRAPPER_PTMP LATEST || goto pointer_checked
 for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "$m=[IO.File]::ReadAllBytes((Join-Path $env:JK_WRAPPER_PTMP 'LATEST')); foreach($x in $m){if($x -gt 127){exit 1}}; $t=[Text.Encoding]::ASCII.GetString($m); if($t -notmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued [0-9]{1,18}\n$'){exit 1}; Write-Output $Matches[1]"`) do set "VERSION=%%V"
 :pointer_checked
-rmdir /s /q "!PTMP!"
+rmdir /s /q "!JK_WRAPPER_PTMP!"
 if not defined VERSION (
   echo jk wrapper: !JK_RELEASES_URL!/latest/LATEST did not verify as a signed release pointer - refusing. 1>&2
   exit /b 1
@@ -80,23 +82,22 @@ exit /b 1
 :fetch
 echo jk wrapper: fetching jk !VERSION! ... 1>&2
 set "FILE=jk-windows-x86_64-!VERSION!.zip"
-set "TMP=%TEMP%\jk-wrapper-%RANDOM%"
-mkdir "!TMP!"
-set "JK_WRAPPER_TMP=!TMP!"
+set "JK_WRAPPER_TMP=%TEMP%\jk-wrapper-%RANDOM%"
+mkdir "!JK_WRAPPER_TMP!"
 set "JK_WRAPPER_FILE=!FILE!"
 set "JK_WRAPPER_VERSION=!VERSION!"
 powershell -NoProfile -Command "$b=$env:JK_RELEASES_URL + '/' + $env:JK_WRAPPER_VERSION + '/'; $d=$env:JK_WRAPPER_TMP; $f=$env:JK_WRAPPER_FILE; Invoke-WebRequest -UseBasicParsing ($b + $f) -OutFile (Join-Path $d $f); Invoke-WebRequest -UseBasicParsing ($b + 'SHA256SUMS') -OutFile (Join-Path $d 'SHA256SUMS'); Invoke-WebRequest -UseBasicParsing ($b + 'SHA256SUMS.sig') -OutFile (Join-Path $d 'SHA256SUMS.sig')" || exit /b 1
 call :verify_signature JK_WRAPPER_TMP SHA256SUMS || goto release_refused
 powershell -NoProfile -Command "$d=$env:JK_WRAPPER_TMP; $f=$env:JK_WRAPPER_FILE; $m=[IO.File]::ReadAllBytes((Join-Path $d 'SHA256SUMS')); try{$text=(New-Object -TypeName Text.UTF8Encoding -ArgumentList @($false,$true)).GetString($m)}catch{exit 1}; $seen=@{}; $want=$null; $count=0; $lines=$text.Split([char]10); for($i=0;$i -lt $lines.Length;$i++){$line=$lines[$i]; if($line.Length -eq 0 -and $i -eq $lines.Length-1){continue}; if($line -notmatch '^([0-9A-Fa-f]{64})  ([A-Za-z0-9][A-Za-z0-9._-]*)$'){exit 1}; $n=$Matches[2]; if($seen.ContainsKey($n)){exit 1}; $seen[$n]=$true; if($n -ceq $f){$count++;$want=$Matches[1].ToLowerInvariant()}}; if($count -ne 1){exit 1}; $got=(Get-FileHash -Algorithm SHA256 (Join-Path $d $f)).Hash.ToLowerInvariant(); if($got -cne $want){exit 1}" || goto release_refused
 powershell -NoProfile -Command "Expand-Archive (Join-Path $env:JK_WRAPPER_TMP $env:JK_WRAPPER_FILE) $env:JK_WRAPPER_TMP" || exit /b 1
-for /f "delims=" %%F in ('dir /b /s "!TMP!\*.exe"') do set "CLIENT=%%F"
+for /f "delims=" %%F in ('dir /b /s "!JK_WRAPPER_TMP!\*.exe"') do set "CLIENT=%%F"
 mkdir "%BIN_DIR%" 2>nul
 if exist "%BIN%" move /y "%BIN%" "%BIN%.old" >nul 2>&1
 copy /y "!CLIENT!" "%BIN%" >nul
 rem Redirect-first: `echo 0.13.1> file` would read the trailing digit as a handle number.
 >"%BIN_DIR%\VERSION" echo(!VERSION!
 del /f /q "%BIN%.old" >nul 2>&1
-rmdir /s /q "!TMP!"
+rmdir /s /q "!JK_WRAPPER_TMP!"
 
 :run
 "%BIN%" %*
