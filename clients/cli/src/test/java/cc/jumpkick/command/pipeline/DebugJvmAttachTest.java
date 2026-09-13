@@ -78,9 +78,7 @@ class DebugJvmAttachTest {
                 out.writeByte(1);
                 out.writeByte(9);
                 out.flush();
-                assertThat(in.readInt()).as("reply length").isEqualTo(11);
-                assertThat(in.readInt()).as("reply id").isEqualTo(1);
-                assertThat(in.readByte() & 0x80).as("reply flag").isEqualTo(0x80);
+                assertThat(replyLengthTo(in, 1)).as("reply length").isEqualTo(11);
                 assertThat(in.readShort()).as("error code").isZero();
             }
 
@@ -92,6 +90,26 @@ class DebugJvmAttachTest {
         } finally {
             System.setErr(originalErr);
             jk.interrupt();
+        }
+    }
+
+    /**
+     * Read packets until the reply to command {@code id}, returning its length with the stream
+     * positioned at its error code. A suspended JVM sends its {@code VM_START} event composite as
+     * soon as the handshake completes, so event packets (flag byte {@code 0x00}) arrive interleaved
+     * with the reply and are skipped by their own length.
+     */
+    private static int replyLengthTo(DataInputStream in, int id) throws IOException {
+        while (true) {
+            int length = in.readInt();
+            int packetId = in.readInt();
+            int flags = in.readByte() & 0xff;
+            if ((flags & 0x80) != 0) {
+                assertThat(packetId).as("reply id").isEqualTo(id);
+                return length;
+            }
+            // A command packet from the VM: command set + command, then its data.
+            in.readNBytes(length - 9);
         }
     }
 
