@@ -51,6 +51,7 @@ import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -927,6 +928,12 @@ public final class PlannerSupport {
         resolved.putAll(TestEnvValues.resolve("[test].env", build.testEnv(), null, null, mode));
         for (Map.Entry<String, String> e : resolved.entrySet()) {
             extras.add("test-env:" + e.getKey() + "=" + e.getValue());
+        }
+        // [test] tools by identity — where the name resolves on the PATH the test JVM gets and what
+        // it says to --version — so a node or git upgrade retests the suites that shell out to it.
+        String path = BuildEnv.machine().get("PATH");
+        for (String tool : build.testTools()) {
+            extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path));
         }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {

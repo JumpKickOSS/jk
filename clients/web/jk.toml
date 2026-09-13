@@ -15,3 +15,6 @@ junit-jupiter = "latest"
 # seed every test JVM from the request). The engine is a daemon with its own environment, and only
 # declared names beyond that machine seed ride the request into the action key.
 env = ["JK_WEB_JS_SKIP"]
+# The JS tier runs `node --test`; node's PATH location and version are inputs of the suite's
+# run-tests stamp, so a node upgrade re-runs it instead of replaying the last green.
+tools = ["node"]

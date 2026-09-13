@@ -308,6 +308,7 @@ public final class ManifestBuild {
                     policies.unmapped(),
                     List.of(),
                     List.of(),
+                    List.of(),
                     null,
                     List.of(),
                     EnvConfig.EMPTY);
@@ -329,6 +330,7 @@ public final class ManifestBuild {
                 policies.platform(),
                 policies.unmapped(),
                 List.of(),
+                s.testTools,
                 List.of(),
                 null,
                 List.of(),

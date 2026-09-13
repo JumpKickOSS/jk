@@ -44,6 +44,7 @@ final class ManifestBuildTable {
         Integer testWorkers;
 
         final List<String> testSerialTags = new ArrayList<>();
+        final List<String> testTools = new ArrayList<>();
     }
 
     /** The keys {@code [build]} may carry; {@code logic} is read by {@link BuildLogicToml}. */
@@ -188,6 +189,24 @@ final class ManifestBuildTable {
                 if (!(val instanceof String str))
                     throw new JkBuildParseException("[test].serial-tags must be an array of tag strings");
                 if (!str.isBlank()) s.testSerialTags.add(str);
+            }
+        }
+        // [test] tools — external executables the suite shells out to, by the bare name the tests
+        // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:
+        // the tests resolve the name on PATH, and so must the stamp, or the two would disagree.
+        TomlArray tools = test.getArray("tools");
+        if (tools != null) {
+            for (int i = 0; i < tools.size(); i++) {
+                Object val = tools.get(i);
+                if (!(val instanceof String str) || str.isBlank()) {
+                    throw new JkBuildParseException(
+                            "[test].tools must be an array of executable names: tools = [\"node\"]");
+                }
+                if (str.contains("/") || str.contains("\\")) {
+                    throw new JkBuildParseException(
+                            "[test].tools names an executable on PATH, not a path: `" + str + "`");
+                }
+                if (!s.testTools.contains(str)) s.testTools.add(str);
             }
         }
     }

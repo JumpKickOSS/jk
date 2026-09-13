@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -764,6 +765,14 @@ public record JkBuild(
              */
             List<EnvDecl> testEnv,
             /**
+             * {@code [test] tools} — the external executables the suite shells out to ({@code node},
+             * {@code git}, {@code protoc}), by the name the tests invoke them under. Each one's
+             * identity — where it resolves on the PATH the test JVM gets, and what its
+             * {@code --version} says — is a run-tests input, so upgrading the tool re-runs the tests
+             * that depend on it. Test-scoped like {@code testEnv}, hence its home here.
+             */
+            List<String> testTools,
+            /**
              * {@code [dev.sidecars]} — processes {@code jk dev} runs beside the application (a
              * frontend dev server, a docs server), in manifest order. Dev-only: {@code jk run},
              * {@code jk build}, and {@code jk test} never read it, and nothing here enters an action
@@ -808,6 +817,7 @@ public record JkBuild(
                 UnmappedPolicy.MEDIATE,
                 List.of(),
                 List.of(),
+                List.of(),
                 null,
                 List.of(),
                 EnvConfig.EMPTY);
@@ -827,6 +837,7 @@ public record JkBuild(
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
+            testTools = testTools == null ? List.of() : List.copyOf(testTools);
             devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
             auditIgnores = auditIgnores == null ? List.of() : List.copyOf(auditIgnores);
             env = env == null ? EnvConfig.EMPTY : env;
@@ -853,217 +864,137 @@ public record JkBuild(
             if (dirs.isEmpty()) return this;
             var all = new ArrayList<>(extraSrc);
             all.addAll(dirs);
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    all,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    devReady,
-                    auditIgnores,
-                    env);
+            return with(f -> f.extraSrc = all);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    policy == null ? PlatformPolicy.ENFORCED : policy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    devReady,
-                    auditIgnores,
-                    env);
+            return with(f -> f.platformPolicy = policy == null ? PlatformPolicy.ENFORCED : policy);
         }
 
         /** The same block with {@code [[kotlin-plugins]]} set. */
         public Build withKotlinPlugins(List<KotlinPluginDecl> plugins) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    plugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    devReady,
-                    auditIgnores,
-                    env);
+            return with(f -> f.kotlinPlugins = plugins);
         }
 
         /** The same block with {@code [test] env} set. */
         public Build withTestEnv(List<EnvDecl> decls) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    decls,
-                    devSidecars,
-                    devReady,
-                    auditIgnores,
-                    env);
+            return with(f -> f.testEnv = decls);
+        }
+
+        /** The same block with {@code [test] tools} set. */
+        public Build withTestTools(List<String> tools) {
+            return with(f -> f.testTools = tools);
         }
 
         /** The same block with {@code [dev.sidecars]} set. */
         public Build withDevSidecars(List<Sidecar> sidecars) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    sidecars,
-                    devReady,
-                    auditIgnores,
-                    env);
+            return with(f -> f.devSidecars = sidecars);
         }
 
         /** The same block with the {@code [dev]} probe of the application set. */
         public Build withDevReady(@Nullable DevReady ready) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    ready,
-                    auditIgnores,
-                    env);
+            return with(f -> f.devReady = ready);
         }
 
         /** The same block with {@code [javac]} set. */
         public Build withJavac(JavacConfig config) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    config,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    devReady,
-                    auditIgnores,
-                    env);
+            return with(f -> f.javac = config);
         }
 
         /** The same block with {@code [env]} set. */
         public Build withEnv(EnvConfig config) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    devReady,
-                    auditIgnores,
-                    config);
+            return with(f -> f.env = config);
         }
 
         /** The same block with {@code [audit] ignore} set. */
         public Build withAuditIgnores(List<AuditIgnore> ignores) {
-            return new Build(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    debug,
-                    kotlinPlugins,
-                    kspOptions,
-                    javac,
-                    extraSrc,
-                    testExtraSrc,
-                    fixtures,
-                    testWorkers,
-                    testSerialTags,
-                    platformPolicy,
-                    unmappedPolicy,
-                    testEnv,
-                    devSidecars,
-                    devReady,
-                    ignores,
-                    env);
+            return with(f -> f.auditIgnores = ignores);
+        }
+
+        /** One component changed, the rest copied — the one spelling of the copy every {@code with*} shares. */
+        private Build with(Consumer<Fields> change) {
+            Fields f = new Fields(this);
+            change.accept(f);
+            return f.build();
+        }
+
+        /** The components, mutable for the length of one {@link #with}. */
+        private static final class Fields {
+            List<String> orderAfter;
+            List<String> testPluginJars;
+            boolean lint;
+            DebugInfo debug;
+            List<KotlinPluginDecl> kotlinPlugins;
+            List<String> kspOptions;
+            JavacConfig javac;
+            List<String> extraSrc;
+            List<String> testExtraSrc;
+
+            @Nullable
+            String fixtures;
+
+            @Nullable
+            Integer testWorkers;
+
+            List<String> testSerialTags;
+            PlatformPolicy platformPolicy;
+            UnmappedPolicy unmappedPolicy;
+            List<EnvDecl> testEnv;
+            List<String> testTools;
+            List<Sidecar> devSidecars;
+
+            @Nullable
+            DevReady devReady;
+
+            List<AuditIgnore> auditIgnores;
+            EnvConfig env;
+
+            Fields(Build b) {
+                orderAfter = b.orderAfter;
+                testPluginJars = b.testPluginJars;
+                lint = b.lint;
+                debug = b.debug;
+                kotlinPlugins = b.kotlinPlugins;
+                kspOptions = b.kspOptions;
+                javac = b.javac;
+                extraSrc = b.extraSrc;
+                testExtraSrc = b.testExtraSrc;
+                fixtures = b.fixtures;
+                testWorkers = b.testWorkers;
+                testSerialTags = b.testSerialTags;
+                platformPolicy = b.platformPolicy;
+                unmappedPolicy = b.unmappedPolicy;
+                testEnv = b.testEnv;
+                testTools = b.testTools;
+                devSidecars = b.devSidecars;
+                devReady = b.devReady;
+                auditIgnores = b.auditIgnores;
+                env = b.env;
+            }
+
+            Build build() {
+                return new Build(
+                        orderAfter,
+                        testPluginJars,
+                        lint,
+                        debug,
+                        kotlinPlugins,
+                        kspOptions,
+                        javac,
+                        extraSrc,
+                        testExtraSrc,
+                        fixtures,
+                        testWorkers,
+                        testSerialTags,
+                        platformPolicy,
+                        unmappedPolicy,
+                        testEnv,
+                        testTools,
+                        devSidecars,
+                        devReady,
+                        auditIgnores,
+                        env);
+            }
         }
 
         /**

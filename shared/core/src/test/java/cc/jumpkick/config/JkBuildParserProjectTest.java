@@ -359,6 +359,30 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void parses_test_tools_as_names_on_path() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testTools()).isEmpty();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                tools = ["node", "git", "node"]
+                """).build().testTools()).containsExactly("node", "git");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                tools = ["/usr/bin/node"]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].tools names an executable on PATH, not a path");
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                tools = [1]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].tools must be an array of executable names");
+    }
+
+    @Test
     void parses_optional_description() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 description = "A widget for widgeting."

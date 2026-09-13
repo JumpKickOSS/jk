@@ -283,6 +283,23 @@ serial-tags = ["integration"]   # …these classes run on one trailing worker
 `serial-tags` partitions at **class** level. Method-level tags inside an otherwise-untagged
 class still shard with their class. When `W = 1` the setting is a no-op.
 
+## External tools the suite shells out to (`[test] tools`)
+
+A suite is replayed from its stamp when nothing it depends on has moved: its sources, the main
+classes, the runtime classpath, the lock, the selection, `[test] env`. A test that runs `node`,
+`git` or `protoc` depends on one more thing the stamp cannot see on its own — the tool. Name it:
+
+```toml
+[test]
+tools = ["node"]        # by the bare name the tests invoke; a path is refused
+```
+
+Each named tool's identity — where the name resolves on the PATH the test JVM gets, and the first
+line of its `--version` — is a run-tests input. Upgrading node, switching version managers, or
+losing the tool from the PATH (`missing`) changes the stamp and re-runs the suite on the next
+`jk test`, no `--redo` needed; a tool left alone costs one `--version` per engine lifetime. The
+key is test-scoped like `env`: nothing about it enters the compile or package keys.
+
 ## Isolation contract
 
 Tests never run in the engine process (always a forked JVM). Defaults assume tests are
