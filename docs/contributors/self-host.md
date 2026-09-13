@@ -140,6 +140,7 @@ export PATH="$HOME/.jk/bin:$PATH"
 jk engine status
 jk build --skip-tests
 jk install --skip-tests   # this checkout's client, engine and workers replace the release's
+jk install --skip-tests   # once more: the release's client stops after the pass its engine ran
 ```
 
 `jk install` is what makes the checkout self-hosting rather than merely built: from then on the
@@ -270,6 +271,16 @@ only because jk installs itself — no other project should declare them. The sh
 
 A module the forecast finds clean is still checked against its destination: a shelf entry, engine
 jar or PATH client holding other bytes than the build output is reinstalled.
+
+The pass is run by the engine the home names when it starts, and every artifact-shaped action key
+names the engine that packaged the artifact. So when the pass materializes another engine than the
+one that ran it, `jk install` runs one more pass under that engine (announced as *re-shelving*):
+the jars the displaced engine packaged are packaged afresh and the ones that changed are re-shelved,
+and one command leaves the shelf packaged by the tree's own engine. A client of another version than
+the tree's, or one older than this second pass (the hosted release CI bootstraps from), stops after
+the first: run `jk install --skip-tests` once more, which is what the CI takeover step does.
+`scripts/check-shelf-descriptors.sh "$JK_HOME"` then proves the shelf: every first-party worker
+jar's root `jk-plugin.toml` names its own module's `[plugin] table`.
 
 ## Ship layout
 

@@ -62,6 +62,9 @@ jobs:
       - name: Curated integration lane fixtures
         run: bash scripts/test-curated-integration.sh
 
+      - name: Shelf descriptor check fixtures
+        run: bash scripts/test-check-shelf-descriptors.sh
+
   # The workflow files themselves. actionlint (syntax, expressions, shellcheck of every run:
   # script), then the two rules scripts/check-workflows.sh owns: every action pinned to a commit
   # sha with its tag in a comment, every workflow's token read-only unless a job says otherwise.
@@ -164,6 +167,12 @@ jobs:
           cmp target/dist/jk "$JK_HOME/bin/jk"
           engine_sha="$(sha256sum target/dist/lib/jk-engine-*.jar | cut -c1-64)"
           grep -q "engine-sha256 = \"$engine_sha\"" "$JK_HOME/lib/jk-engine/jk-engine.toml"
+          # The pass above ran on the release's engine, which packaged the shelf. The checkout's
+          # engine now packages and shelves its own workers — a client with the second install
+          # pass does this by itself; the release's client stops after the first — and the shelf
+          # is proven: every first-party worker jar describes itself.
+          jk install --skip-tests --no-ansi
+          bash scripts/check-shelf-descriptors.sh "$JK_HOME"
           jk engine status
 
       # Every lane, the tree lane included: text, metric, parity and generated rules run on

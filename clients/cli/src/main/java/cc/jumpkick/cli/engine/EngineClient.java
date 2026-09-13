@@ -64,6 +64,16 @@ public final class EngineClient {
     }
 
     /**
+     * Forget the engine this process ensured, so its next request probes again. For the caller that
+     * has just changed what the engine pointer names — {@code jk install} materializing the tree's
+     * engine — and needs its next request served by that engine: the probe finds the resident one
+     * out of date and takes it over, exactly as a fresh client would.
+     */
+    public static void forgetEnsuredEngine() {
+        EngineWire.forgetEnsured();
+    }
+
+    /**
      * Run a workspace build against the engine at {@code paths} instead of in-process — the engine
      * equivalent of the engine's {@code BuildService.buildWorkspace}, driving the exact same {@code listener}.
      * Ensures a live, version-matched engine first (spawning/replacing as needed), then streams the

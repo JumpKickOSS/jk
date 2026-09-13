@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -94,6 +95,25 @@ class InstallProductLibTest {
     @Test
     void a_parse_error_never_reads_as_stale() {
         assertThat(InstallCommand.productLibStale(ProjectInfo.error("no jk.toml")))
+                .isFalse();
+    }
+
+    @Test
+    void an_install_that_left_the_home_on_another_engine_runs_one_more_pass() {
+        assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.of("bbb")))
+                .isTrue();
+        assertThat(InstallCommand.engineReplaced(Optional.empty(), Optional.of("bbb")))
+                .as("no pointer before: whatever ran the pass is not the engine the home names now")
+                .isTrue();
+    }
+
+    @Test
+    void an_install_that_kept_the_engine_stops_after_one_pass() {
+        assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.of("AAA")))
+                .as("the digest, not its spelling")
+                .isFalse();
+        assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.empty()))
+                .as("a home with no engine to run a second pass on")
                 .isFalse();
     }
 }

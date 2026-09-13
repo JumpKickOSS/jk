@@ -403,7 +403,16 @@ public final class InstallCommand {
         return 0;
     }
 
+    /**
+     * Set once a pass has replaced the engine: the pass that follows re-shelves under the new
+     * engine and is the last. A pass is run by the engine the home names when it starts; when it
+     * materializes another engine, that engine runs one more pass, which re-packages and re-shelves
+     * every artifact the displaced engine produced.
+     */
+    private boolean reshelving;
+
     private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope, String planName) throws IOException {
+        Optional<String> engineBefore = liveEngineSha();
         Path cacheDir = cacheDir();
         Path binDir = binDir();
         ProjectInfo root = projectInfo(wsRoot);
@@ -520,7 +529,37 @@ public final class InstallCommand {
             else if (productBin) announceProductBinInstall(coord, launcher);
             else announceProjectInstall(coord, launcher, binDir);
         }
+        if (!reshelving && engineReplaced(engineBefore, liveEngineSha())) {
+            reshelving = true;
+            if (!json) {
+                CommandWedge.printOk(
+                        "Install",
+                        "the engine changed under this install — re-shelving the workers it packaged"
+                                + " with the freshly built engine");
+            }
+            // The pointer names another jar now; the next request probes again and takes the
+            // resident engine over, so the second pass runs on the engine this tree built.
+            EngineClient.forgetEnsuredEngine();
+            return runWorkspaceInstall(wsRoot, cwdScope, planName);
+        }
         return 0;
+    }
+
+    /** The engine jar the product library's pointer names, by digest; empty when the home has none. */
+    private static Optional<String> liveEngineSha() {
+        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::engineSha);
+    }
+
+    /**
+     * Whether an install pass left the home naming another engine than the one it started under.
+     * Every artifact-shaped action key names the engine that packaged the artifact, so a shelf the
+     * displaced engine filled is one the new engine packages afresh: one more pass under it brings
+     * the shelf to the tree. A home that named no engine before is treated the same way — whatever
+     * ran the pass is not the engine the home names now.
+     */
+    public static boolean engineReplaced(Optional<String> before, Optional<String> after) {
+        if (after.isEmpty()) return false;
+        return before.isEmpty() || !before.get().equalsIgnoreCase(after.get());
     }
 
     private static int cancelled(WorkspaceRunView run, long startNanos, boolean json) {
