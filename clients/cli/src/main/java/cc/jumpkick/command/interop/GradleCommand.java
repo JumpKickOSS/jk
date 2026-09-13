@@ -31,7 +31,7 @@ public final class GradleCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Run Gradle; jk options before the name (jk --help gradle)";
+        return "Run Gradle; only its three own options are jk's (jk --help gradle)";
     }
 
     @Override
@@ -42,8 +42,7 @@ public final class GradleCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root.", "--tools-dir")
-                        .hide(),
+                Opt.value("<dir>", "Override the tools install root.", "--tools-dir"),
                 CommonOpts.jdksDir(),
                 Opt.flag("Skip tool discovery.", "--no-discover"));
     }

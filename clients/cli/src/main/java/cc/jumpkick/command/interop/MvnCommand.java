@@ -38,7 +38,7 @@ public final class MvnCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Run Maven; jk options before the name (jk --help mvn)";
+        return "Run Maven; only its three own options are jk's (jk --help mvn)";
     }
 
     @Override
@@ -49,8 +49,7 @@ public final class MvnCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Override the tools install root.", "--tools-dir")
-                        .hide(),
+                Opt.value("<dir>", "Override the tools install root.", "--tools-dir"),
                 CommonOpts.jdksDir(),
                 Opt.flag("Skip tool discovery.", "--no-discover"));
     }

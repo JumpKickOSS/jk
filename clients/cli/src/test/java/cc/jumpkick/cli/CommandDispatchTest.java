@@ -7,7 +7,9 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.LiveRegion;
+import cc.jumpkick.command.interop.MvnCommand;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -188,6 +190,34 @@ class CommandDispatchTest {
         assertThat(CommandDispatch.ownArgsEnd(List.of("gradl", "-q"))).isZero();
         // Other commands keep jk's globals anywhere.
         assertThat(CommandDispatch.ownArgsEnd(List.of("build", "-C", "app"))).isEqualTo(3);
+    }
+
+    @Test
+    void a_passthrough_command_owns_its_three_options_after_the_name_and_nothing_else() throws Exception {
+        // The rule migration.md states: jk's globals before the name; after it, only the command's own
+        // options, spelled exactly, are jk's — every other token is the child tool's, in order.
+        CliCommand mvn = new MvnCommand();
+        Invocation in = CommandDispatch.parsePassthrough(
+                mvn,
+                new CommandDispatch.Split(
+                        List.of(),
+                        List.of("--tools-dir", "/opt/jk-tools", "clean", "--no-discover", "install", "-X", "-C")));
+        assertThat(in.value("tools-dir")).hasValue("/opt/jk-tools");
+        assertThat(in.isSet("no-discover")).isTrue();
+        assertThat(in.positionals()).containsExactly("clean", "install", "-X", "-C");
+
+        // Exact spelling only: an abbreviation would risk eating a flag meant for the tool.
+        Invocation abbreviated = CommandDispatch.parsePassthrough(
+                mvn, new CommandDispatch.Split(List.of(), List.of("--tools", "x", "package")));
+        assertThat(abbreviated.isSet("tools-dir")).isFalse();
+        assertThat(abbreviated.positionals()).containsExactly("--tools", "x", "package");
+
+        // A global after the name is the tool's; before it, jk's.
+        Invocation global = CommandDispatch.parsePassthrough(
+                mvn, new CommandDispatch.Split(List.of("-C", "app"), List.of("-q", "verify")));
+        assertThat(global.value("dir")).hasValue("app");
+        assertThat(global.isSet("quiet")).isFalse();
+        assertThat(global.positionals()).containsExactly("-q", "verify");
     }
 
     /**

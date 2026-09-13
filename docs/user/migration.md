@@ -14,8 +14,17 @@ jk export bom                  # freeze lock as a Maven BOM — see Platforms
 ```
 
 Everything after `jk mvn` / `jk gradle` belongs to the tool — `jk mvn -v` prints Maven's
-version, `jk gradle -q build` keeps Gradle quiet. jk's own flags go before the command name
-(`jk -q mvn package`, `jk -C app gradle build`).
+version, `jk gradle -q build` keeps Gradle quiet, `jk mvn -C install` is Maven's strict-checksums
+flag followed by a goal. jk's global flags go before the command name (`jk -q mvn package`,
+`jk -C app gradle build`).
+
+The one exception is the command's own three options, which say how jk provisions the tool and
+so are matched wherever they appear after the name, spelled out in full: `--tools-dir <dir>`
+(where jk installs Maven or Gradle), `--jdks-dir <dir>` (where it finds the JDK it runs them on)
+and `--no-discover` (skip the look for an installed one). Neither Maven nor Gradle has a flag of
+those names, and only the exact spelling is taken — `--tools` is Maven's — so nothing of the
+tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean` therefore provisions Maven under
+`/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the three.
 
 **POM import** is the high-fidelity path.
 
