@@ -32,7 +32,15 @@ public record KotlincRequest(
          * {@code -module-name}, or null for the default. Must match KSP: internal-member mangling
          * embeds it in call sites that generated Java may emit.
          */
-        @Nullable String moduleName) {
+        @Nullable String moduleName,
+        /**
+         * A mixed module's Java source roots — the directories {@code -Xjava-source-roots} in
+         * {@code extraArgs} names, as paths. kotlinc parses the {@code .java} under them for their
+         * declarations and links against them, so they are compile inputs: the action key hashes
+         * each file's declaration digest ({@link KotlincInputs#javaSources}). Empty for a
+         * Kotlin-only module.
+         */
+        List<Path> javaSourceRoots) {
 
     /** One compiler plugin: id, jar, and {@code key=value} options. */
     public record Plugin(String id, Path jar, List<String> options) {
@@ -55,6 +63,7 @@ public record KotlincRequest(
         workerClasspath = List.copyOf(workerClasspath);
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
         plugins = plugins == null ? List.of() : List.copyOf(plugins);
+        javaSourceRoots = javaSourceRoots == null ? List.of() : List.copyOf(javaSourceRoots);
         if (jvmTarget < SupportedJdk.MIN_MAJOR) {
             throw new IllegalArgumentException(
                     "jvmTarget must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + jvmTarget);
@@ -77,6 +86,7 @@ public record KotlincRequest(
         private List<Path> workerClasspath = List.of();
         private List<String> extraArgs = List.of();
         private List<Plugin> plugins = List.of();
+        private List<Path> javaSourceRoots = List.of();
     }
 
     public boolean incremental() {

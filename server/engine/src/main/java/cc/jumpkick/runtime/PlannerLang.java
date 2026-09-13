@@ -70,10 +70,13 @@ public final class PlannerLang {
             List<KotlinPluginUse> plugins,
             int jvmTarget,
             String moduleName,
-            Path javaHome) {
+            Path javaHome,
+            /** The mixed module's Java roots {@code -Xjava-source-roots} in {@code args} names; empty otherwise. */
+            List<Path> javaSourceRoots) {
         KotlinConfig {
             args = List.copyOf(args);
             plugins = List.copyOf(plugins);
+            javaSourceRoots = List.copyOf(javaSourceRoots);
         }
 
         /**
@@ -214,6 +217,7 @@ public final class PlannerLang {
                     workingDir == null ? null : workingDir.resolveSibling(workingDir.getFileName() + "-" + configToken);
             built = KotlincRequest.builder()
                     .sources(sources)
+                    .javaSourceRoots(config.javaSourceRoots())
                     .classpath(compileCp)
                     .outputDir(outputDir)
                     .jvmTarget(jvmTarget)
@@ -343,7 +347,13 @@ public final class PlannerLang {
         }
         int jvmTarget = CompileSupport.kotlinJvmTarget(release, JvmOptions.hostFeature(javaHome));
         return new KotlinConfig(
-                kotlinVersion, args, plugins, jvmTarget, project.project().name(), javaHome);
+                kotlinVersion,
+                args,
+                plugins,
+                jvmTarget,
+                project.project().name(),
+                javaHome,
+                javaSourceRoots == null ? List.of() : javaSourceRoots);
     }
 
     /** {@link #kotlinConfig} from the running step's published state, for the module being built. */

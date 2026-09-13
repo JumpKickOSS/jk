@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildIdentity;
@@ -15,6 +16,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -123,15 +125,22 @@ public final class ActionKey {
 
     /**
      * Action key for a Kotlin worker invocation. Same shape as {@link #forJavac}: task + jk version +
-     * jvm target + the project JDK + the free args in order + each source's content hash + the
-     * compile classpath's ABI + the worker's Build Tools API closure by content (its CAS paths
-     * encode the compiler version, so a compiler bump invalidates the key).
+     * jvm target + the project JDK + the free args in order + each source's content hash + each
+     * Java source's declaration digest + the compile classpath's ABI + the worker's Build Tools API
+     * closure by content (its CAS paths encode the compiler version, so a compiler bump invalidates
+     * the key).
      *
      * <p>The compile classpath is keyed on each entry's {@link KotlinClasspathAbi Kotlin ABI token},
      * not its bytes: a sibling whose implementation changed but whose ABI did not leaves this key —
      * and the consumer's compile — alone. The worker still receives the real jars and directories;
      * only the key looks at them through the snapshot. {@code snapshotter} is how a token not yet
      * memoized gets computed (the worker's {@code snapshot} op in a build; a fake in tests).
+     *
+     * <p>A mixed module's Java sources reach kotlinc through {@code -Xjava-source-roots}: it reads
+     * their declarations and links against them, never their bodies. They enter the key as
+     * {@link JavaSourceApi declaration digests} — see {@link #kotlincJavaSourceTokens} — so a Java
+     * signature edit the Kotlin side depends on misses, while a Java body-only edit keeps the key
+     * and restores Kotlin output that is still correct.
      */
     public static String forKotlinc(
             String taskId, KotlincRequest request, String jkVersion, KotlinClasspathAbi.Snapshotter snapshotter)
@@ -141,6 +150,7 @@ public final class ActionKey {
         sb.append("jk:").append(jkVersion).append('\n');
         appendKotlincOptions(sb, request);
         appendSources(sb, request.sources());
+        for (String line : kotlincJavaSourceTokens(request)) sb.append(line).append('\n');
 
         // The classpath's ABI, order-independent: the worker joins the entries in request order,
         // but kotlinc resolves the same declarations either way.
@@ -157,6 +167,23 @@ public final class ActionKey {
             appendCpToken(sb, "worker:", entry);
         }
         return Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * The Java-source lines {@link #forKotlinc} hashes, one per {@code .java} under the request's
+     * Java source roots in path order: {@code java-api:<module-relative path>:<declaration
+     * digest>}. Empty for a Kotlin-only module. The digest is {@link JavaSourceApi}'s: the file's
+     * declarations, never its bodies — the part of a Java file kotlinc consumes.
+     */
+    public static List<String> kotlincJavaSourceTokens(KotlincRequest request) throws IOException {
+        List<Path> javaSources = KotlincInputs.javaSources(request);
+        if (javaSources.isEmpty()) return List.of();
+        Map<Path, String> digests = JavaSourceApi.digests(javaSources);
+        List<String> lines = new ArrayList<>(javaSources.size());
+        for (Path src : javaSources) {
+            lines.add("java-api:" + PortablePath.of(src) + ":" + Objects.requireNonNull(digests.get(src), "digest"));
+        }
+        return lines;
     }
 
     private static void appendKotlincOptions(StringBuilder sb, KotlincRequest request) throws IOException {
@@ -188,10 +215,12 @@ public final class ActionKey {
 
     /**
      * The inputs of a Kotlin compile record, for {@code jk why-rebuilt}: each source's hash, each
-     * classpath entry's {@link KotlinClasspathAbi ABI token} under its module-relative path (so a
-     * sibling whose ABI moved reads as that entry changing, and a body-only rewrite reads as
-     * nothing), and the option-bearing facts {@link #forKotlinc} hashes. The tokens are memoized, so
-     * after the key this is a lookup per entry.
+     * Java source's declaration digest under {@code java-api:} (so a Java signature edit names the
+     * file and a body-only one reads as nothing), each classpath entry's {@link KotlinClasspathAbi
+     * ABI token} under its module-relative path (so a sibling whose ABI moved reads as that entry
+     * changing, and a body-only rewrite reads as nothing), and the option-bearing facts {@link
+     * #forKotlinc} hashes. The tokens and digests are memoized, so after the key this is a lookup
+     * per entry.
      */
     public static Map<String, String> kotlincInputs(KotlincRequest request, KotlinClasspathAbi.Snapshotter snapshotter)
             throws IOException {
@@ -201,6 +230,13 @@ public final class ActionKey {
         for (Path src : sortedSources) {
             Path abs = src.toAbsolutePath().normalize();
             result.put(abs.toString(), FileHashMemo.contentHash(abs));
+        }
+        List<Path> javaSources = KotlincInputs.javaSources(request);
+        if (!javaSources.isEmpty()) {
+            Map<Path, String> digests = JavaSourceApi.digests(javaSources);
+            for (Path src : javaSources) {
+                result.put("java-api:" + src, Objects.requireNonNull(digests.get(src), "digest"));
+            }
         }
         List<String> tokens = KotlinClasspathAbi.tokens(request.classpath(), snapshotter);
         for (int i = 0; i < tokens.size(); i++) {

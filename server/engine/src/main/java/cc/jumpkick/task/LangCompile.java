@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.WorkerCompileDriver;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -11,8 +12,10 @@ import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -101,7 +104,7 @@ public final class LangCompile {
         if (request.incremental()
                 && workingDir != null
                 && Files.isDirectory(workingDir)
-                && !hasClasses(request.outputDir())) {
+                && (!hasClasses(request.outputDir()) || javaDeclarationsMoved(actionCache, taskId, request))) {
             PathUtil.deleteRecursively(workingDir);
         }
         return forkAndStore(
@@ -227,6 +230,38 @@ public final class LangCompile {
 
     private static Result cacheHit(String key) {
         return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of());
+    }
+
+    /**
+     * True when the Java declarations kotlinc reads through {@code -Xjava-source-roots} differ from
+     * the ones the task's last compile recorded. The incremental state tracks Kotlin sources and
+     * classpath snapshots; a Java signature it read from source is invisible to it, so an
+     * incremental compile after such an edit finds nothing to do and leaves Kotlin classes linked
+     * against a declaration that no longer exists. The state is started over instead, and the
+     * full compile reads the new declarations. A mixed module with no recorded compile is treated
+     * as moved: nothing vouches for the state.
+     */
+    static boolean javaDeclarationsMoved(ActionCache actionCache, String taskId, KotlincRequest request)
+            throws IOException {
+        if (request.javaSourceRoots().isEmpty()) return false;
+        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
+        if (prior.isEmpty()) return true;
+        return javaDeclarationsMoved(prior.get().inputs(), request);
+    }
+
+    /** {@link #javaDeclarationsMoved(ActionCache, String, KotlincRequest)} against a record's inputs. */
+    static boolean javaDeclarationsMoved(Map<String, String> priorInputs, KotlincRequest request) throws IOException {
+        List<Path> javaSources = KotlincInputs.javaSources(request);
+        Map<Path, String> digests = JavaSourceApi.digests(javaSources);
+        Map<String, String> now = new HashMap<>();
+        for (Path src : javaSources) {
+            now.put("java-api:" + src, Objects.requireNonNull(digests.get(src), "digest"));
+        }
+        Map<String, String> recorded = new HashMap<>();
+        for (Map.Entry<String, String> e : priorInputs.entrySet()) {
+            if (e.getKey().startsWith("java-api:")) recorded.put(e.getKey(), e.getValue());
+        }
+        return !now.equals(recorded);
     }
 
     /** Any {@code .class} anywhere under {@code dir}? */

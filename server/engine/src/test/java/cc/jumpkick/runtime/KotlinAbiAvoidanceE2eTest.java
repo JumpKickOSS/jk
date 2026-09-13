@@ -133,7 +133,91 @@ class KotlinAbiAvoidanceE2eTest {
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
     }
 
+    /**
+     * A mixed module's Kotlin compile reads the module's own Java declarations through {@code
+     * -Xjava-source-roots}: a Java body-only edit is a cache hit, a Java signature edit misses and
+     * the Kotlin output that ships was compiled against the new declaration.
+     */
+    @Test
+    void a_mixed_modules_kotlin_compile_follows_its_java_declarations(@TempDir Path tmp) throws Exception {
+        Path cache = cache();
+        Path ws = mixedWorkspace(tmp);
+        lock(ws, cache);
+        Path util = ws.resolve("app/src/com/example/Util.java");
+
+        Labels first = new Labels();
+        assertThat(build(ws, cache, first).success()).as("first build").isTrue();
+        assertThat(first.label("app", TaskNames.COMPILE_KOTLIN)).startsWith("compiling");
+        byte[] appInitial = Files.readAllBytes(appClass(ws));
+
+        Files.writeString(util, MIXED_UTIL.replace("return n * 2;", "return n + n;"));
+        Labels bodyOnly = new Labels();
+        assertThat(build(ws, cache, bodyOnly).success()).isTrue();
+        assertThat(bodyOnly.label("app", TaskNames.COMPILE_KOTLIN))
+                .as("a Java body-only edit changes nothing kotlinc reads")
+                .startsWith("cache hit");
+
+        Files.writeString(util, MIXED_UTIL.replace("public static int twice", "public static long twice"));
+        Labels signature = new Labels();
+        assertThat(build(ws, cache, signature).success())
+                .as("build after the Java signature edit")
+                .isTrue();
+        assertThat(signature.label("app", TaskNames.COMPILE_KOTLIN))
+                .as("a Java signature edit is a kotlinc input")
+                .startsWith("compiling");
+        assertThat(Files.readAllBytes(appClass(ws)))
+                .as("App.six() now returns Util.twice's new type: the class was compiled against the new declaration")
+                .isNotEqualTo(appInitial);
+    }
+
     // ---- fixture -----------------------------------------------------------------------------
+
+    private static final String MIXED_UTIL = """
+            package com.example;
+
+            public final class Util {
+                private Util() {}
+
+                public static int twice(int n) {
+                    return n * 2;
+                }
+            }
+            """;
+
+    /** One module with Java and Kotlin side by side; the Kotlin side calls the Java side. */
+    private static Path mixedWorkspace(Path tmp) throws IOException {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+                java    = 25
+
+                [workspace]
+                modules = ["app"]
+                """);
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+                java    = 25
+                kotlin  = "^2.4.10"
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        Files.createDirectories(app.resolve("src/com/example"));
+        Files.writeString(app.resolve("src/com/example/Util.java"), MIXED_UTIL);
+        Files.writeString(app.resolve("src/com/example/App.kt"), """
+                package com.example
+
+                object App {
+                    fun six() = Util.twice(3)
+                }
+                """);
+        return ws;
+    }
 
     private static final String INLINE_V1 = "inline fun thrice(n: Int): Int = n * 3";
     private static final String CONST_V1 = "const val NAME = \"lib-v1\"";
@@ -167,8 +251,11 @@ class KotlinAbiAvoidanceE2eTest {
                 LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         // Members redirect to the root lock.
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
+        for (String member : List.of("lib", "app")) {
+            if (Files.isDirectory(ws.resolve(member))) {
+                Files.copy(ws.resolve("jk-lock.toml"), ws.resolve(member).resolve("jk-lock.toml"));
+            }
+        }
     }
 
     private static WorkspaceResult build(Path ws, Path cache, Labels labels) {
