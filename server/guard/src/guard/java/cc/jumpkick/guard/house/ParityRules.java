@@ -459,6 +459,7 @@ final class ParityRules {
                             + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
+    @Fixture("server/guard/fixtures/ci-cadence")
     void ciCadence(Text text, Violations v) {
         String nightly = yaml(text, NIGHTLY);
         String branch = yaml(text, CI);

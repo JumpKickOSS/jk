@@ -33,7 +33,8 @@ public final class GuardRuntime {
         this.config = config;
         this.facts = new FactsView(merge(config.facts()), merge(config.testFacts()), config.classDirs());
         this.model = config.model() == null ? ModelView.empty() : ModelView.read(config.model());
-        this.text = new TextView(config.root(), config.sources(), config.fixture(), outputDirOf(config));
+        Path textRoot = config.textRoot() == null ? config.root() : config.textRoot();
+        this.text = new TextView(textRoot, config.sources(), config.fixture(), outputDirOf(config));
         this.output = new OutputView(config.poms(), config.jars(), config.coverage());
         Files.createDirectories(config.report().toAbsolutePath().getParent());
     }

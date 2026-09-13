@@ -29,7 +29,8 @@ class GuardConfigTest {
                 List.of(dir.resolve("a.pom")),
                 List.of(dir.resolve("a.jar"), dir.resolve("b.jar")),
                 dir.resolve("coverage.xml"),
-                true);
+                true,
+                null);
     }
 
     @Test
@@ -94,7 +95,8 @@ class GuardConfigTest {
                 List.of(),
                 List.of(),
                 null,
-                false);
+                false,
+                null);
         String text = c.toProperties();
         assertThat(text).contains(windows ? "\\=b" : "\\=b\\:c");
         assertThat(text).as("a colon is escaped wherever it comes from").contains("\\:");
@@ -102,6 +104,44 @@ class GuardConfigTest {
         Path f = dir.resolve("odd.properties");
         Files.writeString(f, text);
         assertThat(GuardConfig.read(f)).isEqualTo(c);
+    }
+
+    @Test
+    void a_text_root_survives_the_round_trip_and_is_absent_by_default() throws Exception {
+        GuardConfig plain = new GuardConfig(
+                dir.resolve("r.jsonl"),
+                dir,
+                "",
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false,
+                null);
+        assertThat(plain.toProperties()).doesNotContain("text-root=");
+        Path tree = dir.resolve("fixtures/ci-cadence/Bad-missing-pin/tree");
+        GuardConfig rooted = new GuardConfig(
+                dir.resolve("r.jsonl"),
+                dir,
+                "",
+                List.of(),
+                List.of(),
+                null,
+                List.of(tree),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false,
+                tree);
+        Path f = dir.resolve("rooted.properties");
+        Files.writeString(f, rooted.toProperties());
+        assertThat(GuardConfig.read(f)).isEqualTo(rooted);
+        assertThat(GuardConfig.read(f).textRoot()).isEqualTo(tree);
     }
 
     @Test

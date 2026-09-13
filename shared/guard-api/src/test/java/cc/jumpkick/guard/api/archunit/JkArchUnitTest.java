@@ -127,7 +127,8 @@ class JkArchUnitTest {
                 List.of(),
                 List.of(),
                 null,
-                false));
+                false,
+                null));
         JkArchUnit.configureFreezing();
         JavaClasses imported = new ClassFileImporter().importPaths(List.of(classes));
         Collector frozen = new Collector();

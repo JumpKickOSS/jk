@@ -30,7 +30,9 @@ import org.jspecify.annotations.Nullable;
  * directory whose {@code Bad*} files must produce at least one violation and whose {@code Ok*}
  * files none — Semgrep's {@code ruleid:}/{@code ok:} as directories. Bytecode kinds compile their
  * fixtures (the engine does that, once per owning module) and are judged over the fixture's classes
- * alone; text kinds are judged over the snippet text. Nothing here reads the real tree.
+ * alone; text kinds are judged over the snippet text. A guard test may instead hold {@code Bad*}
+ * and {@code Ok*} <em>directories</em>: each is a tree the guard runs over as the checkout root,
+ * laid over the files beside the cases. Nothing here reads the real tree.
  */
 public final class FixtureCheck {
 
@@ -47,8 +49,16 @@ public final class FixtureCheck {
         }
     }
 
-    /** A fixture source file and the classes it declares (outermost binary names), for attribution. */
-    public record Source(Path file, boolean bad, Set<String> classes) {}
+    /**
+     * A fixture source: a {@code Bad*}/{@code Ok*} file and the classes it declares (outermost binary
+     * names) for attribution, or a {@code Bad*}/{@code Ok*} directory — one case that is a tree.
+     */
+    public record Source(Path file, boolean bad, Set<String> classes) {
+        /** A case that is a tree: the guard runs over it as if it were the checkout root. */
+        public boolean tree() {
+            return Files.isDirectory(file);
+        }
+    }
 
     /** What one case came to. */
     public record Verdict(String id, String outcome, String note) {
@@ -98,21 +108,64 @@ public final class FixtureCheck {
         return "";
     }
 
-    /** {@code Bad*} and {@code Ok*} files under a fixture directory, with the classes each declares. */
+    /**
+     * {@code Bad*} and {@code Ok*} under a fixture directory: a directory so named is a tree case; a
+     * file is judged on its own, with the classes it declares. Anything else is a stub type, or part
+     * of the tree every case starts from.
+     */
     public static List<Source> sources(Path dir) throws IOException {
         List<Source> out = new ArrayList<>();
         if (!Files.isDirectory(dir)) return out;
-        PathUtil.forEachRegularFile(dir, (f, attrs) -> {
-            String name = f.getFileName().toString();
-            boolean bad = name.startsWith("Bad");
-            boolean ok = name.startsWith("Ok");
-            if (!bad && !ok) return;
-            Set<String> classes =
-                    name.endsWith(".java") ? declaredClasses(Files.readString(f, StandardCharsets.UTF_8)) : Set.of();
-            out.add(new Source(f, bad, classes));
-        });
+        // One walk: a case directory is noted and pruned, so its files are its tree's, not the fixture's.
+        List<Path> cases = new ArrayList<>();
+        PathUtil.forEachRegularFile(
+                dir,
+                d -> {
+                    if (!isCase(dir, d)) return false;
+                    cases.add(d);
+                    return true;
+                },
+                (f, attrs) -> {
+                    String name = f.getFileName().toString();
+                    boolean bad = name.startsWith("Bad");
+                    boolean ok = name.startsWith("Ok");
+                    if (!bad && !ok) return;
+                    Set<String> classes = name.endsWith(".java")
+                            ? declaredClasses(Files.readString(f, StandardCharsets.UTF_8))
+                            : Set.of();
+                    out.add(new Source(f, bad, classes));
+                });
+        for (Path d : cases) out.add(new Source(d, d.getFileName().toString().startsWith("Bad"), Set.of()));
         out.sort((a, b) -> a.file().compareTo(b.file()));
         return out;
+    }
+
+    /** A directory the walk met that is a direct child of the fixture directory, named {@code Bad*} or {@code Ok*}. */
+    private static boolean isCase(Path dir, Path d) {
+        String name = d.getFileName().toString();
+        return dir.equals(d.getParent()) && (name.startsWith("Bad") || name.startsWith("Ok"));
+    }
+
+    /** Why the sources cannot be judged as trees, or null: a fixture is Bad/Ok files or Bad/Ok directories, not both. */
+    public static @Nullable String treeProblem(List<Source> sources) {
+        boolean trees = false;
+        boolean files = false;
+        for (Source s : sources) {
+            if (s.tree()) trees = true;
+            else files = true;
+        }
+        return trees && files
+                ? "the fixture mixes Bad/Ok files with Bad/Ok directories; a fixture is one form or the other"
+                : null;
+    }
+
+    /**
+     * A tree case as the guard sees it, rebuilt under {@code into}: the files beside the cases — the
+     * tree every case starts from — then the case's own laid over them.
+     */
+    public static void caseTree(Path dir, Source c, Path into) throws IOException {
+        PathUtil.copyTree(dir, into, d -> isCase(dir, d), PathUtil.Copy.CLEAN_TARGET);
+        PathUtil.copyTree(c.file(), into, PathUtil.Copy.OVERWRITE_ALWAYS);
     }
 
     private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
@@ -183,7 +236,7 @@ public final class FixtureCheck {
     /** The verdict from what Bad and Ok produced. */
     public static Verdict verdict(String id, int badFiles, int badSites, int okFiles, int okSites) {
         if (badFiles == 0)
-            return new Verdict(id, "error", "the fixture has no Bad file; a fixture that cannot fail proves nothing");
+            return new Verdict(id, "error", "the fixture has no Bad case; a fixture that cannot fail proves nothing");
         if (badSites == 0)
             return new Verdict(id, "Bad silent", "Bad produced no violation: the rule does not bite where it should");
         if (okSites > 0)

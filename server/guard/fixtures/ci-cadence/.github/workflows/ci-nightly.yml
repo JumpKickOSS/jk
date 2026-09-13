@@ -1,0 +1,37 @@
+name: CI (nightly)
+
+on:
+  schedule:
+    - cron: "15 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./gradlew integrationTest --no-daemon
+
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./gradlew benchTest --no-daemon
+
+  # Coverage is measured nightly, never in the branch gate: the report is slow and non-gating.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./gradlew coverageReport -Pjk.coverage --no-daemon
+      - run: jk test --coverage
+      - run: jk guard --no-ansi
+
+  os-smoke:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/ci-product-smoke.sh

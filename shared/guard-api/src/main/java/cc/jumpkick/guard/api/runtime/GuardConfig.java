@@ -27,6 +27,8 @@ import org.jspecify.annotations.Nullable;
  * @param jars jars the build produced
  * @param coverage the coverage report, or {@code null}
  * @param fixture whether this run judges a fixture rather than the tree
+ * @param textRoot the directory {@link cc.jumpkick.guard.api.Text} paths resolve against when it is
+ *     not the workspace root: a tree fixture's case, run as if it were the checkout
  */
 public record GuardConfig(
         Path report,
@@ -41,7 +43,8 @@ public record GuardConfig(
         List<Path> jars,
         @Nullable Path coverage,
         /** A {@code jk guard test} run over a fixture: {@code Text.files} matches the fixture's files by name. */
-        boolean fixture) {
+        boolean fixture,
+        @Nullable Path textRoot) {
 
     public static final String PROPERTY = "jk.guard.config";
 
@@ -62,7 +65,8 @@ public record GuardConfig(
                 paths(p.getProperty("poms", "")),
                 paths(p.getProperty("jars", "")),
                 optional(p.getProperty("coverage")),
-                Boolean.parseBoolean(p.getProperty("fixture", "false")));
+                Boolean.parseBoolean(p.getProperty("fixture", "false")),
+                optional(p.getProperty("text-root")));
     }
 
     /** The properties text for these values; the engine writes it, {@link #read} reads it back. */
@@ -80,6 +84,7 @@ public record GuardConfig(
         sb.append("jars=").append(join(jars)).append('\n');
         if (coverage != null) sb.append("coverage=").append(escape(coverage)).append('\n');
         sb.append("fixture=").append(fixture).append('\n');
+        if (textRoot != null) sb.append("text-root=").append(escape(textRoot)).append('\n');
         return sb.toString();
     }
 

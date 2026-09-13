@@ -142,6 +142,30 @@ class GuardFixturesTest {
                 .isEqualTo(2);
     }
 
+    /** A tree case is the suite's text view rooted at the case; a TOML rule has no suite to fork, so it is judged over files only. */
+    @Test
+    void a_tree_fixture_on_a_toml_rule_is_an_error_and_compiles_nothing(@TempDir Path root, @TempDir Path store)
+            throws Exception {
+        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(root.resolve("jk-guards.toml"), """
+                [guards.no-exit]
+                kind       = "forbid"
+                signatures = ["java.lang.System#exit"]
+                instead    = "Exit"
+                fixture    = "guard-fixtures/no-exit"
+                why        = "w"
+                """);
+        Path bad = Files.createDirectories(root.resolve("guard-fixtures/no-exit/Bad-tree"));
+        Files.writeString(bad.resolve("Bad.java"), "class Bad { void f() { System.exit(1); } }\n");
+        int before = GuardFixtures.COMPILES.get();
+        GuardFixtures.Result r = GuardFixtures.run(root, new Cas(store));
+        assertThat(r.verdicts()).singleElement().satisfies(v -> {
+            assertThat(v.outcome()).isEqualTo("error");
+            assertThat(v.note()).contains("a tree fixture needs a guard test");
+        });
+        assertThat(GuardFixtures.COMPILES.get()).isEqualTo(before);
+    }
+
     @Test
     void load_errors_are_all_listed_and_nothing_compiles(@TempDir Path root, @TempDir Path store) throws Exception {
         Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");

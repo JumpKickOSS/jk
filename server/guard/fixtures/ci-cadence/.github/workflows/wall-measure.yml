@@ -1,0 +1,19 @@
+name: Dogfood wall measurement
+
+on:
+  schedule:
+    - cron: "40 7 * * 1"
+  workflow_dispatch:
+
+jobs:
+  # A wall time is a record, not a verdict.
+  wall:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/dogfood-wall-measure.sh rebuild noop touched
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dogfood-wall
+          path: build/dogfood-wall/row.jsonl

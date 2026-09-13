@@ -256,6 +256,13 @@ engine under `server/guard/fixtures/` — holding `Bad*.java`, which must produc
 module's lane would. Stub types a fixture needs (a framework class by its real name) sit
 beside them and are visible to the rule. A fixture that does not bite is red.
 
+A guard test that reads several files at once — a workflow, a manifest, a pin — holds `Bad*` and
+`Ok*` *directories* instead: each is a tree the guard runs over as if it were the checkout root,
+one case per check the guard makes, and the files beside the case directories are the tree every
+case starts from (a case's own files are laid over them). jk's `ci-cadence` fixture under
+`server/guard/fixtures/ci-cadence/` is the shape: three workflows and a build script shared, a
+manifest and a bootstrap pin per case.
+
 ## Layers and packs
 
 Rules come in three layers. A **pack** is a published artifact holding a `jk-guards.toml`

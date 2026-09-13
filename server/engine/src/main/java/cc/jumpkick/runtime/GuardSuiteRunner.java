@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Runs a module's compiled {@code src/guard} suite in the forked JUnit launcher and leaves its
@@ -43,7 +44,9 @@ final class GuardSuiteRunner {
             List<Path> classDirs,
             boolean workspace,
             /** Source roots Text reads, or empty for the module's/workspace's own; set for a fixture run. */
-            List<Path> textRoots) {
+            List<Path> textRoots,
+            /** A tree fixture's case: the directory Text paths resolve against, run as the checkout root; null otherwise. */
+            @Nullable Path textRoot) {
 
         Inputs(
                 Path root,
@@ -69,7 +72,8 @@ final class GuardSuiteRunner {
                     testFactsIndexes,
                     classDirs,
                     workspace,
-                    List.of());
+                    List.of(),
+                    null);
         }
     }
 
@@ -112,7 +116,9 @@ final class GuardSuiteRunner {
                 List.of(),
                 List.of(),
                 null,
-                !in.textRoots().isEmpty());
+                // a file fixture has no tree shape, so globs match by name; a tree case has the real one
+                !in.textRoots().isEmpty() && in.textRoot() == null,
+                in.textRoot());
         Path props = guardDir.resolve("run.properties");
         Files.writeString(props, config.toProperties());
         if (!hasJUnitEngine(in.runtimeClasspath())) {

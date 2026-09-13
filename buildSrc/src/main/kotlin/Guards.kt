@@ -569,7 +569,7 @@ object Guards {
                 57,
                 "checkCiCadence",
                 "nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke; the branch gate loses the self-host job, its isolated `JK_HOME`, its bootstrap from the hosted release `.jk/ci-bootstrap-version` pins or the `jk install` that hands the gate to the checkout's own jk, runs `gradlew` in that job, or carries `continue-on-error` outside the advisory `gradle-parity` job; or the scheduled Gradle-vs-jk wall measurement stops running or stops keeping a machine-readable result",
-                "workflow text scan in both builds",
+                "workflow text scan in both builds; a fixture proves the bite",
                 GuardHome.SELF_HOSTED,
                 description =
                     "Fail when CI drops coverage, benches, OS smoke, the self-host job, its hosted-release bootstrap, or the wall measurement",

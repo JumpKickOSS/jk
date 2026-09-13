@@ -2,6 +2,7 @@
 package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -62,6 +63,55 @@ class FixtureCheckTest {
                 .contains("bbb   Bad silent")
                 .contains("2 fixtures, 1 not proven; 1 load error(s)");
         assertThat(FixtureCheck.render(List.of(), List.of())).startsWith("no fixtures");
+    }
+
+    @Test
+    void a_case_that_is_a_directory_is_a_tree_laid_over_the_files_beside_the_cases(@TempDir Path fx, @TempDir Path work)
+            throws Exception {
+        Files.createDirectories(fx.resolve(".github/workflows"));
+        Files.writeString(fx.resolve(".github/workflows/ci.yml"), "jobs:\n  self-host:\n    run: jk test\n");
+        Files.writeString(fx.resolve("build.gradle.kts"), "tasks.register(\"coverageReport\")\n");
+        Files.createDirectories(fx.resolve("Ok-live/.jk"));
+        Files.writeString(fx.resolve("Ok-live/jk.toml"), "version = \"1.4.0\"\n");
+        Files.writeString(fx.resolve("Ok-live/.jk/ci-bootstrap-version"), "1.3.2\n");
+        Files.createDirectories(fx.resolve("Bad-missing-verb/.github/workflows"));
+        Files.writeString(fx.resolve("Bad-missing-verb/jk.toml"), "version = \"1.4.0\"\n");
+        Files.writeString(
+                fx.resolve("Bad-missing-verb/.github/workflows/ci.yml"), "jobs:\n  self-host:\n    run: true\n");
+        // a Bad*.java inside a case directory belongs to that case's tree, not to the fixture's file form
+        Files.writeString(fx.resolve("Bad-missing-verb/Bad.java"), "class Bad {}\n");
+
+        List<FixtureCheck.Source> sources = FixtureCheck.sources(fx);
+        assertThat(sources)
+                .extracting(s -> s.file().getFileName().toString(), FixtureCheck.Source::bad, FixtureCheck.Source::tree)
+                .containsExactly(tuple("Bad-missing-verb", true, true), tuple("Ok-live", false, true));
+        assertThat(FixtureCheck.treeProblem(sources)).isNull();
+
+        Path tree = work.resolve("tree");
+        FixtureCheck.caseTree(fx, sources.get(1), tree);
+        assertThat(Files.readString(tree.resolve(".github/workflows/ci.yml")))
+                .as("the file beside the cases is the tree every case starts from")
+                .contains("jk test");
+        assertThat(tree.resolve("build.gradle.kts")).exists();
+        assertThat(tree.resolve(".jk/ci-bootstrap-version")).exists();
+        assertThat(tree.resolve("Ok-live"))
+                .as("case directories are not part of any tree")
+                .doesNotExist();
+        assertThat(tree.resolve("Bad-missing-verb")).doesNotExist();
+
+        FixtureCheck.caseTree(fx, sources.get(0), tree);
+        assertThat(Files.readString(tree.resolve(".github/workflows/ci.yml")))
+                .as("the case's own file is laid over the shared one")
+                .contains("run: true")
+                .doesNotContain("jk test");
+        assertThat(tree.resolve(".jk/ci-bootstrap-version"))
+                .as("the previous case's files are gone: the tree is rebuilt per case")
+                .doesNotExist();
+        assertThat(tree.resolve("Bad.java")).exists();
+
+        Files.writeString(fx.resolve("Bad-file.txt"), "x\n");
+        assertThat(FixtureCheck.treeProblem(FixtureCheck.sources(fx)))
+                .contains("mixes Bad/Ok files with Bad/Ok directories");
     }
 
     @Test

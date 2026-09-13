@@ -50,8 +50,10 @@ import org.jspecify.annotations.Nullable;
  * directory of one owning module is compiled in a single javac call against that module's compile
  * classpath (keyed by the fixture sources and the classpath; unchanged fixtures skip the compile),
  * indexed once, and each rule is judged over its own fixture's classes: {@code Bad} must fire,
- * {@code Ok} must not. Text rules are judged over their snippet files. The load-time validation of
- * every rule and suite runs first and reports every error.
+ * {@code Ok} must not. Text rules are judged over their snippet files. A guard test whose fixture
+ * holds {@code Bad*}/{@code Ok*} directories is run once per case, the suite's text view rooted at
+ * the case as if it were the checkout. The load-time validation of every rule and suite runs first
+ * and reports every error.
  */
 public final class GuardFixtures {
 
@@ -98,8 +100,13 @@ public final class GuardFixtures {
                         c.id(), "error", "fixture directory " + root.relativize(c.dir()) + " does not exist"));
                 continue;
             }
+            List<FixtureCheck.Source> sources = FixtureCheck.sources(c.dir());
+            if (sources.stream().anyMatch(FixtureCheck.Source::tree)) {
+                verdicts.add(treeVerdict(root, c, sources, cas));
+                continue;
+            }
             if (!c.compiled()) {
-                verdicts.add(FixtureCheck.textVerdict(c, FixtureCheck.sources(c.dir())));
+                verdicts.add(FixtureCheck.textVerdict(c, sources));
                 continue;
             }
             byModule.computeIfAbsent(c.module(), k -> new ArrayList<>()).add(c);
@@ -107,6 +114,49 @@ public final class GuardFixtures {
         for (var e : byModule.entrySet()) verdicts.addAll(compiledVerdicts(root, e.getKey(), e.getValue(), cas));
         verdicts.sort((a, b) -> a.id().compareTo(b.id()));
         return new Result(loadErrors, verdicts, FixtureCheck.render(verdicts, loadErrors));
+    }
+
+    /**
+     * A guard test's tree fixture: each {@code Bad*}/{@code Ok*} directory, laid over the files beside
+     * them, is run as the checkout root — one fork of the suite per case, no facts — and the sites the
+     * guard reported over it count as that case's.
+     */
+    static FixtureCheck.Verdict treeVerdict(Path root, FixtureCheck.Case c, List<FixtureCheck.Source> sources, Cas cas)
+            throws IOException {
+        if (!c.guardTest())
+            return new FixtureCheck.Verdict(
+                    c.id(), "error", "a tree fixture needs a guard test; a TOML rule is judged over Bad*/Ok* files");
+        String mixed = FixtureCheck.treeProblem(sources);
+        if (mixed != null) return new FixtureCheck.Verdict(c.id(), "error", mixed);
+        Path moduleDir = c.module().isEmpty() ? root : root.resolve(c.module());
+        Path work = BuildLayout.moduleTargetDir(root, moduleDir)
+                .resolve("jk-guards")
+                .resolve("fixtures")
+                .resolve(c.id());
+        FactsIndex none = new FactsIndex(Map.of(), Map.of(), "tree:" + c.id());
+        int badCases = 0;
+        int okCases = 0;
+        int badSites = 0;
+        int okSites = 0;
+        for (FixtureCheck.Source s : sources) {
+            Path caseWork = work.resolve(s.file().getFileName().toString());
+            Path tree = caseWork.resolve("tree");
+            FixtureCheck.caseTree(c.dir(), s, tree);
+            int sites = guardSites(root, c.module(), moduleDir, c, none, tree, true, caseWork, cas);
+            if (sites < 0)
+                return new FixtureCheck.Verdict(
+                        c.id(),
+                        "error",
+                        "the guard suite did not run over " + s.file().getFileName() + "; see the lane's diagnostics");
+            if (s.bad()) {
+                badCases++;
+                badSites += sites;
+            } else {
+                okCases++;
+                okSites += sites;
+            }
+        }
+        return FixtureCheck.verdict(c.id(), badCases, badSites, okCases, okSites);
     }
 
     /** One module's fixtures: one javac, one index, one verdict per case. */
@@ -198,10 +248,14 @@ public final class GuardFixtures {
                         .resolve("jk-guards")
                         .resolve("fixtures")
                         .resolve(c.id());
-                badSites = guardSites(root, module, moduleDir, c, badSlice, badText, work.resolve("bad"), cas);
+                Path badWork = work.resolve("bad");
+                Path okWork = work.resolve("ok");
+                badSites = guardSites(
+                        root, module, moduleDir, c, badSlice, sliceText(badWork, badText), false, badWork, cas);
                 okSites = okFiles == 0
                         ? 0
-                        : guardSites(root, module, moduleDir, c, okSlice, okText, work.resolve("ok"), cas);
+                        : guardSites(
+                                root, module, moduleDir, c, okSlice, sliceText(okWork, okText), false, okWork, cas);
                 if (badSites < 0 || okSites < 0) {
                     out.add(new FixtureCheck.Verdict(
                             c.id(),
@@ -229,10 +283,19 @@ public final class GuardFixtures {
         return out;
     }
 
+    /** The slice's files copied under {@code work/text}, so the guard's text view sees Bad without Ok and Ok without Bad. */
+    private static Path sliceText(Path work, List<Path> textFiles) throws IOException {
+        Path text = work.resolve("text");
+        PathUtil.deleteRecursivelyOrThrow(text);
+        Files.createDirectories(text);
+        for (Path f : textFiles) Files.copy(f, text.resolve(f.getFileName().toString()));
+        return text;
+    }
+
     /**
-     * Run the guard test's suite over one fixture slice; the number of sites it reported, or -1. The
-     * slice's files are copied under {@code work/text} so the guard's text view sees Bad without Ok
-     * and Ok without Bad.
+     * Run the guard test's suite over one fixture slice; the number of sites it reported, or -1.
+     * {@code text} is what the guard's text view reads: the slice's files by name, or — {@code tree}
+     * — a case directory the view is rooted at, so the guard reads it as the checkout.
      */
     private static int guardSites(
             Path root,
@@ -240,14 +303,11 @@ public final class GuardFixtures {
             Path moduleDir,
             FixtureCheck.Case c,
             FactsIndex slice,
-            List<Path> textFiles,
+            Path text,
+            boolean tree,
             Path work,
             Cas cas)
             throws IOException {
-        Path text = work.resolve("text");
-        PathUtil.deleteRecursivelyOrThrow(text);
-        Files.createDirectories(text);
-        for (Path f : textFiles) Files.copy(f, text.resolve(f.getFileName().toString()));
         Path idx = work.resolve("main-guard.idx");
         FactsFormat.write(idx, slice);
         JkBuild build = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
@@ -272,7 +332,8 @@ public final class GuardFixtures {
                 List.of(),
                 List.of(),
                 false,
-                List.of(text));
+                List.of(text),
+                tree ? text : null);
         try {
             List<String> problems = GuardSuiteRunner.run(in, List.of(moduleDir), report);
             if (!problems.isEmpty()) return -1;

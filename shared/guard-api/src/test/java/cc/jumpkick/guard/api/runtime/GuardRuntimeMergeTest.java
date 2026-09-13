@@ -62,7 +62,8 @@ class GuardRuntimeMergeTest {
 
     private GuardConfig config(Path root, Path report) {
         return new GuardConfig(
-                report, root, "", List.of(), List.of(), null, List.of(), List.of(), List.of(), List.of(), null, false);
+                report, root, "", List.of(), List.of(), null, List.of(), List.of(), List.of(), List.of(), null, false,
+                null);
     }
 
     @Test

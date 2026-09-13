@@ -114,7 +114,8 @@ class GuardRuntimeTest {
                 List.of(),
                 List.of(),
                 null,
-                false));
+                false,
+                null));
 
         Launcher launcher = LauncherFactory.create();
         LauncherDiscoveryRequest req = LauncherDiscoveryRequestBuilder.request()
@@ -195,7 +196,8 @@ class GuardRuntimeTest {
                 List.of(),
                 List.of(dir.resolve("x.jar")),
                 null,
-                false);
+                false,
+                null);
         Path f = dir.resolve("run.properties");
         Files.writeString(f, c.toProperties());
         assertThat(GuardConfig.read(f)).isEqualTo(c);
