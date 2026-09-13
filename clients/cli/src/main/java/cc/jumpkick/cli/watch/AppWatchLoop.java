@@ -76,7 +76,7 @@ public final class AppWatchLoop {
         // Sidecars start once and outlive every app restart below; they go down with the session.
         List<ExecPlan.Sidecar> sidecarSpecs = plan.sidecars();
         Sidecars.Listener listener =
-                json() ? SidecarOutput.jsonl(CliOutput::out) : SidecarOutput.terminal(CliOutput::err);
+                json() ? SidecarOutput.jsonl(CliOutput::out, Clock.SYSTEM) : SidecarOutput.terminal(CliOutput::err);
         Sidecars sidecars =
                 Sidecars.start(noSidecars ? List.of() : sidecarSpecs, listener, Clock.SYSTEM, Sidecars.Sleeper.REAL);
         Process app;
@@ -243,7 +243,7 @@ public final class AppWatchLoop {
         }
         // stdout is a JSONL stream, so the app's lines ride it as events; stdin is still the user's.
         Process app = pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start();
-        CliOutput.out(SidecarOutput.appStarted(app.pid()));
+        CliOutput.out(SidecarOutput.appStarted(Clock.SYSTEM, app.pid()));
         pumpApp("stdout", app.getInputStream());
         pumpApp("stderr", app.getErrorStream());
         return app;
@@ -252,7 +252,7 @@ public final class AppWatchLoop {
     private static void pumpApp(String stream, InputStream in) {
         Thread.ofVirtual().name("app-" + stream).start(() -> {
             try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                OutputLines.read(reader, line -> CliOutput.out(SidecarOutput.appOutput(stream, line)));
+                OutputLines.read(reader, line -> CliOutput.out(SidecarOutput.appOutput(Clock.SYSTEM, stream, line)));
             } catch (IOException ignored) {
                 // the pipe closes with the app; its exit is reported by the loop
             }
@@ -261,7 +261,7 @@ public final class AppWatchLoop {
 
     /** Under {@code --output json}, the app's exit is an event; on a terminal the loop's own line says it. */
     private void appExited(Process app) {
-        if (json()) CliOutput.out(SidecarOutput.appExited(app.pid(), app.exitValue()));
+        if (json()) CliOutput.out(SidecarOutput.appExited(Clock.SYSTEM, app.pid(), app.exitValue()));
     }
 
     private Process restartApp(Process app, ExecPlan plan, List<String> appArgs)

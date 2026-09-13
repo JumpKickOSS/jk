@@ -7,6 +7,7 @@ import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.terminal.Ansi;
+import cc.jumpkick.testing.FakeClock;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -66,7 +67,8 @@ class SidecarOutputTest {
     @Test
     void jsonl_events_carry_the_documented_fields() {
         List<String> lines = new ArrayList<>();
-        Sidecars.Listener j = SidecarOutput.jsonl(lines::add);
+        FakeClock clock = new FakeClock();
+        Sidecars.Listener j = SidecarOutput.jsonl(lines::add, clock);
         j.started("web", 4242);
         j.output("web", "stderr", "warn: \"quoted\"");
         j.ready("web", "http://localhost:5173", true);
@@ -75,7 +77,9 @@ class SidecarOutputTest {
         assertThat(lines).hasSize(5);
         for (String line : lines) {
             assertThat(Jsonl.intValue(line, "schema", -1)).isEqualTo(1);
-            assertThat(Jsonl.longValue(line, "ts", -1)).isPositive();
+            assertThat(Jsonl.longValue(line, "ts", -1))
+                    .as("stamped by the session clock")
+                    .isEqualTo(clock.millis());
             assertThat(Jsonl.str(line, "name")).isEqualTo("web");
         }
         assertThat(Jsonl.str(lines.get(0), "type")).isEqualTo("sidecar-started");
@@ -96,9 +100,11 @@ class SidecarOutputTest {
 
     @Test
     void the_app_s_own_events_name_the_stream_and_the_pid() {
-        String started = SidecarOutput.appStarted(7);
-        String out = SidecarOutput.appOutput("stdout", "Started App in 0.4s");
-        String exited = SidecarOutput.appExited(7, 143);
+        FakeClock clock = new FakeClock();
+        String started = SidecarOutput.appStarted(clock, 7);
+        String out = SidecarOutput.appOutput(clock, "stdout", "Started App in 0.4s");
+        String exited = SidecarOutput.appExited(clock, 7, 143);
+        assertThat(Jsonl.longValue(started, "ts", -1)).isEqualTo(clock.millis());
         assertThat(Jsonl.str(started, "type")).isEqualTo("app-started");
         assertThat(Jsonl.longValue(started, "pid", -1)).isEqualTo(7);
         assertThat(Jsonl.str(out, "type")).isEqualTo("app-output");

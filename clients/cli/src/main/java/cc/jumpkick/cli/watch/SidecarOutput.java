@@ -3,6 +3,7 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.cli.run.jsonl.JsonlEnvelope;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.terminal.Style;
 import java.util.List;
@@ -48,9 +49,9 @@ public final class SidecarOutput {
         return new Terminal(sink, colour);
     }
 
-    /** One JSONL object per line and lifecycle change, handed to {@code sink} already encoded. */
-    public static Sidecars.Listener jsonl(Consumer<String> sink) {
-        return new Jsonl(sink);
+    /** One JSONL object per line and lifecycle change, handed to {@code sink} already encoded and stamped by {@code clock}. */
+    public static Sidecars.Listener jsonl(Consumer<String> sink, Clock clock) {
+        return new Jsonl(sink, clock);
     }
 
     /** {@code name │ } — the name in its colour when colour is on, the bar plain either way. */
@@ -65,23 +66,23 @@ public final class SidecarOutput {
     }
 
     /** The app's own {@code app-started} line. */
-    public static String appStarted(long pid) {
-        return JsonlEnvelope.open(System.currentTimeMillis(), APP_STARTED)
+    public static String appStarted(Clock clock, long pid) {
+        return JsonlEnvelope.open(clock.millis(), APP_STARTED)
                 .number("pid", pid)
                 .finish();
     }
 
     /** The app's own {@code app-output} line; {@code stream} is {@code stdout} or {@code stderr}. */
-    public static String appOutput(String stream, String line) {
-        return JsonlEnvelope.open(System.currentTimeMillis(), APP_OUTPUT)
+    public static String appOutput(Clock clock, String stream, String line) {
+        return JsonlEnvelope.open(clock.millis(), APP_OUTPUT)
                 .string("stream", stream)
                 .string("line", line)
                 .finish();
     }
 
     /** The app's own {@code app-exited} line. */
-    public static String appExited(long pid, int exit) {
-        return JsonlEnvelope.open(System.currentTimeMillis(), APP_EXITED)
+    public static String appExited(Clock clock, long pid, int exit) {
+        return JsonlEnvelope.open(clock.millis(), APP_EXITED)
                 .number("pid", pid)
                 .number("exit", exit)
                 .finish();
@@ -127,13 +128,15 @@ public final class SidecarOutput {
 
     private static final class Jsonl implements Sidecars.Listener {
         private final Consumer<String> sink;
+        private final Clock clock;
 
-        Jsonl(Consumer<String> sink) {
+        Jsonl(Consumer<String> sink, Clock clock) {
             this.sink = sink;
+            this.clock = clock;
         }
 
-        private static JsonFields open(String type, String name) {
-            return JsonlEnvelope.open(System.currentTimeMillis(), type).string("name", name);
+        private JsonFields open(String type, String name) {
+            return JsonlEnvelope.open(clock.millis(), type).string("name", name);
         }
 
         @Override
@@ -169,7 +172,7 @@ public final class SidecarOutput {
 
         @Override
         public void failed(String message) {
-            sink.accept(JsonlEnvelope.open(System.currentTimeMillis(), "error")
+            sink.accept(JsonlEnvelope.open(clock.millis(), "error")
                     .string("message", message)
                     .finish());
         }
