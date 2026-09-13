@@ -326,7 +326,8 @@ public final class SyncPlans {
             ctx.label("sync " + pe.coordinate());
             String hex = pe.sha256Hex();
             if (hex == null) {
-                // A workspace module: the build produces it, there is nothing to fetch.
+                // A workspace module (the build produces it) or a first-party plugin pinned by
+                // version alone (the jk install of that version carries it): nothing to verify here.
                 ctx.progress(1);
                 continue;
             }

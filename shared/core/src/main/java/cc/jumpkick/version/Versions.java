@@ -68,6 +68,20 @@ public final class Versions {
     }
 
     /**
+     * True when the bytes published at {@code version} may still move: an unstable qualifier or
+     * snapshot per {@link #isStable}, or a {@code 0.x} version — under SemVer a major of zero is
+     * initial development, and every release of it may change anything. A pin on such a version
+     * fixes a name, not bytes.
+     */
+    public static boolean isPreRelease(String version) {
+        if (!isStable(version)) return true;
+        String core = numericCore(version);
+        int dot = core.indexOf('.');
+        String major = dot < 0 ? core : core.substring(0, dot);
+        return major.isEmpty() || Long.parseLong(major) == 0;
+    }
+
+    /**
      * The leading run of digits and dots (e.g. {@code 2.4.0} of {@code 2.4.0-RC2}), no trailing
      * dot. Used by caret/tilde bound math so pre-release anchors do not poison segment parsing.
      */

@@ -169,4 +169,14 @@ class VersionsTest {
         assertThat(Versions.numericCore("1.2.3-RC1")).isEqualTo("1.2.3");
         assertThat(Versions.numericCore("0.2.3-beta")).isEqualTo("0.2.3");
     }
+    /** Under SemVer a 0.x release may change anything; so may any qualifier or snapshot. */
+    @Test
+    void zero_major_and_unstable_versions_are_pre_releases_and_stable_majors_are_not() {
+        assertThat(Versions.isPreRelease("0.13.3")).isTrue();
+        assertThat(Versions.isPreRelease("0.1")).isTrue();
+        assertThat(Versions.isPreRelease("1.0.0-rc1")).isTrue();
+        assertThat(Versions.isPreRelease("1.0-SNAPSHOT")).isTrue();
+        assertThat(Versions.isPreRelease("1.0.0")).isFalse();
+        assertThat(Versions.isPreRelease("2.4.0.Final")).isFalse();
+    }
 }

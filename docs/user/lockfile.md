@@ -169,8 +169,17 @@ coordinate is the plugin's, such as jk's own tree building `cc.jumpkick:jk-guard
 its guard suites — is pinned by `path` to that module instead, with no digest. Its identity is
 its source (the module's manifest is already inside `manifests-sha256`), and it is verified by
 being built from the workspace, so the row is the same whichever jar happens to be installed or
-staged and `jk lock` on a clean checkout rewrites nothing. Third-party and provisioned plugins
+staged and `jk lock` on a clean checkout rewrites nothing. Third-party plugins and rule packs
 keep their digest.
+
+A first-party plugin that ships inside jk (`cc.jumpkick:jk-minified`, `jk-spring-boot`,
+`jk-micronaut`, …) is pinned by `coordinate` and `version` alone while that version is a
+pre-release — a `0.x` or any qualifier/snapshot. The bytes published under a pre-release version
+change with every rebuild, so a digest would fix one moment of it and fail every committed lock
+on the next side-load, while the version already says which jk the project builds with. The
+trade is explicit: at a pre-release version the pin trusts the jk install (or the official
+repository) to serve that version's jar, exactly as it trusts the jk binary itself; a stable
+release is immutable, and its row carries the digest like any other plugin.
 
 ## Related
 

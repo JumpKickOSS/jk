@@ -2,12 +2,14 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import java.io.IOException;
@@ -126,6 +128,53 @@ class PinnedWorkerJarTest {
                             () -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("pins cc.jumpkick:jk-spring-boot:0.0.1")
+                    .hasMessageContaining("run `jk lock` to re-pin");
+        } finally {
+            if (prior == null) {
+                System.clearProperty("jk.official.repo.url");
+            } else {
+                System.setProperty("jk.official.repo.url", prior);
+            }
+        }
+    }
+
+    /** The installed jk of the pinned version carries the jar; the caller's locate finds it. */
+    @Test
+    void version_only_pin_at_this_jk_version_defers_to_locate(@TempDir Path tmp) throws Exception {
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        null,
+                        null,
+                        List.of(),
+                        List.of(Lockfile.PluginEntry.versionOnly("cc.jumpkick:jk-spring-boot", JkVersion.VERSION))),
+                tmp.resolve("jk-lock.toml"));
+
+        assertThat(PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
+                .isNull();
+    }
+
+    @Test
+    void version_only_pin_at_a_version_nobody_serves_is_loud(@TempDir Path tmp) throws Exception {
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        null,
+                        null,
+                        List.of(),
+                        List.of(Lockfile.PluginEntry.versionOnly("cc.jumpkick:jk-spring-boot", "0.0.1"))),
+                tmp.resolve("jk-lock.toml"));
+        String prior = System.getProperty("jk.official.repo.url");
+        System.setProperty("jk.official.repo.url", "http://127.0.0.1:1/");
+        try {
+            assertThatThrownBy(() -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("pins cc.jumpkick:jk-spring-boot:0.0.1")
+                    .hasMessageContaining("no jar of that version")
                     .hasMessageContaining("run `jk lock` to re-pin");
         } finally {
             if (prior == null) {

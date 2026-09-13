@@ -677,10 +677,11 @@ public record Lockfile(
     }
 
     /**
-     * One {@code [[plugin]]} row: Maven {@code group:name}, version, and exactly one of a jar
+     * One {@code [[plugin]]} row: Maven {@code group:name}, version, and at most one of a jar
      * {@link #checksum} ({@code sha256:<hex>}, the bytes a fetched plugin must have) or a workspace
      * {@link #path} (the module directory, relative to the lock, that builds the plugin — its
-     * identity is its source, so no jar digest is recorded).
+     * identity is its source, so no jar digest is recorded). A row with neither is a first-party
+     * plugin at a pre-release version, pinned by version alone ({@link #versionOnly}).
      */
     public record PluginEntry(
             String coordinate,
@@ -690,9 +691,9 @@ public record Lockfile(
         public PluginEntry {
             Objects.requireNonNull(coordinate, "coordinate");
             Objects.requireNonNull(version, "version");
-            if ((checksum == null) == (path == null)) {
-                throw new IllegalArgumentException(
-                        "[[plugin]] " + coordinate + " needs exactly one of `checksum` or `path`");
+            if (checksum != null && path != null) {
+                throw new IllegalArgumentException("[[plugin]] " + coordinate + " names both `checksum` and `path`"
+                        + " — a row is verified by one of them, not both");
             }
         }
 
@@ -706,9 +707,24 @@ public record Lockfile(
             return new PluginEntry(coordinate, version, null, path);
         }
 
+        /**
+         * A first-party plugin pinned by version alone: the jar ships inside the jk install of that
+         * version, and while the version is a pre-release its published bytes still move, so a
+         * digest would pin a moment rather than a release. The row gains its digest once the
+         * version is a stable release.
+         */
+        public static PluginEntry versionOnly(String coordinate, String version) {
+            return new PluginEntry(coordinate, version, null, null);
+        }
+
         /** True when the plugin is a workspace module: verified by being built, not by a digest. */
         public boolean isWorkspace() {
             return path != null;
+        }
+
+        /** True when the row carries neither digest nor module path: the version is the whole pin. */
+        public boolean isVersionOnly() {
+            return checksum == null && path == null;
         }
 
         /** Raw hex SHA-256 (strips a {@code "sha256:"} prefix); {@code null} for a workspace plugin. */

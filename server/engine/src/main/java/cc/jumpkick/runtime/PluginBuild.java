@@ -20,8 +20,10 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.build.ProjectFacts;
@@ -34,6 +36,8 @@ import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
+import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.NaiveResolver;
@@ -908,8 +912,9 @@ public final class PluginBuild {
         for (var e : lock.plugins()) {
             if (!coord.equals(e.coordinate())) continue;
             // A workspace module has no pinned bytes: the build that produced it is the verification.
-            String hex = e.sha256Hex();
-            if (hex == null) return null;
+            if (e.isWorkspace()) return null;
+            if (e.isVersionOnly()) return versionPinnedFirstPartyJar(e);
+            String hex = Objects.requireNonNull(e.sha256Hex(), "checksum");
             var pinned = PluginDescriptorOps.pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), hex);
             if (pinned.isPresent()) return pinned.get();
             // A jar this jk can already point at — a `-D<worker>.plugin.jar` override, or a repo
@@ -949,6 +954,39 @@ public final class PluginBuild {
                     + " — run `jk lock` to re-pin against this jk");
         }
         return null;
+    }
+
+    /**
+     * A first-party pin that names a version and no digest. At this jk's own version the jar is
+     * the installed one and the caller's locate finds it; at another version the store, then the
+     * official repo, must have that version's jar — and a version nobody serves is as loud as a
+     * digest nobody matches.
+     */
+    private static @Nullable Path versionPinnedFirstPartyJar(Lockfile.PluginEntry pin) throws IOException {
+        if (JkVersion.VERSION.equals(pin.version())) return null;
+        Cas cas = JkStores.storeCas();
+        String rel = MavenLayout.artifactPath(Coordinate.ofModule(pin.coordinate(), pin.version()));
+        for (String repoName :
+                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
+            Optional<Path> stored = new RepoArtifactStore(cas.root(), repoName).locate(rel);
+            if (stored.isPresent()) return stored.get();
+        }
+        String fetchFailure = null;
+        try {
+            Path fetched = PluginJar.fetchOfficial(cas, rel);
+            if (fetched != null) return fetched;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            fetchFailure = "interrupted";
+        } catch (Exception fetchEx) {
+            fetchFailure = fetchEx.getMessage();
+        }
+        throw new IOException("jk-lock.toml pins " + pin.coordinate() + ":" + pin.version()
+                + " but no jar of that version exists in the store"
+                + (fetchFailure != null
+                        ? " and the official fetch failed: " + fetchFailure
+                        : " and the official repo does not serve one")
+                + " — run `jk lock` to re-pin against this jk");
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

@@ -329,11 +329,11 @@ class LockfileRoundTripTest {
         assertThat(workspace.sha256Hex()).isNull();
         assertThat(workspace.path()).isEqualTo("shared/guard-api");
 
-        // A row is one or the other: a digest and a module path together say nothing about which verifies.
+        // A digest and a module path together say nothing about which one verifies.
         assertThatThrownBy(() -> new Lockfile.PluginEntry("com.acme:rules", "2.0.0", "sha256:00", "rules"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("exactly one of `checksum` or `path`");
-        String neither = """
+                .hasMessageContaining("both `checksum` and `path`");
+        String both = """
                 version = 1
                 generated-by = "jk 0.1.0"
                 resolution-algorithm = "pubgrub-v1"
@@ -341,9 +341,30 @@ class LockfileRoundTripTest {
                 [[plugin]]
                 coordinate = "com.acme:rules"
                 version    = "2.0.0"
+                checksum   = "sha256:00"
+                path       = "rules"
                 """;
-        assertThatThrownBy(() -> LockfileReader.parse(neither))
+        assertThatThrownBy(() -> LockfileReader.parse(both))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("exactly one of `checksum` or `path`");
+                .hasMessageContaining("both `checksum` and `path`");
+    }
+
+    /** A first-party plugin at a pre-release version is the version and nothing else. */
+    @Test
+    void a_version_only_plugin_row_round_trips_without_a_digest() {
+        Lockfile original = Lockfile.empty("0.13.3")
+                .withPlugins(List.of(Lockfile.PluginEntry.versionOnly("cc.jumpkick:jk-minified", "0.13.3")));
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("coordinate = \"cc.jumpkick:jk-minified\"")
+                .contains("version    = \"0.13.3\"")
+                .doesNotContain("checksum")
+                .doesNotContain("path       =");
+
+        Lockfile.PluginEntry parsed = LockfileReader.parse(rendered).plugins().getFirst();
+        assertThat(parsed).isEqualTo(original.plugins().getFirst());
+        assertThat(parsed.isVersionOnly()).isTrue();
+        assertThat(parsed.isWorkspace()).isFalse();
+        assertThat(parsed.sha256Hex()).isNull();
     }
 }

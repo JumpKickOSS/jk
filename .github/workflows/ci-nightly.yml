@@ -242,13 +242,13 @@ jobs:
   # The diff of the committed lockfiles after the job is the real assertion here, not a tidiness
   # check: jk.toml declares only exact pins, so a build that rewrites a committed jk-lock.toml
   # means either a pin drifted or the lock writer put something non-deterministic in the file.
-  # That is lockfile-as-law, enforced on the samples that are supposed to demonstrate it — with
-  # one pre-1.0 exception: a first-party plugin pinned at the product's own, still-moving version
-  # (cc.jumpkick:jk-minified 0.12.0) is republished with every side-load, so its sha256 can never
-  # match a committed lock. Each sample is re-locked against the jk this job just built, and the
-  # diff may contain checksum lines and nothing else. A sample's web/package-lock.json is held to
-  # the stricter rule — no change at all — since `npm ci` refuses a lock out of step with its
-  # package.json. Both rules live in scripts/examples-lock-drift.sh, which has a fixture test.
+  # That is lockfile-as-law, enforced on the samples that are supposed to demonstrate it. A
+  # first-party plugin at jk's own pre-release version (cc.jumpkick:jk-minified) is pinned by
+  # version alone, so re-locking each sample against the jk this job just built rewrites nothing;
+  # the check tolerates checksum lines only — a third-party plugin republish is reported as such —
+  # and every other changed jk-lock.toml line fails the lane. A sample's web/package-lock.json is
+  # held to the stricter rule — no change at all — since `npm ci` refuses a lock out of step with
+  # its package.json. Both rules live in scripts/examples-lock-drift.sh, which has a fixture test.
   examples:
     name: Doc examples build and test
     runs-on: ubuntu-latest

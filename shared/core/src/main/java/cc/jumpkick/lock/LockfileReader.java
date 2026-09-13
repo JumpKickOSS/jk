@@ -326,7 +326,10 @@ public final class LockfileReader {
         return value;
     }
 
-    /** The {@code [[plugin]]} rows: each pinned by a jar {@code checksum} or a workspace module {@code path}. */
+    /**
+     * The {@code [[plugin]]} rows: each pinned by a jar {@code checksum}, by a workspace module
+     * {@code path}, or by version alone (a first-party plugin at a pre-release version).
+     */
     private static List<Lockfile.PluginEntry> readPlugins(TomlParseResult result) {
         List<Lockfile.PluginEntry> plugins = new ArrayList<>();
         TomlArray pluginArray = result.getArray("plugin");
@@ -337,9 +340,9 @@ public final class LockfileReader {
             String ver = requireString(t, "version");
             String chk = t.getString("checksum");
             String path = t.getString("path");
-            if ((chk == null) == (path == null)) {
-                throw new IllegalArgumentException(
-                        "[[plugin]] " + coord + " needs exactly one of `checksum` or `path`");
+            if (chk != null && path != null) {
+                throw new IllegalArgumentException("[[plugin]] " + coord + " names both `checksum` and `path`"
+                        + " — a row is verified by one of them, not both");
             }
             plugins.add(new Lockfile.PluginEntry(coord, ver, chk, path));
         }

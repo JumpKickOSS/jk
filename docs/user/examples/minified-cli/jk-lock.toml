@@ -1,5 +1,5 @@
 version = 1
-generated-by = "jk 0.12.0#1"
+generated-by = "jk 0.13.3"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
 manifests-sha256 = "eb458e3595221a2f43b8c5d448770a064650da70e043e4403df906385b78fbef"
@@ -135,8 +135,7 @@ scopes   = ["test"]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-minified"
-version    = "0.12.0"
-checksum   = "sha256:e5144c232b751e2340241eb9327a88261f0f6a7d2c674f18cb8c93702c214a53"
+version    = "0.13.3"
 
 [[module]]
 path    = "."

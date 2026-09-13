@@ -463,14 +463,21 @@ public final class LockPipeline {
             // project's lock on every jk version bump and ping-ponged between developers on
             // different jk versions, for plugins the project never forks.
             if (effective.pluginConfig(d.table()).isEmpty()) continue;
-            String hex;
-            try {
-                hex = Hashing.sha256Hex(located.path());
-            } catch (IOException unreadable) {
-                continue;
-            }
             String coord = "cc.jumpkick:" + located.plugin().artifactId();
-            if (seen.add(coord + ":" + JkVersion.VERSION)) {
+            if (!seen.add(coord + ":" + JkVersion.VERSION)) continue;
+            // A first-party plugin at a pre-release version is pinned by version alone: the bytes
+            // published under that version change with every rebuild, so a digest breaks every
+            // committed lock on the next side-load without guarding anything the version does not.
+            // A stable release is immutable and gets its digest.
+            if (Versions.isPreRelease(JkVersion.VERSION)) {
+                entries.add(Lockfile.PluginEntry.versionOnly(coord, JkVersion.VERSION));
+            } else {
+                String hex;
+                try {
+                    hex = Hashing.sha256Hex(located.path());
+                } catch (IOException unreadable) {
+                    continue;
+                }
                 entries.add(new Lockfile.PluginEntry(coord, JkVersion.VERSION, "sha256:" + hex));
             }
             floor = PluginDescriptors.maxFloor(floor, PluginDescriptors.jkCompatFloor(d.jkCompat()));
