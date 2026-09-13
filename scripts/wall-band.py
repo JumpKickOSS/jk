@@ -10,9 +10,7 @@ timed runs) and wall-baseline.toml (one `[<row>.<side>]` table per subject with 
   * a subject more than IMPROVE below its line has the line rewritten in this run (an improvement
     is banked, never a failure);
   * a subject the file has never seen is added at its measured median — the first scheduled run
-    seeds the file;
-  * Gradle subjects are recorded and rewritten the same way but never fail: they are the comparison,
-    not the product.
+    seeds the file.
 
 Usage: wall-band.py ROW_JSONL BASELINE_TOML [--band 0.15] [--improve 0.05] [--commit SHA] [--selftest]
 """
@@ -29,16 +27,17 @@ IMPROVE = 0.05
 HEADER = """# wall-baseline.toml — the ratchet behind the scheduled dogfood wall measurement
 # (.github/workflows/wall-measure.yml, scripts/wall-band.py).
 #
-# One table per subject, `[<row>.<side>]`: rows are rebuild / noop / touched, sides are gradle /
-# jk / jk-guards (jk with its house-rule guards on, the opt-in number). Each holds the banked
-# `median-s`, the `date` it was banked, the `runs` the median came from and the `commit` measured.
+# One table per subject, `[<row>.<side>]`: rows are rebuild / noop / touched, sides are jk (the
+# raw build, `[guards] on-build = false`) and jk-guards (jk with its house-rule guards on, the
+# opt-in number). Each holds the banked `median-s`, the `date` it was banked, the `runs` the median
+# came from and the `commit` measured.
 #
-# A jk subject more than 15 % ABOVE its median fails the scheduled run and prints the commit range
+# A subject more than 15 % ABOVE its median fails the scheduled run and prints the commit range
 # since the line was banked. Any subject more than 5 % BELOW its median has the line rewritten in
 # the same run — an improvement is banked, never a failure; commit the rewritten file. A subject
-# this file has never seen is added at its measured median, so the first run seeds it. Gradle rows
-# are the comparison and never fail. Re-baseline after an intentional change by editing the line
-# and saying why in the commit; the ratchet never raises a jk line by itself.
+# this file has never seen is added at its measured median, so the first run seeds it. Re-baseline
+# after an intentional change by editing the line and saying why in the commit; the ratchet never
+# raises a line by itself.
 """
 
 
@@ -105,7 +104,7 @@ def judge(baseline, measured, band=BAND, improve=IMPROVE, today=None, commit="")
             banked.append(f"{row}.{side}: new, {median:.2f} s")
             continue
         base = float(recorded["median-s"])
-        if side != "gradle" and median > base * (1 + band):
+        if median > base * (1 + band):
             since = recorded.get("commit", "")
             failures.append(f"{row}.{side}: {median:.2f} s, banked {base:.2f} s on {recorded.get('date', '?')} "
                             f"(band {band:.0%}); commits since: {since or '?'}..HEAD")
@@ -117,22 +116,23 @@ def judge(baseline, measured, band=BAND, improve=IMPROVE, today=None, commit="")
 
 def selftest():
     base = parse_baseline(render({("noop", "jk"): {"median-s": 2.00, "date": "2026-09-07", "runs": 1, "commit": "abc"},
-                                  ("noop", "gradle"): {"median-s": 9.0, "date": "2026-09-07", "runs": 1, "commit": "abc"}}))
+                                  ("noop", "jk-guards"): {"median-s": 9.0, "date": "2026-09-07", "runs": 1, "commit": "abc"}}))
     rows = "\n".join(json.dumps(r) for r in [
         {"type": "env", "os": "test"},
         {"type": "measurement", "row": "noop", "side": "jk", "walls_s": [3.1, 2.50]},        # +0.5 s on 2.0 s: red
-        {"type": "measurement", "row": "noop", "side": "gradle", "walls_s": [20.0, 20.0]},   # gradle never fails
+        {"type": "measurement", "row": "noop", "side": "jk-guards", "walls_s": [20.0, 20.0]},  # +11 s on 9.0 s: red too
         {"type": "measurement", "row": "touched", "side": "jk", "walls_s": [5.0, 4.0]},      # unseen: seeded
     ])
     nxt, fails, banked = judge(base, measurements(rows), today="2026-09-08", commit="def")
-    assert len(fails) == 1 and fails[0].startswith("noop.jk: 2.50 s, banked 2.00 s"), fails
+    assert len(fails) == 2 and fails[0].startswith("noop.jk: 2.50 s, banked 2.00 s"), fails
     assert "commits since: abc..HEAD" in fails[0], fails
-    assert nxt[("noop", "gradle")]["median-s"] == 9.0, "a slower gradle row is neither failed nor banked upward"
+    assert fails[1].startswith("noop.jk-guards: 20.00 s, banked 9.00 s"), fails
+    assert nxt[("noop", "jk-guards")]["median-s"] == 9.0, "a regression does not move the line"
     assert nxt[("touched", "jk")]["median-s"] == 4.0 and nxt[("touched", "jk")]["commit"] == "def"
     assert nxt[("noop", "jk")]["median-s"] == 2.00, "a regression does not move the line"
     # an improvement past 5 % is banked; within 5 % holds
-    nxt2, fails2, banked2 = judge(base, {("noop", "jk"): (1.80, 1), ("noop", "gradle"): (8.8, 1)}, today="x", commit="g")
-    assert not fails2 and nxt2[("noop", "jk")]["median-s"] == 1.80 and nxt2[("noop", "gradle")]["median-s"] == 9.0, (banked2, nxt2)
+    nxt2, fails2, banked2 = judge(base, {("noop", "jk"): (1.80, 1), ("noop", "jk-guards"): (8.8, 1)}, today="x", commit="g")
+    assert not fails2 and nxt2[("noop", "jk")]["median-s"] == 1.80 and nxt2[("noop", "jk-guards")]["median-s"] == 9.0, (banked2, nxt2)
     # the rendered file reads back identically
     assert parse_baseline(render(nxt2)) == parse_baseline(render(parse_baseline(render(nxt2))))
     print("wall-band selftest ok")
@@ -173,11 +173,11 @@ def main(argv):
     for m in sorted(measured):
         print(f"  {m[0]}.{m[1]}: {measured[m][0]:.2f} s (n={measured[m][1]})")
     if failures:
-        print("wall-band: a jk subject regressed past its band —")
+        print("wall-band: a subject regressed past its band —")
         for f in failures:
             print("  " + f)
         return 1
-    print("wall-band: every jk subject within its band")
+    print("wall-band: every subject within its band")
     return 0
 
 

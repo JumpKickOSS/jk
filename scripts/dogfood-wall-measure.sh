@@ -1,39 +1,30 @@
 #!/usr/bin/env bash
-# Dogfood wall comparison: this tree built by Gradle vs by jk, on the same machine.
+# Dogfood wall measurement: this tree built by jk, on this machine, three rows.
 #
-# The point is NOT to win a race with Gradle. Wall-clock parity is hygiene
-# (docs/user/why.md); the Gradle column is a sanity rail. The point is a repeatable row
-# so a scheduling change can be shown to have moved the number, and so a claim about
-# "the gap" carries the machine it was measured on.
+# The point is a repeatable row so a scheduling change can be shown to have moved the number,
+# and so a claim about a wall carries the machine it was measured on. The ratchet over the
+# series is scripts/wall-band.py against wall-baseline.toml; the workflow is wall-measure.yml.
 #
 # Usage:
 #   ./scripts/dogfood-wall-measure.sh                 # full: rebuild + no-op + touched
-#   ./scripts/dogfood-wall-measure.sh rebuild         # only the --redo / --rerun-tasks row
+#   ./scripts/dogfood-wall-measure.sh rebuild         # only the --redo row
 #   ./scripts/dogfood-wall-measure.sh noop touched    # pick rows
 #
 # Env:
 #   JK_BIN   — jk binary (default: ~/.jk/bin/jk, else PATH)
-#   RUNS     — timed runs per side (default 2; the first warms the daemon/engine)
-#   SIDES    — "both" (default), "jk", or "gradle"
+#   RUNS     — timed runs per row (default 2; the first warms the engine)
 #   OUT_DIR  — where logs and the row land (default: build/dogfood-wall)
 #   TOUCH    — file to edit for the `touched` row. Default is a shared/core production file,
-#              deliberately: it must sit in BOTH builds' default cone or the row is not a
-#              comparison. `server/engine` is the trap — the CLI depends on jk-engine only as a
-#              TEST dependency, so a bare `jk build` correctly does not rebuild it while
-#              `./gradlew build` rebuilds everything, and the row reads as a 4x jk win that is
-#              really jk doing less work.
+#              deliberately: it sits in the default build cone of every dependent module, so the
+#              row measures an incremental build that reaches the engine and the client.
 #
 # Rows:
-#   rebuild  `./gradlew build dist --no-build-cache --rerun-tasks`  vs  `jk build -r`
-#            Both compile everything, run the fast/unit tier, package, build the engine
-#            fat jar and native-image the CLI. Dropping `dist` would let Gradle skip
-#            native-image; passing --skip-tests would let jk skip the suite. Neither is fair.
-#   noop     `./gradlew build dist`  vs  `jk build`  — the warm repeated cycle, which is
-#            the workload jk's product bet actually rests on. When the tree carries
-#            jk-guards.toml the jk side is measured raw (`[guards] on-build = false`, the
-#            published comparison) and then with its house-rule guards on, labelled opt-in.
+#   rebuild  `jk build -r` — everything compiled, the fast tier run, every module packaged, the
+#            engine assembled and the CLI native-imaged.
+#   noop     `jk build` — the warm repeated cycle, which is the workload jk's product bet rests on.
+#            When the tree carries jk-guards.toml the row is measured raw (`[guards] on-build =
+#            false`, the published number) and then with its house-rule guards on, labelled opt-in.
 #   touched  one source file really edited, then the same commands — the everyday inner loop.
-#            The file must be in both builds' default cone; see TOUCH above.
 #            A `touch` is not enough: jk keys its action cache on CONTENT, so bumping mtime
 #            leaves the build a no-op and the row silently measures nothing. The row appends a
 #            unique comment line and restores the original bytes afterwards.
@@ -47,7 +38,6 @@ elif [[ -x "$HOME/.jk/bin/jk" ]]; then JK="$HOME/.jk/bin/jk"
 else JK="$(command -v jk || true)"; fi
 
 RUNS="${RUNS:-2}"
-SIDES="${SIDES:-both}"
 OUT_DIR="${OUT_DIR:-$ROOT/build/dogfood-wall}"
 TOUCH="${TOUCH:-shared/core/src/main/java/cc/jumpkick/config/WorkspaceClasspath.java}"
 ROWS=("$@")
@@ -80,18 +70,14 @@ with open(out, "a", encoding="utf-8") as handle:
 PY
 }
 
-want_jk()     { [[ "$SIDES" == both || "$SIDES" == jk ]]; }
-want_gradle() { [[ "$SIDES" == both || "$SIDES" == gradle ]]; }
-
 # ---------------------------------------------------------------------------
 # Environment. Every field here changed a number or a conclusion at least once, so the
 # row is not trustworthy without it.
 #
-# Free memory is the one people omit and the one that matters most on the jk side: jk
-# sizes worker JVM heaps and the PluginSlots permit count from available RAM (HeapPlan),
-# so the same tree on the same cores forks a different number of workers depending on
-# what else is resident. Gradle's `maxParallelForks = cores/2` does not vary that way.
-# A row without free memory cannot be compared across machines or across days.
+# Free memory is the one people omit and the one that matters most: jk sizes worker JVM heaps
+# and the PluginSlots permit count from available RAM (HeapPlan), so the same tree on the same
+# cores forks a different number of workers depending on what else is resident. A row without
+# free memory cannot be compared across machines or across days.
 # ---------------------------------------------------------------------------
 env_block() {
   local os cpu cores threads memtotal memavail jkver headsha jkbuilt
@@ -107,9 +93,9 @@ env_block() {
   jkver="$([[ -x "$JK" ]] && "$JK" --version 2>/dev/null | head -1 || echo 'not installed')"
   # A stale client silently measures an older engine, which is the single easiest way to
   # produce a number nobody can reproduce.
-  if [[ -x "$JK" ]] && [[ -f "$ROOT/build/dist/jk" ]] \
-     && cmp -s "$JK" "$ROOT/build/dist/jk"; then jkbuilt="yes (matches build/dist/jk)"
-  else jkbuilt="UNVERIFIED — client differs from build/dist/jk; run ./gradlew dist installLocal && ./install.sh build/dist/jk"; fi
+  if [[ -x "$JK" ]] && [[ -f "$ROOT/target/dist/jk" ]] \
+     && cmp -s "$JK" "$ROOT/target/dist/jk"; then jkbuilt="yes (matches target/dist/jk)"
+  else jkbuilt="UNVERIFIED — client differs from target/dist/jk; run jk build --skip-tests && jk install --skip-tests"; fi
 
   {
     echo "### Environment"
@@ -124,11 +110,8 @@ env_block() {
     echo "| HEAD | \`$headsha\` |"
     echo "| jk | $jkver |"
     echo "| jk built from HEAD | $jkbuilt |"
-    echo "| gradle | $(./gradlew --version 2>/dev/null | sed -n 's/^Gradle //p' | head -1) |"
     echo "| JAVA_HOME | ${JAVA_HOME:-unset} |"
-    echo "| runs per side | $RUNS (first warms the daemon / engine) |"
-    echo
-    echo "Guard parity: both builds enforce the same guard letters (G51 checks the two sets)."
+    echo "| runs per row | $RUNS (first warms the engine) |"
     echo
   } >> "$ROW_FILE"
 
@@ -159,10 +142,10 @@ timed() {
 
 # ---------------------------------------------------------------------------
 # Guards. This tree dogfoods jk's house-rule guards (jk-guards.toml), and a lane runs inside
-# `jk build`. The published Gradle-vs-jk trend is a comparison of RAW builds, so the jk side is
-# measured with `[guards] on-build = false` first — every lane but the model lane waits for the
-# gate — and then again as contributors run it, labelled opt-in, so the guards' own cost is a
-# number beside the wall rather than folded into it. The manifest is restored however the row exits.
+# `jk build`. The published trend is a RAW build, so the row is measured with
+# `[guards] on-build = false` first — every lane but the model lane waits for the gate — and
+# then again as contributors run it, labelled opt-in, so the guards' own cost is a number beside
+# the wall rather than folded into it. The manifest is restored however the row exits.
 # ---------------------------------------------------------------------------
 MANIFEST_BACKUP="$OUT_DIR/jk.toml.orig"
 LOCK_BACKUP="$OUT_DIR/jk-lock.toml.orig"
@@ -253,47 +236,32 @@ for row in "${ROWS[@]}"; do
   echo "== row: $row ==" >&2
   case "$row" in
     rebuild)
-      echo "### Row: rebuild (\`--rerun-tasks\` / \`--redo\`)" >> "$ROW_FILE"; echo >> "$ROW_FILE"
+      echo "### Row: rebuild (\`--redo\`)" >> "$ROW_FILE"; echo >> "$ROW_FILE"
       echo "| side | command | walls (s) |" >> "$ROW_FILE"; echo "|---|---|---|" >> "$ROW_FILE"
-      if want_gradle; then
-        w="$(run_side "gradle rebuild" gradle-rebuild -- ./gradlew build dist --no-build-cache --rerun-tasks --console=plain)"
-        echo "| Gradle | \`build dist --no-build-cache --rerun-tasks\` | $w |" >> "$ROW_FILE"
-        emit_json measurement "row=rebuild" "side=gradle" \
-          "command=./gradlew build dist --no-build-cache --rerun-tasks" "walls_s=$w"
-      fi
-      if want_jk; then
-        w="$(run_side "jk rebuild" jk-rebuild -- "$JK" build -r)"
-        echo "| jk | \`jk build -r\` | $w |" >> "$ROW_FILE"
-        emit_json measurement "row=rebuild" "side=jk" "command=jk build -r" "walls_s=$w"
-      fi
+      w="$(run_side "jk rebuild" jk-rebuild -- "$JK" build -r)"
+      echo "| jk | \`jk build -r\` | $w |" >> "$ROW_FILE"
+      emit_json measurement "row=rebuild" "side=jk" "command=jk build -r" "walls_s=$w"
       echo >> "$ROW_FILE"
-      want_jk && jk_detail
+      jk_detail
       ;;
     noop)
       echo "### Row: warm no-op" >> "$ROW_FILE"; echo >> "$ROW_FILE"
       echo "| side | command | walls (s) |" >> "$ROW_FILE"; echo "|---|---|---|" >> "$ROW_FILE"
-      if want_gradle; then
-        w="$(run_side "gradle no-op" gradle-noop -- ./gradlew build dist --console=plain)"
-        echo "| Gradle | \`build dist\` | $w |" >> "$ROW_FILE"
-        emit_json measurement "row=noop" "side=gradle" "command=./gradlew build dist" "walls_s=$w"
-      fi
-      if want_jk; then
-        if has_guards; then
-          guards_off; trap guards_restore EXIT
-          "$JK" build >> "$OUT_DIR/jk-noop-guards-off-warm.log" 2>&1 || true   # re-plan under the new manifest
-          w="$(run_side "jk no-op (guards off)" jk-noop-guards-off -- "$JK" build)"
-          guards_restore; trap - EXIT
-          echo "| jk | \`jk build\`, raw (\`[guards] on-build = false\`) | $w |" >> "$ROW_FILE"
-          emit_json measurement "row=noop" "side=jk" "command=jk build" "guards=off" "walls_s=$w"
-          "$JK" build >> "$OUT_DIR/jk-noop-guards-warm.log" 2>&1 || true
-          w="$(run_side "jk no-op (guards on, opt-in)" jk-noop -- "$JK" build)"
-          echo "| jk | \`jk build\`, with house-rule guards (opt-in) | $w |" >> "$ROW_FILE"
-          emit_json measurement "row=noop" "side=jk-guards" "command=jk build" "guards=on" "walls_s=$w"
-        else
-          w="$(run_side "jk no-op" jk-noop -- "$JK" build)"
-          echo "| jk | \`jk build\` | $w |" >> "$ROW_FILE"
-          emit_json measurement "row=noop" "side=jk" "command=jk build" "walls_s=$w"
-        fi
+      if has_guards; then
+        guards_off; trap guards_restore EXIT
+        "$JK" build >> "$OUT_DIR/jk-noop-guards-off-warm.log" 2>&1 || true   # re-plan under the new manifest
+        w="$(run_side "jk no-op (guards off)" jk-noop-guards-off -- "$JK" build)"
+        guards_restore; trap - EXIT
+        echo "| jk | \`jk build\`, raw (\`[guards] on-build = false\`) | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=noop" "side=jk" "command=jk build" "guards=off" "walls_s=$w"
+        "$JK" build >> "$OUT_DIR/jk-noop-guards-warm.log" 2>&1 || true
+        w="$(run_side "jk no-op (guards on, opt-in)" jk-noop -- "$JK" build)"
+        echo "| jk | \`jk build\`, with house-rule guards (opt-in) | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=noop" "side=jk-guards" "command=jk build" "guards=on" "walls_s=$w"
+      else
+        w="$(run_side "jk no-op" jk-noop -- "$JK" build)"
+        echo "| jk | \`jk build\` | $w |" >> "$ROW_FILE"
+        emit_json measurement "row=noop" "side=jk" "command=jk build" "walls_s=$w"
       fi
       echo >> "$ROW_FILE"
       ;;
@@ -307,52 +275,39 @@ for row in "${ROWS[@]}"; do
       cp "$TOUCH" "$TOUCH_BACKUP"
       restore_touched() { [[ -f "$TOUCH_BACKUP" ]] && cp "$TOUCH_BACKUP" "$TOUCH" && rm -f "$TOUCH_BACKUP"; return 0; }
       trap restore_touched EXIT
-      if want_gradle; then
+      if has_guards; then
+        guards_off
+        restore_all() { restore_touched; guards_restore; }
+        trap restore_all EXIT
         walls=()
         for ((i=1; i<=RUNS; i++)); do
-          real_edit "$TOUCH" "$i"
-          walls+=("$(timed "$OUT_DIR/gradle-touched-$i.log" ./gradlew build dist --console=plain)")
-          printf '  %-46s run %d: %s s\n' "gradle touched" "$i" "${walls[-1]}" >&2
+          real_edit "$TOUCH" "1$i"
+          walls+=("$(timed "$OUT_DIR/jk-touched-guards-off-$i.log" "$JK" build)")
+          printf '  %-46s run %d: %s s\n' "jk touched (guards off)" "$i" "${walls[-1]}" >&2
         done
-        echo "| Gradle | \`build dist\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
-        emit_json measurement "row=touched" "side=gradle" "command=./gradlew build dist" \
+        guards_restore
+        echo "| jk | \`jk build\` after an edit, raw (\`[guards] on-build = false\`) | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+        emit_json measurement "row=touched" "side=jk" "command=jk build" "guards=off" \
           "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
-      fi
-      if want_jk; then
-        if has_guards; then
-          guards_off
-          restore_all() { restore_touched; guards_restore; }
-          trap restore_all EXIT
-          walls=()
-          for ((i=1; i<=RUNS; i++)); do
-            real_edit "$TOUCH" "1$i"
-            walls+=("$(timed "$OUT_DIR/jk-touched-guards-off-$i.log" "$JK" build)")
-            printf '  %-46s run %d: %s s\n' "jk touched (guards off)" "$i" "${walls[-1]}" >&2
-          done
-          guards_restore
-          echo "| jk | \`jk build\` after an edit, raw (\`[guards] on-build = false\`) | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
-          emit_json measurement "row=touched" "side=jk" "command=jk build" "guards=off" \
-            "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
-          walls=()
-          for ((i=1; i<=RUNS; i++)); do
-            real_edit "$TOUCH" "2$i"
-            walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
-            printf '  %-46s run %d: %s s\n' "jk touched (guards on, opt-in)" "$i" "${walls[-1]}" >&2
-          done
-          echo "| jk | \`jk build\` after an edit, with house-rule guards (opt-in) | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
-          emit_json measurement "row=touched" "side=jk-guards" "command=jk build" "guards=on" \
-            "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
-        else
-          walls=()
-          for ((i=1; i<=RUNS; i++)); do
-            real_edit "$TOUCH" "1$i"
-            walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
-            printf '  %-46s run %d: %s s\n' "jk touched" "$i" "${walls[-1]}" >&2
-          done
-          echo "| jk | \`jk build\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
-          emit_json measurement "row=touched" "side=jk" "command=jk build" \
-            "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
-        fi
+        walls=()
+        for ((i=1; i<=RUNS; i++)); do
+          real_edit "$TOUCH" "2$i"
+          walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
+          printf '  %-46s run %d: %s s\n' "jk touched (guards on, opt-in)" "$i" "${walls[-1]}" >&2
+        done
+        echo "| jk | \`jk build\` after an edit, with house-rule guards (opt-in) | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+        emit_json measurement "row=touched" "side=jk-guards" "command=jk build" "guards=on" \
+          "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
+      else
+        walls=()
+        for ((i=1; i<=RUNS; i++)); do
+          real_edit "$TOUCH" "1$i"
+          walls+=("$(timed "$OUT_DIR/jk-touched-$i.log" "$JK" build)")
+          printf '  %-46s run %d: %s s\n' "jk touched" "$i" "${walls[-1]}" >&2
+        done
+        echo "| jk | \`jk build\` after an edit | $(IFS='/'; echo "${walls[*]}") |" >> "$ROW_FILE"
+        emit_json measurement "row=touched" "side=jk" "command=jk build" \
+          "walls_s=$(IFS='/'; echo "${walls[*]}")" "touched=$TOUCH"
       fi
       restore_touched
       guards_restore

@@ -11,7 +11,7 @@
 # https://jumpkick.build/repo/... (Firebase redirect once DNS is live)
 #
 # Usage:
-# # After ./gradlew installLocal (or jk install):
+# # After jk install:
 # scripts/publish-maven-repo.sh
 # # Stage only (release.yml does this on the build runner, uploads on the publish runner):
 # JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=out/repo scripts/publish-maven-repo.sh
@@ -45,7 +45,7 @@ PREFIX="${JK_MAVEN_PREFIX:-repo}"
 LOCAL="$STORE/repos/jk-local/cc/jumpkick"
 
 if [[ ! -d "$LOCAL" ]]; then
-  echo "publish-maven-repo: missing $LOCAL — run ./gradlew installLocal or jk install first" >&2
+  echo "publish-maven-repo: missing $LOCAL — run jk install first" >&2
   exit 2
 fi
 

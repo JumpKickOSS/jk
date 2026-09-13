@@ -6,7 +6,3 @@ pluginManagement {
     }
 }
 rootProject.name = "jumpkick-intellij"
-
-dependencyResolutionManagement {
-    versionCatalogs { create("libs") { from(files("../../gradle/libs.versions.toml")) } }
-}

@@ -91,7 +91,7 @@ case "$MODE" in
     echo "Plain Java (no source-gen AP) uses bare \`javac\` — see javac AOT numbers separately."
     echo "Running engine unit microbench if available…"
     cd "$ROOT"
-    ./gradlew :engine:test --tests 'cc.jumpkick.compile.ForkedJavacAotBench*' 2>&1 | tail -40
+    jk test --profile bench --no-ansi -m server/engine --class cc.jumpkick.compile.ForkedJavacAotBenchTest 2>&1 | tail -40
     ;;
   *)
     echo "usage: $0 kotlin|java-worker [project]" >&2
