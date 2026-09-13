@@ -112,8 +112,11 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
 1. Push tag `v0.13.3` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
-   under `target/dist`), bootstrapped from that commit's Gradle artifacts until a release built this
-   way is hosted. Windows still ships from `./gradlew dist` (its self-host lane is not green yet).
+   under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins
+   where jumpkick.build serves a client for the platform (`bootstrap: hosted` in the matrix), and
+   that commit's Gradle artifacts where it does not. Windows ships from `./gradlew dist` (its
+   self-host lane is not green yet). The linux-x86_64 lane also runs `jk install`, so the
+   first-party plugins it stages for `repo/` are the commit's own.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs +
    `SHA256SUMS` + `.sig`.
 4. Merge job flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial
@@ -122,6 +125,8 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 5. Sign and upload the pointer (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then
    `LATEST`, then `VERSION`, all with no-cache headers. A client reading between the two copies
    gets a signature refusal and retries; it never gets an unverified version.
+6. Bump `.jk/ci-bootstrap-version` to the new release and flip the `bootstrap:` rows of every
+   platform it shipped a client for ([self-host](self-host.md#the-bootstrap-pin)).
 
 ### Required secrets
 

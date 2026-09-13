@@ -36,17 +36,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `bootstrap: hosted` — jumpkick.build serves a client for this platform at the release
+        # .jk/ci-bootstrap-version pins, so jk is installed the way a user installs it, the same
+        # bootstrap as ci.yml's self-host job. `bootstrap: gradle` — no hosted client for the
+        # platform (linux-aarch64 and macos-x86_64: none published at the pin; windows-x86_64: the
+        # self-host lane is not green there), so this commit's Gradle artifacts stand in. When a
+        # release ships a platform's client, its row flips with the pin bump.
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
+            bootstrap: hosted
           - os: ubuntu-24.04-arm
             arch_label: linux-aarch64
+            bootstrap: gradle
           - os: macos-15-intel
             arch_label: macos-x86_64
+            bootstrap: gradle
           - os: macos-14
             arch_label: macos-aarch64
+            bootstrap: hosted
           - os: windows-latest
             arch_label: windows-x86_64
+            bootstrap: gradle
     runs-on: ${{ matrix.os }}
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
@@ -79,36 +90,30 @@ jobs:
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building release $VER (${{ matrix.arch_label }})"
 
-      # The shipped artifacts are what jk builds of itself. Until a release built this way is
-      # hosted, the jk that builds them is bootstrapped from this commit's Gradle artifacts; once
-      # one is, this step becomes `curl install.sh | JK_VERSION=<pinned> bash`.
+      # The shipped artifacts are what jk builds of itself. The jk that builds them is the hosted
+      # release .jk/ci-bootstrap-version pins, installed as a user would. JK_VERSION in this job's
+      # environment is the release being cut, so the bootstrap version rides the installer's own
+      # environment and nothing else.
+      - name: Bootstrap jk from the hosted release
+        if: matrix.bootstrap == 'hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bootstrap="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          echo "bootstrapping jk $bootstrap from https://jumpkick.build"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$bootstrap" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      # A platform with no hosted client at the pin (the matrix says which) bootstraps from this
+      # commit's Gradle artifacts. Windows builds its whole dist with Gradle below.
       - name: Bootstrap jk from Gradle artifacts
-        if: runner.os != 'Windows'
+        if: matrix.bootstrap == 'gradle' && runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew dist installLocal --no-daemon
           ./install.sh build/dist/jk
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
-
-      # The first-party plugins (formatter, compilers, test runner, guard packs, …) that `installLocal`
-      # just put in this runner's store, laid out as the Maven repository jumpkick.build/repo/ serves.
-      # Staged here and uploaded by `publish`, which runs on a runner with no store.
-      - name: Stage the first-party Maven repository
-        if: matrix.arch_label == 'linux-x86_64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=out/repo scripts/publish-maven-repo.sh
-          find out/repo -name '*.jar' | sed 's|out/repo/||' | sort
-
-      - name: Upload the Maven repository (artifact)
-        if: matrix.arch_label == 'linux-x86_64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: maven-repo-${{ env.JK_VERSION }}
-          path: out/repo
-          if-no-files-found: error
 
       - name: Dist (native client + engine), built by jk
         if: runner.os != 'Windows'
@@ -126,6 +131,32 @@ jobs:
           set -euo pipefail
           ./gradlew clean dist --no-daemon
           ls -la build/dist build/dist/lib
+
+      # The first-party plugins (formatter, compilers, test runner, guard packs, …) the release
+      # ships to jumpkick.build/repo/ are the ones this commit builds, put on this runner's shelf
+      # by `jk install` (a hosted bootstrap shelves nothing of this commit's) and laid out as the
+      # Maven repository serves them. Staged here and uploaded by `publish`, which runs on a
+      # runner with no store.
+      - name: Shelve this commit's first-party plugins
+        if: matrix.arch_label == 'linux-x86_64'
+        shell: bash
+        run: jk install --skip-tests
+
+      - name: Stage the first-party Maven repository
+        if: matrix.arch_label == 'linux-x86_64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=out/repo scripts/publish-maven-repo.sh
+          find out/repo -name '*.jar' | sed 's|out/repo/||' | sort
+
+      - name: Upload the Maven repository (artifact)
+        if: matrix.arch_label == 'linux-x86_64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-repo-${{ env.JK_VERSION }}
+          path: out/repo
+          if-no-files-found: error
 
       # Unsigned: the per-platform SHA256SUMS is discarded when the trees are merged, and the
       # signing key stays with the one job whose signature ships.
