@@ -421,18 +421,30 @@ public final class DoctorCommand implements CliCommand {
     }
 
     private static Check checkDirs() {
-        Path cache = JkDirs.cache();
-        Path store = JkDirs.store();
-        Path state = JkDirs.state();
-        JkCacheConfig cfg = JkCacheConfig.resolve();
+        return checkDirs(JkDirs.cache(), JkDirs.store(), JkDirs.state(), JkCacheConfig.resolve());
+    }
+
+    /**
+     * The cache directory is created by the first command that resolves something, so a fresh
+     * install has none and that is healthy — the row says so instead of failing a cold runner
+     * before its first {@code jk sync}. A cache path that exists but is not a readable directory
+     * is a real fault, as is a missing parent of the store or state directories.
+     */
+    static Check checkDirs(Path cache, Path store, Path state, JkCacheConfig cfg) {
         List<String> problems = new ArrayList<>();
-        if (!Files.isDirectory(cache)) problems.add("cache missing: " + cache);
+        boolean cacheAbsent = !Files.exists(cache);
+        if (!cacheAbsent && !Files.isDirectory(cache)) problems.add("cache is not a directory: " + cache);
+        if (!cacheAbsent && Files.isDirectory(cache) && !Files.isReadable(cache)) {
+            problems.add("cache is not readable: " + cache);
+        }
         Path storeParent = store.getParent();
         Path stateParent = state.getParent();
         if (storeParent == null || !Files.isDirectory(storeParent)) problems.add("store parent missing");
         if (stateParent == null || !Files.isDirectory(stateParent)) problems.add("state parent missing");
         if (!problems.isEmpty()) return new Check(Status.FAIL, "dirs", String.join("; ", problems));
-        String detail = "cache " + cache + " · store " + store + " · " + JkCacheConfig.formatGb(cfg.maxCacheSizeGb())
+        String cacheWord =
+                cacheAbsent ? "cache " + cache + " not created yet (the first resolve will)" : "cache " + cache;
+        String detail = cacheWord + " · store " + store + " · " + JkCacheConfig.formatGb(cfg.maxCacheSizeGb())
                 + "G cache budget · store unbudgeted";
         return new Check(Status.OK, "dirs", detail);
     }
