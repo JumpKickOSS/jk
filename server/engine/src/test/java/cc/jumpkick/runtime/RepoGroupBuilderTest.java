@@ -11,7 +11,6 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoGroup;
@@ -206,17 +205,21 @@ class RepoGroupBuilderTest {
      * {@code jk-lock.toml}. Doing it silently is what left the user staring at a 401.
      */
     @Test
-    void a_url_credential_with_no_other_source_warns_and_names_the_alternatives() {
+    void a_url_credential_with_no_other_source_warns_and_names_the_bindings_that_would_send_one() {
         String warning = RepoGroupBuilder.urlUserInfoWarning(
-                WITH_USER_INFO.name(), SafeUri.forMessage(WITH_USER_INFO.url()), RepoCredential.ANONYMOUS);
+                WITH_USER_INFO.name(), WITH_USER_INFO.url(), RepoCredential.ANONYMOUS);
 
         assertThat(warning).contains("nexus").contains("anonymously").contains("401");
+        // Each remedy is a binding, spelled for this repository: following it must not land in the
+        // refusal warning next.
         assertThat(warning)
+                .contains("`jk repo login nexus --url https://nexus.example.com/repo/`")
+                .contains("[repositories.nexus] table with this URL and a ${VAR} credential in ~/.jk/config.toml")
                 .contains("JK_REPO_NEXUS_TOKEN")
-                .contains("JK_REPO_NEXUS_USERNAME")
-                .contains("JK_REPO_NEXUS_PASSWORD")
-                .contains("jk repo login nexus")
-                .contains("~/.m2/settings.xml");
+                .contains("JK_REPO_NEXUS_USERNAME + JK_REPO_NEXUS_PASSWORD")
+                .contains("JK_REPO_NEXUS_HOST=nexus.example.com")
+                .contains("~/.m2/settings.xml")
+                .contains("repositories.md § Credentials");
         assertThat(warning)
                 .as("a warning about a leaked credential that prints the credential is the original defect")
                 .doesNotContain(USER)
@@ -229,7 +232,7 @@ class RepoGroupBuilderTest {
     void a_url_credential_alongside_a_resolved_one_is_reported_as_redundant() {
         String warning = RepoGroupBuilder.urlUserInfoWarning(
                 WITH_USER_INFO.name(),
-                SafeUri.forMessage(WITH_USER_INFO.url()),
+                WITH_USER_INFO.url(),
                 new RepoCredential.Bearer("resolved-from-the-environment"));
 
         assertThat(warning).contains("redundant").doesNotContain("401").doesNotContain("anonymously");

@@ -209,21 +209,24 @@ public final class RepoGroupBuilder {
      */
     static void maybeWarnUrlUserInfo(RepositorySpec spec, RepoCredential resolved) {
         if (spec == null || spec.url() == null || spec.url().getRawUserInfo() == null) return;
-        String safeUrl = SafeUri.forMessage(spec.url());
         RunNotices.warnOnce(
-                "repo-url-userinfo:" + spec.name() + " " + safeUrl,
-                () -> urlUserInfoWarning(spec.name(), safeUrl, resolved));
+                "repo-url-userinfo:" + spec.name() + " " + SafeUri.forMessage(spec.url()),
+                () -> urlUserInfoWarning(spec.name(), spec.url(), resolved));
     }
 
     /**
      * The two messages. A repository that authenticates from another source is told its URL
      * credential is redundant and nothing more; one with no other source is told it will be
-     * anonymous and given every spelling that would fix it.
+     * anonymous and given the three bindings that send a credential to a repository: a login bound
+     * to this URL, a declaration in the user's own config, or the {@code JK_REPO_<ID>_*} variables
+     * with the {@code _HOST} binding beside them. Each is spelled as a command or an assignment for
+     * this repository, so following the warning does not land in the refusal warning next.
      *
-     * <p>{@code safeUrl} comes from {@link SafeUri#forMessage} — a warning about a credential in a
+     * <p>The URL is printed through {@link SafeUri#forMessage} — a warning about a credential in a
      * URL that printed the credential would be the original defect wearing a hat.
      */
-    static String urlUserInfoWarning(String repoId, String safeUrl, RepoCredential resolved) {
+    static String urlUserInfoWarning(String repoId, URI url, RepoCredential resolved) {
+        String safeUrl = SafeUri.forMessage(url);
         String head = "jk: warning: repository `" + repoId + "` declares a credential in its URL (" + safeUrl
                 + "), which jk ignores: it authenticates nothing, and the base URL is written into "
                 + "jk-lock.toml's `source` field. ";
@@ -233,11 +236,16 @@ public final class RepoGroupBuilder {
                     + "remove it.";
         }
         String prefix = RepoCredentialResolver.envVarPrefix(repoId);
+        String host =
+                url.getHost() == null ? "<host>" : url.getHost() + (url.getPort() == -1 ? "" : ":" + url.getPort());
         return head + "No other credential resolved for `" + repoId
-                + "`, so it will be accessed anonymously and a private repository will answer 401. Supply the "
-                + "credential as " + prefix + "TOKEN (or " + prefix + "USERNAME + " + prefix + "PASSWORD), "
-                + "`jk repo login " + repoId + "`, an inline ${VAR} credential in the [repositories." + repoId
-                + "] table, or a <server> in ~/.m2/settings.xml.";
+                + "`, so it will be accessed anonymously and a private repository will answer 401. A credential "
+                + "travels only to the origin its name is bound to, so supply it through one of the bindings: "
+                + "`jk repo login " + repoId + " --url " + safeUrl + "`; a [repositories." + repoId
+                + "] table with this URL and a ${VAR} credential in ~/.jk/config.toml; or " + prefix + "TOKEN (or "
+                + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST=" + host
+                + " in your shell. A <server> in ~/.m2/settings.xml needs one of those bindings too. "
+                + "See repositories.md § Credentials.";
     }
 
     /**
