@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.run.SessionCancel;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.BooleanSupplier;
 
 /**
  * Evaluates project build-logic {@code .kts} stem scripts through {@link KtsSession} — one child
@@ -43,9 +44,18 @@ public final class BuildLogicKtsHost {
      * leave {@code error()} as the only way a script can reach the user, since a failure is the one
      * path that carries its output along.
      */
+    public static String evaluate(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
+            throws IOException, InterruptedException {
+        // The owning step's cancel — a sibling step's failure or a Ctrl-C mid-script — stops the
+        // script, not just the build waiting on it, and frees the shared host for the next build.
+        return KtsSession.run(script, projectDir, outDir, cancelled);
+    }
+
+    /**
+     * As {@link #evaluate(Path, Path, Path, BooleanSupplier)} where no step is running the script
+     * and the session's cancel is the only one to watch.
+     */
     public static String evaluate(Path script, Path projectDir, Path outDir) throws IOException, InterruptedException {
-        // The owning build's cancel: a Ctrl-C mid-script stops the script, not just the build
-        // waiting on it, and frees the shared host for the next build.
-        return KtsSession.run(script, projectDir, outDir, SessionCancel::cancelled);
+        return evaluate(script, projectDir, outDir, SessionCancel::cancelled);
     }
 }

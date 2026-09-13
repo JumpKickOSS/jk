@@ -12,6 +12,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.util.JkDirs;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -19,6 +20,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -48,10 +51,19 @@ public final class BuildLogicGroovyHost {
 
     private static final String IVY_VER = "2.5.3";
 
+    /** How often a run looks at its step's cancel probe while the child evaluates. */
+    private static final long CANCEL_POLL_MS = 50;
+
     private BuildLogicGroovyHost() {}
 
-    /** Run one script, returning its captured stdout/stderr. See {@link BuildLogicKtsHost#evaluate}. */
-    public static String evaluate(Path script, Path projectDir, Path outDir) throws Exception {
+    /**
+     * Run one script, returning its captured stdout/stderr. See {@link BuildLogicKtsHost#evaluate}.
+     * The child is killed when {@code cancelled} — the owning step's probe, covering a sibling
+     * step's failure as well as Ctrl-C — flips while it runs, and the run reports as cancelled with
+     * the jk prefix rather than as a script failure.
+     */
+    public static String evaluate(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
+            throws Exception {
         Path[] jars = ensureJars();
         Path wrapper = Files.createTempFile("jk-logic-", ".groovy");
         try {
@@ -69,16 +81,36 @@ public final class BuildLogicGroovyHost {
             pb.redirectErrorStream(true);
             pb.directory(projectDir.toFile());
             Process p = JobWorkers.start(pb);
-            String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            int exit = p.waitFor();
+            // Drained on a thread of its own so this one can watch the cancel probe between
+            // polls; a blocking read would see the cancel only once the script chose to exit.
+            ByteArrayOutputStream captured = new ByteArrayOutputStream();
+            Thread pump = Thread.ofVirtual().name("jk-groovy-pump").start(() -> {
+                try {
+                    p.getInputStream().transferTo(captured);
+                } catch (IOException gone) {
+                    // The child is gone; what it printed so far is the log.
+                }
+            });
+            while (!p.waitFor(CANCEL_POLL_MS, TimeUnit.MILLISECONDS)) {
+                if (cancelled.getAsBoolean()) {
+                    p.destroyForcibly();
+                    p.waitFor();
+                    pump.join();
+                    throw new IllegalStateException(
+                            "[build] logic: " + script.getFileName() + " cancelled with its build");
+                }
+            }
+            pump.join();
+            String log = captured.toString(StandardCharsets.UTF_8);
+            int exit = p.exitValue();
             if (exit != 0) {
                 // The compiler dump is the message, verbatim — its first error line already names
                 // file and line. The one jk-authored prefix is registerScripts', not this host's.
-                String detail = log == null ? "" : log.strip();
+                String detail = log.strip();
                 throw new IllegalStateException(
                         detail.isEmpty() ? "groovy exited " + exit + " with no output" : detail);
             }
-            return log == null ? "" : log;
+            return log;
         } finally {
             Files.deleteIfExists(wrapper);
         }

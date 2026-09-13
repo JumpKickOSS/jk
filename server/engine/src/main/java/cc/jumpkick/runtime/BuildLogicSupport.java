@@ -12,6 +12,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import cc.jumpkick.runtime.base.BuildLogicGroovyHost;
@@ -32,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -61,6 +63,7 @@ public final class BuildLogicSupport {
             BuildLogicAnchor anchor,
             Consumer<String> label)
             throws IOException, InterruptedException {
+        // No TaskContext here, so the session's cancel is the only one a script can see.
         return run(
                 projectDir,
                 layout,
@@ -70,7 +73,8 @@ public final class BuildLogicSupport {
                 BuildLogicScope.of(projectDir),
                 label,
                 line -> {},
-                new BuildLogicInputTokens());
+                new BuildLogicInputTokens(),
+                SessionCancel::cancelled);
     }
 
     /**
@@ -162,6 +166,11 @@ public final class BuildLogicSupport {
      * with the compilers' and native-image's — buffered for the Ctrl-O peek ring, printed under
      * {@code -v}. Passing one for the other either overwrites a status with a log or buries a log
      * in a status.
+     *
+     * <p>{@code cancelled} is the running step's probe — {@code ctx::cancelled}, which covers a
+     * sibling step's failure as well as Ctrl-C — handed to the script hosts so a plan-level cancel
+     * reaches a script in flight the way a session-level one does. Left running, a script in the
+     * shared {@code .kts} host holds the host's lock for the next build.
      */
     public static boolean run(
             Path projectDir,
@@ -172,7 +181,8 @@ public final class BuildLogicSupport {
             BuildLogicScope scope,
             Consumer<String> label,
             Consumer<String> output,
-            BuildLogicInputTokens inputTokens)
+            BuildLogicInputTokens inputTokens,
+            BooleanSupplier cancelled)
             throws IOException, InterruptedException {
         Optional<Logic> cfg = BuildLogicToml.resolve(projectDir);
         if (cfg.isEmpty()) return false;
@@ -191,7 +201,18 @@ public final class BuildLogicSupport {
         Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor = emptyByAnchor();
         registerScripts(byAnchor, scripts);
         return runAnchor(
-                projectDir, layout, actionCache, classesDir, anchor, label, output, c, scripts, byAnchor, inputTokens);
+                projectDir,
+                layout,
+                actionCache,
+                classesDir,
+                anchor,
+                label,
+                output,
+                c,
+                scripts,
+                byAnchor,
+                inputTokens,
+                cancelled);
     }
 
     /** Run (or restore) every task registered at {@code anchor}. */
@@ -206,7 +227,8 @@ public final class BuildLogicSupport {
             Logic c,
             List<BuildLogicScripts.ScriptTask> scripts,
             Map<BuildLogicAnchor, List<RegisteredTask>> byAnchor,
-            BuildLogicInputTokens inputTokens)
+            BuildLogicInputTokens inputTokens,
+            BooleanSupplier cancelled)
             throws IOException, InterruptedException {
 
         List<RegisteredTask> tasks = byAnchor.getOrDefault(anchor, List.of());
@@ -281,7 +303,8 @@ public final class BuildLogicSupport {
                 String captured = task.run()
                         .run(
                                 projectDir.toAbsolutePath().normalize(),
-                                outDir.toAbsolutePath().normalize());
+                                outDir.toAbsolutePath().normalize(),
+                                cancelled);
                 // Whatever the script printed goes to the same sink native-image and the compilers
                 // use: buffered for the Ctrl-O peek ring, above the live region, printed under
                 // `-v`. Only the success path emits — a failure throws above with its output
@@ -321,8 +344,11 @@ public final class BuildLogicSupport {
 
     @FunctionalInterface
     private interface ScriptRun {
-        /** @return the script's captured stdout/stderr, for the caller's output sink */
-        String run(Path projectDir, Path outDir) throws Exception;
+        /**
+         * @param cancelled the running step's cancel probe, watched while the script runs
+         * @return the script's captured stdout/stderr, for the caller's output sink
+         */
+        String run(Path projectDir, Path outDir, BooleanSupplier cancelled) throws Exception;
     }
 
     /** @param source the script's file name, for attributing its output */
@@ -341,11 +367,11 @@ public final class BuildLogicSupport {
         for (BuildLogicScripts.ScriptTask s : scripts) {
             Path scriptFile = s.file();
             BuildLogicScripts.ScriptKind kind = s.kind();
-            ScriptRun task = (projectDir, outDir) -> {
+            ScriptRun task = (projectDir, outDir, cancelled) -> {
                 try {
                     return kind == BuildLogicScripts.ScriptKind.KTS
-                            ? BuildLogicKtsHost.evaluate(scriptFile, projectDir, outDir)
-                            : BuildLogicGroovyHost.evaluate(scriptFile, projectDir, outDir);
+                            ? BuildLogicKtsHost.evaluate(scriptFile, projectDir, outDir, cancelled)
+                            : BuildLogicGroovyHost.evaluate(scriptFile, projectDir, outDir, cancelled);
                 } catch (Exception e) {
                     Throwable root = e;
                     while (root.getCause() != null && root.getCause() != root) {

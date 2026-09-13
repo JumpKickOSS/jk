@@ -95,7 +95,8 @@ class BuildLogicScopeKeysTest {
                 scope,
                 s -> labels.append(s).append(';'),
                 line -> {},
-                tokens));
+                tokens,
+                () -> false));
         assertTrue(BuildLogicSupport.run(
                 project,
                 layout,
@@ -105,6 +106,7 @@ class BuildLogicScopeKeysTest {
                 scope,
                 s -> labels.append(s).append(';'),
                 line -> {},
-                tokens));
+                tokens,
+                () -> false));
     }
 }

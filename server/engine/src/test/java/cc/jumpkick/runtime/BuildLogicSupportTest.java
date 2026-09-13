@@ -251,7 +251,7 @@ class BuildLogicSupportTest {
         for (BuildLogicAnchor anchor : List.of(
                 BuildLogicAnchor.BEFORE_COMPILE, BuildLogicAnchor.AFTER_COMPILE, BuildLogicAnchor.BEFORE_PACKAGE)) {
             assertTrue(BuildLogicSupport.run(
-                    project, layout, ac, classes, anchor, scope, s -> {}, line -> {}, sharedTokens));
+                    project, layout, ac, classes, anchor, scope, s -> {}, line -> {}, sharedTokens, () -> false));
         }
         int after = BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get();
 
@@ -359,7 +359,8 @@ class BuildLogicSupportTest {
                     scope,
                     s -> labels.append(s).append(';'),
                     line -> {},
-                    sharedTokens));
+                    sharedTokens,
+                    () -> false));
         }
         assertEquals(1, BuildLogicSupport.SCOPE_WALKS_FOR_TESTS.get() - before, "one walk for the whole build");
         assertEquals("ok", Files.readString(classes.resolve("stamp.txt")).trim());

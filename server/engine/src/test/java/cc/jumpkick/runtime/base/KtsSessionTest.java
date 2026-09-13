@@ -6,12 +6,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskKind;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -303,6 +308,79 @@ class KtsSessionTest {
 
         assertThat(outcome.get())
                 .as("the run reports as cancelled, not as a script failure")
+                .isInstanceOf(KtsSession.Cancelled.class)
+                .hasMessageContaining("slow.kts")
+                .hasMessageContaining("cancelled");
+        assertThat(outA.resolve("done"))
+                .as("the script stopped where the interrupt found it")
+                .doesNotExist();
+        assertThat(outB.resolve("quick.txt")).exists();
+        assertThat(untilNextScript)
+                .as("the next script ran within the cancel grace")
+                .isLessThan(KtsSession.CANCEL_GRACE);
+        assertThat(KtsSession.hostPid())
+                .as("a script that honours the interrupt leaves the host standing")
+                .isEqualTo(pid);
+    }
+
+    /**
+     * A sibling step's failure cancels the plan, and the plan's cancel — a different signal from
+     * the session's Ctrl-C — reaches the script in flight through the step's own probe. Left
+     * running, the script would hold the shared host, and its lock, for the next build.
+     */
+    @Test
+    void a_sibling_steps_failure_cancels_the_running_script_through_the_plans_cancel(@TempDir Path dir)
+            throws Exception {
+        Path slow = dir.resolve("slow.kts");
+        Files.writeString(slow, """
+                Files.writeString(outDir.resolve("started"), "1")
+                Thread.sleep(60_000)
+                Files.writeString(outDir.resolve("done"), "1")
+                """);
+        Path quick = dir.resolve("quick.kts");
+        Files.writeString(quick, "Files.writeString(outDir.resolve(\"quick.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path outA = Files.createDirectories(dir.resolve("a"));
+        Path outB = Files.createDirectories(dir.resolve("b"));
+        // Compiled ahead, so the run after the cancel measures the host's readiness, not kotlinc.
+        BuildLogicKtsHost.evaluate(quick, project, outB);
+        long pid = KtsSession.hostPid();
+
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        AtomicLong failedAt = new AtomicLong();
+        BuildPlan plan = BuildPlan.builder("sibling-failure")
+                .addTask(Task.builder("script")
+                        .kind(TaskKind.IO)
+                        .execute(ctx -> {
+                            try {
+                                BuildLogicKtsHost.evaluate(slow, project, outA, ctx::cancelled);
+                            } catch (Throwable t) {
+                                outcome.set(t);
+                                throw t;
+                            }
+                        })
+                        .build())
+                .addTask(Task.builder("boom")
+                        .kind(TaskKind.IO)
+                        .execute(ctx -> {
+                            awaitFile(outA.resolve("started"));
+                            failedAt.set(System.nanoTime());
+                            throw new IllegalStateException("a sibling step failed");
+                        })
+                        .build())
+                .build();
+
+        BuildPlanResult result = plan.run();
+        Files.deleteIfExists(outB.resolve("quick.txt"));
+        BuildLogicKtsHost.evaluate(quick, project, outB);
+        Duration untilNextScript = Duration.ofNanos(System.nanoTime() - failedAt.get());
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.cancelled())
+                .as("the sibling's failure cancelled the plan")
+                .isTrue();
+        assertThat(outcome.get())
+                .as("the plan's cancel reached the script, which reports as cancelled")
                 .isInstanceOf(KtsSession.Cancelled.class)
                 .hasMessageContaining("slow.kts")
                 .hasMessageContaining("cancelled");

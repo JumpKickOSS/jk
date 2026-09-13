@@ -11,9 +11,14 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
+import cc.jumpkick.runtime.base.BuildLogicGroovyHost;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -170,6 +175,50 @@ class BuildLogicScriptLanguageTest {
                 IllegalStateException.class,
                 () -> BuildLogicSupport.run(project, layout, ac, classes, BuildLogicAnchor.AFTER_RESOURCES, s -> {}));
         assertThat(ex.getMessage()).containsAnyOf("failed", "exit");
+    }
+
+    /**
+     * The Groovy host forks a JVM per script; a step cancelled mid-script — a sibling's failure or
+     * Ctrl-C — kills that child and reports the run as cancelled, not as a script failure, instead
+     * of waiting for a script nobody wants to finish.
+     */
+    @Test
+    void a_cancelled_step_kills_its_running_groovy_script(@TempDir Path dir) throws Exception {
+        Path script = dir.resolve("slow.groovy");
+        Files.writeString(script, """
+                outDir.resolve('started').toFile().text = '1'
+                Thread.sleep(60000)
+                outDir.resolve('done').toFile().text = '1'
+                """);
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path out = Files.createDirectories(dir.resolve("o"));
+
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread build = new Thread(() -> {
+            try {
+                BuildLogicGroovyHost.evaluate(script, project, out, cancelled::get);
+            } catch (Throwable t) {
+                outcome.set(t);
+            }
+        });
+        build.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120);
+        while (!Files.exists(out.resolve("started")) && System.nanoTime() < deadline) Thread.sleep(20);
+        assertThat(out.resolve("started")).as("the script is running").exists();
+
+        long cancelledAt = System.nanoTime();
+        cancelled.set(true);
+        build.join(TimeUnit.SECONDS.toMillis(30));
+        Duration untilCancelled = Duration.ofNanos(System.nanoTime() - cancelledAt);
+
+        assertThat(outcome.get())
+                .as("the run reports as cancelled, not as a script failure")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("slow.groovy")
+                .hasMessageContaining("cancelled with its build");
+        assertThat(untilCancelled).isLessThan(Duration.ofSeconds(10));
+        assertThat(out.resolve("done")).doesNotExist();
     }
 
     private static Path scaffold(Path dir) throws Exception {

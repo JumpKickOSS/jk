@@ -118,7 +118,8 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokens);
+                                buildLogicInputTokens,
+                                ctx::cancelled);
                         if (logicRan) ctx.label("build-logic applied");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
@@ -197,7 +198,8 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokens);
+                                buildLogicInputTokens,
+                                ctx::cancelled);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no generate/before-compile logic this run
                     } catch (InterruptedException e) {
@@ -235,7 +237,8 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokens);
+                                buildLogicInputTokens,
+                                ctx::cancelled);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no after-compile logic this run
                     } catch (InterruptedException e) {
@@ -272,7 +275,8 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokens);
+                                buildLogicInputTokens,
+                                ctx::cancelled);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no before-package logic this run
                     } catch (InterruptedException e) {
@@ -316,7 +320,8 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokens);
+                                buildLogicInputTokens,
+                                ctx::cancelled);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached(); // SKIPPED — no workspace build logic this run
                     } catch (InterruptedException e) {
@@ -355,7 +360,8 @@ public final class PlannerResources {
                                 cx.buildLogicScope(),
                                 ctx::label,
                                 ctx::output,
-                                buildLogicInputTokens);
+                                buildLogicInputTokens,
+                                ctx::cancelled);
                         if (ran) ctx.label("build-logic applied");
                         else ctx.cached();
                     } catch (InterruptedException e) {
