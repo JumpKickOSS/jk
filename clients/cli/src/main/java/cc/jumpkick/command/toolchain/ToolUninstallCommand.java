@@ -68,7 +68,7 @@ public final class ToolUninstallCommand implements CliCommand {
         Path binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
         Path state = stateDir != null ? stateDir : JkDirs.state();
         Path bin = binDirOverride != null ? binDirOverride : JkDirs.binDir();
-        Path envDir = LauncherName.resolveChild(state.resolve("tools").resolve("envs"), name);
+        Path envDir = LauncherName.resolveChild(JkDirs.toolEnvsDir(state), name);
         Path launcher = LauncherName.resolveChild(bin, name);
         Path winLauncher = LauncherName.resolveChild(bin, name + ".cmd");
 

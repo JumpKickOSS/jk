@@ -501,8 +501,7 @@ public final class ToolRunCommand implements CliCommand {
                 && in.values("with").isEmpty()
                 && aliasDeps.isEmpty()) {
             Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
-            InstalledToolEnvs.Installed installed =
-                    InstalledToolEnvs.read(stateDir.resolve("tools").resolve("envs"), c.name());
+            InstalledToolEnvs.Installed installed = InstalledToolEnvs.read(JkDirs.toolEnvsDir(stateDir), c.name());
             if (installed != null) {
                 Path javaHome = installed.javaHome() != null && Files.isDirectory(installed.javaHome())
                         ? installed.javaHome()

@@ -48,7 +48,7 @@ public final class ToolListCommand implements CliCommand {
         Path binDirOverride = in.value("bin-dir").map(Path::of).orElse(null);
         Path state = stateDir != null ? stateDir : JkDirs.state();
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
-        Path envsRoot = state.resolve("tools").resolve("envs");
+        Path envsRoot = JkDirs.toolEnvsDir(state);
         List<List<String>> buildTools = buildToolRows();
         List<Path> envs = new ArrayList<>();
         if (Files.isDirectory(envsRoot)) {

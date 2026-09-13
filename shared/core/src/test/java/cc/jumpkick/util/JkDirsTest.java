@@ -61,6 +61,8 @@ class JkDirsTest {
         assertThat(dirs.toolsDir()).isEqualTo(dirs.storeDir().resolve(JkDirs.TOOLS_DIR));
         assertThat(dirs.buildsDir()).isEqualTo(dirs.stateDir().resolve("builds"));
         assertThat(dirs.tmpDir()).isEqualTo(dirs.stateDir().resolve("tmp"));
+        assertThat(dirs.toolEnvsDir()).isEqualTo(dirs.stateDir().resolve("tools/envs"));
+        assertThat(JkDirs.toolEnvsDir(Path.of("/elsewhere"))).isEqualTo(Path.of("/elsewhere/tools/envs"));
     }
 
     /**
@@ -137,6 +139,7 @@ class JkDirsTest {
         dirs.userConfigFilePath();
         dirs.buildsDir();
         dirs.tmpDir();
+        dirs.toolEnvsDir();
         dirs.toolsDir();
         dirs.templatesDir();
         dirs.libraryRegistryFile();
@@ -257,6 +260,7 @@ class JkDirsTest {
         JkDirs dirs = linux(Map.of("JK_STATE_DIR", state.toString()));
         assertThat(dirs.buildsDir()).isEqualTo(state.resolve("builds"));
         assertThat(dirs.tmpDir()).isEqualTo(state.resolve("tmp"));
+        assertThat(dirs.toolEnvsDir()).isEqualTo(state.resolve("tools/envs"));
     }
 
     /**

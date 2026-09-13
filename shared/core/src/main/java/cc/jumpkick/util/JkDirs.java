@@ -156,6 +156,10 @@ public final class JkDirs {
         return current().binDirectory();
     }
 
+    public static Path toolEnvs() {
+        return current().toolEnvsDir();
+    }
+
     public static Path tmp() {
         return current().tmpDir();
     }
@@ -296,6 +300,21 @@ public final class JkDirs {
      */
     public Path tmpDir() {
         return stateDir().resolve("tmp");
+    }
+
+    /**
+     * Installed tool environments — one {@code <name>/env.json} per {@code jk install}ed tool,
+     * paired with the launcher {@link #binDirectory()} carries for it. Always
+     * {@code <state>/tools/envs}: an env records absolute CAS classpaths, so it is state that a
+     * store wipe invalidates, not an artifact.
+     */
+    public Path toolEnvsDir() {
+        return toolEnvsDir(stateDir());
+    }
+
+    /** {@link #toolEnvsDir()} beneath an explicit state root — the {@code --state-dir} seams. */
+    public static Path toolEnvsDir(Path stateDir) {
+        return stateDir.resolve("tools").resolve("envs");
     }
 
     /**

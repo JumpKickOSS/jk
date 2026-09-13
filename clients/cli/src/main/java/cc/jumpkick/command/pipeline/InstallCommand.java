@@ -217,7 +217,7 @@ public final class InstallCommand {
         Integer invalidBin = rejectInvalidLauncherName(bin);
         if (invalidBin != null) return invalidBin;
         Path cacheDir = cacheDir();
-        Path envsRoot = stateDir().resolve("tools").resolve("envs");
+        Path envsRoot = JkDirs.toolEnvsDir(stateDir());
         Path binDir = binDir();
         Files.createDirectories(cacheDir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);

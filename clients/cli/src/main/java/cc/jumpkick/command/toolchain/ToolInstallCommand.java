@@ -215,7 +215,7 @@ public final class ToolInstallCommand implements CliCommand {
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
-        Path envsRoot = stateDir.resolve("tools").resolve("envs");
+        Path envsRoot = JkDirs.toolEnvsDir(stateDir);
         Files.createDirectories(cacheDir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
 
@@ -407,7 +407,7 @@ public final class ToolInstallCommand implements CliCommand {
         Path cacheDir = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         Path stateDir = stateDirOverride != null ? stateDirOverride : JkDirs.state();
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
-        Path envsRoot = stateDir.resolve("tools").resolve("envs");
+        Path envsRoot = JkDirs.toolEnvsDir(stateDir);
         Files.createDirectories(cacheDir);
         BuildPlanConsole.Mode consoleMode = BuildPlanConsole.modeFor(global);
 

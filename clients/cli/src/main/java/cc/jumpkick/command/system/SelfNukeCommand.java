@@ -436,7 +436,7 @@ public final class SelfNukeCommand implements CliCommand {
     static List<PurgeRow> toolLaunchers(JkDirs dirs, List<PurgeRow> rows) {
         boolean stateGoes = rows.stream().anyMatch(r -> r.target() == Target.STATE && !r.delegated());
         if (!stateGoes) return List.of();
-        Path envs = dirs.stateDir().resolve("tools").resolve("envs");
+        Path envs = dirs.toolEnvsDir();
         if (!Files.isDirectory(envs)) return List.of();
         Path bin = dirs.binDirectory();
         List<String> names = new ArrayList<>();

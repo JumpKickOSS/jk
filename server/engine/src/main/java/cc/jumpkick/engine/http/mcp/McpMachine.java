@@ -50,7 +50,7 @@ public final class McpMachine {
     public static Map<String, Object> tools() {
         Map<String, Object> m = new LinkedHashMap<>();
         List<Map<String, Object>> rows = new ArrayList<>();
-        Path envsRoot = JkDirs.state().resolve("tools").resolve("envs");
+        Path envsRoot = JkDirs.toolEnvs();
         Path binDir = JkDirs.binDir();
         if (Files.isDirectory(envsRoot)) {
             List<Path> envs = new ArrayList<>();

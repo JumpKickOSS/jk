@@ -813,7 +813,7 @@ class SelfNukeCommandTest {
         Files.writeString(winLauncher, "@echo off\r\n");
         installedTool(dirs, "alpha");
         // An env directory under a name jk reserves for its own files never names a launcher row.
-        Files.createDirectories(dirs.stateDir().resolve("tools/envs/jk"));
+        Files.createDirectories(dirs.toolEnvsDir().resolve("jk"));
         Path product = bin.resolve("jk");
         Files.writeString(product, "the client");
         Path foreign = bin.resolve("uv");
@@ -846,7 +846,7 @@ class SelfNukeCommandTest {
         String out = TestAnsi.strip(captureText(() -> runNuke(new BrokenEngine(), EnumSet.of(Target.STATE), false)));
 
         assertThat(launcher).exists();
-        assertThat(dirs.stateDir().resolve("tools/envs/widget/env.json")).exists();
+        assertThat(dirs.toolEnvsDir().resolve("widget/env.json")).exists();
         assertThat(out).contains("would remove " + SelfNukeCommand.displayPath(launcher));
     }
 
@@ -873,7 +873,7 @@ class SelfNukeCommandTest {
 
     /** {@code jk install <name>}'s footprint: the env under state and a launcher in bin. */
     private static Path installedTool(JkDirs dirs, String name) throws IOException {
-        Path env = Files.createDirectories(dirs.stateDir().resolve("tools/envs").resolve(name));
+        Path env = Files.createDirectories(dirs.toolEnvsDir().resolve(name));
         Files.writeString(env.resolve("env.json"), "{\"binName\": \"" + name + "\"}");
         Path launcher = Files.createDirectories(dirs.binDirectory()).resolve(name);
         Files.writeString(launcher, "#!/usr/bin/env bash\nexec java -cp /store/gone.jar Main \"$@\"\n");
