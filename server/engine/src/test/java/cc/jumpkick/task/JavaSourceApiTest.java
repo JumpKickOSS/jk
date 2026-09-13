@@ -84,6 +84,26 @@ class JavaSourceApiTest {
     }
 
     @Test
+    void the_exported_view_leaves_private_members_out_but_keeps_record_components(@TempDir Path dir)
+            throws IOException {
+        String exported = digest(dir, BASE, JavaSourceApi.View.EXPORTED);
+        String withPrivate = BASE.replace(
+                "private static long calls = 0L;", "private static long calls = 0L;\n    private int extra;");
+        assertThat(digest(dir, withPrivate, JavaSourceApi.View.EXPORTED)).isEqualTo(exported);
+        assertThat(digest(dir, withPrivate, JavaSourceApi.View.DECLARATIONS)).isNotEqualTo(digest(dir, BASE));
+        assertThat(digest(
+                        dir,
+                        BASE.replace("public static int twice", "public static long twice"),
+                        JavaSourceApi.View.EXPORTED))
+                .isNotEqualTo(exported);
+
+        String record = "package com.example;\n\npublic record Point(int x, int y) {}\n";
+        assertThat(digest(dir, record.replace("int y", "long y"), JavaSourceApi.View.EXPORTED))
+                .as("a record component is the record's API")
+                .isNotEqualTo(digest(dir, record, JavaSourceApi.View.EXPORTED));
+    }
+
+    @Test
     void a_constant_value_is_part_of_the_declaration(@TempDir Path dir) throws IOException {
         String base = digest(dir, BASE);
         assertThat(digest(dir, BASE.replace("FACTOR = 2;", "FACTOR = 3;")))
@@ -147,8 +167,12 @@ class JavaSourceApiTest {
     }
 
     private static String digest(Path dir, String source) throws IOException {
+        return digest(dir, source, JavaSourceApi.View.DECLARATIONS);
+    }
+
+    private static String digest(Path dir, String source, JavaSourceApi.View view) throws IOException {
         Path file = dir.resolve("Lib.java");
         Files.writeString(file, source);
-        return JavaSourceApi.digest(file);
+        return JavaSourceApi.digest(file, view);
     }
 }

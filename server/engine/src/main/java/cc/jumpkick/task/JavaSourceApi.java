@@ -8,6 +8,7 @@ import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.ModifiersTree;
 import com.sun.source.tree.ModuleTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
@@ -58,22 +59,48 @@ public final class JavaSourceApi {
     /** The fallback for a file whose declarations could not be read: {@code content:<sha256>}. */
     public static final String CONTENT_PREFIX = "content:";
 
-    /** Memo namespace: the same content hash keys a JVM ABI token elsewhere in the memo. */
-    private static final String MEMO_NAMESPACE = "java-src:";
+    /**
+     * Which declarations a digest covers. {@link #DECLARATIONS} is every member at every access
+     * level — what a compiler that parses the file sees, and what an annotation processor may
+     * shape its output from. {@link #EXPORTED} leaves private members out: a consumer compiled
+     * against the class can reach nothing private, so for a module that runs no processor the
+     * exported view is its API and a private edit is a body edit. Record component fields stay in
+     * the exported view even though they are private: their accessors are the record's API.
+     */
+    public enum View {
+        DECLARATIONS("java-src:"),
+        EXPORTED("java-api:");
+
+        private final String memoNamespace;
+
+        View(String memoNamespace) {
+            this.memoNamespace = memoNamespace;
+        }
+    }
 
     private JavaSourceApi() {}
 
-    /** The token of one file; see {@link #digests}. */
+    /** The {@link View#DECLARATIONS} token of one file; see {@link #digests}. */
     public static String digest(Path file) throws IOException {
+        return digest(file, View.DECLARATIONS);
+    }
+
+    /** The token of one file under {@code view}. */
+    public static String digest(Path file, View view) throws IOException {
         Path abs = file.toAbsolutePath().normalize();
-        return Objects.requireNonNull(digests(List.of(abs)).get(abs), "digest of " + abs);
+        return Objects.requireNonNull(digests(List.of(abs), view).get(abs), "digest of " + abs);
+    }
+
+    /** {@link View#DECLARATIONS} tokens; see {@link #digests(Collection, View)}. */
+    public static Map<Path, String> digests(Collection<Path> files) throws IOException {
+        return digests(files, View.DECLARATIONS);
     }
 
     /**
-     * One token per file, keyed by the absolute normalized path. Memo hits are answered without a
-     * parse; the rest are parsed in one javac task.
+     * One token per file under {@code view}, keyed by the absolute normalized path. Memo hits are
+     * answered without a parse; the rest are parsed in one javac task.
      */
-    public static Map<Path, String> digests(Collection<Path> files) throws IOException {
+    public static Map<Path, String> digests(Collection<Path> files, View view) throws IOException {
         Map<Path, String> out = new LinkedHashMap<>();
         Map<Path, String> contentByPath = new LinkedHashMap<>();
         List<Path> pending = new ArrayList<>();
@@ -82,7 +109,7 @@ public final class JavaSourceApi {
             if (out.containsKey(abs)) continue;
             String content = FileHashMemo.contentHash(abs);
             contentByPath.put(abs, content);
-            String hit = AbiMemo.get(MEMO_NAMESPACE + content);
+            String hit = AbiMemo.get(view.memoNamespace + content);
             if (hit != null) {
                 out.put(abs, hit);
             } else {
@@ -91,14 +118,14 @@ public final class JavaSourceApi {
             }
         }
         if (!pending.isEmpty()) {
-            Map<Path, String> parsed = parse(pending);
+            Map<Path, String> parsed = parse(pending, view);
             for (Path abs : pending) {
                 String content = Objects.requireNonNull(contentByPath.get(abs), "content hash");
                 @Nullable String shape = parsed.get(abs);
                 String token;
                 if (shape != null) {
                     token = PREFIX + Hashing.sha256Hex(shape);
-                    AbiMemo.put(MEMO_NAMESPACE + content, token);
+                    AbiMemo.put(view.memoNamespace + content, token);
                 } else {
                     // Not memoized: the next sighting asks javac again, in case the file was
                     // mid-edit.
@@ -119,7 +146,7 @@ public final class JavaSourceApi {
      * The rendered declaration shape per file, for every file javac parsed without an error. A
      * file with a syntax error is left out; so is every file when the runtime has no javac.
      */
-    private static Map<Path, String> parse(List<Path> files) {
+    private static Map<Path, String> parse(List<Path> files, View view) {
         Map<Path, String> out = new LinkedHashMap<>();
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null) return out;
@@ -130,7 +157,7 @@ public final class JavaSourceApi {
             Map<URI, String> shapes = new LinkedHashMap<>();
             for (CompilationUnitTree unit : task.parse()) {
                 StringBuilder sb = new StringBuilder();
-                renderUnit(unit, sb);
+                renderUnit(unit, sb, view == View.EXPORTED);
                 shapes.put(unit.getSourceFile().toUri().normalize(), sb.toString());
             }
             Set<URI> errored = new HashSet<>();
@@ -152,7 +179,7 @@ public final class JavaSourceApi {
         return out;
     }
 
-    private static void renderUnit(CompilationUnitTree unit, StringBuilder sb) {
+    private static void renderUnit(CompilationUnitTree unit, StringBuilder sb, boolean exported) {
         ExpressionTree pkg = unit.getPackageName();
         sb.append("package ").append(pkg == null ? "" : pkg).append('\n');
         for (ImportTree imp : unit.getImports())
@@ -160,11 +187,11 @@ public final class JavaSourceApi {
         ModuleTree module = unit.getModule();
         if (module != null) sb.append(module.toString().strip()).append('\n');
         for (Tree decl : unit.getTypeDecls()) {
-            if (decl instanceof ClassTree c) renderClass(c, sb, 0);
+            if (decl instanceof ClassTree c) renderClass(c, sb, 0, exported);
         }
     }
 
-    private static void renderClass(ClassTree c, StringBuilder sb, int depth) {
+    private static void renderClass(ClassTree c, StringBuilder sb, int depth, boolean exported) {
         indent(sb, depth)
                 .append(c.getModifiers().toString().strip())
                 .append(' ')
@@ -178,12 +205,16 @@ public final class JavaSourceApi {
         for (Tree permit : c.getPermitsClause()) sb.append(" permits ").append(permit);
         sb.append('\n');
         boolean implicitlyFinalFields = c.getKind() == Tree.Kind.INTERFACE || c.getKind() == Tree.Kind.ANNOTATION_TYPE;
+        boolean record = c.getKind() == Tree.Kind.RECORD;
         for (Tree member : c.getMembers()) {
             if (member instanceof ClassTree nested) {
-                renderClass(nested, sb, depth + 1);
+                if (exported && isPrivate(nested.getModifiers())) continue;
+                renderClass(nested, sb, depth + 1, exported);
             } else if (member instanceof VariableTree field) {
+                if (exported && !record && isPrivate(field.getModifiers())) continue;
                 renderField(c, field, implicitlyFinalFields, sb, depth + 1);
             } else if (member instanceof MethodTree method) {
+                if (exported && isPrivate(method.getModifiers())) continue;
                 renderMethod(method, sb, depth + 1);
             }
             // Initializer blocks are bodies.
@@ -208,6 +239,10 @@ public final class JavaSourceApi {
         ExpressionTree init = field.getInitializer();
         if (constantCandidate && init != null) sb.append(" = ").append(init);
         sb.append('\n');
+    }
+
+    private static boolean isPrivate(ModifiersTree modifiers) {
+        return modifiers.getFlags().contains(Modifier.PRIVATE);
     }
 
     private static boolean isEnumConstant(ClassTree owner, VariableTree field) {

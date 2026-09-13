@@ -44,6 +44,7 @@ import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.LangCompile;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.test.AbiIndex;
 import cc.jumpkick.test.AffectedChangedPublish;
 import java.io.IOException;
@@ -487,6 +488,7 @@ public final class PlannerCompile {
         ctx.put(BUILD_OUTCOME, r.outcome());
         ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
+        advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);
         ctx.progress(sources.size());
     }
 
@@ -577,6 +579,22 @@ public final class PlannerCompile {
             if (!currentAbi.isEmpty()) AbiIndex.write(abiFile, currentAbi);
         }
         AffectedChangedPublish.publish(in.session(), in.dir(), preAbi, currentAbi);
+    }
+
+    /**
+     * The declaration baseline {@code jk explain} hints from ({@link SourceApiIndex}): advanced by
+     * what this compile did, like the ABI index, and never allowed to fail a build — a missing
+     * baseline only costs the hint.
+     */
+    private static void advanceSourceApiIndex(Path moduleDir, Path buildDir, JavaCompile.Result r, List<Path> sources) {
+        try {
+            Path file = SourceApiIndex.path(buildDir);
+            Map<String, SourceApiIndex.Row> pre = SourceApiIndex.load(file);
+            Map<String, SourceApiIndex.Row> cur = SourceApiIndex.updated(pre, moduleDir, r.compiledSources(), sources);
+            if (!cur.equals(pre)) SourceApiIndex.write(file, cur);
+        } catch (IOException | RuntimeException e) {
+            Log.debug("advanceSourceApiIndex: the hint baseline was not advanced", e);
+        }
     }
 
     static String[] kotlinCompileRequires(PluginBuild.@Nullable Declarations decls, boolean ksp) {

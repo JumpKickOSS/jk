@@ -144,6 +144,11 @@ class JavaAbiCompileAvoidanceE2eTest {
 
         // 1. Body-only edit: lib compiles and re-packages; app does not compile.
         Files.writeString(libSource, LIB_BODY_EDIT);
+        TaskForecast.Task beforeBody = forecast(ws, cache, "app", TaskNames.COMPILE_MAIN);
+        assertThat(beforeBody.text())
+                .as("before any compile, explain reads lib's edit as body-only: " + beforeBody)
+                .contains("likely up to date")
+                .contains("body-only edit in lib");
         Steps bodyEdit = build(ws, cache, "after lib's body-only edit");
         assertThat(bodyEdit.labels("lib", TaskNames.COMPILE_JAVA)).anyMatch(l -> l.startsWith("compiling "));
         assertThat(bodyEdit.labels("lib", TaskNames.PACKAGE_JAR))
@@ -175,6 +180,11 @@ class JavaAbiCompileAvoidanceE2eTest {
         // 3. New public method app never calls: the ABI moved, so the key misses and the compile
         // runs; what Zinc recompiles is its business.
         Files.writeString(libSource, LIB_NEW_METHOD);
+        TaskForecast.Task beforeApi = forecast(ws, cache, "app", TaskNames.COMPILE_MAIN);
+        assertThat(beforeApi.text())
+                .as("before any compile, explain reads lib's edit as an API change: " + beforeApi)
+                .contains("likely recompile")
+                .contains("API changed in lib: Lib.java");
         Steps newMethod = build(ws, cache, "after lib gained a public method");
         assertThat(newMethod.labels("app", TaskNames.COMPILE_JAVA))
                 .as("an API change is a compile input")

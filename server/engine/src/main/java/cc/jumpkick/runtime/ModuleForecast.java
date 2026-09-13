@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
+import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -34,6 +35,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -62,6 +64,7 @@ final class ModuleForecast {
     private final ActionCache actionCache;
     private final Path cache;
     private final Map<Path, String> restoredJarShas;
+    private final Map<Path, TaskForecaster.ModuleHint> hints;
     private final WorkspaceTarget target;
     private final Set<Path> terminalDirs;
     private final @Nullable Path workerJar;
@@ -75,6 +78,12 @@ final class ModuleForecast {
      * bytes, not for anything of this module's, and say so.
      */
     private boolean depOnlyDirty;
+
+    /** What this module's dirty compile-scope dependencies' edits look like, for its compile texts. */
+    private TaskForecaster.DepHint depHint = TaskForecaster.DepHint.NONE;
+
+    /** What this module's own edit looks like to its consumers; published into {@link #hints}. */
+    private SourceApiIndex.Hint ownHint = SourceApiIndex.Hint.UNKNOWN;
 
     private @Nullable String compileMainKey;
     private @Nullable String compileTestKey;
@@ -112,6 +121,7 @@ final class ModuleForecast {
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas,
+            Map<Path, TaskForecaster.ModuleHint> hints,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             @Nullable Path workerJar,
@@ -126,6 +136,7 @@ final class ModuleForecast {
         this.actionCache = actionCache;
         this.cache = cache;
         this.restoredJarShas = restoredJarShas;
+        this.hints = hints;
         this.target = target;
         this.terminalDirs = terminalDirs;
         this.workerJar = workerJar;
@@ -158,6 +169,7 @@ final class ModuleForecast {
         if (dep == null) dep = TaskForecaster.DepDirtiness.NONE;
         compileDepDirty = dep.compileDepDirty();
         testDepDirty = dep.testDepDirty();
+        depHint = TaskForecaster.depHint(dep.compileDeps(), hints);
         steps = new ArrayList<>();
         if (!Files.isRegularFile(lockFile)) {
             steps.add(new TaskForecast.Task(
@@ -194,7 +206,11 @@ final class ModuleForecast {
                     TaskForecast.Status.RUN,
                     "could not predict (" + e.getClass().getSimpleName() + ")",
                     null));
+            ownHint = SourceApiIndex.Hint.UNKNOWN;
         }
+        hints.put(
+                dir.toAbsolutePath().normalize(),
+                new TaskForecaster.ModuleHint(project.project().name(), ownHint));
         return new TaskForecast.Module(u.dir(), u.coord(), steps, sourceCount, testCount, producesJar, producesImage);
     }
 
@@ -350,6 +366,7 @@ final class ModuleForecast {
                 compileMainKey =
                         FreshnessStamp.stampedKey(out, BuildStamps.JAVA).orElse(null);
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_MAIN, TaskForecast.Status.CACHED, "", null));
+                ownHint = new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
             } else {
                 String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);
                 Path actions = CacheTree.ACTIONS.under(cache);
@@ -366,13 +383,54 @@ final class ModuleForecast {
                         WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
                 Perf.end("  predict-compile-main", tc);
                 compileMainKey = pred.actionKey();
-                steps.add(TaskForecaster.compileStep(TaskNames.COMPILE_MAIN, pred, compileDepDirty || force, req));
+                steps.add(TaskForecaster.compileStep(
+                        TaskNames.COMPILE_MAIN, pred, compileDepDirty || force, req, depHint));
                 if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 // The key hit against the dependency's current output: nothing of this module's
                 // own moved, and its package and tests are dirty only for the sibling's jar bytes.
                 depOnlyDirty = compileDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !force;
+                ownHint = ownApiHint(prepared, pred);
             }
         }
+    }
+
+    /**
+     * What this module's edit looks like to its consumers, before it compiles: its own Java sources
+     * classified against the declaration baseline its last compile left ({@link SourceApiIndex}),
+     * folded with what its own dirty dependencies look like — a constant copied from a dependency
+     * whose API moved moves this module's API too. Unknown whenever the answer needs a compile:
+     * a forced rebuild, an option or release change, a source the baseline does not describe.
+     */
+    private SourceApiIndex.Hint ownApiHint(Prepared prepared, JavaCompile.Prediction pred) {
+        if (force) return SourceApiIndex.Hint.UNKNOWN;
+        if (pred.outcome() == JavaCompile.Outcome.CACHE_HIT) {
+            return compileDepDirty
+                    ? new SourceApiIndex.Hint(depHint.kind(), List.of())
+                    : new SourceApiIndex.Hint(SourceApiIndex.Kind.BODY_ONLY, List.of());
+        }
+        String reason = pred.reason();
+        if (reason.contains("options changed") || reason.contains("release changed")) {
+            return SourceApiIndex.Hint.UNKNOWN;
+        }
+        SourceApiIndex.Hint own;
+        try {
+            // A processor may shape public output from a private member; without one, private
+            // members are invisible to every consumer and their edits are body-only.
+            own = SourceApiIndex.classify(
+                    dir,
+                    SourceApiIndex.load(SourceApiIndex.path(prepared.layout().buildDir())),
+                    prepared.mainSrc(),
+                    !prepared.processorCp().isEmpty());
+        } catch (IOException e) {
+            Log.debug("ownApiHint: no baseline", e);
+            return SourceApiIndex.Hint.UNKNOWN;
+        }
+        if (own.kind() == SourceApiIndex.Kind.UNKNOWN) return own;
+        if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.UNKNOWN) return SourceApiIndex.Hint.UNKNOWN;
+        if (compileDepDirty && depHint.kind() == SourceApiIndex.Kind.API_CHANGED) {
+            return new SourceApiIndex.Hint(SourceApiIndex.Kind.API_CHANGED, own.files());
+        }
+        return own;
     }
 
     private void compileKotlin(Prepared prepared) throws Exception {
@@ -394,7 +452,10 @@ final class ModuleForecast {
                 // last record may belong to another edit of the sources.
                 TaskForecast.Task step = kotlinStep(prepared, arm);
                 steps.add(step);
-                if (!step.cached()) compileDirty = true;
+                if (!step.cached()) {
+                    compileDirty = true;
+                    ownHint = SourceApiIndex.Hint.UNKNOWN;
+                }
             }
         }
     }
@@ -425,6 +486,7 @@ final class ModuleForecast {
         List<Path> ktSrc = prepared.ktSrc();
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
         String key;
+        KotlincRequest request;
         try {
             Path workingDir = ActionTree.INCREMENTAL_KOTLIN
                     .under(CacheTree.ACTIONS.under(cache))
@@ -439,8 +501,9 @@ final class ModuleForecast {
                     layout.kotlinClassesDir(),
                     workingDir,
                     arm.config());
+            request = worker.request();
             key = ActionKey.forKotlinc(
-                    taskId, worker.request(), BuildIdentity.cacheKeyVersion(), KotlinClasspathAbi.MEMOIZED_ONLY);
+                    taskId, request, BuildIdentity.cacheKeyVersion(), KotlinClasspathAbi.MEMOIZED_ONLY);
         } catch (Exception e) {
             Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
             return new TaskForecast.Task(
@@ -460,7 +523,7 @@ final class ModuleForecast {
             }
         }
         return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why);
+                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why, depHint);
     }
 
     /**
@@ -492,7 +555,10 @@ final class ModuleForecast {
         if (!gvSrc.isEmpty()) {
             TaskForecast.Task step = groovyStep(prepared);
             steps.add(step);
-            if (!step.cached()) compileDirty = true;
+            if (!step.cached()) {
+                compileDirty = true;
+                ownHint = SourceApiIndex.Hint.UNKNOWN;
+            }
         }
 
         producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
@@ -562,7 +628,7 @@ final class ModuleForecast {
         boolean hit = TaskForecaster.present(actionCache, key);
         String why = hit ? "" : TaskForecaster.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
         return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why);
+                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint);
     }
 
     private void compileTest(Prepared prepared) throws Exception {

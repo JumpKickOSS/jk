@@ -27,6 +27,7 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
@@ -181,6 +182,8 @@ public final class TaskForecaster {
         // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
         Map<String, Path> dirByCoord = new HashMap<>();
         Map<String, Path> dirByName = new HashMap<>();
+        // Each walked module's reading of its own API for the consumers that follow it.
+        Map<Path, ModuleHint> hints = new HashMap<>();
         for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
             dirByCoord.put(unit.coord(), unit.dir());
             dirByName.put(unit.manifest().project().name(), unit.dir());
@@ -203,6 +206,7 @@ public final class TaskForecaster {
                     actionCache,
                     cache,
                     restoredJarShas,
+                    hints,
                     target,
                     terminalDirs,
                     workerJar,
@@ -254,8 +258,62 @@ public final class TaskForecaster {
      * consumption the classpath cannot express). Pricing nothing keeps ETA honest; skipping
      * the module entirely shipped stale outputs.
      */
-    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty) {
-        static final DepDirtiness NONE = new DepDirtiness(false, false, false);
+    record DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty, List<Path> compileDeps) {
+        static final DepDirtiness NONE = new DepDirtiness(false, false, false, List.of());
+
+        DepDirtiness {
+            compileDeps = List.copyOf(compileDeps);
+        }
+    }
+
+    /**
+     * What a module's forecast concluded about its own API for its consumers: the {@link
+     * SourceApiIndex.Hint} its sources yield (body-only, API changed, or unknown), under the
+     * module's name so a consumer's text can say whose edit it reads.
+     */
+    record ModuleHint(String module, SourceApiIndex.Hint hint) {}
+
+    /**
+     * A consumer's reading of its dirty compile-scope dependencies, before any of them compiled:
+     * every dependency body-only ⇒ its compile key is likely to hold; any dependency whose
+     * declarations moved ⇒ likely to miss; a dependency the index cannot classify ⇒ no hint. The
+     * text is labelled as a hint because it is one — the key decides at build time, and the step
+     * stays scheduled either way.
+     */
+    record DepHint(SourceApiIndex.Kind kind, String text) {
+        static final DepHint NONE = new DepHint(SourceApiIndex.Kind.UNKNOWN, "");
+    }
+
+    static DepHint depHint(List<Path> compileDeps, Map<Path, ModuleHint> hints) {
+        if (compileDeps.isEmpty()) return DepHint.NONE;
+        List<String> bodyOnly = new ArrayList<>();
+        List<String> apiChanged = new ArrayList<>();
+        boolean unknown = false;
+        for (Path dep : compileDeps) {
+            ModuleHint h = hints.get(dep.toAbsolutePath().normalize());
+            if (h == null) {
+                unknown = true;
+                continue;
+            }
+            switch (h.hint().kind()) {
+                case BODY_ONLY -> bodyOnly.add(h.module());
+                case API_CHANGED -> {
+                    List<String> files = new ArrayList<>();
+                    for (String f : h.hint().files()) files.add(fileName(f));
+                    apiChanged.add(files.isEmpty() ? h.module() : h.module() + ": " + String.join(", ", files));
+                }
+                case UNKNOWN -> unknown = true;
+            }
+        }
+        if (!apiChanged.isEmpty()) {
+            return new DepHint(
+                    SourceApiIndex.Kind.API_CHANGED,
+                    "likely recompile · API changed in " + String.join("; ", apiChanged) + " (hint)");
+        }
+        if (unknown) return DepHint.NONE;
+        return new DepHint(
+                SourceApiIndex.Kind.BODY_ONLY,
+                "likely up to date · body-only edit in " + String.join(", ", bodyOnly) + " (hint)");
     }
 
     static DepDirtiness depDirtiness(
@@ -268,6 +326,7 @@ public final class TaskForecaster {
         boolean compile = false;
         boolean test = false;
         boolean order = false;
+        List<Path> compileDeps = new ArrayList<>();
         JkBuild m = u.manifest();
         for (Path dep : prereqs) {
             if (!dirty.contains(dep)) continue;
@@ -281,11 +340,16 @@ public final class TaskForecaster {
                     else viaCompile = true;
                 }
             }
-            if (viaCompile) compile = true;
-            else if (viaTest) test = true;
-            else order = true; // order-after-only prereq: schedule, price nothing
+            if (viaCompile) {
+                compile = true;
+                compileDeps.add(dep);
+            } else if (viaTest) {
+                test = true;
+            } else {
+                order = true; // order-after-only prereq: schedule, price nothing
+            }
         }
-        return new DepDirtiness(compile, test, order);
+        return new DepDirtiness(compile, test, order, compileDeps);
     }
 
     /**
@@ -376,6 +440,7 @@ public final class TaskForecaster {
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas,
+            Map<Path, ModuleHint> hints,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             @Nullable Path workerJar,
@@ -391,6 +456,7 @@ public final class TaskForecaster {
                         actionCache,
                         cache,
                         restoredJarShas,
+                        hints,
                         target,
                         terminalDirs,
                         workerJar,
@@ -510,7 +576,13 @@ public final class TaskForecaster {
      */
     static TaskForecast.Task compileStep(
             String name, JavaCompile.Prediction pred, boolean compileDepDirty, CompileRequest request) {
-        TaskForecast.Task step = compileStep(name, pred, compileDepDirty);
+        return compileStep(name, pred, compileDepDirty, request, DepHint.NONE);
+    }
+
+    /** As above with the consumer's {@link DepHint}: the text a dependency-dirty hit carries. */
+    static TaskForecast.Task compileStep(
+            String name, JavaCompile.Prediction pred, boolean compileDepDirty, CompileRequest request, DepHint hint) {
+        TaskForecast.Task step = compileStep(name, pred, compileDepDirty, hint);
         List<String> plugins = PlannerCompile.pluginNames(request);
         if (plugins.isEmpty()) return step;
         String text = PlannerCompile.PLUGIN_FLAG + String.join(",", plugins);
@@ -518,13 +590,21 @@ public final class TaskForecaster {
         return new TaskForecast.Task(name, step.status(), text, step.key());
     }
 
-    private static TaskForecast.Task compileStep(String name, JavaCompile.Prediction pred, boolean compileDepDirty) {
+    /** The text of a hit whose compile-scope dependency is rebuilding: the hint when there is one. */
+    static String dependencyChanged(DepHint hint) {
+        return hint.text().isEmpty() ? "recompile · dependency changed" : hint.text();
+    }
+
+    private static TaskForecast.Task compileStep(
+            String name, JavaCompile.Prediction pred, boolean compileDepDirty, DepHint hint) {
         return switch (pred.outcome()) {
             case CACHE_HIT ->
-                // Only force RUN when a *compile-scope* sibling is dirty (action key still sees
-                // the pre-rebuild jar). Test-only siblings never reach here as compileDepDirty.
+                // Only force RUN when a *compile-scope* sibling is dirty: the key was computed
+                // against the sibling's current output, so the step stays scheduled and the build's
+                // own key decides. The hint says which way that is likely to go. Test-only siblings
+                // never reach here as compileDepDirty.
                 compileDepDirty
-                        ? new TaskForecast.Task(name, TaskForecast.Status.RUN, "recompile · dependency changed", null)
+                        ? new TaskForecast.Task(name, TaskForecast.Status.RUN, dependencyChanged(hint), null)
                         : new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(pred.actionKey()));
             case INCREMENTAL -> {
                 String detail = pred.reason() != null && !pred.reason().isBlank()
@@ -602,9 +682,15 @@ public final class TaskForecaster {
      * — these workers have no incremental plan to consult — with {@code missReason} beside it.
      */
     static TaskForecast.Task langCompileStep(
-            String name, boolean hit, String key, int sourceCount, boolean compileDepDirty, String missReason) {
+            String name,
+            boolean hit,
+            String key,
+            int sourceCount,
+            boolean compileDepDirty,
+            String missReason,
+            DepHint hint) {
         if (hit && compileDepDirty) {
-            return new TaskForecast.Task(name, TaskForecast.Status.RUN, "recompile · dependency changed", null);
+            return new TaskForecast.Task(name, TaskForecast.Status.RUN, dependencyChanged(hint), null);
         }
         if (hit) return new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(key));
         String text = "full compile · " + count(sourceCount, "source");
