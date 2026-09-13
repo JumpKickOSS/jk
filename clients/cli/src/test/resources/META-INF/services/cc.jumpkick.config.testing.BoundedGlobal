@@ -3,3 +3,4 @@ cc.jumpkick.cli.api.CliOutputGlobal
 cc.jumpkick.cli.theme.ThemeGlobal
 cc.jumpkick.cli.tui.TerminalReflowGlobal
 cc.jumpkick.cli.tui.SizeGlobal
+cc.jumpkick.cli.tui.ConfirmGlobal

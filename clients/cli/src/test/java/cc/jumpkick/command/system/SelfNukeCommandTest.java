@@ -9,6 +9,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.command.system.SelfNukeCommand.Target;
 import cc.jumpkick.command.toolchain.ToolListCommand;
 import cc.jumpkick.host.CacheTree;
@@ -994,11 +995,14 @@ class SelfNukeCommandTest {
             for (Target t : targets) b.flag(t.name().toLowerCase(Locale.ROOT), true);
         }
         Invocation in = b.build();
-        GlobalOptions.from(in); // installs assume-yes for Confirm
+        // Dispatch installs assume-yes around a leaf command; this drives the command body directly.
+        Confirm.setAssumeYes(apply);
         try {
             return new SelfNukeCommand().run(in, hosted);
         } catch (Exception e) {
             throw new AssertionError("self nuke threw instead of reporting: " + e, e);
+        } finally {
+            Confirm.clearAssumeYes();
         }
     }
 

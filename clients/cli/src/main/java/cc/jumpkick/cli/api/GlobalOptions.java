@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.engine.TimelineOpts;
-import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
@@ -174,9 +173,9 @@ public final class GlobalOptions {
         g.verbose = in.isSet("verbose") || cfg.verboseOr(false);
         g.color = in.value("color").orElse(null);
         g.offline = in.isSet("offline") || cfg.offlineOr(false);
+        // Dispatch installs assume-yes for Confirm around the leaf command and clears it after; a
+        // parse has no side effect, so a nested parse or a test cannot leave the flag on the thread.
         g.yes = in.isSet("yes");
-        // Confirm prompts read this for the rest of the command.
-        Confirm.setAssumeYes(g.yes);
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || Boolean.TRUE.equals(cfg.rebuild());

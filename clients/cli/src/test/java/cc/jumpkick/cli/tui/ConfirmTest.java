@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.NoAnsi;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -10,6 +11,8 @@ import java.io.InputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 /**
  * {@link Confirm#ask()} takes the cooked (non-TTY) fallback — the same path piped/CI input hits —
@@ -19,7 +22,13 @@ import org.junit.jupiter.api.Test;
  * blocks until the suite's timeout rather than failing. With the mode pinned we drive it via
  * {@code System.in} and assert the y/n/default/EOF semantics, plus that the prompt is written to
  * stderr (so it stays visible when stdout is redirected).
+ *
+ * <p>Every case swaps the standard streams, and the locks say so: a runner that schedules classes
+ * in parallel inside one JVM cannot co-schedule this one with another stream-sensitive class.
  */
+@ResourceLock("java.lang.System.in")
+@ResourceLock(Resources.SYSTEM_OUT)
+@ResourceLock(Resources.SYSTEM_ERR)
 class ConfirmTest {
 
     @Test
@@ -88,6 +97,30 @@ class ConfirmTest {
             System.setErr(savedErr);
         }
         assertThat(err.toString(StandardCharsets.UTF_8)).contains("Yes");
+    }
+
+    @Test
+    void a_closed_envelope_left_by_an_earlier_command_does_not_swallow_the_prompt() throws Exception {
+        // CliOutput's envelope flags are process-global: a class that ran earlier in this worker JVM
+        // and closed its envelope must leave the prompt path intact for the class after it.
+        InputStream savedIn = System.in;
+        PrintStream savedErr = System.err;
+        var earlier = new ByteArrayOutputStream();
+        var err = new ByteArrayOutputStream();
+        try {
+            System.setErr(new PrintStream(earlier, true, StandardCharsets.UTF_8));
+            CliOutput.beginCommand(false);
+            CliOutput.err("an earlier command's last line");
+            CliOutput.closeEnvelope();
+
+            System.setIn(new ByteArrayInputStream("n\n".getBytes(StandardCharsets.UTF_8)));
+            System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+            assertThat(NoAnsi.forced(() -> Confirm.of("Proceed?", true).ask())).isFalse();
+        } finally {
+            System.setIn(savedIn);
+            System.setErr(savedErr);
+        }
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("Proceed?").contains("No");
     }
 
     private static boolean askWith(String input, boolean defaultYes) throws Exception {

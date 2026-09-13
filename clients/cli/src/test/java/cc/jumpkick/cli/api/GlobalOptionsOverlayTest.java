@@ -4,6 +4,7 @@ package cc.jumpkick.cli.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.args.ArgParser;
+import cc.jumpkick.cli.tui.Prompt;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Command;
@@ -54,6 +55,16 @@ class GlobalOptionsOverlayTest {
         GlobalOptions abbreviated = GlobalOptions.from(parse("--red"));
         assertThat(abbreviated.rebuild).isTrue();
         assertThat(SessionContext.current().config().rebuildOr(false)).isTrue();
+    }
+
+    @Test
+    void yes_is_a_field_of_the_parse_and_not_a_flag_left_on_the_thread() throws Exception {
+        GlobalOptions g = GlobalOptions.from(parse("--yes"));
+        assertThat(g.yes).isTrue();
+        assertThat(Prompt.assumeYes())
+                .as(
+                        "dispatch installs assume-yes around the leaf command and clears it; a parse leaves the thread alone")
+                .isFalse();
     }
 
     @Test

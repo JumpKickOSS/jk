@@ -4,7 +4,7 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.command.toolchain.ToolListCommand;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Invocation;
@@ -71,9 +71,14 @@ class StorageCommandTest {
         Path widgetCmd = Files.writeString(dirs.binDirectory().resolve("widget.cmd"), "@echo off\r\n");
         Path elsewhere = Files.writeString(isolatedHome.resolve("elsewhere.jar"), "jar");
         Path local = installedTool(dirs, "local", elsewhere);
-        GlobalOptions.from(Invocation.builder().flag("yes", true).build()); // assume-yes for Confirm
-
-        String out = TestAnsi.strip(captureText(() -> StorageCommand.runNuke(false, false, true, localWipe())));
+        // Dispatch installs assume-yes around a leaf command; this drives the command body directly.
+        Confirm.setAssumeYes(true);
+        String out;
+        try {
+            out = TestAnsi.strip(captureText(() -> StorageCommand.runNuke(false, false, true, localWipe())));
+        } finally {
+            Confirm.clearAssumeYes();
+        }
 
         assertThat(store).doesNotExist();
         assertThat(dirs.toolEnvsDir().resolve("widget")).doesNotExist();
