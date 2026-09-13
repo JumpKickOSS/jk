@@ -101,6 +101,27 @@ class CommandDispatchTest {
     }
 
     @Test
+    void quiet_does_not_silence_help_asked_for_by_name() {
+        // -q mutes progress and information. Help is the one output that can never be noise: the
+        // user asked for it by name, so it is written whether or not the session is quiet.
+        String help = Capture.stdout(
+                () -> assertThat(Jk.execute("-q", "--help", "build")).isZero());
+        assertThat(help).contains("Usage").contains("build");
+        assertThat(CommandDispatch.asksForHelpOrVersion(List.of("-q", "--help", "build")))
+                .isTrue();
+        assertThat(CommandDispatch.asksForHelpOrVersion(List.of("-q", "build", "-h")))
+                .isTrue();
+        assertThat(CommandDispatch.asksForHelpOrVersion(List.of("-q", "--version")))
+                .isTrue();
+        // A program's or a passthrough tool's --help is theirs, not jk's ask: quiet still applies.
+        assertThat(CommandDispatch.asksForHelpOrVersion(List.of("-q", "run", ".", "--", "--help")))
+                .isFalse();
+        assertThat(CommandDispatch.asksForHelpOrVersion(List.of("-q", "mvn", "--help")))
+                .isFalse();
+        assertThat(CommandDispatch.asksForHelpOrVersion(List.of("-q", "build"))).isFalse();
+    }
+
+    @Test
     void global_options_help_names_and_order() {
         List<String> names = GlobalOptions.globalOpts().stream()
                 .filter(o -> !o.hidden())

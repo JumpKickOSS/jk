@@ -110,8 +110,11 @@ public final class Jk {
         // fully-resolved JkConfig before any subcommand dispatches.
         applyCliOverrides(args);
         // -q/--quiet must take effect before any println happens. Apply it now
-        // based on the resolved config (which already knows about env/file/CLI layers).
-        Quietable.applyIfQuiet(SessionContext.current().config());
+        // based on the resolved config (which already knows about env/file/CLI layers). Help and
+        // the version are the output the user asked for by name: never the noise -q silences.
+        if (!CommandDispatch.asksForHelpOrVersion(List.of(args))) {
+            Quietable.applyIfQuiet(SessionContext.current().config());
+        }
         String[] rewritten = rewriteAlias(args);
         // Every command is now on the CliCommand model; CommandDispatch handles all
         // dispatch. The fallback below handles bare `jk` + --help + --version.

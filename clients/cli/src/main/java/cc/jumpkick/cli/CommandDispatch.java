@@ -253,6 +253,27 @@ public final class CommandDispatch {
     }
 
     /**
+     * Whether argv asks for jk's own help or version: {@code -h}/{@code --help}/{@code -V}/{@code
+     * --version} within jk's own reading of it ({@link #ownArgsEnd}), so a program's or a
+     * passthrough tool's {@code --help} does not count. Output asked for by name is never noise,
+     * which is what exempts it from {@code -q}.
+     */
+    public static boolean asksForHelpOrVersion(List<String> args) {
+        int end = ownArgsEnd(args);
+        for (int i = 0; i < end; i++) {
+            switch (args.get(i)) {
+                case "-h", "--help", "-V", "--version" -> {
+                    return true;
+                }
+                default -> {
+                    /* not one of jk's own asks */
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Args for a resolved command: the global flags that appeared <em>before</em> its name, kept
      * apart from the tokens after it. Most commands parse the two joined, so {@code jk -y self
      * purge} reaches {@code Confirm.setAssumeYes} exactly like {@code jk self nuke -y}; a
