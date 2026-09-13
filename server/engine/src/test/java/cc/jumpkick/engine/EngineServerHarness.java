@@ -17,6 +17,7 @@ import java.io.OutputStreamWriter;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -65,6 +66,19 @@ abstract class EngineServerHarness {
     /** Poll {@code condition} until true or {@code timeout} elapses (fails the test on timeout). */
     static void waitUntil(Duration timeout, BooleanSupplier condition) throws InterruptedException {
         Await.until(timeout, condition);
+    }
+
+    /**
+     * True once {@code file} holds text: the engine creates its URL and token files before it
+     * writes them, so a file that exists may still be empty, and a reader that waits on existence
+     * alone reads nothing under load.
+     */
+    static boolean hasContent(Path file) {
+        try {
+            return Files.exists(file) && !Files.readString(file).isBlank();
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** A minimal hand-rolled client: connect, send lines, read one reply line per line sent. */

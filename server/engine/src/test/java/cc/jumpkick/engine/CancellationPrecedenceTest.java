@@ -269,8 +269,8 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         waitUntil(
                 Duration.ofSeconds(10),
                 () -> Files.exists(EnginePaths.endpoint(paths))
-                        && Files.exists(paths.http())
-                        && Files.exists(paths.httpToken()));
+                        && hasContent(paths.http())
+                        && hasContent(paths.httpToken()));
         String url = Files.readString(paths.http());
         String token = Files.readString(paths.httpToken()).trim();
         HttpResponse<Stream<String>> sse = HttpClient.newHttpClient()

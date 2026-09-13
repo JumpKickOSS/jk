@@ -38,7 +38,7 @@ class EngineServerHttpTest extends EngineServerHarness {
 
         EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, httpOnEphemeralPort(web), "1.0", null);
         Thread serverThread = runInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(p.http()));
+        waitUntil(Duration.ofSeconds(5), () -> hasContent(p.http()));
         String url = Files.readString(p.http());
         assertThat(url).startsWith("http://127.0.0.1:").endsWith("/");
 
@@ -118,7 +118,7 @@ class EngineServerHttpTest extends EngineServerHarness {
         EngineServer server =
                 new EngineServer(p, JkEngineConfig.DEFAULTS, httpOnEphemeralPort(stateDir.resolve("web")), "1.0", null);
         Thread serverThread = runInBackground(server);
-        waitUntil(Duration.ofSeconds(5), () -> Files.exists(p.http()) && Files.exists(p.httpToken()));
+        waitUntil(Duration.ofSeconds(5), () -> hasContent(p.http()) && hasContent(p.httpToken()));
         String url = Files.readString(p.http());
         String token = Files.readString(p.httpToken()).trim();
         var httpClient = HttpClient.newHttpClient();
