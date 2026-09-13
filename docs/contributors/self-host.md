@@ -288,6 +288,11 @@ the first: run `jk install --skip-tests` once more, which is what the CI takeove
 `scripts/check-shelf-descriptors.sh "$JK_HOME"` then proves the shelf: every first-party worker
 jar's root `jk-plugin.toml` names its own module's `[plugin] table`.
 
+The first build under a freshly installed engine re-runs every plugin step, guard lane,
+build-logic run and packaging step once: their action keys carry the installed engine's identity,
+so an artifact the previous engine produced is never restored under the new one. Compile steps
+keep their keys and stay cached, so the one-time re-run is packaging and verdicts, not a rebuild.
+
 ## Ship layout
 
 JumpKick's ship shape is **native CLI** + **JVM engine** jar + PluginMain workers. `jk build`

@@ -309,9 +309,19 @@ and exclusions stay GA-scoped.
 ## Build execution
 
 1. Expand a verb (`build`, `test`, …) into a DAG of steps with typed inputs/outputs.
-2. Hash inputs (sources, classpath ABI inputs, flags, toolchain, plugin code, …). A Kotlin
-   compile keys each classpath entry on the digest of its Build Tools API snapshot, so a sibling
-   rewritten with the same ABI is a hit; kotlinc itself still sees the full jars.
+2. Hash inputs into an action key. A **compile** key (javac, groovyc, kotlinc) sees its compile
+   classpath through ABI tokens: the JVM ABI of each entry for javac and groovyc (signatures,
+   supertypes, inlined constants, API annotations — `ClasspathAbi`), the Build Tools API
+   classpath-snapshot digest for kotlinc (`KotlinClasspathAbi`, which also covers inline bodies
+   and `const val`). Sources enter by content, a mixed module's Java sources enter the kotlinc key
+   by declaration digest (`JavaSourceApi`), and options, the JDK and the compiler closure ride
+   along. The processor path stays full content. A body-only change in a dependency therefore
+   leaves every consumer's compile key — and its freshness stamp — alone; the compilers still see
+   the full jars and directories. **Package, test, native and image** keys hash full bytes
+   (`ClasspathFingerprint`), so the same change re-packages the producer and re-runs every suite
+   whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
+   (`BuildIdentity.buildId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
+   build-logic and packaging once and never restores what the previous engine produced.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
@@ -338,7 +348,8 @@ keys** when adding a read-only remote later — only add an optional remote look
 | jk version | `jk:` in key material | Pin engine version for cross-machine hits |
 | Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
 | Sources | module-relative path + content SHA-256 | Portable: two checkouts of one module compute the same key |
-| Classpath / processors | lock digest (`file:<sha256>`) | Hex identity, independent of on-disk path |
+| Compile classpath | ABI token (`abi:<sha256>` for javac/groovyc, `kt-abi:<sha256>` for kotlinc) | Content-derived; a body-only dependency change keeps the key |
+| Processors / runtime classpath | content identity (`file:<sha256>`, `dir:<sha256>`) | Hex identity, independent of on-disk path |
 | Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
 | OS/arch | only when outputs are platform-specific | Omit for pure class jars |
 

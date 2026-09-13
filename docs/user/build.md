@@ -32,6 +32,20 @@ hits and misses before you run — [Explain](explain.md).
 from the action cache when inputs are unchanged (discovery + I/O only). Input fingerprints
 also live under `~/.jk/cache/projects/…` so clean does not force a full rebuild forecast.
 
+**Compile avoidance.** A compile step is keyed on what the compiler can see of its classpath —
+each dependency's ABI (signatures, supertypes, inlined constants, annotations; for Kotlin also
+inline function bodies and `const val`s), never its method bodies. An implementation-only change
+in a dependency recompiles and re-packages that dependency and re-runs the tests that load it,
+but leaves every consumer's compile cached: no compiler forks. A change to a public signature, an
+inlined constant or an inline function recompiles the consumers, and `jk explain --verbose` names
+the dependency whose API moved. Annotation processors are keyed on their full content, so a
+processor jar change always recompiles the modules that run it.
+
+The first build after `jk install` of a new engine runs every plugin step, guard lane,
+build-logic run and packaging step once more: their keys carry the identity of the engine that
+produced them, so nothing an older engine produced is restored under the new one. Compile steps
+keep their keys and stay cached.
+
 ## javac plugins
 
 A javac **plugin** (Error Prone, NullAway, Checker Framework, Manifold) is a jar on the
