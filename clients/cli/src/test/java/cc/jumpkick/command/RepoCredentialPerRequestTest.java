@@ -35,6 +35,13 @@ class RepoCredentialPerRequestTest {
     /** The private repository lives under its own prefix, so a path names exactly one remote. */
     private static final String PRIVATE = "/private";
 
+    /**
+     * The engine's artifact store lives in its home, not in {@code --cache-dir}, and keeps every
+     * POM it has seen across runs — a name no earlier run can have stored makes both resolves reach
+     * the wire, which is where the header is.
+     */
+    private final String artifact = "lib-" + Long.toUnsignedString(System.nanoTime(), 36);
+
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
 
@@ -70,36 +77,41 @@ class RepoCredentialPerRequestTest {
 
     private String authorizationSentFor(String path) {
         return maven.headersFor(path)
-                .orElseThrow(() -> new AssertionError("the resolve never fetched " + path))
+                .orElseThrow(() ->
+                        new AssertionError("the resolve never fetched " + path + "; it fetched " + maven.requested()))
                 .getOrDefault("Authorization", List.of("<anonymous>"))
                 .get(0);
     }
 
-    private static String pom(String version) {
-        return PRIVATE + MockMavenServer.mavenPath("com.foo", "lib", version, "pom");
+    private String pom(String version) {
+        return PRIVATE + MockMavenServer.mavenPath("com.foo", artifact, version, "pom");
     }
 
     private void servePrivate(String version) {
         maven.served()
                 .put(
                         pom(version),
-                        MockMavenServer.pom("com.foo", "lib", version).getBytes(StandardCharsets.UTF_8));
+                        MockMavenServer.pom("com.foo", artifact, version).getBytes(StandardCharsets.UTF_8));
         maven.served()
                 .put(
-                        PRIVATE + MockMavenServer.mavenPath("com.foo", "lib", version, "jar"),
-                        ("lib-" + version).getBytes(StandardCharsets.UTF_8));
+                        PRIVATE + MockMavenServer.mavenPath("com.foo", artifact, version, "jar"),
+                        (artifact + "-" + version).getBytes(StandardCharsets.UTF_8));
         maven.served()
                 .put(
-                        PRIVATE + "/com/foo/lib/maven-metadata.xml",
-                        ("<metadata><groupId>com.foo</groupId><artifactId>lib</artifactId><versioning><versions>"
+                        PRIVATE + "/com/foo/" + artifact + "/maven-metadata.xml",
+                        ("<metadata><groupId>com.foo</groupId><artifactId>" + artifact
+                                        + "</artifactId><versioning><versions>"
                                         + "<version>1.0</version><version>1.1</version></versions></versioning></metadata>")
                                 .getBytes(StandardCharsets.UTF_8));
     }
 
-    /** A manifest whose only private dependency is {@code com.foo:lib:<version>} from {@code private}. */
+    /**
+     * A manifest whose only private dependency is {@code com.foo:<artifact>:<version>} from {@code
+     * private}, pinned exactly: a bare version floats to the newest the metadata lists, and both
+     * phases' versions are listed.
+     */
     private void manifest(Path dir, String version) throws IOException {
-        Files.writeString(
-                dir.resolve("jk.toml"), """
+        Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.example"
                 name = "probe"
                 version = "0.1.0"
@@ -113,7 +125,8 @@ class RepoCredentialPerRequestTest {
                 groups = ["com.foo"]
 
                 [dependencies]
-                lib = { group = "com.foo", name = "lib", version = "%s" }
-                """.formatted(maven.baseUrl(), maven.baseUrl() + "private/", version));
+                lib = { group = "com.foo", name = "%s", version = "=%s" }
+                """.formatted(
+                        maven.baseUrl(), maven.baseUrl() + "private/", artifact, version));
     }
 }
