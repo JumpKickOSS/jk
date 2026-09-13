@@ -13,6 +13,11 @@ on:
     - cron: "15 6 * * *"
   workflow_dispatch:
 
+# Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
+# `permissions:`, naming the one scope it needs.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-nightly
   cancel-in-progress: true
@@ -30,15 +35,15 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
 
@@ -59,7 +64,7 @@ jobs:
       - name: Integration profile
         run: jk test --profile integration --continue --no-ansi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: integration-results
@@ -77,9 +82,9 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -111,9 +116,9 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -146,9 +151,9 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -182,15 +187,15 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
 
@@ -213,7 +218,7 @@ jobs:
       - name: Coverage ratchet
         run: jk guard --no-ansi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: jacoco-per-module
@@ -225,7 +230,7 @@ jobs:
     name: Lombok scope guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Lombok stays compile-time only
         run: ./scripts/check-lombok-diet.sh
@@ -237,9 +242,9 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
@@ -292,15 +297,15 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
 
@@ -359,9 +364,9 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'

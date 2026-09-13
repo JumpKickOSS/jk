@@ -27,6 +27,11 @@ on:
         required: true
         default: '0.13.3'
 
+# Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
+# `permissions:`, naming the one scope it needs.
+permissions:
+  contents: read
+
 env:
   TERM: xterm-256color
 
@@ -54,15 +59,15 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
         with:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.nvmrc'
 
@@ -120,7 +125,7 @@ jobs:
 
       - name: Upload the Maven repository (artifact)
         if: matrix.arch_label == 'linux-x86_64'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: maven-repo-${{ env.JK_VERSION }}
           path: out/repo
@@ -140,7 +145,7 @@ jobs:
           ls -la "$OUT"
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ env.JK_VERSION }}-${{ matrix.arch_label }}
           path: build/release/${{ env.JK_VERSION }}-${{ matrix.arch_label }}/
@@ -154,7 +159,7 @@ jobs:
     # here by name instead of the job being skipped; the flatten step refuses a partial tree.
     if: ${{ always() && !cancelled() }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The dispatch input reaches the shell as a variable, never as text spliced into the script.
       - name: Resolve version
@@ -170,14 +175,14 @@ jobs:
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
 
       - name: Download platform artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: staging
           pattern: release-*
           merge-multiple: false
 
       - name: Download the Maven repository
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: out/repo
           pattern: maven-repo-*
@@ -208,7 +213,7 @@ jobs:
           ls -la "out/${JK_VERSION}/SHA256SUMS"*
 
       - name: Upload merged release tree (artifact)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ env.JK_VERSION }}-merged
           path: out/
