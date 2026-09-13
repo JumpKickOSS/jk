@@ -4,6 +4,7 @@ package cc.jumpkick.lock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -46,14 +47,11 @@ public final class BomExporter {
      * @param project coordinates for the BOM GAV ({@code name}-bom)
      * @param lock resolved lock
      * @param scopes which artifact scopes to include
-     * @param versionOrder how two versions of one module rank; the resolver owns that ordering
-     *     and the caller hands it in, so the exporter stays a renderer of the lock
      */
-    public static String render(JkBuild project, Lockfile lock, Set<Scope> scopes, Comparator<String> versionOrder) {
+    public static String render(JkBuild project, Lockfile lock, Set<Scope> scopes) {
         Objects.requireNonNull(project, "project");
         Objects.requireNonNull(lock, "lock");
         Objects.requireNonNull(scopes, "scopes");
-        Objects.requireNonNull(versionOrder, "versionOrder");
         String group = project.project().group();
         String name = project.project().name() + "-bom";
         String version = project.project().version() != null ? project.project().version() : "0.1.0";
@@ -62,13 +60,13 @@ public final class BomExporter {
         for (Lockfile.Artifact a : lock.artifacts()) {
             if (a.inAnyScope(scopes)) selected.add(a);
         }
-        selected.sort(
-                Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version, versionOrder));
+        selected.sort(Comparator.comparing(Lockfile.Artifact::name)
+                .thenComparing(Lockfile.Artifact::version, Versions::compare));
         // One dependencyManagement entry per module: the lock can carry main/test duals of the
         // same G:A at different versions, and Maven consumers warn on duplicate managed entries
         // then keep one arbitrarily. MAIN-scoped rows outrank test duals; same-priority
         // collisions keep the higher version (the later row after the sort, which orders
-        // versions as versions, so 1.10.0 follows 1.9.0).
+        // versions as Maven versions, so 1.10.0 follows 1.9.0).
         Map<String, Lockfile.Artifact> byModule = new LinkedHashMap<>();
         for (Lockfile.Artifact a : selected) {
             Lockfile.Artifact prev = byModule.get(a.name());

@@ -16,6 +16,7 @@ import cc.jumpkick.resolver.pubgrub.PackageSource;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;

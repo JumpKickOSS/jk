@@ -7,7 +7,7 @@ import static cc.jumpkick.host.DomXml.childText;
 
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.pom.PomXml;
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;

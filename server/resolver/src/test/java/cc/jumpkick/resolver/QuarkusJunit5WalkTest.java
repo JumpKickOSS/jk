@@ -11,6 +11,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.Term;
+import cc.jumpkick.version.Versions;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayDeque;

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.resolver.Versions;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -36,7 +35,7 @@ class BomExporterTest {
                                 "testonly-2.0.jar",
                                 List.of(Scope.TEST),
                                 List.of())));
-        String xml = BomExporter.render(project, lock, BomExporter.MAIN_SCOPES, Versions::compare);
+        String xml = BomExporter.render(project, lock, BomExporter.MAIN_SCOPES);
         assertThat(xml).contains("<artifactId>demo-bom</artifactId>");
         assertThat(xml).contains("<groupId>com.example</groupId>");
         assertThat(xml).contains("<version>1.2.3</version>");
@@ -60,7 +59,7 @@ class BomExporterTest {
                         null,
                         List.of(Scope.TEST),
                         List.of())));
-        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES, Versions::compare);
+        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES);
         assertThat(xml).contains("junit-jupiter");
         assertThat(xml).contains("5.10.0");
     }
@@ -93,7 +92,7 @@ class BomExporterTest {
                                 "widget-1.9.0.jar",
                                 List.of(Scope.TEST),
                                 List.of())));
-        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES, Versions::compare);
+        String xml = BomExporter.render(project, lock, BomExporter.TEST_SCOPES);
         assertThat(xml).contains("<version>1.10.0</version>");
         assertThat(xml).doesNotContain("<version>1.9.0</version>");
     }

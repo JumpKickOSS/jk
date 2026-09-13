@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import cc.jumpkick.version.Versions;
 import java.util.Objects;
 
 /**

@@ -5,6 +5,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;

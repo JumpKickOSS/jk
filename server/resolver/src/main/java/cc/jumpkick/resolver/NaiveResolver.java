@@ -7,6 +7,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.Pom;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 
 /**
  * The floor grammar of {@code depend.require}: comma-separated clauses, each {@code >=v}, {@code

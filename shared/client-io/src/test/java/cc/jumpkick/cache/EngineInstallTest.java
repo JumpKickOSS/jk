@@ -6,10 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AppInstallConfig;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

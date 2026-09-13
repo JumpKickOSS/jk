@@ -9,7 +9,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
 import cc.jumpkick.resolver.Resolution;
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

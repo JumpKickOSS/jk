@@ -3,7 +3,7 @@ package cc.jumpkick.engine.api;
 
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
 import java.nio.file.Files;

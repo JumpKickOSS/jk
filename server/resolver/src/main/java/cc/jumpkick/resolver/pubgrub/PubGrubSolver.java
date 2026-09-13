@@ -2,7 +2,7 @@
 package cc.jumpkick.resolver.pubgrub;
 
 import cc.jumpkick.resolve.ResolveProfile;
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;

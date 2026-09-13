@@ -5,7 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.resolver.Versions;
+import cc.jumpkick.version.Versions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;

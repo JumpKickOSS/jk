@@ -86,7 +86,7 @@ final class ToolClosure {
      * The {@code index}-th dot/dash-separated part of {@code version} as its leading integer, or 0
      * when the part is absent or does not start with a digit. Enough to read a major/minor for a
      * supported-version floor; it is deliberately not version <em>comparison</em>, which has its
-     * own owner in {@code cc.jumpkick.resolver.Versions}.
+     * own owner in {@code cc.jumpkick.version.Versions}.
      */
     static int versionPart(String version, int index) {
         String[] parts = version.split("[.-]");

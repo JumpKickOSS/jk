@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.GitVersion;
+import cc.jumpkick.version.Versions;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;

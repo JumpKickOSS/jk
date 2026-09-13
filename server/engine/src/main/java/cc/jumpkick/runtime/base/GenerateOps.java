@@ -15,7 +15,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.mvn.PomExporter;
-import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.wire.protocol.GeneratedFiles;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -92,7 +91,7 @@ public final class GenerateOps {
         }
         Lockfile lock = LockfileReader.read(lockPath);
         String scopeName = params.getOrDefault("scope", "main");
-        String xml = BomExporter.render(loaded.root(), lock, BomExporter.scopesFor(scopeName), Versions::compare);
+        String xml = BomExporter.render(loaded.root(), lock, BomExporter.scopesFor(scopeName));
         String outRel = params.get("out");
         if (outRel == null || outRel.isBlank()) {
             String name = loaded.root().project().name();
