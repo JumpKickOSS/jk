@@ -52,6 +52,10 @@ counted. `--offline` is refused before anything is queried: an audit has no cach
 clean report produced without asking OSV would be a claim about safety nobody made.
 
 A CI gate is `jk audit --severity HIGH` and a non-zero exit.
+jk's own repository runs exactly that in its self-host job, after the lock-drift check: the
+`--output json` lines are kept as an artifact and each finding becomes one annotation
+(`scripts/ci-audit-annotate.sh`, one `::error` per blocking advisory), and the nightly run reports
+at `LOW` without gating ([CI](ci.md)).
 
 ### JSON
 

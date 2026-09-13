@@ -175,6 +175,56 @@ jobs:
       - name: Bench profile
         run: jk test --profile bench --continue --no-ansi
 
+  # jk audits itself at every severity, nightly, and reports. The branch gate fails a pull request
+  # at HIGH (ci.yml's self-host job); a LOW or MEDIUM advisory arrives here as an annotation and a
+  # summary table to read, not as a red merge. continue-on-error is deliberate: the job's verdict
+  # is about the run, the annotations and the artifact carry the findings.
+  audit:
+    name: Audit the locked graph (every severity)
+    runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: graalvm/setup-graalvm@0426e2e191540e8514dff98dc52a5f5146a2a276 # v1.6.6
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap jk from the hosted release
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
+
+      - name: Audit the locked graph at LOW
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          jk audit --severity LOW --no-ansi --output json | tee target/jk-audit.jsonl
+
+      - name: Attribute audit findings
+        if: always()
+        run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl LOW
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: jk-audit-nightly
+          path: target/jk-audit.jsonl
+          if-no-files-found: warn
+          retention-days: 30
+
   # The per-module coverage ratchet (G91): every module's unit tier under the JaCoCo agent, then
   # the house-rule gate reads each module's reports/jacoco.xml against its baselined entry. A module
   # more than half a point below its entry fails the job; one above it would tighten the baseline,

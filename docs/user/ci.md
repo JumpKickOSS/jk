@@ -84,6 +84,10 @@ Format gate: `jk format --check`. Outdated deps: parse `jk outdated --output jso
 (exit code is always 0 on success). Archive `target/jk-results.md` and
 `target/jk-profile.json` as artifacts.
 
+Vulnerabilities: `jk audit --severity HIGH --output json | tee target/jk-audit.jsonl` under
+`set -o pipefail` — the exit status is the verdict, the JSON lines are the artifact to annotate
+from, and `[audit] ignore` with a reason is the only accepted silence ([Publish](publish.md#audit)).
+
 MCP: `jk_config apply_preset=ci`. Selective prepare/run: [Workspaces](workspaces.md#selective-ci-plan).
 
 ## Guards

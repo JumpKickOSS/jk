@@ -148,10 +148,11 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 - **PR / push (`ci.yml`):** the self-host job (`jk build`, `jk install`, `jk guard`, `jk test`: the
   fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
-  lane), the shell fixtures, the workflow lint and the commit-authorship scan. No coverage, no benches.
+  lane and `jk audit --severity HIGH` over the lock), the shell fixtures, the workflow lint and the
+  commit-authorship scan. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** `jk test --profile integration`, `--profile slow`,
   `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
-  the heap guard and the doc examples on Linux; the product smoke on macOS.
+  the heap guard, the doc examples and the audit at `LOW` on Linux; the product smoke on macOS.
 - Local gate: `jk format`, `jk guard`, `jk build`, `jk test --profile integration`;
   `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
 - Never the `network` or `bench` profile as a merge gate.

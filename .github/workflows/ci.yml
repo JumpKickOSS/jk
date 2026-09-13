@@ -93,9 +93,9 @@ jobs:
 
   # JumpKick building JumpKick: the merge authority. A released jk, installed the way a user
   # installs it, builds the checked-out jk.toml / jk-lock.toml graph; then the checkout's own
-  # client, engine and workers take the home over (`jk install`), so the house-rule gate and the
-  # fast test tier and the curated integration lane are run by the commit's jk, not by the release
-  # that bootstrapped it. No step here runs a second build system: the `ci-cadence` guard fails the
+  # client, engine and workers take the home over (`jk install`), so the house-rule gate, the
+  # fast test tier, the curated integration lane and the audit of the lock are run by the commit's
+  # jk, not by the release that bootstrapped it. No step here runs a second build system: the `ci-cadence` guard fails the
   # build on a `gradlew` in this job.
   #
   # The bootstrap release is the one line in .jk/ci-bootstrap-version, read here and by
@@ -225,6 +225,30 @@ jobs:
       # a pin drifted or the lock writer put something non-deterministic in the file.
       - name: The build must not rewrite the committed lock
         run: git diff --exit-code -- jk-lock.toml
+
+      # jk audits itself: every row of the committed lock against OSV, by the checkout's own jk
+      # and its own audit worker. HIGH and CRITICAL fail the job, and so does an advisory OSV left
+      # unlabelled; the machine view is the artifact and the step below attributes a red run to
+      # its advisories. A finding is fixed by bumping the pin in the same pull request or accepted
+      # with a reason under [audit] ignore in jk.toml — never silenced. The nightly run reports at
+      # LOW. This step needs the network for the same reason the resolver does.
+      - name: Audit the locked graph
+        id: audit
+        run: |
+          set -euo pipefail
+          jk audit --severity HIGH --no-ansi --output json | tee target/jk-audit.jsonl
+
+      - name: Upload the audit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: jk-audit
+          path: target/jk-audit.jsonl
+          if-no-files-found: ignore
+
+      - name: Attribute audit findings
+        if: failure() && steps.audit.outcome == 'failure'
+        run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl HIGH
 
   installer-windows:
     name: PowerShell 5.1 installer verification
