@@ -128,10 +128,12 @@ in jk's `DeterministicZip`, in Ant's `ZipOutputStream` that Shadow writes throug
 build. jk stays at level 6: byte parity with both tools on identical entries is worth more than a
 quarter of a percent, and anyone who needs a smaller jar has `minified = true`.
 
-**What both tools carry.** `META-INF/maven/**` (each dependency's `pom.xml` and `pom.properties`) and
-licence and notice files ship in the jk, Shadow and Shade jars alike; the bench prints their size
-per fixture. jk does not drop them: the licence files are a redistribution obligation for most of
-the bundled libraries, and the Maven metadata question is left open rather than decided by omission.
+**Metadata and licences.** Shadow and Shade carry every dependency's `META-INF/maven/**`
+(`pom.xml` and `pom.properties`) into the fat jar; jk drops it. It describes how one library was
+built, names a coordinate the assembly is not, is read by nothing at runtime, and it is up to half
+a percent of the jar (24–63 entries, 41–81 KB across the fixtures). `META-INF/LICENSE*`,
+`META-INF/NOTICE*` and `META-INF/licenses/**` stay: they are a redistribution obligation for most
+of the bundled libraries. The bench prints the size of both groups per fixture.
 
 ## Minified jar (R8)
 

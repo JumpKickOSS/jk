@@ -209,10 +209,13 @@ class JarSizeBenchTest {
         System.out.println();
     }
 
-    /** Bytes both tools carry that neither needs at run time; reported, not fixed here. */
+    /**
+     * Bytes nothing reads at run time: the per-dependency Maven metadata jk drops and Shadow keeps,
+     * and the licence and notice files both carry because they must.
+     */
     private static void sharedWaste(JarAnatomy.Archive jk, JarAnatomy.Archive shadow) {
         System.out.printf(
-                "shared waste: META-INF/maven/** = %,d bytes in %,d entries (jk) / %,d bytes (Shadow);"
+                "metadata: META-INF/maven/** = %,d bytes in %,d entries (jk) / %,d bytes (Shadow);"
                         + " licence and notice files = %,d bytes in %,d entries (jk) / %,d bytes (Shadow)%n",
                 jk.footprint(JarAnatomy::isMavenMetadata),
                 jk.count(e -> JarAnatomy.isMavenMetadata(e) && !e.directory()),

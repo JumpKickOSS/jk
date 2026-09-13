@@ -134,13 +134,22 @@ public final class AssemblyPackager {
                 || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
     }
 
-    /** Signature blocks, JPMS module descriptors from deps, and other fat-jar poison. */
+    /**
+     * Signature blocks, JPMS module descriptors from deps, per-dependency Maven metadata, and other
+     * fat-jar poison. {@code META-INF/LICENSE*} and {@code META-INF/NOTICE*} are never excluded:
+     * they are a redistribution obligation for most bundled libraries.
+     */
     static boolean isExcluded(String name) {
         if (name.equals("module-info.class") || name.endsWith("/module-info.class")) return true;
         if (!name.startsWith("META-INF/")) return false;
         // INDEX.LIST indexes ONE jar's packages; inherited into a fat jar it lies about every
         // merged entry and some loaders trust it over scanning. Shadow and Shade both drop it.
         if (name.equals("META-INF/INDEX.LIST")) return true;
+        // META-INF/maven/<g>/<a>/pom.{xml,properties} describes how ONE dependency was built. In a
+        // fat jar it names a coordinate the jar is not, carries no licence text and no
+        // redistribution obligation, and nothing at runtime reads it — up to half a percent of
+        // every assembly for no reader.
+        if (name.startsWith("META-INF/maven/")) return true;
         String upper = name.toUpperCase(Locale.ROOT);
         return upper.endsWith(".SF")
                 || upper.endsWith(".RSA")

@@ -12,26 +12,26 @@
 # intentional change by editing the line and saying why in the commit.
 
 [fixture.plain-cli]
-date         = "2026-09-11"
-jk-bytes     = 6932980
+date         = "2026-09-13"
+jk-bytes     = 6891567
 shadow-bytes = 6931707
 shade-bytes  = 6933436
 
 [fixture.kotlin-cli]
-date         = "2026-09-11"
-jk-bytes     = 7737235
+date         = "2026-09-13"
+jk-bytes     = 7735440
 shadow-bytes = 7734515
 shade-bytes  = 7725279
 
 [fixture.micronaut-http]
-date         = "2026-09-11"
-jk-bytes     = 14470688
+date         = "2026-09-13"
+jk-bytes     = 14391819
 shadow-bytes = 14469639
 shade-bytes  = 14472299
 
 [fixture.spring-boot-web]
-date              = "2026-09-11"
-jk-bytes          = 19542089
+date              = "2026-09-13"
+jk-bytes          = 19500128
 shadow-bytes      = 19540024
 shade-bytes       = 19546121
 jk-boot-bytes     = 19906362

@@ -64,6 +64,39 @@ class AssemblyPackagerTest {
     }
 
     @Test
+    void drops_per_dependency_maven_metadata_but_keeps_licence_and_notice_files(@TempDir Path tmp) throws IOException {
+        Path classes = tmp.resolve("classes");
+        Files.createDirectories(classes.resolve("app"));
+        Files.writeString(classes.resolve("app/Main.class"), "APPMAIN");
+
+        Path dep = tmp.resolve("dep.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(dep))) {
+            putEntry(jos, "lib/Helper.class", "LIBHELPER");
+            putEntry(jos, "META-INF/maven/com.example/lib/pom.xml", "<project/>");
+            putEntry(jos, "META-INF/maven/com.example/lib/pom.properties", "version=1.0");
+            putEntry(jos, "META-INF/LICENSE.txt", "Apache-2.0");
+            putEntry(jos, "META-INF/NOTICE", "Copyright");
+            putEntry(jos, "META-INF/licenses/dep-LICENSE", "MIT");
+        }
+
+        Path out = tmp.resolve("app-all.jar");
+        new AssemblyPackager()
+                .packageAssembly(
+                        new AssemblyPackager.AssemblyRequest(classes, List.of(dep), out, "app.Main", Map.of(), 0L));
+
+        try (JarFile jf = new JarFile(out.toFile())) {
+            assertThat(jf.getJarEntry("META-INF/maven/com.example/lib/pom.xml")).isNull();
+            assertThat(jf.getJarEntry("META-INF/maven/com.example/lib/pom.properties"))
+                    .isNull();
+            assertThat(jf.getEntry("META-INF/maven/")).isNull();
+            assertThat(jf.getJarEntry("META-INF/LICENSE.txt")).isNotNull();
+            assertThat(jf.getJarEntry("META-INF/NOTICE")).isNotNull();
+            assertThat(jf.getJarEntry("META-INF/licenses/dep-LICENSE")).isNotNull();
+            assertThat(jf.getJarEntry("lib/Helper.class")).isNotNull();
+        }
+    }
+
+    @Test
     void merges_spring_meta_inf_and_excludes_module_info(@TempDir Path tmp) throws IOException {
         Path classes = tmp.resolve("classes");
         Files.createDirectories(classes.resolve("META-INF"));
