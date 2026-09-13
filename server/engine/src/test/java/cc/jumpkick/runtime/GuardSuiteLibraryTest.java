@@ -52,7 +52,7 @@ class GuardSuiteLibraryTest {
         assertThatThrownBy(() -> GuardSuiteLibrary.locate(root, cas))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("jk-guards-junit")
-                .hasMessageContaining("installLocal");
+                .hasMessageContaining("jk install");
         Path classes = Files.createDirectories(root.resolve("target/lib/classes/main"));
         GuardSuiteLibrary.Located located = GuardSuiteLibrary.locate(root, cas);
         assertThat(located.path()).isEqualTo(classes);

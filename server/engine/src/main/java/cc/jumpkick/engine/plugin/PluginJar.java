@@ -33,30 +33,28 @@ import org.jspecify.annotations.Nullable;
  * one-shot fetch from the official JumpKick Maven repository into that repository's store.
  */
 public enum PluginJar {
-    TEST_RUNNER("jk-test-runner", "jk.test.runner.jar", ":test-runner:installLocal"),
-    KOTLIN_COMPILER("jk-kotlin-compiler", "jk.kotlin.plugin.jar", ":kotlin-compiler:installLocal"),
-    GROOVY_COMPILER("jk-groovy-compiler", "jk.groovy.plugin.jar", ":groovy-compiler:installLocal"),
-    JAVA_COMPILER("jk-java-compiler", "jk.java.plugin.jar", ":java-compiler:installLocal"),
-    AUDITOR("jk-auditor", "jk.auditor.plugin.jar", ":auditor:installLocal"),
-    PUBLISHER("jk-publisher", "jk.publisher.plugin.jar", ":publisher:installLocal"),
-    IMAGE_BUILDER("jk-image-builder", "jk.image-builder.plugin.jar", ":image-builder:installLocal"),
-    FORMATTER("jk-formatter", "jk.formatter.plugin.jar", ":formatter:installLocal"),
-    SPRING_BOOT("jk-spring-boot", "jk.spring-boot.plugin.jar", ":spring-boot:installLocal"),
-    GRAILS("jk-grails", "jk.grails.plugin.jar", ":grails:installLocal"),
-    QUARKUS("jk-quarkus", "jk.quarkus.plugin.jar", ":quarkus:installLocal"),
-    MICRONAUT("jk-micronaut", "jk.micronaut.plugin.jar", ":micronaut:installLocal"),
-    ANDROID("jk-android", "jk.android.plugin.jar", ":android:installLocal"),
-    PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar", ":protobuf:installLocal"),
-    MINIFIED("jk-minified", "jk.minified.plugin.jar", ":minified:installLocal");
+    TEST_RUNNER("jk-test-runner", "jk.test.runner.jar"),
+    KOTLIN_COMPILER("jk-kotlin-compiler", "jk.kotlin.plugin.jar"),
+    GROOVY_COMPILER("jk-groovy-compiler", "jk.groovy.plugin.jar"),
+    JAVA_COMPILER("jk-java-compiler", "jk.java.plugin.jar"),
+    AUDITOR("jk-auditor", "jk.auditor.plugin.jar"),
+    PUBLISHER("jk-publisher", "jk.publisher.plugin.jar"),
+    IMAGE_BUILDER("jk-image-builder", "jk.image-builder.plugin.jar"),
+    FORMATTER("jk-formatter", "jk.formatter.plugin.jar"),
+    SPRING_BOOT("jk-spring-boot", "jk.spring-boot.plugin.jar"),
+    GRAILS("jk-grails", "jk.grails.plugin.jar"),
+    QUARKUS("jk-quarkus", "jk.quarkus.plugin.jar"),
+    MICRONAUT("jk-micronaut", "jk.micronaut.plugin.jar"),
+    ANDROID("jk-android", "jk.android.plugin.jar"),
+    PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar"),
+    MINIFIED("jk-minified", "jk.minified.plugin.jar");
 
     private final String artifactId;
     private final String jarProperty;
-    private final String installTask;
 
-    PluginJar(String artifactId, String jarProperty, String installTask) {
+    PluginJar(String artifactId, String jarProperty) {
         this.artifactId = artifactId;
         this.jarProperty = jarProperty;
-        this.installTask = installTask;
     }
 
     /** The group every first-party worker publishes under. */
@@ -70,11 +68,6 @@ public enum PluginJar {
     /** System property that overrides jar location (tests / dev). */
     public String jarProperty() {
         return jarProperty;
-    }
-
-    /** The Gradle task that installs this plugin into the local repo. */
-    public String installTask() {
-        return installTask;
     }
 
     /**

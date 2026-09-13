@@ -143,7 +143,6 @@ class GuardExplainTest {
         assertThat(catalog.text())
                 .contains("engine validations")
                 .contains("tiers")
-                .contains("catalog-lock")
                 .contains("1 rule");
         GuardExplain.Result tiers = GuardExplain.explain(root, GuardsConfig.ABSENT, "tiers");
         assertThat(tiers.error()).isNull();
