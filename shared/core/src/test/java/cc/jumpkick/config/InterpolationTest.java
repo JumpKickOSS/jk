@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -228,5 +229,38 @@ class InterpolationTest {
                         """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("nexus.internal");
+    }
+
+    /**
+     * The offender is spelled the way the manifest spells it: a key TOML would make the user
+     * quote is quoted in the message, so {@code repositories."nexus.internal".url} reads as one
+     * repository named {@code nexus.internal} and not as a three-level table; an array subscript
+     * stays outside the quotes.
+     */
+    @Test
+    void the_offender_spells_a_dotted_key_quoted_as_the_manifest_does() {
+        assertThatThrownBy(() -> parse(PROJECT + """
+                        [repositories."nexus.internal"]
+                        url = "${REPO_URL}"
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.\"nexus.internal\".url (${REPO_URL})")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("repositories.nexus.internal.url"));
+        assertThatThrownBy(() -> parse(PROJECT + """
+                        [test]
+                        env = ["${FOO}"]
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("test.env[0] (${FOO})");
+    }
+
+    /**
+     * A quoted key may carry any character a basic string can, a newline included; the spelling
+     * quotes it like any other non-bare key instead of refusing the segment.
+     */
+    @Test
+    void a_key_with_a_newline_is_spelled_quoted() {
+        assertThat(Interpolation.spell(List.of("repositories", "a\nb", "url[0]")))
+                .isEqualTo("repositories.\"a\nb\".url[0]");
     }
 }

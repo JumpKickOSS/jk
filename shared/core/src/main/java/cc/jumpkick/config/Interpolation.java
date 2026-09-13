@@ -56,6 +56,12 @@ public final class Interpolation {
     /** {@code ${NAME}} — the same shape {@link RepositoryToml} expands. */
     private static final Pattern REFERENCE = Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)}");
 
+    /** A key TOML lets stand unquoted in a dotted path. */
+    private static final Pattern BARE_KEY = Pattern.compile("[A-Za-z0-9_-]+");
+
+    /** A segment as {@link #indexed} spells it: the key, then the subscripts {@link #walkArray} added. */
+    private static final Pattern SUBSCRIPTED = Pattern.compile("(.*?)((?:\\[\\d+])*)", Pattern.DOTALL);
+
     /**
      * Dotted paths where a reference is honoured. {@code *} matches one whole path segment;
      * {@code name[*]} matches one array element of {@code name}, which a bare {@code *} deliberately
@@ -156,7 +162,31 @@ public final class Interpolation {
     private static void check(String value, List<String> path, List<String> offenders) {
         Set<String> found = references(value);
         if (found.isEmpty() || allowed(path)) return;
-        for (String var : found) offenders.add(String.join(".", path) + " (${" + var + "})");
+        for (String var : found) offenders.add(spell(path) + " (${" + var + "})");
+    }
+
+    /**
+     * {@code path} as the manifest spells it. A segment TOML lets stand bare stands bare; any
+     * other is a quoted key, so a repository named {@code nexus.internal} reads back as
+     * {@code repositories."nexus.internal".url} — one table, exactly as written — and not as the
+     * three-level {@code repositories.nexus.internal.url} the same dots would mean unquoted. An
+     * array subscript is jk's own notation, not a key, so it stays outside the quotes.
+     */
+    static String spell(List<String> path) {
+        StringBuilder out = new StringBuilder();
+        for (String segment : path) {
+            if (!out.isEmpty()) out.append('.');
+            Matcher m = SUBSCRIPTED.matcher(segment);
+            if (!m.matches()) throw new IllegalStateException("unreachable: " + segment);
+            String key = m.group(1);
+            out.append(BARE_KEY.matcher(key).matches() ? key : quoted(key)).append(m.group(2));
+        }
+        return out.toString();
+    }
+
+    /** {@code key} as a TOML basic string. */
+    private static String quoted(String key) {
+        return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     /**
