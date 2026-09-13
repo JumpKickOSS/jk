@@ -159,6 +159,36 @@ class TrustedSourcesTest {
     }
 
     @Test
+    void a_file_url_prefix_covers_local_paths_below_it(@TempDir Path state) throws Exception {
+        TrustedSources t = TrustedSources.load(state);
+        assertThat(t.add("file:///work/tools/")).isTrue();
+        assertThat(t.list()).containsExactly("file:///work/tools/");
+
+        assertThat(t.isTrusted("file:///work/tools/repo")).isTrue();
+        assertThat(t.isTrusted("file:///work/tools/mono/greeter")).isTrue();
+        assertThat(t.isTrusted("FILE:///work/tools/repo")).isTrue();
+        assertThat(t.isTrusted("file:///work/tools-evil/repo")).isFalse();
+        assertThat(t.isTrusted("file:///work/")).isFalse();
+        assertThat(t.isTrusted("file:///work/tools/../secrets/x")).isFalse();
+    }
+
+    @Test
+    void a_file_url_with_a_host_or_a_hostless_remote_url_is_refused(@TempDir Path state) throws Exception {
+        TrustedSources t = TrustedSources.load(state);
+        for (String bad : List.of("file://evil.example/work/", "https:///acme/", "http:///", "file:relative/")) {
+            assertThatThrownBy(() -> t.add(bad)).as(bad).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThat(t.list()).isEmpty();
+    }
+
+    @Test
+    void the_suggested_prefix_for_a_file_url_is_its_directory() {
+        assertThat(TrustedSources.suggestedPrefix("file:///work/tools/repo")).isEqualTo("file:///work/tools/");
+        assertThat(TrustedSources.suggestedPrefix("file:///work/tools/repo/")).isEqualTo("file:///work/tools/");
+        assertThat(TrustedSources.suggestedPrefix("file:///repo")).isEqualTo("file:///");
+    }
+
+    @Test
     void a_hand_edited_prefix_that_is_not_a_url_trusts_nothing(@TempDir Path state) throws Exception {
         Files.writeString(state.resolve("trusted-sources.toml"), """
                 sources = [

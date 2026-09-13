@@ -19,9 +19,11 @@ import org.jspecify.annotations.Nullable;
  * Client-side URL-prefix allowlist for {@code jk tool run|install} ({@code trusted-sources.toml}).
  * Matches the user-typed URL (before rewrite).
  *
- * <p>A prefix is a URL with a scheme and a host; an empty path means {@code /}. Both sides are
- * compared in canonical form — scheme and host lowercased, a default port dropped, the path as
- * the server sees it (case-sensitive, still percent-encoded) — and a match stops at a path
+ * <p>A prefix is a URL with a scheme and a host, or a {@code file:} URL naming a local path — the
+ * one scheme whose authority is legitimately empty, so a local git repository or a checked-out
+ * script directory can be trusted like a remote one; an empty path means {@code /}. Both sides
+ * are compared in canonical form — scheme and host lowercased, a default port dropped, the path
+ * as the server sees it (case-sensitive, still percent-encoded) — and a match stops at a path
  * segment boundary: trusting {@code https://github.com/acme} covers {@code
  * https://github.com/acme/…} but not {@code https://github.com/acme-evil/…}, and trusting {@code
  * https://github.com} covers no other host. A URL whose path carries a {@code .} or {@code ..}
@@ -127,10 +129,32 @@ public final class TrustedSources {
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("not a URL: " + u);
         }
+        if (uri.isOpaque()) {
+            throw new IllegalArgumentException("not a URL: " + u);
+        }
         String scheme = uri.getScheme();
-        String host = uri.getHost();
-        if (scheme == null || host == null || host.isEmpty()) {
+        if (scheme == null) {
             throw new IllegalArgumentException("not a URL with a scheme and a host: " + u);
+        }
+        String lowerScheme = scheme.toLowerCase(Locale.ROOT);
+        boolean local = lowerScheme.equals("file");
+        // What sits between `scheme://` and the path: a lowercased host (and non-default port)
+        // for a remote URL, nothing for a local one.
+        String authority;
+        if (local) {
+            String rawAuthority = uri.getRawAuthority();
+            if (rawAuthority != null && !rawAuthority.isEmpty()) {
+                throw new IllegalArgumentException("a file: URL with a host names no local path: " + u);
+            }
+            authority = "";
+        } else {
+            String host = uri.getHost();
+            if (host == null || host.isEmpty()) {
+                throw new IllegalArgumentException("not a URL with a scheme and a host: " + u);
+            }
+            int port = uri.getPort();
+            if (port == defaultPort(lowerScheme)) port = -1;
+            authority = host.toLowerCase(Locale.ROOT) + (port >= 0 ? ":" + port : "");
         }
         if (uri.getRawUserInfo() != null) {
             throw new IllegalArgumentException("a URL with credentials in it is not a source: " + u);
@@ -147,10 +171,7 @@ public final class TrustedSources {
         if (rawPath.contains("//")) {
             throw new IllegalArgumentException("the path has an empty segment: " + u);
         }
-        int port = uri.getPort();
-        String lowerScheme = scheme.toLowerCase(Locale.ROOT);
-        if (port == defaultPort(lowerScheme)) port = -1;
-        return lowerScheme + "://" + host.toLowerCase(Locale.ROOT) + (port >= 0 ? ":" + port : "") + rawPath;
+        return lowerScheme + "://" + authority + rawPath;
     }
 
     /** {@link #canonicalPrefix}, or {@code null} for a value that is not a usable URL. */
@@ -183,12 +204,19 @@ public final class TrustedSources {
     /**
      * The prefix to suggest for {@code url} in prompts and errors: scheme, host, and the first
      * path segment — {@code https://github.com/acme/widgets/blob/…} → {@code
-     * https://github.com/acme/}.
+     * https://github.com/acme/}. A {@code file:} URL has no host to anchor on, so its suggestion
+     * is the directory holding the target: {@code file:///work/tools/repo} → {@code
+     * file:///work/tools/}.
      */
     public static String suggestedPrefix(String url) {
         try {
             URI uri = URI.create(url.trim());
             String path = uri.getPath() == null ? "" : uri.getPath();
+            if ("file".equalsIgnoreCase(uri.getScheme())) {
+                String trimmed = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
+                int lastSlash = trimmed.lastIndexOf('/');
+                return "file://" + (lastSlash < 0 ? "/" : trimmed.substring(0, lastSlash + 1));
+            }
             String[] segments = path.split("/");
             String first = segments.length > 1 ? segments[1] : "";
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
