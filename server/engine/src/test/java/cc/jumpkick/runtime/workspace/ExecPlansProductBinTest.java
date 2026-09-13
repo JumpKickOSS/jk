@@ -3,10 +3,16 @@ package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,7 +21,8 @@ import org.junit.jupiter.api.io.TempDir;
  * built native binary over the PATH entry of that name — the one name every other install is
  * refused under {@code bin/} — and beside it renders the JVM launcher {@code jk-jvm}, a {@code
  * java -cp} script over the thin jar's closure, which is the whole install where no native client
- * was built.
+ * was built. That closure is the client module's own — its declared runtime dependencies walked
+ * through the lock — not the workspace lock's whole runtime set.
  */
 class ExecPlansProductBinTest {
 
@@ -54,6 +61,92 @@ class ExecPlansProductBinTest {
                 .isEqualTo(bin.resolve(AppLauncher.launcherFileName("jk-jvm")).toString());
         assertThat(plan.binPath()).isEqualTo(plan.launcherPath());
         assertThat(plan.launcherScript()).contains("cc.jumpkick.cli.Jk");
+    }
+
+    /**
+     * A workspace lock is the union of every member's graph. The launcher lists what the client
+     * itself runs on: its declared dependency and that dependency's own edge, never a sibling's
+     * dependency the client never loads.
+     */
+    @Test
+    void the_jvm_launcher_s_classpath_is_the_client_s_own_closure_not_the_workspace_lock(@TempDir Path tmp)
+            throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path cli = putJar(store, "com/foo/cli-lib/1.0/cli-lib-1.0.jar");
+        Path leaf = putJar(store, "com/foo/leaf/1.0/leaf-1.0.jar");
+        Path noise = putJar(store, "com/other/noise/9.0/noise-9.0.jar");
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = ["cli", "other"]
+                """);
+        Path dir = client(root);
+        Files.writeString(dir.resolve("jk.toml"), Files.readString(dir.resolve("jk.toml")) + """
+
+                [dependencies]
+                cli-lib = { group = "com.foo", version = "1.0" }
+                """);
+        Path other = Files.createDirectories(root.resolve("other"));
+        Files.writeString(other.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "other"
+                version = "0.1.0"
+                java = 25
+
+                [dependencies]
+                noise = { group = "com.other", version = "9.0" }
+                """);
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "jk test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        List.of(
+                                artifact("com.foo:cli-lib:jar:", "1.0", cli, List.of("com.foo:leaf:jar:@1.0")),
+                                artifact("com.foo:leaf:jar:", "1.0", leaf, List.of()),
+                                artifact("com.other:noise:jar:", "9.0", noise, List.of()))),
+                root.resolve("jk-lock.toml"));
+
+        String prev = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        try {
+            ExecPlan plan =
+                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+
+            assertThat(plan.error()).isNull();
+            assertThat(plan.launcherScript())
+                    .contains("jk-cli-0.1.0.jar")
+                    .contains(cli.toString())
+                    .contains(leaf.toString())
+                    .doesNotContain("noise-9.0.jar");
+        } finally {
+            if (prev != null) System.setProperty("jk.env.JK_STORE_DIR", prev);
+            else System.clearProperty("jk.env.JK_STORE_DIR");
+        }
+    }
+
+    private static Path putJar(Path store, String relative) throws Exception {
+        Path src = Files.writeString(store.resolve("src.bin"), relative);
+        RepoArtifactStore.forStoreId(store, "central").materialize(relative, src, Hashing.sha256Hex(src));
+        Files.deleteIfExists(src);
+        return store.resolve("repos/central").resolve(relative).toAbsolutePath().normalize();
+    }
+
+    private static Lockfile.Artifact artifact(String name, String version, Path jar, List<String> deps)
+            throws Exception {
+        return new Lockfile.Artifact(
+                name,
+                version,
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + Hashing.sha256Hex(jar),
+                null,
+                List.of(Scope.MAIN),
+                deps);
     }
 
     private static Path client(Path tmp) throws Exception {

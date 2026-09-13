@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -28,7 +29,6 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Project;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
@@ -715,8 +715,13 @@ public final class ExecPlans {
 
     /**
      * The thin-jar install's classpath: the module's jar on the shelf (its {@code target/} jar
-     * until the shelf has it), the lock's runtime entries that exist, then the workspace siblings
-     * it runs on. What {@code java -cp} launchers are rendered over, jk's own JVM client included.
+     * until the shelf has it), then the module's own runtime closure — {@link
+     * ModuleRuntimeClasspath}: the lock walked from the module's declared runtime dependencies
+     * and its workspace siblings', plus the sibling jars it runs on. Never the lock's whole
+     * runtime set: a workspace lock is the union of every member's graph, so a launcher rendered
+     * over it carries every jar in the monorepo and changes when a member the program never
+     * loads moves a dependency. What {@code java -cp} launchers are rendered over, jk's own JVM
+     * client included.
      */
     private static List<Path> thinClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
         var p = project.project();
@@ -730,18 +735,8 @@ public final class ExecPlans {
         }
         List<Path> classpath = new ArrayList<>();
         classpath.add(repoJar);
-        Path lockFile = resolveLockFile(dir);
-        if (Files.exists(lockFile)) {
-            Lockfile lock = LockfileReader.read(lockFile);
-            for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(JkStores.storeCas()).entriesFor(lock, ClasspathResolver.RUNTIME)) {
-                if (Files.exists(entry.jar())) classpath.add(entry.jar());
-            }
-        }
-        WorkspaceClasspath.Result siblings =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME));
-        for (Path sib : siblings.jars()) {
-            classpath.add(sib);
+        for (Path jar : ModuleRuntimeClasspath.jars(dir, project, resolveLockFile(dir), JkStores.storeCas())) {
+            if (Files.exists(jar) && !classpath.contains(jar)) classpath.add(jar);
         }
         return classpath;
     }
