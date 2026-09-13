@@ -254,6 +254,7 @@ final class ParityRules {
                     "the dashboard's Node version is pinned once, in .nvmrc; a workflow that pins its own runs the JS gate on a Node nobody chose",
             instead =
                     "keep .nvmrc a bare version token and give every actions/setup-node step `node-version-file: '.nvmrc'` and no `node-version`")
+    @Fixture("server/guard/fixtures/node-pin-parity")
     void nodePinParity(Text text, Violations v) {
         String pin = textOrNull(text, ".nvmrc");
         pin = pin == null ? "" : pin.strip();
@@ -558,6 +559,7 @@ final class ParityRules {
             why =
                     "a reporter who cannot find the advisory URL reports in public; SECURITY.md, docs/user/security.md and the user README point at it and at each other",
             instead = "restore the file or the link the detail names")
+    @Fixture("server/guard/fixtures/security-docs")
     void securityDocs(Text text, Violations v) {
         String advisory = "security/advisories";
         String policy = textOrNull(text, "SECURITY.md");

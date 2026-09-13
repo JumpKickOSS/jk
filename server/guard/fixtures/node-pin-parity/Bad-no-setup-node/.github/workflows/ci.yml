@@ -1,0 +1,9 @@
+# No workflow sets up Node at all: the dashboard JS gate runs on whatever the runner image carries.
+name: ci
+on: [push]
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: npm ci

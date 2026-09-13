@@ -1,0 +1,13 @@
+# A workflow pinning its own node-version beside the file: two pins, and the step's wins.
+name: ci
+on: [push]
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
+          node-version: 22
+      - run: npm ci

@@ -1,0 +1,12 @@
+# setup-node without node-version-file: the step runs on the runner's default Node, not the pin.
+name: ci
+on: [push]
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          cache: npm
+      - run: npm ci
