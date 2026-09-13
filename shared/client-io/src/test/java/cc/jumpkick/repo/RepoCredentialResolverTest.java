@@ -381,20 +381,41 @@ class RepoCredentialResolverTest {
                 .isEqualTo(RepoCredential.ANONYMOUS);
     }
 
-    // ---- ${VAR} expansion, moved here from the parse------------------
+    // ---- ${VAR} expansion, and who may write one ---------------------------------------------
 
-    @Test
-    void inline_credentials_expand_env_references(@TempDir Path dir) {
-        var r = resolver(
-                env(Map.of("REPO_USER", "alice", "REPO_PASS", "s3cret")),
+    private static final URI INTERNAL = URI.create("https://repo.example/maven");
+
+    /** The user's own {@code [repositories.internal]} at the project's origin, carrying {@code credential}. */
+    private static List<RepositorySpec> userDeclares(RepoCredential credential) {
+        return List.of(new RepositorySpec("internal", URI.create("https://repo.example/other-path/"), credential));
+    }
+
+    /** A resolver whose user config declares {@code internal} with {@code credential}, resolving against {@code env}. */
+    private static RepoCredentialResolver userConfigured(Path dir, Map<String, String> env, RepoCredential credential) {
+        return resolver(
+                env(env),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))),
+                Map.of(),
+                userDeclares(credential));
+    }
+
+    /** A resolver with no user config: whatever inline credential arrives is the project's. */
+    private static RepoCredentialResolver projectOnly(Path dir, Map<String, String> env) {
+        return resolver(
+                env(env),
                 MavenSettings.empty(),
                 new RepoCredentialStore(dir),
                 forge(new TokenStore(dir.resolve("tokens"))));
+    }
 
-        var resolved = r.resolve(
-                "internal",
-                URI.create("https://repo.example/maven"),
-                Optional.of(new RepoCredential.Basic("${REPO_USER}", "${REPO_PASS}")));
+    @Test
+    void inline_credentials_expand_env_references(@TempDir Path dir) {
+        var declared = new RepoCredential.Basic("${REPO_USER}", "${REPO_PASS}");
+        var r = userConfigured(dir, Map.of("REPO_USER", "alice", "REPO_PASS", "s3cret"), declared);
+
+        var resolved = r.resolve("internal", INTERNAL, Optional.of(declared));
 
         assertThat(resolved).isInstanceOf(RepoCredential.Basic.class);
         var basic = (RepoCredential.Basic) resolved;
@@ -404,30 +425,20 @@ class RepoCredentialResolverTest {
 
     @Test
     void a_bearer_token_expands_too(@TempDir Path dir) {
-        var r = resolver(
-                env(Map.of("TOK", "abc123")),
-                MavenSettings.empty(),
-                new RepoCredentialStore(dir),
-                forge(new TokenStore(dir.resolve("tokens"))));
+        var declared = new RepoCredential.Bearer("${TOK}");
+        var r = userConfigured(dir, Map.of("TOK", "abc123"), declared);
 
-        var resolved = r.resolve(
-                "internal", URI.create("https://repo.example/maven"), Optional.of(new RepoCredential.Bearer("${TOK}")));
+        var resolved = r.resolve("internal", INTERNAL, Optional.of(declared));
 
         assertThat(((RepoCredential.Bearer) resolved).token()).isEqualTo("abc123");
     }
 
     @Test
     void expansion_composes_with_surrounding_text(@TempDir Path dir) {
-        var r = resolver(
-                env(Map.of("USER", "bob")),
-                MavenSettings.empty(),
-                new RepoCredentialStore(dir),
-                forge(new TokenStore(dir.resolve("tokens"))));
+        var declared = new RepoCredential.Basic("svc-${USER}-ci", "p");
+        var r = userConfigured(dir, Map.of("USER", "bob"), declared);
 
-        var resolved = r.resolve(
-                "internal",
-                URI.create("https://repo.example/maven"),
-                Optional.of(new RepoCredential.Basic("svc-${USER}-ci", "p")));
+        var resolved = r.resolve("internal", INTERNAL, Optional.of(declared));
 
         assertThat(((RepoCredential.Basic) resolved).username()).isEqualTo("svc-bob-ci");
     }
@@ -436,16 +447,10 @@ class RepoCredentialResolverTest {
     void an_unset_variable_is_an_error_rather_than_anonymous_access(@TempDir Path dir) {
         // Silent emptiness would authenticate anonymously against a private repository, which looks
         // like a permissions problem much later. Strict — just at point of use now, not at parse.
-        var r = resolver(
-                env(Map.of()),
-                MavenSettings.empty(),
-                new RepoCredentialStore(dir),
-                forge(new TokenStore(dir.resolve("tokens"))));
+        var declared = new RepoCredential.Basic("${MISSING}", "p");
+        var r = userConfigured(dir, Map.of(), declared);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> r.resolve(
-                        "internal",
-                        URI.create("https://repo.example/maven"),
-                        Optional.of(new RepoCredential.Basic("${MISSING}", "p"))))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> r.resolve("internal", INTERNAL, Optional.of(declared)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("MISSING")
                 .hasMessageContaining("internal");
@@ -453,18 +458,157 @@ class RepoCredentialResolverTest {
 
     @Test
     void a_credential_without_references_is_untouched(@TempDir Path dir) {
-        var r = resolver(
-                env(Map.of()),
-                MavenSettings.empty(),
-                new RepoCredentialStore(dir),
-                forge(new TokenStore(dir.resolve("tokens"))));
+        var r = projectOnly(dir, Map.of());
 
-        var resolved = r.resolve(
-                "internal",
-                URI.create("https://repo.example/maven"),
-                Optional.of(new RepoCredential.Basic("plain", "pass")));
+        var resolved = r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Basic("plain", "pass")));
 
         assertThat(((RepoCredential.Basic) resolved).username()).isEqualTo("plain");
+    }
+
+    /**
+     * The attack: a cloned project declares its own URL and asks for whatever the developer's
+     * shell exports. Nothing is sent, and the warning names the repository, the variable and every
+     * remedy — but never the value.
+     */
+    @Test
+    void a_project_manifest_may_not_read_an_arbitrary_variable_into_a_credential(@TempDir Path dir) {
+        var r = projectOnly(dir, Map.of("HOME", "/home/victim"));
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(
+                () -> resolved.set(r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Bearer("${HOME}")))));
+
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings)
+                .contains("repository `internal` at https://repo.example is accessed anonymously")
+                .contains("interpolates ${HOME}")
+                .contains("[repositories.internal] with this URL and the ${VAR} reference in ~/.jk/config.toml")
+                .contains("JK_REPO_INTERNAL_TOKEN")
+                .contains("JK_REPO_INTERNAL_HOST=repo.example")
+                .contains("`jk repo login internal --url https://repo.example/maven`")
+                .doesNotContain("/home/victim");
+    }
+
+    /** The same declaration in the user's own config is the user's word, and it is sent. */
+    @Test
+    void the_same_reference_in_the_user_config_is_sent(@TempDir Path dir) {
+        var declared = new RepoCredential.Bearer("${HOME}");
+        var r = userConfigured(dir, Map.of("HOME", "/home/victim"), declared);
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(() -> resolved.set(r.resolve("internal", INTERNAL, Optional.of(declared))));
+
+        assertThat(resolved.get()).isEqualTo(new RepoCredential.Bearer("/home/victim"));
+        assertThat(warnings).isEmpty();
+    }
+
+    /**
+     * Project and user both declare the id at one origin: the merged declaration the resolver is
+     * handed is the project's, and the credential that goes out is the user's own.
+     */
+    @Test
+    void the_users_own_declaration_supplies_the_credential_whatever_the_project_wrote(@TempDir Path dir) {
+        var r = userConfigured(
+                dir,
+                Map.of("CORP_TOKEN", "corp-secret", "HOME", "/home/victim"),
+                new RepoCredential.Bearer("${CORP_TOKEN}"));
+
+        var resolved = r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Bearer("${HOME}")));
+
+        assertThat(resolved).isEqualTo(new RepoCredential.Bearer("corp-secret"));
+    }
+
+    /** A user declaration at another origin is not this repository's, so the project's reference stands alone. */
+    @Test
+    void a_user_declaration_elsewhere_does_not_admit_the_projects_reference(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("HOME", "/home/victim")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))),
+                Map.of(),
+                List.of(new RepositorySpec(
+                        "internal", URI.create("https://nexus.corp/maven/"), new RepoCredential.Bearer("${HOME}"))));
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(
+                () -> resolved.set(r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Bearer("${HOME}")))));
+
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings).contains("interpolates ${HOME}").doesNotContain("/home/victim");
+    }
+
+    /**
+     * A project may spell out the convention — the repository's own {@code JK_REPO_<ID>_*} names —
+     * and it is honoured exactly as the environment source is: when the name is bound to the origin.
+     */
+    @Test
+    void a_project_reference_to_the_repositorys_own_variables_follows_the_name_bindings(@TempDir Path dir) {
+        var declared = new RepoCredential.Basic("${JK_REPO_INTERNAL_USERNAME}", "${JK_REPO_INTERNAL_KEY}");
+        Map<String, String> shell = Map.of("JK_REPO_INTERNAL_USERNAME", "deployer", "JK_REPO_INTERNAL_KEY", "k3y");
+
+        var bound = resolver(
+                env(shell),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))),
+                Map.of("JK_REPO_INTERNAL_HOST", "repo.example"),
+                List.of());
+        assertThat(bound.resolve("internal", INTERNAL, Optional.of(declared)))
+                .isEqualTo(new RepoCredential.Basic("deployer", "k3y"));
+
+        var unbound = projectOnly(dir, shell);
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings =
+                warningsFrom(() -> resolved.set(unbound.resolve("internal", INTERNAL, Optional.of(declared))));
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings)
+                .contains("a credential for that name exists in the ${JK_REPO_INTERNAL_USERNAME}, "
+                        + "${JK_REPO_INTERNAL_KEY} reference of its [repositories.internal] table")
+                .contains("JK_REPO_INTERNAL_HOST=repo.example")
+                .doesNotContain("k3y");
+    }
+
+    /** Another repository's variables are someone else's credential, not this one's convention. */
+    @Test
+    void a_project_reference_to_another_repositorys_variables_is_refused(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("JK_REPO_NEXUS_TOKEN", "nexus-secret")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))),
+                Map.of("JK_REPO_INTERNAL_HOST", "repo.example"),
+                List.of());
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(() -> resolved.set(
+                r.resolve("internal", INTERNAL, Optional.of(new RepoCredential.Bearer("${JK_REPO_NEXUS_TOKEN}")))));
+
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings).contains("interpolates ${JK_REPO_NEXUS_TOKEN}").doesNotContain("nexus-secret");
+    }
+
+    /** A lock resolves through the group once per module; the refusal is said once per run. */
+    @Test
+    void the_refusal_is_said_once_per_run_and_falls_through_to_a_bound_source(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("HOME", "/home/victim", "JK_REPO_INTERNAL_TOKEN", "env-tok")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))),
+                Map.of("JK_REPO_INTERNAL_HOST", "repo.example"),
+                List.of());
+        var inline = Optional.<RepoCredential>of(new RepoCredential.Bearer("${HOME}"));
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(() -> {
+            resolved.set(r.resolve("internal", INTERNAL, inline));
+            r.resolve("internal", INTERNAL, inline);
+            r.resolve("internal", INTERNAL, inline);
+        });
+
+        assertThat(resolved.get()).isEqualTo(new RepoCredential.Bearer("env-tok"));
+        assertThat(warnings.split("interpolates \\$\\{HOME}", -1)).hasSize(2);
     }
 
     /**

