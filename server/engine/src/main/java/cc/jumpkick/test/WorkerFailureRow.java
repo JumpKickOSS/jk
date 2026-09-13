@@ -43,8 +43,7 @@ final class WorkerFailureRow {
      * reported before the throw, plus the handler row for worker {@link #SINGLE_WORKER}. The row is
      * what fails the run; the exit code of the kill the parent asked for is not consulted.
      */
-    static TestSummary singleFork(
-            JUnitLauncher.ResultAggregator aggregator, String moduleLabel, RuntimeException handler) {
+    static TestSummary singleFork(ResultAggregator aggregator, String moduleLabel, RuntimeException handler) {
         TestFailureInfo row = of(moduleLabel, SINGLE_WORKER, -1, "", "", handler);
         return JUnitLauncher.merge(aggregator.snapshot(), new TestSummary(1, 0, 1, 0, List.of(row)));
     }

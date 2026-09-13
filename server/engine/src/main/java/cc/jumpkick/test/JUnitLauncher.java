@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import static cc.jumpkick.test.TestEventFields.classNameOf;
-import static cc.jumpkick.test.TestEventFields.engineOf;
-import static cc.jumpkick.test.TestEventFields.identityKey;
-import static cc.jumpkick.test.TestEventFields.methodOf;
-import static cc.jumpkick.test.TestEventFields.progressLabel;
-import static cc.jumpkick.test.TestEventFields.xmlName;
-
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DebugJvm;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
@@ -19,12 +11,9 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JdkFingerprint;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.repo.PomRuntimeClasspath;
-import cc.jumpkick.run.SessionCancel;
-import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
@@ -38,10 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -57,7 +42,7 @@ public final class JUnitLauncher {
     public static final String MESSAGE_TRUNCATION_MARKER = " ... message truncated (";
 
     /** Marker prefix every protocol line carries. Must match {@code JsonEventWriter.PREFIX}. */
-    private static final String PROTOCOL_PREFIX = "##JKT:";
+    static final String PROTOCOL_PREFIX = "##JKT:";
 
     /**
      * The plugin the plugin host must run. The test-runner jar is launched with the module-under-test
@@ -157,6 +142,25 @@ public final class JUnitLauncher {
     public JUnitLauncher withModuleLabel(String moduleLabel) {
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel.trim();
         return this;
+    }
+
+    String moduleLabel() {
+        return moduleLabel;
+    }
+
+    /** The test JVM environment of this run, sandbox defaults applied; set by {@link #run}. */
+    WorkerEnv testEnv() {
+        return testEnv;
+    }
+
+    @Nullable
+    Path testTmpDir() {
+        return testTmpDir;
+    }
+
+    @Nullable
+    Path inferredModuleDir() {
+        return inferredModuleDir;
     }
 
     /**
@@ -293,6 +297,11 @@ public final class JUnitLauncher {
         } finally {
             excludeTags = saved;
         }
+    }
+
+    /** The runner arguments of pull-mode shard worker {@code workerId}: the pull protocol plus this run's tag filters. */
+    List<String> pullWorkerArgs(int workerId, Path testClassesDir) {
+        return withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir));
     }
 
     private List<String> withTagArgs(List<String> base) {
@@ -535,14 +544,13 @@ public final class JUnitLauncher {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         MarkdownTestReport md = new MarkdownTestReport();
 
-        TestSummary summary = classes.isEmpty()
-                ? new TestSummary(0, 0, 0, 0, List.of())
-                : runPool(javaBinary, classpath, testClassesDir, workers, listener, classes, xml, md, 0);
+        PullWorkerPool pool = new PullWorkerPool(this, javaBinary, classpath, testClassesDir, listener);
+        TestSummary summary =
+                classes.isEmpty() ? new TestSummary(0, 0, 0, 0, List.of()) : pool.run(workers, classes, xml, md, 0);
         // A runner-crash sentinel means the fork itself is broken — don't fork it again.
         boolean crashed = summary.failures().stream().anyMatch(f -> "(test run)".equals(f.method()));
         if (!serialClasses.isEmpty() && !crashed) {
-            TestSummary serial =
-                    runPool(javaBinary, classpath, testClassesDir, 1, listener, serialClasses, xml, md, workers);
+            TestSummary serial = pool.run(1, serialClasses, xml, md, workers);
             summary = merge(summary, serial);
         }
         writeXml(xml, testResultsDir);
@@ -589,214 +597,6 @@ public final class JUnitLauncher {
                 // Sharded pool + serial-tag pool: the suite's concurrency is the wider of the two,
                 // since that is what shaped its wall.
                 Math.max(a.workers(), b.workers()));
-    }
-
-    /** One pull-queue pool over {@code classes}; report accumulation stays with the caller. */
-    private TestSummary runPool(
-            Path javaBinary,
-            String classpath,
-            Path testClassesDir,
-            int workers,
-            TestProgressListener listener,
-            List<String> classes,
-            @Nullable XmlTestReport xml,
-            MarkdownTestReport md,
-            int workerIdBase)
-            throws IOException, InterruptedException {
-        // Don't waste workers on small suites — N workers > N classes leaves
-        // some idle waiting for a class that'll never come.
-        int actualWorkers = Math.min(workers, classes.size());
-        actualWorkers = TestWorkers.clampByHeap(actualWorkers);
-
-        var queue = new ConcurrentLinkedDeque<>(classes);
-        var aggregators = new ArrayList<ResultAggregator>();
-        var workerThreads = new ArrayList<Thread>();
-        int[] exits = new int[actualWorkers];
-        var captures = new ArrayList<CaptureBuffer>();
-        var lastClasses = new ArrayList<AtomicReference<String>>();
-        var handlerFailures = new ArrayList<AtomicReference<@Nullable RuntimeException>>();
-
-        for (int w = 0; w < actualWorkers; w++) {
-            // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
-            // per-worker temp/state suffixes and failure attributions never collide.
-            final int workerId = workerIdBase + w + 1;
-            final int idx = w;
-            List<String> args =
-                    withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir));
-            var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel);
-            aggregators.add(agg);
-            final var crash = new CaptureBuffer();
-            captures.add(crash);
-            final var last = new AtomicReference<String>("");
-            lastClasses.add(last);
-            final var handlerFailure = new AtomicReference<@Nullable RuntimeException>();
-            handlerFailures.add(handlerFailure);
-            final int totalWorkers = actualWorkers;
-            // Virtual: the thread blocks on the child's stdout for the worker's whole life —
-            // exactly the shape VT is for.
-            Thread t = SessionContext.startVirtual(
-                    "jk-test-worker-" + workerId,
-                    () -> exits[idx] = driveWorker(
-                            javaBinary,
-                            classpath,
-                            workerId,
-                            totalWorkers,
-                            args,
-                            queue,
-                            agg,
-                            listener,
-                            crash,
-                            last,
-                            handlerFailure));
-            workerThreads.add(t);
-        }
-        // Each worker thread owns its process (via PluginProcess.converse) and
-        // returns its exit code once stdout is fully drained and the process
-        // has exited. Join them and take the worst exit.
-        for (Thread t : workerThreads) t.join();
-        int worstExit = 0;
-        for (int e : exits) {
-            if (e != 0) worstExit = e;
-        }
-        // Merge per-worker aggregators into one TestSummary.
-        long total = 0, succeeded = 0, failed = 0, skipped = 0, classCount = 0;
-        var allFailures = new ArrayList<TestFailureInfo>();
-        var walls = new LinkedHashMap<String, Long>();
-        for (var agg : aggregators) {
-            var r = agg.snapshot();
-            total += r.total();
-            succeeded += r.succeeded();
-            failed += r.failed();
-            skipped += r.skipped();
-            classCount += r.classes();
-            allFailures.addAll(r.failures());
-            r.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
-        }
-        boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
-        if (total == 0 && worstExit != 0 && !handlerFailed) {
-            // No test events but a worker died — surface what the crashed worker(s)
-            // printed (the dropped stderr) instead of a bare "runner exited N".
-            StringBuilder crash = new StringBuilder();
-            for (int i = 0; i < actualWorkers; i++) {
-                if (exits[i] != 0 && !captures.get(i).isEmpty()) {
-                    if (crash.length() > 0) crash.append('\n');
-                    crash.append(captures.get(i).text());
-                }
-            }
-            return new TestSummary(
-                    1,
-                    0,
-                    1,
-                    0,
-                    List.of(new TestFailureInfo(
-                            moduleLabel, "", "", "(test run)", "", "runner exited " + worstExit, crash.toString())));
-        }
-        // A worker that dies mid-suite while its siblings keep going must not vanish silently:
-        // its in-flight class is neither run nor reported, and the suite would go green with a
-        // shortfall. Surface every abnormal exit as a failure naming the worker's last class
-        // (idle-watchdog kills land here too), and a conversation the parent's own handler ended
-        // as the parent-side bug it is. Skipped on user cancel: those exits are the kill we
-        // asked for.
-        if (worstExit != 0 && !SessionCancel.cancelled()) {
-            for (int i = 0; i < actualWorkers; i++) {
-                if (exits[i] == 0) continue;
-                total += 1;
-                failed += 1;
-                allFailures.add(WorkerFailureRow.of(
-                        moduleLabel,
-                        workerIdBase + i + 1,
-                        exits[i],
-                        lastClasses.get(i).get(),
-                        captures.get(i).text(),
-                        handlerFailures.get(i).get()));
-            }
-        }
-        String cancelledWhy = CancelledShortfall.of(SessionCancel.cancelled(), worstExit, queue.size());
-        if (cancelledWhy != null) {
-            total += 1;
-            failed += 1;
-            allFailures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", cancelledWhy, "", 0));
-        }
-        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, actualWorkers);
-    }
-
-    /**
-     * The pull protocol's parent side: each {@code ready} pulls the next class from the shared
-     * queue onto the child's stdin ({@code DONE} once the queue is empty); every other event is
-     * the aggregator's. A throw from here ends the conversation as a {@link
-     * PluginProcess.HandlerFailure}.
-     */
-    static BiConsumer<String, PluginProcess.Conversation> pullHandler(
-            ConcurrentLinkedDeque<String> queue, ResultAggregator aggregator, AtomicReference<String> lastClass) {
-        return (json, convo) -> {
-            String event = Jsonl.str(json, "event");
-            if ("ready".equals(event)) {
-                String next = queue.pollFirst();
-                if (next != null) {
-                    lastClass.set(next);
-                    convo.send("RUN " + next);
-                } else {
-                    convo.send("DONE");
-                    convo.closeInput();
-                }
-            } else {
-                aggregator.accept(json);
-            }
-        };
-    }
-
-    /**
-     * Per-worker reader thread. Reads the child's stdout line-by-line. On each {@code ready} event,
-     * dispatch the next class from the shared queue (or {@code DONE} when the queue is empty) by
-     * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
-     * to the parent's stdout, tagged with the worker id. A handler that throws ends the worker with
-     * {@code -1} and leaves its exception in {@code handlerFailure} for the summary to name.
-     */
-    private int driveWorker(
-            Path javaBinary,
-            String classpath,
-            int workerId,
-            int totalWorkers,
-            List<String> args,
-            ConcurrentLinkedDeque<String> queue,
-            ResultAggregator aggregator,
-            TestProgressListener listener,
-            CaptureBuffer crash,
-            AtomicReference<String> lastClass,
-            AtomicReference<@Nullable RuntimeException> handlerFailure) {
-        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, lastClass);
-        Consumer<String> passthrough = line -> {
-            crash.add(line);
-            listener.onUserOutput(workerId, line);
-        };
-
-        try {
-            Path tmp = TestTmpDir.forWorker(testTmpDir, workerId, totalWorkers);
-            WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
-            List<String> flags = jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
-            return PluginLoader.converse(
-                    javaBinary,
-                    classpath,
-                    // N test JVMs run at once → divide the heap cap by N so they fit.
-                    flags,
-                    PROTOCOL_PREFIX,
-                    args,
-                    env,
-                    inferredModuleDir,
-                    handler,
-                    passthrough,
-                    TestWorkerEnv.idleTimeoutMs());
-        } catch (PluginProcess.HandlerFailure e) {
-            handlerFailure.set(e.handler());
-            listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));
-            return -1;
-        } catch (IOException e) {
-            listener.onUserOutput(workerId, "reader error: " + e.getMessage());
-            return -1;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return -1;
-        }
     }
 
     /**
@@ -855,342 +655,6 @@ public final class JUnitLauncher {
 
     private static Path javaBinary(Path javaHome) {
         return JdkFingerprint.java(javaHome);
-    }
-
-    // -------- event aggregation -----------------------------------------
-
-    /**
-     * Thread-safe accumulator. Multiple driveWorker threads call into {@link #accept} concurrently.
-     * Counts come from FINISHED / SKIPPED events for {@code type == TEST} — we ignore CONTAINER nodes
-     * (the engine root, classes themselves) so totals match {@code SummaryGeneratingListener}
-     * semantics. Failure detail is pulled from FINISHED[status=FAILED] events.
-     *
-     * <p>Counting per-event (not summing per-worker plan totals) sidesteps a {@link
-     * org.junit.platform.launcher.listeners.SummaryGeneratingListener} quirk: it resets its
-     * accumulator on every {@code testPlanExecutionStarted} — which fires per {@code
-     * Launcher.execute} call — so in pull mode a worker's final summary reflects only its last
-     * class.
-     */
-    static final class ResultAggregator {
-
-        private final TestProgressListener listener;
-        private final int workerId;
-        private final @Nullable XmlTestReport xmlReport;
-        private final @Nullable MarkdownTestReport mdReport;
-        private final String moduleLabel;
-        private long succeeded;
-        private long failed;
-        private long skipped;
-        private final List<TestFailureInfo> failures = new ArrayList<>();
-        // Tests whose `dynamic_registered` event we observed at execute-time
-        // — i.e., @ParameterizedTest / @TestFactory / @TestTemplate /
-        // @RepeatedTest invocations that weren't in the static plan. Used
-        // to mark their later `finished`/`skipped` events as wasStatic=false
-        // so progress UIs can keep a stable static-plan denominator.
-        private final Set<String> dynamicIds = new HashSet<>();
-        // Distinct classes with at least one executed (finished/skipped) test — the
-        // class-rate ETA prior's denominator. Workers partition by class, so
-        // per-worker counts sum without overlap.
-        private final Set<String> executedClasses = new HashSet<>();
-        /** FQCN → wall-ms for CONTAINER finished events (class-level timing for ETA). */
-        private final Map<String, Long> classWallMs = new LinkedHashMap<>();
-
-        /** Test-friendly ctor: no listener, no worker id, no reports. */
-        ResultAggregator() {
-            this(TestProgressListener.noop(), 0, null, null, "");
-        }
-
-        /** For tests of the XML naming. */
-        ResultAggregator(XmlTestReport xml) {
-            this(TestProgressListener.noop(), 0, xml, null, "");
-        }
-
-        ResultAggregator(TestProgressListener listener, int workerId) {
-            this(listener, workerId, null, null, "");
-        }
-
-        ResultAggregator(
-                TestProgressListener listener,
-                int workerId,
-                @Nullable XmlTestReport xmlReport,
-                @Nullable MarkdownTestReport mdReport) {
-            this(listener, workerId, xmlReport, mdReport, "");
-        }
-
-        ResultAggregator(
-                TestProgressListener listener,
-                int workerId,
-                @Nullable XmlTestReport xmlReport,
-                @Nullable MarkdownTestReport mdReport,
-                @Nullable String moduleLabel) {
-            this.listener = listener;
-            this.workerId = workerId;
-            this.xmlReport = xmlReport;
-            this.mdReport = mdReport;
-            this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
-        }
-
-        synchronized void accept(String json) {
-            // A non-protocol line shows up here only in tests that call accept
-            // directly. In production the caller already stripped the prefix, so
-            // any line that doesn't look like a JSON object is user output.
-            if (json == null || !json.startsWith("{")) {
-                listener.onUserOutput(workerId, json);
-                return;
-            }
-            acceptJson(json);
-        }
-
-        private void acceptJson(String json) {
-            String event = Jsonl.str(json, "event");
-            if (event == null) return;
-            switch (event) {
-                case "discovery_total" ->
-                    listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
-                case "dynamic_registered" -> {
-                    if ("TEST".equals(Jsonl.str(json, "type"))) {
-                        String uid = identityKey(json);
-                        if (!uid.isEmpty()) dynamicIds.add(uid);
-                    }
-                }
-                case "warning" ->
-                    // Both fields are optional on arrival: a warning the runner half-filled is
-                    // still worth surfacing, and a decoder that throws here ends the worker's pump.
-                    listener.onWarning(
-                            Objects.requireNonNullElse(Jsonl.str(json, "code"), "warning"),
-                            Objects.requireNonNullElse(Jsonl.str(json, "message"), ""));
-                case "started" -> onStarted(json);
-                case "finished" -> onFinished(json);
-                case "skipped" -> onSkipped(json);
-                default -> {}
-            }
-        }
-
-        private void onStarted(String json) {
-            boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
-            String id = identityKey(json);
-            String label = progressLabel(json);
-            listener.onTestStarted(id, label, isTest, eventWorker(json));
-        }
-
-        private void onFinished(String json) {
-            boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
-            String id = identityKey(json);
-            String status = Objects.requireNonNullElse(Jsonl.str(json, "status"), "");
-            String label = progressLabel(json);
-            long duration = Jsonl.intValue(json, "duration_ms", 0);
-            int w = eventWorker(json);
-            boolean wasStatic = isTest && (id.isEmpty() || !dynamicIds.contains(id));
-            String cls = classNameOf(json);
-            if (isTest) {
-                if (!cls.isEmpty()) executedClasses.add(cls);
-                switch (status) {
-                    case "SUCCESSFUL" -> succeeded++;
-                    case "FAILED" -> captureFailure(json, label, false);
-                    case "ABORTED" -> skipped++;
-                    default -> {}
-                }
-            } else {
-                // Class (or suite) container wall — free duration_ms from the runner; no method walk.
-                if (!cls.isEmpty() && duration > 0 && "SUCCESSFUL".equals(status)) {
-                    classWallMs.merge(cls, duration, Long::sum);
-                }
-                if ("FAILED".equals(status)) {
-                    // A container-level failure (class initializer / @BeforeAll / engine):
-                    // no per-test event follows, so without capturing it the run would
-                    // surface only as a bare "runner exited N". Record it with its stack.
-                    captureFailure(json, label.isEmpty() ? "container" : label + " (container)", true);
-                }
-            }
-            listener.onTestFinished(id, label, status, isTest, wasStatic, duration, w);
-            if (isTest) {
-                String throwable = Jsonl.nested(json, "throwable");
-                String xmlName = xmlName(json, label);
-                if ("ABORTED".equals(status)) {
-                    if (xmlReport != null) xmlReport.recordSkipped(id, xmlName, "aborted");
-                    if (mdReport != null) mdReport.recordSkipped(id, label, "aborted");
-                } else {
-                    if (xmlReport != null) xmlReport.recordFinished(id, xmlName, duration, throwable);
-                    if (mdReport != null) mdReport.recordFinished(id, label, duration, throwable);
-                }
-            }
-        }
-
-        /** Record a FAILED test/container: count it and keep identity + full stack. */
-        private void captureFailure(String json, String label, boolean container) {
-            failed++;
-            String throwableJson = Jsonl.nested(json, "throwable");
-            String exClass = throwableJson != null ? Jsonl.str(throwableJson, "class") : null;
-            if (exClass == null) exClass = "?";
-            String message = throwableJson != null ? Jsonl.str(throwableJson, "message") : null;
-            if (message == null) message = "";
-            message = truncateMessage(message);
-            String stack = readStack(throwableJson);
-            String className = classNameOf(json);
-            String method = methodOf(json);
-            String engine = engineOf(json);
-            String testName = !method.isEmpty() ? method : label;
-            if (container && !testName.endsWith("(container)")) {
-                testName = testName + " (container)";
-            }
-            int w = eventWorker(json);
-            // TestFailureInfo.method is the display identity: the method when the runner named one,
-            // else the container/run label — there is no second short-name component to drift from it.
-            String name = method.isEmpty() ? testName : method;
-            failures.add(new TestFailureInfo(moduleLabel, engine, className, name, exClass, message, stack, w));
-            listener.onFailure(identityKey(json), testName, exClass, message, stack, engine, className, method, w);
-        }
-
-        private void onSkipped(String json) {
-            boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
-            String id = identityKey(json);
-            boolean wasStatic = isTest && (id.isEmpty() || !dynamicIds.contains(id));
-            if (isTest) {
-                skipped++;
-                String cls = classNameOf(json);
-                if (!cls.isEmpty()) executedClasses.add(cls);
-            }
-            String reason = Jsonl.str(json, "reason");
-            String label = progressLabel(json);
-            int w = eventWorker(json);
-            listener.onTestSkipped(id, label, reason != null ? reason : "", isTest, wasStatic, w);
-            if (isTest) {
-                if (xmlReport != null) xmlReport.recordSkipped(id, xmlName(json, label), reason);
-                if (mdReport != null) mdReport.recordSkipped(id, label, reason);
-            }
-        }
-
-        /** Event {@code worker} field, else this aggregator's id. */
-        private int eventWorker(String json) {
-            int w = Jsonl.intValue(json, "worker", -1);
-            return w > 0 ? w : workerId;
-        }
-
-        /**
-         * {@code throwable.stack} as a single string. Accepts a string (preferred) or a legacy line
-         * array and joins it. Truncated to {@link #MAX_STACK_CHARS}: the stack is worker-controlled
-         * input that rides every downstream copy (wire, SSE, journal), and a deep-recursion failure
-         * can produce megabytes of frames that no reader wants.
-         */
-        static String readStack(@Nullable String throwableJson) {
-            if (throwableJson == null) return "";
-            String s = Jsonl.str(throwableJson, "stack");
-            if (s == null) {
-                List<String> lines = Jsonl.strArray(throwableJson, "stack");
-                if (lines.isEmpty()) return "";
-                s = String.join("\n", lines);
-            }
-            return truncateStack(s);
-        }
-
-        /** Bound for a single failure's stack text; ~400 frames — far past any useful depth. */
-        static final int MAX_STACK_CHARS = 32_768;
-
-        static String truncateStack(String stack) {
-            if (stack == null || stack.length() <= MAX_STACK_CHARS) return stack;
-            int cut = stack.lastIndexOf('\n', MAX_STACK_CHARS);
-            if (cut <= 0) {
-                cut = MAX_STACK_CHARS;
-                // Hard cut (a single >32KB line): never leave a lone high surrogate.
-                if (Character.isHighSurrogate(stack.charAt(cut - 1))) cut--;
-            }
-            return stack.substring(0, cut) + STACK_TRUNCATION_MARKER + (stack.length() - cut) + " more chars)";
-        }
-
-        /**
-         * Bound for a single failure's message. Same rationale as {@link #MAX_STACK_CHARS}
-         *: the message is worker-controlled input that rides every downstream copy —
-         * wire, SSE, journal, web card — and an {@code assertEquals} diff of two multi-MB strings
-         * otherwise puts hundreds of MB of transients through the engine for one bad suite. The
-         * copy of the message inside the stack's first line was already bounded; the field itself
-         * was not. {@code LauncherPath} applies the same cap worker-side so the JSONL line is
-         * bounded on the wire too; this cap covers workers that predate it.
-         */
-        static final int MAX_MESSAGE_CHARS = 8_192;
-
-        static String truncateMessage(String message) {
-            if (message == null || message.length() <= MAX_MESSAGE_CHARS) return message;
-            if (workerCapped(message)) return message;
-            int cut = MAX_MESSAGE_CHARS;
-            if (Character.isHighSurrogate(message.charAt(cut - 1))) cut--;
-            return message.substring(0, cut) + MESSAGE_TRUNCATION_MARKER + (message.length() - cut) + " more chars)";
-        }
-
-        /**
-         * A worker-capped message is cap-sized content + marker + remainder count. It exceeds the
-         * cap only by the marker's own tail, and re-cutting would replace the worker's accurate
-         * remainder count with the marker's length — so it passes through verbatim. The marker
-         * position is bounded by the cap, keeping the accepted form itself bounded.
-         */
-        private static boolean workerCapped(String message) {
-            String tail = " more chars)";
-            if (!message.endsWith(tail)) return false;
-            int at = message.lastIndexOf(MESSAGE_TRUNCATION_MARKER);
-            if (at < 0 || at > MAX_MESSAGE_CHARS) return false;
-            int digitsFrom = at + MESSAGE_TRUNCATION_MARKER.length();
-            int digitsTo = message.length() - tail.length();
-            if (digitsTo <= digitsFrom) return false;
-            for (int i = digitsFrom; i < digitsTo; i++) {
-                char c = message.charAt(i);
-                if (c < '0' || c > '9') return false;
-            }
-            return true;
-        }
-
-        synchronized TestSummary toResult(int exitCode) {
-            return toResult(exitCode, "");
-        }
-
-        /**
-         * As {@link #toResult(int)}, attaching {@code crashOutput} (the worker's captured
-         * stdout/stderr) to the synthetic "runner exited" failure so a hard crash with no test events
-         * still explains itself.
-         */
-        synchronized TestSummary toResult(int exitCode, String crashOutput) {
-            long total = succeeded + failed + skipped;
-            if (total == 0 && exitCode != 0) {
-                return new TestSummary(
-                        1,
-                        0,
-                        1,
-                        0,
-                        List.of(new TestFailureInfo(
-                                moduleLabel,
-                                "",
-                                "",
-                                "(test run)",
-                                "",
-                                "runner exited " + exitCode,
-                                crashOutput == null ? "" : crashOutput,
-                                workerId)));
-            }
-            return new TestSummary(
-                    total,
-                    succeeded,
-                    failed,
-                    skipped,
-                    executedClasses.size(),
-                    List.copyOf(failures),
-                    Map.copyOf(classWallMs));
-        }
-
-        /** Snapshot of just the counters — used by the parallel-merge path. */
-        synchronized TestSummary snapshot() {
-            long total = succeeded + failed + skipped;
-            return new TestSummary(
-                    total,
-                    succeeded,
-                    failed,
-                    skipped,
-                    executedClasses.size(),
-                    List.copyOf(failures),
-                    Map.copyOf(classWallMs));
-        }
-
-        /** Class walls collected this worker (for parallel merge). */
-        synchronized Map<String, Long> classWallMs() {
-            return Map.copyOf(classWallMs);
-        }
     }
 
     /**

@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Whitebox tests for {@link JUnitLauncher.ResultAggregator}. The aggregator processes the JSONL
+ * Whitebox tests for {@link ResultAggregator}. The aggregator processes the JSONL
  * event stream the workers emit; we feed it raw lines here rather than spinning up a real fork.
  */
 class JUnitLauncherAggregatorTest {
@@ -28,7 +28,7 @@ class JUnitLauncherAggregatorTest {
     void the_xml_names_an_invocation_by_its_display_name_and_a_plain_test_by_its_method(@TempDir Path dir)
             throws Exception {
         var xml = new XmlTestReport();
-        var agg = new JUnitLauncher.ResultAggregator(xml);
+        var agg = new ResultAggregator(xml);
         agg.accept(
                 "{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:C]/[test-template:t(String)]"
                         + "/[test-template-invocation:#1]\",\"testEngine\":\"junit-jupiter\",\"testClass\":\"C\","
@@ -43,7 +43,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void counts_successful_failed_and_skipped_tests() {
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"b\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         agg.accept(
@@ -74,12 +74,12 @@ class JUnitLauncherAggregatorTest {
         // deep-recursion failure must not ride megabytes of frames through the pipeline.
         String frame = "\tat C.recurse(C.java:2)\n";
         String stack = "StackOverflowError\n" + frame.repeat(200_000 / frame.length());
-        String truncated = JUnitLauncher.ResultAggregator.truncateStack(stack);
-        assertThat(truncated.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_STACK_CHARS + 64);
+        String truncated = ResultAggregator.truncateStack(stack);
+        assertThat(truncated.length()).isLessThanOrEqualTo(ResultAggregator.MAX_STACK_CHARS + 64);
         assertThat(truncated).endsWith("more chars)");
         // Cuts on a line boundary, keeping whole frames.
         assertThat(truncated).contains("... stack truncated (");
-        assertThat(JUnitLauncher.ResultAggregator.truncateStack("short")).isEqualTo("short");
+        assertThat(ResultAggregator.truncateStack("short")).isEqualTo("short");
     }
 
     @Test
@@ -87,13 +87,13 @@ class JUnitLauncherAggregatorTest {
         // Same rationale as the stack cap: an assertEquals diff of two multi-MB
         // strings is a single-line message that rides wire, SSE, journal, and web card.
         String message = "expected: <" + "x".repeat(3_000_000) + "> but was: <y>";
-        String truncated = JUnitLauncher.ResultAggregator.truncateMessage(message);
-        assertThat(truncated.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
+        String truncated = ResultAggregator.truncateMessage(message);
+        assertThat(truncated.length()).isLessThanOrEqualTo(ResultAggregator.MAX_MESSAGE_CHARS + 64);
         assertThat(truncated).contains("... message truncated (");
-        assertThat(JUnitLauncher.ResultAggregator.truncateMessage("short")).isEqualTo("short");
+        assertThat(ResultAggregator.truncateMessage("short")).isEqualTo("short");
         // A cut landing on a surrogate pair backs off one char instead of emitting a lone surrogate.
-        String astral = "a".repeat(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS - 1) + "😀tail";
-        String cutAstral = JUnitLauncher.ResultAggregator.truncateMessage(astral);
+        String astral = "a".repeat(ResultAggregator.MAX_MESSAGE_CHARS - 1) + "😀tail";
+        String cutAstral = ResultAggregator.truncateMessage(astral);
         assertThat(cutAstral).doesNotContain("😀");
         assertThat(Character.isHighSurrogate(cutAstral.charAt(cutAstral.indexOf(" ... message truncated") - 1)))
                 .isFalse();
@@ -104,22 +104,22 @@ class JUnitLauncherAggregatorTest {
         // The worker cap emits cap-sized content + marker; that exceeds the engine cap by the
         // marker's tail alone, and a re-cut would replace the accurate remainder count with the
         // marker's own length.
-        String workerCapped = "x".repeat(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS)
+        String workerCapped = "x".repeat(ResultAggregator.MAX_MESSAGE_CHARS)
                 + JUnitLauncher.MESSAGE_TRUNCATION_MARKER
                 + "3000000 more chars)";
-        assertThat(JUnitLauncher.ResultAggregator.truncateMessage(workerCapped)).isSameAs(workerCapped);
+        assertThat(ResultAggregator.truncateMessage(workerCapped)).isSameAs(workerCapped);
         // A message that merely quotes the marker mid-body is still worker-controlled input
         // past the cap and gets cut.
         String quoting = "y".repeat(20_000) + JUnitLauncher.MESSAGE_TRUNCATION_MARKER + "12 more chars)";
-        String cut = JUnitLauncher.ResultAggregator.truncateMessage(quoting);
-        assertThat(cut.length()).isLessThanOrEqualTo(JUnitLauncher.ResultAggregator.MAX_MESSAGE_CHARS + 64);
+        String cut = ResultAggregator.truncateMessage(quoting);
+        assertThat(cut.length()).isLessThanOrEqualTo(ResultAggregator.MAX_MESSAGE_CHARS + 64);
     }
 
     @Test
     void container_events_do_not_count_toward_test_totals() {
         // JUnit fires FINISHED for engine roots and test classes too — those
         // are CONTAINER nodes and must not inflate the test count.
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"engine\",\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"class\",\"type\":\"CONTAINER\",\"status\":\"SUCCESSFUL\"}");
         agg.accept("{\"event\":\"finished\",\"id\":\"method\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
@@ -131,7 +131,7 @@ class JUnitLauncherAggregatorTest {
     void engines_without_class_method_segments_keep_their_display_label() {
         // Spock/Cucumber uniqueIds have no [class:]/[method:] segments; the worker sends the
         // display name for those and labels must use it — not the raw bracketed id.
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:spock]/[spec:LockSpec]/[feature:floats the lock]\","
                 + "\"testEngine\":\"spock\",\"display\":\"floats the lock\","
                 + "\"type\":\"TEST\",\"status\":\"FAILED\","
@@ -145,7 +145,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void merges_event_streams_from_multiple_workers() {
         // Simulate two parallel workers each running a couple of classes.
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept(
                 "{\"event\":\"finished\",\"uniqueId\":\"w1.a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\",\"worker\":1}");
         agg.accept(
@@ -163,7 +163,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void ready_and_plan_events_are_ignored_for_counts() {
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("{\"event\":\"ready\",\"worker\":1}");
         agg.accept("{\"event\":\"plan_started\"}");
         agg.accept("{\"event\":\"plan_finished\",\"duration_ms\":100}");
@@ -187,7 +187,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void malformed_json_does_not_blow_up_the_aggregator() {
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("not actually json");
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         assertThat(agg.toResult(0).total()).isEqualTo(1);
@@ -213,7 +213,7 @@ class JUnitLauncherAggregatorTest {
                 captured.add(new boolean[] {isTest, wasStatic});
             }
         };
-        var agg = new JUnitLauncher.ResultAggregator(listener, 0);
+        var agg = new ResultAggregator(listener, 0);
 
         // Plain static test — no preceding dynamic_registered.
         agg.accept(
@@ -249,7 +249,7 @@ class JUnitLauncherAggregatorTest {
         };
         var queue = new ConcurrentLinkedDeque<>(List.of("com.acme.BTest"));
         var lastClass = new AtomicReference<>("");
-        var handler = JUnitLauncher.pullHandler(queue, new JUnitLauncher.ResultAggregator(listener, 2), lastClass);
+        var handler = PullWorkerPool.pullHandler(queue, new ResultAggregator(listener, 2), lastClass);
         PluginProcess.Conversation convo = new PluginProcess.Conversation() {
             @Override
             public void send(String line) {}
@@ -293,7 +293,7 @@ class JUnitLauncherAggregatorTest {
                 throw new IllegalStateException("decoder choked on " + code);
             }
         };
-        var aggregator = new JUnitLauncher.ResultAggregator(listener, 0);
+        var aggregator = new ResultAggregator(listener, 0);
         aggregator.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
         RuntimeException thrown = catchThrowableOfType(
                 RuntimeException.class,
@@ -367,7 +367,7 @@ class JUnitLauncherAggregatorTest {
     void non_zero_exit_with_empty_results_reports_a_run_level_failure() {
         // Worker crashed before emitting any tests — we still want a non-zero
         // pass/fail signal.
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         var result = agg.toResult(2);
         assertThat(result.allPassed()).isFalse();
         assertThat(result.failures())
@@ -378,7 +378,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void failed_test_keeps_the_full_stack_trace() {
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
                 + "\"testMethod\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
                 + "\"message\":\"nope\",\"stack\":\"AssertionError: nope\\n\\tat Foo.c(Foo.java:9)\"}}");
@@ -389,7 +389,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void stack_line_array_is_joined_for_legacy_runners() {
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"uniqueId\":\"c\",\"type\":\"TEST\",\"status\":\"FAILED\","
                 + "\"testMethod\":\"c()\",\"throwable\":{\"class\":\"AssertionError\","
                 + "\"message\":\"nope\",\"stack\":[\"AssertionError: nope\",\"\\tat Foo.c(Foo.java:9)\"]}}");
@@ -402,7 +402,7 @@ class JUnitLauncherAggregatorTest {
     void container_failure_is_captured_so_init_errors_are_visible() {
         // A class initializer / @BeforeAll error finishes the CONTAINER as FAILED
         // and fires no TEST event — capture it instead of a silent "runner exited".
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         agg.accept(
                 "{\"event\":\"finished\",\"uniqueId\":\"cls\",\"testClass\":\"FooTest\",\"type\":\"CONTAINER\","
                         + "\"status\":\"FAILED\",\"throwable\":{\"class\":\"ExceptionInInitializerError\","
@@ -417,7 +417,7 @@ class JUnitLauncherAggregatorTest {
 
     @Test
     void crash_output_is_attached_to_the_synthetic_failure() {
-        var agg = new JUnitLauncher.ResultAggregator();
+        var agg = new ResultAggregator();
         String crash = "Exception in thread \"main\" java.lang.NoClassDefFoundError: Missing\n"
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
         var result = agg.toResult(1, crash); // no events, non-zero exit
@@ -444,7 +444,7 @@ class JUnitLauncherAggregatorTest {
     @Test
     void a_warning_event_missing_its_fields_is_still_delivered_as_a_warning() {
         var warnings = new ArrayList<String>();
-        var agg = new JUnitLauncher.ResultAggregator(
+        var agg = new ResultAggregator(
                 new TestProgressListener() {
                     @Override
                     public void onWarning(String code, String message) {
