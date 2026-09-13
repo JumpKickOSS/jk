@@ -11,11 +11,18 @@
 //     READY                                        (emitted once, at startup)
 //     RUN <script>\t<projectDir>\t<outDir>   ->    OK <base64 output>
 //                                                  FAIL <base64 output + error>
+//                                                  CANCELLED
+//     CANCEL                                 ->    (interrupts the script in flight; its RUN
+//                                                  answers CANCELLED once the script has stopped)
 //     EXIT                                   ->    (exit 0)
 //
 // Script stdout/stderr is captured per run and returned in the reply rather than streamed, so
 // that control lines cannot be corrupted by a script that prints. jk surfaces it only on
 // failure, which is what the forked kotlinc host did.
+//
+// The script runs on a worker thread while the main thread keeps reading stdin, which is what
+// lets a CANCEL arrive mid-script. A script that ignores the interrupt never answers; the engine
+// then kills this host after its cancel grace and the next build starts a fresh one.
 package cc.jumpkick.kts
 
 import java.io.ByteArrayOutputStream
@@ -24,6 +31,10 @@ import java.io.PrintStream
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.LinkedBlockingQueue
+import kotlin.concurrent.thread
 import kotlin.script.experimental.annotations.KotlinScript
 import kotlin.script.experimental.api.KotlinType
 import kotlin.script.experimental.api.ResultValue
@@ -100,6 +111,15 @@ private fun cacheKey(source: SourceCode, @Suppress("UNUSED_PARAMETER") cfg: Scri
 
 private fun encode(s: String): String = Base64.getEncoder().encodeToString(s.toByteArray())
 
+/** What the main loop reacts to: a control line, the end of stdin, or a finished script. */
+private sealed interface Event
+
+private data class Command(val line: String) : Event
+
+private data class Done(val reply: String) : Event
+
+private object Eof : Event
+
 fun main() {
     // Captured before anything can redirect it: control lines must never mix with script output.
     val control = System.out
@@ -120,13 +140,32 @@ fun main() {
         }
     val host = BasicJvmScriptingHost(hostConfig)
 
+    val events = LinkedBlockingQueue<Event>()
+    thread(isDaemon = true, name = "jk-kts-stdin") {
+        while (true) {
+            val line = readlnOrNull()
+            if (line == null) {
+                events.put(Eof)
+                return@thread
+            }
+            events.put(Command(line))
+        }
+    }
+    val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "jk-kts-script").apply { isDaemon = true } }
+
     control.println("READY")
     control.flush()
 
     while (true) {
-        val line = readlnOrNull() ?: return
+        val line =
+            when (val ev = events.take()) {
+                Eof -> return
+                is Done -> continue // a script that stopped after its run was already answered
+                is Command -> ev.line
+            }
         if (line.isBlank()) continue
         if (line == "EXIT") return
+        if (line == "CANCEL") continue // nothing in flight
         if (!line.startsWith("RUN\t")) {
             control.println("FAIL " + encode("jk kts host: unrecognised request: $line"))
             control.flush()
@@ -138,28 +177,56 @@ fun main() {
             control.flush()
             continue
         }
-
-        val captured = ByteArrayOutputStream()
-        val sink = PrintStream(captured, true, Charsets.UTF_8)
-        val reply =
-            try {
-                System.setOut(sink)
-                System.setErr(sink)
-                evaluate(host, File(parts[0]), Path.of(parts[1]), Path.of(parts[2]))
-            } catch (e: Throwable) {
-                describe(e)
-            } finally {
-                System.setOut(control)
-                System.setErr(realErr)
-                sink.flush()
+        val inFlight: Future<*> = worker.submit { events.put(Done(runOne(host, parts, control, realErr))) }
+        // The run answers when the script stops. A CANCEL meanwhile interrupts it and turns the
+        // answer into CANCELLED; a script that swallows the interrupt keeps the host here until the
+        // engine gives up on it.
+        var cancelled = false
+        var reply: String? = null
+        while (reply == null) {
+            when (val next = events.take()) {
+                is Done -> reply = if (cancelled) "CANCELLED" else next.reply
+                Eof -> return
+                is Command ->
+                    when (next.line) {
+                        "CANCEL" -> {
+                            cancelled = true
+                            inFlight.cancel(true)
+                        }
+                        "EXIT" -> return
+                        else -> {} // requests are serialised by the engine; nothing else arrives mid-run
+                    }
             }
-        val output = captured.toString(Charsets.UTF_8)
-        control.println(
-            if (reply == null) "OK " + encode(output)
-            else "FAIL " + encode(if (output.isEmpty()) reply else output + "\n" + reply)
-        )
+        }
+        control.println(reply)
         control.flush()
     }
+}
+
+/** One RUN: evaluates the script with its output captured, and renders the reply line. */
+private fun runOne(
+    host: BasicJvmScriptingHost,
+    parts: List<String>,
+    control: PrintStream,
+    realErr: PrintStream,
+): String {
+    val captured = ByteArrayOutputStream()
+    val sink = PrintStream(captured, true, Charsets.UTF_8)
+    val failure =
+        try {
+            System.setOut(sink)
+            System.setErr(sink)
+            evaluate(host, File(parts[0]), Path.of(parts[1]), Path.of(parts[2]))
+        } catch (e: Throwable) {
+            describe(e)
+        } finally {
+            System.setOut(control)
+            System.setErr(realErr)
+            sink.flush()
+        }
+    val output = captured.toString(Charsets.UTF_8)
+    return if (failure == null) "OK " + encode(output)
+    else "FAIL " + encode(if (output.isEmpty()) failure else output + "\n" + failure)
 }
 
 /** Runs one script. Returns null on success, or the failure text. */

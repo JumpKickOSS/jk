@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.run.SessionCancel;
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -43,6 +44,8 @@ public final class BuildLogicKtsHost {
      * path that carries its output along.
      */
     public static String evaluate(Path script, Path projectDir, Path outDir) throws IOException, InterruptedException {
-        return KtsSession.run(script, projectDir, outDir);
+        // The owning build's cancel: a Ctrl-C mid-script stops the script, not just the build
+        // waiting on it, and frees the shared host for the next build.
+        return KtsSession.run(script, projectDir, outDir, SessionCancel::cancelled);
     }
 }

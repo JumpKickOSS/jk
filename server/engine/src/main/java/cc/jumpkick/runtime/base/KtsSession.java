@@ -18,7 +18,10 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -54,11 +57,29 @@ import org.jspecify.annotations.Nullable;
  * can arrive at once; they queue rather than run together. That is a deliberate simplification —
  * with per-script cost down from seconds to milliseconds, queueing costs far less than the
  * per-script JVM it replaces — and it is why the protocol needs no request ids.
+ *
+ * <h2>Cancellation</h2>
+ *
+ * A build cancelled while its script runs cancels the script: the request watches the build's
+ * cancel probe while it waits for the reply and, once it flips, sends {@code CANCEL}. The host
+ * interrupts the script and answers {@code CANCELLED} when it has stopped. A script that ignores
+ * the interrupt would otherwise hold the lock for every later build, so a host that has not
+ * answered within {@link #CANCEL_GRACE} is killed and the next script starts a fresh one. Either
+ * way the run reports as {@link Cancelled}, not as a script failure.
  */
 final class KtsSession {
 
     /** How long the host may sit without a script before the reaper shuts it down. */
     static final Duration IDLE_TIMEOUT = Duration.ofMinutes(10);
+
+    /** How long a cancelled script may take to stop before its host is killed instead. */
+    static final Duration CANCEL_GRACE = Duration.ofSeconds(2);
+
+    /** How often a waiting request looks at its build's cancel probe. */
+    private static final Duration CANCEL_POLL = Duration.ofMillis(50);
+
+    /** Queued in place of a reply when the host's stdout ends. */
+    private static final String EOF = "\u0000eof";
 
     private static final Object LOCK = new Object();
     private static @Nullable KtsSession current;
@@ -68,7 +89,12 @@ final class KtsSession {
 
     private final Process process;
     private final BufferedWriter toChild;
-    private final BufferedReader fromChild;
+
+    /**
+     * Replies, one line each, moved off the pipe by a reader thread so a request can wait for the
+     * next one with a timeout and look at its cancel probe in between. {@link #EOF} marks the end.
+     */
+    private final BlockingQueue<String> replies = new LinkedBlockingQueue<>();
 
     /** When the last script finished, on the monotonic clock; the reaper measures idleness from it. */
     private long lastUsedNanos = clock.nanos();
@@ -76,20 +102,34 @@ final class KtsSession {
     private KtsSession(Process process) {
         this.process = process;
         this.toChild = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
-        this.fromChild = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        BufferedReader fromChild =
+                new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        Thread.ofVirtual().name("jk-kts-host-reader").start(() -> {
+            try {
+                String line;
+                while ((line = fromChild.readLine()) != null) replies.put(line);
+            } catch (IOException | InterruptedException e) {
+                // The pipe is gone or the engine is stopping; EOF below tells the waiter either way.
+            } finally {
+                replies.add(EOF);
+            }
+        });
     }
 
     /**
      * Evaluate one script. Returns its captured stdout/stderr on success; throws with that output
-     * attached on failure.
+     * attached on failure, and {@link Cancelled} when {@code cancelled} flips while it runs.
+     *
+     * @param cancelled the owning build's cancel probe, watched while the script runs
      */
-    static String run(Path script, Path projectDir, Path outDir) throws IOException, InterruptedException {
+    static String run(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
+            throws IOException, InterruptedException {
         synchronized (LOCK) {
             if (current != null && !current.process.isAlive()) current = null;
             if (current == null) current = start();
             KtsSession session = current;
             try {
-                return session.request(script, projectDir, outDir);
+                return session.request(script, projectDir, outDir, cancelled);
             } catch (SessionDied e) {
                 // The child is gone; the next script gets a new one rather than inheriting a corpse.
                 current = null;
@@ -98,6 +138,10 @@ final class KtsSession {
                                 + " (a script calling System.exit, or an out-of-memory, takes the shared host with it)"
                                 + (e.tail().isEmpty() ? "" : ":\n" + e.tail()),
                         e);
+            } catch (Cancelled e) {
+                // A host that would not stop its script was killed; the next script starts fresh.
+                if (!session.process.isAlive()) current = null;
+                throw e;
             } finally {
                 session.lastUsedNanos = clock.nanos();
             }
@@ -152,11 +196,18 @@ final class KtsSession {
         }
     }
 
-    private String request(Path script, Path projectDir, Path outDir) throws IOException, SessionDied {
+    private String request(Path script, Path projectDir, Path outDir, BooleanSupplier cancelled)
+            throws IOException, InterruptedException, SessionDied {
         toChild.write("RUN\t" + script + "\t" + projectDir + "\t" + outDir + "\n");
         toChild.flush();
-        String reply = fromChild.readLine();
-        if (reply == null) throw new SessionDied(drain());
+        String reply;
+        while ((reply = replies.poll(CANCEL_POLL.toMillis(), TimeUnit.MILLISECONDS)) == null) {
+            if (cancelled.getAsBoolean()) {
+                cancelInFlight();
+                throw new Cancelled(script);
+            }
+        }
+        if (EOF.equals(reply)) throw new SessionDied(drain());
         if (reply.startsWith("OK ")) return decode(reply.substring(3));
         if (reply.startsWith("FAIL ")) {
             // Verbatim compiler/runtime output — its first line is the script's own file:line.
@@ -166,14 +217,36 @@ final class KtsSession {
         throw new SessionDied("unrecognised reply from the .kts host: " + reply);
     }
 
+    /**
+     * Ask the host to stop the script in flight and wait for its answer. Any reply within the grace
+     * means the host is free again — the script stopped, or finished just as the cancel arrived.
+     * No reply means the script ignores the interrupt; the host is killed so the next build does
+     * not wait on it.
+     */
+    private void cancelInFlight() throws InterruptedException {
+        try {
+            toChild.write("CANCEL\n");
+            toChild.flush();
+        } catch (IOException e) {
+            process.destroyForcibly();
+            process.waitFor(5, TimeUnit.SECONDS);
+            return;
+        }
+        String reply = replies.poll(CANCEL_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+        if (reply == null || EOF.equals(reply)) {
+            process.destroyForcibly();
+            // Waited for, so the caller's liveness check sees the kill and drops the session.
+            process.waitFor(5, TimeUnit.SECONDS);
+        }
+    }
+
     /** Whatever the child managed to say before dying — usually the JVM's own error. */
     private String drain() {
         StringBuilder sb = new StringBuilder();
-        try {
-            String l;
-            while ((l = fromChild.readLine()) != null) sb.append(l).append('\n');
-        } catch (IOException ignored) {
-            // The pipe is already gone; report what was read.
+        String l;
+        while ((l = replies.poll()) != null) {
+            if (EOF.equals(l)) break;
+            sb.append(l).append('\n');
         }
         return sb.toString().strip();
     }
@@ -214,11 +287,11 @@ final class KtsSession {
         Process p = pb.start();
         registerShutdownHook();
         KtsSession session = new KtsSession(p);
-        String ready = session.fromChild.readLine();
+        String ready = session.replies.take();
         if (!"READY".equals(ready)) {
             p.destroyForcibly();
             throw new IllegalStateException(
-                    "[build] logic: the .kts host did not start" + (ready == null ? "" : " (said: " + ready + ")"));
+                    "[build] logic: the .kts host did not start" + (EOF.equals(ready) ? "" : " (said: " + ready + ")"));
         }
         Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
         return session;
@@ -270,6 +343,16 @@ final class KtsSession {
      */
     static Path compiledScriptCache() {
         return JkDirs.cache().resolve("kts");
+    }
+
+    /**
+     * The script was cancelled with the build that ran it. Carries the jk prefix so the build-logic
+     * step reports it as it is, not as a script failure.
+     */
+    static final class Cancelled extends RuntimeException {
+        Cancelled(Path script) {
+            super("[build] logic: " + script.getFileName() + " cancelled with its build");
+        }
     }
 
     /** The child exited rather than replying. Carries whatever it said on the way out. */

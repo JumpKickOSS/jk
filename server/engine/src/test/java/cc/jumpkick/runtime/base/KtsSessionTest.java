@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -256,6 +257,131 @@ class KtsSessionTest {
         } finally {
             KtsSession.idleTimeoutForTests(KtsSession.IDLE_TIMEOUT);
         }
+    }
+
+    /**
+     * A build cancelled mid-script cancels the script, not just the build waiting on it. The host
+     * interrupts the script, answers, and stays: the next build's script runs on the same host at
+     * once instead of waiting out a sleep nobody asked for.
+     */
+    @Test
+    void a_cancelled_build_cancels_its_running_script_and_the_next_script_starts_within_the_grace(@TempDir Path dir)
+            throws Exception {
+        Path slow = dir.resolve("slow.kts");
+        Files.writeString(slow, """
+                Files.writeString(outDir.resolve("started"), "1")
+                Thread.sleep(60_000)
+                Files.writeString(outDir.resolve("done"), "1")
+                """);
+        Path quick = dir.resolve("quick.kts");
+        Files.writeString(quick, "Files.writeString(outDir.resolve(\"quick.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path outA = Files.createDirectories(dir.resolve("a"));
+        Path outB = Files.createDirectories(dir.resolve("b"));
+        // Compiled ahead, so the run after the cancel measures the host's readiness, not kotlinc.
+        BuildLogicKtsHost.evaluate(quick, project, outB);
+        long pid = KtsSession.hostPid();
+
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread build = new Thread(() -> {
+            try {
+                KtsSession.run(slow, project, outA, cancelled::get);
+            } catch (Throwable t) {
+                outcome.set(t);
+            }
+        });
+        build.start();
+        awaitFile(outA.resolve("started"));
+
+        long cancelledAt = System.nanoTime();
+        cancelled.set(true);
+        build.join(TimeUnit.SECONDS.toMillis(30));
+        Files.deleteIfExists(outB.resolve("quick.txt"));
+        BuildLogicKtsHost.evaluate(quick, project, outB);
+        Duration untilNextScript = Duration.ofNanos(System.nanoTime() - cancelledAt);
+
+        assertThat(outcome.get())
+                .as("the run reports as cancelled, not as a script failure")
+                .isInstanceOf(KtsSession.Cancelled.class)
+                .hasMessageContaining("slow.kts")
+                .hasMessageContaining("cancelled");
+        assertThat(outA.resolve("done"))
+                .as("the script stopped where the interrupt found it")
+                .doesNotExist();
+        assertThat(outB.resolve("quick.txt")).exists();
+        assertThat(untilNextScript)
+                .as("the next script ran within the cancel grace")
+                .isLessThan(KtsSession.CANCEL_GRACE);
+        assertThat(KtsSession.hostPid())
+                .as("a script that honours the interrupt leaves the host standing")
+                .isEqualTo(pid);
+    }
+
+    /**
+     * A script that swallows the interrupt would hold the host, and its lock, for every later build.
+     * The engine gives it the cancel grace and then kills the host; the next script starts a fresh
+     * one rather than waiting on a script nobody can stop.
+     */
+    @Test
+    void a_script_that_ignores_the_interrupt_is_killed_with_its_host_and_the_next_script_starts_fresh(@TempDir Path dir)
+            throws Exception {
+        Path stubborn = dir.resolve("stubborn.kts");
+        Files.writeString(stubborn, """
+                Files.writeString(outDir.resolve("started"), "1")
+                while (true) {
+                    try {
+                        Thread.sleep(100)
+                    } catch (e: InterruptedException) {
+                        // ignored: the loop is the point
+                    }
+                }
+                """);
+        Path quick = dir.resolve("quick.kts");
+        Files.writeString(quick, "Files.writeString(outDir.resolve(\"quick.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path outA = Files.createDirectories(dir.resolve("a"));
+        Path outB = Files.createDirectories(dir.resolve("b"));
+        // Starts the host whose pid the assertion below compares against; the seams take the
+        // session lock, which the run in flight holds, so the pid is read before it starts.
+        BuildLogicKtsHost.evaluate(quick, project, outB);
+        long pid = KtsSession.hostPid();
+
+        AtomicBoolean cancelled = new AtomicBoolean();
+        AtomicReference<Throwable> outcome = new AtomicReference<>();
+        Thread build = new Thread(() -> {
+            try {
+                KtsSession.run(stubborn, project, outA, cancelled::get);
+            } catch (Throwable t) {
+                outcome.set(t);
+            }
+        });
+        build.start();
+        awaitFile(outA.resolve("started"));
+
+        long cancelledAt = System.nanoTime();
+        cancelled.set(true);
+        build.join(TimeUnit.SECONDS.toMillis(30));
+        Duration untilCancelled = Duration.ofNanos(System.nanoTime() - cancelledAt);
+
+        assertThat(outcome.get()).isInstanceOf(KtsSession.Cancelled.class);
+        assertThat(untilCancelled)
+                .as("the build is released once the grace runs out")
+                .isLessThan(KtsSession.CANCEL_GRACE.plusSeconds(10));
+        assertThat(KtsSession.hostAlive())
+                .as("the host that would not stop its script is gone")
+                .isFalse();
+
+        Files.deleteIfExists(outB.resolve("quick.txt"));
+        BuildLogicKtsHost.evaluate(quick, project, outB);
+        assertThat(outB.resolve("quick.txt")).exists();
+        assertThat(KtsSession.hostPid()).as("the next script got a fresh host").isNotEqualTo(pid);
+    }
+
+    private static void awaitFile(Path file) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        while (!Files.exists(file) && System.nanoTime() < deadline) Thread.sleep(20);
+        assertThat(file).as("the script is running").exists();
     }
 
     private static long jarCount(Path cache) throws Exception {
