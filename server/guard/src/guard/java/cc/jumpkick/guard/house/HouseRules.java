@@ -60,13 +60,39 @@ final class HouseRules {
         return line;
     }
 
+    /**
+     * An owner's text with its comments blanked, the lexer chosen by the file's kind: {@code #} line
+     * comments for a YAML workflow, the C family otherwise. One view per kind, picked here, so a
+     * guard never matches a workflow comment as text or loses the {@code //} of a URL in a
+     * {@code run:} script to a line-comment rule.
+     */
     static String owner(Text text, String path) {
         try {
-            return text.blanked(path, Blank.COMMENTS);
+            return isYaml(path) ? yamlComments(text.lines(path)) : text.blanked(path, Blank.COMMENTS);
         } catch (RuntimeException gone) {
             throw new OwnerMissing("the owner " + path
                     + " is gone, so this guard reads nothing; restore it or retire the guard deliberately");
         }
+    }
+
+    private static boolean isYaml(String path) {
+        return path.endsWith(".yml") || path.endsWith(".yaml");
+    }
+
+    /**
+     * YAML with its {@code #} comments blanked to spaces: a whole-line comment and everything from
+     * {@code " #"} on; lines and offsets kept. Line-oriented on purpose — a {@code #} inside a quoted
+     * scalar reads as a comment — which is enough for the house guards, none of which parse a value.
+     */
+    static String yamlComments(List<String> lines) {
+        StringBuilder out = new StringBuilder();
+        for (String line : lines) {
+            int comment = line.strip().startsWith("#") ? line.indexOf('#') : line.indexOf(" #");
+            if (comment < 0) out.append(line);
+            else out.append(line, 0, comment).append(" ".repeat(line.length() - comment));
+            out.append('\n');
+        }
+        return out.toString();
     }
 
     private static Set<String> caseLabelChars(String code) {

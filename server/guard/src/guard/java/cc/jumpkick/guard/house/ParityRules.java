@@ -461,8 +461,8 @@ final class ParityRules {
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
     @Fixture("server/guard/fixtures/ci-cadence")
     void ciCadence(Text text, Violations v) {
-        String nightly = yaml(text, NIGHTLY);
-        String branch = yaml(text, CI);
+        String nightly = HouseRules.owner(text, NIGHTLY);
+        String branch = HouseRules.owner(text, CI);
         List<String> problems = new ArrayList<>();
         if (!exists(text, "scripts/ci-product-smoke.sh")) problems.add("scripts/ci-product-smoke.sh is missing");
         if (!nightly.contains("./gradlew benchTest")) problems.add(NIGHTLY + " must run ./gradlew benchTest");
@@ -516,7 +516,7 @@ final class ParityRules {
             problems.add(BOOTSTRAP_PIN + " names " + pin.strip() + ", newer than this tree's own "
                     + treeVersion.group(1) + " — a bootstrap release is cut from a tree, so it is never ahead of one");
         for (String wf : text.files(".github/workflows/*.yml"))
-            if (LITERAL_BOOTSTRAP.matcher(yaml(text, wf)).find())
+            if (LITERAL_BOOTSTRAP.matcher(HouseRules.owner(text, wf)).find())
                 problems.add(wf + " spells a JK_VERSION literal; the bootstrap version is read from " + BOOTSTRAP_PIN
                         + ", so a release bumps one file");
         if (!exists(text, "scripts/dogfood-wall-measure.sh"))
@@ -542,22 +542,6 @@ final class ParityRules {
                             p),
                     p);
         v.population(4);
-    }
-
-    /**
-     * A workflow with its {@code #} comments blanked, line structure kept. The comment view {@code Text.blanked}
-     * offers is a C-family lexer: it reads the {@code //} of a URL in a {@code run:} script as a line comment and
-     * keeps a YAML comment as text, so a job block would lose its installer line and gain the prose above the
-     * next job.
-     */
-    private static String yaml(Text text, String path) {
-        StringBuilder out = new StringBuilder();
-        for (String line : text.lines(path)) {
-            String body = line.strip().startsWith("#") ? "" : line;
-            int comment = body.indexOf(" #");
-            out.append(comment >= 0 ? body.substring(0, comment) : body).append('\n');
-        }
-        return out.toString();
     }
 
     /**
@@ -942,7 +926,7 @@ final class ParityRules {
                         "surface '" + s.getKey() + "' (" + s.getValue() + ") has no " + String.join(" or ", gaps)
                                 + " path");
         }
-        if (!HouseRules.owner(text, CI).contains("curatedIntegrationTest"))
+        if (!HouseRules.owner(text, CI).contains("./gradlew curatedIntegrationTest"))
             v.add(
                     new TextSite(CI, 0, "curatedIntegrationTest"),
                     CI
