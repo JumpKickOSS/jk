@@ -16,6 +16,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.tool.InstalledToolEnvs;
 import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -424,18 +425,22 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /**
-     * One row per launcher in {@code <home>/bin} that belongs to a tool env under {@code
-     * <state>/tools/envs} — both the POSIX and the {@code .cmd} spelling. A launcher execs the
-     * absolute classpath its env records, so once the state root is gone it fails with "could not
-     * find or load main class"; it goes with its env and the table says so, rather than the
-     * settle line claiming installed tools survive. {@code bin} itself stays a guarded root: the
-     * rows are single files named by env directories that pass {@link LauncherName}, so jk's own
-     * client under a reserved stem is never one of them. Empty unless the state row is scheduled
-     * — a refused state root deletes no envs, so it orphans no launcher.
+     * One row per launcher in {@code <home>/bin} that this plan orphans — both the POSIX and the
+     * {@code .cmd} spelling. A launcher execs the absolute classpath its env under
+     * {@link JkDirs#toolEnvsDir()} records, so it is dead once either root it depends on is gone:
+     * the state root, which holds the env itself, or the store, where the classpath's jars live
+     * under {@code sha256/}. Either way it fails with "could not find or load main class", so it
+     * goes with the root and the table says so, rather than the settle line claiming installed
+     * tools survive. {@code bin} itself stays a guarded root: the rows are single files named by
+     * env directories that pass {@link LauncherName}, so jk's own client under a reserved stem is
+     * never one of them. Empty when no scheduled root reaches an env — a refused root deletes
+     * nothing, so it orphans no launcher.
      */
     static List<PurgeRow> toolLaunchers(JkDirs dirs, List<PurgeRow> rows) {
-        boolean stateGoes = rows.stream().anyMatch(r -> r.target() == Target.STATE && !r.delegated());
-        if (!stateGoes) return List.of();
+        List<PurgeRow> roots = rows.stream()
+                .filter(r -> r.target() == Target.STATE || r.target() == Target.STORE)
+                .toList();
+        if (roots.isEmpty()) return List.of();
         Path envs = dirs.toolEnvsDir();
         if (!Files.isDirectory(envs)) return List.of();
         Path bin = dirs.binDirectory();
@@ -452,15 +457,35 @@ public final class SelfNukeCommand implements CliCommand {
         names.sort(null);
         List<PurgeRow> out = new ArrayList<>();
         for (String name : names) {
+            Target orphanedBy = orphanedBy(envs, name, roots);
+            if (orphanedBy == null) continue;
             for (String leaf : List.of(name, name + ".cmd")) {
                 Path launcher = LauncherName.resolveChild(bin, leaf);
                 if (Files.exists(launcher, LinkOption.NOFOLLOW_LINKS)) {
                     out.add(new PurgeRow(
-                            launcher.toAbsolutePath().normalize(), "Launcher of tool " + name, Target.STATE, false));
+                            launcher.toAbsolutePath().normalize(), "Launcher of tool " + name, orphanedBy, false));
                 }
             }
         }
         return out;
+    }
+
+    /**
+     * The scheduled root that orphans the launcher of {@code name}: the state root when it is
+     * scheduled (the env lives under it), else the first deleted root an entry of the env's
+     * recorded classpath lies under. {@code null} when the launcher survives every root in the plan.
+     */
+    private static @Nullable Target orphanedBy(Path envs, String name, List<PurgeRow> roots) {
+        for (PurgeRow root : roots) {
+            if (root.target() == Target.STATE) return Target.STATE;
+        }
+        for (Path entry : InstalledToolEnvs.recordedClasspath(envs, name)) {
+            Path abs = entry.toAbsolutePath().normalize();
+            for (PurgeRow root : roots) {
+                if (abs.startsWith(root.path())) return root.target();
+            }
+        }
+        return null;
     }
 
     /**
@@ -536,7 +561,7 @@ public final class SelfNukeCommand implements CliCommand {
         CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory())
                 + (launchersGo
-                        ? "  (PATH binaries; the tool launchers listed above go with their envs)"
+                        ? "  (PATH binaries; the tool launchers listed above go with the roots they run from)"
                         : "  (PATH binaries)"));
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();

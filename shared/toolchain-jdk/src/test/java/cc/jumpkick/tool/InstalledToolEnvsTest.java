@@ -60,6 +60,18 @@ class InstalledToolEnvsTest {
     }
 
     @Test
+    void the_recorded_classpath_is_read_back_whether_or_not_it_still_exists(@TempDir Path tmp) throws Exception {
+        Path envsRoot = installed(tmp, "checkstyle", "com.puppycrawl.tools.checkstyle.Main");
+        Files.delete(tmp.resolve("checkstyle.jar"));
+
+        // What the launcher execs is what decides which roots' deletion orphans it — the entry
+        // matters most precisely when it is already gone.
+        assertThat(InstalledToolEnvs.recordedClasspath(envsRoot, "checkstyle"))
+                .containsExactly(tmp.resolve("checkstyle.jar").toAbsolutePath());
+        assertThat(InstalledToolEnvs.recordedClasspath(envsRoot, "ktlint")).isEmpty();
+    }
+
+    @Test
     void a_kotlin_script_tool_is_the_launchers_business_not_this_paths(@TempDir Path tmp) throws Exception {
         Path envsRoot = installed(tmp, "greet", "kotlin-script");
         assertThat(InstalledToolEnvs.read(envsRoot, "greet")).isNull();

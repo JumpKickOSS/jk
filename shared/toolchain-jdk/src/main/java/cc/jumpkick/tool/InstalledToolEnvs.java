@@ -28,6 +28,26 @@ public final class InstalledToolEnvs {
      * shape), or any recorded classpath entry is gone (the caller should fall through to a fresh
      * resolve, which re-fetches).
      */
+    /**
+     * The classpath entries {@code name}'s {@code env.json} records, present on disk or not — the
+     * paths its launcher execs, and so the roots whose deletion orphans that launcher. Empty when
+     * there is no readable env.
+     */
+    public static List<Path> recordedClasspath(Path envsRoot, String name) {
+        Path envJson = envsRoot.resolve(name).resolve("env.json");
+        if (!Files.isRegularFile(envJson)) return List.of();
+        try {
+            Object root = MiniJson.parse(Files.readString(envJson));
+            List<Path> classpath = new ArrayList<>();
+            for (Object entry : MiniJson.list(root, "classpath")) {
+                if (entry instanceof String s) classpath.add(Path.of(s));
+            }
+            return List.copyOf(classpath);
+        } catch (Exception unreadable) {
+            return List.of();
+        }
+    }
+
     public static @Nullable Installed read(Path envsRoot, String name) {
         Path envJson = envsRoot.resolve(name).resolve("env.json");
         if (!Files.isRegularFile(envJson)) return null;

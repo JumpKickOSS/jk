@@ -10,6 +10,7 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.system.SelfNukeCommand.Target;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
@@ -827,7 +828,7 @@ class SelfNukeCommandTest {
         assertThat(bin.resolve("alpha")).doesNotExist();
         assertThat(product).as("jk's own client stays").exists();
         assertThat(foreign).as("a file jk did not install stays").exists();
-        assertThat(out).contains("the tool launchers listed above go with their envs");
+        assertThat(out).contains("the tool launchers listed above go with the roots they run from");
         String settle = out.lines()
                 .filter(l -> l.contains("Nuked selected"))
                 .findFirst()
@@ -850,16 +851,77 @@ class SelfNukeCommandTest {
         assertThat(out).contains("would remove " + SelfNukeCommand.displayPath(launcher));
     }
 
+    /**
+     * An installed tool's launcher execs jars under {@code <store>/sha256/…}. Wiping the store and
+     * leaving the launcher gives the same dead script a state wipe would — "could not find or
+     * load main class" — so the store target schedules exactly the launchers whose recorded
+     * classpath lies under the store, lists them and counts them like the state target does.
+     */
     @Test
-    void launcher_rows_exist_only_when_the_state_row_goes(@TempDir Path root) throws Exception {
+    void store_nuke_removes_the_launchers_whose_classpaths_it_deletes() throws Exception {
         JkDirs dirs = JkDirs.current();
-        installedTool(dirs, "widget");
+        Path store = dirs.storeDir();
+        Path casJar = Files.createDirectories(store.resolve("sha256/ab")).resolve("widget.jar");
+        Files.writeString(casJar, "jar");
+        Path widget = installedTool(dirs, "widget", casJar);
+        Path widgetCmd = Files.writeString(dirs.binDirectory().resolve("widget.cmd"), "@echo off\r\n");
+        Path elsewhere = Files.writeString(isolatedHome.resolve("elsewhere.jar"), "jar");
+        Path local = installedTool(dirs, "local", elsewhere);
+        var wipesStore = new SelfNukeCommand.Hosted() {
+            @Override
+            public int storage() throws IOException {
+                PathUtil.deleteRecursivelyOrThrow(store);
+                return 0;
+            }
+
+            @Override
+            public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
+                throw new AssertionError("the cache target is not selected");
+            }
+        };
+
+        String out = TestAnsi.strip(captureText(() -> runNuke(wipesStore, EnumSet.of(Target.STORE), true)));
+
+        assertThat(store).doesNotExist();
+        assertThat(widget).doesNotExist();
+        assertThat(widgetCmd).doesNotExist();
+        assertThat(local).as("a launcher the store wipe leaves runnable stays").exists();
+        assertThat(dirs.toolEnvsDir().resolve("local/env.json")).exists();
+        try (var launchers = Files.list(dirs.binDirectory())) {
+            for (Path launcher : launchers.toList()) {
+                assertThat(Files.readString(launcher))
+                        .as("%s points under the deleted store", launcher)
+                        .doesNotContain(store.toString());
+            }
+        }
+        assertThat(out).contains("Launcher of tool widget").doesNotContain("Launcher of tool local");
+        String settle = out.lines()
+                .filter(l -> l.contains("Nuked selected"))
+                .findFirst()
+                .orElse("");
+        // widget's POSIX launcher and its .cmd twin — two files — and nothing for local.
+        assertThat(settle).contains("2 installed tool launchers");
+    }
+
+    @Test
+    void launcher_rows_exist_only_when_a_root_the_launcher_runs_from_goes(@TempDir Path root) throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path casJar = dirs.storeDir().resolve("sha256/ab/widget.jar");
+        installedTool(dirs, "widget", casJar);
+        installedTool(dirs, "local", isolatedHome.resolve("elsewhere.jar"));
+        Path widget = dirs.binDirectory().resolve("widget").toAbsolutePath().normalize();
+        Path local = dirs.binDirectory().resolve("local").toAbsolutePath().normalize();
+        // The state root holds every env, so every launcher goes with it.
         List<SelfNukeCommand.PurgeRow> stateRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.STATE));
         assertThat(SelfNukeCommand.toolLaunchers(dirs, stateRows))
                 .extracting(SelfNukeCommand.PurgeRow::path)
-                .containsExactly(
-                        dirs.binDirectory().resolve("widget").toAbsolutePath().normalize());
-        // Cache or config alone deletes no env, so it orphans no launcher.
+                .containsExactly(local, widget);
+        // The store holds only widget's classpath.
+        List<SelfNukeCommand.PurgeRow> storeRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.STORE));
+        assertThat(SelfNukeCommand.toolLaunchers(dirs, storeRows))
+                .extracting(SelfNukeCommand.PurgeRow::path)
+                .containsExactly(widget);
+        // Cache or config alone deletes no env and no classpath, so it orphans no launcher.
         List<SelfNukeCommand.PurgeRow> configRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.CONFIG));
         assertThat(SelfNukeCommand.toolLaunchers(dirs, configRows)).isEmpty();
         // A refused state root (one that would reach the product lib) deletes nothing under it.
@@ -873,10 +935,16 @@ class SelfNukeCommandTest {
 
     /** {@code jk install <name>}'s footprint: the env under state and a launcher in bin. */
     private static Path installedTool(JkDirs dirs, String name) throws IOException {
+        return installedTool(dirs, name, Path.of("/store/gone.jar"));
+    }
+
+    /** As above, with the env recording {@code classpath} as the one jar the launcher execs. */
+    private static Path installedTool(JkDirs dirs, String name, Path classpath) throws IOException {
         Path env = Files.createDirectories(dirs.toolEnvsDir().resolve(name));
-        Files.writeString(env.resolve("env.json"), "{\"binName\": \"" + name + "\"}");
+        String jar = classpath.toAbsolutePath().toString().replace("\\", "\\\\");
+        Files.writeString(env.resolve("env.json"), "{\"binName\": \"" + name + "\", \"classpath\": [\"" + jar + "\"]}");
         Path launcher = Files.createDirectories(dirs.binDirectory()).resolve(name);
-        Files.writeString(launcher, "#!/usr/bin/env bash\nexec java -cp /store/gone.jar Main \"$@\"\n");
+        Files.writeString(launcher, "#!/usr/bin/env bash\nexec java -cp " + jar + " Main \"$@\"\n");
         return launcher;
     }
 
