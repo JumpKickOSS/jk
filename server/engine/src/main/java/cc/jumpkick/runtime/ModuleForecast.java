@@ -68,6 +68,14 @@ final class ModuleForecast {
 
     private boolean compileDepDirty;
     private boolean compileDirty;
+
+    /**
+     * True when the module's compile is dirty only because a compile-scope sibling is rebuilding —
+     * its own key hit — so the package and test steps that follow are dirty for the sibling's jar
+     * bytes, not for anything of this module's, and say so.
+     */
+    private boolean depOnlyDirty;
+
     private @Nullable String compileMainKey;
     private @Nullable String compileTestKey;
     private @Nullable String compileTestKotlinKey;
@@ -360,6 +368,9 @@ final class ModuleForecast {
                 compileMainKey = pred.actionKey();
                 steps.add(TaskForecaster.compileStep(TaskNames.COMPILE_MAIN, pred, compileDepDirty || force, req));
                 if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
+                // The key hit against the dependency's current output: nothing of this module's
+                // own moved, and its package and tests are dirty only for the sibling's jar bytes.
+                depOnlyDirty = compileDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !force;
             }
         }
     }
@@ -439,8 +450,17 @@ final class ModuleForecast {
                     null);
         }
         boolean hit = TaskForecaster.present(actionCache, key);
+        String why = "";
+        if (!hit) {
+            try {
+                why = TaskForecaster.langMissReason(
+                        actionCache, taskId, ActionKey.kotlincInputs(request, KotlinClasspathAbi.MEMOIZED_ONLY));
+            } catch (IOException e) {
+                Log.debug("kotlinStep: no miss reason", e);
+            }
+        }
         return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, "");
+                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why);
     }
 
     /**
@@ -540,8 +560,9 @@ final class ModuleForecast {
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
         String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion());
         boolean hit = TaskForecaster.present(actionCache, key);
+        String why = hit ? "" : TaskForecaster.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
         return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, "");
+                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why);
     }
 
     private void compileTest(Prepared prepared) throws Exception {
@@ -721,8 +742,12 @@ final class ModuleForecast {
         // testDepDirty: sibling on test classpath is rebuilding — suite must re-run even
         // when main compile stays cached (cli ← engine test-dep dogfood).
         if (compileDirty || testDirty || testDepDirty) {
-            steps.add(
-                    new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, "run tests · " + tests, null));
+            // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
+            // change: the runtime classpath is keyed on full bytes where the compile is keyed on
+            // ABI, and why-rebuilt must be able to tell the two apart.
+            boolean jarOnly = !testDirty && (depOnlyDirty || (!compileDirty && testDepDirty));
+            String why = jarOnly ? "run tests · dependency jar changed · " + tests : "run tests · " + tests;
+            steps.add(new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, why, null));
         } else {
             // Same factory as live run-tests default selection sources +
             // worker/engine jar extras (nested-engine CLI included) so the key matches the
@@ -821,8 +846,12 @@ final class ModuleForecast {
                         TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "package · module has no sources", null));
             }
         } else if (compileDirty) {
+            // Dependency-only dirtiness: the jar is re-packaged only if the compile really runs.
             steps.add(new TaskForecast.Task(
-                    TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · compile changed", null));
+                    TaskNames.PACKAGE_JAR,
+                    TaskForecast.Status.RUN,
+                    depOnlyDirty ? "repackage · only if the compile runs" : "repackage · compile changed",
+                    null));
         } else if (PackagingKeys.ownsPackaging(plugin)) {
             // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android).
             // The build runs the packager, not JarPackager, under a token bag that has nothing

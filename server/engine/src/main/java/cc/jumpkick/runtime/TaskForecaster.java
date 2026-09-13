@@ -38,6 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -545,6 +546,52 @@ public final class TaskForecaster {
                         null);
             }
         };
+    }
+
+    /**
+     * Why a stamp-language compile's key misses, read off the task's last record the way {@code
+     * JavaCompile.predict} reads javac's: the inputs both records spell — sources by content,
+     * {@code java-api:} declarations, {@code cp:} ABI tokens, {@code pp:} processors, {@code
+     * worker:} compiler — compared line by line, so a body-only dependency rewrite reads as no
+     * classpath change and an API change names the entry. Empty when there is no prior record or
+     * only the option-bearing lines moved.
+     */
+    static String langMissReason(ActionCache ac, String taskId, Map<String, String> now) {
+        Map<String, String> prior;
+        try {
+            var record = ac.lastFor(taskId);
+            if (record.isEmpty()) return "";
+            prior = record.get().inputs();
+        } catch (IOException e) {
+            return "";
+        }
+        int sources = 0;
+        List<String> declarations = new ArrayList<>();
+        List<String> api = new ArrayList<>();
+        List<String> processors = new ArrayList<>();
+        boolean compiler = false;
+        Set<String> keys = new HashSet<>(now.keySet());
+        keys.addAll(prior.keySet());
+        for (String k : keys) {
+            if (Objects.equals(now.get(k), prior.get(k))) continue;
+            if (k.startsWith("cp:")) api.add(fileName(k.substring(3)));
+            else if (k.startsWith("pp:")) processors.add(fileName(k.substring(3)));
+            else if (k.startsWith("java-api:")) declarations.add(fileName(k.substring("java-api:".length())));
+            else if (k.startsWith("worker:")) compiler = true;
+            else if (k.indexOf('/') >= 0 || k.indexOf('\\') >= 0) sources++;
+        }
+        List<String> parts = new ArrayList<>();
+        if (sources > 0) parts.add(count(sources, "source") + " changed");
+        if (!declarations.isEmpty()) parts.add("Java declarations changed (" + String.join(", ", declarations) + ")");
+        if (!api.isEmpty()) parts.add("dependency ABI changed (" + String.join(", ", api) + ")");
+        if (!processors.isEmpty()) parts.add("processor changed (" + String.join(", ", processors) + ")");
+        if (compiler) parts.add("compiler changed");
+        return String.join(" · ", parts);
+    }
+
+    private static String fileName(String path) {
+        Path name = Path.of(path).getFileName();
+        return name == null ? path : name.toString();
     }
 
     /**
