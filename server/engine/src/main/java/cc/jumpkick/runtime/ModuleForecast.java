@@ -706,8 +706,12 @@ final class ModuleForecast {
         List<String> javacArgs = prepared.javacArgs();
         List<Path> processorCp = prepared.processorCp();
         if (compileDirty) {
+            // Dependency-only dirtiness: the tests recompile only if main really does.
             steps.add(new TaskForecast.Task(
-                    TaskNames.COMPILE_TEST, TaskForecast.Status.RUN, "recompile · main changed", null));
+                    TaskNames.COMPILE_TEST,
+                    TaskForecast.Status.RUN,
+                    depOnlyDirty ? "recompile · only if the compile runs" : "recompile · main changed",
+                    null));
             testDirty = true;
         } else if (!testSources.javacSources().isEmpty()) {
             List<Path> baseCp = new ArrayList<>();
