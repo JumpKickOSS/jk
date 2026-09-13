@@ -869,12 +869,20 @@ public final class PlannerSupport {
             List<Path> testRuntimeCp)
             throws IOException {
         return runTestsStampKey(
-                dir, project, compact, mainClasses, mainClassesFingerprint, lockFile, testRuntimeCp, null);
+                dir,
+                project,
+                compact,
+                mainClasses,
+                mainClassesFingerprint,
+                lockFile,
+                testRuntimeCp,
+                TestStamp.CompileTestKeys.NONE);
     }
 
     /**
-     * {@code compileTestKey} is the test compile's action key when the module compiles javac test
-     * sources — the same input the live run-tests folds through {@link TestStamp#withCompileTest}.
+     * {@code compileTestKeys} are the test compiles' action keys, one per language the module
+     * compiles tests in — the same inputs the live run-tests folds through {@link
+     * TestStamp#withCompileTest}.
      */
     public static @Nullable String runTestsStampKey(
             Path dir,
@@ -884,7 +892,7 @@ public final class PlannerSupport {
             @Nullable String mainClassesFingerprint,
             Path lockFile,
             List<Path> testRuntimeCp,
-            @Nullable String compileTestKey)
+            TestStamp.CompileTestKeys compileTestKeys)
             throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
@@ -898,7 +906,7 @@ public final class PlannerSupport {
                 PlannerTest.TestSources.collect(project, dir, compact, suites).all();
         BuildLayout layout = BuildLayout.of(dir, project);
         List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
-        List<String> stampExtras = TestStamp.withCompileTest(testStampExtras(dir, project), compileTestKey);
+        List<String> stampExtras = TestStamp.withCompileTest(testStampExtras(dir, project), compileTestKeys);
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras);

@@ -75,9 +75,17 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<String> ACTION_KEY = BuildPlanKey.scalar("action-key", String.class);
 
-    /** The test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
+    /** The javac test compile's action key — a run-tests stamp input, absent when no javac test sources exist. */
     public static final BuildPlanKey<String> COMPILE_TEST_ACTION_KEY =
             BuildPlanKey.scalar("compile-test-action-key", String.class);
+
+    /** The Kotlin test compile's action key — the same stamp input, absent when no Kotlin test sources exist. */
+    public static final BuildPlanKey<String> COMPILE_TEST_KOTLIN_ACTION_KEY =
+            BuildPlanKey.scalar("compile-test-kotlin-action-key", String.class);
+
+    /** The Groovy test compile's action key — the same stamp input, absent when no Groovy test sources exist. */
+    public static final BuildPlanKey<String> COMPILE_TEST_GROOVY_ACTION_KEY =
+            BuildPlanKey.scalar("compile-test-groovy-action-key", String.class);
 
     /**
      * The option digest each compile checked its freshness stamp against, published for the
@@ -136,6 +144,8 @@ public final class BuildPlanner {
             TEST_RUNTIME_CP,
             ACTION_KEY,
             COMPILE_TEST_ACTION_KEY,
+            COMPILE_TEST_KOTLIN_ACTION_KEY,
+            COMPILE_TEST_GROOVY_ACTION_KEY,
             JAVA_STAMP_DIGEST,
             KOTLIN_STAMP_DIGEST,
             GROOVY_STAMP_DIGEST,

@@ -68,6 +68,8 @@ final class ModuleForecast {
     private boolean compileDirty;
     private @Nullable String compileMainKey;
     private @Nullable String compileTestKey;
+    private @Nullable String compileTestKotlinKey;
+    private @Nullable String compileTestGroovyKey;
     private final Path dir;
     private boolean haveTests;
     private @Nullable Boolean knownResourceDrift;
@@ -557,6 +559,31 @@ final class ModuleForecast {
             // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
             steps.add(new TaskForecast.Task(TaskNames.COMPILE_TEST, TaskForecast.Status.CACHED, "", null));
         }
+        if (!compileDirty) {
+            compileTestKotlinKey =
+                    testSources.ktTest().isEmpty() ? null : lastTestCompileKey(TaskNames.COMPILE_TEST_KOTLIN, layout);
+            compileTestGroovyKey =
+                    testSources.gvTest().isEmpty() ? null : lastTestCompileKey(TaskNames.COMPILE_TEST_GROOVY, layout);
+        }
+    }
+
+    /**
+     * The key the live Kotlin or Groovy test compile will replay: the record its {@code tasks/}
+     * pointer names. Neither compiler has a content predictor here, so the forecast assumes the
+     * compile fresh (above) and folds the key of the record a fresh compile restores from — the
+     * same key the live stamp folded when it was stored. A module whose tests have never compiled
+     * has no pointer and folds nothing, as the live run does on its first build.
+     */
+    private @Nullable String lastTestCompileKey(String task, BuildLayout layout) {
+        try {
+            return actionCache
+                    .lastFor(ActionKey.qualifiedTaskId(task, layout.testClassesDir()))
+                    .map(ActionCache.ActionRecord::actionKey)
+                    .orElse(null);
+        } catch (IOException e) {
+            Log.debug("lastTestCompileKey: no key for " + task, e);
+            return null;
+        }
     }
 
     private void runTestsStep(Prepared prepared) throws Exception {
@@ -589,7 +616,14 @@ final class ModuleForecast {
                 if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
             }
             String stampKey = PlannerSupport.runTestsStampKey(
-                    dir, project, compact, layout.classesDir(), mainFp, lockFile, testRt, compileTestKey);
+                    dir,
+                    project,
+                    compact,
+                    layout.classesDir(),
+                    mainFp,
+                    lockFile,
+                    testRt,
+                    new TestStamp.CompileTestKeys(compileTestKey, compileTestKotlinKey, compileTestGroovyKey));
             Perf.end("  test-stamp-key", ts);
             Optional<ActionCache.ActionRecord> marker =
                     stampKey == null ? Optional.empty() : TaskForecaster.presentRecord(actionCache, stampKey);

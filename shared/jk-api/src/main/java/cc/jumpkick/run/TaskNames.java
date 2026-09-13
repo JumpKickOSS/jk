@@ -29,6 +29,10 @@ public final class TaskNames {
 
     public static final String COMPILE_KOTLIN = "compile-kotlin";
     public static final String COMPILE_TEST = "compile-test";
+    /** The Kotlin and Groovy halves of compile-test: action-cached under ids of their own. */
+    public static final String COMPILE_TEST_KOTLIN = "compile-test-kotlin";
+
+    public static final String COMPILE_TEST_GROOVY = "compile-test-groovy";
 
     /** Shared test helpers compiled to a directory that is never an artifact. */
     public static final String COMPILE_TEST_FIXTURES = "compile-test-fixtures";

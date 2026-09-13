@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -143,19 +144,64 @@ class TestStampTest {
                 List.of(),
                 lock,
                 List.of(),
-                TestStamp.withCompileTest(extras, "compile-key-one"));
+                TestStamp.withCompileTest(extras, javac("compile-key-one")));
         String underAnotherCompile = TestStamp.computeKey(
                 List.of(testSrc),
                 mainClasses,
                 List.of(),
                 lock,
                 List.of(),
-                TestStamp.withCompileTest(extras, "compile-key-two"));
+                TestStamp.withCompileTest(extras, javac("compile-key-two")));
 
         assertThat(underOneCompile).isNotEqualTo(bare).isNotEqualTo(underAnotherCompile);
-        assertThat(TestStamp.withCompileTest(extras, null))
-                .as("a module with no javac test sources has no compile key and stamps as before")
+        assertThat(TestStamp.withCompileTest(extras, TestStamp.CompileTestKeys.NONE))
+                .as("a module with no test compile has no key and stamps as before")
                 .isEqualTo(extras);
+    }
+
+    /**
+     * The Kotlin and Groovy test compiles are stamp inputs on the same footing as javac's: a
+     * changed kotlinc or groovyc key re-runs the tests, and a key under one language is not a key
+     * under another.
+     */
+    @Test
+    void a_changed_kotlin_or_groovy_test_compile_key_changes_the_stamp(@TempDir Path dir) throws IOException {
+        Path testSrc = write(dir.resolve("FooTest.kt"), "class FooTest");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
+        List<String> extras = List.of("jk:1.0");
+
+        String kotlinOne = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys(null, "kt-one", null));
+        String kotlinTwo = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys(null, "kt-two", null));
+        String groovyOne = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys(null, null, "kt-one"));
+        String javacOne = key(testSrc, mainClasses, lock, javac("kt-one"));
+        String mixed = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys("j", "kt-one", null));
+
+        assertThat(kotlinOne)
+                .as("a changed Kotlin test-compile key changes the stamp")
+                .isNotEqualTo(kotlinTwo);
+        assertThat(kotlinOne)
+                .as("the same key text under another language is another stamp")
+                .isNotEqualTo(groovyOne)
+                .isNotEqualTo(javacOne);
+        assertThat(mixed).as("a mixed module folds every language's key").isNotEqualTo(kotlinOne);
+        assertThat(TestStamp.withCompileTest(extras, new TestStamp.CompileTestKeys(null, "kt", "gv")))
+                .containsExactlyInAnyOrder("jk:1.0", "compile-test-kotlin:kt", "compile-test-groovy:gv");
+    }
+
+    private static TestStamp.CompileTestKeys javac(String key) {
+        return new TestStamp.CompileTestKeys(key, null, null);
+    }
+
+    private static String key(Path testSrc, Path mainClasses, Path lock, TestStamp.CompileTestKeys keys)
+            throws IOException {
+        return Objects.requireNonNull(TestStamp.computeKey(
+                List.of(testSrc),
+                mainClasses,
+                List.of(),
+                lock,
+                List.of(),
+                TestStamp.withCompileTest(List.of("jk:1.0"), keys)));
     }
 
     @Test

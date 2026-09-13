@@ -283,7 +283,7 @@ public final class PlannerTest {
             throws Exception {
         if (src.gvTest().isEmpty()) return;
         ctx.label("compiling " + src.gvTest().size() + " Groovy test sources");
-        String gvTaskId = ActionKey.qualifiedTaskId("compile-test-groovy", testClasses);
+        String gvTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_GROOVY, testClasses);
         List<Path> gvJavaRoots = null;
         if (mixedTestGv) {
             gvJavaRoots = new ArrayList<>();
@@ -300,6 +300,7 @@ public final class PlannerTest {
                     ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
             throw new RuntimeException("test groovyc reported errors");
         }
+        ctx.put(COMPILE_TEST_GROOVY_ACTION_KEY, gr.actionKey());
     }
 
     /**
@@ -319,7 +320,7 @@ public final class PlannerTest {
             throws Exception {
         if (src.ktTest().isEmpty()) return;
         ctx.label("compiling " + src.ktTest().size() + " Kotlin test sources");
-        String ktTaskId = ActionKey.qualifiedTaskId("compile-test-kotlin", testClasses);
+        String ktTaskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST_KOTLIN, testClasses);
         Path ktWorkingDir = ActionTree.INCREMENTAL_KOTLIN
                 .under(CacheTree.ACTIONS.under(in.cache()))
                 .resolve(ktTaskId);
@@ -340,6 +341,7 @@ public final class PlannerTest {
                     ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");
             throw new RuntimeException("test kotlinc reported errors");
         }
+        ctx.put(COMPILE_TEST_KOTLIN_ACTION_KEY, kr.actionKey());
     }
 
     /** Java/Scala test sources, against the Kotlin/Groovy test output in a mixed module. */
@@ -485,7 +487,7 @@ public final class PlannerTest {
                     }
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
                             testStampExtras(workerJars, effectiveSel, projectUnderTest.build(), in.dir()),
-                            ctx.get(COMPILE_TEST_ACTION_KEY).orElse(null)));
+                            compileTestKeys(ctx)));
                     if (affected != null && !affected.stampToken().isBlank()) {
                         extras.add("affected:" + affected.stampToken());
                     }
@@ -632,6 +634,18 @@ public final class PlannerTest {
         } catch (AffectedTestRun.RankingRefused e) {
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    /**
+     * The test compiles' action keys compile-test published, one per language it compiled tests
+     * in. Each is an input to the suite's outcome — the compiler options, plugins and target that
+     * shaped the test classes — and nothing else in the stamp reads them.
+     */
+    static TestStamp.CompileTestKeys compileTestKeys(TaskContext ctx) {
+        return new TestStamp.CompileTestKeys(
+                ctx.get(COMPILE_TEST_ACTION_KEY).orElse(null),
+                ctx.get(COMPILE_TEST_KOTLIN_ACTION_KEY).orElse(null),
+                ctx.get(COMPILE_TEST_GROOVY_ACTION_KEY).orElse(null));
     }
 
     /**

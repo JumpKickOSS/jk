@@ -34,20 +34,41 @@ public final class TestStamp {
     public static final String SKIPPED = "tests.skipped";
     public static final String FAILED = "tests.failed";
 
-    /** Prefix of the run-tests input that names the test compile's action key. */
+    /** Prefix of the run-tests input that names the javac test compile's action key. */
     public static final String COMPILE_TEST = "compile-test:";
 
+    /** Prefix of the run-tests input that names the Kotlin test compile's action key. */
+    public static final String COMPILE_TEST_KOTLIN = "compile-test-kotlin:";
+
+    /** Prefix of the run-tests input that names the Groovy test compile's action key. */
+    public static final String COMPILE_TEST_GROOVY = "compile-test-groovy:";
+
     /**
-     * {@code extras} with the test compile as a run-tests input. Its action key covers the test
-     * javac options, processor path, release and compile classpath, so an edit to {@code
-     * [javac.test]} that recompiles the tests also re-runs them; nothing else in the stamp reads
-     * those. A module with no javac test sources has no such key and adds nothing.
+     * The test compiles' action keys, one per language the module compiles tests in. Each key
+     * covers that compiler's options, plugins, target and classpath, so an edit that recompiles
+     * the tests also re-runs them; nothing else in the stamp reads those. A language the module
+     * has no test sources in has no key and adds nothing.
      */
-    public static List<String> withCompileTest(List<String> extras, @Nullable String compileTestKey) {
-        if (compileTestKey == null || compileTestKey.isBlank()) return extras;
+    public record CompileTestKeys(
+            @Nullable String javac,
+            @Nullable String kotlin,
+            @Nullable String groovy) {
+
+        /** A module that compiles no tests through any of the three. */
+        public static final CompileTestKeys NONE = new CompileTestKeys(null, null, null);
+    }
+
+    /** {@code extras} with every present test-compile key as a run-tests input. */
+    public static List<String> withCompileTest(List<String> extras, CompileTestKeys keys) {
         List<String> out = new ArrayList<>(extras);
-        out.add(COMPILE_TEST + compileTestKey);
-        return List.copyOf(out);
+        addKey(out, COMPILE_TEST, keys.javac());
+        addKey(out, COMPILE_TEST_KOTLIN, keys.kotlin());
+        addKey(out, COMPILE_TEST_GROOVY, keys.groovy());
+        return out.size() == extras.size() ? extras : List.copyOf(out);
+    }
+
+    private static void addKey(List<String> out, String prefix, @Nullable String key) {
+        if (key != null && !key.isBlank()) out.add(prefix + key);
     }
 
     /**
