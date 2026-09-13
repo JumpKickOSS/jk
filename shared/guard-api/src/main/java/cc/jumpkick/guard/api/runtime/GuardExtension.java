@@ -34,7 +34,8 @@ import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
  * {@link Output} and {@link Violations} parameters from the views jk hands the forked JVM, collects
  * what each {@link Guard} reports, and appends one report line per guard for the engine. A guard
  * that throws is reported as such and the next guard still runs; a guard's violations never fail
- * the JUnit run — the verdict is the engine's.
+ * the JUnit run — the verdict is the engine's. Every other test in the same JVM keeps its own
+ * verdict: the extension touches nothing that is not a {@link Guard}.
  */
 public final class GuardExtension
         implements ParameterResolver,
@@ -105,13 +106,19 @@ public final class GuardExtension
         CURRENT.set(g == null ? null : g.id());
     }
 
+    /**
+     * A {@link Guard} that throws is a scanner failure the engine reports under the guard's id, so
+     * its exception is recorded and swallowed. Any other test's exception is that test's own
+     * failure: with autodetection on, this extension sees every test in the JVM, and a swallow
+     * here would turn the whole tier green.
+     */
     @Override
-    public void handleTestExecutionException(ExtensionContext ctx, Throwable t) {
+    public void handleTestExecutionException(ExtensionContext ctx, Throwable t) throws Throwable {
+        if (ctx.getRequiredTestMethod().getAnnotation(Guard.class) == null) throw t;
         Report.Collector c = collector(ctx);
         if (t instanceof OwnerMissing) c.ownerMissing(t.getMessage() == null ? "owner missing" : t.getMessage());
         else if (t instanceof Skipped) c.skipped(t.getMessage() == null ? "skipped" : t.getMessage());
         else c.threw(t);
-        // swallowed on purpose: the engine reports scanner-failed under the guard's id
     }
 
     @Override
