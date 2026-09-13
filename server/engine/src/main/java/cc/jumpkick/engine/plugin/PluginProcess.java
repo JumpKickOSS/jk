@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,6 +30,24 @@ import org.jspecify.annotations.Nullable;
 public final class PluginProcess {
 
     private PluginProcess() {}
+
+    /**
+     * The conversation ended because the parent's own protocol handler threw. The worker was
+     * stopped on the parent's account, so its exit code says nothing; the handler's exception is
+     * the cause, and a caller that reports worker deaths tells this one apart by type.
+     */
+    public static final class HandlerFailure extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        public HandlerFailure(RuntimeException handler) {
+            super("plugin protocol handler threw " + handler, handler);
+        }
+
+        /** The handler's own exception. */
+        public RuntimeException handler() {
+            return (RuntimeException) Objects.requireNonNull(getCause());
+        }
+    }
 
     /** A handle for talking back to a running plugin over its stdin. */
     public interface Conversation {
@@ -314,7 +333,7 @@ public final class PluginProcess {
             if (handler != null) {
                 // The finally below stops the worker; the exit code of a kill we asked for says
                 // nothing, so the diagnostic carries the handler's own exception instead.
-                throw new IOException("plugin protocol handler threw " + handler, handler);
+                throw new HandlerFailure(handler);
             }
             IOException e = pumpError.get();
             if (e != null && !abandoned.get()) {

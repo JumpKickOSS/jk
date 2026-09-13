@@ -2,12 +2,17 @@
 package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.TestFailureInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -225,6 +230,51 @@ class JUnitLauncherAggregatorTest {
         assertThat(captured.get(0)).containsExactly(true, true); // static @Test
         assertThat(captured.get(1)).containsExactly(true, false); // parameterized
         assertThat(captured.get(2)).containsExactly(false, false); // container
+    }
+
+    /**
+     * A decoder that throws ends the worker conversation on the parent's own bug, and the report
+     * must say so: a {@code (test run)} row carrying the handler's exception, not a worker-exit row
+     * that would send the reader hunting for a dead JVM.
+     */
+    @Test
+    void a_throwing_decoder_yields_the_handler_row_not_a_worker_exit_row() {
+        var listener = new TestProgressListener() {
+            @Override
+            public void onWarning(String code, String message) {
+                throw new IllegalStateException("decoder choked on " + code);
+            }
+        };
+        var queue = new ConcurrentLinkedDeque<>(List.of("com.acme.BTest"));
+        var lastClass = new AtomicReference<>("");
+        var handler = JUnitLauncher.pullHandler(queue, new JUnitLauncher.ResultAggregator(listener, 2), lastClass);
+        PluginProcess.Conversation convo = new PluginProcess.Conversation() {
+            @Override
+            public void send(String line) {}
+
+            @Override
+            public void closeInput() {}
+        };
+        handler.accept("{\"event\":\"ready\"}", convo);
+        RuntimeException thrown = catchThrowableOfType(
+                RuntimeException.class,
+                () -> handler.accept("{\"event\":\"warning\",\"code\":\"jupiter-parallel\"}", convo));
+        PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
+
+        TestFailureInfo row = WorkerFailureRow.of("m", 2, -1, lastClass.get(), "", end.handler());
+        assertThat(row.method()).isEqualTo("(test run)");
+        assertThat(row.exceptionClass()).isEqualTo("java.lang.IllegalStateException");
+        assertThat(row.message())
+                .contains("handler threw IllegalStateException: decoder choked on jupiter-parallel")
+                .contains("com.acme.BTest")
+                .doesNotContain("exited");
+        assertThat(row.stack()).contains("IllegalStateException").contains("decoder choked");
+        assertThat(row.worker()).isEqualTo(2);
+
+        TestFailureInfo died = WorkerFailureRow.of("m", 2, 137, "com.acme.BTest", "killed", null);
+        assertThat(died.method()).isEqualTo("(worker 2)");
+        assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class dispatched: com.acme.BTest)");
+        assertThat(died.stack()).isEqualTo("killed");
     }
 
     @Test

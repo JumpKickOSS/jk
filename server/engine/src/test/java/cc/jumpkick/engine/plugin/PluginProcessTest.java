@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.jsonl.Jsonl;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -160,8 +159,10 @@ class PluginProcessTest {
                             throw new IllegalStateException("handler boom");
                         },
                         null))
-                .isInstanceOf(IOException.class)
+                .isInstanceOf(PluginProcess.HandlerFailure.class)
                 .hasMessageContaining("handler boom")
-                .hasCauseInstanceOf(IllegalStateException.class);
+                .hasCauseInstanceOf(IllegalStateException.class)
+                .extracting(e -> ((PluginProcess.HandlerFailure) e).handler().getMessage())
+                .isEqualTo("handler boom");
     }
 }

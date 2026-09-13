@@ -606,6 +606,7 @@ public final class JUnitLauncher {
         int[] exits = new int[actualWorkers];
         var captures = new ArrayList<CaptureBuffer>();
         var lastClasses = new ArrayList<AtomicReference<String>>();
+        var handlerFailures = new ArrayList<AtomicReference<@Nullable RuntimeException>>();
 
         for (int w = 0; w < actualWorkers; w++) {
             // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
@@ -620,13 +621,25 @@ public final class JUnitLauncher {
             captures.add(crash);
             final var last = new AtomicReference<String>("");
             lastClasses.add(last);
+            final var handlerFailure = new AtomicReference<@Nullable RuntimeException>();
+            handlerFailures.add(handlerFailure);
             final int totalWorkers = actualWorkers;
             // Virtual: the thread blocks on the child's stdout for the worker's whole life —
             // exactly the shape VT is for.
             Thread t = Thread.ofVirtual()
                     .name("jk-test-worker-" + workerId)
                     .start(() -> exits[idx] = driveWorker(
-                            javaBinary, classpath, workerId, totalWorkers, args, queue, agg, listener, crash, last));
+                            javaBinary,
+                            classpath,
+                            workerId,
+                            totalWorkers,
+                            args,
+                            queue,
+                            agg,
+                            listener,
+                            crash,
+                            last,
+                            handlerFailure));
             workerThreads.add(t);
         }
         // Each worker thread owns its process (via PluginProcess.converse) and
@@ -651,7 +664,8 @@ public final class JUnitLauncher {
             allFailures.addAll(r.failures());
             r.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
         }
-        if (total == 0 && worstExit != 0) {
+        boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
+        if (total == 0 && worstExit != 0 && !handlerFailed) {
             // No test events but a worker died — surface what the crashed worker(s)
             // printed (the dropped stderr) instead of a bare "runner exited N".
             StringBuilder crash = new StringBuilder();
@@ -672,19 +686,21 @@ public final class JUnitLauncher {
         // A worker that dies mid-suite while its siblings keep going must not vanish silently:
         // its in-flight class is neither run nor reported, and the suite would go green with a
         // shortfall. Surface every abnormal exit as a failure naming the worker's last class
-        // (idle-watchdog kills land here too). Skipped on user cancel: those exits
-        // are the kill we asked for.
+        // (idle-watchdog kills land here too), and a conversation the parent's own handler ended
+        // as the parent-side bug it is. Skipped on user cancel: those exits are the kill we
+        // asked for.
         if (worstExit != 0 && !SessionCancel.cancelled()) {
             for (int i = 0; i < actualWorkers; i++) {
                 if (exits[i] == 0) continue;
                 total += 1;
                 failed += 1;
-                String cls = lastClasses.get(i).get();
-                String why = "test worker exited " + exits[i] + " mid-run"
-                        + (cls.isBlank() ? "" : " (last class dispatched: " + cls + ")");
-                String who = "(worker " + (workerIdBase + i + 1) + ")";
-                allFailures.add(new TestFailureInfo(
-                        moduleLabel, "", cls, who, "", why, captures.get(i).text(), workerIdBase + i + 1));
+                allFailures.add(WorkerFailureRow.of(
+                        moduleLabel,
+                        workerIdBase + i + 1,
+                        exits[i],
+                        lastClasses.get(i).get(),
+                        captures.get(i).text(),
+                        handlerFailures.get(i).get()));
             }
         }
         String cancelledWhy = CancelledShortfall.of(SessionCancel.cancelled(), worstExit, queue.size());
@@ -697,24 +713,14 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Per-worker reader thread. Reads the child's stdout line-by-line. On each {@code ready} event,
-     * dispatch the next class from the shared queue (or {@code DONE} when the queue is empty) by
-     * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
-     * to the parent's stdout, tagged with the worker id.
+     * The pull protocol's parent side: each {@code ready} pulls the next class from the shared
+     * queue onto the child's stdin ({@code DONE} once the queue is empty); every other event is
+     * the aggregator's. A throw from here ends the conversation as a {@link
+     * PluginProcess.HandlerFailure}.
      */
-    private int driveWorker(
-            Path javaBinary,
-            String classpath,
-            int workerId,
-            int totalWorkers,
-            List<String> args,
-            ConcurrentLinkedDeque<String> queue,
-            ResultAggregator aggregator,
-            TestProgressListener listener,
-            CaptureBuffer crash,
-            AtomicReference<String> lastClass) {
-        // Pull protocol: each "ready" pulls the next class from the shared queue.
-        BiConsumer<String, PluginProcess.Conversation> handler = (json, convo) -> {
+    static BiConsumer<String, PluginProcess.Conversation> pullHandler(
+            ConcurrentLinkedDeque<String> queue, ResultAggregator aggregator, AtomicReference<String> lastClass) {
+        return (json, convo) -> {
             String event = Jsonl.str(json, "event");
             if ("ready".equals(event)) {
                 String next = queue.pollFirst();
@@ -729,6 +735,28 @@ public final class JUnitLauncher {
                 aggregator.accept(json);
             }
         };
+    }
+
+    /**
+     * Per-worker reader thread. Reads the child's stdout line-by-line. On each {@code ready} event,
+     * dispatch the next class from the shared queue (or {@code DONE} when the queue is empty) by
+     * writing one line to the child's stdin. Non-protocol lines are user test output — passed through
+     * to the parent's stdout, tagged with the worker id. A handler that throws ends the worker with
+     * {@code -1} and leaves its exception in {@code handlerFailure} for the summary to name.
+     */
+    private int driveWorker(
+            Path javaBinary,
+            String classpath,
+            int workerId,
+            int totalWorkers,
+            List<String> args,
+            ConcurrentLinkedDeque<String> queue,
+            ResultAggregator aggregator,
+            TestProgressListener listener,
+            CaptureBuffer crash,
+            AtomicReference<String> lastClass,
+            AtomicReference<@Nullable RuntimeException> handlerFailure) {
+        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, lastClass);
         Consumer<String> passthrough = line -> {
             crash.add(line);
             listener.onUserOutput(workerId, line);
@@ -750,6 +778,10 @@ public final class JUnitLauncher {
                     handler,
                     passthrough,
                     TestWorkerEnv.idleTimeoutMs());
+        } catch (PluginProcess.HandlerFailure e) {
+            handlerFailure.set(e.handler());
+            listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));
+            return -1;
         } catch (IOException e) {
             listener.onUserOutput(workerId, "reader error: " + e.getMessage());
             return -1;
