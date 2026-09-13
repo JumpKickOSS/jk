@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Scope;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
@@ -130,6 +131,39 @@ class LockfileRoundTripTest {
         assertThat(parsed.artifacts()).hasSize(1);
         assertThat(parsed.artifacts().getFirst().name()).isEqualTo("com.example:widget");
         assertThat(parsed.artifacts().getFirst().deps()).containsExactly("com.example:dep@2.0.0");
+    }
+
+    /** An edge line says what was picked and, after {@code <-}, what the parent asked for. */
+    @Test
+    void an_edge_carries_the_selector_that_produced_its_version() {
+        String ref = "com.example:dep:jar:@2.0.0";
+        Lockfile original = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk 0.13.3",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(new Lockfile.Artifact(
+                        "com.example:widget:jar:",
+                        "1.2.3",
+                        "central+https://repo.maven.apache.org/maven2/",
+                        "sha256:0123abcd",
+                        null,
+                        List.of(Scope.MAIN),
+                        List.of(ref, "com.example:other:jar:@1.0"),
+                        null,
+                        null,
+                        null,
+                        Map.of(ref, "[2.0,3.0)"))));
+
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("\"com.example:dep:jar:@2.0.0 <- [2.0,3.0)\",")
+                .contains("\"com.example:other:jar:@1.0\",");
+
+        Lockfile.Artifact parsed = LockfileReader.parse(rendered).artifacts().getFirst();
+        assertThat(parsed.deps()).containsExactly(ref, "com.example:other:jar:@1.0");
+        assertThat(parsed.declaredFor(ref)).isEqualTo("[2.0,3.0)");
+        assertThat(parsed.declaredFor("com.example:other:jar:@1.0")).isNull();
+        assertThat(parsed.declared()).isEqualTo(original.artifacts().getFirst().declared());
     }
 
     @Test

@@ -21,6 +21,7 @@ import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -185,8 +186,12 @@ public final class PubGrubResolver implements Resolver {
         // without ch.qos.logback.core (ea6dc765). Do not reintroduce a per-edge exclusion filter
         // below: `decisions.containsKey` is the whole rule.
         Map<String, Set<String>> dependsOn = new HashMap<>();
+        // Edge ref → the selector the POM wrote for it, so the lock can show what was asked for
+        // beside what was picked. KMP and relocation edges are the resolver's own, not a POM's.
+        Map<String, Map<String, String>> declaredOn = new HashMap<>();
         for (Map.Entry<String, String> e : decisions.entrySet()) {
             Set<String> deps = new LinkedHashSet<>();
+            Map<String, String> declared = new LinkedHashMap<>();
             if (pomBuilder != null) {
                 // Mirror MavenPackageSource's KMP rewrite: the dep edges must show the
                 // GMM-selected platform artifact, not the POM's platform fallback. A rewritten
@@ -235,10 +240,13 @@ public final class PubGrubResolver implements Resolver {
                     if (d.version() == null || d.version().isBlank()) continue;
                     String childPkg = MavenPackageSource.packageKey(d);
                     if (!decisions.containsKey(childPkg)) continue;
-                    deps.add(childPkg + "@" + decisions.get(childPkg));
+                    String ref = childPkg + "@" + decisions.get(childPkg);
+                    deps.add(ref);
+                    declared.put(ref, d.version().trim());
                 }
             }
             dependsOn.put(e.getKey(), deps);
+            declaredOn.put(e.getKey(), declared);
         }
 
         Map<String, Resolution.ResolvedModule> out = new TreeMap<>();
@@ -246,7 +254,10 @@ public final class PubGrubResolver implements Resolver {
             out.put(
                     e.getKey(),
                     new Resolution.ResolvedModule(
-                            e.getKey(), e.getValue(), new ArrayList<>(dependsOn.getOrDefault(e.getKey(), Set.of()))));
+                            e.getKey(),
+                            e.getValue(),
+                            new ArrayList<>(dependsOn.getOrDefault(e.getKey(), Set.of())),
+                            declaredOn.getOrDefault(e.getKey(), Map.of())));
         }
         return new Resolution(out);
     }

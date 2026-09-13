@@ -13,7 +13,10 @@ import org.jspecify.annotations.Nullable;
  * matching the query, and every provenance path to each — flat parallel lists per the wire
  * discipline. {@code pathOwners.get(i)} is the index (as a string) into {@code matches} that
  * {@code paths.get(i)} belongs to; each path is {@code module@version} steps joined with
- * {@code >}. The client owns matching-free rendering: split and style.
+ * {@code >}. {@code pathSelectors.get(i)} carries, for the same path, the selector each step was
+ * declared with — one per step, joined with a tab ({@link #STEP_SELECTOR_SEPARATOR}), empty
+ * where the lock does not say; a range selector may contain {@code >}, which is why it does not
+ * ride inside the path. The client owns matching-free rendering: split and style.
  *
  * <p>{@code error} non-null means the lookup could not run; its message is ready to print.
  */
@@ -22,10 +25,14 @@ public record WhyReport(
         List<String> matchNames,
         List<String> matchVersions,
         List<String> pathOwners,
-        List<String> paths) {
+        List<String> paths,
+        List<String> pathSelectors) {
+
+    /** Joins the per-step selectors of one path; no selector grammar contains a tab. */
+    public static final String STEP_SELECTOR_SEPARATOR = "\t";
 
     public static WhyReport error(String message) {
-        return new WhyReport(message, List.of(), List.of(), List.of(), List.of());
+        return new WhyReport(message, List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     public String encode() {
@@ -35,7 +42,14 @@ public record WhyReport(
                 .array("matchVersions", matchVersions)
                 .array("pathOwners", pathOwners)
                 .array("paths", paths)
+                .array("pathSelectors", pathSelectors)
                 .finish();
+    }
+
+    /** The per-step selectors of path {@code index}, {@code ""} where none is known; empty when the wire had none. */
+    public List<String> selectorsOf(int index) {
+        if (index >= pathSelectors.size()) return List.of();
+        return List.of(pathSelectors.get(index).split(STEP_SELECTOR_SEPARATOR, -1));
     }
 
     /**
@@ -54,11 +68,15 @@ public record WhyReport(
             row.put("name", matchNames.get(i));
             row.put("version", i < matchVersions.size() ? matchVersions.get(i) : "");
             List<String> mine = new ArrayList<>();
+            List<List<String>> declared = new ArrayList<>();
             String idx = Integer.toString(i);
             for (int p = 0; p < paths.size(); p++) {
-                if (idx.equals(pathOwners.get(p))) mine.add(paths.get(p));
+                if (!idx.equals(pathOwners.get(p))) continue;
+                mine.add(paths.get(p));
+                declared.add(selectorsOf(p));
             }
             row.put("paths", mine);
+            row.put("declared", declared);
             matches.add(row);
         }
         m.put("matches", matches);
@@ -71,6 +89,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "matchNames"),
                 Jsonl.strArray(line, "matchVersions"),
                 Jsonl.strArray(line, "pathOwners"),
-                Jsonl.strArray(line, "paths"));
+                Jsonl.strArray(line, "paths"),
+                Jsonl.strArray(line, "pathSelectors"));
     }
 }

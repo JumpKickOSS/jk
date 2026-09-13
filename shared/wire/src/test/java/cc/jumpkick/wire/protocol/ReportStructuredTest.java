@@ -19,13 +19,18 @@ class ReportStructuredTest {
                 List.of("g:a", "g:b"),
                 List.of("1.0", "2.0"),
                 List.of("0", "1", "0"),
-                List.of("root>g:a@1.0", "root>g:b@2.0", "other>g:a@1.0"));
+                List.of("root>g:a@1.0", "root>g:b@2.0", "other>g:a@1.0"),
+                List.of("^1\t1.0", "\t[2.0,3.0)", "\t"));
         Map<String, Object> m = r.toStructured();
         List<Map<String, Object>> matches = (List<Map<String, Object>>) requireNonNull(m.get("matches"));
         assertThat(matches).hasSize(2);
         assertThat(matches.get(0).get("name")).isEqualTo("g:a");
         assertThat((List<String>) matches.get(0).get("paths")).containsExactly("root>g:a@1.0", "other>g:a@1.0");
         assertThat((List<String>) matches.get(1).get("paths")).containsExactly("root>g:b@2.0");
+        // One selector list per path, one entry per step, "" where the lock does not say.
+        assertThat((List<List<String>>) matches.get(0).get("declared"))
+                .containsExactly(List.of("^1", "1.0"), List.of("", ""));
+        assertThat((List<List<String>>) matches.get(1).get("declared")).containsExactly(List.of("", "[2.0,3.0)"));
         assertThat(WhyReport.error("boom").toStructured()).containsEntry("error", "boom");
     }
 

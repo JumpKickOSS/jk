@@ -23,7 +23,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:58d2da30f058512a1e7f914e39241deca4dff5c27a085b4ed2faa9e7208067f6"
 scopes   = ["main"]
 deps = [
-  "org.apache.commons:commons-lang3:jar:@3.20.0",
+  "org.apache.commons:commons-lang3:jar:@3.20.0 <- 3.20.0",
 ]
 
 [[artifact]]
@@ -47,10 +47,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dcafc4"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
-  "org.opentest4j:opentest4j:jar:@1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.3 <- 6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
 ]
 
 [[artifact]]
@@ -60,10 +60,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:414559e78bbfa3bdb2eab009ac3ab1e22369ac31117c270a0bd666da115c5c6c"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
-  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]
@@ -73,9 +73,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:05c51cedba2c06a9770707391e006cee825876937dea580b94a265ce145d4939"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]
@@ -85,9 +85,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6b0a14075c74221de53047e363860b7d19fce802bebc152df2c35c4089c6c379"
 scopes   = ["test"]
 deps = [
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
-  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3",
-  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
+  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3 <- 6.1.3",
+  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]
@@ -97,8 +97,8 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a4774ae923c109544034aeae7c762cf017fbcdd1342403ba90e0921984b608c3"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
 ]
 
 [[artifact]]
@@ -108,10 +108,10 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:21ad7ad3a35beda16387979317be1833a72a71d812f9a66ee4b9a7bafb56334c"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.3",
-  "org.opentest4j:opentest4j:jar:@1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.3 <- 6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
 ]
 
 [[artifact]]
@@ -121,9 +121,9 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1dec64b1fc0b7c47a11302aa5b4d37d8160c041b396e27067709ce775601a7b6"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]

@@ -734,6 +734,14 @@ public record Lockfile(
         }
     }
 
+    /**
+     * Separates an edge's {@code module@version} ref from the selector that produced it inside a
+     * {@code deps} line: {@code "g:a:jar:@2.21 <- ^2.0"}. A ref never contains a space and a
+     * selector never contains this token, so the split is exact; a line without it is an edge
+     * whose declaration the lock does not carry.
+     */
+    public static final String DECLARED_SEPARATOR = " <- ";
+
     public record Artifact(
             String name,
             String version,
@@ -745,7 +753,13 @@ public record Lockfile(
             @Nullable String pinnedBy,
             @Nullable GitInfo git,
             /** SHA-256 of the {@code -sources.jar}, or {@code null} when not published. */
-            @Nullable String sourcesChecksum) {
+            @Nullable String sourcesChecksum,
+            /**
+             * The selector this row's POM (or manifest) declared for each edge in {@link #deps},
+             * keyed by the edge's {@code module@version} ref — the version that was asked for, beside
+             * the one the solve picked. An edge with no entry declared nothing the lock knows of.
+             */
+            Map<String, String> declared) {
 
         public Artifact {
             Objects.requireNonNull(name, "name");
@@ -758,6 +772,27 @@ public record Lockfile(
             set.addAll(scopes);
             scopes = new ArrayList<>(set);
             deps = List.copyOf(deps);
+            declared = declared == null || declared.isEmpty() ? Map.of() : Map.copyOf(declared);
+        }
+
+        /** Every edge without a declared selector. */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                @Nullable String checksum,
+                @Nullable String path,
+                List<Scope> scopes,
+                List<String> deps,
+                @Nullable String pinnedBy,
+                @Nullable GitInfo git,
+                @Nullable String sourcesChecksum) {
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum, Map.of());
+        }
+
+        /** The selector declared for the edge {@code depRef} ({@code module@version}), or null. */
+        public @Nullable String declaredFor(String depRef) {
+            return declared.get(depRef);
         }
 
         /** Without sources checksum (the common case). */
@@ -771,7 +806,7 @@ public record Lockfile(
                 List<String> deps,
                 @Nullable String pinnedBy,
                 @Nullable GitInfo git) {
-            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, null);
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, null, Map.of());
         }
 
         /** Without git provenance — the common Maven-coordinate case. */
@@ -784,7 +819,7 @@ public record Lockfile(
                 List<Scope> scopes,
                 List<String> deps,
                 @Nullable String pinnedBy) {
-            this(name, version, source, checksum, path, scopes, deps, pinnedBy, null, null);
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, null, null, Map.of());
         }
 
         /** Without {@code pinnedBy}. */
@@ -796,7 +831,7 @@ public record Lockfile(
                 @Nullable String path,
                 List<Scope> scopes,
                 List<String> deps) {
-            this(name, version, source, checksum, path, scopes, deps, null, null, null);
+            this(name, version, source, checksum, path, scopes, deps, null, null, null, Map.of());
         }
 
         /** Convenience constructor for callers that don't care about scopes (defaults to MAIN). */
@@ -807,7 +842,7 @@ public record Lockfile(
                 @Nullable String checksum,
                 @Nullable String path,
                 List<String> deps) {
-            this(name, version, source, checksum, path, List.of(Scope.MAIN), deps, null, null, null);
+            this(name, version, source, checksum, path, List.of(Scope.MAIN), deps, null, null, null, Map.of());
         }
 
         public boolean inAnyScope(Set<Scope> include) {

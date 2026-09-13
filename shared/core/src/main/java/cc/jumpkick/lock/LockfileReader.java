@@ -8,7 +8,9 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
@@ -301,10 +303,19 @@ public final class LockfileReader {
         }
 
         List<String> deps = new ArrayList<>();
+        Map<String, String> declared = new LinkedHashMap<>();
         TomlArray depsArray = table.getArray("deps");
         if (depsArray != null) {
             for (int i = 0; i < depsArray.size(); i++) {
-                deps.add(depsArray.getString(i));
+                String line = depsArray.getString(i);
+                int sep = line.indexOf(Lockfile.DECLARED_SEPARATOR);
+                if (sep < 0) {
+                    deps.add(line);
+                } else {
+                    String ref = line.substring(0, sep);
+                    deps.add(ref);
+                    declared.put(ref, line.substring(sep + Lockfile.DECLARED_SEPARATOR.length()));
+                }
             }
         }
 
@@ -315,7 +326,7 @@ public final class LockfileReader {
         }
         String sourcesChecksum = table.getString("sources"); // optional
         return new Lockfile.Artifact(
-                name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum);
+                name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum, declared);
     }
 
     private static String requireString(TomlParseResult result, String key) {

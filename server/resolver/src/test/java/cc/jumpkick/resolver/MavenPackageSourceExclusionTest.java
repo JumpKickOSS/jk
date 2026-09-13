@@ -184,8 +184,10 @@ class MavenPackageSourceExclusionTest {
                 .resolve(List.of(new Dependency("com.foo:app", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
-        assertThat(requireNonNull(result.modules().get("com.foo:target:jar:")).deps())
-                .anyMatch(d -> d.startsWith("com.foo:leaf"));
+        Resolution.ResolvedModule target = requireNonNull(result.modules().get("com.foo:target:jar:"));
+        assertThat(target.deps()).anyMatch(d -> d.startsWith("com.foo:leaf"));
+        // The edge remembers the selector target's POM wrote for leaf, beside the picked version.
+        assertThat(target.declared()).containsEntry("com.foo:leaf:jar:@1.0", "1.0");
     }
 
     /**

@@ -17,8 +17,8 @@ checksum = "sha256:fd68ff5aa2760857ac5b7ad301e98bc6c18a74d60d7e016da1a608307c9ee
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "ch.qos.logback:logback-core:jar:@1.5.37",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "ch.qos.logback:logback-core:jar:@1.5.37 <- 1.5.37",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -52,8 +52,8 @@ checksum = "sha256:f7bd9d75c66977d8888851f75dc031397274e73f96e5352472edd4cd3a56a
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "com.github.javaparser:javaparser-core:jar:@3.28.0",
-  "org.checkerframework:checker-qual:jar:@4.2.1",
+  "com.github.javaparser:javaparser-core:jar:@3.28.0 <- 3.28.0",
+  "org.checkerframework:checker-qual:jar:@4.2.1 <- 3.53.0",
 ]
 
 [[artifact]]
@@ -64,11 +64,11 @@ checksum = "sha256:bf691a3e6bf6c56fe9ae9ab3fbd3a9f5c8da06a60253cf198a6249dcbd066
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "io.micronaut.sourcegen:micronaut-sourcegen-model:jar:@2.1.0",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.ow2.asm:asm-commons:jar:@9.9.1",
-  "org.ow2.asm:asm-util:jar:@9.9.1",
-  "org.ow2.asm:asm:jar:@9.9.1",
+  "io.micronaut.sourcegen:micronaut-sourcegen-model:jar:@2.1.0 <- 2.1.0",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.1",
+  "org.ow2.asm:asm-commons:jar:@9.9.1 <- 9.10.1",
+  "org.ow2.asm:asm-util:jar:@9.9.1 <- 9.10.1",
+  "org.ow2.asm:asm:jar:@9.9.1 <- 9.10.1",
 ]
 
 [[artifact]]
@@ -79,7 +79,7 @@ checksum = "sha256:00c7bd1fece8676a64872a6d45b837e37519a2bd2e5b5734c9de7c0333bd0
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.1",
 ]
 
 [[artifact]]
@@ -90,9 +90,9 @@ checksum = "sha256:c0f077116e0b679bbb925ded3a17068495dbf2d802a21fec2a4e9e17eba4e
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main", "processor"]
 deps = [
-  "io.micronaut:micronaut-core:jar:@5.1.15",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-core:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -103,10 +103,10 @@ checksum = "sha256:f2a0a6e1750fa6771f5c7d012197f59c370ea52194c75d6d2bf5f12baf5cb
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-core:jar:@5.1.15",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-core:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.15",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -117,10 +117,10 @@ checksum = "sha256:bc8c1b39c362e7a805a1c7347306a6b8bb6a9fa667f7402ae43e70dbcb3ec
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-aop:jar:@5.1.15",
-  "io.micronaut:micronaut-context:jar:@5.1.15",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-aop:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-context:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -131,9 +131,9 @@ checksum = "sha256:b162c24157ef50ac7bf26aebf252182bfa6052e49953c21eb5cfa2396b3ff
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-aop:jar:@5.1.15",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-aop:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -144,13 +144,13 @@ checksum = "sha256:7832d7679318ea2af0a823087c122bd60d71782f1babfccb8ea0edc87a1b4
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "com.github.javaparser:javaparser-symbol-solver-core:jar:@3.28.0",
-  "io.micronaut.sourcegen:micronaut-sourcegen-bytecode-writer:jar:@2.1.0",
-  "io.micronaut:micronaut-aop:jar:@5.1.15",
-  "io.micronaut:micronaut-core-reactive:jar:@5.1.15",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.ow2.asm:asm:jar:@9.9.1",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "com.github.javaparser:javaparser-symbol-solver-core:jar:@3.28.0 <- 3.28.0",
+  "io.micronaut.sourcegen:micronaut-sourcegen-bytecode-writer:jar:@2.1.0 <- 2.0.0",
+  "io.micronaut:micronaut-aop:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-core-reactive:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.15",
+  "org.ow2.asm:asm:jar:@9.9.1 <- 9.9.1",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -161,9 +161,9 @@ checksum = "sha256:15347858ed1cea3c24d5848eaec1008907ee3b6d8e587a68cfceafa19d1cb
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main", "processor"]
 deps = [
-  "io.micronaut:micronaut-core:jar:@5.1.15",
-  "org.reactivestreams:reactive-streams:jar:@1.0.4",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-core:jar:@5.1.15 <- 5.1.15",
+  "org.reactivestreams:reactive-streams:jar:@1.0.4 <- 1.0.4",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -174,8 +174,8 @@ checksum = "sha256:db10c1aec1a7938db6f77b88b647e9d300b56cb82bc39c374b0dc7537e97d
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main", "processor"]
 deps = [
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -186,13 +186,13 @@ checksum = "sha256:c0ea163d67df836ef5e73b085a5f64b7c7e3f0ae45cb725598c091ff7d63f
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-buffer-netty:jar:@5.1.15",
-  "io.micronaut:micronaut-http:jar:@5.1.15",
-  "io.netty:netty-codec-http2:jar:@4.2.18.Final",
-  "io.netty:netty-codec-http:jar:@4.2.18.Final",
-  "io.netty:netty-handler:jar:@4.2.18.Final",
-  "io.projectreactor:reactor-core:jar:@3.8.7",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-buffer-netty:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-http:jar:@5.1.15 <- 5.1.15",
+  "io.netty:netty-codec-http2:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-http:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-handler:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.projectreactor:reactor-core:jar:@3.8.7 <- 3.8.7",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -203,13 +203,13 @@ checksum = "sha256:639278987ba014c5c6eb1b3335e77b7777afd945098a74c54d6849fd23c09
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-core:jar:@5.1.15",
-  "io.micronaut:micronaut-http-netty:jar:@5.1.15",
-  "io.micronaut:micronaut-http-server:jar:@5.1.15",
-  "io.netty.contrib:netty-codec-multipart-core:jar:@1.0.0.Final",
-  "io.netty:netty-codec-http:jar:@4.2.18.Final",
-  "io.projectreactor:reactor-core:jar:@3.8.7",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-core:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-http-netty:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-http-server:jar:@5.1.15 <- 5.1.15",
+  "io.netty.contrib:netty-codec-multipart-core:jar:@1.0.0.Final <- 1.0.0.Final",
+  "io.netty:netty-codec-http:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.projectreactor:reactor-core:jar:@3.8.7 <- 3.8.7",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -220,10 +220,10 @@ checksum = "sha256:1c1c06d70985f4877159521530339c95f0bcd0e4dee0db369b7c04473f02d
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-http:jar:@5.1.15",
-  "io.micronaut:micronaut-router:jar:@5.1.15",
-  "io.projectreactor:reactor-core:jar:@3.8.7",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-http:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-router:jar:@5.1.15 <- 5.1.15",
+  "io.projectreactor:reactor-core:jar:@3.8.7 <- 3.8.7",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -234,11 +234,11 @@ checksum = "sha256:bfccf945bfd9dd1e0e4a95c27196e125b5a434ed0cf1e88cf5c3040544a4c
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-context-propagation:jar:@5.1.15",
-  "io.micronaut:micronaut-context:jar:@5.1.15",
-  "io.micronaut:micronaut-core-reactive:jar:@5.1.15",
-  "io.projectreactor:reactor-core:jar:@3.8.7",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-context-propagation:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-context:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-core-reactive:jar:@5.1.15 <- 5.1.15",
+  "io.projectreactor:reactor-core:jar:@3.8.7 <- 3.8.7",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -249,8 +249,8 @@ checksum = "sha256:f8d9b43af192779d0bfdb9207a510c10ed79e7716e5b6cbf190c5d023b48e
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "io.micronaut:micronaut-core-processor:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-core-processor:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -261,10 +261,10 @@ checksum = "sha256:c7b001eb829936791a7fefc88958e659054382d4066a5bd0e96f9b568048f
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main", "processor"]
 deps = [
-  "io.micronaut:micronaut-core:jar:@5.1.15",
-  "jakarta.annotation:jakarta.annotation-api:jar:@2.1.1",
-  "jakarta.inject:jakarta.inject-api:jar:@2.0.1",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-core:jar:@5.1.15 <- 5.1.15",
+  "jakarta.annotation:jakarta.annotation-api:jar:@2.1.1 <- 2.1.1",
+  "jakarta.inject:jakarta.inject-api:jar:@2.0.1 <- 2.0.1",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -275,10 +275,10 @@ checksum = "sha256:a6f1919b4c6589c9d2293b2fbbdeefe8ac8f80b3f687dac4c2a38e9dc4f08
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "io.micronaut:micronaut-json-core:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
-  "tools.jackson.core:jackson-core:jar:@3.1.6",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22 <- 2.22",
+  "io.micronaut:micronaut-json-core:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
+  "tools.jackson.core:jackson-core:jar:@3.1.6 <- 3.1.6",
 ]
 
 [[artifact]]
@@ -289,9 +289,9 @@ checksum = "sha256:ab9a4d055c7746e09789de6929fcb0993371bd18730202aec76aa3df6e1df
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-jackson-core:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
-  "tools.jackson.core:jackson-databind:jar:@3.1.6",
+  "io.micronaut:micronaut-jackson-core:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
+  "tools.jackson.core:jackson-databind:jar:@3.1.6 <- 3.1.6",
 ]
 
 [[artifact]]
@@ -302,9 +302,9 @@ checksum = "sha256:f49d5ccde2f156a44e17c35bdab5da2696c342f09f20028435e80bd705a01
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-context:jar:@5.1.15",
-  "io.micronaut:micronaut-http:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-context:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-http:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -315,9 +315,9 @@ checksum = "sha256:e112a09e55e548ab90dbfef492aee83096dac850bd8b9defccdd7e3353da6
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.micronaut:micronaut-http:jar:@5.1.15",
-  "io.micronaut:micronaut-inject:jar:@5.1.15",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "io.micronaut:micronaut-http:jar:@5.1.15 <- 5.1.15",
+  "io.micronaut:micronaut-inject:jar:@5.1.15 <- 5.1.15",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -328,11 +328,11 @@ checksum = "sha256:74b2428a2b510766a2cee9a0ef7e7a99cf4b619cc960e0815731772e7c41f
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-http:jar:@4.2.18.Final",
-  "io.netty:netty-codec:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.7.Final",
+  "io.netty:netty-codec-http:jar:@4.2.18.Final <- 4.2.7.Final",
+  "io.netty:netty-codec:jar:@4.2.18.Final <- 4.2.7.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.7.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.7.Final",
 ]
 
 [[artifact]]
@@ -343,7 +343,7 @@ checksum = "sha256:fdf236d2b76aa9710684401fdad7dff9dec56e43da5d39172c9a55ba5f14b
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-common:jar:@4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -354,9 +354,9 @@ checksum = "sha256:7e4612bead7ba88ac6f7908fa722f90ad6835ea96505c9e40b2f93686c1f6
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -367,10 +367,10 @@ checksum = "sha256:9d8a4b9a6a2a166ec5a4bbe51a78b4f6a726457c51d81495743c7e7ccb9f4
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -381,12 +381,12 @@ checksum = "sha256:a45a2b06c377b9c87c21ae2b37f04c8d808192590a73d977e7a60fd59921f
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-codec-http:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-handler:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-http:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-handler:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -397,12 +397,12 @@ checksum = "sha256:2d50765eb58591ce35146c54ca032a257808d2165d8985a8522c70ea1470e
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-codec-compression:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-handler:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-compression:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-handler:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -413,10 +413,10 @@ checksum = "sha256:eccf83cbbd1319db879424c4559d465dc43251fe1a8ff759c4320b5adbcf2
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -427,10 +427,10 @@ checksum = "sha256:1bcaedd0da94f8579477f0848e910c24aced8b1ed7c3e1bff16d56fd0229b
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -441,13 +441,13 @@ checksum = "sha256:439645eb5061f8f50fbf27afacce394e4cecc4d373e1f7a384837e4661d5f
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-codec-compression:jar:@4.2.18.Final",
-  "io.netty:netty-codec-marshalling:jar:@4.2.18.Final",
-  "io.netty:netty-codec-protobuf:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-compression:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-marshalling:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-protobuf:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -466,12 +466,12 @@ checksum = "sha256:6d5a08d9dd6d7d0211202e22dbb1629b23a62550335c7e80892da1d4cb115
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-codec-base:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-resolver:jar:@4.2.18.Final",
-  "io.netty:netty-transport-native-unix-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-codec-base:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-resolver:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport-native-unix-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -482,7 +482,7 @@ checksum = "sha256:68373ec544cf769ba17bf2ef455166d98f2c260dff536edf35ef57067a9c1
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-common:jar:@4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -493,9 +493,9 @@ checksum = "sha256:cada7023d09136af128511ca94421d69dc84d0f1f64c9e1f127a1271bb629
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-transport:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-transport:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -506,9 +506,9 @@ checksum = "sha256:eac4f12068db4489e60c6520fad663e5d872f0436a7c641aa9e08db649947
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "io.netty:netty-buffer:jar:@4.2.18.Final",
-  "io.netty:netty-common:jar:@4.2.18.Final",
-  "io.netty:netty-resolver:jar:@4.2.18.Final",
+  "io.netty:netty-buffer:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-common:jar:@4.2.18.Final <- 4.2.18.Final",
+  "io.netty:netty-resolver:jar:@4.2.18.Final <- 4.2.18.Final",
 ]
 
 [[artifact]]
@@ -519,8 +519,8 @@ checksum = "sha256:9a5f1bfc5ad0416a410ff63beaa279cc30c2da3ae9b111a678c83c99298a1
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.reactivestreams:reactive-streams:jar:@1.0.4",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.reactivestreams:reactive-streams:jar:@1.0.4 <- 1.0.4",
 ]
 
 [[artifact]]
@@ -569,10 +569,10 @@ checksum = "sha256:555d6cf20fa1710884dd01b86cc5785397ba73e21ada2d4b784f5f1a14dca
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.2",
-  "org.opentest4j:opentest4j:jar:@1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.2 <- 6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
 ]
 
 [[artifact]]
@@ -583,10 +583,10 @@ checksum = "sha256:414559e78bbfa3bdb2eab009ac3ab1e22369ac31117c270a0bd666da115c5
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
-  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]
@@ -597,9 +597,9 @@ checksum = "sha256:05c51cedba2c06a9770707391e006cee825876937dea580b94a265ce145d4
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]
@@ -610,9 +610,9 @@ checksum = "sha256:2a7877196573a1d32fa726313deffdde2e90cca764647e605093020b08973
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3",
-  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3",
-  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.3 <- 6.1.2",
+  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.3 <- 6.1.2",
+  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.3 <- 6.1.2",
 ]
 
 [[artifact]]
@@ -623,8 +623,8 @@ checksum = "sha256:204894c039d321743ee11e7d1dc8360170d7c64391fbea1211178a645c33a
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
 ]
 
 [[artifact]]
@@ -635,10 +635,10 @@ checksum = "sha256:21ad7ad3a35beda16387979317be1833a72a71d812f9a66ee4b9a7bafb563
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.platform:junit-platform-commons:jar:@6.1.2",
-  "org.opentest4j:opentest4j:jar:@1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.2 <- 6.1.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
 ]
 
 [[artifact]]
@@ -649,9 +649,9 @@ checksum = "sha256:1dec64b1fc0b7c47a11302aa5b4d37d8160c041b396e27067709ce775601a
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
-  "org.junit.platform:junit-platform-engine:jar:@6.1.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0 <- 1.0.0",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.3 <- 6.1.3",
 ]
 
 [[artifact]]
@@ -668,7 +668,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6260bffc8ec008dd1b713702c7994e2c94d188a3da5bef9e87278a16df6a7522"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm-tree:jar:@9.9.1",
+  "org.ow2.asm:asm-tree:jar:@9.9.1 <- 9.9.1",
 ]
 
 [[artifact]]
@@ -679,8 +679,8 @@ checksum = "sha256:c2319e014ce7199f2b7f7d56d6bb991863168c3f4b6cd6c9f542a4937ef7e
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm-tree:jar:@9.9.1",
-  "org.ow2.asm:asm:jar:@9.9.1",
+  "org.ow2.asm:asm-tree:jar:@9.9.1 <- 9.9.1",
+  "org.ow2.asm:asm:jar:@9.9.1 <- 9.9.1",
 ]
 
 [[artifact]]
@@ -690,7 +690,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:0f3555096b720b820bbacab0b515589bee0200bee099bda14c561738ae837ba1"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm:jar:@9.9.1",
+  "org.ow2.asm:asm:jar:@9.9.1 <- 9.9.1",
 ]
 
 [[artifact]]
@@ -701,9 +701,9 @@ checksum = "sha256:c5ebbbeaf68126af094b42fa4800f59bc4413abd02d95b9aefad722cd257e
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["processor"]
 deps = [
-  "org.ow2.asm:asm-analysis:jar:@9.9.1",
-  "org.ow2.asm:asm-tree:jar:@9.9.1",
-  "org.ow2.asm:asm:jar:@9.9.1",
+  "org.ow2.asm:asm-analysis:jar:@9.9.1 <- 9.9.1",
+  "org.ow2.asm:asm-tree:jar:@9.9.1 <- 9.9.1",
+  "org.ow2.asm:asm:jar:@9.9.1 <- 9.9.1",
 ]
 
 [[artifact]]
@@ -746,8 +746,8 @@ checksum = "sha256:f0ff64eaa9f1c4bca9d720cd70c542297b0b19fc8ad08531bc55e36c8eab8
 pinned-by = "io.micronaut.platform:micronaut-platform:5.1.5"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "tools.jackson.core:jackson-core:jar:@3.1.6",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22 <- 2.21",
+  "tools.jackson.core:jackson-core:jar:@3.1.6 <- 3.1.6",
 ]
 
 [[plugin]]

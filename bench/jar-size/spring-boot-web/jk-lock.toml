@@ -17,8 +17,8 @@ checksum = "sha256:afb439c61fa287c9e1925523b13baab03617e724406a389d48b61c2c3e46b
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "ch.qos.logback:logback-core:jar:@1.5.38",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "ch.qos.logback:logback-core:jar:@1.5.38 <- 1.5.38",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -53,7 +53,7 @@ checksum = "sha256:f2cee6ef046e72eec8128474c7f58c6217173b45ae373c30de0289f2a56ab
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.1",
 ]
 
 [[artifact]]
@@ -64,8 +64,8 @@ checksum = "sha256:eb34f0cd84a879393ae5c21160fc06385ccdc74f36a4d1e31b199f59acfda
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "io.micrometer:micrometer-commons:jar:@1.17.1",
-  "org.jspecify:jspecify:jar:@1.0.1",
+  "io.micrometer:micrometer-commons:jar:@1.17.1 <- 1.17.1",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.1",
 ]
 
 [[artifact]]
@@ -92,8 +92,8 @@ checksum = "sha256:b68e8b47342dbc9b35644a14fe2efc0b7bf18da703910cd05ad5501ffe07b
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.apache.logging.log4j:log4j-api:jar:@2.25.5",
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "org.apache.logging.log4j:log4j-api:jar:@2.25.5 <- 2.25.5",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.17",
 ]
 
 [[artifact]]
@@ -120,7 +120,7 @@ checksum = "sha256:825160101f0da4a10e19b5730c2ae2f99f8c2c7a7211ac05562726c5e97ab
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.apache.tomcat.embed:tomcat-embed-core:jar:@11.0.24",
+  "org.apache.tomcat.embed:tomcat-embed-core:jar:@11.0.24 <- 11.0.24",
 ]
 
 [[artifact]]
@@ -146,10 +146,10 @@ checksum = "sha256:d655d7e6f0c7ae07f10a2f3bbaaebb6d30e9b26204a068ad9e9b3950aa287
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.platform:junit-platform-commons:jar:@6.0.3",
-  "org.opentest4j:opentest4j:jar:@1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.0.3 <- 6.0.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
 ]
 
 [[artifact]]
@@ -160,10 +160,10 @@ checksum = "sha256:1e2fab61ad27ea08fc7c70dd9677cf8c6d1ae5434d42dcfdd633b12c7e7c0
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.0.3",
-  "org.junit.platform:junit-platform-engine:jar:@6.0.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.0.3 <- 6.0.3",
+  "org.junit.platform:junit-platform-engine:jar:@6.0.3 <- 6.0.3",
 ]
 
 [[artifact]]
@@ -174,9 +174,9 @@ checksum = "sha256:cf2947e2302b9f8c8a059259a277881c1cadae8fbc2514c16a925cfeb7beb
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.0.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.0.3 <- 6.0.3",
 ]
 
 [[artifact]]
@@ -187,9 +187,9 @@ checksum = "sha256:784b65815f479a0c99a9d3a573b142e2a525efb6025d97f751b19e72f90ae
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.junit.jupiter:junit-jupiter-api:jar:@6.0.3",
-  "org.junit.jupiter:junit-jupiter-engine:jar:@6.0.3",
-  "org.junit.jupiter:junit-jupiter-params:jar:@6.0.3",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.0.3 <- 6.0.3",
+  "org.junit.jupiter:junit-jupiter-engine:jar:@6.0.3 <- 6.0.3",
+  "org.junit.jupiter:junit-jupiter-params:jar:@6.0.3 <- 6.0.3",
 ]
 
 [[artifact]]
@@ -200,8 +200,8 @@ checksum = "sha256:39f262d09c3d52719fe0b77f080e90a3695e285d779a41b232e17963ae5da
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
 ]
 
 [[artifact]]
@@ -212,10 +212,10 @@ checksum = "sha256:491e9e4f745f161b8a8e4186a1a7c6a450ea12c70930c9aedae427215301d
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.platform:junit-platform-commons:jar:@6.0.3",
-  "org.opentest4j:opentest4j:jar:@1.3.0",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.0.3 <- 6.0.3",
+  "org.opentest4j:opentest4j:jar:@1.3.0 <- 1.3.0",
 ]
 
 [[artifact]]
@@ -226,9 +226,9 @@ checksum = "sha256:315608372e4dc44bca0ccb3ae8a07ecc206b3367033fa05748a03ccd563f1
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["test"]
 deps = [
-  "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.1",
-  "org.junit.platform:junit-platform-engine:jar:@6.0.3",
+  "org.apiguardian:apiguardian-api:jar:@1.1.2 <- 1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
+  "org.junit.platform:junit-platform-engine:jar:@6.0.3 <- 6.0.3",
 ]
 
 [[artifact]]
@@ -246,7 +246,7 @@ checksum = "sha256:cbb7d1aaaa9e871eb1a06594abd911bf97027152976edf1edc315be752392
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.slf4j:slf4j-api:jar:@2.0.18",
+  "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
 ]
 
 [[artifact]]
@@ -265,7 +265,7 @@ checksum = "sha256:59228756ddd76cea050f95d86deff334789bc53b6688beaa673b1af2b9794
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot:jar:@4.1.1",
+  "org.springframework.boot:spring-boot:jar:@4.1.1 <- 4.1.1",
 ]
 
 [[artifact]]
@@ -276,8 +276,8 @@ checksum = "sha256:52a167430a918c223b2ccd2eb62aff91a8e43e6daebe5a07caa37b9a04c61
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot:jar:@4.1.1",
-  "org.springframework:spring-web:jar:@7.0.9",
+  "org.springframework.boot:spring-boot:jar:@4.1.1 <- 4.1.1",
+  "org.springframework:spring-web:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -288,8 +288,8 @@ checksum = "sha256:69a9b4d8850a0532a5e44ff7306a03621485b26596e7f9481de7d28e68a2d
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot:jar:@4.1.1",
-  "tools.jackson.core:jackson-databind:jar:@3.1.5",
+  "org.springframework.boot:spring-boot:jar:@4.1.1 <- 4.1.1",
+  "tools.jackson.core:jackson-databind:jar:@3.1.5 <- 3.1.5",
 ]
 
 [[artifact]]
@@ -300,8 +300,8 @@ checksum = "sha256:4dcb156e311a4c1ad5f1ed7eabd94a78ea74510b05c429a4fcfdcf8beb9d5
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot:jar:@4.1.1",
-  "org.springframework:spring-web:jar:@7.0.9",
+  "org.springframework.boot:spring-boot:jar:@4.1.1 <- 4.1.1",
+  "org.springframework:spring-web:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -312,8 +312,8 @@ checksum = "sha256:d30e594a3e0f3a090438fc22000a87ab577a3b80c674180a10544ca331207
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot-jackson:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-starter:jar:@4.1.1",
+  "org.springframework.boot:spring-boot-jackson:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-starter:jar:@4.1.1 <- 4.1.1",
 ]
 
 [[artifact]]
@@ -324,9 +324,9 @@ checksum = "sha256:8eca7d72c8434f5c3b935385c656cd5337f473434bdbcb4913b3b3a34897d
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "ch.qos.logback:logback-classic:jar:@1.5.38",
-  "org.apache.logging.log4j:log4j-to-slf4j:jar:@2.25.5",
-  "org.slf4j:jul-to-slf4j:jar:@2.0.18",
+  "ch.qos.logback:logback-classic:jar:@1.5.38 <- 1.5.38",
+  "org.apache.logging.log4j:log4j-to-slf4j:jar:@2.25.5 <- 2.25.5",
+  "org.slf4j:jul-to-slf4j:jar:@2.0.18 <- 2.0.18",
 ]
 
 [[artifact]]
@@ -337,12 +337,12 @@ checksum = "sha256:580f0d9a9d02a1a6e387640e422af42f9dbdf302836d562ec595fdb2b31a1
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "jakarta.annotation:jakarta.annotation-api:jar:@3.0.0",
-  "org.apache.tomcat.embed:tomcat-embed-core:jar:@11.0.24",
-  "org.apache.tomcat.embed:tomcat-embed-el:jar:@11.0.24",
-  "org.apache.tomcat.embed:tomcat-embed-websocket:jar:@11.0.24",
-  "org.springframework.boot:spring-boot-tomcat:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-web-server:jar:@4.1.1",
+  "jakarta.annotation:jakarta.annotation-api:jar:@3.0.0 <- 3.0.0",
+  "org.apache.tomcat.embed:tomcat-embed-core:jar:@11.0.24 <- 11.0.24",
+  "org.apache.tomcat.embed:tomcat-embed-el:jar:@11.0.24 <- 11.0.24",
+  "org.apache.tomcat.embed:tomcat-embed-websocket:jar:@11.0.24 <- 11.0.24",
+  "org.springframework.boot:spring-boot-tomcat:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-web-server:jar:@4.1.1 <- 4.1.1",
 ]
 
 [[artifact]]
@@ -353,9 +353,9 @@ checksum = "sha256:f224d8504be3b413825ee85ef549a7b1598ee8512e062c6bd5ddce1043cd3
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot-starter-tomcat-runtime:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-starter:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-tomcat:jar:@4.1.1",
+  "org.springframework.boot:spring-boot-starter-tomcat-runtime:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-starter:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-tomcat:jar:@4.1.1 <- 4.1.1",
 ]
 
 [[artifact]]
@@ -366,11 +366,11 @@ checksum = "sha256:4aec3edbdf6317fefe23db1b989d8bba143a45a51c1fc32346146ecebf67d
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot-http-converter:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-starter-jackson:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-starter-tomcat:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-starter:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-webmvc:jar:@4.1.1",
+  "org.springframework.boot:spring-boot-http-converter:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-starter-jackson:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-starter-tomcat:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-starter:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-webmvc:jar:@4.1.1 <- 4.1.1",
 ]
 
 [[artifact]]
@@ -381,10 +381,10 @@ checksum = "sha256:de5b2dd28400eda20914fd4a6054d0c201e68d2e4de35a25a4d89f054ccc2
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "jakarta.annotation:jakarta.annotation-api:jar:@3.0.0",
-  "org.springframework.boot:spring-boot-autoconfigure:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-starter-logging:jar:@4.1.1",
-  "org.yaml:snakeyaml:jar:@2.6",
+  "jakarta.annotation:jakarta.annotation-api:jar:@3.0.0 <- 3.0.0",
+  "org.springframework.boot:spring-boot-autoconfigure:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-starter-logging:jar:@4.1.1 <- 4.1.1",
+  "org.yaml:snakeyaml:jar:@2.6 <- 2.6",
 ]
 
 [[artifact]]
@@ -395,9 +395,9 @@ checksum = "sha256:17f65629e4eb3c979c0572b69b57d630bb12e64869e9d7520adddaa673425
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "jakarta.annotation:jakarta.annotation-api:jar:@3.0.0",
-  "org.apache.tomcat.embed:tomcat-embed-core:jar:@11.0.24",
-  "org.springframework.boot:spring-boot-web-server:jar:@4.1.1",
+  "jakarta.annotation:jakarta.annotation-api:jar:@3.0.0 <- 3.0.0",
+  "org.apache.tomcat.embed:tomcat-embed-core:jar:@11.0.24 <- 11.0.24",
+  "org.springframework.boot:spring-boot-web-server:jar:@4.1.1 <- 4.1.1",
 ]
 
 [[artifact]]
@@ -408,8 +408,8 @@ checksum = "sha256:6912fb1fdf7f657a61ac050760fa835fb1e7496399291697e2901f82887a4
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot:jar:@4.1.1",
-  "org.springframework:spring-web:jar:@7.0.9",
+  "org.springframework.boot:spring-boot:jar:@4.1.1 <- 4.1.1",
+  "org.springframework:spring-web:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -420,10 +420,10 @@ checksum = "sha256:9f08c1fb938c45a8693fec5f3065be3aca203948a7ab4d56b06444986f75a
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework.boot:spring-boot-http-converter:jar:@4.1.1",
-  "org.springframework.boot:spring-boot-servlet:jar:@4.1.1",
-  "org.springframework:spring-web:jar:@7.0.9",
-  "org.springframework:spring-webmvc:jar:@7.0.9",
+  "org.springframework.boot:spring-boot-http-converter:jar:@4.1.1 <- 4.1.1",
+  "org.springframework.boot:spring-boot-servlet:jar:@4.1.1 <- 4.1.1",
+  "org.springframework:spring-web:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-webmvc:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -434,8 +434,8 @@ checksum = "sha256:0d92b532b1d4020640e72d78c31af175c23db8e0ddd45b81855b7fdf4c9c7
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework:spring-context:jar:@7.0.9",
-  "org.springframework:spring-core:jar:@7.0.9",
+  "org.springframework:spring-context:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -446,8 +446,8 @@ checksum = "sha256:b8c5d6bfcb1f4993f2cc124f7ab7fac40edf5256b9e43c2f7250a733cb551
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework:spring-beans:jar:@7.0.9",
-  "org.springframework:spring-core:jar:@7.0.9",
+  "org.springframework:spring-beans:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -458,7 +458,7 @@ checksum = "sha256:ff218b827a25c9e8929b0cd56dfb56916cea9d5b669ed97dc7cb262508ff5
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework:spring-core:jar:@7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -469,11 +469,11 @@ checksum = "sha256:7552a2fcfa30cea53eb14d7a65a7a8e1b1dd82e832a7164fb7e6fb105f438
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "io.micrometer:micrometer-observation:jar:@1.17.1",
-  "org.springframework:spring-aop:jar:@7.0.9",
-  "org.springframework:spring-beans:jar:@7.0.9",
-  "org.springframework:spring-core:jar:@7.0.9",
-  "org.springframework:spring-expression:jar:@7.0.9",
+  "io.micrometer:micrometer-observation:jar:@1.17.1 <- 1.16.7",
+  "org.springframework:spring-aop:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-beans:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-expression:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -484,8 +484,8 @@ checksum = "sha256:5195f4722699b39878d99a832549fe65df2890b159d063b88fff31b1ca65a
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "commons-logging:commons-logging:jar:@1.3.6",
-  "org.jspecify:jspecify:jar:@1.0.1",
+  "commons-logging:commons-logging:jar:@1.3.6 <- 1.3.5",
+  "org.jspecify:jspecify:jar:@1.0.1 <- 1.0.0",
 ]
 
 [[artifact]]
@@ -496,7 +496,7 @@ checksum = "sha256:046434c40f43819729b9b1db0e6c659dfa68184c1c2c2efa5f7b3a5b27c4e
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework:spring-core:jar:@7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -507,9 +507,9 @@ checksum = "sha256:941ced476427bde2533872f293da535fd0258de3f3a650a7f1bfe01ed2927
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "io.micrometer:micrometer-observation:jar:@1.17.1",
-  "org.springframework:spring-beans:jar:@7.0.9",
-  "org.springframework:spring-core:jar:@7.0.9",
+  "io.micrometer:micrometer-observation:jar:@1.17.1 <- 1.16.7",
+  "org.springframework:spring-beans:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -520,12 +520,12 @@ checksum = "sha256:8f114c1461692c5e534e82b27de23b7fb23370db8dee7ce0c92d5106906c9
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "org.springframework:spring-aop:jar:@7.0.9",
-  "org.springframework:spring-beans:jar:@7.0.9",
-  "org.springframework:spring-context:jar:@7.0.9",
-  "org.springframework:spring-core:jar:@7.0.9",
-  "org.springframework:spring-expression:jar:@7.0.9",
-  "org.springframework:spring-web:jar:@7.0.9",
+  "org.springframework:spring-aop:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-beans:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-context:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-core:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-expression:jar:@7.0.9 <- 7.0.9",
+  "org.springframework:spring-web:jar:@7.0.9 <- 7.0.9",
 ]
 
 [[artifact]]
@@ -552,8 +552,8 @@ checksum = "sha256:3a2338d996fd3056791df8d335fa9ba8a62a706ed4245ecf81b3e583df37d
 pinned-by = "org.springframework.boot:spring-boot-dependencies:4.1.1"
 scopes   = ["main"]
 deps = [
-  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21",
-  "tools.jackson.core:jackson-core:jar:@3.1.5",
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.21 <- 2.21",
+  "tools.jackson.core:jackson-core:jar:@3.1.5 <- 3.1.5",
 ]
 
 [[plugin]]

@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -651,5 +652,32 @@ public final class DependencyTree {
             roots.addAll(collectRoots(m.build()));
         }
         return new ArrayList<>(roots);
+    }
+
+    /**
+     * The selector each declared Maven root was written with, by {@code group:artifact} — the
+     * same roots as {@link #collectRoots(JkBuild, Path)}, with the manifest text ({@code ^2.21},
+     * {@code =1.15.0}, …) beside each. The first declaration of a module wins; workspace, git,
+     * path and file edges have no Maven selector and are left out.
+     */
+    static Map<String, String> collectRootSelectors(@Nullable JkBuild project, @Nullable Path projectDir) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (project == null) return out;
+        putRootSelectors(project, out);
+        if (project.isWorkspaceRoot() && projectDir != null) {
+            for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)) {
+                putRootSelectors(m.build(), out);
+            }
+        }
+        return out;
+    }
+
+    private static void putRootSelectors(JkBuild build, Map<String, String> out) {
+        for (Scope s : Scope.values()) {
+            for (Dependency d : build.dependencies().of(s)) {
+                if (d.isWorkspace() || d.isGit() || d.isPath() || d.isFile()) continue;
+                out.putIfAbsent(LockGraph.ga(d.module()), d.version().raw().trim());
+            }
+        }
     }
 }

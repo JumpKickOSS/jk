@@ -70,6 +70,8 @@ class ReadSideIntegrationTest {
         String why = TestAnsi.strip(Capture.stdout(() -> run("why", "com.foo:leaf", "-C", tempDir.toString())));
         assertThat(why).contains("com.foo:leaf:1.0 is pulled in by:");
         assertThat(why).contains("com.foo:root:1.0");
+        // Each step says what its parent asked for: the manifest for the root, root's POM for leaf.
+        assertThat(why).contains("by jk.toml)").contains("(declared 1.0 by com.foo:root)");
 
         // jk sync — second time with cache populated should report up-to-date.
         String sync = Capture.stdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", cache.toString()));

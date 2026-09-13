@@ -95,8 +95,12 @@ Workspace siblings: [Workspaces](workspaces.md).
 jk tree                  # workspace graph (even from a member dir)
 jk tree :foo             # one module
 jk tree -t               # include transitives
-jk why com.foo:bar       # why a pin is on the graph
+jk why com.foo:bar       # why a pin is on the graph, and what each step declared for the next
 ```
+
+`jk why` prints one path per declared root, each step as `coordinate (declared <selector> by
+<parent>)`, so a surprising transitive version is traced to the declaration that produced it.
+The selector rides the lock's edge lines; see [Lockfile](lockfile.md#what-an-edge-records).
 
 ## Related
 

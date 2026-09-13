@@ -17,12 +17,24 @@ public record Resolution(Map<String, ResolvedModule> modules) {
         modules = Map.copyOf(new TreeMap<>(modules));
     }
 
-    public record ResolvedModule(String module, String version, List<String> deps) {
+    /**
+     * @param deps direct edges as {@code packageKey@pickedVersion}
+     * @param declared the version selector each edge's POM declared, keyed by the edge ref; an edge
+     *     absent here declared nothing the resolver saw
+     */
+    public record ResolvedModule(String module, String version, List<String> deps, Map<String, String> declared) {
         public ResolvedModule {
             Objects.requireNonNull(module, "module");
             Objects.requireNonNull(version, "version");
             Objects.requireNonNull(deps, "deps");
+            Objects.requireNonNull(declared, "declared");
             deps = List.copyOf(deps);
+            declared = Map.copyOf(declared);
+        }
+
+        /** Edges without their declared selectors. */
+        public ResolvedModule(String module, String version, List<String> deps) {
+            this(module, version, deps, Map.of());
         }
 
         /** Lockfile-style key: {@code packageId@version}. */

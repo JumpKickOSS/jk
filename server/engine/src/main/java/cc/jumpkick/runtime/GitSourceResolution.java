@@ -150,7 +150,9 @@ public final class GitSourceResolution {
                         p.scopes(),
                         p.deps(),
                         p.pinnedBy(),
-                        gi));
+                        gi,
+                        p.sourcesChecksum(),
+                        p.declared()));
             } else {
                 out.add(p);
             }

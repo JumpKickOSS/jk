@@ -226,7 +226,10 @@ final class LockfileAssembler {
                 artifactFile,
                 new ArrayList<>(tags),
                 mod.deps(),
-                pinnedBy);
+                pinnedBy,
+                null,
+                null,
+                mod.declared());
     }
 
     /**

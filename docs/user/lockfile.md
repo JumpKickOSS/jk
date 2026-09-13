@@ -181,6 +181,24 @@ trade is explicit: at a pre-release version the pin trusts the jk install (or th
 repository) to serve that version's jar, exactly as it trusts the jk binary itself; a stable
 release is immutable, and its row carries the digest like any other plugin.
 
+## What an edge records
+
+Every `[[artifact]]` row lists the edges its POM contributes to the graph. An edge names the
+package the solve picked and, after `<-`, the selector the parent declared for it:
+
+```toml
+deps = [
+  "org.jetbrains:annotations:jar:@13.0 <- 13.0",
+  "org.slf4j:slf4j-api:jar:@2.0.17 <- [2.0,3.0)",
+]
+```
+
+Two versions on one line is the point: when a transitive lands somewhere surprising, the lock
+itself says which declaration produced it, without re-reading any POM. `jk why <coord>` walks
+these edges and prints each step with `(declared <selector> by <parent>)` beside the resolved
+version — the parent is `jk.toml` for a declared root and the previous step otherwise. An edge
+the lock does not carry a selector for is written without the `<-` part.
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

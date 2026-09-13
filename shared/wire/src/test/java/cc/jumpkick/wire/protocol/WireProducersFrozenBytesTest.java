@@ -123,9 +123,16 @@ class WireProducersFrozenBytesTest {
                 .isEqualTo(
                         "{\"type\":\"affected-tests-ack\",\"refused\":false,\"error\":null,\"refuseCode\":\"\",\"cap\":5,"
                                 + "\"candidateCount\":7,\"rows\":[\"9|a.B|dirty\"]}");
-        assertThat(new WhyReport(null, List.of("g:a"), List.of("1.0"), List.of("0"), List.of("root>g:a")).encode())
+        assertThat(new WhyReport(
+                                null,
+                                List.of("g:a"),
+                                List.of("1.0"),
+                                List.of("0"),
+                                List.of("root>g:a"),
+                                List.of("^1\t1.0"))
+                        .encode())
                 .isEqualTo("{\"type\":\"why-ack\",\"error\":null,\"matchNames\":[\"g:a\"],\"matchVersions\":[\"1.0\"],"
-                        + "\"pathOwners\":[\"0\"],\"paths\":[\"root>g:a\"]}");
+                        + "\"pathOwners\":[\"0\"],\"paths\":[\"root>g:a\"],\"pathSelectors\":[\"^1\\t1.0\"]}");
         assertThat(new PluginCommandReport("oops", false, 3, List.of("x")).encode())
                 .isEqualTo(
                         "{\"type\":\"plugin-command-ack\",\"error\":\"oops\",\"found\":false,\"exit\":3,\"output\":[\"x\"]}");

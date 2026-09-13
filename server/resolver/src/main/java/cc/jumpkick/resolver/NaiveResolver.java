@@ -13,6 +13,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,19 +55,25 @@ public final class NaiveResolver implements Resolver {
             }
             EffectivePom pom = pomBuilder.build(toCoord(item));
             List<String> transitiveCoords = new ArrayList<>();
+            Map<String, String> declared = new LinkedHashMap<>();
             for (Pom.Dep dep : pom.dependencies()) {
                 if (dep.optional()) continue;
                 if (!shouldFollow(dep.scope())) continue;
                 if (dep.version() == null || dep.version().isBlank()) continue;
-                transitiveCoords.add(dep.module() + "@" + dep.version());
+                String ref = dep.module() + "@" + dep.version();
+                transitiveCoords.add(ref);
+                declared.put(ref, dep.version());
                 work.add(new WorkItem(dep.module(), dep.version()));
             }
-            picked.put(item.module, new Pick(item.version, transitiveCoords));
+            picked.put(item.module, new Pick(item.version, transitiveCoords, declared));
         }
 
         Map<String, Resolution.ResolvedModule> out = new TreeMap<>();
         for (Map.Entry<String, Pick> e : picked.entrySet()) {
-            out.put(e.getKey(), new Resolution.ResolvedModule(e.getKey(), e.getValue().version, e.getValue().deps));
+            out.put(
+                    e.getKey(),
+                    new Resolution.ResolvedModule(
+                            e.getKey(), e.getValue().version, e.getValue().deps, e.getValue().declared));
         }
         return new Resolution(out);
     }
@@ -92,5 +99,5 @@ public final class NaiveResolver implements Resolver {
 
     private record WorkItem(String module, String version) {}
 
-    private record Pick(String version, List<String> deps) {}
+    private record Pick(String version, List<String> deps, Map<String, String> declared) {}
 }

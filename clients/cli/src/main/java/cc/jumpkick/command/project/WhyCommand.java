@@ -21,9 +21,7 @@ import cc.jumpkick.wire.protocol.WhyReport;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /** {@code jk why &lt;module&gt;} — explain why a module is in the dependency graph. */
 public final class WhyCommand implements CliCommand {
@@ -80,7 +78,7 @@ public final class WhyCommand implements CliCommand {
             for (int j = 0; j < report.paths().size(); j++) {
                 if (!report.pathOwners().get(j).equals(Integer.toString(i))) continue;
                 any = true;
-                CliOutput.out("  " + renderPath(report.paths().get(j)));
+                CliOutput.out("  " + renderPath(report.paths().get(j), report.selectorsOf(j)));
             }
             if (!any) {
                 CliOutput.out("  (not reachable from any declared dependency — orphan lockfile entry?)");
@@ -90,15 +88,33 @@ public final class WhyCommand implements CliCommand {
         return 0;
     }
 
-    /** Format a wire path ({@code module@version>module@version}) with colored coordinates. */
-    private static String renderPath(String path) {
-        return Arrays.stream(path.split(">"))
-                .map(step -> {
-                    int at = step.lastIndexOf('@');
-                    return at > 0 ? Coords.module(step.substring(0, at), step.substring(at + 1)) : step;
-                })
-                .collect(
-                        Collectors.joining(Theme.colorize(" -> ", Theme.active().darkGray())));
+    /**
+     * Format a wire path ({@code module@version>module@version}) with colored coordinates. Each
+     * step whose selector the lock knows says what was asked for and by whom — the manifest for
+     * the root, the step before it otherwise — beside the version that was picked.
+     */
+    private static String renderPath(String path, List<String> selectors) {
+        String[] steps = path.split(">");
+        StringBuilder out = new StringBuilder();
+        String arrow = Theme.colorize(" -> ", Theme.active().darkGray());
+        for (int i = 0; i < steps.length; i++) {
+            if (i > 0) out.append(arrow);
+            String step = steps[i];
+            int at = step.lastIndexOf('@');
+            out.append(at > 0 ? Coords.module(step.substring(0, at), step.substring(at + 1)) : step);
+            String selector = i < selectors.size() ? selectors.get(i) : "";
+            if (selector.isEmpty()) continue;
+            String by = i == 0 ? ManifestPaths.MANIFEST : moduleOf(steps[i - 1]);
+            out.append(Theme.colorize(
+                    " (declared " + selector + " by " + by + ")", Theme.active().darkGray()));
+        }
+        return out.toString();
+    }
+
+    /** The {@code module} half of a wire step ({@code module@version}). */
+    private static String moduleOf(String step) {
+        int at = step.lastIndexOf('@');
+        return at > 0 ? step.substring(0, at) : step;
     }
 
     /** Strip the version component if present; return arg unchanged when no colon. */

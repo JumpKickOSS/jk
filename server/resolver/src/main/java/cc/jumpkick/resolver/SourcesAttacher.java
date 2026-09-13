@@ -54,7 +54,8 @@ final class SourcesAttacher {
                             pkg.deps(),
                             pkg.pinnedBy(),
                             pkg.git(),
-                            "sha256:" + hit.fetched().sha256()));
+                            "sha256:" + hit.fetched().sha256(),
+                            pkg.declared()));
                     continue;
                 }
             } catch (Exception e) {

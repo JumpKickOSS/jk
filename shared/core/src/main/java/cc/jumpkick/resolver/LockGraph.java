@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class LockGraph {
 
-    private static final LockGraph EMPTY = new LockGraph(Map.of(), Map.of(), Map.of(), Set.of());
+    private static final LockGraph EMPTY = new LockGraph(Map.of(), Map.of(), Map.of(), Set.of(), Map.of());
 
     private final Map<String, Lockfile.Artifact> byModule;
     /** Artifact name → version-stripped dep modules, lock order. */
@@ -36,6 +36,8 @@ public final class LockGraph {
     private final Map<String, List<String>> forwardSorted;
 
     private final Set<String> declaredRoots;
+    /** Declared root GA → the selector the manifest wrote for it. */
+    private final Map<String, String> rootSelectors;
     /** Dep module (and its GA alias) → parent artifact names; built on first reverse walk. */
     private @Nullable Map<String, Set<String>> reverse;
 
@@ -43,11 +45,13 @@ public final class LockGraph {
             Map<String, Lockfile.Artifact> byModule,
             Map<String, List<String>> forward,
             Map<String, List<String>> forwardSorted,
-            Set<String> declaredRoots) {
+            Set<String> declaredRoots,
+            Map<String, String> rootSelectors) {
         this.byModule = byModule;
         this.forward = forward;
         this.forwardSorted = forwardSorted;
         this.declaredRoots = declaredRoots;
+        this.rootSelectors = rootSelectors;
     }
 
     /**
@@ -57,15 +61,15 @@ public final class LockGraph {
     public static LockGraph of(@Nullable JkBuild project, @Nullable Lockfile lock, @Nullable Path projectDir) {
         Set<String> roots =
                 project == null ? Set.of() : new LinkedHashSet<>(DependencyTree.collectRoots(project, projectDir));
-        return build(lock, roots);
+        return build(lock, roots, DependencyTree.collectRootSelectors(project, projectDir));
     }
 
     /** Lock-only graph (no declared roots) — per-member locks in workspace renders. */
     public static LockGraph forLock(@Nullable Lockfile lock) {
-        return build(lock, Set.of());
+        return build(lock, Set.of(), Map.of());
     }
 
-    private static LockGraph build(@Nullable Lockfile lock, Set<String> roots) {
+    private static LockGraph build(@Nullable Lockfile lock, Set<String> roots, Map<String, String> rootSelectors) {
         if (lock == null && roots.isEmpty()) return EMPTY;
         Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
         Map<String, List<String>> forward = new HashMap<>();
@@ -80,7 +84,27 @@ public final class LockGraph {
                 forwardSorted.put(pkg.name(), List.copyOf(sorted));
             }
         }
-        return new LockGraph(byModule, forward, forwardSorted, roots);
+        return new LockGraph(byModule, forward, forwardSorted, roots, rootSelectors);
+    }
+
+    /** The selector the manifest declares for root {@code module}, or null when it is not a declared root. */
+    public @Nullable String rootSelector(String module) {
+        return rootSelectors.get(ga(module));
+    }
+
+    /**
+     * The selector {@code parent}'s lock row declared for its edge to {@code child} (name, package
+     * key or GA), or null when the row has no such edge or the lock does not carry it.
+     */
+    public @Nullable String declaredSelector(String parent, String child) {
+        Lockfile.Artifact pkg = artifact(parent);
+        if (pkg == null) return null;
+        String childGa = ga(child);
+        for (String depRef : pkg.deps()) {
+            String module = stripVersion(depRef);
+            if (module.equals(child) || ga(module).equals(childGa)) return pkg.declaredFor(depRef);
+        }
+        return null;
     }
 
     /** The lock row for {@code moduleOrGa} (name / package key / GA alias), or null. */

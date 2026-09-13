@@ -57,6 +57,7 @@ public final class GraphOps {
             List<String> versions = new ArrayList<>(matches.size());
             List<String> owners = new ArrayList<>();
             List<String> paths = new ArrayList<>();
+            List<String> selectors = new ArrayList<>();
             for (int i = 0; i < matches.size(); i++) {
                 Lockfile.Artifact target = matches.get(i);
                 // Display GA form to users (not g:a:jar:).
@@ -67,9 +68,12 @@ public final class GraphOps {
                     paths.add(path.steps().stream()
                             .map(s -> ga(s.module()) + "@" + s.version())
                             .collect(Collectors.joining(">")));
+                    selectors.add(path.steps().stream()
+                            .map(s -> s.declared() == null ? "" : s.declared())
+                            .collect(Collectors.joining(WhyReport.STEP_SELECTOR_SEPARATOR)));
                 }
             }
-            return new WhyReport(null, names, versions, owners, paths);
+            return new WhyReport(null, names, versions, owners, paths, selectors);
         } catch (IOException | RuntimeException e) {
             return WhyReport.error(Errors.text(e));
         }

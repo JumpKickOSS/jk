@@ -31,6 +31,49 @@ class ProvenanceTest {
                 .isEqualTo("com.foo:root v1.0 -> com.foo:leaf v1.0"));
     }
 
+    /** Each step carries the selector its parent declared: the manifest's for the root, the row's edge after. */
+    @Test
+    void steps_carry_the_selector_their_parent_declared() {
+        JkBuild project = projectWithMainDeps("com.foo:root");
+        String edge = "com.foo:leaf:jar:@1.0";
+        Lockfile lock = lockOf(
+                new Lockfile.Artifact(
+                        "com.foo:root:jar:",
+                        "1.0",
+                        "central+https://repo.maven.apache.org/maven2/",
+                        "sha256:dummy",
+                        null,
+                        List.of(Scope.MAIN),
+                        List.of(edge),
+                        null,
+                        null,
+                        null,
+                        Map.of(edge, "[1.0,2.0)")),
+                pkg("com.foo:leaf:jar:", "1.0", List.of()));
+
+        List<Provenance.Path> paths = Provenance.pathsTo(project, lock, "com.foo:leaf");
+
+        assertThat(paths).singleElement().satisfies(p -> {
+            assertThat(p.steps().get(0).declared()).isEqualTo("=1.0");
+            assertThat(p.steps().get(1).declared()).isEqualTo("[1.0,2.0)");
+        });
+    }
+
+    /** A lock written before edges carried selectors, or a lock-top root, has nothing to show. */
+    @Test
+    void steps_without_a_known_selector_say_so_with_null() {
+        JkBuild project = projectWithMainDeps();
+        Lockfile lock =
+                lockOf(pkg("com.foo:root", "1.0", List.of("com.foo:leaf@1.0")), pkg("com.foo:leaf", "1.0", List.of()));
+
+        List<Provenance.Path> paths = Provenance.pathsTo(project, lock, "com.foo:leaf");
+
+        assertThat(paths).singleElement().satisfies(p -> {
+            assertThat(p.steps().get(0).declared()).isNull();
+            assertThat(p.steps().get(1).declared()).isNull();
+        });
+    }
+
     @Test
     void diamond_from_same_root_yields_one_shortest_path() {
         // root -> a -> leaf
