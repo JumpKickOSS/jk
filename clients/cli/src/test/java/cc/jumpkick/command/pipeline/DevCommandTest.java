@@ -22,6 +22,23 @@ class DevCommandTest {
         assertThat(watch.flag("no-sidecars")).contains(true);
     }
 
+    /** Global options such as {@code --output} are parsed by dispatch, so the invocation is built as dispatch would. */
+    @Test
+    void every_option_on_dev_reaches_watch_run_unchanged() {
+        Invocation dev = Invocation.builder()
+                .putValue("output", "json")
+                .flag("no-sidecars", true)
+                .putValue("cache-dir", "/tmp/c")
+                .addPositional("8080")
+                .addPositional("--flag-for-app")
+                .build();
+        Invocation watch = DevCommand.asWatchRun(dev);
+        assertThat(watch.positionals()).containsExactly("run", "8080", "--flag-for-app");
+        assertThat(watch.value("output")).contains("json");
+        assertThat(watch.value("cache-dir")).contains("/tmp/c");
+        assertThat(watch.flag("no-sidecars")).contains(true);
+    }
+
     @Test
     void the_help_screen_names_no_sidecars() {
         String help = HelpRenderer.renderHelp(CommandModels.from(new DevCommand(), "jk dev", List.of()), false);

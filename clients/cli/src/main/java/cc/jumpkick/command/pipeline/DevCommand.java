@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
-import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -45,16 +44,15 @@ public final class DevCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        // Rebuild as watch run: prepend the run verb so WatchCommand's parser sees a normal shape.
-        Invocation.Builder b = Invocation.builder();
-        b.addPositional("run");
-        for (String p : in.positionals()) b.addPositional(p);
-        // Flags the user passed on `jk dev` are already on Session/GlobalOptions; WatchCommand
-        // re-reads GlobalOptions.from(in) — re-emit known option values from the original invocation.
-        for (String name : List.of("cache-dir", CommonOpts.JDKS_DIR, "variant", "features")) {
-            in.value(name).ifPresent(v -> b.putValue(name, v));
-        }
-        in.flag("no-sidecars").ifPresent(v -> b.flag("no-sidecars", v));
-        return watch.run(b.build());
+        return watch.run(asWatchRun(in));
+    }
+
+    /**
+     * The same invocation with {@code run} as its first positional: every option and flag the user
+     * put on {@code jk dev} — {@code --output json}, {@code --no-sidecars}, {@code --cache-dir},
+     * the variant selection — reaches {@code WatchCommand} exactly as if typed after {@code watch run}.
+     */
+    static Invocation asWatchRun(Invocation in) {
+        return Invocation.builder().addPositional("run").merge(in).build();
     }
 }
