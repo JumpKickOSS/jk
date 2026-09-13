@@ -17,6 +17,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -51,8 +52,8 @@ class NiaScratchTest {
 
     @Test
     void sweep_all_jk_modules() throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-        Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
+        Path cache = TestCaches.dir("android-spike-cache");
+        Path sdkRoot = TestCaches.dir("android-spike-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
         acceptLicenses();
 
@@ -95,12 +96,12 @@ class NiaScratchTest {
     @Test
     void app_release_aab() throws Exception {
         Path module = NIA.resolve("app");
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-        Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
+        Path cache = TestCaches.dir("android-spike-cache");
+        Path sdkRoot = TestCaches.dir("android-spike-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
         acceptLicenses();
 
-        Path keystore = Path.of(System.getProperty("user.dir"), "build", "nia-release.jks");
+        Path keystore = TestCaches.dir("nia-release.jks");
         if (!Files.isRegularFile(keystore)) {
             Path keytool = Path.of(System.getProperty("java.home"), "bin", "keytool");
             new ProcessBuilder(
@@ -181,7 +182,7 @@ class NiaScratchTest {
 
     /** Null on success, else the first diagnostic. */
     private static @Nullable String buildOne(Path module) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
         JkBuild build = JkBuildParser.parse(module.resolve("jk.toml"));
         // Workspace context for the lock, exactly LockFlow's module branch: resolve
         // workspace:* placeholders against the sibling list (the build side self-discovers).

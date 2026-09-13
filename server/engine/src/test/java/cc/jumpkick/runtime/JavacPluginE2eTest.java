@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.runtime.workspace.BuildService;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -129,6 +130,6 @@ class JavacPluginE2eTest {
     private static Path cacheRoot() throws IOException {
         Path worker = PluginJar.JAVA_COMPILER.locate(JkStores.storeCas());
         String key = Hashing.sha256Hex(worker).substring(0, 12);
-        return Path.of(System.getProperty("user.dir"), "build", "javac-plugin-cache-" + key);
+        return TestCaches.dir("javac-plugin-cache-" + key);
     }
 }

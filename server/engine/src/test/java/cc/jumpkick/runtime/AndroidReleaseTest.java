@@ -13,6 +13,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,8 +54,8 @@ class AndroidReleaseTest {
     @Test
     void release_build_produces_verified_aab(@TempDir Path tmp) throws Exception {
         Path app = Files.createDirectories(tmp.resolve("relapp"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-        Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
+        Path cache = TestCaches.dir("android-spike-cache");
+        Path sdkRoot = TestCaches.dir("android-spike-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         Path keystore = tmp.resolve("release.jks");

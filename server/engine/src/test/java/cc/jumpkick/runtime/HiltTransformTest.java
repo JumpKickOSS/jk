@@ -13,6 +13,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import java.lang.classfile.ClassFile;
 import java.lang.classfile.CodeModel;
 import java.lang.classfile.Opcode;
@@ -45,8 +46,8 @@ class HiltTransformTest {
     @Test
     void unmodified_hilt_sources_build_and_superclasses_rewrite(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-        Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
+        Path cache = TestCaches.dir("android-spike-cache");
+        Path sdkRoot = TestCaches.dir("android-spike-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeProject(project);

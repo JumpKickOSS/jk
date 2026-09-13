@@ -10,6 +10,7 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -50,7 +51,7 @@ class JdkFloorTest {
         // that major is cleared by the newer JVM, by design.
         JdkEnsure.install("temurin-" + major, warning -> System.out.println("JDK: " + warning));
         Path project = Files.createDirectories(tmp.resolve("app" + major));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
         String majorStr = Integer.toString(major);
 
         Files.writeString(project.resolve("jk.toml"), """

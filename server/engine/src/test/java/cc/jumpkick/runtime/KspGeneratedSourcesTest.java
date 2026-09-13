@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,7 +37,7 @@ class KspGeneratedSourcesTest {
     @Test
     void a_ksp_processor_generates_kotlin_that_the_same_build_compiles(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "kspgen"

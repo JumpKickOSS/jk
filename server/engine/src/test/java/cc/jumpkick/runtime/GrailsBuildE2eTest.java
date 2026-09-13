@@ -8,6 +8,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -176,7 +177,7 @@ class GrailsBuildE2eTest {
     }
 
     private static Path cache() {
-        return Path.of(System.getProperty("user.dir"), "build", "grails-e2e-cache");
+        return TestCaches.dir("grails-e2e-cache");
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {

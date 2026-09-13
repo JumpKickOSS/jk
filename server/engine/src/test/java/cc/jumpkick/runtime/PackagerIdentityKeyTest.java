@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -35,7 +36,7 @@ class PackagerIdentityKeyTest {
     @Test
     void a_new_engine_identity_repackages_where_the_same_one_restores(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("lib"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "packager-identity-cache");
+        Path cache = TestCaches.dir("packager-identity-cache");
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "lib"
                 group   = "com.example"

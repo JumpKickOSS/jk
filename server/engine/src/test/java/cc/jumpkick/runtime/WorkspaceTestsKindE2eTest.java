@@ -12,6 +12,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -36,7 +37,7 @@ class WorkspaceTestsKindE2eTest {
 
     @Test
     void app_tests_can_use_sibling_test_helpers_via_kind_tests(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
         Path ws = testsKindWorkspace(tmp);
 
         // Parse surface: kind on the test edge, not on main.

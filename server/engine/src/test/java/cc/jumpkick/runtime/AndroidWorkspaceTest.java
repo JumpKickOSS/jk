@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -48,8 +49,8 @@ class AndroidWorkspaceTest {
     @Test
     void library_module_aar_and_non_transitive_r(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-        Path sdkRoot = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
+        Path cache = TestCaches.dir("android-spike-cache");
+        Path sdkRoot = TestCaches.dir("android-spike-sdk");
         System.setProperty(AndroidSdk.ROOT_PROPERTY, sdkRoot.toString());
 
         writeWorkspace(root);

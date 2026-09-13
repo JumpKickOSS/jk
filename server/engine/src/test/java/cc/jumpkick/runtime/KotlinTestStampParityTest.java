@@ -17,6 +17,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
@@ -58,7 +59,7 @@ class KotlinTestStampParityTest {
     @Test
     void the_forecast_and_the_build_stamp_a_kotlin_suite_under_the_same_key(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("ktsuite")).toRealPath();
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
         Files.writeString(project.resolve("jk.toml"), MANIFEST);
         Files.createDirectories(project.resolve("src"));
         Files.writeString(project.resolve("src/Lib.kt"), """

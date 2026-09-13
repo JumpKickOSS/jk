@@ -14,6 +14,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.runtime.workspace.BuildService;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -169,7 +170,7 @@ class ShippedTemplateBuildTest {
             shas.append(Hashing.sha256Hex(pluginJar(plugin)));
         }
         String key = Hashing.sha256Hex(shas.toString()).substring(0, 12);
-        return Path.of(System.getProperty("user.dir"), "build", "template-build-cache-" + key);
+        return TestCaches.dir("template-build-cache-" + key);
     }
 
     private static List<TemplateSpec> discoverShippedTemplates() {

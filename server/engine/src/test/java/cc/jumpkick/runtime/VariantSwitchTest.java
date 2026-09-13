@@ -9,6 +9,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -34,7 +35,7 @@ class VariantSwitchTest {
     @Test
     void switching_variants_drops_the_previous_values_extra_src_classes(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "ktswitch"

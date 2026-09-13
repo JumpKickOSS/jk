@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -54,7 +55,7 @@ class KotlinDependencyApiChangeE2eTest {
 
     @Test
     void a_dependency_api_change_fails_the_dependent_modules_kotlin_test_compile(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
         Path ws = workspace(tmp);
         lock(ws, cache);
 

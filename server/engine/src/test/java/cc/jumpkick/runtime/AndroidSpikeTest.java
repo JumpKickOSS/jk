@@ -14,6 +14,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.testing.SysProps;
+import cc.jumpkick.testing.TestCaches;
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -52,8 +53,8 @@ class AndroidSpikeTest {
     private record Built(Path project, Path cache, Path sdkRoot, Path apk) {}
 
     // A persistent CAS + SDK root across runs — the platform is a one-time download.
-    private static final Path CACHE = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
-    private static final Path SDK_ROOT = Path.of(System.getProperty("user.dir"), "build", "android-spike-sdk");
+    private static final Path CACHE = TestCaches.dir("android-spike-cache");
+    private static final Path SDK_ROOT = TestCaches.dir("android-spike-sdk");
 
     @TempDir
     Path tmp;

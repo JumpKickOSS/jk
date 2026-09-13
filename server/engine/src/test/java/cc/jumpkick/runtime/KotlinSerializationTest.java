@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +35,7 @@ class KotlinSerializationTest {
     @Test
     void serializable_class_compiles_with_the_declared_plugin(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "ser"

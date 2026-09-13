@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -95,7 +96,7 @@ class UpstreamBodyEditKeepsDownstreamClassesE2eTest {
 
     @Test
     void a_body_only_upstream_edit_and_its_revert_keep_every_downstream_class(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "upstream-body-edit-cache");
+        Path cache = TestCaches.dir("upstream-body-edit-cache");
         Path ws = workspace(tmp);
         lock(ws, cache);
         Path libSource = ws.resolve("lib/src/com/example/Lib.java");

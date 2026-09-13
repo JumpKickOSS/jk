@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,7 +44,7 @@ class RebuildRunTestsMarkerTest {
         // Real-path the fixture so ActionKey.taskTag matches BuildGraph.canonicalPath
         // (/var/folders vs /private/var/folders on macOS).
         Path project = Files.createDirectories(tmp.resolve("markerapp")).toRealPath();
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
+        Path cache = TestCaches.dir("clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "markerapp"
                 group   = "com.example"

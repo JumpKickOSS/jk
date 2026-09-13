@@ -14,6 +14,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,7 +61,7 @@ class BuildCleanRestoreTest {
     @Test
     void no_test_module_restores_wiped_outputs_on_clean_build(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("cleanlib"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
+        Path cache = TestCaches.dir("clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), NO_TEST_MANIFEST);
         Path src = Files.createDirectories(project.resolve("src/com/example"));
         Files.writeString(src.resolve("Lib.java"), """
@@ -123,7 +124,7 @@ class BuildCleanRestoreTest {
     @Test
     void skip_tests_module_with_tests_restores_wiped_outputs(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("cleanapp"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
+        Path cache = TestCaches.dir("clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "cleanapp"
                 group   = "com.example"

@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -32,7 +33,7 @@ class JUnit4VintageTest {
     @Test
     void junit4_tests_run_through_the_vintage_engine(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("j4"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "j4"

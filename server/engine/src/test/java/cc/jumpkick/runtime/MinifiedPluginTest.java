@@ -11,6 +11,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -153,7 +154,7 @@ class MinifiedPluginTest {
 
     /** Downloads persist here (CAS + fetched repos), so repeat runs are warm on the network. */
     private static Path spikeCache() {
-        return Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        return TestCaches.dir("android-spike-cache");
     }
 
     /** A one-class app over commons-lang3, shrunk but not obfuscated. */

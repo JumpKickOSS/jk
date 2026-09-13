@@ -22,6 +22,7 @@ import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.nio.file.Files;
@@ -65,7 +66,7 @@ class ProfileForecastTest {
     @Test
     void a_profile_build_after_a_default_build_recompiles(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("profiled")).toRealPath();
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
+        Path cache = TestCaches.dir("clean-restore-cache");
         Files.writeString(project.resolve("jk.toml"), MANIFEST);
         Path src = Files.createDirectories(project.resolve("src/com/example"));
         Files.writeString(src.resolve("Lib.java"), """

@@ -17,6 +17,7 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -128,7 +129,7 @@ class JavaAbiCompileAvoidanceE2eTest {
 
     @Test
     void a_dependents_compile_follows_the_dependencys_api_not_its_bytes(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "abi-avoidance-cache");
+        Path cache = TestCaches.dir("abi-avoidance-cache");
         Path ws = workspace(tmp);
         lock(ws, cache);
         Path libSource = ws.resolve("lib/src/com/example/Lib.java");

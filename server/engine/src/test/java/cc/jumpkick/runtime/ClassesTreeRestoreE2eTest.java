@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -73,7 +74,7 @@ class ClassesTreeRestoreE2eTest {
      */
     @Test
     void an_emptied_tree_is_refilled_with_the_current_keys_bytecode_after_a_revert(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "classes-tree-restore-cache");
+        Path cache = TestCaches.dir("classes-tree-restore-cache");
         Path ws = workspace(tmp, REVISION_A);
         lock(ws, cache);
         Path source = ws.resolve("lib/src/com/example/One.java");
@@ -110,7 +111,7 @@ class ClassesTreeRestoreE2eTest {
      */
     @Test
     void a_partial_classes_tree_is_made_whole_without_redo(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "classes-tree-partial-cache");
+        Path cache = TestCaches.dir("classes-tree-partial-cache");
         Path ws = workspace(tmp, REVISION_A);
         lock(ws, cache);
         BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));

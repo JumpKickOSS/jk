@@ -12,6 +12,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
@@ -137,7 +138,7 @@ class GroovyAbiCompileAvoidanceE2eTest {
 
     @Test
     void a_groovy_consumers_compile_follows_the_java_dependencys_api(@TempDir Path tmp) throws Exception {
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "groovy-abi-avoidance-cache");
+        Path cache = TestCaches.dir("groovy-abi-avoidance-cache");
         Path ws = workspace(tmp);
         lock(ws, cache);
         Path libSource = ws.resolve("lib/src/com/example/Lib.java");

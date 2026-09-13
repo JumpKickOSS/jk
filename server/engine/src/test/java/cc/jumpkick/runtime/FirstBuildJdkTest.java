@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -36,7 +37,7 @@ class FirstBuildJdkTest {
     void first_build_with_uninstalled_pin_tests_on_the_pinned_jdk(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
         Path freshJdks = Files.createDirectories(tmp.resolve("jdks"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        Path cache = TestCaches.dir("android-spike-cache");
 
         Files.writeString(project.resolve("jk.toml"), """
                 name    = "first17"
