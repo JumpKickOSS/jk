@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.KotlinClasspathAbi;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -53,8 +54,8 @@ class KotlincSpecTest {
                 .isEqualTo(jdk21.toAbsolutePath().normalize().toString());
         // jvmTarget is identical on both requests — only -jdk-home moved.
         assertThat(on17.jvmTarget()).isEqualTo(on21.jvmTarget());
-        assertThat(ActionKey.forKotlinc("compile-kotlin", on17, "0.1.0"))
-                .isNotEqualTo(ActionKey.forKotlinc("compile-kotlin", on21, "0.1.0"));
+        assertThat(ActionKey.forKotlinc("compile-kotlin", on17, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY))
+                .isNotEqualTo(ActionKey.forKotlinc("compile-kotlin", on21, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY));
     }
 
     /** The value the spec hands the compiler after {@code -jdk-home}. */

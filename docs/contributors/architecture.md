@@ -309,7 +309,9 @@ and exclusions stay GA-scoped.
 ## Build execution
 
 1. Expand a verb (`build`, `test`, …) into a DAG of steps with typed inputs/outputs.
-2. Hash inputs (sources, classpath ABI inputs, flags, toolchain, plugin code, …).
+2. Hash inputs (sources, classpath ABI inputs, flags, toolchain, plugin code, …). A Kotlin
+   compile keys each classpath entry on the digest of its Build Tools API snapshot, so a sibling
+   rewritten with the same ABI is a hit; kotlinc itself still sees the full jars.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 

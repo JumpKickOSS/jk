@@ -123,14 +123,43 @@ public final class ActionKey {
 
     /**
      * Action key for a Kotlin worker invocation. Same shape as {@link #forJavac}: task + jk version +
-     * jvm target + the project JDK + the free args in order + each source's content hash + classpath paths
-     * (both the compilation classpath and the worker's Build Tools API closure — whose CAS paths
+     * jvm target + the project JDK + the free args in order + each source's content hash + the
+     * compile classpath's ABI + the worker's Build Tools API closure by content (its CAS paths
      * encode the compiler version, so a compiler bump invalidates the key).
+     *
+     * <p>The compile classpath is keyed on each entry's {@link KotlinClasspathAbi Kotlin ABI token},
+     * not its bytes: a sibling whose implementation changed but whose ABI did not leaves this key —
+     * and the consumer's compile — alone. The worker still receives the real jars and directories;
+     * only the key looks at them through the snapshot. {@code snapshotter} is how a token not yet
+     * memoized gets computed (the worker's {@code snapshot} op in a build; a fake in tests).
      */
-    public static String forKotlinc(String taskId, KotlincRequest request, String jkVersion) throws IOException {
+    public static String forKotlinc(
+            String taskId, KotlincRequest request, String jkVersion, KotlinClasspathAbi.Snapshotter snapshotter)
+            throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
+        appendKotlincOptions(sb, request);
+        appendSources(sb, request.sources());
+
+        // The classpath's ABI, order-independent: the worker joins the entries in request order,
+        // but kotlinc resolves the same declarations either way.
+        List<String> cp = new ArrayList<>(KotlinClasspathAbi.tokens(request.classpath(), snapshotter));
+        cp.sort(Comparator.naturalOrder());
+        for (String token : cp) {
+            sb.append("cp:").append(token).append('\n');
+        }
+        // The compiler itself, by content: a different Build Tools API closure is a different
+        // compiler and may emit different bytecode from the same sources and ABI.
+        List<Path> worker = new ArrayList<>(request.workerClasspath());
+        worker.sort(Comparator.comparing(Path::toString));
+        for (Path entry : worker) {
+            appendCpToken(sb, "worker:", entry);
+        }
+        return Hashing.sha256Hex(sb.toString());
+    }
+
+    private static void appendKotlincOptions(StringBuilder sb, KotlincRequest request) throws IOException {
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
         // The project JDK is a compile INPUT, not a consequence of jvmTarget: KotlincDriver hands
         // it to kotlinc as -jdk-home, and that is where the platform classes a cross-compile links
@@ -155,16 +184,42 @@ public final class ActionKey {
                     .append(String.join(",", plugin.options()))
                     .append('\n');
         }
+    }
 
-        appendSources(sb, request.sources());
-
-        List<Path> cp = new ArrayList<>(request.classpath());
-        cp.addAll(request.workerClasspath());
-        cp.sort(Comparator.comparing(Path::toString));
-        for (Path entry : cp) {
-            appendCpToken(sb, "cp:", entry); // dirs tree-hashed
+    /**
+     * The inputs of a Kotlin compile record, for {@code jk why-rebuilt}: each source's hash, each
+     * classpath entry's {@link KotlinClasspathAbi ABI token} under its module-relative path (so a
+     * sibling whose ABI moved reads as that entry changing, and a body-only rewrite reads as
+     * nothing), and the option-bearing facts {@link #forKotlinc} hashes. The tokens are memoized, so
+     * after the key this is a lookup per entry.
+     */
+    public static Map<String, String> kotlincInputs(KotlincRequest request, KotlinClasspathAbi.Snapshotter snapshotter)
+            throws IOException {
+        Map<String, String> result = new LinkedHashMap<>();
+        List<Path> sortedSources = new ArrayList<>(request.sources());
+        sortedSources.sort(Comparator.comparing(Path::toString));
+        for (Path src : sortedSources) {
+            Path abs = src.toAbsolutePath().normalize();
+            result.put(abs.toString(), FileHashMemo.contentHash(abs));
         }
-        return Hashing.sha256Hex(sb.toString());
+        List<String> tokens = KotlinClasspathAbi.tokens(request.classpath(), snapshotter);
+        for (int i = 0; i < tokens.size(); i++) {
+            result.put("cp:" + PortablePath.of(request.classpath().get(i)), tokens.get(i));
+        }
+        for (Path entry : request.workerClasspath()) {
+            result.put("worker:" + FreshnessStamp.identityKey(entry), "");
+        }
+        result.put("jvmTarget", Integer.toString(request.jvmTarget()));
+        result.put("jdk", jdkToken(request.javaHome()));
+        String moduleName = request.moduleName();
+        result.put("moduleName", moduleName == null ? "" : moduleName);
+        result.put("args", String.join(",", request.extraArgs()));
+        for (var plugin : request.plugins()) {
+            result.put(
+                    "plugin:" + plugin.id(),
+                    FileHashMemo.contentHash(plugin.jar()) + ":" + String.join(",", plugin.options()));
+        }
+        return result;
     }
 
     /**

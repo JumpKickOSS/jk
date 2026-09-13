@@ -32,6 +32,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
+import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
@@ -371,7 +372,8 @@ final class ModuleForecast {
             // forecast a full compile no matter how cached the build actually was.
             boolean fresh = !compileDepDirty
                     && !force
-                    && FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.KOTLIN, ktSrc);
+                    && FreshnessStamp.looksFresh(
+                            layout.classesDir(), BuildStamps.KOTLIN, ktSrc, kotlinStampDigest(prepared));
             // After jk clean the stamp is gone with target/, but the action-cache pointer
             // under tasks/ survives. lastFor+present ⇒ live kotlinc will restore — do not
             // price FULL (never-built modules have no pointer and stay FULL).
@@ -391,6 +393,23 @@ final class ModuleForecast {
                 compileDirty = true;
             }
         }
+    }
+
+    /**
+     * The digest the build's compile-kotlin stamp carries, from the same derivation: the kotlinc
+     * config for this module and the ABI token of each compile-classpath entry. Read-only — a
+     * token not yet memoized keys on content here, which can only make the forecast say "not
+     * fresh" where the build, after one snapshot, would say fresh.
+     */
+    private String kotlinStampDigest(Prepared prepared) throws Exception {
+        var langs = CompileSupport.resolveLanguages(project.project(), dir);
+        List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
+                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
+        PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
+                project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
+        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+        List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
+        return PlannerLang.kotlinStampDigest(config, cp, KotlinClasspathAbi.MEMOIZED_ONLY);
     }
 
     private void compileGroovy(Prepared prepared) throws Exception {

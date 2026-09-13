@@ -330,17 +330,16 @@ public final class PlannerTest {
                 .under(CacheTree.ACTIONS.under(in.cache()))
                 .resolve(ktTaskId);
         List<Path> javaRoots = mixedTest ? List.of(src.javaTestSrc()) : null;
-        LangCompile.Result kr = compileKotlinSources(
+        PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
                 ctx,
                 in,
                 cas,
-                actionCache,
                 src.ktTest(),
                 baseCp,
                 ktTestOut,
-                ktTaskId,
                 ktWorkingDir,
                 PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots));
+        LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, ktTaskId, worker);
         if (!kr.success()) {
             PlannerSupport.forwardWorkerDiagnostics(
                     ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");

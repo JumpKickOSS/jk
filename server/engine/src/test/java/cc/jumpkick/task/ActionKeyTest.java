@@ -320,8 +320,9 @@ class ActionKeyTest {
                 List.of(new KotlincRequest.Plugin("all-open", pluginV2, List.of())),
                 null);
 
-        assertThat(ActionKey.forKotlinc("compile-main", base, "0.1.0"))
-                .isNotEqualTo(ActionKey.forKotlinc("compile-main", upgraded, "0.1.0"));
+        assertThat(ActionKey.forKotlinc("compile-main", base, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY))
+                .isNotEqualTo(
+                        ActionKey.forKotlinc("compile-main", upgraded, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY));
     }
 
     @Test
@@ -337,8 +338,16 @@ class ActionKeyTest {
         Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
         Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
 
-        assertThat(ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk17), "0.1.0"))
-                .isNotEqualTo(ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk21), "0.1.0"));
+        assertThat(ActionKey.forKotlinc(
+                        "compile-kotlin",
+                        kotlin(src, worker, tempDir, jdk17),
+                        "0.1.0",
+                        KotlinClasspathAbi.MEMOIZED_ONLY))
+                .isNotEqualTo(ActionKey.forKotlinc(
+                        "compile-kotlin",
+                        kotlin(src, worker, tempDir, jdk21),
+                        "0.1.0",
+                        KotlinClasspathAbi.MEMOIZED_ONLY));
     }
 
     @Test
@@ -351,9 +360,11 @@ class ActionKeyTest {
         Files.writeString(worker, "worker");
         Path jdk = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
 
-        String before = ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0");
+        String before = ActionKey.forKotlinc(
+                "compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY);
         jdk(jdk, "21.0.6+11"); // same length: the token is the content, not the file size
-        String after = ActionKey.forKotlinc("compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0");
+        String after = ActionKey.forKotlinc(
+                "compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY);
 
         assertThat(after).isNotEqualTo(before);
     }

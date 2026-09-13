@@ -677,7 +677,22 @@ public final class PlannerCompile {
                     // its digest is a stamp input, so a kotlinc arg, a [[kotlin-plugins]] entry or
                     // a JDK switch is stale here even though no source moved.
                     PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(ctx, in.dir(), javaRoots);
-                    String optionsDigest = config.digest();
+                    // Kotlin compiles into its own dir, then we merge into the
+                    // shared classes dir. The incremental compiler owns its output
+                    // dir and prunes files it didn't produce — so it can't share a
+                    // dir with javac's output (it would delete the.class files).
+                    Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
+                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, classes);
+                    Path workingDir = ActionTree.INCREMENTAL_KOTLIN
+                            .under(CacheTree.ACTIONS.under(in.cache()))
+                            .resolve(taskId);
+                    PlannerLang.KotlinWorker worker =
+                            PlannerLang.kotlinWorker(ctx, in, cas, ktSources, classpath, ktOut, workingDir, config);
+                    // The stamp digest describes the classpath by ABI, like the action key: a
+                    // sibling rewritten with the same ABI is fresh here once its token is known,
+                    // and one whose ABI moved is stale before any mtime is read. A token not yet
+                    // memoized is what makes the worker resolve (and fork) ahead of the compile.
+                    String optionsDigest = PlannerLang.kotlinStampDigest(config, classpath, worker.snapshotter());
                     ctx.put(KOTLIN_STAMP_DIGEST, optionsDigest);
                     if (!rerun
                             && FreshnessStamp.isFresh(
@@ -695,17 +710,7 @@ public final class PlannerCompile {
                         return;
                     }
                     ctx.label("compiling " + ktSources.size() + " Kotlin sources");
-                    // Kotlin compiles into its own dir, then we merge into the
-                    // shared classes dir. The incremental compiler owns its output
-                    // dir and prunes files it didn't produce — so it can't share a
-                    // dir with javac's output (it would delete the.class files).
-                    Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
-                    String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, classes);
-                    Path workingDir = ActionTree.INCREMENTAL_KOTLIN
-                            .under(CacheTree.ACTIONS.under(in.cache()))
-                            .resolve(taskId);
-                    LangCompile.Result kr = compileKotlinSources(
-                            ctx, in, cas, actionCache, ktSources, classpath, ktOut, taskId, workingDir, config);
+                    LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, taskId, worker);
                     if (!kr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
                                 ctx, "kotlinc", kr.diagnostics(), "kotlinc failed without diagnostics");

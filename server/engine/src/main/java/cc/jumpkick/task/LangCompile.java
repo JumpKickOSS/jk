@@ -60,9 +60,10 @@ public final class LangCompile {
             boolean useCache,
             Cas cas,
             ActionCache actionCache,
-            WorkerEnv env)
+            WorkerEnv env,
+            KotlinClasspathAbi.Snapshotter snapshotter)
             throws IOException {
-        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, env);
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, env, snapshotter);
     }
 
     /**
@@ -78,9 +79,10 @@ public final class LangCompile {
             boolean persist,
             Cas cas,
             ActionCache actionCache,
-            WorkerEnv env)
+            WorkerEnv env,
+            KotlinClasspathAbi.Snapshotter snapshotter)
             throws IOException {
-        String key = ActionKey.forKotlinc(taskId, request, jkVersion);
+        String key = ActionKey.forKotlinc(taskId, request, jkVersion, snapshotter);
 
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
@@ -108,9 +110,10 @@ public final class LangCompile {
                 request.outputDir(),
                 request.sources().isEmpty(),
                 persist,
-                Map.of(),
                 cas,
                 actionCache,
+                // Recorded for why-rebuilt: the tokens are memoized by the key above, so a lookup each.
+                () -> ActionKey.kotlincInputs(request, snapshotter),
                 () -> WorkerCompileDriver.compile(request, env));
     }
 
@@ -168,9 +171,9 @@ public final class LangCompile {
                 request.outputDir(),
                 request.sources().isEmpty(),
                 persist,
-                ActionKey.snapshotInputs(request),
                 cas,
                 actionCache,
+                () -> ActionKey.snapshotInputs(request),
                 () -> WorkerCompileDriver.compile(request, env));
     }
 
@@ -184,9 +187,9 @@ public final class LangCompile {
             Path outputDir,
             boolean noSources,
             boolean persist,
-            Map<String, String> inputs,
             Cas cas,
             ActionCache actionCache,
+            Inputs inputs,
             Supplier<CompileResult> fork)
             throws IOException {
         // Stream the worker's output dir into the CAS as it's produced, then
@@ -212,8 +215,14 @@ public final class LangCompile {
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
-        if (persist) actionCache.storeWithOutputs(taskId, key, inputs, outputs);
+        if (persist) actionCache.storeWithOutputs(taskId, key, inputs.snapshot(), outputs);
         return new Result(true, "compiled", key, cr.diagnostics());
+    }
+
+    /** The inputs a stored record carries for {@code jk why-rebuilt}; computed only when a record is written. */
+    @FunctionalInterface
+    private interface Inputs {
+        Map<String, String> snapshot() throws IOException;
     }
 
     private static Result cacheHit(String key) {

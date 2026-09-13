@@ -121,6 +121,27 @@ class FreshnessStampTest {
     }
 
     @Test
+    void looks_fresh_with_a_digest_requires_the_recorded_one(@TempDir Path tempDir) throws IOException {
+        Path classes = tempDir.resolve("classes");
+        Files.createDirectories(classes);
+        Path src = writeFile(tempDir.resolve("A.kt"), "class A");
+        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 5_000));
+
+        FreshnessStamp.write(
+                classes, BuildStamps.KOTLIN, "compile-kotlin", "", List.of(src), List.of(), RELEASE, DIGEST);
+
+        // The forecast reproduces the digest the build wrote: fresh. A classpath entry whose ABI
+        // moved (or an option that changed) yields another digest: stale, before any mtime is read.
+        assertThat(FreshnessStamp.looksFresh(classes, BuildStamps.KOTLIN, List.of(src), DIGEST))
+                .isTrue();
+        assertThat(FreshnessStamp.looksFresh(classes, BuildStamps.KOTLIN, List.of(src), "options-b"))
+                .isFalse();
+        assertThat(FreshnessStamp.looksFresh(classes, BuildStamps.KOTLIN, List.of(src)))
+                .as("the digest-free probe stays a source-mtime check")
+                .isTrue();
+    }
+
+    @Test
     void unchanged_inputs_are_fresh(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);

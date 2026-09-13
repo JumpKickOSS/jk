@@ -43,7 +43,7 @@ import org.jspecify.annotations.Nullable;
 public final class WorkerCompileDriver {
 
     /** Mirrors the {@code jk-kotlin-compiler} manifest prefix. */
-    private static final String KOTLIN_PREFIX = "##JKKC:";
+    static final String KOTLIN_PREFIX = "##JKKC:";
 
     /** Mirrors the {@code jk-groovy-compiler} manifest prefix. */
     private static final String GROOVY_PREFIX = "##JKGC:";

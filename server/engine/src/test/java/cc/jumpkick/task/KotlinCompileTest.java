@@ -36,13 +36,20 @@ class KotlinCompileTest {
         KotlincRequest req = req(src, out, worker);
 
         // Seed the cache: store a record under this request's key with one output.
-        String key = ActionKey.forKotlinc("compile-kotlin", req, "jk-test");
+        String key = ActionKey.forKotlinc("compile-kotlin", req, "jk-test", KotlinClasspathAbi.MEMOIZED_ONLY);
         Path blob = cas.put("CLASS BYTES".getBytes(StandardCharsets.UTF_8));
         String sha = cas.hashFromPath(blob).orElseThrow();
         cache.storeWithOutputs("compile-kotlin", key, Map.of(), Map.of("x/A.class", sha));
 
-        LangCompile.Result r =
-                LangCompile.run("compile-kotlin", req, "jk-test", /* useCache= */ true, cas, cache, WorkerEnv.strict());
+        LangCompile.Result r = LangCompile.run(
+                "compile-kotlin",
+                req,
+                "jk-test",
+                /* useCache= */ true,
+                cas,
+                cache,
+                WorkerEnv.strict(),
+                KotlinClasspathAbi.MEMOIZED_ONLY);
 
         assertThat(r.success()).isTrue();
         assertThat(r.cacheHit()).isTrue();
@@ -58,9 +65,9 @@ class KotlinCompileTest {
         Path out = dir.resolve("out");
         Path worker = write(dir.resolve("worker.jar"), "stub");
         Path src = write(dir.resolve("A.kt"), "package x\nclass A");
-        String k1 = ActionKey.forKotlinc("t", req(src, out, worker), "jk");
+        String k1 = ActionKey.forKotlinc("t", req(src, out, worker), "jk", KotlinClasspathAbi.MEMOIZED_ONLY);
         write(src, "package x\nclass A { fun f() = 1 }");
-        String k2 = ActionKey.forKotlinc("t", req(src, out, worker), "jk");
+        String k2 = ActionKey.forKotlinc("t", req(src, out, worker), "jk", KotlinClasspathAbi.MEMOIZED_ONLY);
         assertThat(k2).isNotEqualTo(k1);
     }
 

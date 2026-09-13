@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.PlannerSupport.lockModules;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.compile.KotlincSnapshots;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
@@ -27,12 +28,14 @@ import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.task.LangCompile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -79,6 +82,11 @@ public final class PlannerLang {
          * options. A change here moves no source or classpath mtime; only this does.
          */
         String digest() throws IOException {
+            return FreshnessStamp.optionsDigest(digestParts());
+        }
+
+        /** The facts {@link #digest} folds, one per part. */
+        List<String> digestParts() throws IOException {
             List<String> parts = new ArrayList<>();
             parts.add("kotlin:" + (kotlinVersion == null ? "" : kotlinVersion));
             parts.add("jvmTarget:" + jvmTarget);
@@ -89,8 +97,165 @@ public final class PlannerLang {
                 parts.add("plugin:" + p.id() + ":" + p.group() + ":" + p.artifact() + ":" + p.version() + ":"
                         + String.join(",", p.options()));
             }
-            return FreshnessStamp.optionsDigest(parts);
+            return parts;
         }
+    }
+
+    /**
+     * The Kotlin compile's freshness-stamp digest: the {@link KotlinConfig#digest option-bearing
+     * facts} plus the {@link KotlinClasspathAbi ABI token} of every compile-classpath entry. The
+     * stamp then describes the classpath the way the action key does — by ABI — so a sibling
+     * rewritten with the same ABI leaves the digest alone and one whose ABI moved changes it even
+     * before any mtime is consulted. Sorted: the stamp does not care about classpath order any
+     * more than the key does.
+     */
+    static String kotlinStampDigest(
+            KotlinConfig config, List<Path> classpath, KotlinClasspathAbi.Snapshotter snapshotter) throws IOException {
+        List<String> parts = new ArrayList<>(config.digestParts());
+        List<String> tokens = new ArrayList<>(KotlinClasspathAbi.tokens(classpath, snapshotter));
+        tokens.sort(Comparator.naturalOrder());
+        for (String token : tokens) parts.add("cp:" + token);
+        return FreshnessStamp.optionsDigest(parts);
+    }
+
+    /**
+     * The Kotlin worker of one compile — the version-matched Build Tools API closure, the stdlib,
+     * the compiler plugins' jars and the request built from them — resolved on first use and then
+     * shared. Two callers need it and neither should pay for it before it is needed: the classpath
+     * snapshotter behind the freshness stamp and the action key (which forks the worker only when
+     * a classpath entry's ABI token is not yet memoized), and the compile itself. A stamp that is
+     * fresh with every token memoized never resolves the toolchain at all.
+     */
+    static final class KotlinWorker {
+        private final JkBuild project;
+        private final Cas cas;
+        private final KotlinConfig config;
+        private final List<Path> sources;
+        private final List<Path> classpath;
+        private final Path outputDir;
+        private final @Nullable Path workingDir;
+        private final Path snapshotDir;
+        private final WorkerEnv env;
+        private @Nullable KotlincRequest request;
+
+        private KotlinWorker(
+                JkBuild project,
+                Path moduleDir,
+                Cas cas,
+                KotlinConfig config,
+                List<Path> sources,
+                List<Path> classpath,
+                Path outputDir,
+                @Nullable Path workingDir,
+                Path snapshotDir) {
+            this.project = project;
+            this.cas = cas;
+            this.config = config;
+            this.sources = List.copyOf(sources);
+            this.classpath = List.copyOf(classpath);
+            this.outputDir = outputDir;
+            this.workingDir = workingDir;
+            this.snapshotDir = snapshotDir;
+            this.env = WorkerEnv.forModule(project.build().env(), moduleDir, null);
+        }
+
+        WorkerEnv env() {
+            return env;
+        }
+
+        /** Snapshots classpath entries through this compile's worker; resolves it on first use. */
+        KotlinClasspathAbi.Snapshotter snapshotter() {
+            return entries -> KotlincSnapshots.snapshot(request(), entries, env);
+        }
+
+        /** The compile request, built once: what the worker is told and what the key hashes. */
+        synchronized KotlincRequest request() throws IOException {
+            KotlincRequest built = request;
+            if (built != null) return built;
+            KotlinPluginSetup.Prepared kt;
+            List<KotlincRequest.Plugin> ktPlugins = new ArrayList<>();
+            try {
+                RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
+                kt = KotlinPluginSetup.prepare(repos, cas, config.kotlinVersion());
+                for (KotlinPluginUse use : config.plugins()) {
+                    Path jar = repos.tryFetchArtifact(Coordinate.of(use.group(), use.artifact(), use.version()))
+                            .map(hit -> hit.fetched().cachePath())
+                            .orElseThrow(() -> new RuntimeException("cannot fetch the " + use.id()
+                                    + " Kotlin compiler plugin (" + use.group() + ":" + use.artifact() + ":"
+                                    + use.version() + ") — the module compiles with it"));
+                    ktPlugins.add(new KotlincRequest.Plugin(use.id(), jar, use.options()));
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("interrupted resolving the Kotlin compiler", e);
+            }
+            // Compilation classpath: project deps + the version-matched stdlib (the
+            // in-process plugin has no kotlin-home to auto-supply it; -no-stdlib).
+            List<Path> compileCp = new ArrayList<>(classpath);
+            compileCp.add(kt.stdlib());
+            // Compiler plugins ride the typed BTA COMPILER_PLUGINS argument — raw -Xplugin/-P
+            // strings in extraArgs are silently ignored by the BTA execution path.
+            List<String> ktArgs = config.args();
+            Files.createDirectories(outputDir);
+            String moduleName = config.moduleName();
+            // The incremental state is only valid for the exact compile CONFIG that produced it:
+            // BTA's IC sees "no source changes" after an args/plugins/module-name change and would
+            // emit nothing into a clean output dir. Key the working dir by a config hash so any
+            // config change starts fresh IC state (stale dirs age out with the cache).
+            int jvmTarget = config.jvmTarget();
+            String configToken = Hashing.sha256Hex((jvmTarget
+                                    + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
+                                    + ktPlugins.stream()
+                                            .map(p -> p.id() + "=" + p.options())
+                                            .collect(Collectors.joining(",")))
+                            .getBytes(StandardCharsets.UTF_8))
+                    .substring(0, 12);
+            Path icWorkingDir =
+                    workingDir == null ? null : workingDir.resolveSibling(workingDir.getFileName() + "-" + configToken);
+            built = KotlincRequest.builder()
+                    .sources(sources)
+                    .classpath(compileCp)
+                    .outputDir(outputDir)
+                    .jvmTarget(jvmTarget)
+                    .workerClasspath(kt.workerClasspath())
+                    .javaHome(config.javaHome())
+                    .workingDir(icWorkingDir)
+                    .snapshotDir(snapshotDir)
+                    .extraArgs(ktArgs)
+                    .plugins(ktPlugins)
+                    // Lockstep with the KSP round's -module-name: internal-member mangling
+                    // (member$module_name) is baked into call sites KSP-generated Java emits
+                    // (Hilt factories calling internal providers).
+                    .moduleName(moduleName)
+                    .build();
+            request = built;
+            return built;
+        }
+    }
+
+    /**
+     * The worker for compiling {@code sources} against {@code classpath} into {@code outputDir};
+     * {@code workingDir} (null for a full compile) is the incremental state's home.
+     */
+    static KotlinWorker kotlinWorker(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            Cas cas,
+            List<Path> sources,
+            List<Path> classpath,
+            Path outputDir,
+            @Nullable Path workingDir,
+            KotlinConfig config) {
+        return new KotlinWorker(
+                ctx.require(PROJECT),
+                in.dir(),
+                cas,
+                config,
+                sources,
+                classpath,
+                outputDir,
+                workingDir,
+                CacheTree.KOTLIN_CP_SNAPSHOTS.under(in.cache()));
     }
 
     /** The groovyc free args: the installed plugins' contributions (grails' {@code --parameters}), deduped. */
@@ -192,83 +357,29 @@ public final class PlannerLang {
                 javaSourceRoots);
     }
 
+    /**
+     * Compile the Kotlin sources of {@code worker} (action-cached: an exact-input hit restores from
+     * the CAS without forking; the key looks at the classpath by ABI, so a sibling rewritten with
+     * the same ABI hits). Shared by the main {@code compile-kotlin} and {@code compile-test} steps;
+     * the caller owns freshness stamps, output assembly and outcome reporting.
+     */
     static LangCompile.Result compileKotlinSources(
-            TaskContext ctx,
-            BuildPlanner.Inputs in,
-            Cas cas,
-            ActionCache actionCache,
-            List<Path> sources,
-            List<Path> classpath,
-            Path outputDir,
-            String taskId,
-            Path workingDir,
-            KotlinConfig config)
+            TaskContext ctx, BuildPlanner.Inputs in, ActionCache actionCache, String taskId, KotlinWorker worker)
             throws IOException {
-        KotlinPluginSetup.Prepared kt;
-        List<KotlincRequest.Plugin> ktPlugins = new ArrayList<>();
-        try {
-            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
-            kt = KotlinPluginSetup.prepare(repos, cas, config.kotlinVersion());
-            for (KotlinPluginUse use : config.plugins()) {
-                Path jar = repos.tryFetchArtifact(Coordinate.of(use.group(), use.artifact(), use.version()))
-                        .map(hit -> hit.fetched().cachePath())
-                        .orElseThrow(() -> new RuntimeException("cannot fetch the " + use.id()
-                                + " Kotlin compiler plugin (" + use.group() + ":" + use.artifact() + ":"
-                                + use.version() + ") — the module compiles with it"));
-                ktPlugins.add(new KotlincRequest.Plugin(use.id(), jar, use.options()));
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("interrupted resolving the Kotlin compiler", e);
-        }
-        // Compilation classpath: project deps + the version-matched stdlib (the
-        // in-process plugin has no kotlin-home to auto-supply it; -no-stdlib).
-        List<Path> compileCp = new ArrayList<>(classpath);
-        compileCp.add(kt.stdlib());
-        // Compiler plugins ride the typed BTA COMPILER_PLUGINS argument — raw -Xplugin/-P
-        // strings in extraArgs are silently ignored by the BTA execution path.
-        List<String> ktArgs = config.args();
-        Files.createDirectories(outputDir);
-        String moduleName = config.moduleName();
-        // The incremental state is only valid for the exact compile CONFIG that produced it:
-        // BTA's IC sees "no source changes" after an args/plugins/module-name change and would
-        // emit nothing into a clean output dir. Key the working dir by a config hash so any
-        // config change starts fresh IC state (stale dirs age out with the cache).
-        int jvmTarget = config.jvmTarget();
-        String configToken = Hashing.sha256Hex((jvmTarget
-                                + "|" + moduleName + "|" + String.join(",", ktArgs) + "|"
-                                + ktPlugins.stream()
-                                        .map(p -> p.id() + "=" + p.options())
-                                        .collect(Collectors.joining(",")))
-                        .getBytes(StandardCharsets.UTF_8))
-                .substring(0, 12);
-        Path icWorkingDir =
-                workingDir == null ? null : workingDir.resolveSibling(workingDir.getFileName() + "-" + configToken);
-        KotlincRequest req = KotlincRequest.builder()
-                .sources(sources)
-                .classpath(compileCp)
-                .outputDir(outputDir)
-                .jvmTarget(jvmTarget)
-                .workerClasspath(kt.workerClasspath())
-                .javaHome(config.javaHome())
-                .workingDir(icWorkingDir)
-                .snapshotDir(CacheTree.KOTLIN_CP_SNAPSHOTS.under(in.cache()))
-                .extraArgs(ktArgs)
-                .plugins(ktPlugins)
-                // Lockstep with the KSP round's -module-name: internal-member mangling
-                // (member$module_name) is baked into call sites KSP-generated Java emits
-                // (Hilt factories calling internal providers).
-                .moduleName(moduleName)
-                .build();
+        KotlincRequest req = worker.request();
+        KotlinClasspathAbi.Snapshotter snapshotter = worker.snapshotter();
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a
         // full kotlinc. Same forKotlinc key LangCompile.run looks up.
         if (!rerun) {
             try {
                 boolean restores = actionCache
-                        .lookup(ActionKey.forKotlinc(taskId, req, BuildIdentity.cacheKeyVersion()))
+                        .lookup(ActionKey.forKotlinc(taskId, req, BuildIdentity.cacheKeyVersion(), snapshotter))
                         .isPresent();
-                ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
+                ctx.reweight(
+                        restores
+                                ? EffortWeights.RESTORE
+                                : EffortWeights.compileWeight(req.sources().size()));
             } catch (Exception e) {
                 /* keep the up-front estimate */
                 Log.debug("compileKotlinSources: keep the up-front estimate", e);
@@ -282,7 +393,8 @@ public final class PlannerLang {
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
                 actionCache.cas(),
                 actionCache,
-                WorkerEnv.forModule(ctx.require(PROJECT).build().env(), in.dir(), null));
+                worker.env(),
+                snapshotter);
     }
 
     /**

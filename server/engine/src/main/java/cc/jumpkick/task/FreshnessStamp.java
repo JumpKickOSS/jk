@@ -175,13 +175,28 @@ public final class FreshnessStamp {
     }
 
     /**
+     * {@link #looksFresh(Path, String, List)} that also requires the recorded option digest to
+     * equal {@code optionsDigest} — for a forecast that can reproduce the producer's digest but
+     * not its exact source and classpath sets.
+     */
+    public static boolean looksFresh(Path outputDir, String stampName, List<Path> sources, String optionsDigest) {
+        return looksFresh(outputDir, stampName, sources, Optional.of(optionsDigest));
+    }
+
+    /**
      * Cheap bar-sizing probe: stamp exists and no source mtime is newer. Does not compare
      * source/classpath sets (unlike {@link #isFresh}).
      */
     public static boolean looksFresh(Path outputDir, String stampName, List<Path> sources) {
+        return looksFresh(outputDir, stampName, sources, Optional.empty());
+    }
+
+    private static boolean looksFresh(
+            Path outputDir, String stampName, List<Path> sources, Optional<String> optionsDigest) {
         try {
             Optional<Stamp> read = read(outputDir, stampName);
             if (read.isEmpty()) return false;
+            if (optionsDigest.isPresent() && !read.get().optionsDigest().equals(optionsDigest.get())) return false;
             long stampMillis = read.get().stampMillis();
             for (Path src : sources) {
                 if (newerThan(src, stampMillis)) return false;

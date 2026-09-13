@@ -22,8 +22,9 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Content identity → JVM ABI token. Keyed by {@link ClasspathFingerprint#entry}, never path or
- * mtime: the same jar bytes at two paths share one extract. A hit is a map read; a miss is the
+ * Content identity → ABI token: the JVM ABI token of a jar or classes directory, or, under the
+ * {@code kotlin:} namespace, the digest of its Kotlin classpath snapshot. Keyed by {@link
+ * ClasspathFingerprint#entry}, never path or mtime: the same jar bytes at two paths share one extract. A hit is a map read; a miss is the
  * caller's to extract. Fail-open — a lost entry costs one re-extract.
  */
 public final class AbiMemo {
