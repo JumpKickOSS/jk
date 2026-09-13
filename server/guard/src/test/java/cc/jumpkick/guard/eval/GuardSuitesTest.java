@@ -19,6 +19,7 @@ import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -273,6 +274,70 @@ class GuardSuitesTest {
                         .get(0)
                         .file())
                 .isEqualTo("m/src/main/kotlin/a/K.kt");
+    }
+
+    @Test
+    void a_workspace_suite_site_is_spelled_under_the_module_that_owns_the_class(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                java = 25
+
+                [workspace]
+                modules = ["m", "n"]
+                """);
+        // n compiled b.Other from its Kotlin root; the suite in m judges the whole workspace
+        Path source = root.resolve("n/src/main/kotlin/b/Other.kt");
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "");
+        Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, root.resolve("n")), "main");
+        Files.createDirectories(idx.getParent());
+        ClassFacts other = new ClassFacts(
+                "b/Other", 1, "java/lang/Object", List.of(), "Other.kt", List.of(), List.of(), List.of(), Set.of());
+        FactsFormat.write(idx, new FactsIndex(Map.of("b/Other", other), Map.of(), "n"));
+        FactsIndex suite = index(
+                suite("rules/R", "WORKSPACE", "ws|w||" + FACTS_V, "esc|w||" + FACTS_V + "|allow=n;n owns the exit"));
+        Map<String, Rule> rules = new LinkedHashMap<>();
+        for (GuardSuites.Declared d : GuardSuites.declared(suite)) rules.put(d.id(), GuardSuites.rule(d, root, "m"));
+        Path report = GuardSuites.report(BuildLayout.moduleTargetDir(root, root.resolve("m")));
+        Files.createDirectories(report.getParent());
+        String sites = "[{\"fingerprint\":\"b.Other#f()V -> java.lang.System#exit(I)V\",\"file\":\"b/Other.kt\","
+                + "\"line\":4,\"detail\":\"exit\",\"root\":\"source\"},"
+                + "{\"fingerprint\":\"z.Ghost#g()V -> java.lang.System#exit(I)V\",\"file\":\"z/Ghost.java\","
+                + "\"line\":2,\"detail\":\"exit\",\"root\":\"source\"}]";
+        Files.writeString(
+                report,
+                "{\"id\":\"ws\",\"outcome\":\"ok\",\"population\":2,\"violations\":" + sites + "}\n"
+                        + "{\"id\":\"esc\",\"outcome\":\"ok\",\"population\":2,\"violations\":" + sites + "}\n");
+        EvalContext ctx = new EvalContext(
+                Lane.MODULE,
+                root,
+                "m",
+                root.resolve("m"),
+                List.of(root.resolve("m")),
+                () -> FactsIndex.EMPTY,
+                () -> null,
+                List::of);
+
+        Evaluation ws = Evaluators.forKind(Kind.TEST).evaluate(Objects.requireNonNull(rules.get("ws")), ctx);
+        assertThat(ws.observations()).hasSize(2);
+        Observation owned = ws.observations().get(0);
+        assertThat(owned.file()).isEqualTo("n/src/main/kotlin/b/Other.kt");
+        assertThat(root.resolve(Objects.requireNonNull(owned.file())))
+                .as("the SARIF artifact location names a file that exists")
+                .isRegularFile();
+        Observation ghost = ws.observations().get(1);
+        assertThat(ghost.file())
+                .as("no member's index holds z.Ghost: no fabricated path")
+                .isNull();
+        assertThat(ghost.detail()).contains("z.Ghost").contains("no workspace member");
+
+        // an @Allow naming the owning module exempts the sites that module owns, not the suite's
+        Evaluation esc = Evaluators.forKind(Kind.TEST).evaluate(Objects.requireNonNull(rules.get("esc")), ctx);
+        assertThat(esc.observations())
+                .extracting(Observation::key)
+                .containsExactly("z.Ghost#g()V -> java.lang.System#exit(I)V");
     }
 
     @Test

@@ -294,15 +294,26 @@ public final class GuardSuites {
 
     /** One report line as an evaluation, with the guard's allows applied; bytecode sites spelled under {@code src/main/java}. */
     public static Evaluation evaluate(Rule rule, @Nullable Object line, String module) {
-        return evaluate(rule, line, module, null);
+        return evaluate(rule, line, module, null, null);
     }
 
     /**
      * One report line as an evaluation, with the guard's allows applied. A bytecode site's file is
      * resolved against the source roots under {@code moduleDir} when the lane has it.
      */
-    @SuppressWarnings("unchecked")
     public static Evaluation evaluate(Rule rule, @Nullable Object line, String module, @Nullable Path moduleDir) {
+        return evaluate(rule, line, module, moduleDir, null);
+    }
+
+    /**
+     * One report line as an evaluation, with the guard's allows applied. With {@code owners} — a
+     * workspace-scoped suite — a bytecode site resolves against the roots of the member that
+     * compiled its class, and an allow naming a module is judged against that member; without,
+     * against {@code moduleDir}, the suite's own module.
+     */
+    @SuppressWarnings("unchecked")
+    public static Evaluation evaluate(
+            Rule rule, @Nullable Object line, String module, @Nullable Path moduleDir, @Nullable SiteOwners owners) {
         if (line == null)
             return Evaluation.failed(
                     "the guard suite left no report for `" + rule.id() + "`: the run did not reach it");
@@ -320,24 +331,25 @@ public final class GuardSuites {
             found++;
             // the report writer names every site's fingerprint and detail; a line without them is not a report
             String fingerprint = Objects.requireNonNull(MiniJson.str(v, "fingerprint"), "fingerprint");
-            String file = null;
-            String reportedFile = MiniJson.str(v, "file");
-            if (reportedFile != null) {
-                // a bytecode site names its file under the module's source root; every other kind from the workspace
-                // root
-                boolean fromRoot = "workspace".equals(MiniJson.str(v, "root"));
-                file = fromRoot ? reportedFile : SourcePaths.resolve(module, moduleDir, reportedFile);
-            }
-            int at = MiniJson.get(v, "line") instanceof Number n ? n.intValue() : 0;
             String detail = Objects.requireNonNull(MiniJson.str(v, "detail"), "detail");
-            Allow allow = allowing(rule.allow(), fingerprint, file, module);
+            Placed placed = place(
+                    fingerprint,
+                    MiniJson.str(v, "file"),
+                    "workspace".equals(MiniJson.str(v, "root")),
+                    detail,
+                    module,
+                    moduleDir,
+                    owners);
+            int at = MiniJson.get(v, "line") instanceof Number n ? n.intValue() : 0;
+            Allow allow = allowing(rule.allow(), fingerprint, placed.file(), placed.module());
             if (allow != null) {
                 allowUsed.put(allow, true);
                 continue;
             }
             Object value = MiniJson.get(v, "value");
-            if (value instanceof Number n) sites.add(Observation.metric(fingerprint, n.doubleValue(), file, detail));
-            else sites.add(Observation.site(fingerprint, file, at, detail));
+            if (value instanceof Number n)
+                sites.add(Observation.metric(fingerprint, n.doubleValue(), placed.file(), placed.detail()));
+            else sites.add(Observation.site(fingerprint, placed.file(), at, placed.detail()));
         }
         long examined = MiniJson.get(line, "population") instanceof Number n ? n.longValue() : found;
         Map<String, Long> population = Map.of("examined", examined);
@@ -356,18 +368,57 @@ public final class GuardSuites {
         return rule.fixture() != null ? ev.withBite(true) : ev.withBite(examined > 0 || found > 0);
     }
 
+    /** A site placed: its file from the workspace root (or none), the module its allows are judged by, its detail. */
+    private record Placed(@Nullable String file, String module, String detail) {}
+
+    /**
+     * Where a reported site is. A text, tool or metric site names its file from the workspace root.
+     * A bytecode site names it under a source root: the owning member's when the suite is
+     * workspace-scoped and a member's index holds the class, the suite module's own when that root
+     * holds the file, else — rather than a path that exists nowhere — no file, and a detail that says
+     * which class went unowned.
+     */
+    private static Placed place(
+            String fingerprint,
+            @Nullable String reportedFile,
+            boolean fromRoot,
+            String detail,
+            String module,
+            @Nullable Path moduleDir,
+            @Nullable SiteOwners owners) {
+        if (reportedFile == null) return new Placed(null, module, detail);
+        if (fromRoot) return new Placed(reportedFile, module, detail);
+        if (owners == null) return new Placed(SourcePaths.resolve(module, moduleDir, reportedFile), module, detail);
+        String cls = originClass(fingerprint);
+        Path ownerDir = owners.dirOf(cls);
+        if (ownerDir != null) {
+            String owner = WorkspaceModel.rel(owners.root(), ownerDir);
+            return new Placed(SourcePaths.resolve(owner, ownerDir, reportedFile), owner, detail);
+        }
+        if (moduleDir != null && SourcePaths.rootHolding(moduleDir, reportedFile) != null) {
+            return new Placed(SourcePaths.resolve(module, moduleDir, reportedFile), module, detail);
+        }
+        return new Placed(
+                null, module, detail + " (no workspace member's facts index holds " + cls + ": source path unknown)");
+    }
+
+    /** The class of a bytecode fingerprint's origin half ({@code a.B#m()V -> …} names {@code a.B}). */
+    private static String originClass(String fingerprint) {
+        int arrow = fingerprint.indexOf(" -> ");
+        String origin = arrow < 0 ? fingerprint : fingerprint.substring(0, arrow);
+        int hash = origin.indexOf('#');
+        return hash < 0 ? origin : origin.substring(0, hash);
+    }
+
     private static @Nullable Allow allowing(
             List<Allow> allows, String fingerprint, @Nullable String file, String module) {
+        String cls = originClass(fingerprint);
         for (Allow a : allows) {
             String in = a.in();
             if (in.equals(fingerprint) || Rule.globMatches(in, fingerprint)) return a;
             if (file != null && (in.equals(file) || Rule.globMatches(in, file))) return a;
             if (!module.isEmpty() && (in.equals(module) || Rule.globMatches(in, module))) return a;
             // a class glob against the origin half of a bytecode fingerprint
-            int arrow = fingerprint.indexOf(" -> ");
-            String origin = arrow < 0 ? fingerprint : fingerprint.substring(0, arrow);
-            int hash = origin.indexOf('#');
-            String cls = hash < 0 ? origin : origin.substring(0, hash);
             if (in.equals(cls) || Rule.globMatches(in, cls)) return a;
         }
         return null;
