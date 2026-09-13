@@ -5,8 +5,10 @@ import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -79,6 +81,25 @@ public class PubGrubSolver {
     protected final List<Incompatibility> incompatibilities = new ArrayList<>();
 
     /**
+     * The clauses in {@link #incompatibilities}, by identity. Conflict resolution records the clause
+     * it backjumps on, and when that is the very dependency clause that fired, the list already
+     * holds it: a second copy derives nothing the first does not, and every propagation round on
+     * its packages would evaluate both.
+     */
+    private final Set<Incompatibility> recorded = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /** Every {@link #addIncompatibility} call, copies included — what the conflict watermark compares. */
+    private int clauseAdditions;
+
+    /**
+     * {@code pkg@version} pairs whose dependency clauses are already recorded. A package version
+     * decided again after a backjump has the same dependencies, and its clauses are still in the
+     * list; recording them again would make each propagation round over that package evaluate one
+     * more identical clause per replay.
+     */
+    private final Set<String> dependenciesRecorded = new HashSet<>();
+
+    /**
      * Propagation watch index: every incompatibility keyed by each package its terms mention.
      * Without this, each propagation round rescans the full list (quadratic on large BOM graphs).
      */
@@ -94,11 +115,11 @@ public class PubGrubSolver {
     private int stepCount;
 
     /**
-     * Fingerprints of decision maps that already caused a conflict. Re-entering one means learning
-     * failed to exclude that assignment (loop). Cleared when a universe expands (prior conflicts may
-     * have been cap artifacts).
+     * Fingerprints of decision maps that already caused a conflict, each with how many clause
+     * additions had happened by then. Re-entering one under the same count means learning failed
+     * to exclude that assignment (loop). Cleared when a universe expands (prior conflicts may have
+     * been cap artifacts).
      */
-    /** Decision-map fingerprint at a conflict → how many incompatibilities were known then. */
     private final Map<Long, Integer> conflictedDecisionFingerprints = new HashMap<>();
 
     /**
@@ -195,6 +216,7 @@ public class PubGrubSolver {
         Term rootTerm = Term.positive(rootPkg, VersionSet.exact(rootVersion));
 
         floatingRoots.clear();
+        dependenciesRecorded.clear();
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()), new Incompatibility.Cause.Dependency(rootTerm, dep)));
@@ -254,7 +276,7 @@ public class PubGrubSolver {
         // Re-entering a decision map that conflicted is ordinary search when a clause was learned in
         // between — the learned clause is what steers the next decisions elsewhere. Only the same
         // map under the same incompatibility set is a loop: nothing changed, nothing will.
-        if (known != null && known == incompatibilities.size()) {
+        if (known != null && known == clauseAdditions) {
             throwBudget("solver loop: re-entered conflicted decision assignment (watermark); last decide "
                     + pkg
                     + "@"
@@ -268,7 +290,7 @@ public class PubGrubSolver {
      * rebuild this map later.
      */
     private void watermarkConflict() {
-        conflictedDecisionFingerprints.put(decisionFingerprint(), incompatibilities.size());
+        conflictedDecisionFingerprints.put(decisionFingerprint(), clauseAdditions);
     }
 
     /** Stable fingerprint of the current package→version decision map (TreeMap order). */
@@ -538,32 +560,36 @@ public class PubGrubSolver {
             return pkg;
         }
 
-        List<Term> deps;
-        try {
-            deps = source.dependencies(pkg, pick);
-        } catch (PackageSource.VersionUnavailableException e) {
-            // Expand before recording Unavailable so unit-prop can exclude `pick` against a
-            // full candidate list (a lazy singleton of only `pick` would mark the inco as
-            // already SATISFIED and short-circuit into a false unsatisfiable).
-            if (widenable(pkg)) {
-                expandUniverse(pkg);
-            }
-            // Exact pin that was never advertised (or only candidate failed): NoVersions gives
-            // better diagnostics ("available: …") than Unavailable alone.
-            if (solution.hasNoCandidates(pkg)) {
-                VersionUniverse known = universes.get(pkg);
-                boolean unknownPackage = known == null || known.size() == 0;
-                VersionSet allowed = solution.positiveSet(pkg);
-                if (allowed.isEmpty()) allowed = VersionSet.ALL;
+        String coord = pkg + "@" + pick;
+        boolean dependenciesKnown = dependenciesRecorded.contains(coord);
+        List<Term> deps = List.of();
+        if (!dependenciesKnown) {
+            try {
+                deps = source.dependencies(pkg, pick);
+            } catch (PackageSource.VersionUnavailableException e) {
+                // Expand before recording Unavailable so unit-prop can exclude `pick` against a
+                // full candidate list (a lazy singleton of only `pick` would mark the inco as
+                // already SATISFIED and short-circuit into a false unsatisfiable).
+                if (widenable(pkg)) {
+                    expandUniverse(pkg);
+                }
+                // Exact pin that was never advertised (or only candidate failed): NoVersions gives
+                // better diagnostics ("available: …") than Unavailable alone.
+                if (solution.hasNoCandidates(pkg)) {
+                    VersionUniverse known = universes.get(pkg);
+                    boolean unknownPackage = known == null || known.size() == 0;
+                    VersionSet allowed = solution.positiveSet(pkg);
+                    if (allowed.isEmpty()) allowed = VersionSet.ALL;
+                    addIncompatibility(new Incompatibility(
+                            List.of(Term.positive(pkg, allowed)),
+                            new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                    return pkg;
+                }
                 addIncompatibility(new Incompatibility(
-                        List.of(Term.positive(pkg, allowed)),
-                        new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                        List.of(Term.positive(pkg, VersionSet.exact(pick))),
+                        new Incompatibility.Cause.Unavailable(pkg, pick, e.getMessage())));
                 return pkg;
             }
-            addIncompatibility(new Incompatibility(
-                    List.of(Term.positive(pkg, VersionSet.exact(pick))),
-                    new Incompatibility.Cause.Unavailable(pkg, pick, e.getMessage())));
-            return pkg;
         }
         solution.decide(pkg, pick);
         decisionCount++;
@@ -573,6 +599,8 @@ public class PubGrubSolver {
             onDecision.accept(pkg, pick);
         }
 
+        if (dependenciesKnown) return pkg;
+        dependenciesRecorded.add(coord);
         Term decisionTerm = Term.positive(pkg, VersionSet.exact(pick));
         for (Term depTerm : deps) {
             addIncompatibility(new Incompatibility(
@@ -715,6 +743,8 @@ public class PubGrubSolver {
     private static final int MAX_EXPANDED_VERSIONS = 48;
 
     protected void addIncompatibility(Incompatibility inco) {
+        clauseAdditions++;
+        if (!recorded.add(inco)) return;
         incompatibilities.add(inco);
         Set<String> pkgs = new LinkedHashSet<>();
         for (Term term : inco.terms()) pkgs.add(term.pkg());

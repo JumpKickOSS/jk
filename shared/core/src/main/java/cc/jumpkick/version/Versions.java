@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.version;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -17,7 +18,26 @@ public final class Versions {
      */
     public static int compare(String a, String b) {
         if (a.equals(b)) return 0;
-        return new MavenVersion(a).compareTo(new MavenVersion(b));
+        return parsed(a).compareTo(parsed(b));
+    }
+
+    /**
+     * Parsed versions, by string. A resolve compares the same few thousand version strings against
+     * each other millions of times, and tokenizing a string costs far more than comparing two
+     * parsed ones. {@link MavenVersion} is immutable once constructed, so instances are shared.
+     * Bounded: the cache is emptied when it fills rather than evicting one entry at a time.
+     */
+    private static final ConcurrentHashMap<String, MavenVersion> PARSED = new ConcurrentHashMap<>();
+
+    private static final int PARSED_LIMIT = 16_384;
+
+    private static MavenVersion parsed(String version) {
+        MavenVersion known = PARSED.get(version);
+        if (known != null) return known;
+        MavenVersion fresh = new MavenVersion(version);
+        if (PARSED.size() >= PARSED_LIMIT) PARSED.clear();
+        PARSED.put(version, fresh);
+        return fresh;
     }
 
     /**
@@ -43,7 +63,7 @@ public final class Versions {
         String core = numericCore(version);
         if (core.isEmpty()) return false;
         if (SNAPSHOT_TIMESTAMP.matcher(version).find()) return false;
-        if (new MavenVersion(version).compareTo(new MavenVersion(core)) < 0) return false;
+        if (parsed(version).compareTo(parsed(core)) < 0) return false;
         return !PRE_RELEASE.matcher(version).find();
     }
 

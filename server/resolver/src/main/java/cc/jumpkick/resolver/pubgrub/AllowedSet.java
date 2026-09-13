@@ -98,7 +98,7 @@ public final class AllowedSet {
         int first = bits.nextSetBit(0);
         if (first < 0) return null;
         // Soft-prefer front: index 0 is not a strict max of the universe → pin was front-loaded.
-        if (first == 0 && isSoftPreferFront()) {
+        if (first == 0 && universe.softPreferFront()) {
             return universe.version(0);
         }
         String stable = null;
@@ -113,19 +113,6 @@ public final class AllowedSet {
             }
         }
         return stable != null ? stable : prerelease;
-    }
-
-    /**
-     * True when universe index 0 is a soft-prefer pin rather than the natural highest version:
-     * some later advertised version compares greater under Maven order.
-     */
-    private boolean isSoftPreferFront() {
-        if (universe.size() <= 1) return false;
-        String front = universe.version(0);
-        for (int i = 1; i < universe.size(); i++) {
-            if (Versions.compare(universe.version(i), front) > 0) return true;
-        }
-        return false;
     }
 
     /**

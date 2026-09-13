@@ -397,6 +397,13 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
                     && (minInclusive || other.maxInclusive);
         }
 
+        /** True when this range's lower bound admits {@code version} or anything below it. */
+        boolean startsAtOrBelow(String version) {
+            if (min == null) return true;
+            int cmp = Versions.compare(min, version);
+            return cmp < 0 || (cmp == 0 && minInclusive);
+        }
+
         static int compareLow(Range a, Range b) {
             if (a.min == null && b.min == null) {
                 // Both unbounded low: sort by high bound so merge is deterministic.
@@ -492,12 +499,21 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
             return new Union(merged);
         }
 
+        /**
+         * The parts are sorted and disjoint, so the only part that can hold {@code version} is the
+         * last one starting at or below it. Projecting a hundred-part union onto a hundred-version
+         * universe is a hundred of these lookups.
+         */
         @Override
         public boolean contains(String version) {
-            for (Range part : parts) {
-                if (part.contains(version)) return true;
+            int lo = 0;
+            int hi = parts.size() - 1;
+            while (lo < hi) {
+                int mid = (lo + hi + 1) >>> 1;
+                if (parts.get(mid).startsAtOrBelow(version)) lo = mid;
+                else hi = mid - 1;
             }
-            return false;
+            return parts.get(lo).contains(version);
         }
 
         /** Parts are sorted by lower bound, so only the last one can reach upward without end. */
@@ -552,15 +568,28 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
             return out;
         }
 
+        /**
+         * The gaps between the parts, plus whatever lies below the first and above the last. The
+         * parts are sorted, disjoint and never adjacent, so the gaps come out sorted and never
+         * adjacent themselves — the canonical form, in one pass. (Intersecting the parts'
+         * complements one by one arrives at the same ranges, re-sorting and re-merging a growing
+         * list at every step; a solver excluding versions one at a time complements unions of a
+         * hundred parts on every relation check.)
+         */
         @Override
         public VersionSet complement() {
-            // ¬(A ∪ B ∪ …) = ¬A ∩ ¬B ∩ … — each complement is Range or Union of Ranges;
-            // successive intersect re-canonicalizes.
-            VersionSet result = ALL;
-            for (Range part : parts) {
-                result = result.intersect(part.complement());
+            List<Range> gaps = new ArrayList<>(parts.size() + 1);
+            Range first = parts.getFirst();
+            if (first.min() != null) gaps.add(new Range(null, false, first.min(), !first.minInclusive()));
+            for (int i = 1; i < parts.size(); i++) {
+                Range before = parts.get(i - 1);
+                Range after = parts.get(i);
+                gaps.add(new Range(before.max(), !before.maxInclusive(), after.min(), !after.minInclusive()));
             }
-            return result;
+            Range last = parts.getLast();
+            if (last.max() != null) gaps.add(new Range(last.max(), !last.maxInclusive(), null, false));
+            if (gaps.size() == 1) return gaps.getFirst();
+            return new Union(gaps);
         }
 
         @Override

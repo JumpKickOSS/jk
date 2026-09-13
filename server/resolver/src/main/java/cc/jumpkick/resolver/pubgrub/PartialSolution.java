@@ -2,9 +2,12 @@
 package cc.jumpkick.resolver.pubgrub;
 
 import cc.jumpkick.resolve.ResolveProfile;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +43,14 @@ public final class PartialSolution {
     private final Map<String, VersionUniverse> universes;
 
     private final Map<String, PackageState> byPackage = new HashMap<>();
+
+    /**
+     * Packages that have a state but no assignment: {@link #bindUniverse} and {@link
+     * #rebindAfterUniverseExpand} create one for a package nothing mentions. Such a state lasts
+     * until the next {@link #backtrack}, which drops it along with the assignments above the target.
+     */
+    private final Set<String> statesWithoutAssignments = new HashSet<>();
+
     private final Map<String, String> decisionByPackage = new TreeMap<>();
     private int decisionLevel = 0;
 
@@ -66,7 +77,79 @@ public final class PartialSolution {
 
         /** Global index of the package's first assignment; -1 until one is registered. */
         int firstIndex = -1;
+
+        /**
+         * Verdicts of {@link #satisfies} and {@link #contradicts} taken on {@code continuous},
+         * keyed by the term's effective set. The continuous set is a union of ranges — a hundred
+         * of them for a package whose versions were excluded one by one — and its algebra costs a
+         * pass over every range, while the same clause is judged on every propagation round. Both
+         * empty whenever {@code continuous} changes.
+         */
+        final Map<VersionSet, Boolean> subsetOfContinuous = new HashMap<>();
+
+        final Map<VersionSet, Boolean> disjointFromContinuous = new HashMap<>();
+
+        void narrow(VersionSet effective) {
+            continuous = continuous.intersect(effective);
+            subsetOfContinuous.clear();
+            disjointFromContinuous.clear();
+        }
+
+        boolean continuousSubsetOf(VersionSet effective) {
+            Boolean known = subsetOfContinuous.get(effective);
+            if (known == null) {
+                known = continuous.subsetOf(effective);
+                subsetOfContinuous.put(effective, known);
+            }
+            return known;
+        }
+
+        boolean continuousDisjointFrom(VersionSet effective) {
+            Boolean known = disjointFromContinuous.get(effective);
+            if (known == null) {
+                known = continuous.intersect(effective).isEmpty();
+                disjointFromContinuous.put(effective, known);
+            }
+            return known;
+        }
+
+        /**
+         * The state as it stood before the package's first assignment at each decision level,
+         * newest last. A backtrack that drops every assignment from some level up restores the
+         * checkpoint taken at that level instead of folding the surviving assignments in again —
+         * a package whose hundred versions were excluded one by one keeps those hundred negative
+         * assignments across every later backjump. Emptied when the universe changes, since a
+         * checkpoint's projection belongs to the universe it was taken on.
+         */
+        final ArrayDeque<Checkpoint> checkpoints = new ArrayDeque<>();
+
+        void checkpoint(int level) {
+            Checkpoint last = checkpoints.peekLast();
+            if (last == null || last.level() < level) {
+                checkpoints.addLast(new Checkpoint(level, continuous, allowed, hasPositive, mentioned, firstIndex));
+            }
+        }
+
+        void restore(Checkpoint c, @Nullable VersionUniverse u) {
+            continuous = c.continuous();
+            // A universe bound after the checkpoint was taken projects the constraint the way
+            // bindUniverse() does; one bound before it is the universe the checkpoint carries.
+            allowed = c.allowed() == null && u != null ? u.project(c.continuous()) : c.allowed();
+            hasPositive = c.hasPositive();
+            mentioned = c.mentioned();
+            firstIndex = c.firstIndex();
+            subsetOfContinuous.clear();
+            disjointFromContinuous.clear();
+        }
     }
+
+    record Checkpoint(
+            int level,
+            VersionSet continuous,
+            @Nullable AllowedSet allowed,
+            boolean hasPositive,
+            boolean mentioned,
+            int firstIndex) {}
 
     public PartialSolution(Map<String, VersionUniverse> universes) {
         this.universes = Objects.requireNonNull(universes, "universes");
@@ -90,14 +173,14 @@ public final class PartialSolution {
         Assignment a = new Assignment.Decision(decision, decisionLevel, assignments.size());
         push(a);
         decisionByPackage.put(pkg, version);
-        register(decision, a.globalIndex());
+        register(decision, a.globalIndex(), decisionLevel);
         undecidedPositive.remove(Objects.requireNonNull(byPackage.get(pkg)).firstIndex);
     }
 
     public void derive(Term term, Incompatibility cause) {
         Assignment a = new Assignment.Derivation(term, decisionLevel, assignments.size(), cause);
         push(a);
-        register(term, a.globalIndex());
+        register(term, a.globalIndex(), decisionLevel);
     }
 
     private void push(Assignment a) {
@@ -112,10 +195,14 @@ public final class PartialSolution {
                 .add(a);
     }
 
-    /** Fold {@code t}, recorded at global index {@code at}, into its package's state. */
-    private void register(Term t, int at) {
+    /** Fold {@code t}, recorded at global index {@code at} and decision level {@code level}, into its package's state. */
+    private void register(Term t, int at, int level) {
         PackageState s = byPackage.computeIfAbsent(t.pkg(), k -> new PackageState());
-        if (s.firstIndex < 0) s.firstIndex = at;
+        s.checkpoint(level);
+        if (s.firstIndex < 0) {
+            s.firstIndex = at;
+            statesWithoutAssignments.remove(t.pkg());
+        }
         s.mentioned = true;
         if (t.positive() && !s.hasPositive) {
             s.hasPositive = true;
@@ -126,7 +213,7 @@ public final class PartialSolution {
         // positiveSet() read it whenever the bitset is empty — a lazy singleton universe that a
         // later positive term falls outside of — and a snapshot frozen at bind time let unit
         // propagation re-derive the same term until the step budget ran out.
-        s.continuous = s.continuous.intersect(effective);
+        s.narrow(effective);
         VersionUniverse u = universes.get(t.pkg());
         if (u != null) {
             if (s.allowed == null) {
@@ -150,6 +237,7 @@ public final class PartialSolution {
             s = new PackageState();
             s.allowed = u.all();
             byPackage.put(pkg, s);
+            statesWithoutAssignments.add(pkg);
             return;
         }
         if (s.allowed != null) return;
@@ -173,10 +261,13 @@ public final class PartialSolution {
             cont = cont.intersect(a.term().effectiveVersions());
         }
         PackageState s = byPackage.computeIfAbsent(pkg, k -> new PackageState());
-        s.continuous = cont;
+        s.checkpoints.clear();
+        s.continuous = VersionSet.ALL;
+        s.narrow(cont);
         s.hasPositive = hasPos || s.hasPositive;
         s.mentioned = mentioned || s.mentioned;
         s.allowed = u.project(cont);
+        if (s.firstIndex < 0) statesWithoutAssignments.add(pkg);
         if (s.hasPositive && s.firstIndex >= 0 && !decisionByPackage.containsKey(pkg)) {
             undecidedPositive.put(s.firstIndex, pkg);
         }
@@ -281,7 +372,7 @@ public final class PartialSolution {
         // Empty bitset (or not yet bound): use continuous snapshot. Vacuous empty-set logic
         // would make every term both satisfy and contradict, collapsing dependency
         // incompatibilities into false conflicts (see DiagnosticsTest.renders_missing_version).
-        return s.continuous.subsetOf(effective);
+        return s.continuousSubsetOf(effective);
     }
 
     /**
@@ -323,7 +414,7 @@ public final class PartialSolution {
         if (s.allowed != null && u != null && !s.allowed.isEmpty()) {
             return s.allowed.intersect(u.project(effective)).isEmpty();
         }
-        return s.continuous.intersect(effective).isEmpty();
+        return s.continuousDisjointFrom(effective);
     }
 
     /** Snapshot of all packages with finalized decisions. */
@@ -377,38 +468,65 @@ public final class PartialSolution {
     }
 
     /**
-     * Discard every assignment with decision level &gt; {@code targetLevel} and replay the survivors.
-     * Used by conflict resolution. Universes stay cached on the solver; replay re-binds bitsets.
+     * Discard every assignment with decision level &gt; {@code targetLevel}. Used by conflict
+     * resolution. Universes stay cached on the solver.
+     *
+     * <p>Only a package that lost an assignment has its state touched: it goes back to the
+     * checkpoint taken before its first dropped assignment, or is folded together again from the
+     * assignments it keeps when no such checkpoint exists. A package whose assignments all survive
+     * keeps its state as it stands — every field of it is a function of those assignments and the
+     * package's universe, and a universe only changes through {@link #rebindAfterUniverseExpand}.
+     * Rebuilding the whole stack instead costs a full pass over every surviving assignment on every
+     * conflict, and a deep chain of packages whose versions are excluded one by one conflicts once
+     * per version.
      */
     public void backtrack(int targetLevel) {
         if (targetLevel < 0) {
             throw new IllegalArgumentException("cannot backtrack below 0: " + targetLevel);
         }
-        assignments.removeIf(a -> a.decisionLevel() > targetLevel);
-        decisionLevel = targetLevel;
-        decisionByPackage.clear();
-        byPackage.clear();
-        assignmentsByPackage.clear();
-        undecidedPositive.clear();
-        // Decisions first, then every term: a package is usually required by a derivation before
-        // it is decided, and register() offers an undecided required package for decision — so
-        // the surviving decisions must all be known before any term is replayed, or a decided
-        // package whose first mention came earlier would be offered a second time.
-        for (Assignment a : assignments) {
-            // Decisions are always exact singles (VersionSet.exact).
-            if (a instanceof Assignment.Decision d
-                    && d.term().effectiveVersions() instanceof VersionSet.Range r
-                    && r.min() != null
-                    && r.max() != null
-                    && r.minInclusive()
-                    && r.maxInclusive()
-                    && r.min().equals(r.max())) {
-                decisionByPackage.put(d.term().pkg(), r.min());
-            }
+        // Decision levels never decrease along the stack, so what goes is a suffix.
+        int keep = assignments.size();
+        while (keep > 0 && assignments.get(keep - 1).decisionLevel() > targetLevel) keep--;
+        List<Assignment> dropped = assignments.subList(keep, assignments.size());
+        // Package -> level of its first dropped assignment; insertion order is stack order.
+        Map<String, Integer> firstDroppedLevel = new LinkedHashMap<>();
+        for (Assignment a : dropped) {
+            firstDroppedLevel.putIfAbsent(a.term().pkg(), a.decisionLevel());
+            if (a instanceof Assignment.Decision)
+                decisionByPackage.remove(a.term().pkg());
         }
-        for (Assignment a : assignments) {
-            index(a);
-            register(a.term(), a.globalIndex());
+        dropped.clear();
+        decisionLevel = targetLevel;
+        for (String pkg : statesWithoutAssignments) byPackage.remove(pkg);
+        statesWithoutAssignments.clear();
+        for (Map.Entry<String, Integer> e : firstDroppedLevel.entrySet()) {
+            String pkg = e.getKey();
+            PackageState s = byPackage.get(pkg);
+            if (s != null && s.firstIndex >= 0) undecidedPositive.remove(s.firstIndex);
+            List<Assignment> own = assignmentsByPackage.get(pkg);
+            if (own == null) continue;
+            own.removeIf(a -> a.decisionLevel() > targetLevel);
+            if (own.isEmpty()) {
+                assignmentsByPackage.remove(pkg);
+                byPackage.remove(pkg);
+                continue;
+            }
+            Checkpoint oldest = null;
+            if (s != null) {
+                while (!s.checkpoints.isEmpty() && s.checkpoints.peekLast().level() > targetLevel) {
+                    oldest = s.checkpoints.pollLast();
+                }
+            }
+            if (s != null && oldest != null && oldest.level() == e.getValue()) {
+                s.restore(oldest, universes.get(pkg));
+                if (s.hasPositive && !decisionByPackage.containsKey(pkg)) undecidedPositive.put(s.firstIndex, pkg);
+                continue;
+            }
+            // No checkpoint from before the first dropped assignment (the universe changed since):
+            // fold the survivors in again. The surviving decisions are all settled above, so
+            // register() offers a package for decision only when its decision is really gone.
+            byPackage.remove(pkg);
+            for (Assignment a : own) register(a.term(), a.globalIndex(), a.decisionLevel());
         }
     }
 
