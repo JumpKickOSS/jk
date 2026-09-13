@@ -630,8 +630,8 @@ public final class PreflightMemo {
      * Static plan outline for one module: total weight, serial test-step weight, and step
      * names/phases. Shape fingerprint ignores sources — weights are not freshness-aware.
      *
-     * <p><b>Dirty prepare never uses shape-memo for bar weight</b> ({@code forceRebuild} always
-     * re-runs {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} with over-reserve tails).
+     * <p><b>Dirty prepare never uses shape-memo for bar weight</b> (a dirty prepare always runs
+     * {@link cc.jumpkick.run.BuildPlan#estimatedTotalWeight} with over-reserve tails).
      * Memo remains optional for clean / ETA-only outline hits and for storing the live outline
      * after a dirty prepare.
      */

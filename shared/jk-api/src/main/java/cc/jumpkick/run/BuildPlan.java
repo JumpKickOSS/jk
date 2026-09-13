@@ -154,7 +154,10 @@ public final class BuildPlan {
                 name, numerator.sum(), denominator.sum(), steps.size(), stepsComplete.get(), cancelled.get());
     }
 
-    /** Sum of step weights without running; a throwing estimate contributes 0. */
+    /**
+     * Sum of step weights without running; a throwing estimate contributes 0. Each step keeps the
+     * answer, so {@link #run} sizes the bar from this evaluation rather than asking again.
+     */
     public int estimatedTotalWeight() {
         List<CompletableFuture<Integer>> futures = new ArrayList<>(steps.size());
         for (Task p : steps) {
@@ -184,6 +187,7 @@ public final class BuildPlan {
         // the bar (time-proportional). The denominator sums weights, not units, so a
         // file-count-scoped compile can't dwarf a quick step. A step without an
         // explicit weight reuses its ticks, so the denominator is unchanged for it.
+        // A step already estimated by estimatedTotalWeight answers from that estimate.
         List<CompletableFuture<Integer>> tickFutures = new ArrayList<>(steps.size());
         for (Task p : steps) {
             tickFutures.add(CompletableFuture.supplyAsync(p::estimateTicks, JkThreads.io()));

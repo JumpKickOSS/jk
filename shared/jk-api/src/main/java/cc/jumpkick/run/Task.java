@@ -12,7 +12,10 @@ import org.jspecify.annotations.Nullable;
  * One unit of work inside a {@link BuildPlan}. Tasks declare dependencies by name and run when
  * their prerequisites finish.
  *
- * <p>Tasks are immutable after construction. Use {@link Task#builder} to assemble one.
+ * <p>Tasks are immutable after construction. Use {@link Task#builder} to assemble one. The one
+ * thing a task remembers is its estimate: {@link #estimateTicks} and {@link #estimateWeight} ask
+ * their suppliers once and answer from that thereafter, so the plan's pre-run estimate and the run
+ * itself read the same numbers off one evaluation.
  *
  * <p>{@link #stage()} is the product bucket (UI fold / ETA); ordering is solely {@link #requires()}.
  */
@@ -24,6 +27,12 @@ public final class Task {
     private final List<String> requires;
     private final IntSupplier ticks;
     private final @Nullable IntSupplier weight; // null → weight tracks ticks
+
+    /** A supplier's answer, or {@link #UNESTIMATED} until it has been asked. */
+    private volatile int estimatedTicks = UNESTIMATED;
+
+    private volatile int estimatedWeight = UNESTIMATED;
+    private static final int UNESTIMATED = -1;
     private final boolean interpolated;
     /** Product taxonomy bucket; never null (defaults via {@link BuildStage#ofTaskName}). */
     private final BuildStage stage;
@@ -87,16 +96,32 @@ public final class Task {
         return requires;
     }
 
+    /**
+     * The step's internal unit count, asked of its supplier once. A supplier that throws leaves the
+     * estimate untaken, so the next caller asks again.
+     */
     public int estimateTicks() {
-        return Math.max(0, ticks.getAsInt());
+        int t = estimatedTicks;
+        if (t == UNESTIMATED) {
+            t = Math.max(0, ticks.getAsInt());
+            estimatedTicks = t;
+        }
+        return t;
     }
 
     public boolean hasExplicitWeight() {
         return weight != null;
     }
 
+    /** The step's bar share, asked of its supplier once; without an explicit weight it is the ticks. */
     public int estimateWeight() {
-        return Math.max(0, weight != null ? weight.getAsInt() : ticks.getAsInt());
+        if (weight == null) return estimateTicks();
+        int w = estimatedWeight;
+        if (w == UNESTIMATED) {
+            w = Math.max(0, weight.getAsInt());
+            estimatedWeight = w;
+        }
+        return w;
     }
 
     public boolean interpolated() {

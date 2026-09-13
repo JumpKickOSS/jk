@@ -141,6 +141,48 @@ class BuildPlanTest {
         assertThat(plan.snapshot().denominator()).isZero();
     }
 
+    /**
+     * The estimate and the run read the same numbers off one evaluation: a learned lookup behind
+     * a weight supplier runs once per step, not once when the plan is sized and again when it
+     * starts.
+     */
+    @Test
+    void tick_and_weight_suppliers_are_evaluated_once_across_estimate_and_run() {
+        AtomicInteger ticksAsked = new AtomicInteger();
+        AtomicInteger weightsAsked = new AtomicInteger();
+        var plan = BuildPlan.builder("once")
+                .addTask(Task.builder("weighted")
+                        .ticks(() -> {
+                            ticksAsked.incrementAndGet();
+                            return 3;
+                        })
+                        .weight(() -> {
+                            weightsAsked.incrementAndGet();
+                            return 5;
+                        })
+                        .execute(ctx -> {})
+                        .build())
+                .addTask(Task.builder("ticks-only")
+                        .ticks(() -> {
+                            ticksAsked.incrementAndGet();
+                            return 2;
+                        })
+                        .execute(ctx -> {})
+                        .build())
+                .build();
+
+        assertThat(plan.estimatedTotalWeight()).isEqualTo(7);
+        assertThat(plan.run().success()).isTrue();
+        assertThat(plan.snapshot().denominator()).isEqualTo(7);
+
+        assertThat(weightsAsked)
+                .as("one weight evaluation for the weighted step")
+                .hasValue(1);
+        assertThat(ticksAsked)
+                .as("one tick evaluation per step: the run reuses the estimate's answer")
+                .hasValue(2);
+    }
+
     @Test
     void interleaved_progress_and_update_scope_never_overshoot() {
         // Regression for the "318 of 161" bug: when a step calls

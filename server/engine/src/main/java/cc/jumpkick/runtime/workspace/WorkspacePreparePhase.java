@@ -193,9 +193,11 @@ final class WorkspacePreparePhase {
         Path dir = unit.dir();
         if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return null;
         BuildPlan plan = assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed);
-        int weight = forceRebuild
-                ? EffortWeights.withOverReserveTails(plan::estimatedTotalWeight)
-                : plan.estimatedTotalWeight();
+        // One evaluation serves prepare and run: each step keeps its estimate and the run sizes
+        // the bar from it. The run evaluates under over-reserve, so the estimate is taken under
+        // over-reserve too — every module prepared here is dirty, and a jar-derived tail priced
+        // against the pre-build binary would under-count the work the run then does.
+        int weight = EffortWeights.withOverReserveTails(plan::estimatedTotalWeight);
         boolean distrust = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         if (!distrust && !forceRebuild) {
