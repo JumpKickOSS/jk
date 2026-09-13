@@ -590,7 +590,7 @@ public final class LockPipeline {
             throw new IllegalStateException(pd.coordinate() + " — " + e.getMessage(), e);
         }
         try {
-            PluginDescriptorOps.materialize(lockDir, hex, jarPath);
+            PluginDescriptorOps.materialize(lockDir, hex, jarPath, pd.coordinate());
         } catch (IOException noDescriptor) {
             progress.note("note: " + pd.coordinate()
                     + " has no jk-plugin.toml — locked, but it will not own a jk.toml table");

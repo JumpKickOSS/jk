@@ -88,7 +88,7 @@ class PrivatePluginPathTest {
                         List.of(),
                         List.of(new Lockfile.PluginEntry("path:acme", "local", "sha256:" + hex))),
                 project.resolve("jk-lock.toml"));
-        PluginDescriptorOps.materialize(project, hex, casJar);
+        PluginDescriptorOps.materialize(project, hex, casJar, "path:acme");
         assertThat(PluginDescriptorOps.ensureMaterialized(project, tmp.resolve("cache")))
                 .isFalse();
 

@@ -3,6 +3,8 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -10,7 +12,9 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -63,7 +67,7 @@ public final class PluginDescriptorOps {
             Path jar = cas.pathFor(sha);
             if (!Files.isRegularFile(jar)) continue; // unsynced — jk sync fetches, then we extract
             try {
-                materialize(moduleDir, sha, jar);
+                materialize(moduleDir, sha, jar, entry.coordinate());
                 wrote = true;
             } catch (IOException e) {
                 // A jar without a root jk-plugin.toml is not a build plugin — leave it
@@ -74,8 +78,16 @@ public final class PluginDescriptorOps {
         return wrote;
     }
 
-    /** Extract {@code jar}'s root manifest into the store (atomic move over a temp file). */
-    public static void materialize(Path moduleDir, String sha256Hex, Path jar) throws IOException {
+    /**
+     * Extract {@code jar}'s root manifest into the store (atomic move over a temp file) once the
+     * descriptor is shown to be the pinned artifact's own ({@link #requireOwnDescriptor}).
+     *
+     * @param pinnedCoordinate the lock's {@code group:artifact} for the jar, or a {@code path:<alias>} pin
+     * @throws IOException when the jar has no root descriptor: not a build plugin
+     * @throws IllegalStateException when the descriptor belongs to another plugin; nothing is written
+     */
+    public static void materialize(Path moduleDir, String sha256Hex, Path jar, String pinnedCoordinate)
+            throws IOException {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry entry = zip.getEntry(ManifestPaths.PLUGIN_MANIFEST);
             if (entry == null) {
@@ -85,9 +97,44 @@ public final class PluginDescriptorOps {
             try (InputStream in = zip.getInputStream(entry)) {
                 text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
+            PluginDescriptor descriptor =
+                    PluginDescriptors.parse(text, jar + "!" + ManifestPaths.PLUGIN_MANIFEST, false);
+            requireOwnDescriptor(descriptor, pinnedCoordinate, jar);
             Path target = PluginDescriptorStore.fileFor(moduleDir, sha256Hex);
             AtomicWrites.replace(target, text);
         }
+    }
+
+    /**
+     * The descriptor a pinned jar carries must be that artifact's own. A plugin jar vendors its
+     * siblings' class trees, and a merge that lets a sibling's root descriptor through would
+     * register this pin as the owner of the sibling's table — silently, since the parser reads
+     * whatever descriptor the jar carries. The claim checked is the worker the descriptor names:
+     * {@code [code] worker} when set, and for a {@code cc.jumpkick} pin the first-party default
+     * {@code jk-<id>}, must be the pinned artifact. A third-party descriptor without a worker key
+     * is its own worker and makes no claim; a path pin has no artifact to compare against.
+     *
+     * @throws IllegalStateException naming the pin, the descriptor and the fix
+     */
+    static void requireOwnDescriptor(PluginDescriptor descriptor, String pinnedCoordinate, Path jar) {
+        int colon = pinnedCoordinate.indexOf(':');
+        if (colon <= 0) return;
+        String group = pinnedCoordinate.substring(0, colon);
+        if (group.equals("path")) return;
+        String artifact = pinnedCoordinate.substring(colon + 1);
+        String claimed;
+        if (PluginJar.GROUP.equals(group)) {
+            claimed = BuiltInPluginJars.describedWorker(descriptor);
+        } else {
+            PluginDescriptor.Code code = descriptor.code();
+            claimed = code == null ? null : code.worker();
+        }
+        if (claimed == null || claimed.isBlank() || claimed.equals(artifact)) return;
+        throw new IllegalStateException("plugin pin " + pinnedCoordinate + " (" + jar + ") is refused: its root "
+                + ManifestPaths.PLUGIN_MANIFEST + " describes plugin `" + descriptor.id() + "` (table ["
+                + descriptor.table() + "], worker " + claimed + "), not the pinned artifact " + artifact
+                + " — the jar carries another plugin's descriptor. Publish " + artifact + " with its own "
+                + ManifestPaths.PLUGIN_MANIFEST + " at the jar root, or pin the artifact the descriptor names.");
     }
 
     /** The locked + synced jar for {@code decl}, or empty (remediation: {@code jk sync}). */

@@ -100,7 +100,7 @@ public final class BuiltInPluginJars {
     }
 
     /** The worker artifact a descriptor says carries its code: {@code [code] worker}, else {@code jk-<id>}. */
-    static String describedWorker(PluginDescriptor descriptor) {
+    public static String describedWorker(PluginDescriptor descriptor) {
         PluginDescriptor.Code code = descriptor.code();
         String worker = code == null ? null : code.worker();
         return worker == null || worker.isBlank() ? "jk-" + descriptor.id() : worker;

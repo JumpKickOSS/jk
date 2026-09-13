@@ -256,7 +256,7 @@ class BuildPlannerTestOnlyPlanTest {
                         List.of(),
                         List.of(new Lockfile.PluginEntry("path:fake", "local", "sha256:" + hex))),
                 dir.resolve("jk-lock.toml"));
-        PluginDescriptorOps.materialize(dir, hex, casJar);
+        PluginDescriptorOps.materialize(dir, hex, casJar, "path:fake");
         return dir;
     }
 
