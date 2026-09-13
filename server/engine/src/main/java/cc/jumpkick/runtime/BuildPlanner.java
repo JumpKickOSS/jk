@@ -106,6 +106,10 @@ public final class BuildPlanner {
     public static final BuildPlanKey<String> GROOVY_STAMP_DIGEST =
             BuildPlanKey.scalar("groovy-stamp-digest", String.class);
 
+    /** As {@link #JAVA_STAMP_TOKENS} for compile-groovy ({@code ActionKey.groovycClasspathTokens}). */
+    public static final BuildPlanKey<List<String>> GROOVY_STAMP_TOKENS =
+            BuildPlanKey.list("groovy-stamp-tokens", String.class);
+
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
     /** Suite resource dirs copied into classes/test — a TestStamp input. */
@@ -158,6 +162,7 @@ public final class BuildPlanner {
             JAVA_STAMP_TOKENS,
             KOTLIN_STAMP_DIGEST,
             GROOVY_STAMP_DIGEST,
+            GROOVY_STAMP_TOKENS,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
             BUILD_OUTCOME,

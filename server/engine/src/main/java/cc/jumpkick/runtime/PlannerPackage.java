@@ -316,16 +316,16 @@ public final class PlannerPackage {
                     }
                     ctx.label("write freshness stamp");
                     Path classes = ctx.require(MAIN_CLASSES);
-                    List<Path> classpath = ctx.require(CLASSPATH);
                     List<Path> freshInputs = new ArrayList<>(groovySources(ctx));
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
+                    // The token lines compile-groovy checked — the ones its action key hashed.
                     FreshnessStamp.write(
                             classes,
                             BuildStamps.GROOVY,
                             TaskNames.COMPILE_GROOVY,
                             "",
                             freshInputs,
-                            classpath,
+                            FreshnessStamp.ClasspathTokens.of(ctx.require(GROOVY_STAMP_TOKENS)),
                             ctx.require(RELEASE),
                             ctx.require(GROOVY_STAMP_DIGEST));
                     ctx.progress(1);

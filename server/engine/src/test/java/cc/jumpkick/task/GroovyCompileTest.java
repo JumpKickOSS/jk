@@ -82,6 +82,49 @@ class GroovyCompileTest {
         assertThat(k2).isNotEqualTo(k1);
     }
 
+    /**
+     * Compile avoidance for the full-compile lane: the compile classpath is keyed by JVM ABI (the
+     * same token javac uses), the worker closure and the processor path by content.
+     */
+    @Test
+    void a_body_only_classpath_change_keeps_the_key_and_worker_or_api_changes_move_it(@TempDir Path dir)
+            throws IOException {
+        Path out = dir.resolve("out");
+        Path src = write(dir.resolve("A.groovy"), "class A {}");
+        Path worker = AbiJars.jar(dir.resolve("worker.jar"), AbiJars.classReturning(1));
+        Path dep = AbiJars.jar(dir.resolve("dep.jar"), AbiJars.classReturning(1));
+        String before = ActionKey.forGroovyc("t", req(src, out, worker, dep), "jk");
+
+        AbiJars.jar(dep, AbiJars.classReturning(2));
+        assertThat(ActionKey.forGroovyc("t", req(src, out, worker, dep), "jk"))
+                .as("a dependency's bodies are not a groovyc input")
+                .isEqualTo(before);
+
+        AbiJars.jar(dep, AbiJars.classWithMethods("n", "added"));
+        assertThat(ActionKey.forGroovyc("t", req(src, out, worker, dep), "jk"))
+                .as("a dependency's API is")
+                .isNotEqualTo(before);
+
+        AbiJars.jar(dep, AbiJars.classReturning(1));
+        AbiJars.jar(worker, AbiJars.classReturning(2));
+        assertThat(ActionKey.forGroovyc("t", req(src, out, worker, dep), "jk"))
+                .as("the worker closure is the compiler: content-keyed")
+                .isNotEqualTo(before);
+
+        assertThat(ActionKey.groovycClasspathTokens(req(src, out, worker, dep)))
+                .containsExactly("cp:" + ClasspathAbi.token(dep), "worker:" + ClasspathFingerprint.entry(worker));
+    }
+
+    private static GroovycRequest req(Path src, Path out, Path worker, Path dep) {
+        return GroovycRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of(dep))
+                .outputDir(out)
+                .jvmTarget(21)
+                .workerClasspath(List.of(worker))
+                .build();
+    }
+
     private static GroovycRequest req(Path src, Path out, Path worker) {
         return GroovycRequest.builder()
                 .sources(List.of(src))

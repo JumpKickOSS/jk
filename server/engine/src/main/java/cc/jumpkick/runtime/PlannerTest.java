@@ -295,7 +295,11 @@ public final class PlannerTest {
             }
         }
         LangCompile.Result gr = compileGroovySources(
-                ctx, in, cas, actionCache, src.gvTest(), baseCp, gvTestOut, gvTaskId, gvJavaRoots, null);
+                ctx,
+                in,
+                actionCache,
+                PlannerLang.groovyRequest(ctx, in, cas, src.gvTest(), baseCp, gvTestOut, gvJavaRoots, null),
+                gvTaskId);
         if (!gr.success()) {
             PlannerSupport.forwardWorkerDiagnostics(
                     ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");

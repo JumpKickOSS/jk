@@ -286,24 +286,24 @@ public final class PlannerLang {
     }
 
     /**
-     * Compile Groovy {@code sources} into {@code outputDir} via the plugin (action-cached: restores
-     * from the CAS on an exact-input hit without launching the plugin, else forks a full compile
-     * Groovy has no incremental state). Shared by the main {@code compile-groovy} and {@code
-     * compile-test} steps. The caller owns freshness stamps, output assembly, and outcome reporting.
+     * The Groovy worker's request for {@code sources} — the compile-time facts both the action key
+     * and the freshness stamp are derived from: project deps plus the version-matched groovy jar
+     * on the classpath, the worker's Groovy closure, contributed groovyc args, and in joint mode
+     * the Java roots and processor path. Built once per step, before the stamp check, so the stamp
+     * compares the very token lines the key hashes. Shared by the main {@code compile-groovy} and
+     * {@code compile-test} steps.
      *
      * @param javaSourceRoots when non-empty, joint mode: the worker sweeps {@code .java} under them
      * for resolution only (jk's javac worker owns the real Java outputs)
      * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
      */
-    static LangCompile.Result compileGroovySources(
+    static GroovycRequest groovyRequest(
             TaskContext ctx,
             BuildPlanner.Inputs in,
             Cas cas,
-            ActionCache actionCache,
             List<Path> sources,
             List<Path> classpath,
             Path outputDir,
-            String taskId,
             @Nullable List<Path> javaSourceRoots,
             @Nullable Path stubsOut)
             throws IOException {
@@ -329,7 +329,7 @@ public final class PlannerLang {
         // must run there or generated members fail resolution.
         List<Path> processorCp =
                 javaSourceRoots == null ? List.of() : ctx.get(PROCESSOR_CP).orElse(List.of());
-        GroovycRequest req = GroovycRequest.builder()
+        return GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
                 .classpath(compileCp)
@@ -341,6 +341,16 @@ public final class PlannerLang {
                 .workerClasspath(gv.workerClasspath())
                 .extraArgs(gvArgs)
                 .build();
+    }
+
+    /**
+     * Run {@code req} through the action cache and the Groovy worker (restores from the CAS on an
+     * exact-input hit without launching the plugin, else forks a full compile — Groovy has no
+     * incremental state). The caller owns freshness stamps, output assembly, and outcome reporting.
+     */
+    static LangCompile.Result compileGroovySources(
+            TaskContext ctx, BuildPlanner.Inputs in, ActionCache actionCache, GroovycRequest req, String taskId)
+            throws IOException {
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a
         // full groovyc. Same forGroovyc key LangCompile.run looks up.
@@ -349,7 +359,10 @@ public final class PlannerLang {
                 boolean restores = actionCache
                         .lookup(ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion()))
                         .isPresent();
-                ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
+                ctx.reweight(
+                        restores
+                                ? EffortWeights.RESTORE
+                                : EffortWeights.compileWeight(req.sources().size()));
             } catch (Exception e) {
                 /* keep the up-front estimate */
                 Log.debug("compileGroovySources: keep the up-front estimate", e);

@@ -108,6 +108,7 @@ public final class LangCompile {
                 request.outputDir(),
                 request.sources().isEmpty(),
                 persist,
+                Map.of(),
                 cas,
                 actionCache,
                 () -> WorkerCompileDriver.compile(request, env));
@@ -167,18 +168,23 @@ public final class LangCompile {
                 request.outputDir(),
                 request.sources().isEmpty(),
                 persist,
+                ActionKey.snapshotInputs(request),
                 cas,
                 actionCache,
                 () -> WorkerCompileDriver.compile(request, env));
     }
 
-    /** The shared post-hygiene fold: prewrite the CAS while the worker runs, then judge and store. */
+    /**
+     * The shared post-hygiene fold: prewrite the CAS while the worker runs, then judge and store.
+     * {@code inputs} is what the record remembers of the request, for {@code jk why-rebuilt}.
+     */
     private static Result forkAndStore(
             String taskId,
             String key,
             Path outputDir,
             boolean noSources,
             boolean persist,
+            Map<String, String> inputs,
             Cas cas,
             ActionCache actionCache,
             Supplier<CompileResult> fork)
@@ -206,7 +212,7 @@ public final class LangCompile {
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
-        if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
+        if (persist) actionCache.storeWithOutputs(taskId, key, inputs, outputs);
         return new Result(true, "compiled", key, cr.diagnostics());
     }
 

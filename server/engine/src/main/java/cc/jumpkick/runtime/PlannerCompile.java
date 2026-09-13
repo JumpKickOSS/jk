@@ -17,6 +17,7 @@ import static cc.jumpkick.runtime.PlannerSupport.mergeLanguageOutput;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -790,15 +791,39 @@ public final class PlannerCompile {
                         Files.createDirectories(classes);
                     }
                     boolean rerun = in.session().config().rebuildOr(false);
-                    // The groovyc args and toolchain are stamp inputs too (see compile-kotlin).
+                    // Groovy compiles into its own dir, then we merge into the shared classes
+                    // dir (the worker's action cache snapshots its whole output dir — it must
+                    // never share one with javac).
+                    Path gvOut = ctx.require(LAYOUT).groovyClassesDir();
+                    // Mixed module: joint mode sweeps the Java roots for resolution only
+                    // stubs are retained for javac's sourcepath; jk's javac worker stays
+                    // authoritative for the real Java outputs.
+                    GroovycRequest request = PlannerLang.groovyRequest(
+                            ctx,
+                            in,
+                            cas,
+                            gvSources,
+                            classpath,
+                            gvOut,
+                            mixedGroovy
+                                    ? kotlinJavaSourceRoots(true, compact, in.dir(), ctx.require(LAYOUT), pluginDecls)
+                                    : null,
+                            mixedGroovy ? ctx.require(LAYOUT).groovyStubsDir() : null);
+                    // The groovyc args and toolchain are stamp inputs too (see compile-kotlin), and
+                    // the classpath enters as the token lines the action key hashes: the ABI of
+                    // each compile-classpath entry, the content of the worker closure and of each
+                    // processor. A sibling's body-only rewrite reads fresh; a full groovyc is the
+                    // only alternative, so this is the one skip Groovy gets.
                     String optionsDigest = PlannerLang.groovyStampDigest(ctx, in.dir());
                     ctx.put(GROOVY_STAMP_DIGEST, optionsDigest);
+                    List<String> stampTokens = ActionKey.groovycClasspathTokens(request);
+                    ctx.put(GROOVY_STAMP_TOKENS, stampTokens);
                     if (!rerun
                             && FreshnessStamp.isFresh(
                                     classes,
                                     BuildStamps.GROOVY,
                                     freshInputs,
-                                    classpath,
+                                    FreshnessStamp.ClasspathTokens.of(stampTokens),
                                     ctx.require(RELEASE),
                                     optionsDigest)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
@@ -809,27 +834,8 @@ public final class PlannerCompile {
                         return;
                     }
                     ctx.label("compiling " + gvSources.size() + " Groovy sources");
-                    // Groovy compiles into its own dir, then we merge into the shared classes
-                    // dir (the worker's action cache snapshots its whole output dir — it must
-                    // never share one with javac).
-                    Path gvOut = ctx.require(LAYOUT).groovyClassesDir();
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, classes);
-                    // Mixed module: joint mode sweeps the Java roots for resolution only
-                    // stubs are retained for javac's sourcepath; jk's javac worker stays
-                    // authoritative for the real Java outputs.
-                    LangCompile.Result gr = compileGroovySources(
-                            ctx,
-                            in,
-                            cas,
-                            actionCache,
-                            gvSources,
-                            classpath,
-                            gvOut,
-                            taskId,
-                            mixedGroovy
-                                    ? kotlinJavaSourceRoots(true, compact, in.dir(), ctx.require(LAYOUT), pluginDecls)
-                                    : null,
-                            mixedGroovy ? ctx.require(LAYOUT).groovyStubsDir() : null);
+                    LangCompile.Result gr = compileGroovySources(ctx, in, actionCache, request, taskId);
                     if (!gr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
                                 ctx, "groovyc", gr.diagnostics(), "groovyc failed without diagnostics");
