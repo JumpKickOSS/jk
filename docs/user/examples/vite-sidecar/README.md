@@ -72,7 +72,7 @@ through Vite's proxy, so the browser sees one origin:
 
 ```console
 $ curl -s http://localhost:5173/api/hello
-{"message":"hello from the JVM","at":"2026-09-13T09:29:50.302718489Z"}
+{"message": "hello from the JVM"}
 ```
 
 Edit `Api.java`: jk recompiles and restarts the JVM; Vite is untouched and keeps its module graph.

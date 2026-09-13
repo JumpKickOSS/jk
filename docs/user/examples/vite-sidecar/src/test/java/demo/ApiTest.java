@@ -1,7 +1,6 @@
 package demo;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.URI;
@@ -23,7 +22,7 @@ class ApiTest {
             assertEquals(
                     "application/json",
                     response.headers().firstValue("Content-Type").orElse(""));
-            assertTrue(response.body().contains("\"message\":\"hello from the JVM\""), response.body());
+            assertEquals(Api.HELLO, response.body());
         } finally {
             server.stop(0);
         }

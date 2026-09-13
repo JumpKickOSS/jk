@@ -2,5 +2,5 @@
 const out = document.querySelector("#api");
 fetch("/api/hello")
   .then((r) => r.json())
-  .then((json) => (out.textContent = `${json.message} at ${json.at}`))
+  .then((json) => (out.textContent = json.message))
   .catch((e) => (out.textContent = `the JVM did not answer: ${e}`));
