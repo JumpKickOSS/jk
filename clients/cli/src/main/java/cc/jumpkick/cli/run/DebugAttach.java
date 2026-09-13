@@ -65,11 +65,17 @@ public final class DebugAttach {
 
     /** The announcement on stderr, in the CLI's chrome: one line, before the JVM starts. */
     public static void announce(DebugJvm debug) {
-        Theme theme = Theme.active();
-        CliOutput.err(Theme.colorize(Glyphs.pulse(), theme.focused())
-                + " Debugger listening on "
-                + Theme.colorize(debug.address(), theme.highlight())
-                + tail(debug));
+        CliOutput.err(announcedLine(debug));
+    }
+
+    /**
+     * The line {@link #announce} prints: a styled glyph, then the plain {@link #announcement}. The
+     * address itself is never styled — it is what a person copies into an IDE and what a script
+     * (or a test) reads back as {@code host:port}, and an escape sequence glued to the host is not
+     * a host on any surface, coloured or piped.
+     */
+    static String announcedLine(DebugJvm debug) {
+        return Theme.colorize(Glyphs.pulse(), Theme.active().focused()) + " " + announcement(debug);
     }
 
     private static String tail(DebugJvm debug) {

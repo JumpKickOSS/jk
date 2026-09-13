@@ -14,13 +14,18 @@ import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -122,6 +127,28 @@ class DebugJvmFlagTest {
         try (ServerSocket again = new ServerSocket(bound.port(), 1, InetAddress.getByName("localhost"))) {
             assertThat(again.getLocalPort()).isEqualTo(bound.port());
         }
+    }
+
+    /**
+     * The printed line carries the address as one plain token: whatever the theme styles, an
+     * escape sequence never sits between {@code on } and the host, so {@code host:port} parses.
+     */
+    @Test
+    void the_printed_announcement_carries_the_address_unstyled() {
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        PrintStream prevErr = System.err;
+        System.setErr(new PrintStream(captured, true, StandardCharsets.UTF_8));
+        try {
+            DebugAttach.announce(DebugJvm.parse("7007"));
+        } finally {
+            System.setErr(prevErr);
+        }
+        String line = captured.toString(StandardCharsets.UTF_8);
+        assertThat(line).contains("Debugger listening on localhost:7007");
+        Matcher m = Pattern.compile("Debugger listening on (\\S+):(\\d+)").matcher(line);
+        assertThat(m.find()).isTrue();
+        assertThat(m.group(1)).isEqualTo("localhost");
+        assertThat(m.group(2)).isEqualTo("7007");
     }
 
     @Test
