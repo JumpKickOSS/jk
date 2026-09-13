@@ -103,6 +103,11 @@ public final class BuildPlanner {
 
     public static final BuildPlanKey<String> KOTLIN_STAMP_DIGEST =
             BuildPlanKey.scalar("kotlin-stamp-digest", String.class);
+
+    /** As {@link #JAVA_STAMP_TOKENS} for compile-kotlin ({@code PlannerLang.kotlinStampTokens}). */
+    public static final BuildPlanKey<List<String>> KOTLIN_STAMP_TOKENS =
+            BuildPlanKey.list("kotlin-stamp-tokens", String.class);
+
     public static final BuildPlanKey<String> GROOVY_STAMP_DIGEST =
             BuildPlanKey.scalar("groovy-stamp-digest", String.class);
 
@@ -161,6 +166,7 @@ public final class BuildPlanner {
             JAVA_STAMP_DIGEST,
             JAVA_STAMP_TOKENS,
             KOTLIN_STAMP_DIGEST,
+            KOTLIN_STAMP_TOKENS,
             GROOVY_STAMP_DIGEST,
             GROOVY_STAMP_TOKENS,
             TEST_SOURCES,

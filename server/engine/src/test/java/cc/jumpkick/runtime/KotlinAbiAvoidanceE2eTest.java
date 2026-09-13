@@ -65,8 +65,8 @@ class KotlinAbiAvoidanceE2eTest {
         assertThat(build(ws, cache, bodyOnly).success()).isTrue();
         assertThat(bodyOnly.label("lib", TaskNames.COMPILE_KOTLIN)).startsWith("compiling");
         assertThat(bodyOnly.label("app", TaskNames.COMPILE_KOTLIN))
-                .as("app's compile-kotlin is a cache hit: lib's jar changed, its ABI did not")
-                .startsWith("cache hit");
+                .as("app's compile-kotlin is answered by its stamp: lib's jar changed, its ABI token did not")
+                .isEqualTo("up to date");
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
 
         // An inline function body is ABI for kotlinc: it is copied into every call site.
@@ -128,8 +128,8 @@ class KotlinAbiAvoidanceE2eTest {
         assertThat(build(ws, cache, bodyOnly).success()).isTrue();
         assertThat(bodyOnly.label("lib", TaskNames.COMPILE_MAIN)).doesNotStartWith("up to date");
         assertThat(bodyOnly.label("app", TaskNames.COMPILE_KOTLIN))
-                .as("a Java-only sibling still gets a Kotlin snapshot, so the Kotlin consumer avoids")
-                .startsWith("cache hit");
+                .as("a Java-only sibling still gets a Kotlin snapshot, so the Kotlin consumer's stamp holds")
+                .isEqualTo("up to date");
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
     }
 

@@ -105,20 +105,22 @@ public final class PlannerLang {
     }
 
     /**
-     * The Kotlin compile's freshness-stamp digest: the {@link KotlinConfig#digest option-bearing
-     * facts} plus the {@link KotlinClasspathAbi ABI token} of every compile-classpath entry. The
-     * stamp then describes the classpath the way the action key does — by ABI — so a sibling
-     * rewritten with the same ABI leaves the digest alone and one whose ABI moved changes it even
-     * before any mtime is consulted. Sorted: the stamp does not care about classpath order any
-     * more than the key does.
+     * The Kotlin compile's freshness-stamp classpath, spelled as the action key spells it: one
+     * {@code cp:} line per compile-classpath entry carrying its {@link KotlinClasspathAbi ABI
+     * token}. Checked and written through {@link FreshnessStamp.ClasspathTokens}, so the stamp
+     * compares tokens and never a jar's mtime or content identity: a sibling rewritten with the
+     * same ABI leaves the stamp fresh and the compile is answered without computing a key, while
+     * one whose ABI moved is stale before any source mtime is read. Sorted: the stamp does not care
+     * about classpath order any more than the key does. The option-bearing facts ride the digest
+     * ({@link KotlinConfig#digest}) beside it.
      */
-    static String kotlinStampDigest(
-            KotlinConfig config, List<Path> classpath, KotlinClasspathAbi.Snapshotter snapshotter) throws IOException {
-        List<String> parts = new ArrayList<>(config.digestParts());
+    static List<String> kotlinStampTokens(List<Path> classpath, KotlinClasspathAbi.Snapshotter snapshotter)
+            throws IOException {
         List<String> tokens = new ArrayList<>(KotlinClasspathAbi.tokens(classpath, snapshotter));
         tokens.sort(Comparator.naturalOrder());
-        for (String token : tokens) parts.add("cp:" + token);
-        return FreshnessStamp.optionsDigest(parts);
+        List<String> lines = new ArrayList<>(tokens.size());
+        for (String token : tokens) lines.add("cp:" + token);
+        return lines;
     }
 
     /**

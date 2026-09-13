@@ -147,6 +147,26 @@ public final class PlannerCompile {
         return CompileSupport.withExtraSources(kotlinSeed, extraSourceDirs(project, moduleDir), ".kt");
     }
 
+    /**
+     * {@link #mainKotlinSources} plus the generated Kotlin compile-kotlin folds in at execute time:
+     * plugin {@code contributesSources}, KSP output and build-logic output — the same union the
+     * Java side takes in {@link #mainJavaSources}. The build re-publishes it as {@code
+     * KOTLIN_SOURCES} so write-stamp-kotlin records the set the compile checked, and the forecast
+     * derives its stamp inputs from the same body.
+     */
+    public static List<Path> mainKotlinSourcesWithGenerated(
+            List<Path> kotlin, BuildLayout layout, PluginBuild.@Nullable Declarations decls) throws IOException {
+        List<Path> generated = pluginContributedSources(layout, decls, ".kt");
+        List<Path> ksp = kspGeneratedSources(layout, ".kt");
+        List<Path> logic = BuildLogicSupport.generatedSources(layout, ".kt");
+        if (generated.isEmpty() && ksp.isEmpty() && logic.isEmpty()) return kotlin;
+        List<Path> all = new ArrayList<>(kotlin);
+        all.addAll(generated);
+        all.addAll(ksp);
+        all.addAll(logic);
+        return all;
+    }
+
     /** {@link #mainKotlinSources(JkBuild, Path, boolean)}, for {@code GROOVY_SOURCES}. */
     public static List<Path> mainGroovySources(JkBuild project, Path moduleDir, boolean compact) throws IOException {
         return mainGroovySources(project, moduleDir, CompileSupport.collectGroovySources(moduleDir, compact));
@@ -627,18 +647,12 @@ public final class PlannerCompile {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     Files.createDirectories(classes); // compile-java may be skipped
-                    List<Path> ktSources = kotlinSources(ctx);
+                    List<Path> declaredKt = kotlinSources(ctx);
                     // Plugin-contributed generated Kotlin (a KSP round, a codegen step) joins the
                     // source list exactly like the Java side — the freshness stamp and the plugin
                     // see generated files as ordinary sources.
-                    List<Path> generatedKt = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".kt");
-                    List<Path> kspKt = kspGeneratedSources(ctx.require(LAYOUT), ".kt");
-                    List<Path> logicKt = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".kt");
-                    if (!generatedKt.isEmpty() || !kspKt.isEmpty() || !logicKt.isEmpty()) {
-                        ktSources = new ArrayList<>(ktSources);
-                        ktSources.addAll(generatedKt);
-                        ktSources.addAll(kspKt);
-                        ktSources.addAll(logicKt);
+                    List<Path> ktSources = mainKotlinSourcesWithGenerated(declaredKt, ctx.require(LAYOUT), pluginDecls);
+                    if (ktSources != declaredKt) {
                         // Re-publish so write-stamp-kotlin records what this compile checked.
                         ctx.put(KOTLIN_SOURCES, ktSources);
                     }
@@ -688,18 +702,21 @@ public final class PlannerCompile {
                             .resolve(taskId);
                     PlannerLang.KotlinWorker worker =
                             PlannerLang.kotlinWorker(ctx, in, cas, ktSources, classpath, ktOut, workingDir, config);
-                    // The stamp digest describes the classpath by ABI, like the action key: a
-                    // sibling rewritten with the same ABI is fresh here once its token is known,
-                    // and one whose ABI moved is stale before any mtime is read. A token not yet
-                    // memoized is what makes the worker resolve (and fork) ahead of the compile.
-                    String optionsDigest = PlannerLang.kotlinStampDigest(config, classpath, worker.snapshotter());
+                    // The stamp spells the classpath by ABI token, like the action key: a sibling
+                    // rewritten with the same ABI is fresh here once its token is known — no jar
+                    // mtime or content identity is consulted — and one whose ABI moved is stale
+                    // before any source mtime is read. A token not yet memoized is what makes the
+                    // worker resolve (and fork) ahead of the compile.
+                    String optionsDigest = config.digest();
                     ctx.put(KOTLIN_STAMP_DIGEST, optionsDigest);
+                    List<String> stampTokens = PlannerLang.kotlinStampTokens(classpath, worker.snapshotter());
+                    ctx.put(KOTLIN_STAMP_TOKENS, stampTokens);
                     if (!rerun
                             && FreshnessStamp.isFresh(
                                     classes,
                                     BuildStamps.KOTLIN,
                                     freshInputs,
-                                    classpath,
+                                    FreshnessStamp.ClasspathTokens.of(stampTokens),
                                     ctx.require(RELEASE),
                                     optionsDigest)) {
                         ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick

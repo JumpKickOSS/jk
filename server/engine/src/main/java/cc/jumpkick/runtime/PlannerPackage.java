@@ -280,16 +280,16 @@ public final class PlannerPackage {
                     }
                     ctx.label("write freshness stamp");
                     Path classes = ctx.require(MAIN_CLASSES);
-                    List<Path> classpath = ctx.require(CLASSPATH);
                     List<Path> freshInputs = new ArrayList<>(kotlinSources(ctx));
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
+                    // The classpath as the compile checked it: ABI token lines, never paths.
                     FreshnessStamp.write(
                             classes,
                             BuildStamps.KOTLIN,
                             TaskNames.COMPILE_KOTLIN,
                             "",
                             freshInputs,
-                            classpath,
+                            FreshnessStamp.ClasspathTokens.of(ctx.require(KOTLIN_STAMP_TOKENS)),
                             ctx.require(RELEASE),
                             ctx.require(KOTLIN_STAMP_DIGEST));
                     ctx.progress(1);
