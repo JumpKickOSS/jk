@@ -47,6 +47,7 @@ import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.guard.validate.Fault;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -71,6 +72,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -578,7 +580,34 @@ final class PlannerGuards {
         executeLane(ctx, env(cx), lane, ectx, tokenSupplier, taskId, noClasses, extraRules, beforeEvaluate);
     }
 
+    /**
+     * One lane, with its failure on record. The step's diagnostic carries a throwable's message
+     * alone, so the trace — the one thing that names the comparator, the file or the rule behind a
+     * lane that threw — goes to the engine log before the step fails. A red verdict is not a
+     * failure of the lane and is already on the step's diagnostics.
+     */
     private static void executeLane(
+            TaskContext ctx,
+            LaneEnv env,
+            Lane lane,
+            EvalContext ectx,
+            EvalContext.IoSupplier<List<String>> tokenSupplier,
+            String taskId,
+            boolean noClasses,
+            List<Rule> extraRules,
+            EvalContext.@Nullable IoRunnable beforeEvaluate)
+            throws IOException {
+        try {
+            evaluateLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, extraRules, beforeEvaluate);
+        } catch (GuardsRed red) {
+            throw red;
+        } catch (IOException | RuntimeException e) {
+            Log.warn("guard lane " + lane.name().toLowerCase(Locale.ROOT) + " threw", e);
+            throw e;
+        }
+    }
+
+    private static void evaluateLane(
             TaskContext ctx,
             LaneEnv env,
             Lane lane,

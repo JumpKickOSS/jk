@@ -207,12 +207,32 @@ public final class FileHashMemo {
     }
 
     /**
+     * The entries to drop so {@code entries} keeps {@code keep}: the least recently used first,
+     * ranked on one reading of every entry's use tick taken before the sort. A hit moves {@link
+     * Entry#used} while a trim runs — the map is concurrent and nothing holds readers off — and a
+     * sort keyed on the live field asks a comparator whose answers change under it, which TimSort
+     * rejects as a contract violation. A tie on the tick breaks on the key, so the order is total.
+     */
+    static List<Map.Entry<String, Entry>> victims(Map<String, Entry> entries, int keep) {
+        record Ranked(Map.Entry<String, Entry> entry, long used) {}
+        List<Ranked> all = new ArrayList<>(entries.size());
+        for (Map.Entry<String, Entry> e : entries.entrySet()) all.add(new Ranked(e, e.getValue().used));
+        int drop = all.size() - keep;
+        if (drop <= 0) return List.of();
+        all.sort(Comparator.comparingLong(Ranked::used)
+                .thenComparing(r -> r.entry().getKey()));
+        List<Map.Entry<String, Entry>> out = new ArrayList<>(drop);
+        for (int i = 0; i < drop; i++) out.add(all.get(i).entry());
+        return out;
+    }
+
+    /**
      * One memoized fingerprint.
      *
      * @param nanos nanosecond mtime this entry was seeded at, or {@code -1} for a self-hash, which
      *     is validated by settle instead
      */
-    private static final class Entry {
+    static final class Entry {
         final long size;
         final long mtimeMillis;
         final long nanos;
@@ -293,11 +313,8 @@ public final class FileHashMemo {
         private void trim() {
             if (!trimming.compareAndSet(false, true)) return;
             try {
-                List<Map.Entry<String, Entry>> all = new ArrayList<>(entries.entrySet());
-                if (all.size() <= MAX_ENTRIES) return;
-                all.sort(Comparator.comparingLong(x -> x.getValue().used));
-                for (int i = 0; i < all.size() - MAX_ENTRIES; i++) {
-                    entries.remove(all.get(i).getKey(), all.get(i).getValue());
+                for (Map.Entry<String, Entry> victim : victims(entries, MAX_ENTRIES)) {
+                    entries.remove(victim.getKey(), victim.getValue());
                 }
             } finally {
                 trimming.set(false);

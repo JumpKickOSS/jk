@@ -12,7 +12,15 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -206,5 +214,60 @@ class FileHashMemoTest {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    /**
+     * Eviction ranks one snapshot of the use ticks, oldest first: the extremes of the range and a
+     * tick shared by several entries order totally, the tie in key order.
+     */
+    @Test
+    void eviction_ranks_a_snapshot_of_use_ticks_and_breaks_a_tie_on_the_key() {
+        Map<String, FileHashMemo.Entry> entries = new HashMap<>();
+        long[] ticks = {5, Long.MIN_VALUE, 5, 0, Long.MAX_VALUE, -1, 5, 3};
+        for (int i = 0; i < ticks.length; i++) {
+            FileHashMemo.Entry e = new FileHashMemo.Entry(1, 1, -1, "t" + i);
+            e.used = ticks[i];
+            entries.put("k" + i, e);
+        }
+        assertThat(FileHashMemo.victims(entries, 3))
+                .extracting(Map.Entry::getKey)
+                .containsExactly("k1", "k5", "k3", "k7", "k0");
+        assertThat(FileHashMemo.victims(entries, ticks.length)).isEmpty();
+        assertThat(FileHashMemo.victims(entries, ticks.length + 1)).isEmpty();
+    }
+
+    /**
+     * Hits move the use ticks while an eviction sorts. The ranking reads each tick once, so no sort
+     * ever sees a key change under it; a ranking on the live field is the one TimSort refuses.
+     */
+    @Test
+    void hits_that_move_use_ticks_during_an_eviction_never_break_its_order() throws Exception {
+        Map<String, FileHashMemo.Entry> entries = new ConcurrentHashMap<>();
+        List<FileHashMemo.Entry> all = new ArrayList<>();
+        for (int i = 0; i < 20_000; i++) {
+            FileHashMemo.Entry e = new FileHashMemo.Entry(1, 1, -1, "t");
+            entries.put("k" + i, e);
+            all.add(e);
+        }
+        AtomicBoolean stop = new AtomicBoolean();
+        AtomicLong tick = new AtomicLong();
+        List<Thread> hitters = new ArrayList<>();
+        for (int t = 0; t < 4; t++) {
+            Thread h = new Thread(() -> {
+                ThreadLocalRandom rnd = ThreadLocalRandom.current();
+                while (!stop.get()) all.get(rnd.nextInt(all.size())).used = tick.incrementAndGet();
+            });
+            h.setDaemon(true);
+            h.start();
+            hitters.add(h);
+        }
+        try {
+            for (int round = 0; round < 40; round++) {
+                assertThat(FileHashMemo.victims(entries, 10_000)).hasSize(10_000);
+            }
+        } finally {
+            stop.set(true);
+            for (Thread h : hitters) h.join();
+        }
     }
 }
