@@ -116,8 +116,10 @@ The engine itself starts from an allow-list of the spawning shell, not from the 
 `HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `TMPDIR` / `TMP` / `TEMP`, `TZ`, `LANG` / `LANGUAGE` /
 `LC_*`, `JAVA_HOME`, `GRAALVM_HOME`, `SSH_AUTH_SOCK`, `ANDROID_HOME` / `ANDROID_SDK_ROOT`,
 `MISE_DATA_DIR`, `NO_COLOR`, `NERD_FONT`, every `JK_*` variable, the proxy variables
-`http_proxy` / `https_proxy` / `no_proxy` in either case ([Config § Network](config.md#network)),
-and on Windows the system roots (`SystemRoot`, `ComSpec`, `PATHEXT`, `USERPROFILE`, …). JVM
+`http_proxy` / `https_proxy` / `no_proxy` in either case — as the fallback only: they ride each
+request from the shell running `jk`, and the request's values win
+([Config § Network](config.md#network)) — and on Windows the system roots (`SystemRoot`,
+`ComSpec`, `PATHEXT`, `USERPROFILE`, …). JVM
 switches (`JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`), build-tool options, cloud keys
 and forge tokens stay behind: a resident engine outlives the shell that started it, and what it
 inherited once would be every later terminal's truth. Workers are narrowed again —

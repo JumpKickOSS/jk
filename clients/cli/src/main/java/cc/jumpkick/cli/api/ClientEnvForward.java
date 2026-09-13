@@ -34,6 +34,14 @@ import org.jspecify.annotations.Nullable;
  * token exported in a later terminal was invisible to the resolve, and the refusal warning told the
  * user to set a variable that could not arrive.
  *
+ * <p><b>The proxy variables ride too</b> — {@link BuildEnv#PROXY}, by exact name. The proxy is a
+ * fact about the network the shell running {@code jk} is on, and a daemon that kept the one it
+ * inherited would send every later terminal's requests to the last network's proxy until
+ * {@code jk engine stop}. They stay off {@link BuildEnv#MACHINE} because that list's length is the
+ * reproducibility budget; unlike the repository credentials they do reach every forked worker,
+ * over the engine's own values, so a compiler, a plugin or a test JVM that downloads goes the same
+ * way the engine does.
+ *
  * <p><b>Deliberately not in any action key.</b> Keying on {@code PATH} would mean a laptop and a CI
  * runner never share a cached result, and two terminals on one machine often would not either. The
  * cost of leaving it out is bounded and known: a suite whose outcome depends on a tool being on
@@ -58,20 +66,24 @@ public final class ClientEnvForward {
     }
 
     /**
-     * Those of {@link #names()} the caller actually has, in listed order, then every
-     * {@link #REPO_PREFIX} variable. {@code System::getenv} is passed explicitly — the client
-     * resolves from its own shell, never from a session's {@code clientEnv}. The repository names
-     * also honour the {@code jk.env.*} seam, so a test varies one credential per invocation.
+     * Those of {@link #names()} the caller actually has, in listed order, then the
+     * {@link BuildEnv#PROXY} variables it has, then every {@link #REPO_PREFIX} variable.
+     * {@code System::getenv} is passed explicitly — the client resolves from its own shell, never
+     * from a session's {@code clientEnv}. The proxy and repository names also honour the
+     * {@code jk.env.*} seam, so a test varies one of them per invocation.
      */
     public static Map<String, String> resolve() {
         Map<String, String> out = new LinkedHashMap<>(BuildEnv.machine(System::getenv));
+        out.putAll(BuildEnv.resolve(BuildEnv.PROXY, System::getenv));
         for (Map.Entry<String, String> e : System.getenv().entrySet()) {
             if (e.getKey().startsWith(REPO_PREFIX)) out.put(e.getKey(), e.getValue());
         }
         for (String property : System.getProperties().stringPropertyNames()) {
-            if (!property.startsWith(SEAM + REPO_PREFIX)) continue;
+            if (!property.startsWith(SEAM)) continue;
+            String name = property.substring(SEAM.length());
+            if (!name.startsWith(REPO_PREFIX) && !BuildEnv.PROXY.contains(name)) continue;
             String value = System.getProperty(property);
-            if (value != null) out.put(property.substring(SEAM.length()), value);
+            if (value != null) out.put(name, value);
         }
         return Collections.unmodifiableMap(out);
     }

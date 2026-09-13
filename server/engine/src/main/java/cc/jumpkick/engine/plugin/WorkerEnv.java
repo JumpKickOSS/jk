@@ -38,7 +38,9 @@ public final class WorkerEnv {
      * terminal, and on Windows the system roots a process needs to run anything at all. Both
      * platforms' spellings, so the rule reads the same everywhere; {@link BuildEnv#MACHINE} is the
      * per-platform subset the client forwards on a request. {@code LC_*} is a prefix, matched in
-     * {@link #allowed}.
+     * {@link #allowed}. The proxy the machine talks through is part of how it talks:
+     * {@link BuildEnv#PROXY} passes too, and {@link #environment()} lays the request's values over
+     * the engine's, so a worker goes through the proxy of the shell running {@code jk}.
      */
     static final Set<String> MACHINE = Set.of(
             "PATH",
@@ -155,9 +157,12 @@ public final class WorkerEnv {
         return extras;
     }
 
-    /** The child's complete environment: inherited names first, then {@link #extras()}. */
+    /**
+     * The child's complete environment: inherited names first, the request's proxy variables over
+     * the engine's, then {@link #extras()}.
+     */
     public Map<String, String> environment() {
-        return compose(ENGINE.orElse(System.getenv()), inherit, extras, Os.isWindows());
+        return compose(ENGINE.orElse(System.getenv()), BuildEnv.proxyFromRequest(), inherit, extras, Os.isWindows());
     }
 
     /**
@@ -174,15 +179,22 @@ public final class WorkerEnv {
 
     /**
      * The pure rule: {@code engine} whole when {@code inherit}, else only its {@link #allowed} names;
-     * {@code extras} on top in their own order. Windows variable names are case-insensitive, so there
-     * {@code Path} passes the {@code PATH} rule and lands under its own spelling.
+     * {@code requestProxy} — the proxy variables of the shell running {@code jk} — over those, so
+     * the worker goes where the request goes rather than where the engine's spawning shell did;
+     * {@code extras} on top in their own order. Windows variable names are case-insensitive, so
+     * there {@code Path} passes the {@code PATH} rule and lands under its own spelling.
      */
     static Map<String, String> compose(
-            Map<String, String> engine, boolean inherit, Map<String, String> extras, boolean caseInsensitive) {
+            Map<String, String> engine,
+            Map<String, String> requestProxy,
+            boolean inherit,
+            Map<String, String> extras,
+            boolean caseInsensitive) {
         Map<String, String> out = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : engine.entrySet()) {
             if (inherit || allowed(e.getKey(), caseInsensitive)) out.put(e.getKey(), e.getValue());
         }
+        out.putAll(requestProxy);
         out.putAll(extras);
         return out;
     }
@@ -192,11 +204,15 @@ public final class WorkerEnv {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
         if (key.startsWith("LC_")) return true;
         if (JK.contains(key)) return true;
+        if (caseInsensitive ? PROXY_UPPER.contains(key) : BuildEnv.PROXY.contains(key)) return true;
         return caseInsensitive ? MACHINE_UPPER.contains(key) : MACHINE.contains(key);
     }
 
     private static final Set<String> MACHINE_UPPER =
             MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
+
+    private static final Set<String> PROXY_UPPER =
+            BuildEnv.PROXY.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 
     /**
      * Test seam: run {@code body} with {@code engine} standing in for this process's environment, so

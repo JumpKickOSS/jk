@@ -84,6 +84,22 @@ public final class BuildEnv {
                     "NUMBER_OF_PROCESSORS")
             : List.of("PATH", "HOME", "LANG", "LC_ALL");
 
+    /**
+     * The six variables that name the proxy this machine's HTTP goes through, in both spellings —
+     * how the machine talks, like {@link #MACHINE}, and read the same way: the request's shell
+     * first, the engine's own environment second. Not on {@link #MACHINE}, whose length is a
+     * reproducibility budget; these enter no action key either, but they change where a request
+     * goes rather than what a build computes, and a suite that fetches from the network is not
+     * hermetic with or without them.
+     *
+     * <p>Owned here so the four readers cannot disagree: the client forwards them on every request
+     * ({@code ClientEnvForward}), the engine inherits them from its spawning shell as the fallback
+     * ({@code EngineEnvironment}), every forked worker is handed the request's values over the
+     * engine's ({@code WorkerEnv}), and {@code ProxyEnvironment} decides each request from them.
+     */
+    public static final List<String> PROXY =
+            List.of("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY");
+
     private BuildEnv() {}
 
     /**
@@ -104,8 +120,24 @@ public final class BuildEnv {
      * seed ({@link #machine()}), so the two cannot drift.
      */
     public static Map<String, String> machine(Function<String, @Nullable String> env) {
+        return resolve(MACHINE, env);
+    }
+
+    /**
+     * {@link #PROXY} values the request carried — the shell running {@code jk}, and nothing of the
+     * engine's own — omitting names it did not. What a forked worker is handed over the engine's
+     * inherited values, so a developer who moves networks and re-exports {@code https_proxy} has
+     * the next build, and its compilers, plugins and test JVMs, go through the new one. Empty off a
+     * request.
+     */
+    public static Map<String, String> proxyFromRequest() {
+        return resolve(PROXY, clientEnv()::get);
+    }
+
+    /** {@code names} resolved through {@code env}, in listed order, omitting those it does not have. */
+    public static Map<String, String> resolve(List<String> names, Function<String, @Nullable String> env) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (String name : MACHINE) {
+        for (String name : names) {
             String value = env.apply(name);
             if (value != null) out.put(name, value);
         }

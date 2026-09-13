@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.host.Os;
 import java.util.Locale;
@@ -28,11 +29,11 @@ final class EngineEnvironment {
      * Names inherited by exact spelling. Each is read by the engine or by something it launches
      * without a manifest naming it: the search path, home and user; the temp roots, time zone,
      * locale and terminal; the host JDK and GraalVM fallbacks; the SSH agent the git backend authenticates
-     * through; the SDK and JDK discovery roots; the display preferences shared config reads; the
-     * proxy variables jk's HTTP client reads, in both cases; and on Windows the system roots a
-     * process needs to run anything at all. Both platforms' spellings, so the rule reads the same
-     * everywhere. {@code LC_*} and {@code JK_*} are prefixes, matched in {@link #inherited}, less
-     * the {@link #PER_REQUEST} names that travel on each request. No per-user application-data
+     * through; the SDK and JDK discovery roots; the display preferences shared config reads; and on
+     * Windows the system roots a process needs to run anything at all. Both platforms' spellings,
+     * so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes, and the
+     * proxy variables are {@link BuildEnv#PROXY}, all matched in {@link #inherited}, less the
+     * {@link #PER_REQUEST} names that travel on each request. No per-user application-data
      * variable is carried: nothing the
      * engine runs needs one to start, and what reads one to discover another program's layout
      * falls back to that program's default location.
@@ -58,12 +59,6 @@ final class EngineEnvironment {
             "MISE_DATA_DIR",
             "NO_COLOR",
             "NERD_FONT",
-            "http_proxy",
-            "https_proxy",
-            "no_proxy",
-            "HTTP_PROXY",
-            "HTTPS_PROXY",
-            "NO_PROXY",
             // Windows
             "SystemRoot",
             "SystemDrive",
@@ -113,6 +108,15 @@ final class EngineEnvironment {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
         if (PER_REQUEST.contains(key)) return false;
         if (key.startsWith("JK_") || key.startsWith("LC_")) return true;
+        if (caseInsensitive ? PROXY_UPPER.contains(key) : BuildEnv.PROXY.contains(key)) return true;
         return caseInsensitive ? MACHINE_UPPER.contains(key) : MACHINE.contains(key);
     }
+
+    /**
+     * The proxy variables ({@link BuildEnv#PROXY}) ride each request too, and the request's values
+     * win; the engine inherits them so a request that carries none — an older client, a shell that
+     * unset them — still has the spawning shell's to fall back on.
+     */
+    private static final Set<String> PROXY_UPPER =
+            BuildEnv.PROXY.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 }

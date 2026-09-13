@@ -3,6 +3,7 @@ package cc.jumpkick.cli.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Os;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -51,8 +52,34 @@ class ClientEnvForwardTest {
         var resolved = ClientEnvForward.resolve();
         for (var e : resolved.entrySet()) {
             if (e.getKey().startsWith(ClientEnvForward.REPO_PREFIX)) continue; // by prefix, tested below
+            if (BuildEnv.PROXY.contains(e.getKey())) continue; // by name, tested below
             assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
+        }
+    }
+
+    /**
+     * The proxy is the network the shell running {@code jk} is on. Left to the daemon's inherited
+     * value, a developer who moved networks had to {@code jk engine stop}; on the request, the
+     * engine and every worker it forks for this build go through the proxy this terminal names.
+     */
+    @Test
+    void it_forwards_the_proxy_variables_so_the_running_shell_decides_the_proxy() {
+        System.setProperty("jk.env.https_proxy", "http://this-network.proxy:3128");
+        System.setProperty("jk.env.NO_PROXY", ".corp");
+        System.setProperty("jk.env.ftp_proxy", "http://not-a-name-jk-reads:1");
+        try {
+            assertThat(ClientEnvForward.resolve())
+                    .containsEntry("https_proxy", "http://this-network.proxy:3128")
+                    .containsEntry("NO_PROXY", ".corp")
+                    .doesNotContainKey("ftp_proxy");
+            // Off the machine list on purpose: that list's length is the reproducibility budget,
+            // and these ride by name.
+            assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.PROXY);
+        } finally {
+            System.clearProperty("jk.env.https_proxy");
+            System.clearProperty("jk.env.NO_PROXY");
+            System.clearProperty("jk.env.ftp_proxy");
         }
     }
 

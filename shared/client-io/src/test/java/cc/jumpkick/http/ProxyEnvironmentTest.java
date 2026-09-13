@@ -3,6 +3,7 @@ package cc.jumpkick.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.NetworkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -15,7 +16,10 @@ import java.net.PasswordAuthentication;
 import java.net.Proxy;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -23,6 +27,7 @@ import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Which proxy a request goes through, from the file and the shell — the decision, not the wire. */
 class ProxyEnvironmentTest {
@@ -217,5 +222,57 @@ class ProxyEnvironmentTest {
         assertThat(warnings.split("ignoring https_proxy", -1))
                 .as("said once per run")
                 .hasSize(2);
+    }
+
+    /**
+     * The acceptance the forward exists for: {@code https_proxy} exported by the shell running
+     * {@code jk} and absent from the engine's own environment, and the production selector inside
+     * that request names the shell's proxy. {@code JK_HOME} is pointed at an empty home so the
+     * developer's own {@code [network]} table cannot answer instead.
+     */
+    @Test
+    void the_ambient_selector_inside_a_request_names_the_proxy_the_request_carried(@TempDir Path home)
+            throws Exception {
+        Files.writeString(home.resolve("config.toml"), "");
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            Session request =
+                    Session.defaults().withVariant(null, Map.of("https_proxy", "http://this-terminal.proxy:3128"));
+            List<Proxy> chosen = SessionContext.where(
+                    request, () -> ProxyEnvironment.ambient().select(CENTRAL));
+
+            assertThat(chosen).singleElement().satisfies(proxy -> {
+                assertThat(proxy.type()).isEqualTo(Proxy.Type.HTTP);
+                assertThat(proxy.address()).isEqualTo(at("this-terminal.proxy", 3128));
+            });
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
+    /**
+     * {@link BuildEnv#PROXY} is what the client forwards and the workers inherit; this is what the
+     * decision reads. Each name on the list moves the decision on its own, and nothing off the list
+     * does, so the two cannot drift apart silently.
+     */
+    @Test
+    void the_names_the_decision_reads_are_exactly_the_forwarded_list() {
+        for (String name : BuildEnv.PROXY) {
+            URI target = name.toLowerCase(Locale.ROOT).startsWith("https") ? CENTRAL : PLAIN;
+            Map<String, String> alone = Map.of(name, "http://only.this.name:3128");
+            if (name.toLowerCase(Locale.ROOT).startsWith("no_proxy")) {
+                Map<String, String> withBypass = Map.of("https_proxy", "http://p:1", name, CENTRAL.getHost());
+                assertThat(proxyFor(CENTRAL, withBypass)).as(name + " bypasses").isEmpty();
+            } else {
+                assertThat(proxyFor(target, alone))
+                        .as(name + " selects")
+                        .get()
+                        .extracting(ProxyEnvironment.Endpoint::address)
+                        .isEqualTo(at("only.this.name", 3128));
+            }
+        }
+        assertThat(proxyFor(PLAIN, Map.of("ftp_proxy", "http://p:1", "all_proxy", "http://p:1")))
+                .as("a name off the list does nothing")
+                .isEmpty();
     }
 }

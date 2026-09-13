@@ -113,10 +113,13 @@ Loopback targets always go direct.
 
 Every download jk makes — Maven Central and your repositories, JDK and tool distributions, the
 engine jar, release checks — goes through `Http`, so one setting covers them all. The decision is
-made per request: `[network]` is re-read when the file changes, so it is the setting to change on
-a laptop that moves between networks; the engine reads the six proxy variables from the shell
-that spawned it, so after exporting new ones run `jk engine stop` and the next command starts an
-engine that sees them. A credential in a proxy URL is never printed; an unusable value is reported
+made per request: `[network]` is re-read when the file changes, and the six proxy variables ride
+each request from the shell running `jk`, so exporting new ones in a terminal is enough — the
+engine falls back to the values of the shell that spawned it only for a request that carries
+none. Every worker a build forks — compilers, plugin workers, test JVMs — is handed the same six
+variables, the request's values over the engine's, so a test that downloads goes the same way the
+engine does ([Build § Worker environment](build.md#worker-environment-env)). A credential in a
+proxy URL is never printed; an unusable value is reported
 by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
 wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`
 in its own processes unless you set that property yourself. `--offline` still refuses every

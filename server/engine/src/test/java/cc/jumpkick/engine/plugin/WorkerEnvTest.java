@@ -34,7 +34,7 @@ class WorkerEnvTest {
 
     @Test
     void only_the_machine_and_the_workers_own_jk_settings_come_through() {
-        Map<String, String> out = WorkerEnv.compose(ENGINE, false, Map.of(), false);
+        Map<String, String> out = WorkerEnv.compose(ENGINE, Map.of(), false, Map.of(), false);
 
         assertThat(out)
                 .containsOnlyKeys(
@@ -53,9 +53,44 @@ class WorkerEnvTest {
         assertThat(out).doesNotContainKeys("JK_REPO_NEXUS_TOKEN", "JK_GIT_CRED_PASS", "JK_JDK");
     }
 
+    /**
+     * The proxy is how the machine talks, so a worker gets the six proxy names without a manifest
+     * asking — and the request's values over the engine's, because the engine's are whichever
+     * network the shell that spawned it was on, and the worker's downloads should go where the
+     * request's do.
+     */
+    @Test
+    void the_proxy_variables_come_through_with_the_requests_values_over_the_engines() {
+        Map<String, String> engine = new LinkedHashMap<>(ENGINE);
+        engine.put("https_proxy", "http://old-network.proxy:3128");
+        engine.put("NO_PROXY", ".corp");
+        Map<String, String> request =
+                Map.of("https_proxy", "http://new-network.proxy:3128", "http_proxy", "http://p:1");
+
+        Map<String, String> out = WorkerEnv.compose(engine, request, false, Map.of(), false);
+
+        assertThat(out)
+                .containsEntry("https_proxy", "http://new-network.proxy:3128")
+                .containsEntry("http_proxy", "http://p:1")
+                .as("a name the request did not carry keeps the engine's value")
+                .containsEntry("NO_PROXY", ".corp");
+        assertThat(WorkerEnv.compose(engine, Map.of(), false, Map.of(), false))
+                .as("with nothing on the request the engine's own values pass")
+                .containsEntry("https_proxy", "http://old-network.proxy:3128");
+        assertThat(WorkerEnv.allowed("HTTPS_PROXY", true)).isTrue();
+        assertThat(WorkerEnv.allowed("https_proxy", true)).isTrue();
+        assertThat(WorkerEnv.allowed("ftp_proxy", false))
+                .as("only the six names jk itself reads")
+                .isFalse();
+    }
+
     @Test
     void inherit_hands_over_the_whole_environment() {
-        assertThat(WorkerEnv.compose(ENGINE, true, Map.of(), false)).containsExactlyInAnyOrderEntriesOf(ENGINE);
+        assertThat(WorkerEnv.compose(ENGINE, Map.of(), true, Map.of(), false))
+                .containsExactlyInAnyOrderEntriesOf(ENGINE);
+        assertThat(WorkerEnv.compose(ENGINE, Map.of("no_proxy", "*"), true, Map.of(), false))
+                .as("the request's proxy still wins over an inherited environment")
+                .containsEntry("no_proxy", "*");
     }
 
     @Test
@@ -64,7 +99,7 @@ class WorkerEnvTest {
         extras.put("JK_HOME", "/sandbox");
         extras.put("SPEC", "/tmp/spec");
 
-        Map<String, String> out = WorkerEnv.compose(ENGINE, false, extras, false);
+        Map<String, String> out = WorkerEnv.compose(ENGINE, Map.of(), false, extras, false);
 
         assertThat(out).containsEntry("JK_HOME", "/sandbox").containsEntry("SPEC", "/tmp/spec");
         assertThat(List.copyOf(out.keySet())).endsWith("SPEC");
@@ -74,7 +109,7 @@ class WorkerEnvTest {
     void windows_names_match_without_regard_to_case() {
         Map<String, String> engine = Map.of("Path", "C:/x", "SystemRoot", "C:/Windows", "Secret", "s");
 
-        assertThat(WorkerEnv.compose(engine, false, Map.of(), true)).containsOnlyKeys("Path", "SystemRoot");
+        assertThat(WorkerEnv.compose(engine, Map.of(), false, Map.of(), true)).containsOnlyKeys("Path", "SystemRoot");
         assertThat(WorkerEnv.allowed("path", true)).isTrue();
         assertThat(WorkerEnv.allowed("path", false)).as("POSIX names are exact").isFalse();
         assertThat(WorkerEnv.allowed("SYSTEMROOT", true)).isTrue();
