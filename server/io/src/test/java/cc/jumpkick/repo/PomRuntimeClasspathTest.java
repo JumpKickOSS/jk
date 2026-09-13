@@ -98,6 +98,250 @@ class PomRuntimeClasspathTest {
         assertThat(cp.stream().map(Path::getFileName).map(Path::toString)).doesNotContain("junit-jupiter-5.12.0.jar");
     }
 
+    /**
+     * Maven's nearest-wins, in the shape that put an Android Guava under Jib: the worker declares
+     * {@code client-lib} (jib-core), which declares {@code http} (google-http-client) before its
+     * own {@code util:2.0-jre} (guava). {@code http}'s parent manages {@code util} at
+     * {@code 1.0-android}. Depth two beats depth three, whatever order the POM lists them in and
+     * however deep a walk went first — so the {@code -jre} jar is the one on the classpath.
+     */
+    @Test
+    void a_direct_dependency_outranks_a_deeper_managed_request_for_the_same_module(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-image-builder", "1.0");
+        Coordinate clientLib = Coordinate.of("com.example", "client-lib", "1.0");
+        Coordinate http = Coordinate.of("com.example", "http", "1.0");
+        Coordinate httpParent = Coordinate.of("com.example", "http-parent", "1.0");
+        Coordinate utilJre = Coordinate.of("com.example", "util", "2.0-jre");
+        Coordinate utilAndroid = Coordinate.of("com.example", "util", "1.0-android");
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
+                <project>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-image-builder</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.example</groupId><artifactId>client-lib</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", clientLib, "client-lib");
+        putPom(store, "central", clientLib, """
+                <project>
+                  <groupId>com.example</groupId>
+                  <artifactId>client-lib</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.example</groupId><artifactId>http</artifactId><version>1.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.example</groupId><artifactId>util</artifactId><version>2.0-jre</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        putPom(store, "central", httpParent, """
+                <project>
+                  <groupId>com.example</groupId>
+                  <artifactId>http-parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.example</groupId><artifactId>util</artifactId><version>1.0-android</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        putJar(store, "central", http, "http");
+        putPom(store, "central", http, """
+                <project>
+                  <parent>
+                    <groupId>com.example</groupId><artifactId>http-parent</artifactId><version>1.0</version>
+                  </parent>
+                  <artifactId>http</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.example</groupId><artifactId>util</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        Path jreJar = putJar(store, "central", utilJre, "util-jre");
+        putPom(
+                store,
+                "central",
+                utilJre,
+                "<project><groupId>com.example</groupId>"
+                        + "<artifactId>util</artifactId><version>2.0-jre</version></project>");
+        putJar(store, "central", utilAndroid, "util-android");
+        putPom(
+                store,
+                "central",
+                utilAndroid,
+                "<project><groupId>com.example</groupId>"
+                        + "<artifactId>util</artifactId><version>1.0-android</version></project>");
+
+        List<Path> cp = resolve(store, workerJar);
+        List<String> names =
+                cp.stream().map(Path::getFileName).map(Path::toString).toList();
+        assertThat(cp).contains(jreJar.toAbsolutePath().normalize());
+        assertThat(names).doesNotContain("util-1.0-android.jar");
+        assertThat(names).containsOnlyOnce("util-2.0-jre.jar");
+    }
+
+    /**
+     * At equal depth the first declaration wins (Maven), and a module requested at one version by
+     * an earlier sibling is not fetched again at another version by a later one.
+     */
+    @Test
+    void at_equal_depth_the_first_declared_request_wins(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");
+        Coordinate a = Coordinate.of("com.example", "a", "1.0");
+        Coordinate b = Coordinate.of("com.example", "b", "1.0");
+        Coordinate leaf1 = Coordinate.of("com.example", "leaf", "1.0");
+        Coordinate leaf2 = Coordinate.of("com.example", "leaf", "2.0");
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
+                <project>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-formatter</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>a</artifactId><version>1.0</version></dependency>
+                    <dependency><groupId>com.example</groupId><artifactId>b</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", a, "a");
+        putPom(store, "central", a, """
+                <project>
+                  <groupId>com.example</groupId><artifactId>a</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>leaf</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", b, "b");
+        putPom(store, "central", b, """
+                <project>
+                  <groupId>com.example</groupId><artifactId>b</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>leaf</artifactId><version>2.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", leaf1, "leaf1");
+        putJar(store, "central", leaf2, "leaf2");
+
+        List<String> names = resolve(store, workerJar).stream()
+                .map(Path::getFileName)
+                .map(Path::toString)
+                .toList();
+        assertThat(names).contains("leaf-1.0.jar").doesNotContain("leaf-2.0.jar");
+    }
+
+    /**
+     * The worker POM's own {@code <dependencyManagement>} governs every transitive request, as it
+     * does for a Maven project: a pin is the version fetched, not merely a tiebreak among the
+     * versions the tree happens to ask for.
+     */
+    @Test
+    void the_root_dependency_management_pins_transitive_versions(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");
+        Coordinate lib = Coordinate.of("com.example", "lib", "1.0");
+        Coordinate leafOld = Coordinate.of("com.example", "leaf", "1.0");
+        Coordinate leafPinned = Coordinate.of("com.example", "leaf", "3.0");
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
+                <project>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-formatter</artifactId>
+                  <version>1.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency><groupId>com.example</groupId><artifactId>leaf</artifactId><version>3.0</version></dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>lib</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", lib, "lib");
+        putPom(store, "central", lib, """
+                <project>
+                  <groupId>com.example</groupId><artifactId>lib</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>leaf</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", leafOld, "leaf-old");
+        Path pinnedJar = putJar(store, "central", leafPinned, "leaf-pinned");
+
+        List<Path> cp = resolve(store, workerJar);
+        assertThat(cp).contains(pinnedJar.toAbsolutePath().normalize());
+        assertThat(cp.stream().map(Path::getFileName).map(Path::toString)).doesNotContain("leaf-1.0.jar");
+    }
+
+    /**
+     * A version the worker POM writes on its own dependency is the one fetched, as in a Maven
+     * project, even when its {@code <dependencyManagement>} manages the module at another: the
+     * pins govern the transitive requests and the direct ones that omit a version.
+     */
+    @Test
+    void a_root_declaration_with_its_own_version_outranks_the_root_pin(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-formatter", "1.0");
+        Coordinate libDeclared = Coordinate.of("com.example", "lib", "2.0");
+        Coordinate leafPinned = Coordinate.of("com.example", "leaf", "3.0");
+        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker");
+        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
+                <project>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>jk-formatter</artifactId>
+                  <version>1.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency><groupId>com.example</groupId><artifactId>lib</artifactId><version>1.0</version></dependency>
+                      <dependency><groupId>com.example</groupId><artifactId>leaf</artifactId><version>3.0</version></dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>lib</artifactId><version>2.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        Path declaredJar = putJar(store, "central", libDeclared, "lib-declared");
+        putPom(store, "central", libDeclared, """
+                <project>
+                  <groupId>com.example</groupId><artifactId>lib</artifactId><version>2.0</version>
+                  <dependencies>
+                    <dependency><groupId>com.example</groupId><artifactId>leaf</artifactId><version>1.0</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+        putJar(store, "central", Coordinate.of("com.example", "lib", "1.0"), "lib-managed");
+        putJar(store, "central", Coordinate.of("com.example", "leaf", "1.0"), "leaf-requested");
+        Path pinnedJar = putJar(store, "central", leafPinned, "leaf-pinned");
+
+        List<Path> cp = resolve(store, workerJar);
+        assertThat(cp)
+                .contains(
+                        declaredJar.toAbsolutePath().normalize(),
+                        pinnedJar.toAbsolutePath().normalize());
+        assertThat(cp.stream().map(Path::getFileName).map(Path::toString))
+                .doesNotContain("lib-1.0.jar", "leaf-1.0.jar");
+    }
+
     @Test
     void throws_without_a_pom(@TempDir Path tmp) throws Exception {
         Path jar = tmp.resolve("lonely.jar");

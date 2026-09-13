@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -135,7 +136,7 @@ public final class PomRuntimeClasspath {
             EffectivePomBuilder builder = new EffectivePomBuilder(repos);
             Pom raw = PomParser.parse(Files.readAllBytes(pom));
             EffectivePom effective = builder.build(raw);
-            walkEffective(effective, coordinateOf(worker), builder, repos, WalkState.fresh(), Set.of(), out, true);
+            walk(effective, rootPins(raw, effective), coordinateOf(worker), builder, repos, out);
         } catch (IllegalStateException e) {
             throw e;
         } catch (InterruptedException e) {
@@ -155,7 +156,16 @@ public final class PomRuntimeClasspath {
     public static void fetchRuntimeClosure(Coordinate root, RepoGroup repos) throws IOException, InterruptedException {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         EffectivePom pom = builder.build(root);
-        walkEffective(pom, root, builder, repos, WalkState.fresh(), Set.of(), new ArrayList<>(), true);
+        Pom raw = repos.tryFetchPom(root)
+                .map(hit -> {
+                    try {
+                        return PomParser.parse(Files.readAllBytes(hit.fetched().cachePath()));
+                    } catch (IOException e) {
+                        throw new IllegalStateException("failed reading worker POM " + root + ": " + e.getMessage(), e);
+                    }
+                })
+                .orElseThrow(() -> new IllegalStateException("worker POM " + root + " was not found in any repo"));
+        walk(pom, rootPins(raw, pom), root, builder, repos, new ArrayList<>());
     }
 
     /**
@@ -368,18 +378,40 @@ public final class PomRuntimeClasspath {
     }
 
     /**
-     * Version mediation for the walk. The worker POM is a flattened resolved classpath, so the
-     * root's pins are authoritative: they seed {@code mediated} before any transitive POM is
-     * read, and a transitive request for a different version of an already-mediated artifact is
-     * dropped (Maven nearest-wins) instead of appending a second jar whose classes would shadow
-     * order-dependently. {@code walked} keeps each winning artifact's subtree from being walked
-     * twice (and doubles as cycle protection).
+     * Version mediation for the walk, Maven's nearest-wins: the tree is expanded one depth at a
+     * time, and every request at a depth claims its module — in declaration order — before any
+     * POM one level deeper is read. A later request for a different version of a claimed module is
+     * dropped (the nearer, or earlier, request's jar serves), so a transitive that a parent POM's
+     * {@code dependencyManagement} pins to another flavour can never outrank a direct declaration
+     * merely because a depth-first walk reached it first. {@code pins} are the root POM's own
+     * {@code dependencyManagement}: as in a Maven project they rewrite the version of every request
+     * for the module below the root, at any depth, so the pinned jar is the one fetched; the root's
+     * own declarations keep the versions they write out. {@code walked} keeps each
+     * winning module's subtree from being expanded twice (and doubles as cycle protection).
      */
-    private record WalkState(Map<String, String> mediated, Set<String> walked) {
-        static WalkState fresh() {
-            return new WalkState(new HashMap<>(), new HashSet<>());
+    private record WalkState(Map<String, String> mediated, Set<String> walked, Map<String, String> pins) {
+        static WalkState fresh(Map<String, String> pins) {
+            return new WalkState(new HashMap<>(), new HashSet<>(), Map.copyOf(pins));
+        }
+
+        Coordinate pinned(Coordinate coord) {
+            String pin = pins.get(mediationKey(coord));
+            if (pin == null || pin.equals(coord.version())) return coord;
+            return new Coordinate(coord.group(), coord.artifact(), pin, coord.classifier(), coord.type());
+        }
+
+        /** True when {@code coord} is the version that serves its module (first claim, or the same version again). */
+        boolean claim(Coordinate coord) {
+            String winner = mediated.putIfAbsent(mediationKey(coord), coord.version());
+            return winner == null || winner.equals(coord.version());
         }
     }
+
+    /** A POM awaiting expansion: its effective model, the coordinate it was reached by, the exclusions on its path. */
+    private record Node(EffectivePom pom, @Nullable Coordinate self, Set<String> exclusions) {}
+
+    /** A request that won mediation at its depth and is due to be fetched. */
+    private record Claim(Coordinate coord, Set<String> exclusions, boolean optional) {}
 
     private static String mediationKey(Coordinate coord) {
         String key = coord.group() + ":" + coord.artifact();
@@ -388,35 +420,131 @@ public final class PomRuntimeClasspath {
         return key;
     }
 
-    private static void walkEffective(
-            EffectivePom pom,
+    /**
+     * The root POM's {@code dependencyManagement} as {@code module → version}. Read from the raw
+     * POM because the effective model retains managed entries only for {@code pom} packaging; the
+     * effective properties resolve a {@code $&#123;…&#125;} version. Imports, blank and floating
+     * versions are not pins.
+     */
+    static Map<String, String> rootPins(Pom raw, EffectivePom effective) {
+        Map<String, String> pins = new LinkedHashMap<>();
+        for (Pom.Dep m : raw.managedDependencies()) {
+            if ("import".equalsIgnoreCase(m.scope())) continue;
+            String version = m.version() == null ? null : substitute(m.version(), effective.properties());
+            if (version == null || version.isBlank() || isUnresolvedProperty(version) || isFloating(version)) continue;
+            String type = m.type() == null || m.type().isBlank() ? "jar" : m.type();
+            if ("pom".equalsIgnoreCase(type)) continue;
+            String classifier = m.classifier() == null || m.classifier().isBlank() ? null : m.classifier();
+            pins.putIfAbsent(
+                    mediationKey(new Coordinate(m.groupId(), m.artifactId(), version, classifier, type)), version);
+        }
+        return pins;
+    }
+
+    private static String substitute(String raw, Map<String, String> props) {
+        String current = raw;
+        for (int pass = 0; pass < 4 && current.contains("${"); pass++) {
+            String next = current;
+            for (Map.Entry<String, String> e : props.entrySet()) {
+                next = next.replace("${" + e.getKey() + "}", e.getValue());
+            }
+            if (next.equals(current)) break;
+            current = next;
+        }
+        return current;
+    }
+
+    /**
+     * Breadth-first expansion from {@code root}. The root's own dependencies include optional ones
+     * (they are its declared classpath); deeper optional edges are pruned, as Maven prunes them.
+     */
+    private static void walk(
+            EffectivePom root,
+            Map<String, String> pins,
             @Nullable Coordinate self,
             EffectivePomBuilder builder,
             RepoGroup repos,
-            WalkState state,
-            Set<String> exclusions,
-            List<Path> out,
-            boolean rootPom)
+            List<Path> out)
             throws IOException, InterruptedException {
-        if (self != null && pom.relocation() != null && pom.relocation().redirects(self)) {
-            addAndWalk(pom.relocation().applyTo(self), builder, repos, state, exclusions, out, false);
-            return;
-        }
-        if (rootPom) {
-            for (Pom.Dep d : pom.dependencies()) {
-                Coordinate coord = runtimeCoordinate(pom, d, true, exclusions);
-                if (coord != null) state.mediated().putIfAbsent(mediationKey(coord), coord.version());
+        WalkState state = WalkState.fresh(pins);
+        List<Node> level = new ArrayList<>();
+        if (self != null && root.relocation() != null && root.relocation().redirects(self)) {
+            Coordinate target = state.pinned(root.relocation().applyTo(self));
+            if (state.claim(target) && state.walked().add(mediationKey(target))) {
+                Node moved = fetch(new Claim(target, Set.of(), false), builder, repos, state, out);
+                if (moved != null) level.add(moved);
             }
+        } else {
+            level.add(new Node(root, self, Set.of()));
         }
-        for (Pom.Dep d : pom.dependencies()) {
-            Coordinate coord = runtimeCoordinate(pom, d, rootPom, exclusions);
-            if (coord == null) continue;
-            Set<String> childExcl = new HashSet<>(exclusions);
-            for (Pom.Dep.Exclusion ex : d.exclusions()) {
-                childExcl.add(ex.groupId() + ":" + ex.artifactId());
+        boolean rootLevel = true;
+        while (!level.isEmpty()) {
+            // Every request at this depth claims its module before any deeper POM is read.
+            List<Claim> claims = new ArrayList<>();
+            for (Node node : level) {
+                for (Pom.Dep d : node.pom().dependencies()) {
+                    Coordinate coord = runtimeCoordinate(node.pom(), d, rootLevel, node.exclusions());
+                    if (coord == null) continue;
+                    // The root's own declarations state their versions, as a Maven project's do; the
+                    // effective model has already filled the ones that omitted a version from the pins.
+                    if (!rootLevel) coord = state.pinned(coord);
+                    if (!state.claim(coord)) continue; // mediated away — the nearer request's jar serves
+                    Set<String> childExcl = new HashSet<>(node.exclusions());
+                    for (Pom.Dep.Exclusion ex : d.exclusions()) {
+                        childExcl.add(ex.groupId() + ":" + ex.artifactId());
+                    }
+                    claims.add(new Claim(coord, childExcl, d.optional()));
+                }
             }
-            addAndWalk(coord, builder, repos, state, childExcl, out, d.optional());
+            List<Node> next = new ArrayList<>();
+            for (Claim claim : claims) {
+                if (!state.walked().add(mediationKey(claim.coord()))) continue;
+                Node child = fetch(claim, builder, repos, state, out);
+                if (child != null) next.add(child);
+            }
+            level = next;
+            rootLevel = false;
         }
+    }
+
+    /**
+     * Fetch one winning request's jar onto the classpath and return its POM for the next depth;
+     * {@code null} for an absent optional, a jar-only leaf, or a relocation whose target another
+     * request already serves. A relocated module keeps its stub jar and expands the target instead.
+     */
+    private static @Nullable Node fetch(
+            Claim claim, EffectivePomBuilder builder, RepoGroup repos, WalkState state, List<Path> out)
+            throws IOException, InterruptedException {
+        Coordinate coord = claim.coord();
+        String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
+        if (coord.classifier() != null) key = key + ":" + coord.classifier();
+        Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
+        if (art.isEmpty()) {
+            if (claim.optional()) return null;
+            String names =
+                    repos.repos().stream().map(MavenRepo::name).distinct().collect(Collectors.joining(", "));
+            throw new IllegalStateException(
+                    "worker runtime dependency " + key + " was not found in the " + names + " repos");
+        }
+        out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
+        EffectivePom child;
+        try {
+            child = builder.build(coord);
+        } catch (MavenRepo.ArtifactNotFoundException e) {
+            // Only the dep's OWN missing POM makes it a jar-only leaf. A missing parent or
+            // imported BOM anywhere in its chain must stay loud — swallowing it silently
+            // prunes the dep's whole transitive subtree and the worker dies later with
+            // NoClassDefFoundError instead of a resolution-time error naming the gap.
+            if (coord.equals(e.coordinate())) return null;
+            throw new IllegalStateException(
+                    "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage(), e);
+        }
+        if (child.relocation() != null && child.relocation().redirects(coord)) {
+            Coordinate target = state.pinned(child.relocation().applyTo(coord));
+            if (!state.claim(target) || !state.walked().add(mediationKey(target))) return null;
+            return fetch(new Claim(target, claim.exclusions(), claim.optional()), builder, repos, state, out);
+        }
+        return new Node(child, coord, claim.exclusions());
     }
 
     /**
@@ -455,45 +583,6 @@ public final class PomRuntimeClasspath {
         }
         String classifier = d.classifier() == null || d.classifier().isBlank() ? null : d.classifier();
         return new Coordinate(d.groupId(), d.artifactId(), d.version(), classifier, type);
-    }
-
-    private static void addAndWalk(
-            Coordinate coord,
-            EffectivePomBuilder builder,
-            RepoGroup repos,
-            WalkState state,
-            Set<String> exclusions,
-            List<Path> out,
-            boolean optional)
-            throws IOException, InterruptedException {
-        String key = coord.group() + ":" + coord.artifact() + ":" + coord.version();
-        if (coord.classifier() != null) key = key + ":" + coord.classifier();
-        String gaKey = mediationKey(coord);
-        String winner = state.mediated().putIfAbsent(gaKey, coord.version());
-        if (winner != null && !winner.equals(coord.version())) return; // mediated away — the winner's jar serves
-        if (!state.walked().add(gaKey)) return;
-        Optional<RepoGroup.RepoFetched> art = repos.tryFetchArtifact(coord);
-        if (art.isEmpty()) {
-            if (optional) return;
-            String names =
-                    repos.repos().stream().map(MavenRepo::name).distinct().collect(Collectors.joining(", "));
-            throw new IllegalStateException(
-                    "worker runtime dependency " + key + " was not found in the " + names + " repos");
-        }
-        out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
-        EffectivePom child;
-        try {
-            child = builder.build(coord);
-        } catch (MavenRepo.ArtifactNotFoundException e) {
-            // Only the dep's OWN missing POM makes it a jar-only leaf. A missing parent or
-            // imported BOM anywhere in its chain must stay loud — swallowing it silently
-            // prunes the dep's whole transitive subtree and the worker dies later with
-            // NoClassDefFoundError instead of a resolution-time error naming the gap.
-            if (coord.equals(e.coordinate())) return;
-            throw new IllegalStateException(
-                    "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage(), e);
-        }
-        walkEffective(child, coord, builder, repos, state, exclusions, out, false);
     }
 
     private static boolean runtimeDep(Pom.Dep d, boolean rootPom) {
