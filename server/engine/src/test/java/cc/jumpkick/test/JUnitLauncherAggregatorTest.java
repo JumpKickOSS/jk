@@ -7,12 +7,14 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.TestFailureInfo;
+import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -275,6 +277,90 @@ class JUnitLauncherAggregatorTest {
         assertThat(died.method()).isEqualTo("(worker 2)");
         assertThat(died.message()).isEqualTo("test worker exited 137 mid-run (last class dispatched: com.acme.BTest)");
         assertThat(died.stack()).isEqualTo("killed");
+    }
+
+    /**
+     * The one-worker module's fork hands the aggregator itself to the protocol; a decoder that
+     * throws there must end the run with the pool's handler row for worker 0 — the tests reported
+     * before the throw kept, the step failed through the summary — never as an IOException out of
+     * the launcher with no test row at all.
+     */
+    @Test
+    void a_throwing_decoder_under_the_single_fork_yields_the_handler_row_for_worker_zero() {
+        var listener = new TestProgressListener() {
+            @Override
+            public void onWarning(String code, String message) {
+                throw new IllegalStateException("decoder choked on " + code);
+            }
+        };
+        var aggregator = new JUnitLauncher.ResultAggregator(listener, 0);
+        aggregator.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        RuntimeException thrown = catchThrowableOfType(
+                RuntimeException.class,
+                () -> aggregator.accept("{\"event\":\"warning\",\"code\":\"jupiter-parallel\"}"));
+        PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
+
+        TestSummary summary = WorkerFailureRow.singleFork(aggregator, "m", end.handler());
+
+        assertThat(summary.allPassed()).isFalse();
+        assertThat(summary.total()).isEqualTo(2);
+        assertThat(summary.succeeded())
+                .as("the test reported before the throw is kept")
+                .isEqualTo(1);
+        assertThat(summary.failed()).isEqualTo(1);
+        assertThat(summary.failures()).singleElement().satisfies(row -> {
+            assertThat(row.module()).isEqualTo("m");
+            assertThat(row.method()).isEqualTo("(test run)");
+            assertThat(row.exceptionClass()).isEqualTo("java.lang.IllegalStateException");
+            assertThat(row.message())
+                    .contains("handler threw IllegalStateException: decoder choked on jupiter-parallel")
+                    .doesNotContain("exited");
+            assertThat(row.stack()).contains("IllegalStateException").contains("decoder choked");
+            assertThat(row.worker()).isEqualTo(0);
+        });
+    }
+
+    /**
+     * The list-only discovery fork (and the serial-tag partition view, which is the same fork with
+     * wider excludes) hands its decoder to the protocol the same way. A throw there is a handler
+     * row that says discovery, and the classes named before the throw are not a suite.
+     */
+    @Test
+    void a_throwing_decoder_under_discovery_yields_a_handler_row_that_says_discovery() {
+        var listener = new TestProgressListener() {
+            @Override
+            public void onDiscoveryTotal(int classes, int tests) {
+                throw new IllegalStateException("decoder choked on totals");
+            }
+        };
+        List<String> classes = new ArrayList<>();
+        Consumer<String> handler = Discovery.handler(classes, listener);
+        handler.accept("{\"event\":\"discovered\",\"class\":\"com.acme.ATest\"}");
+        RuntimeException thrown = catchThrowableOfType(
+                RuntimeException.class,
+                () -> handler.accept("{\"event\":\"discovery_total\",\"classes\":1,\"tests\":3}"));
+        PluginProcess.HandlerFailure end = new PluginProcess.HandlerFailure(thrown);
+
+        Discovery discovery = Discovery.handlerFailed(List.copyOf(classes), "", end.handler());
+
+        assertThat(discovery.classes()).containsExactly("com.acme.ATest");
+        assertThat(discovery.crashed())
+                .as("a list the decoder could not finish reading is not a suite")
+                .isTrue();
+        TestSummary summary = discovery.failure("m");
+        assertThat(summary.allPassed()).isFalse();
+        assertThat(summary.total()).isEqualTo(1);
+        assertThat(summary.failures()).singleElement().satisfies(row -> {
+            assertThat(row.module()).isEqualTo("m");
+            assertThat(row.method()).isEqualTo("(test run)");
+            assertThat(row.exceptionClass()).isEqualTo("java.lang.IllegalStateException");
+            assertThat(row.message())
+                    .contains("test discovery protocol handler threw IllegalStateException: decoder choked on totals")
+                    .doesNotContain("exited");
+            assertThat(row.stack()).contains("decoder choked on totals");
+        });
+        // A clean listing with a shutdown blemish keeps its verdict: the list survives a non-zero exit.
+        assertThat(new Discovery(List.of("com.acme.ATest"), 1, "").crashed()).isFalse();
     }
 
     @Test

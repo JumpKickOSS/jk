@@ -420,7 +420,7 @@ public final class JUnitLauncher {
         } else if (wanted == 0) {
             // Discover once so auto can size the pool; reuse the list when W>1.
             Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
-            if (discovery.crashed()) return discoveryCrash(discovery).withWorkers(1);
+            if (discovery.crashed()) return discovery.failure(moduleLabel).withWorkers(1);
             preDiscovered = discovery.classes();
             resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
         } else if (wanted > 1) {
@@ -464,20 +464,27 @@ public final class JUnitLauncher {
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
         var crash = new CaptureBuffer();
-        int exit = PluginLoader.run(
-                javaBinary,
-                classpath,
-                jvmFlags(JvmRole.SUITE, 1, testTmpDir),
-                PROTOCOL_PREFIX,
-                withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames)),
-                testEnv,
-                inferredModuleDir,
-                aggregator::accept,
-                line -> {
-                    crash.add(line);
-                    listener.onUserOutput(0, line);
-                });
-        TestSummary result = aggregator.toResult(exit, crash.text());
+        TestSummary result;
+        try {
+            int exit = PluginLoader.run(
+                    javaBinary,
+                    classpath,
+                    jvmFlags(JvmRole.SUITE, 1, testTmpDir),
+                    PROTOCOL_PREFIX,
+                    withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames)),
+                    testEnv,
+                    inferredModuleDir,
+                    aggregator::accept,
+                    line -> {
+                        crash.add(line);
+                        listener.onUserOutput(0, line);
+                    });
+            result = aggregator.toResult(exit, crash.text());
+        } catch (PluginProcess.HandlerFailure e) {
+            // The parent's own decoder ended the fork: the pool's handler row, not an IOException.
+            listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
+            result = WorkerFailureRow.singleFork(aggregator, moduleLabel, e.handler());
+        }
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir);
         return result;
@@ -500,7 +507,7 @@ public final class JUnitLauncher {
             classes = preDiscovered;
         } else {
             Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
-            if (discovery.crashed()) return discoveryCrash(discovery);
+            if (discovery.crashed()) return discovery.failure(moduleLabel);
             classes = discovery.classes();
         }
         if (classes.isEmpty()) {
@@ -514,7 +521,7 @@ public final class JUnitLauncher {
         List<String> serialClasses = List.of();
         if (!serialTags.isEmpty()) {
             Discovery view = discoverWithExtraExcludes(javaBinary, classpath, testClassesDir, serialTags);
-            if (view.crashed()) return discoveryCrash(view);
+            if (view.crashed()) return view.failure(moduleLabel);
             Set<String> parallelView = new HashSet<>(view.classes());
             List<String> par = new ArrayList<>();
             List<String> ser = new ArrayList<>();
@@ -801,29 +808,23 @@ public final class JUnitLauncher {
             throws IOException, InterruptedException {
         var classes = new ArrayList<String>();
         var crash = new CaptureBuffer();
-        int exit = PluginLoader.run(
-                javaBinary,
-                classpath,
-                jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir),
-                PROTOCOL_PREFIX,
-                withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
-                testEnv,
-                inferredModuleDir,
-                json -> {
-                    String event = Jsonl.str(json, "event");
-                    if ("discovered".equals(event)) {
-                        classes.add(Jsonl.str(json, "class"));
-                    } else if ("discovery_total".equals(event)) {
-                        listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
-                    }
-                },
-                crash::add);
+        int exit;
+        try {
+            exit = PluginLoader.run(
+                    javaBinary,
+                    classpath,
+                    jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir),
+                    PROTOCOL_PREFIX,
+                    withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
+                    testEnv,
+                    inferredModuleDir,
+                    Discovery.handler(classes, listener),
+                    crash::add);
+        } catch (PluginProcess.HandlerFailure e) {
+            // The parent's own decoder ended the listing: a handler row, and no trust in the list.
+            return Discovery.handlerFailed(List.copyOf(classes), crash.text(), e.handler());
+        }
         return new Discovery(List.copyOf(classes), exit, crash.text());
-    }
-
-    /** The verdict for a discovery fork that died before naming a class — see {@link Discovery#failure}. */
-    private TestSummary discoveryCrash(Discovery discovery) {
-        return discovery.failure(moduleLabel);
     }
 
     // -------- shared helpers --------------------------------------------
