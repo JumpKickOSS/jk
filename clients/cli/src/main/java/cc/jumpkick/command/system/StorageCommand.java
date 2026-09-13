@@ -22,11 +22,14 @@ import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.tool.OrphanedToolEnvs;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.LongSupplier;
 
@@ -79,19 +82,43 @@ public final class StorageCommand extends GroupCommand {
     }
 
     /**
-     * Full store nuke with confirm / dry-run. Used by {@code jk storage nuke} and by the store
-     * leg of {@code jk self nuke --store}.
-     *
-     * @param skipConfirm when true (multi-target self nuke already confirmed), do not prompt
+     * The engine-side wipe behind {@link #runNuke}. A seam because whether a real engine starts
+     * depends on the machine, so the orphan sweep below it cannot be provoked in a test otherwise.
+     */
+    interface StoreWipe {
+        /** {@link #wipeStore}'s contract: {@code [files, bytes]}, counted only under {@code dryRun}. */
+        long[] wipe(Path storeRoot, boolean dryRun) throws IOException;
+    }
+
+    /**
+     * Full store nuke with confirm / dry-run: {@code jk storage nuke}. The wipe orphans every
+     * installed tool whose recorded classpath lies under the store — {@link OrphanedToolEnvs} is
+     * the one rule, shared with {@code jk self nuke} — so their envs and launchers go with it, the
+     * confirm names them and the settle line counts them; otherwise {@code jk tool list} keeps
+     * naming a tool nothing can run.
      */
     public static int runNuke(boolean dryRun, boolean skipConfirm) throws IOException {
+        return runNuke(dryRun, skipConfirm, true, StorageCommand::wipeStore);
+    }
+
+    /**
+     * @param skipConfirm when true (multi-target self nuke already confirmed), do not prompt
+     * @param sweepOrphans whether this command removes the tool envs and launchers the wipe
+     *     orphans; false for the store leg of {@code jk self nuke --store}, whose own plan table
+     *     carries and deletes them
+     */
+    static int runNuke(boolean dryRun, boolean skipConfirm, boolean sweepOrphans, StoreWipe wipe) throws IOException {
         Path storeRoot = JkStores.store();
         if (!Files.isDirectory(storeRoot)) {
             CommandWedge.printOk("Storage", "Nothing to nuke — store directory does not exist.");
             return 0;
         }
+        JkDirs dirs = JkDirs.current();
+        List<OrphanedToolEnvs.Orphan> orphans = sweepOrphans
+                ? OrphanedToolEnvs.under(dirs.toolEnvsDir(), dirs.binDirectory(), List.of(storeRoot))
+                : List.of();
         // Engine-side dry-run walk: the exact tree + counts the real wipe would remove.
-        long[] preCount = wipeStore(storeRoot, true);
+        long[] preCount = wipe.wipe(storeRoot, true);
         CacheCommand.Stats pre = new CacheCommand.Stats(preCount[0], preCount[1]);
         if (pre.files() == 0) {
             CommandWedge.printOk("Storage", "Nothing to nuke — the artifact store is empty.");
@@ -104,10 +131,11 @@ public final class StorageCommand extends GroupCommand {
                             + CacheCommand.fmtCount(pre.files())
                             + " files, "
                             + CacheCommand.fmtBytes(pre.bytes())
+                            + orphansNote(orphans, "would remove")
                             + ".");
             return 0;
         }
-        if (!skipConfirm && !confirmNuke(storeRoot, pre)) {
+        if (!skipConfirm && !confirmNuke(storeRoot, pre, orphans)) {
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(Glyphs.CROSS, "Storage", GlobalConfig.nerdFont(), "Nuke aborted."));
             return 1;
@@ -116,14 +144,44 @@ public final class StorageCommand extends GroupCommand {
         // mid-wipe. The wipe request itself restarts one engine, which performs the delete
         // under the cache-maintenance exclusive lock.
         EngineFleet.stopAll(true);
-        long[] wiped = wipeStore(storeRoot, false);
+        long[] wiped = wipe.wipe(storeRoot, false);
+        List<OrphanedToolEnvs.Orphan> removed = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
+        for (OrphanedToolEnvs.Orphan orphan : orphans) {
+            try {
+                OrphanedToolEnvs.remove(orphan);
+                removed.add(orphan);
+            } catch (IOException e) {
+                failures.add(orphan.name() + " (" + e.getMessage() + ")");
+            }
+        }
         CommandWedge.printOk(
                 "Storage",
-                "Nuked " + CacheCommand.fmtCount(wiped[0]) + " files, " + CacheCommand.fmtBytes(wiped[1]) + " freed.");
+                "Nuked " + CacheCommand.fmtCount(wiped[0]) + " files, " + CacheCommand.fmtBytes(wiped[1]) + " freed"
+                        + orphansNote(removed, "removed") + ".");
+        if (!failures.isEmpty()) {
+            Theme t = Theme.active();
+            CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
+                    + " Orphaned tools whose env or launcher could not be removed (jk tool uninstall <name>):");
+            for (String f : failures) CliOutput.err("  " + f);
+            return Exit.SOFTWARE;
+        }
         return 0;
     }
 
-    private static boolean confirmNuke(Path storeRoot, CacheCommand.Stats stats) {
+    /**
+     * The settle line's account of the tools the wipe orphans: {@code , and removed 2 orphaned
+     * tools (widget, other; env and launcher — jk install restores them)}. Empty when none.
+     */
+    static String orphansNote(List<OrphanedToolEnvs.Orphan> orphans, String verb) {
+        if (orphans.isEmpty()) return "";
+        List<String> names = orphans.stream().map(OrphanedToolEnvs.Orphan::name).toList();
+        return ", and " + verb + " " + orphans.size() + " orphaned tool" + (orphans.size() == 1 ? "" : "s") + " ("
+                + String.join(", ", names) + "; env and launcher — jk install restores them)";
+    }
+
+    private static boolean confirmNuke(
+            Path storeRoot, CacheCommand.Stats stats, List<OrphanedToolEnvs.Orphan> orphans) {
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
         CliOutput.out();
@@ -134,6 +192,13 @@ public final class StorageCommand extends GroupCommand {
                 .printf(
                         "  %s files, %s — Maven-layout repos, workers, and related store trees.%n",
                         CacheCommand.fmtCount(stats.files()), CacheCommand.fmtBytes(stats.bytes()));
+        if (!orphans.isEmpty()) {
+            // An installed tool execs jars under the store; its env and launcher go with them.
+            List<String> names =
+                    orphans.stream().map(OrphanedToolEnvs.Orphan::name).toList();
+            CliOutput.out("  Orphans " + orphans.size() + " installed tool" + (orphans.size() == 1 ? "" : "s") + " ("
+                    + String.join(", ", names) + "): env and launcher go too; jk install restores them.");
+        }
         CliOutput.out("  Cache tier (action outputs) is kept. Credentials are kept (jk repo logout).");
         return Confirm.of(bang + " Nuke the artifact store?", false).ask();
     }

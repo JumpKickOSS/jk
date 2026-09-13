@@ -16,8 +16,7 @@ import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.tool.InstalledToolEnvs;
-import cc.jumpkick.tool.LauncherName;
+import cc.jumpkick.tool.OrphanedToolEnvs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,10 +38,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>{@code --cache} — {@code <home>/cache}; same as {@code jk cache nuke}
- *   <li>{@code --store} — {@code <home>/store} whole-tree, via {@code jk storage nuke}
+ *   <li>{@code --store} — {@code <home>/store} whole-tree, via {@code jk storage nuke}; the
+ *       installed tool envs whose recorded classpaths lie under it go too, with their launchers,
+ *       see {@link #toolOrphanRows}
  *   <li>{@code --state} — {@code <home>/state}: engine sockets, AOT, builds, scratch tmp, and
  *       the installed tool envs — the launchers {@code jk install} wrote into {@code bin} for
- *       them go too, see {@link #toolLaunchers}
+ *       them go too, see {@link #toolOrphanRows}
  *   <li>{@code --config} — {@code <home>/config.toml} and the per-app {@code <home>/config} tree
  *   <li>{@code --all} — every target above (default when none are named)
  * </ul>
@@ -79,7 +80,22 @@ public final class SelfNukeCommand implements CliCommand {
      * spent a release emptying their root instead of removing it (for the cache
      * for the store), which is the same table saying "delete" and meaning "empty".
      */
-    record PurgeRow(Path path, String what, Target target, boolean delegated) {}
+    record PurgeRow(Path path, String what, Target target, boolean delegated, Kind kind) {
+        PurgeRow(Path path, String what, Target target, boolean delegated) {
+            this(path, what, target, delegated, Kind.ROOT);
+        }
+    }
+
+    /**
+     * What a row is: a root the target names, or one of the two pieces of an installed tool the
+     * plan orphans — its launcher in {@code bin}, or its env directory when no scheduled root
+     * already holds it. The settle line counts the two tool kinds by name.
+     */
+    enum Kind {
+        ROOT,
+        LAUNCHER,
+        ENV
+    }
 
     /**
      * Paths a purge must never remove — nor remove a parent of. Resolved once per plan from the
@@ -139,7 +155,9 @@ public final class SelfNukeCommand implements CliCommand {
         Hosted DEFAULT = new Hosted() {
             @Override
             public int storage() throws IOException {
-                return StorageCommand.runNuke(false, true);
+                // The orphaned tools are rows of this command's own table, so the shared nuke
+                // does not sweep them a second time.
+                return StorageCommand.runNuke(false, true, false, StorageCommand::wipeStore);
             }
 
             @Override
@@ -176,8 +194,8 @@ public final class SelfNukeCommand implements CliCommand {
         // Cache tier and artifact store are wiped by the shared nukes — drop them from path rows.
         List<PurgeRow> pathRows =
                 new ArrayList<>(rows.stream().filter(r -> !r.delegated()).toList());
-        List<PurgeRow> launchers = toolLaunchers(dirs, rows);
-        pathRows.addAll(launchers);
+        List<PurgeRow> orphans = toolOrphanRows(dirs, rows);
+        pathRows.addAll(orphans);
         boolean wantCache = selected.contains(Target.CACHE);
         boolean wantStoreTarget = selected.contains(Target.STORE);
         // The delegated wipes delete whatever root the request names — the store engine-side, the
@@ -198,7 +216,7 @@ public final class SelfNukeCommand implements CliCommand {
             return Exit.SUCCESS;
         }
 
-        printPlan(existing, dirs, wantCacheWipe, wantStore, !launchers.isEmpty());
+        printPlan(existing, dirs, wantCacheWipe, wantStore, !orphans.isEmpty());
         if (!dryRun && !confirmPrompt()) {
             CommandWedge.printFail("Self", "Nuke aborted.");
             return 1;
@@ -256,9 +274,8 @@ public final class SelfNukeCommand implements CliCommand {
         }
 
         List<String> failures = new ArrayList<>();
-        Removal gone = remove(existing, launchers, dryRun, failures);
+        Removal gone = remove(existing, dryRun, failures);
         long removed = gone.paths();
-        long launchersRemoved = gone.launchers();
 
         // Say what did NOT happen, always. The whole failure mode this replaced was a command
         // that reported an engine problem and left the user to infer — wrongly — that the paths
@@ -295,16 +312,10 @@ public final class SelfNukeCommand implements CliCommand {
                     "Nuked " + removed + " path" + (removed == 1 ? "" : "s") + "; " + delegatedFailures.size()
                             + " target" + (delegatedFailures.size() == 1 ? "" : "s") + " left in place.");
         } else if (removed > 0 || wantCacheWipe || wantStoreTarget) {
-            // Name the launchers that went: the user sees `widget` vanish from bin and needs to
-            // know it was this command, and that `jk install` brings it back.
-            String tools = launchersRemoved == 0
-                    ? ""
-                    : " and " + launchersRemoved + " installed tool launcher" + (launchersRemoved == 1 ? "" : "s")
-                            + " (jk install restores them)";
             settleGap();
             CommandWedge.printOk(
                     "Self",
-                    "Nuked selected JumpKick data" + tools + ". Kept: active engine "
+                    "Nuked selected JumpKick data" + gone.toolsNote() + ". Kept: active engine "
                             + JkVersion.VERSION
                             + ", PATH, JDKs, credentials"
                             + (wantStoreTarget ? "" : ", store")
@@ -313,17 +324,33 @@ public final class SelfNukeCommand implements CliCommand {
         return exit;
     }
 
-    /** What {@link #remove} took off disk: every row, and how many of those were tool launchers. */
-    record Removal(long paths, long launchers) {}
+    /**
+     * What {@link #remove} took off disk: every row, and how many of those were tool launchers and
+     * orphaned tool envs.
+     */
+    record Removal(long paths, long launchers, long envs) {
+        /**
+         * The settle line's account of the installed tools that went: the user sees {@code widget}
+         * vanish from bin and from {@code jk tool list}, and needs to know it was this command and
+         * that {@code jk install} brings it back. Empty when no tool was touched.
+         */
+        String toolsNote() {
+            List<String> parts = new ArrayList<>();
+            if (launchers > 0) parts.add(launchers + " installed tool launcher" + (launchers == 1 ? "" : "s"));
+            if (envs > 0) parts.add(envs + " orphaned tool env" + (envs == 1 ? "" : "s"));
+            if (parts.isEmpty()) return "";
+            return " and " + String.join(" and ", parts) + " (jk install restores them)";
+        }
+    }
 
     /**
      * Delete each row this process owns — or, on a dry run, print it as "would remove" and count
      * it. A row that will not go is added to {@code failures} and never stops its siblings.
      */
-    private static Removal remove(
-            List<PurgeRow> rows, List<PurgeRow> launchers, boolean dryRun, List<String> failures) {
+    private static Removal remove(List<PurgeRow> rows, boolean dryRun, List<String> failures) {
         long paths = 0;
         long launcherCount = 0;
+        long envCount = 0;
         for (PurgeRow row : rows) {
             if (dryRun) {
                 CliOutput.out("  would remove " + pathStyled(row.path()));
@@ -333,12 +360,13 @@ public final class SelfNukeCommand implements CliCommand {
             try {
                 PathUtil.deleteRecursivelyOrThrow(row.path());
                 paths++;
-                if (launchers.contains(row)) launcherCount++;
+                if (row.kind() == Kind.LAUNCHER) launcherCount++;
+                if (row.kind() == Kind.ENV) envCount++;
             } catch (IOException e) {
                 failures.add(pathStyled(row.path()) + " (" + e.getMessage() + ")");
             }
         }
-        return new Removal(paths, launcherCount);
+        return new Removal(paths, launcherCount, envCount);
     }
 
     /** Blank line before a settle when this command prints wedges back-to-back. */
@@ -425,67 +453,43 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /**
-     * One row per launcher in {@code <home>/bin} that this plan orphans — both the POSIX and the
-     * {@code .cmd} spelling. A launcher execs the absolute classpath its env under
-     * {@link JkDirs#toolEnvsDir()} records, so it is dead once either root it depends on is gone:
-     * the state root, which holds the env itself, or the store, where the classpath's jars live
-     * under {@code sha256/}. Either way it fails with "could not find or load main class", so it
-     * goes with the root and the table says so, rather than the settle line claiming installed
-     * tools survive. {@code bin} itself stays a guarded root: the rows are single files named by
-     * env directories that pass {@link LauncherName}, so jk's own client under a reserved stem is
-     * never one of them. Empty when no scheduled root reaches an env — a refused root deletes
-     * nothing, so it orphans no launcher.
+     * The rows for every installed tool this plan orphans, by {@link OrphanedToolEnvs}' one rule: a
+     * tool whose env lies under a scheduled root, or any entry of whose recorded classpath does. A
+     * launcher execs the absolute classpath its env under {@link JkDirs#toolEnvsDir()} records, so
+     * it is dead once either root it depends on is gone — the state root, which holds the env
+     * itself, or the store, where the classpath's jars live under {@code sha256/}; an env whose
+     * classpath is gone would keep the tool in {@code jk tool list} with nothing behind it. So each
+     * orphaned tool contributes its launchers in {@code <home>/bin} — both the POSIX and the
+     * {@code .cmd} spelling — plus its env directory when no scheduled root already holds it (under
+     * the state target the state row takes the env). {@code bin} itself stays a guarded root: the
+     * launcher rows are single files named by env directories that pass {@code LauncherName}, so
+     * jk's own client under a reserved stem is never one of them. Empty when no scheduled root
+     * reaches an env — a refused root deletes nothing, so it orphans no tool.
      */
-    static List<PurgeRow> toolLaunchers(JkDirs dirs, List<PurgeRow> rows) {
+    static List<PurgeRow> toolOrphanRows(JkDirs dirs, List<PurgeRow> rows) {
         List<PurgeRow> roots = rows.stream()
                 .filter(r -> r.target() == Target.STATE || r.target() == Target.STORE)
                 .toList();
         if (roots.isEmpty()) return List.of();
-        Path envs = dirs.toolEnvsDir();
-        if (!Files.isDirectory(envs)) return List.of();
-        Path bin = dirs.binDirectory();
-        List<String> names = new ArrayList<>();
-        try {
-            PathUtil.forEachChild(envs, (env, attrs) -> {
-                String name = env.getFileName().toString();
-                if (attrs.isDirectory() && LauncherName.validationError(name).isEmpty()) names.add(name);
-                return true;
-            });
-        } catch (IOException unreadable) {
-            // The state row's own delete reports an unreadable envs directory; nothing to add here.
-        }
-        names.sort(null);
         List<PurgeRow> out = new ArrayList<>();
-        for (String name : names) {
-            Target orphanedBy = orphanedBy(envs, name, roots);
-            if (orphanedBy == null) continue;
-            for (String leaf : List.of(name, name + ".cmd")) {
-                Path launcher = LauncherName.resolveChild(bin, leaf);
-                if (Files.exists(launcher, LinkOption.NOFOLLOW_LINKS)) {
-                    out.add(new PurgeRow(
-                            launcher.toAbsolutePath().normalize(), "Launcher of tool " + name, orphanedBy, false));
-                }
+        for (OrphanedToolEnvs.Orphan orphan : OrphanedToolEnvs.under(
+                dirs.toolEnvsDir(),
+                dirs.binDirectory(),
+                roots.stream().map(PurgeRow::path).toList())) {
+            Target orphanedBy = roots.stream()
+                    .filter(r -> r.path().equals(orphan.orphanedBy()))
+                    .map(PurgeRow::target)
+                    .findFirst()
+                    .orElseThrow();
+            for (Path launcher : orphan.launchers()) {
+                out.add(new PurgeRow(launcher, "Launcher of tool " + orphan.name(), orphanedBy, false, Kind.LAUNCHER));
+            }
+            boolean heldByRoot = roots.stream().anyMatch(r -> orphan.envDir().startsWith(r.path()));
+            if (!heldByRoot) {
+                out.add(new PurgeRow(orphan.envDir(), "Env of tool " + orphan.name(), orphanedBy, false, Kind.ENV));
             }
         }
         return out;
-    }
-
-    /**
-     * The scheduled root that orphans the launcher of {@code name}: the state root when it is
-     * scheduled (the env lives under it), else the first deleted root an entry of the env's
-     * recorded classpath lies under. {@code null} when the launcher survives every root in the plan.
-     */
-    private static @Nullable Target orphanedBy(Path envs, String name, List<PurgeRow> roots) {
-        for (PurgeRow root : roots) {
-            if (root.target() == Target.STATE) return Target.STATE;
-        }
-        for (Path entry : InstalledToolEnvs.recordedClasspath(envs, name)) {
-            Path abs = entry.toAbsolutePath().normalize();
-            for (PurgeRow root : roots) {
-                if (abs.startsWith(root.path())) return root.target();
-            }
-        }
-        return null;
     }
 
     /**
@@ -561,7 +565,7 @@ public final class SelfNukeCommand implements CliCommand {
         CliOutput.out("  Kept:  " + pathStyled(dirs.productLibDir()) + "  (live engine + installed app jars)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory())
                 + (launchersGo
-                        ? "  (PATH binaries; the tool launchers listed above go with the roots they run from)"
+                        ? "  (PATH binaries; the tool launchers and envs listed above go with the roots they run from)"
                         : "  (PATH binaries)"));
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();

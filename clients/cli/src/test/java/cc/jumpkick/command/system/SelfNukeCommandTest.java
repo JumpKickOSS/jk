@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
@@ -9,6 +10,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.command.system.SelfNukeCommand.Target;
+import cc.jumpkick.command.toolchain.ToolListCommand;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Invocation;
@@ -828,7 +830,7 @@ class SelfNukeCommandTest {
         assertThat(bin.resolve("alpha")).doesNotExist();
         assertThat(product).as("jk's own client stays").exists();
         assertThat(foreign).as("a file jk did not install stays").exists();
-        assertThat(out).contains("the tool launchers listed above go with the roots they run from");
+        assertThat(out).contains("the tool launchers and envs listed above go with the roots they run from");
         String settle = out.lines()
                 .filter(l -> l.contains("Nuked selected"))
                 .findFirst()
@@ -854,11 +856,12 @@ class SelfNukeCommandTest {
     /**
      * An installed tool's launcher execs jars under {@code <store>/sha256/…}. Wiping the store and
      * leaving the launcher gives the same dead script a state wipe would — "could not find or
-     * load main class" — so the store target schedules exactly the launchers whose recorded
-     * classpath lies under the store, lists them and counts them like the state target does.
+     * load main class" — and leaving the env keeps the tool in {@code jk tool list} with nothing
+     * behind it. So the store target schedules exactly the tools whose recorded classpath lies
+     * under the store: their launchers and their envs, listed and counted like the state target's.
      */
     @Test
-    void store_nuke_removes_the_launchers_whose_classpaths_it_deletes() throws Exception {
+    void store_nuke_removes_the_envs_and_launchers_of_the_tools_whose_classpaths_it_deletes() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path store = dirs.storeDir();
         Path casJar = Files.createDirectories(store.resolve("sha256/ab")).resolve("widget.jar");
@@ -885,8 +888,16 @@ class SelfNukeCommandTest {
         assertThat(store).doesNotExist();
         assertThat(widget).doesNotExist();
         assertThat(widgetCmd).doesNotExist();
+        assertThat(dirs.toolEnvsDir().resolve("widget"))
+                .as("the env whose classpath is gone goes with it")
+                .doesNotExist();
         assertThat(local).as("a launcher the store wipe leaves runnable stays").exists();
         assertThat(dirs.toolEnvsDir().resolve("local/env.json")).exists();
+        String listed = TestAnsi.strip(captureText(() -> toolList(dirs)));
+        assertThat(listed)
+                .as("jk tool list names only tools that can run")
+                .contains("local")
+                .doesNotContain("widget");
         try (var launchers = Files.list(dirs.binDirectory())) {
             for (Path launcher : launchers.toList()) {
                 assertThat(Files.readString(launcher))
@@ -894,43 +905,64 @@ class SelfNukeCommandTest {
                         .doesNotContain(store.toString());
             }
         }
-        assertThat(out).contains("Launcher of tool widget").doesNotContain("Launcher of tool local");
+        assertThat(out)
+                .contains("Launcher of tool widget")
+                .contains("Env of tool widget")
+                .doesNotContain("Launcher of tool local")
+                .doesNotContain("Env of tool local");
         String settle = out.lines()
                 .filter(l -> l.contains("Nuked selected"))
                 .findFirst()
                 .orElse("");
-        // widget's POSIX launcher and its .cmd twin — two files — and nothing for local.
-        assertThat(settle).contains("2 installed tool launchers");
+        // widget's POSIX launcher and its .cmd twin — two files — plus its env, and nothing for local.
+        assertThat(settle).contains("2 installed tool launchers and 1 orphaned tool env (jk install restores them)");
     }
 
     @Test
-    void launcher_rows_exist_only_when_a_root_the_launcher_runs_from_goes(@TempDir Path root) throws Exception {
+    void tool_rows_exist_only_when_a_root_the_tool_runs_from_goes(@TempDir Path root) throws Exception {
         JkDirs dirs = JkDirs.current();
         Path casJar = dirs.storeDir().resolve("sha256/ab/widget.jar");
         installedTool(dirs, "widget", casJar);
         installedTool(dirs, "local", isolatedHome.resolve("elsewhere.jar"));
         Path widget = dirs.binDirectory().resolve("widget").toAbsolutePath().normalize();
+        Path widgetEnv = dirs.toolEnvsDir().resolve("widget").toAbsolutePath().normalize();
         Path local = dirs.binDirectory().resolve("local").toAbsolutePath().normalize();
-        // The state root holds every env, so every launcher goes with it.
+        // The state root holds every env, so every launcher goes with it — and the state row
+        // already takes the envs, so no env row doubles it.
         List<SelfNukeCommand.PurgeRow> stateRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.STATE));
-        assertThat(SelfNukeCommand.toolLaunchers(dirs, stateRows))
+        assertThat(SelfNukeCommand.toolOrphanRows(dirs, stateRows))
                 .extracting(SelfNukeCommand.PurgeRow::path)
                 .containsExactly(local, widget);
-        // The store holds only widget's classpath.
+        // The store holds only widget's classpath: its launcher and, since no scheduled root
+        // holds it, its env.
         List<SelfNukeCommand.PurgeRow> storeRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.STORE));
-        assertThat(SelfNukeCommand.toolLaunchers(dirs, storeRows))
-                .extracting(SelfNukeCommand.PurgeRow::path)
-                .containsExactly(widget);
-        // Cache or config alone deletes no env and no classpath, so it orphans no launcher.
+        assertThat(SelfNukeCommand.toolOrphanRows(dirs, storeRows))
+                .extracting(SelfNukeCommand.PurgeRow::path, SelfNukeCommand.PurgeRow::kind)
+                .containsExactly(
+                        tuple(widget, SelfNukeCommand.Kind.LAUNCHER), tuple(widgetEnv, SelfNukeCommand.Kind.ENV));
+        // Cache or config alone deletes no env and no classpath, so it orphans no tool.
         List<SelfNukeCommand.PurgeRow> configRows = SelfNukeCommand.plan(dirs, EnumSet.of(Target.CONFIG));
-        assertThat(SelfNukeCommand.toolLaunchers(dirs, configRows)).isEmpty();
+        assertThat(SelfNukeCommand.toolOrphanRows(dirs, configRows)).isEmpty();
         // A refused state root (one that would reach the product lib) deletes nothing under it.
         Map<String, String> env = new HashMap<>();
         env.put("JK_HOME", root.toString());
         env.put("JK_STATE_DIR", root.toString());
         JkDirs refused = JkDirs.of(env::get, root.toString());
-        assertThat(SelfNukeCommand.toolLaunchers(refused, SelfNukeCommand.plan(refused, EnumSet.of(Target.STATE))))
+        assertThat(SelfNukeCommand.toolOrphanRows(refused, SelfNukeCommand.plan(refused, EnumSet.of(Target.STATE))))
                 .isEmpty();
+    }
+
+    /** {@code jk tool list} against this home's state and bin. */
+    private static int toolList(JkDirs dirs) {
+        Invocation in = Invocation.builder()
+                .putValue("state-dir", dirs.stateDir().toString())
+                .putValue("bin-dir", dirs.binDirectory().toString())
+                .build();
+        try {
+            return new ToolListCommand().run(in);
+        } catch (IOException e) {
+            throw new AssertionError("tool list threw: " + e, e);
+        }
     }
 
     /** {@code jk install <name>}'s footprint: the env under state and a launcher in bin. */
