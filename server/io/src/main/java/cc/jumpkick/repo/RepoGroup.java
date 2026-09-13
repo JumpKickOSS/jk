@@ -232,10 +232,10 @@ public final class RepoGroup {
      * As {@link #tryFetchArtifact(Coordinate)} but pinned: a warm hit — process memo, local
      * mirror — is used only when its digest matches {@code expectedSha256Hex}, and the network
      * leg goes through {@link MavenRepo#fetchArtifact(Coordinate, String, BooleanSupplier)}, which
-     * evicts a stale mirror copy instead of returning it. The returned {@code fetched().sha256()}
-     * is the actual digest of the bytes on disk; callers asserting the pin into a store must still
-     * compare it — a remote that serves different bytes than the lock pins reaches here verified
-     * only against its own sidecar.
+     * evicts a stale mirror copy instead of returning it and refuses bytes whose digest is not the
+     * pin with a {@link MavenRepo.ChecksumMismatchException} before anything places them. A present
+     * answer therefore always carries the pinned digest; a remote that serves different bytes than
+     * the lock pins is an exception here, never a value.
      */
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord, @Nullable String expectedSha256Hex)
             throws IOException, InterruptedException {

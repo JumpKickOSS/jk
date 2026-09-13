@@ -15,6 +15,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.tool.TrustedPlugins;
@@ -184,13 +185,13 @@ class ThirdPartyPluginTest {
     }
 
     /**
-     * Pin-is-law for the plugin sync path: the pinned fetch overload never serves a
-     * warm hit that disagrees with the pin, and when the remote itself serves different bytes the
-     * returned digest exposes the mismatch — the caller-side compare in SyncPlans.syncPlugins is
-     * what keeps those bytes out of the CAS.
+     * Pin-is-law for the plugin sync path: the pinned fetch overload never serves a warm hit that
+     * disagrees with the pin, and when the remote itself serves different bytes it fails closed —
+     * a {@link MavenRepo.ChecksumMismatchException} naming the pin and the true digest — before
+     * any byte reaches a store. The refusal poisons nothing: the right pin still answers.
      */
     @Test
-    void pinned_fetch_exposes_bytes_that_disagree_with_the_lock_pin(@TempDir Path tmp) throws Exception {
+    void pinned_fetch_refuses_bytes_that_disagree_with_the_lock_pin(@TempDir Path tmp) throws Exception {
         // Distinct version: JkStores.cas ignores its argument and serves the ambient shared store,
         // so sharing VERSION with the end-to-end test would cross-feed its coordinate a jar this
         // test fetched without the sibling POM.
@@ -225,14 +226,18 @@ class ThirdPartyPluginTest {
         assertThat(repos.tryFetchArtifact(coord, hex).orElseThrow().fetched().sha256())
                 .isEqualToIgnoringCase(hex);
 
-        // A pin the remote cannot satisfy: the warm mirror hit must not be blessed into the
-        // answer; the re-fetched bytes carry their true digest, which disagrees with the pin —
-        // exactly the signal syncPlugins refuses to putFile.
+        // A pin the remote cannot satisfy: the warm mirror hit is not blessed into the answer, and
+        // the re-fetched bytes, whose true digest disagrees with the pin, are refused outright —
+        // the bytes syncPlugins must never putFile are never handed to it.
         String wrongPin = "0".repeat(64);
-        var refetched = repos.tryFetchArtifact(coord, wrongPin);
-        assertThat(refetched).isPresent();
-        assertThat(refetched.orElseThrow().fetched().sha256()).isEqualToIgnoringCase(hex);
-        assertThat(refetched.orElseThrow().fetched().sha256()).isNotEqualToIgnoringCase(wrongPin);
+        assertThatThrownBy(() -> repos.tryFetchArtifact(coord, wrongPin))
+                .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
+                .hasMessageContaining(wrongPin)
+                .hasMessageContaining(hex);
+
+        // The refusal left no memo behind: the right pin still answers with the right bytes.
+        assertThat(repos.tryFetchArtifact(coord, hex).orElseThrow().fetched().sha256())
+                .isEqualToIgnoringCase(hex);
     }
 
     /** Compile the fixture main, jar it with the manifest, publish to a Maven-layout dir. */
