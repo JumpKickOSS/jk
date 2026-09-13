@@ -73,14 +73,27 @@ public final class JsonlShape {
      * json}/{@code jsonl}).
      */
     public static void emitJsonl(String line, boolean toStdout) {
-        String decorated = withProgress(line);
-        if (toStdout) {
-            synchronized (STDOUT_LOCK) {
-                System.out.println(decorated);
-                System.out.flush();
-            }
+        emitEvent(withProgress(line), toStdout);
+    }
+
+    /**
+     * Emit one line as encoded, with no progress rider: a dev session's process events are not a
+     * build's, and a percent on them would describe nothing. Printed to stdout when {@code
+     * toStdout}, and appended to the active {@link CliSessionTranscript} either way — the same
+     * bytes in both places, so a transcript reads the same whatever the output mode was.
+     */
+    public static void emitEvent(String line, boolean toStdout) {
+        if (!toStdout) {
+            CliSessionTranscript.appendActive(line);
+            return;
         }
-        CliSessionTranscript.appendActive(decorated);
+        // One lock around both writes: events arrive on many threads, and the transcript must
+        // replay them in the order stdout showed them.
+        synchronized (STDOUT_LOCK) {
+            System.out.println(line);
+            System.out.flush();
+            CliSessionTranscript.appendActive(line);
+        }
     }
 
     /**

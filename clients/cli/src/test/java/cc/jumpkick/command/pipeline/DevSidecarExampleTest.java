@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testing.RepoRoot;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +51,12 @@ class DevSidecarExampleTest {
     private static final long READY_WAIT_SECONDS = 180;
 
     private static final String READY_LINE = "ready · ";
+
+    /** The events a dev session adds to the workspace envelope; the ones a transcript must replay. */
+    private static final Predicate<String> DEV_EVENT = l -> {
+        String type = Jsonl.str(l, "type");
+        return type != null && (type.startsWith("sidecar-") || type.startsWith("app-") || type.equals("dev-ready"));
+    };
 
     @Test
     void the_example_serves_its_front_door_and_its_api_and_ctrl_c_stops_both(@TempDir Path dir) throws Exception {
@@ -134,6 +142,7 @@ class DevSidecarExampleTest {
             awaitGone(newPid);
             assertThat(alive(webPid)).as("the sidecar survived the session").isFalse();
             assertThat(alive(newPid)).as("the app survived the session").isFalse();
+            replayTranscript(project, out);
         } finally {
             session.reap();
         }
@@ -157,7 +166,7 @@ class DevSidecarExampleTest {
                     .isFalse();
             assertThat(Jsonl.str(ready.get(), "app")).contains("demo.Api");
             assertThat(lines(out)).noneMatch(typed("sidecar-started"));
-            assertThat(awaitText(err, READY_LINE + "(", jk)).isTrue();
+            assertThat(awaitText(err, READY_LINE + "java", jk)).isTrue();
             assertThat(count(read(err), READY_LINE)).isEqualTo(1);
 
             String started =
@@ -194,6 +203,7 @@ class DevSidecarExampleTest {
             long newPid = pid(restarted.get());
             awaitGone(newPid);
             assertThat(alive(newPid)).as("the app survived the session").isFalse();
+            replayTranscript(project, out);
         } finally {
             session.reap();
         }
@@ -297,6 +307,35 @@ class DevSidecarExampleTest {
                 }
                 """);
         return project;
+    }
+
+    /**
+     * The session's transcript, replayed: every run dir the loop's builds bound it to, in build
+     * order, read as one stream. It opens with {@code session-start}, closes with {@code
+     * session-finish} carrying the Ctrl-C exit, and holds every dev event stdout showed — each
+     * once, in the same order — with nothing else of the kind.
+     */
+    private static void replayTranscript(Path project, Path out) throws IOException {
+        Path home = ProjectBuilds.projectHome(project);
+        List<Path> runs = new ArrayList<>(ProjectBuilds.listRuns(home));
+        Collections.reverse(runs);
+        List<String> transcript = new ArrayList<>();
+        for (Path run : runs) {
+            Path details = run.resolve(ProjectBuilds.DETAILS);
+            if (Files.exists(details)) transcript.addAll(Files.readAllLines(details));
+        }
+        assertThat(transcript).as("no transcript under %s", home).isNotEmpty();
+        assertThat(Jsonl.str(transcript.getFirst(), "type")).isEqualTo("session-start");
+        assertThat(Jsonl.str(transcript.getFirst(), "command")).isEqualTo("dev");
+        assertThat(Jsonl.str(transcript.getLast(), "type"))
+                .as("Ctrl-C finishes the transcript\n%s", String.join("\n", transcript))
+                .isEqualTo("session-finish");
+        assertThat(Jsonl.intValue(transcript.getLast(), "exit", -1)).isEqualTo(Exit.INTERRUPTED);
+        List<String> live = lines(out).stream().filter(DEV_EVENT).toList();
+        assertThat(live).isNotEmpty();
+        assertThat(transcript.stream().filter(DEV_EVENT).toList())
+                .as("the transcript replays what stdout showed, once each, in order")
+                .containsExactlyElementsOf(live);
     }
 
     /** A source change the way an editor makes one: the file's content moves, the program does not. */

@@ -4,14 +4,19 @@ package cc.jumpkick.cli.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** Machine JSONL shape + output mode aliases (docs/machine-output.md). */
 class JsonlShapeTest {
@@ -19,6 +24,28 @@ class JsonlShapeTest {
     @AfterEach
     void clearProgress() {
         LiveProgress.get().clear();
+        CliSessionTranscript leftover = CliSessionTranscript.active();
+        if (leftover != null) leftover.finish(0);
+    }
+
+    @Test
+    void emit_event_writes_the_same_bytes_to_the_transcript_and_to_stdout_only_when_asked(@TempDir Path project)
+            throws Exception {
+        CliSessionTranscript session =
+                Objects.requireNonNull(CliSessionTranscript.open(project, "dev", List.of("dev")), "open");
+        Path details = project.resolve("runs").resolve("3").resolve(CliSessionTranscript.FILE_NAME);
+        session.bindJob(9, 3, details.toString(), -1);
+        LiveProgress.get().update(50, 100);
+        String event = "{\"schema\":1,\"ts\":7,\"type\":\"sidecar-output\",\"name\":\"web\",\"line\":\"x\"}";
+
+        assertThat(Capture.stdout(() -> JsonlShape.emitEvent(event, false))).isEmpty();
+        assertThat(Capture.stdout(() -> JsonlShape.emitEvent(event, true))).isEqualTo(event + "\n");
+
+        List<String> recorded = Files.readAllLines(details).stream()
+                .filter(l -> l.contains("sidecar-output"))
+                .toList();
+        assertThat(recorded).as("once per emit, as encoded, no progress rider").containsExactly(event, event);
+        session.finish(0);
     }
 
     @Test

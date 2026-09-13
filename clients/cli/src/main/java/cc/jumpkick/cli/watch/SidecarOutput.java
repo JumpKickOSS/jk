@@ -55,6 +55,14 @@ public final class SidecarOutput {
         return new Jsonl(sink, clock);
     }
 
+    /**
+     * Every call to {@code first}, then to {@code second}: on a terminal the prefixed line for the
+     * user and the event for the session transcript come from the same call.
+     */
+    public static Sidecars.Listener both(Sidecars.Listener first, Sidecars.Listener second) {
+        return new Both(first, second);
+    }
+
     /** {@code name │ } — the name in its colour when colour is on, the bar plain either way. */
     static String prefix(String name, boolean colour) {
         return (colour ? style(name).render(name) : name) + Sidecars.PREFIX_SEPARATOR;
@@ -82,6 +90,15 @@ public final class SidecarOutput {
     }
 
     /**
+     * The terminal's word that the stack is up: {@code ready · <url> (<app>)} when a sidecar is the
+     * front door, {@code ready · <app>} when the app itself is — the address is what a reader wants
+     * first, and the app's command is the whole story when there is no address.
+     */
+    static String readyLine(String url, String app) {
+        return url.isEmpty() ? "ready \u00b7 " + app : "ready \u00b7 " + url + " (" + app + ")";
+    }
+
+    /**
      * The session's {@code dev-ready} line: the stack is up. {@code url} is the front-door
      * sidecar's address, or empty when the app itself is the front door; {@code app} is the app's
      * command as displayed.
@@ -99,6 +116,38 @@ public final class SidecarOutput {
                 .number("pid", pid)
                 .number("exit", exit)
                 .finish();
+    }
+
+    private record Both(Sidecars.Listener first, Sidecars.Listener second) implements Sidecars.Listener {
+        @Override
+        public void started(String name, long pid) {
+            first.started(name, pid);
+            second.started(name, pid);
+        }
+
+        @Override
+        public void output(String name, String stream, String line) {
+            first.output(name, stream, line);
+            second.output(name, stream, line);
+        }
+
+        @Override
+        public void ready(String name, String url, boolean frontDoor) {
+            first.ready(name, url, frontDoor);
+            second.ready(name, url, frontDoor);
+        }
+
+        @Override
+        public void exited(String name, long pid, int exit, long restartInMs, boolean gaveUp) {
+            first.exited(name, pid, exit, restartInMs, gaveUp);
+            second.exited(name, pid, exit, restartInMs, gaveUp);
+        }
+
+        @Override
+        public void failed(String message) {
+            first.failed(message);
+            second.failed(message);
+        }
     }
 
     private static final class Terminal implements Sidecars.Listener {

@@ -308,10 +308,14 @@ public final class CliSessionTranscript {
         return s.substring(0, end);
     }
 
+    /**
+     * Append {@code line} to the active session as encoded: the emitter has already attached the
+     * progress rider where one belongs, so the transcript's copy is the twin of what stdout saw.
+     */
     public static void appendActive(String line) {
         CliSessionTranscript s = active;
         if (s == null || line == null || line.isBlank()) return;
-        s.append(line, isImmediateType(line));
+        s.appendRaw(line, isImmediateType(line));
     }
 
     private static final String[] HOT_TYPE_NEEDLES =

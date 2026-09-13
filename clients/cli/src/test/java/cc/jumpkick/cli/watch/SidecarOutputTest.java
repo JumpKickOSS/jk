@@ -65,6 +65,30 @@ class SidecarOutputTest {
     }
 
     @Test
+    void both_hands_every_call_to_the_terminal_and_to_the_recorder_in_that_order() {
+        List<String> seen = new ArrayList<>();
+        FakeClock clock = new FakeClock();
+        Sidecars.Listener both = SidecarOutput.both(
+                SidecarOutput.terminal(l -> seen.add("terminal: " + l), false),
+                SidecarOutput.jsonl(l -> seen.add("event: " + Jsonl.str(l, "type")), clock));
+        both.started("web", 7);
+        both.output("web", "stdout", "hi");
+        both.ready("web", "http://localhost:5173", true);
+        both.exited("web", 7, 1, -1, false);
+        both.failed("cannot start");
+        assertThat(seen)
+                .containsExactly(
+                        "event: sidecar-started",
+                        "terminal: web" + Sidecars.PREFIX_SEPARATOR + "hi",
+                        "event: sidecar-output",
+                        "event: sidecar-ready",
+                        "terminal: web exited with 1",
+                        "event: sidecar-exited",
+                        "terminal: cannot start",
+                        "event: error");
+    }
+
+    @Test
     void dev_ready_names_the_front_door_only_when_a_sidecar_is_it() {
         FakeClock clock = new FakeClock();
         String sidecar =
@@ -129,5 +153,13 @@ class SidecarOutputTest {
         assertThat(Jsonl.str(out, "line")).isEqualTo("Started App in 0.4s");
         assertThat(Jsonl.str(exited, "type")).isEqualTo("app-exited");
         assertThat(Jsonl.intValue(exited, "exit", -1)).isEqualTo(143);
+    }
+
+    @Test
+    void the_ready_line_names_the_front_door_and_drops_the_brackets_when_the_app_is_it() {
+        assertThat(SidecarOutput.readyLine("http://localhost:5173", "java -cp target/classes/main demo.Api"))
+                .isEqualTo("ready \u00b7 http://localhost:5173 (java -cp target/classes/main demo.Api)");
+        assertThat(SidecarOutput.readyLine("", "java -cp target/classes/main demo.Api"))
+                .isEqualTo("ready \u00b7 java -cp target/classes/main demo.Api");
     }
 }
