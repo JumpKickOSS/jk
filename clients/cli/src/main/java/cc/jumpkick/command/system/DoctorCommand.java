@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
@@ -23,14 +25,17 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.posix.PosixPasswd;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -38,7 +43,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
- * (engine, dirs, state, jdk, lock, shell, tools) and a summary. {@code --output json} emits machine output.
+ * (engine, dirs, state, jdk, lock, shell, tools, workers) and a summary. {@code --output json}
+ * emits machine output.
  */
 public final class DoctorCommand implements CliCommand {
 
@@ -49,7 +55,7 @@ public final class DoctorCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Check host health (engine, cache, JDKs, lock, shell)";
+        return "Check host health (engine, cache, JDKs, lock, shell, workers)";
     }
 
     @Override
@@ -89,6 +95,7 @@ public final class DoctorCommand implements CliCommand {
         Tally tally = Tally.of(toolRows);
         int healthy = tally.healthy(), pruned = tally.pruned(), verified = tally.verified();
         int drifted = tally.drifted(), firstSeen = tally.firstSeen(), empty = tally.empty();
+        Workers workers = workers(DoctorCommand::queryWorkers);
 
         boolean hasFail = engine.status == Status.FAIL
                 || cache.status == Status.FAIL
@@ -110,7 +117,8 @@ public final class DoctorCommand implements CliCommand {
                     drifted,
                     firstSeen,
                     empty,
-                    toolsError));
+                    toolsError,
+                    workers));
             return hasFail ? 1 : 0;
         }
 
@@ -161,6 +169,8 @@ public final class DoctorCommand implements CliCommand {
             }
         }
 
+        for (String line : renderWorkers(workers, global.verbose, t)) CliOutput.out(line);
+
         CliOutput.out(Theme.paint("---", t.darkGray()));
         String summary = Theme.colorize(String.valueOf(healthy), t.focused())
                 + " healthy"
@@ -175,6 +185,148 @@ public final class DoctorCommand implements CliCommand {
         }
         CliOutput.out(summary);
         return hasFail ? 1 : 0;
+    }
+
+    // ---- workers ----
+
+    /**
+     * One installed plugin worker as the engine sees it: where its jar came from, the POM its
+     * launch classpath is rebuilt from, and that classpath. {@code error} is the resolution
+     * failure when the engine could not rebuild it; {@code classpath} is then empty.
+     */
+    public record Worker(
+            String artifact,
+            String version,
+            String source,
+            String jar,
+            String pom,
+            int declared,
+            List<String> classpath,
+            @Nullable String error) {}
+
+    /** The worker rows, or the reason there are none (engine unreachable, query refused). */
+    public record Workers(List<Worker> rows, @Nullable String error) {}
+
+    /** The engine query behind the worker rows; a seam so the rendering is testable without an engine. */
+    interface WorkerProbe {
+        CacheInventoryAck workers() throws IOException;
+    }
+
+    private static CacheInventoryAck queryWorkers() throws IOException {
+        return EngineClient.cacheInventory(
+                EnginePaths.current(), "workers", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+    }
+
+    /**
+     * Decode the engine's {@code workers} inventory: rows are
+     * {@code artifact|version|source|jar|pom|declared|entries|error}, classpath entries
+     * {@code artifact|path}. The engine answers this the way a fork resolves, so a worker that
+     * runs on the wrong jar shows it here — a Guava flavour, a stale self-installed POM shadowing
+     * the published one — in one line instead of an evening.
+     */
+    static Workers workers(WorkerProbe probe) {
+        CacheInventoryAck ack;
+        try {
+            ack = probe.workers();
+        } catch (IOException | RuntimeException e) {
+            return new Workers(List.of(), "engine query failed: " + e.getMessage());
+        }
+        if (ack.error() != null) return new Workers(List.of(), ack.error());
+        Map<String, List<String>> classpaths = new LinkedHashMap<>();
+        for (String entry : ack.entries()) {
+            int bar = entry.indexOf('|');
+            if (bar <= 0) continue;
+            classpaths
+                    .computeIfAbsent(entry.substring(0, bar), k -> new ArrayList<>())
+                    .add(entry.substring(bar + 1));
+        }
+        List<Worker> rows = new ArrayList<>();
+        for (String line : ack.lines()) {
+            String[] f = line.split("\\|", 8);
+            if (f.length < 8) continue;
+            String error = f[7].isBlank() ? null : f[7];
+            rows.add(new Worker(
+                    f[0],
+                    f[1],
+                    f[2],
+                    f[3],
+                    f[4],
+                    parseIntOrZero(f[5]),
+                    List.copyOf(classpaths.getOrDefault(f[0], List.of())),
+                    error));
+        }
+        return new Workers(List.copyOf(rows), null);
+    }
+
+    private static int parseIntOrZero(String s) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * One line per worker. {@code source} names the store repo the jar was located in: a
+     * {@code jk-local} worker was installed from a checkout and shadows the published one under
+     * {@code jumpkick}; {@code override} is a {@code -D} jar property. {@code --verbose} lists the
+     * launch classpath entry by entry.
+     */
+    static List<String> renderWorkers(Workers workers, boolean verbose, Theme t) {
+        List<String> out = new ArrayList<>();
+        if (workers.error() != null) {
+            out.add(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("workers", t.cyan()) + " — "
+                    + workers.error());
+            return out;
+        }
+        if (workers.rows().isEmpty()) {
+            out.add(Theme.colorize("ok:      ", t.completedStep()) + " " + Theme.colorize("workers", t.cyan())
+                    + " — none installed in the store (fetched from jumpkick.build on first use)");
+            return out;
+        }
+        for (Worker w : workers.rows()) {
+            String label = Theme.colorize(w.artifact(), t.cyan()) + " " + w.version();
+            String from = "from " + Theme.colorize(w.source(), t.path());
+            if (w.error() != null) {
+                out.add(Theme.colorize("warn:    ", t.warning()) + " " + label + " " + from
+                        + " — launch classpath did not resolve: " + w.error());
+                continue;
+            }
+            out.add(Theme.colorize("worker:  ", t.completedStep()) + " " + label + " " + from + " · POM declares "
+                    + w.declared() + (w.declared() == 1 ? " dep" : " deps") + " · "
+                    + w.classpath().size()
+                    + (w.classpath().size() == 1 ? " entry" : " entries") + " on the launch classpath");
+            if (verbose) {
+                out.add("           pom " + Theme.colorize(w.pom().isEmpty() ? "(none)" : w.pom(), t.path()));
+                for (String entry : w.classpath()) {
+                    out.add("           " + Theme.colorize(entry, t.path()));
+                }
+            }
+        }
+        return out;
+    }
+
+    /** The {@code workers} member of the JSON report: an array of worker objects, or an error string. */
+    static String workersJson(Workers workers) {
+        if (workers.error() != null) {
+            return JsonFields.object().string("error", workers.error()).finish();
+        }
+        StringBuilder array = new StringBuilder("[");
+        for (int i = 0; i < workers.rows().size(); i++) {
+            Worker w = workers.rows().get(i);
+            if (i > 0) array.append(',');
+            array.append(JsonFields.object()
+                    .string("artifact", w.artifact())
+                    .string("version", w.version())
+                    .string("source", w.source())
+                    .string("jar", w.jar())
+                    .string("pom", w.pom())
+                    .number("declared", w.declared())
+                    .array("classpath", w.classpath())
+                    .string("error", w.error())
+                    .finish());
+        }
+        return array.append(']').toString();
     }
 
     // ---- checks ----
@@ -516,7 +668,10 @@ public final class DoctorCommand implements CliCommand {
         CliOutput.out(prefix + Theme.colorize(c.label, t.cyan()) + " — " + c.detail);
     }
 
-    /** The `--output json` report: the six checks, then the tool tallies and the scan error. */
+    /**
+     * The `--output json` report: the six checks, the tool tallies and the scan error, then the
+     * installed workers with their launch classpaths.
+     */
     public static String reportJson(
             Check engine,
             Check cache,
@@ -530,7 +685,8 @@ public final class DoctorCommand implements CliCommand {
             int drifted,
             int firstSeen,
             int empty,
-            @Nullable String toolsError) {
+            @Nullable String toolsError,
+            Workers workers) {
         return JsonFields.object()
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
@@ -549,6 +705,7 @@ public final class DoctorCommand implements CliCommand {
                                 .number("empty", empty)
                                 .string("error", toolsError)
                                 .finish())
+                .token("workers", workersJson(workers))
                 .finish();
     }
 

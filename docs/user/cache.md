@@ -34,6 +34,7 @@ not an emptied skeleton. The next build recreates what it needs.
 ```bash
 jk cache clean                    # first knob for safe space reclaim
 jk storage clean                  # leaked download temps
+jk storage clean --workers        # also drop installed plugin workers (see below)
 jk cache nuke -y                  # wipe rebuildable action cache
 jk storage nuke                   # wipe downloaded artifacts (confirms)
 jk self nuke                      # all targets (default); confirms first
@@ -54,6 +55,23 @@ Always kept, whichever targets you name: `~/.jk/bin` (PATH launchers), `~/.jk/li
 engine and installed app jars), `~/.jk/creds` (forge and per-repo credentials — `jk repo
 logout` removes those) and the managed JDKs. Those are roots of their own, so no target's
 delete reaches them.
+
+### Plugin workers
+
+Every plugin with a code layer (`jk image`, the test runner, the compilers, …) runs in a forked
+worker whose classpath the engine rebuilds at launch from the worker's Maven POM — the jar's
+sibling under `repos/jk-local` (installed from a checkout by `jk install` / `installLocal`),
+else `repos/jumpkick` (fetched from jumpkick.build). Nothing about that classpath is persisted
+between builds: the engine memoises it for its own lifetime and otherwise walks the POM again,
+so the same store yields the same classpath every time.
+
+`jk doctor` prints one `worker:` line per installed worker — where its jar came from, how many
+dependencies its POM declares, how many entries the rebuilt classpath has — and `jk doctor -v`
+lists those entries. When a worker runs on the wrong jar (a Guava flavour, a stale POM from an
+older checkout shadowing the published one), `jk storage clean --workers` drops every installed
+worker — jar, POM and memo, all versions, from every store repo — and forgets the memoised
+classpaths; the next build fetches the published plugin again and rebuilds from its POM. The
+closure jars stay: they are shared with project resolution and are re-walked, not re-downloaded.
 
 ## Budgets
 

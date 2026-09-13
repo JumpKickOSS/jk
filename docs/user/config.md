@@ -142,5 +142,6 @@ Install / dirs: [Install](install.md). Format: [Format](format.md). Cache budget
 [Cache](cache.md). `.env` layering: `jk env` on the install page.
 
 ```bash
-jk doctor                 # host health (engine, dirs, JDKs, lock, current/login shell)
+jk doctor                 # host health (engine, dirs, JDKs, lock, current/login shell, plugin workers)
+jk doctor -v              # plus each worker's launch classpath, entry by entry
 ```

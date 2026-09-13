@@ -292,12 +292,14 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Reclaim leaked download temps";
+            return "Reclaim leaked download temps (--workers: drop plugin workers)";
         }
 
         @Override
         public List<Opt> options() {
-            return List.of(Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+            return List.of(
+                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
+                    Opt.flag("Also drop installed plugin workers; next build re-fetches", "--workers"));
         }
 
         @Override
@@ -305,6 +307,28 @@ public final class StorageCommand extends GroupCommand {
             boolean dryRun = in.isSet("dry-run");
             GlobalOptions global = GlobalOptions.from(in);
             Path root = CacheCommand.resolveCacheRoot(null);
+
+            if (in.isSet("workers")) {
+                CacheInventoryAck dropped;
+                try {
+                    dropped = EngineClient.cacheInventory(
+                            EnginePaths.current(),
+                            "drop-workers",
+                            root,
+                            JkStores.store(),
+                            List.of(),
+                            List.of(),
+                            dryRun);
+                } catch (IOException e) {
+                    CommandWedge.printFail("Storage", e.getMessage());
+                    return Exit.SOFTWARE;
+                }
+                if (dropped.error() != null) {
+                    CommandWedge.printFail("Storage", dropped.error());
+                    return 1;
+                }
+                CommandWedge.printOk("Storage", droppedWorkersLine(dropped, dryRun));
+            }
 
             var summary = new EngineRequests.CacheMaintSummary[1];
             ConsoleSpec spec = cleanSpec(
@@ -325,6 +349,30 @@ public final class StorageCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             return result.success() ? 0 : 1;
+        }
+
+        /**
+         * What {@code --workers} did: which workers went, from which store repo, and what that
+         * reclaimed. The next fork of each re-fetches the published plugin and rebuilds its launch
+         * classpath from the published POM, so the line says so.
+         */
+        static String droppedWorkersLine(CacheInventoryAck dropped, boolean dryRun) {
+            if (dropped.lines().isEmpty()) {
+                return dryRun
+                        ? "Dry run: no installed plugin workers to drop."
+                        : "No installed plugin workers to drop.";
+            }
+            List<String> named = new ArrayList<>();
+            for (String row : dropped.lines()) {
+                String[] f = row.split("\\|", -1);
+                if (f.length >= 3) named.add(f[0] + " " + f[1] + " (" + f[2] + ")");
+            }
+            String what = named.size() + (named.size() == 1 ? " worker" : " workers") + ": " + String.join(", ", named);
+            String size = dropped.files() + (dropped.files() == 1 ? " file" : " files") + ", "
+                    + CacheCommand.fmtBytes(dropped.bytes());
+            if (dryRun) return "Dry run: would drop " + what + " — " + size + " reclaimable.";
+            return "Dropped " + what + " — " + size
+                    + " reclaimed. The next build fetches the published plugin and rebuilds its launch classpath.";
         }
 
         static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {

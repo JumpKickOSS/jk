@@ -7,8 +7,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Cache/store inventory. {@code query} is one of {@code usage}, {@code store-usage}, {@code
- * repo-search} ({@code terms}), {@code repo-refresh} ({@code coords}), or {@code wipe-store}
- * ({@code dryRun} counts without deleting).
+ * repo-search} ({@code terms}), {@code repo-refresh} ({@code coords}), {@code wipe-store}
+ * ({@code dryRun} counts without deleting), {@code workers} (every installed plugin worker with
+ * the launch classpath the engine rebuilds for it), or {@code drop-workers} (delete the installed
+ * workers and forget their memoised classpaths; {@code dryRun} counts).
  */
 public record CacheInventoryRequest(
         @Nullable String query,

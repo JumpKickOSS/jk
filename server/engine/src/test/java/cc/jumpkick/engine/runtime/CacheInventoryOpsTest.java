@@ -3,8 +3,13 @@ package cc.jumpkick.engine.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
+import java.io.IOException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +27,96 @@ class CacheInventoryOpsTest {
         assertThat(ack.error()).isNull();
         assertThat(ack.query()).isEqualTo("usage");
         assertThat(ack.totalFiles()).isGreaterThanOrEqualTo(0);
+    }
+
+    /**
+     * The doctor's worker rows: every worker the store holds, the repo its jar came from, the POM
+     * its launch classpath is rebuilt from, and that classpath entry by entry — the same
+     * resolution a fork performs. A store-resident worker with a POM naming nothing has a
+     * classpath of one: its own jar.
+     */
+    @Test
+    void workers_lists_each_stored_worker_with_the_classpath_source_a_fork_uses(@TempDir Path store) throws Exception {
+        String saved = System.getProperty(PluginJar.IMAGE_BUILDER.jarProperty());
+        System.clearProperty(PluginJar.IMAGE_BUILDER.jarProperty());
+        try {
+            Path jar = installWorker(store, RepoArtifactResolver.JK_LOCAL, PluginJar.IMAGE_BUILDER, JkVersion.VERSION);
+
+            CacheInventoryAck ack = CacheInventoryOps.run(
+                    new CacheInventoryOps.Request("workers", null, store, List.of(), List.of(), false));
+
+            assertThat(ack.error()).isNull();
+            String row = ack.lines().stream()
+                    .filter(l -> l.startsWith("jk-image-builder|"))
+                    .findFirst()
+                    .orElseThrow();
+            String[] f = row.split("\\|", -1);
+            assertThat(f[1]).isEqualTo(JkVersion.VERSION);
+            assertThat(f[2]).as("the repo the jar was located in").isEqualTo("jk-local");
+            assertThat(Path.of(f[3])).isEqualTo(jar.toAbsolutePath().normalize());
+            assertThat(f[4]).endsWith("jk-image-builder-" + JkVersion.VERSION + ".pom");
+            assertThat(f[5]).as("declared compile/runtime deps").isEqualTo("0");
+            assertThat(f[6]).as("classpath entries").isEqualTo("1");
+            assertThat(f[7]).as("no resolution error").isEmpty();
+            assertThat(ack.entries())
+                    .contains("jk-image-builder|" + jar.toAbsolutePath().normalize());
+        } finally {
+            if (saved != null) System.setProperty(PluginJar.IMAGE_BUILDER.jarProperty(), saved);
+        }
+    }
+
+    /**
+     * {@code jk storage clean --workers}: every installed version of every worker goes, from
+     * every store repo, and nothing that is not a worker. The dry run counts the same files it
+     * would delete and deletes none.
+     */
+    @Test
+    void drop_workers_removes_every_stored_worker_version_and_nothing_else(@TempDir Path store) throws Exception {
+        Path current = installWorker(store, RepoArtifactResolver.JK_LOCAL, PluginJar.IMAGE_BUILDER, JkVersion.VERSION);
+        Path older = installWorker(store, RepositorySpec.JUMPKICK_NAME, PluginJar.IMAGE_BUILDER, "0.1.0");
+        Path library = store.resolve("repos/jk-local/cc/jumpkick/jk-model/1.0/jk-model-1.0.jar");
+        Files.createDirectories(library.getParent());
+        Files.writeString(library, "library");
+
+        CacheInventoryAck dry = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("drop-workers", null, store, List.of(), List.of(), true));
+        assertThat(dry.lines())
+                .containsExactlyInAnyOrder(
+                        "jk-image-builder|" + JkVersion.VERSION + "|jk-local", "jk-image-builder|0.1.0|jumpkick");
+        assertThat(dry.files()).isEqualTo(4); // two jars, two POMs
+        assertThat(current).exists();
+        assertThat(older).exists();
+
+        CacheInventoryAck dropped = CacheInventoryOps.run(
+                new CacheInventoryOps.Request("drop-workers", null, store, List.of(), List.of(), false));
+        assertThat(dropped.files()).isEqualTo(4);
+        assertThat(store.resolve("repos/jk-local/cc/jumpkick/jk-image-builder"))
+                .as("the whole artifact directory")
+                .doesNotExist();
+        assertThat(store.resolve("repos/jumpkick/cc/jumpkick/jk-image-builder")).doesNotExist();
+        assertThat(library).as("a first-party library is not a worker").exists();
+    }
+
+    /** A worker jar with a dependency-free POM under {@code repos/<repo>/cc/jumpkick/<artifact>/<version>/}. */
+    private static Path installWorker(Path store, String repo, PluginJar worker, String version) throws IOException {
+        Path dir = store.resolve("repos")
+                .resolve(repo)
+                .resolve("cc/jumpkick")
+                .resolve(worker.artifactId())
+                .resolve(version);
+        Files.createDirectories(dir);
+        Path jar = dir.resolve(worker.artifactId() + "-" + version + ".jar");
+        Files.writeString(jar, "worker");
+        Files.writeString(
+                dir.resolve(worker.artifactId() + "-" + version + ".pom"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>cc.jumpkick</groupId>
+                  <artifactId>%s</artifactId>
+                  <version>%s</version>
+                </project>
+                """.formatted(worker.artifactId(), version));
+        return jar;
     }
 
     @Test

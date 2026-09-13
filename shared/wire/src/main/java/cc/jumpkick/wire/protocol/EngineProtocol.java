@@ -491,7 +491,8 @@ public final class EngineProtocol {
 
     /**
      * Client → server: cache/store inventory ({@code usage}, {@code store-usage}, {@code
-     * repo-search}, {@code repo-refresh}, {@code wipe-store}); one {@link #CACHE_INVENTORY_ACK}.
+     * repo-search}, {@code repo-refresh}, {@code wipe-store}, {@code workers}, {@code drop-workers});
+     * one {@link #CACHE_INVENTORY_ACK}.
      */
     public static final String CACHE_INVENTORY_REQUEST = "cache-inventory-request";
 

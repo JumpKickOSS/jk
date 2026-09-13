@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.command.system;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
+import java.io.IOException;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+/**
+ * The worker rows: what the engine resolves for each installed plugin worker, rendered so the
+ * jar's provenance and the classpath it launches on are one line apart from the symptom.
+ */
+class DoctorWorkersTest {
+
+    private static final String IMAGE_ROW = "jk-image-builder|0.13.3|jk-local|/store/repos/jk-local/cc/jumpkick/"
+            + "jk-image-builder/0.13.3/jk-image-builder-0.13.3.jar|/store/repos/jk-local/cc/jumpkick/"
+            + "jk-image-builder/0.13.3/jk-image-builder-0.13.3.pom|3|41|";
+
+    private static final String BROKEN_ROW = "jk-formatter|0.13.3|jumpkick|/store/repos/jumpkick/cc/jumpkick/"
+            + "jk-formatter/0.13.3/jk-formatter-0.13.3.jar||0|0|worker runtime dependency org.x:y:1 was not found";
+
+    @Test
+    void each_installed_worker_is_one_row_naming_its_source_and_classpath_size() {
+        DoctorCommand.Workers workers = DoctorCommand.workers(
+                () -> CacheInventoryAck.workers(
+                        List.of(IMAGE_ROW),
+                        List.of(
+                                "jk-image-builder|/store/repos/jk-local/cc/jumpkick/jk-image-builder/0.13.3/jk-image-builder-0.13.3.jar",
+                                "jk-image-builder|/store/repos/central/com/google/guava/guava/33.7.1-jre/guava-33.7.1-jre.jar")));
+
+        assertThat(workers.error()).isNull();
+        assertThat(workers.rows()).hasSize(1);
+        DoctorCommand.Worker w = workers.rows().get(0);
+        assertThat(w.source()).isEqualTo("jk-local");
+        assertThat(w.declared()).isEqualTo(3);
+        assertThat(w.classpath()).hasSize(2).anyMatch(p -> p.endsWith("guava-33.7.1-jre.jar"));
+
+        List<String> plain = strip(DoctorCommand.renderWorkers(workers, false, Theme.active()));
+        assertThat(plain).hasSize(1);
+        assertThat(plain.get(0))
+                .contains("worker:")
+                .contains("jk-image-builder 0.13.3")
+                .contains("from jk-local")
+                .contains("POM declares 3 deps")
+                .contains("2 entries on the launch classpath");
+
+        List<String> verbose = strip(DoctorCommand.renderWorkers(workers, true, Theme.active()));
+        assertThat(verbose).hasSize(4);
+        assertThat(verbose.get(1)).contains("pom ").contains("jk-image-builder-0.13.3.pom");
+        assertThat(verbose.get(3)).contains("guava-33.7.1-jre.jar");
+    }
+
+    @Test
+    void a_worker_whose_classpath_does_not_resolve_is_a_warning_carrying_the_engine_error() {
+        DoctorCommand.Workers workers =
+                DoctorCommand.workers(() -> CacheInventoryAck.workers(List.of(BROKEN_ROW), List.of()));
+
+        DoctorCommand.Worker w = workers.rows().get(0);
+        assertThat(w.error()).isEqualTo("worker runtime dependency org.x:y:1 was not found");
+        assertThat(w.classpath()).isEmpty();
+        List<String> plain = strip(DoctorCommand.renderWorkers(workers, false, Theme.active()));
+        assertThat(plain.get(0))
+                .startsWith("warn:")
+                .contains("jk-formatter 0.13.3 from jumpkick")
+                .contains("did not resolve: worker runtime dependency org.x:y:1 was not found");
+    }
+
+    @Test
+    void no_workers_and_no_engine_each_read_as_one_honest_row() {
+        DoctorCommand.Workers none = DoctorCommand.workers(() -> CacheInventoryAck.workers(List.of(), List.of()));
+        assertThat(strip(DoctorCommand.renderWorkers(none, false, Theme.active()))
+                        .get(0))
+                .startsWith("ok:")
+                .contains("none installed in the store");
+
+        DoctorCommand.Workers unreachable = DoctorCommand.workers(() -> {
+            throw new IOException("jk engine: could not start");
+        });
+        assertThat(unreachable.error()).contains("could not start");
+        assertThat(strip(DoctorCommand.renderWorkers(unreachable, false, Theme.active()))
+                        .get(0))
+                .startsWith("warn:")
+                .contains("workers")
+                .contains("could not start");
+    }
+
+    @Test
+    void the_json_member_carries_each_worker_with_its_classpath_array() {
+        DoctorCommand.Workers workers = DoctorCommand.workers(
+                () -> CacheInventoryAck.workers(
+                        List.of(IMAGE_ROW, BROKEN_ROW),
+                        List.of(
+                                "jk-image-builder|/store/repos/central/com/google/guava/guava/33.7.1-jre/guava-33.7.1-jre.jar")));
+
+        String json = DoctorCommand.workersJson(workers);
+
+        assertThat(json).startsWith("[").endsWith("]");
+        assertThat(json)
+                .contains("\"artifact\":\"jk-image-builder\"")
+                .contains("\"source\":\"jk-local\"")
+                .contains("\"declared\":3")
+                .contains(
+                        "\"classpath\":[\"/store/repos/central/com/google/guava/guava/33.7.1-jre/guava-33.7.1-jre.jar\"]")
+                .contains("\"artifact\":\"jk-formatter\"")
+                .contains("\"error\":\"worker runtime dependency org.x:y:1 was not found\"");
+        assertThat(DoctorCommand.workersJson(new DoctorCommand.Workers(List.of(), "engine query failed: down")))
+                .isEqualTo("{\"error\":\"engine query failed: down\"}");
+    }
+
+    private static List<String> strip(List<String> lines) {
+        return lines.stream().map(TestAnsi::strip).toList();
+    }
+}

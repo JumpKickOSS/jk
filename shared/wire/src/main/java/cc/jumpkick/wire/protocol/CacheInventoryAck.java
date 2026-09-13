@@ -9,6 +9,12 @@ import org.jspecify.annotations.Nullable;
  * Cache/store inventory ({@link EngineProtocol#CACHE_INVENTORY_REQUEST}). {@code stats} rows are
  * {@code name|files|bytes}. Repo search {@code entries} rows are {@code group|artifact|v1,v2}.
  * Repo refresh {@code lines} rows are {@code group|artifact|version|repo1,repo2} (evicting repos).
+ * Workers {@code lines} rows are {@code artifact|version|source|jar|pom|declared|entries|error}
+ * — one per installed plugin worker, {@code source} the store repo (or {@code override}) its jar
+ * came from, {@code declared} the compile/runtime dependencies its POM names, {@code entries} the
+ * size of the launch classpath the engine rebuilt from it — and {@code entries} rows are
+ * {@code artifact|path}, that classpath entry by entry. Dropped workers {@code lines} rows are
+ * {@code artifact|version|repo}; {@code files}/{@code bytes} count what went.
  */
 public record CacheInventoryAck(
         @Nullable String error,
@@ -43,6 +49,16 @@ public record CacheInventoryAck(
 
     public static CacheInventoryAck wipe(long files, long bytes) {
         return new CacheInventoryAck(null, "wipe-store", List.of(), 0, 0, List.of(), List.of(), 0, 0, files, bytes);
+    }
+
+    public static CacheInventoryAck workers(List<String> lines, List<String> entries) {
+        return new CacheInventoryAck(
+                null, "workers", List.of(), 0, 0, List.copyOf(entries), List.copyOf(lines), 0, 0, 0, 0);
+    }
+
+    public static CacheInventoryAck droppedWorkers(List<String> lines, long files, long bytes) {
+        return new CacheInventoryAck(
+                null, "drop-workers", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, files, bytes);
     }
 
     public String encode() {

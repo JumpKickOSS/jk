@@ -5,14 +5,21 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginAot;
+import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.Pom;
+import cc.jumpkick.repo.PomParser;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.TaskNames;
@@ -61,6 +68,8 @@ public final class CacheInventoryOps {
             case "repo-search" -> repoSearch(store, req.terms() == null ? List.of() : req.terms());
             case "repo-refresh" -> repoRefresh(store, req.coords() == null ? List.of() : req.coords());
             case "wipe-store" -> wipeStore(store, req.dryRun());
+            case "workers" -> workers(store);
+            case "drop-workers" -> dropWorkers(store, req.dryRun());
             default -> CacheInventoryAck.error("unknown cache inventory query: " + query);
         };
     }
@@ -285,6 +294,113 @@ public final class CacheInventoryOps {
             lines.add(packed);
         }
         return CacheInventoryAck.repoRefresh(lines, evicted, missed);
+    }
+
+    /**
+     * Every first-party plugin worker the store holds (or a {@code -D} override names), with the
+     * launch classpath the engine rebuilds from its POM — the same resolution a fork performs, so
+     * what {@code jk doctor} prints is what the next {@code jk image} runs on. A worker whose
+     * classpath does not resolve is still a row, carrying the error instead of a size.
+     */
+    private static CacheInventoryAck workers(Path storeRoot) {
+        Cas cas = new Cas(storeRoot);
+        List<String> lines = new ArrayList<>();
+        List<String> entries = new ArrayList<>();
+        for (PluginJar worker : PluginJar.values()) {
+            Path jar = worker.locateStored(cas);
+            if (jar == null) continue;
+            jar = jar.toAbsolutePath().normalize();
+            String source = workerSource(worker, jar);
+            Path pom = PomRuntimeClasspath.pomOf(jar);
+            int declared = pom == null ? 0 : declaredRuntimeDeps(pom);
+            List<Path> classpath;
+            String error = "";
+            try {
+                classpath = WorkerLaunchClasspath.paths(jar);
+            } catch (RuntimeException e) {
+                classpath = List.of();
+                error = Errors.text(e).replace('|', '/').replace('\n', ' ');
+            }
+            lines.add(String.join(
+                    "|",
+                    worker.artifactId(),
+                    JkVersion.VERSION,
+                    source,
+                    jar.toString(),
+                    pom == null ? "" : pom.toString(),
+                    Integer.toString(declared),
+                    Integer.toString(classpath.size()),
+                    error));
+            for (Path entry : classpath) entries.add(worker.artifactId() + "|" + entry);
+        }
+        return CacheInventoryAck.workers(lines, entries);
+    }
+
+    /** {@code override} for a {@code -D<jar property>} jar, else the {@code repos/<name>} the jar sits in. */
+    private static String workerSource(PluginJar worker, Path jar) {
+        String override = System.getProperty(worker.jarProperty());
+        if (override != null && !override.isBlank()) return "override";
+        Path cur = jar.getParent();
+        while (cur != null && cur.getParent() != null) {
+            Path parentName = cur.getParent().getFileName();
+            if (parentName != null && "repos".equals(parentName.toString())) {
+                return String.valueOf(cur.getFileName());
+            }
+            cur = cur.getParent();
+        }
+        return "path";
+    }
+
+    private static int declaredRuntimeDeps(Path pom) {
+        try {
+            int n = 0;
+            for (Pom.Dep d : PomParser.parse(Files.readAllBytes(pom)).dependencies()) {
+                String scope = d.scope();
+                if (scope == null || scope.isBlank() || "compile".equals(scope) || "runtime".equals(scope)) n++;
+            }
+            return n;
+        } catch (IOException | RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Delete every installed version of every first-party plugin worker — jar, POM and memo
+     * sidecars under {@code repos/jk-local}, {@code repos/jumpkick} and {@code repos/central} — and
+     * forget the launch classpaths and POM models memoised from them. The closure jars stay: they
+     * are shared with project resolution and the next fork re-walks them from the re-fetched
+     * published POM. {@code dryRun} counts without deleting.
+     */
+    private static CacheInventoryAck dropWorkers(Path storeRoot, boolean dryRun) throws IOException {
+        List<String> lines = new ArrayList<>();
+        long files = 0;
+        long bytes = 0;
+        Path repos = storeRoot.resolve("repos");
+        for (PluginJar worker : PluginJar.values()) {
+            for (String repo :
+                    List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
+                Path artifactDir = repos.resolve(repo)
+                        .resolve(PluginJar.GROUP.replace('.', '/'))
+                        .resolve(worker.artifactId());
+                if (!Files.isDirectory(artifactDir)) continue;
+                List<String> versions = new ArrayList<>();
+                PathUtil.forEachChild(artifactDir, (child, attrs) -> {
+                    if (attrs.isDirectory()) versions.add(String.valueOf(child.getFileName()));
+                    return true;
+                });
+                versions.sort(null);
+                DiskUsage.Stats stats = DiskUsage.of(artifactDir);
+                files += stats.files();
+                bytes += stats.bytes();
+                for (String version : versions) lines.add(worker.artifactId() + "|" + version + "|" + repo);
+                if (!dryRun) PathUtil.deleteRecursivelyOrThrow(artifactDir);
+            }
+        }
+        if (!dryRun) {
+            PomRuntimeClasspath.dropResolved();
+            EffectivePomBuilder.clearProcessCache();
+        }
+        return CacheInventoryAck.droppedWorkers(lines, files, bytes);
     }
 
     /** Delete the store root; its writers recreate their own subtrees on demand. */

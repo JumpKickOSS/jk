@@ -90,6 +90,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | “Build #N already running” | another `jk` in this checkout | `jk jobs` then `jk cancel`; or wait. Worktrees are separate slots |
 | Disk / CAS full | `jk cache usage` / `jk storage usage` | `jk cache clean` first; [Cache](cache.md) |
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
+| Plugin worker dies with `NoSuchMethodError` / `NoClassDefFoundError` (`jk image`, `jk test`, a compiler) | `jk doctor -v` — the `worker:` line names the jar’s source repo and lists the launch classpath | A `jk-local` worker was installed from a checkout and shadows the published one: `jk storage clean --workers`, then rerun; [Cache](cache.md#plugin-workers) |
 | Format check failed | `jk format --check` | `jk format` (no `--check`); [Format](format.md) |
 | Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Released natives are signed when published. Turning Smart App Control off is optional for contributors who want unsigned `gradlew dist`. |
 
@@ -118,7 +119,8 @@ Pin a hermetic module with `[test] workers = 1`. See [Test](test.md).
 
 ## Still stuck
 
-- `jk doctor` — host health (config, disk, current/login shell hooks)
+- `jk doctor` — host health (config, disk, current/login shell hooks, installed plugin workers and
+  the classpath each launches on; `-v` lists the entries)
 - `jk explain --verbose` — per-task forecast
 - [Config](config.md) — `NO_COLOR`, `--offline`, `JK_HOME` isolation
 - [Install](install.md) — layout and env

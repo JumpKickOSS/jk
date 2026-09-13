@@ -62,8 +62,28 @@ public final class PomRuntimeClasspath {
     private static final int RESOLVE_CACHE_MAX = 256;
 
     public static void clearResolveCacheForTests() {
+        dropResolved();
+    }
+
+    /**
+     * Forget every memoised launch classpath and repo group, so the next fork re-reads the
+     * worker POMs and the store from disk. {@code jk storage clean --workers} calls this after
+     * deleting the installed workers: a memo keyed on files that no longer exist would fall back
+     * to a real resolve on its own, but one keyed on a POM that was replaced by a same-sized write
+     * in the same millisecond would not.
+     */
+    public static void dropResolved() {
         RESOLVE_CACHE.clear();
         STORE_REPOS.clear();
+    }
+
+    /**
+     * The POM a launch of {@code workerJar} rebuilds its classpath from — the jar's sibling, or the
+     * store's copy for the jar's coordinate — or {@code null} when there is none. What {@code jk
+     * doctor} names as a worker's classpath source.
+     */
+    public static @Nullable Path pomOf(Path workerJar) {
+        return pomFor(workerJar.toAbsolutePath().normalize());
     }
 
     /**

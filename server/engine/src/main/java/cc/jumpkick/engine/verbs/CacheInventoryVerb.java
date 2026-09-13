@@ -59,7 +59,8 @@ public final class CacheInventoryVerb implements HostedVerb {
                         wire.terms(),
                         wire.coords(),
                         wire.dryRun());
-                boolean write = "wipe-store".equals(query) || "repo-refresh".equals(query);
+                boolean write =
+                        "wipe-store".equals(query) || "repo-refresh".equals(query) || "drop-workers".equals(query);
                 if (write) {
                     Path lockRoot = req.cache() != null ? req.cache() : JkDirs.cache();
                     CacheInventoryAck[] box = new CacheInventoryAck[1];

@@ -9,12 +9,14 @@ import cc.jumpkick.command.toolchain.ToolListCommand;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
@@ -127,6 +129,25 @@ class StorageCommandTest {
     }
 
     /** The engine-side wipe as a local delete: counts under dry run, removes the root otherwise. */
+    /** {@code --workers} names what went and what the next build does about it; a dry run says "would". */
+    @Test
+    void the_dropped_workers_line_names_each_worker_and_its_repo() {
+        CacheInventoryAck dropped = CacheInventoryAck.droppedWorkers(
+                List.of("jk-image-builder|0.13.3|jk-local", "jk-image-builder|0.13.2|jumpkick"), 4, 900_000);
+
+        String line = StorageCommand.StorageCleanCommand.droppedWorkersLine(dropped, false);
+        assertThat(line)
+                .startsWith("Dropped 2 workers: jk-image-builder 0.13.3 (jk-local), jk-image-builder 0.13.2 (jumpkick)")
+                .contains("4 files")
+                .contains("The next build fetches the published plugin");
+        assertThat(StorageCommand.StorageCleanCommand.droppedWorkersLine(dropped, true))
+                .startsWith("Dry run: would drop 2 workers")
+                .contains("reclaimable");
+        assertThat(StorageCommand.StorageCleanCommand.droppedWorkersLine(
+                        CacheInventoryAck.droppedWorkers(List.of(), 0, 0), false))
+                .isEqualTo("No installed plugin workers to drop.");
+    }
+
     private static StorageCommand.StoreWipe localWipe() {
         return (root, dryRun) -> {
             long files;
