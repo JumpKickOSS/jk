@@ -7,7 +7,7 @@ This repository is a **dual-build tree**: the same product sources build under *
 
 | System | Config | Typical output | Role today |
 |--------|--------|----------------|------------|
-| **Gradle** | `gradlew`, `build.gradle.kts`, `buildSrc/` | `*/build/` | Bootstrap `jk`, unit/integration CI, parity oracle |
+| **Gradle** | `gradlew`, `build.gradle.kts`, `buildSrc/` | `*/build/` | Advisory parity run, curated and nightly integration tiers, bootstrap where no client is hosted |
 | **JumpKick** | `jk.toml`, module manifests, `jk-lock.toml` | `target/` | Self-host compile/package/test/install, worker publish |
 
 Do not treat dual-build as temporary scaffolding you must hide: both layouts live in this
@@ -15,29 +15,57 @@ repo until a deliberate Gradle cut-over (backlog below).
 
 ## Which build is the oracle
 
-**Gradle is the bootstrap and the merge authority.** It produces the `jk` a self-host build needs,
-and `./gradlew checkFast` plus the curated integration lane are what a pull request has to pass.
+**Self-host is the merge authority.** Every pull request runs a `self-host` job that installs the
+hosted release `.jk/ci-bootstrap-version` pins the way a user installs it
+(`curl -fsSL https://jumpkick.build/install.sh | JK_VERSION=<pin> bash`) into an isolated `JK_HOME`,
+builds the checkout with it, then hands the home to the checkout's own jk (`jk install`) and lets
+that jk run the house-rule gate and the fast test tier. No step of the job runs Gradle. A guard
+failure there is annotated with the guard that owns it, so a parity break reads as
+`G51 checkGuardParity` rather than as build output.
 
-**Self-host is a first-class oracle, not a courtesy run.** Every pull request also runs a
-`self-host` job that bootstraps from that workflow's own Gradle artifacts, installs into an
-isolated `JK_HOME`, and then uses that `jk` to build the checkout, run its fast test tier, and run
-the house-rule gate. A guard failure there is annotated with the guard that owns it, so a parity
-break reads as `G51 checkGuardParity` rather than as build output.
+**Gradle is a parity run.** `./gradlew checkFast` runs in the `gradle-parity` job, advisory
+(`continue-on-error`): the unit tier under the second build, the buildSrc tests and the one letter
+only Gradle's task graph can see (G64). Two Gradle pieces stay merge requirements: the curated
+integration lane (`./gradlew curatedIntegrationTest`, the only integration coverage a pull request
+gets, G63) and the nightly full tier, compared with jk's integration profile.
 
 | Question | Answer today |
 |---|---|
-| What must be green to merge | Gradle: `checkFast`, the curated integration lane, and the self-host job |
-| What produces the `jk` under test | Gradle `dist` + `installLocal`, in the same workflow run |
+| What must be green to merge | the self-host job, the curated integration lane, the shell fixtures and the authorship scan |
+| What produces the `jk` under test | the hosted release the pin names bootstraps; `jk install` then swaps in the checkout's own client, engine and workers |
 | Where CI installs it | `$GITHUB_WORKSPACE/.ci-jk-home` — never the runner's `~/.jk` |
-| What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml` |
+| What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
 | Wall-clock comparison | `.github/workflows/wall-measure.yml`, weekly, informational |
 
-Guard **G57** (`checkCiCadence`, both builds) keeps the self-host job, its isolated `JK_HOME`, both
-verbs it runs, and the scheduled wall measurement in place: removing any of them fails the build
-rather than quietly retiring the oracle. It also rejects `continue-on-error` anywhere in `ci.yml`.
-That flag is how a merge requirement becomes a courtesy run without anyone deleting a job, and it
-is the one demotion no other assertion here would notice. The weekly wall measurement keeps its own
-`continue-on-error` in `wall-measure.yml`, where a wall time is a record rather than a verdict.
+Guard **G57** (`ci-cadence`, both builds) keeps the self-host job, its isolated `JK_HOME`, the four
+verbs it runs (`jk build`, `jk install`, `jk guard`, `jk test`), its bootstrap through `install.sh`
+at the pinned version, and the scheduled wall measurement in place. It fails on a `gradlew`
+anywhere in that job, on a `JK_VERSION=<digits>` literal in any workflow, and on
+`continue-on-error` on any job but `gradle-parity`. That flag is how a merge requirement becomes a
+courtesy run without anyone deleting a job, and the Gradle job is the one courtesy run by design.
+The weekly wall measurement keeps its own `continue-on-error` in `wall-measure.yml`, where a wall
+time is a record rather than a verdict.
+
+### The bootstrap pin
+
+`.jk/ci-bootstrap-version` holds one line: the release every workflow bootstraps from. It is the
+only place that version is written. `ci.yml`'s self-host job and `release.yml`'s hosted lanes read
+it with `tr -d '[:space:]' < .jk/ci-bootstrap-version`, and G57 refuses a workflow that spells the
+version itself, a pin that is not one `x.y.z`, and a pin newer than `jk.toml`'s own `version` — a
+bootstrap release is cut from a tree, so it is never ahead of one.
+
+After a release ships to jumpkick.build:
+
+1. Prove the release can build this tree, from a scratch home that is not your `~/.jk`:
+   ```bash
+   export HOME=$PWD/../bootstrap-probe JK_HOME=$HOME/.jk
+   curl -fsSL https://jumpkick.build/install.sh | JK_VERSION=<new> bash
+   "$JK_HOME/bin/jk" build --skip-tests && "$JK_HOME/bin/jk" install --skip-tests && "$JK_HOME/bin/jk" guard
+   ```
+2. Write `<new>` to `.jk/ci-bootstrap-version`.
+3. In `release.yml`, flip `bootstrap: gradle` to `hosted` for every platform whose client
+   `releases/<new>/SHA256SUMS` lists; the rows say why each platform is where it is.
+4. `jk guard`, then commit the pin and the workflow together.
 
 ### What the lane has actually caught
 
@@ -62,13 +90,13 @@ the engine jar all come from that run. Nothing it reads survives from another jo
 writes leaks into one. Locally the same isolation is a `JK_HOME=/some/tmp/dir` prefix; do not point
 a scratch run at your real `~/.jk`.
 
-### When self-host can replace Gradle as the primary oracle
+### What deleting Gradle still waits on
 
-Judgement is not a criterion. All five of these have to be facts before the Gradle job becomes an
-optional parity run:
+Self-host is the merge authority on Linux. Deleting Gradle from the tree, rather than demoting it,
+waits on all five of these being facts:
 
-1. **Bootstrap without in-tree Gradle** — a published release, or a sibling checkout, installs a
-   `jk` capable of building this tree, so a clean product checkout never runs `./gradlew`.
+1. **Bootstrap without in-tree Gradle** — holds on Linux: the self-host job installs the pinned
+   release and never runs `./gradlew`.
 2. **Coverage parity** — `jk test --profile integration` runs every class and every test case
    `./gradlew integrationTest` runs, with the same pass/fail verdict on the same commit.
    Measured, not asserted: `scripts/measure-tier-parity.sh` runs both tiers and compares their
@@ -76,22 +104,36 @@ optional parity run:
 3. **Guard parity with no exceptions that could be ported** — `guard-parity.txt` holds only
    letters that genuinely cannot live in both builds.
 4. **Green on every supported OS** — the self-host lane passes on Linux, macOS and Windows, not
-   only the Linux runner it starts on.
+   only the Linux runner it starts on. macOS Intel, Linux aarch64 and Windows have no hosted
+   client at the pin, so their release lanes bootstrap from Gradle.
 5. **A wall baseline that holds** — the scheduled measurement has enough history that a regression
    is distinguishable from runner noise, and the rebuild row has not regressed against it.
 
-Until all five hold, Gradle stays the trusted bootstrap and the merge authority.
+Until all five hold, Gradle stays in the tree: the advisory parity run, and the bootstrap for
+the platforms without a hosted client.
 
-## Bootstrap (chicken-egg)
+## Bootstrap
 
-You need a working `jk` before pure-jk can build the monorepo.
+Install the released jk and let it build the tree; the tree's own jk then takes over:
+
+```bash
+curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash
+export PATH="$HOME/.jk/bin:$PATH"
+jk engine status
+jk build --skip-tests
+jk install --skip-tests   # this checkout's client, engine and workers replace the release's
+```
+
+`jk install` is what makes the checkout self-hosting rather than merely built: from then on the
+engine running your builds is the one you just compiled ([Install jk with jk](#install-jk-with-jk-no-gradle)).
+
+The Gradle path serves two cases — a platform with no hosted client (macOS Intel, Linux aarch64,
+Windows), and a branch whose manifests or lock the released engine cannot read yet:
 
 ```bash
 # Native (Graal). Windows thin-client path is in CONTRIBUTING.
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.jk/bin:$PATH"
-jk engine status
 ```
 
 The native client is preferred (self-heal, sub-50 ms). **Windows also supports the thin JVM
@@ -102,10 +144,7 @@ and fails, listing what it found, when none does. A `build/dist` left over from 
 is skipped rather than handed a new engine (`jk self materialize` refuses that too).
 The thin client cannot self-heal a missing engine — materialize from this checkout.
 
-Once a release is published this section shrinks to one line: install with
-`curl -fsSL https://jumpkick.build/install.sh | bash` and let the binary bootstrap its own engine.
-
-Helper: `./scripts/bootstrap-from-gradle.sh`.
+Helper for the Gradle path: `./scripts/bootstrap-from-gradle.sh`.
 
 ## Dogfood (same tree)
 
@@ -129,8 +168,9 @@ jar), and all first-party `plugins/*` workers (thin jars; `PluginMain` implied b
 |---|---|
 | `shared/*`, `server/{io,resolver,toolchain,engine}`, `plugins/*`, `clients/cli` | **Green** dogfood / CI (CLI uses isolated nested engines) |
 
-Gradle tests remain the pre-merge bar for many paths (`./gradlew test` / `checkAll` —
-see [AGENTS.md](../../AGENTS.md) and [test-suite-tiers.md](test-suite-tiers.md)).
+On a pull request the bar is `jk test` in the self-host job plus the curated integration lane;
+`./gradlew checkAll` stays the local pre-merge sweep for wire/engine/CLI changes
+(see [AGENTS.md](../../AGENTS.md) and [test-suite-tiers.md](test-suite-tiers.md)).
 
 ## Coexistence notes
 
@@ -216,19 +256,19 @@ build rather than silently never running.
 
 | Task | Why |
 |---|---|
-| Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
-| `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
+| Full `./gradlew test` | The advisory `gradle-parity` job and the nightly tier comparison |
+| `./gradlew dist` / `nativeCompile` | Bootstrap where no client is hosted, or for a branch the released engine cannot read |
 | `./gradlew installLocal` | Parity path for workers + engine; `jk install` on the tree does the same and the client too |
 | `checkNoDisabledCompile` (G64), `checkGuardParity`, `checkGuardRegistry` | The one letter only Gradle's task graph can see, and the registry's two tasks — see [House-rule gate](#house-rule-gate) |
 
 ### Future cut-over (backlog)
 
-Not started — keep dual-build green until this epic is scheduled. The gate on starting it is the
-five criteria in [Which build is the oracle](#when-self-host-can-replace-gradle-as-the-primary-oracle):
+Steps 1 and 2 hold; 3 and 4 wait on the five criteria in
+[What deleting Gradle still waits on](#what-deleting-gradle-still-waits-on):
 
-1. **Bootstrap without in-tree Gradle** — install `jk` from a release (or a sibling Gradle-only
-   checkout) so a clean product tree never needs `./gradlew`.
-2. **CI primary = pure-jk** — Gradle job becomes optional `parity`.
+1. ~~**Bootstrap without in-tree Gradle** — install `jk` from a release so a clean product tree
+   never needs `./gradlew`.~~ (done: the pinned hosted release, `.jk/ci-bootstrap-version`)
+2. ~~**CI primary = pure-jk** — Gradle job becomes optional `parity`.~~ (done: `gradle-parity`, advisory)
 3. **Relocate Gradle** for oracle builds only (if still wanted).
 4. **Product tree Gradle-free** — delete `gradlew`, `buildSrc/`, module `build.gradle.kts`.
 
@@ -274,9 +314,9 @@ target/dist/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
 ```
 
-Gradle produces the same layout under `build/dist/` (`./gradlew dist`), which is what CI's
-self-host lane and the release workflow still bootstrap *from* until a release built by jk is
-hosted; the release itself already ships the `target/dist` jk builds (Windows excepted).
+Gradle produces the same layout under `build/dist/` (`./gradlew dist`); the release lanes with no
+hosted client bootstrap from it, and Windows ships it. Every other lane, CI's self-host job
+included, bootstraps from the hosted release and ships what `jk build` writes under `target/dist`.
 
 ## AOT during self-host / CI
 
@@ -320,4 +360,4 @@ what normal is — criterion 5 above.
 10. ~~Same-repo dual-build (`jk.toml` + Gradle; no `jk.jk`)~~ (done)
 11. **Mill-class test parallelism** — isolation + default `-w` / `--parallel-tests` policy
     (see KanArtist `projects/jk/docs/perf/test-parallelization.md`)
-12. **Gradle cut-over** — backlog ([above](#future-cut-over-backlog))
+12. **Gradle cut-over** — CI primary is pure-jk; deleting Gradle from the tree is the remainder ([above](#future-cut-over-backlog))

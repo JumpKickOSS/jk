@@ -443,16 +443,25 @@ final class ParityRules {
     private static final String CI = ".github/workflows/ci.yml";
     private static final String NIGHTLY = ".github/workflows/ci-nightly.yml";
     private static final String WALL = ".github/workflows/wall-measure.yml";
+    /** The one place the release CI bootstraps jk from is written; every workflow step reads it. */
+    private static final String BOOTSTRAP_PIN = ".jk/ci-bootstrap-version";
+    /** The branch gate's Gradle job: advisory by design, the one job {@code continue-on-error} is allowed on. */
+    private static final String GRADLE_PARITY_JOB = "gradle-parity";
+
+    private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
+    private static final Pattern LITERAL_BOOTSTRAP = Pattern.compile("JK_VERSION=[\"']?\\d");
+    private static final Pattern TREE_VERSION = Pattern.compile("(?m)^version\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)");
 
     @Guard(
             id = "ci-cadence",
             why =
-                    "nightly CI runs the benches, coverage and the product smoke; the branch gate keeps the self-host job that is the only evidence jk still builds jk",
+                    "nightly CI runs the benches, coverage and the product smoke; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
+                            + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk",
             instead =
-                    "restore the job, step or script the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
+                    "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
     void ciCadence(Text text, Violations v) {
-        String nightly = HouseRules.owner(text, NIGHTLY);
-        String branch = HouseRules.owner(text, CI);
+        String nightly = yaml(text, NIGHTLY);
+        String branch = yaml(text, CI);
         List<String> problems = new ArrayList<>();
         if (!exists(text, "scripts/ci-product-smoke.sh")) problems.add("scripts/ci-product-smoke.sh is missing");
         if (!nightly.contains("./gradlew benchTest")) problems.add(NIGHTLY + " must run ./gradlew benchTest");
@@ -468,19 +477,47 @@ final class ParityRules {
             problems.add(CI + " must not run coverage or benches (they are nightly, non-gating)");
         if (!text(text, "build.gradle.kts").contains("\"coverageReport\""))
             problems.add("build.gradle.kts must register coverageReport");
-        if (!branch.contains("self-host:"))
+        Map<String, String> jobs = jobs(branch);
+        String selfHost = jobs.get("self-host");
+        if (selfHost == null)
             problems.add(
                     CI
                             + " must keep the self-host job — a pull request has to prove jk still builds and tests this checkout");
-        if (!branch.contains("JK_HOME:"))
+        else {
+            if (!selfHost.contains("JK_HOME:"))
+                problems.add(
+                        "the self-host job must run against an isolated JK_HOME, or it can pass on state the pull request did not produce");
+            for (String verb : List.of("jk build", "jk install", "jk guard", "jk test"))
+                if (!selfHost.contains(verb)) problems.add(CI + "'s self-host job must run `" + verb + "`");
+            if (selfHost.contains("gradlew"))
+                problems.add(CI + "'s self-host job must not invoke gradlew: it bootstraps from the hosted release "
+                        + BOOTSTRAP_PIN
+                        + " pins, and a Gradle step there puts the bootstrap oracle back in the merge gate");
+            if (!selfHost.contains("install.sh") || !selfHost.contains(BOOTSTRAP_PIN))
+                problems.add(CI + "'s self-host job must bootstrap with install.sh at the version " + BOOTSTRAP_PIN
+                        + " names, never a version spelled in the workflow");
+        }
+        for (Map.Entry<String, String> job : jobs.entrySet())
+            if (job.getValue().contains("continue-on-error") && !job.getKey().equals(GRADLE_PARITY_JOB))
+                problems.add(CI + "'s `" + job.getKey()
+                        + "` job must not carry continue-on-error — the flag makes a merge requirement advisory without"
+                        + " deleting the job; only `" + GRADLE_PARITY_JOB
+                        + "` is advisory by design (docs/contributors/self-host.md)");
+        String pin = textOrNull(text, BOOTSTRAP_PIN);
+        Matcher treeVersion = TREE_VERSION.matcher(text(text, "jk.toml"));
+        if (pin == null)
             problems.add(
-                    "the self-host job must run against an isolated JK_HOME, or it can pass on state the pull request did not produce");
-        for (String verb : List.of("jk build", "jk test"))
-            if (!branch.contains(verb)) problems.add(CI + "'s self-host job must run `" + verb + "`");
-        if (branch.contains("continue-on-error"))
-            problems.add(
-                    CI + " must not carry continue-on-error — the self-host job is a merge requirement, and a flag that"
-                            + " makes it advisory retires the oracle without deleting the job (docs/contributors/self-host.md)");
+                    BOOTSTRAP_PIN
+                            + " is missing — the release CI bootstraps from is written there once and read by every workflow step");
+        else if (!RELEASE_VERSION.matcher(pin.strip()).matches())
+            problems.add(BOOTSTRAP_PIN + " must hold exactly one release version (x.y.z), not '" + pin.strip() + "'");
+        else if (treeVersion.find() && newer(pin.strip(), treeVersion.group(1)))
+            problems.add(BOOTSTRAP_PIN + " names " + pin.strip() + ", newer than this tree's own "
+                    + treeVersion.group(1) + " — a bootstrap release is cut from a tree, so it is never ahead of one");
+        for (String wf : text.files(".github/workflows/*.yml"))
+            if (LITERAL_BOOTSTRAP.matcher(yaml(text, wf)).find())
+                problems.add(wf + " spells a JK_VERSION literal; the bootstrap version is read from " + BOOTSTRAP_PIN
+                        + ", so a release bumps one file");
         if (!exists(text, "scripts/dogfood-wall-measure.sh"))
             problems.add("scripts/dogfood-wall-measure.sh is missing");
         String wall = textOrNull(text, WALL);
@@ -496,9 +533,70 @@ final class ParityRules {
         }
         for (String p : problems)
             v.add(
-                    new TextSite(p.startsWith(".github") || p.startsWith("build.gradle") ? p.split(" ")[0] : CI, 0, p),
+                    new TextSite(
+                            p.startsWith(".github") || p.startsWith("build.gradle") || p.startsWith(".jk/")
+                                    ? p.split("['\\s]")[0]
+                                    : CI,
+                            0,
+                            p),
                     p);
-        v.population(3);
+        v.population(4);
+    }
+
+    /**
+     * A workflow with its {@code #} comments blanked, line structure kept. The comment view {@code Text.blanked}
+     * offers is a C-family lexer: it reads the {@code //} of a URL in a {@code run:} script as a line comment and
+     * keeps a YAML comment as text, so a job block would lose its installer line and gain the prose above the
+     * next job.
+     */
+    private static String yaml(Text text, String path) {
+        StringBuilder out = new StringBuilder();
+        for (String line : text.lines(path)) {
+            String body = line.strip().startsWith("#") ? "" : line;
+            int comment = body.indexOf(" #");
+            out.append(comment >= 0 ? body.substring(0, comment) : body).append('\n');
+        }
+        return out.toString();
+    }
+
+    /**
+     * A workflow's jobs by id, each as the text of its block: the keys at indent two under {@code jobs:}, a block
+     * running to the next such key or the next top-level key. Comment-blanked text keeps the line structure.
+     */
+    private static Map<String, String> jobs(String workflow) {
+        Map<String, String> out = new LinkedHashMap<>();
+        List<String> lines = workflow.lines().toList();
+        int i = 0;
+        while (i < lines.size() && !lines.get(i).startsWith("jobs:")) i++;
+        String id = null;
+        StringBuilder block = new StringBuilder();
+        for (i++; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if (line.isBlank()) continue;
+            int indent = indentOf(line);
+            if (indent == 0) break;
+            if (indent == 2 && line.strip().endsWith(":")) {
+                if (id != null) out.put(id, block.toString());
+                id = line.strip();
+                id = id.substring(0, id.length() - 1);
+                block.setLength(0);
+                continue;
+            }
+            if (id != null) block.append(line).append('\n');
+        }
+        if (id != null) out.put(id, block.toString());
+        return out;
+    }
+
+    /** True when release version {@code a} is newer than {@code b}, both {@code x.y.z}. */
+    private static boolean newer(String a, String b) {
+        String[] as = a.split("\\.");
+        String[] bs = b.split("\\.");
+        for (int i = 0; i < 3; i++) {
+            int d = Integer.parseInt(as[i]) - Integer.parseInt(bs[i]);
+            if (d != 0) return d > 0;
+        }
+        return false;
     }
 
     // ---- G99 ---------------------------------------------------------------------------------

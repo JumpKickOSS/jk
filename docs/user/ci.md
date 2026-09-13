@@ -36,6 +36,27 @@ path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if you accept that
 
 After restoring cache, a normal `jk build` should hit action cache for unchanged modules.
 
+## Installing jk on a runner
+
+Pin the release, and keep the pin in one file so a new release is one edit:
+
+```yaml
+- name: Install jk
+  run: |
+    set -euo pipefail
+    curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)" bash
+    echo "$HOME/.jk/bin" >> "$GITHUB_PATH"
+```
+
+`JK_VERSION` names the release; without it the installer follows the signed `latest` pointer, which
+moves under your builds. `JK_HOME` puts the whole installation somewhere other than `~/.jk` —
+`${{ github.workspace }}/.jk-home` keeps it inside the checkout and out of any restored cache. The
+installer verifies the release signature and checksum before it writes anything, and the `CI`
+variable every hosted runner sets keeps it non-interactive. To move to a new release, change the
+one line in `.jk/ci-bootstrap-version` and let the pipeline prove it. jk's own repository works
+this way, with a guard that refuses a version spelled in a workflow
+([self-host](../contributors/self-host.md#the-bootstrap-pin)).
+
 ## Typical job
 
 ```bash

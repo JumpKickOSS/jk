@@ -179,8 +179,11 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push (`ci.yml`):** `./gradlew checkFast` (unit tier, buildSrc tests, the Gradle-only guard), the self-host job (`jk build`: the house-rule lanes), the curated
-  integration lane in its own job, and the commit-authorship scan. No coverage, no benches.
+- **PR / push (`ci.yml`):** the self-host job (`jk build`, `jk install`, `jk guard`, `jk test`: the
+  fast tier and every house-rule lane, run by the checkout's own jk), the curated integration lane
+  in its own job, the shell fixtures and the commit-authorship scan. `./gradlew checkFast` (unit
+  tier, buildSrc tests, the Gradle-only guard) runs beside them as the advisory `gradle-parity`
+  job. No coverage, no benches.
 - **Nightly (`ci-nightly.yml`):** Linux `integrationTest` (compared with jk's profile), `slowTest`,
   `networkTest`, `benchTest`, `coverageReport -Pjk.coverage` and the jk coverage ratchet
   (`jk test --coverage`, `jk guard`). macOS and Windows run `scripts/ci-product-smoke.sh`.

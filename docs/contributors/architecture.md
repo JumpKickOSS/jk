@@ -457,9 +457,10 @@ root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
 
 Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modules plus thin
 workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
-dogfoods after a Gradle `dist`/`installLocal` bootstrap. The native client is the preferred
+dogfoods after a `curl … install.sh` bootstrap from the hosted release (Gradle
+`dist`/`installLocal` where no client is hosted). The native client is the preferred
 shipped client; Windows also supports the thin JVM client (`jk.bat`) because Smart App Control
-blocks unsigned `jk.exe` (native signing is still open). Once a release is published the
-bootstrap is `curl -fsSL https://jumpkick.build/install.sh | bash`. Full `dist`, remaining
+blocks unsigned `jk.exe` (native signing is still open). The bootstrap is
+`curl -fsSL https://jumpkick.build/install.sh | bash`. Full `dist`, remaining
 plugins, and nested engine integration tests remain Gradle-heavy. Breaking changes remain
 acceptable until 1.0.

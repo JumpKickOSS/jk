@@ -46,6 +46,10 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 
 ## Building
 
+The shortest bootstrap is the released jk: `curl -fsSL https://jumpkick.build/install.sh | bash`,
+then `jk build` and `jk install` in this checkout ([self-host](docs/contributors/self-host.md#bootstrap)).
+The Gradle path:
+
 ```bash
 ./gradlew classes
 ./gradlew dist                                  # native client + engine jar → build/dist/
@@ -161,8 +165,8 @@ The client never embeds the engine. Spawning uses
 
 | Still Gradle | Why |
 |---|---|
-| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: `checkFast` on every push/PR (`ci.yml`); integration/slow/network/bench + coverage inventory + OS smoke on nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md) |
-| `./gradlew dist` / `nativeCompile` | Bootstrap / ship layout (`build/dist/jk`); Gradle still for native release matrix |
+| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: `checkFast` as the advisory `gradle-parity` job on every push/PR (`ci.yml`, where the self-host job is the merge authority); integration/slow/network/bench + coverage inventory + OS smoke on nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md) |
+| `./gradlew dist` / `nativeCompile` | Bootstrap / ship layout (`build/dist/jk`) for the release rows with no hosted client; Windows ships it |
 | `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk install` after `jk build` for workers only |
 
 Dogfood ship layout (bootstrap `jk` on PATH):
