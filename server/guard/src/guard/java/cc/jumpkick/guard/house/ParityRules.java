@@ -626,6 +626,12 @@ final class ParityRules {
             "loses");
     private static final List<String> DISQUALIFYING = List.of("slow", "network", "bench");
     private static final Pattern METHOD_NAME = Pattern.compile("\\bvoid\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(");
+    /** A registry line that is a setting, not an entry: {@code key = value}, no field separator. */
+    private static final Pattern DIRECTIVE = Pattern.compile("^([a-z][a-z-]*)\\s*=\\s*(\\S+)$");
+    /** The smallest {@code @Tag("integration")} population the scan may find; the registry may state its own. */
+    private static final String FLOOR_KEY = "integration-floor";
+
+    private static final int DEFAULT_FLOOR = 90;
 
     static {
         SURFACES.put("wire", "CLI to engine JSONL wire");
@@ -644,15 +650,32 @@ final class ParityRules {
                     "the curated integration lane is the only integration coverage a pull request gets; an entry that no longer runs, lost its tag, or claims a path it does not show is a boundary nobody is watching until the nightly build",
             instead =
                     "fix the registry entry, the class, the lane script or the workflow the detail names — never reclassify a class to make the gate pass")
+    @Fixture("server/guard/fixtures/curated-integration")
     void curatedIntegration(Model model, Text text, Violations v) {
         Set<String> workspace = new TreeSet<>();
         for (String module : model.modules()) if (!module.isEmpty()) workspace.add(module);
         List<String> lines = text.lines(REGISTRY);
         List<Entry> entries = new ArrayList<>();
+        int floor = DEFAULT_FLOOR;
         for (int i = 0; i < lines.size(); i++) {
             String body = lines.get(i).strip();
             if (body.isEmpty() || body.startsWith("#")) continue;
             int n = i + 1;
+            Matcher directive = DIRECTIVE.matcher(body);
+            if (directive.matches()) {
+                if (!directive.group(1).equals(FLOOR_KEY))
+                    v.add(
+                            new TextSite(REGISTRY, n, body),
+                            REGISTRY + ":" + n + ": unknown directive `" + directive.group(1) + "`; the registry knows "
+                                    + FLOOR_KEY);
+                else if (!directive.group(2).matches("[1-9]\\d*"))
+                    v.add(
+                            new TextSite(REGISTRY, n, body),
+                            REGISTRY + ":" + n + ": " + FLOOR_KEY + " must be a positive count (got "
+                                    + directive.group(2) + ")");
+                else floor = Integer.parseInt(directive.group(2));
+                continue;
+            }
             String[] fields = body.split("\\|");
             for (int k = 0; k < fields.length; k++) fields[k] = fields[k].strip();
             if (fields.length != 5) {
@@ -682,14 +705,16 @@ final class ParityRules {
             throw new IllegalStateException(
                     REGISTRY + " names no classes, so the curated lane would run nothing and report green");
         // Floor under the scan: read from the comment-blanked view, because a class whose javadoc
-        // quotes @Tag("integration") to say why it is NOT tagged reads as tagged otherwise.
+        // quotes @Tag("integration") to say why it is NOT tagged reads as tagged otherwise. The
+        // registry states the floor for its own tree; a deliberate shrink lowers it there.
         long tagged = 0;
         for (String f : text.files("**/src/test/java/**/*.java"))
             if (text.blanked(f, Blank.COMMENTS).contains("@Tag(\"integration\")")) tagged++;
-        if (tagged < 90)
+        if (tagged < floor)
             throw new IllegalStateException(
-                    "found " + tagged + " @Tag(\"integration\") classes; measured against 109 and floored at 90 —"
-                            + " either the tier shrank into the curated subset or the scan broke");
+                    "found " + tagged + " @Tag(\"integration\") classes, under the " + FLOOR_KEY + " of " + floor
+                            + " that " + REGISTRY + " states — either the tier shrank into the curated subset or the"
+                            + " scan broke; a deliberate shrink lowers the floor there in the same commit");
         Map<String, List<Entry>> byFqcn = new TreeMap<>();
         for (Entry e : entries)
             byFqcn.computeIfAbsent(e.fqcn(), k -> new ArrayList<>()).add(e);

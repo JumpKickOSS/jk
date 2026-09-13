@@ -21,6 +21,14 @@
 # Blank lines and `#` comments are ignored. Guard G63 (`curated-integration`) checks every rule
 # above, the wall-clock budget in docs/contributors/test-suite-tiers.md, and the CI step that runs
 # the lane.
+#
+# One setting, `integration-floor = N`: the smallest `@Tag("integration")` population the guard
+# accepts from its scan of every src/test/java. Under it, either the tier shrank into the curated
+# subset or the scan broke, and the guard refuses to judge rather than pass a lane carved out of
+# nothing. A deliberate shrink lowers the number here, in the same commit; without the line the
+# floor is 90.
+
+integration-floor = 90
 
 clients/cli   | cc.jumpkick.cli.engine.EngineClientTest        | wire      | success,failure | The client half of the JSONL socket: handshake, status, stop, drain, and the not-listening answers every command depends on.
 server/engine | cc.jumpkick.engine.EngineServerTest            | wire      | success,failure | The server half of the same socket, including a stale socket file from a killed engine and the loopback TCP token gate.

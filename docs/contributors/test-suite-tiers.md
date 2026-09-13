@@ -64,7 +64,10 @@ Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `
 each with at least one `success` and one `failure` entry. Guard **G63** (`curated-integration`)
 rejects an entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a
 failure path the class does not show; it also fails when a surface loses a path, when the lane
-script or its step in `ci.yml` is gone, or when the nightly stops running the full profile.
+script or its step in `ci.yml` is gone, or when the nightly stops running the full profile. The
+registry's `integration-floor` line states the smallest `@Tag("integration")` population the
+guard accepts from its scan; under it the guard refuses to judge, because a lane carved out of a
+tier that shrank is not the coverage it claims.
 
 ### Budget and escalation
 

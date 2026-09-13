@@ -1,0 +1,11 @@
+name: ci
+on: [pull_request]
+jobs:
+  self-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: jk test --no-ansi
+      - name: Curated integration lane
+        timeout-minutes: 8
+        run: scripts/curated-integration.sh

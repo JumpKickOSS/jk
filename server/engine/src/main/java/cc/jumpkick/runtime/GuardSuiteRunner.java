@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.guard.api.runtime.GuardConfig;
 import cc.jumpkick.guard.eval.GuardModelSnapshot;
 import cc.jumpkick.guard.eval.GuardSuites;
+import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.test.JUnitLauncher;
@@ -92,7 +93,11 @@ final class GuardSuiteRunner {
         Path part = report.resolveSibling(report.getFileName() + ".part");
         Files.deleteIfExists(part);
         Path model = guardDir.resolve("model.json");
-        GuardModelSnapshot.write(in.root(), workspaceModules, model);
+        // A tree case is the checkout the guard reads, so its own root jk.toml is the workspace the
+        // model describes; the real tree's members are not in it.
+        Path modelRoot = in.textRoot() == null ? in.root() : in.textRoot();
+        GuardModelSnapshot.write(
+                modelRoot, in.textRoot() == null ? workspaceModules : WorkspaceModules.of(modelRoot), model);
         // Source roots, never module directories: the text view walks what it is given, and a module
         // directory would take the build output along.
         List<Path> sources = new ArrayList<>(in.textRoots());

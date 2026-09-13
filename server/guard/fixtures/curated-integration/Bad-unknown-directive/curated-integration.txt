@@ -1,0 +1,11 @@
+# The curated registry of this fixture's checkout: six surfaces, both paths each.
+integration-floor = 5
+
+clients/cli   | fx.curated.WireClientTest     | wire      | success,failure | The client half of the socket: handshake, status, and the not-listening answer.
+clients/cli   | fx.curated.EngineSpawnTest    | spawn     | success,failure | Which processes count as this home's engine, and a foreign pid is reported, not stopped.
+server/engine | fx.curated.PluginWorkersTest  | workers   | success,failure | Worker processes are tracked per request, and a bad spec exits non-zero.
+server/engine | fx.curated.WorkspaceBuildTest | workspace | success,failure | The build over a real workspace, and a compile error leaves a non-zero exit.
+clients/cli   | fx.curated.InstallLayoutTest  | install   | success,failure | Install writes the lib layout, and refuses a tree with no manifest.
+server/engine | fx.curated.LockPipelineTest   | lock      | success,failure | The lock pipeline, and the offline refusal when the lock does not cover a dependency.
+
+budget-minutes = 8
