@@ -333,6 +333,10 @@ final class ModuleForecast {
                 }
             }
             if (stampFresh) {
+                // The stamp names the compile that produced this tree; that record is what the
+                // tree is held against below and what a wiped tree would be reconstructed from.
+                compileMainKey =
+                        FreshnessStamp.stampedKey(out, BuildStamps.JAVA).orElse(null);
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_MAIN, TaskForecast.Status.CACHED, "", null));
             } else {
                 String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_MAIN, out);
@@ -615,8 +619,8 @@ final class ModuleForecast {
             List<Path> testRt = PlannerSupport.testRuntimeClasspath(dir, project, lock, resolver);
             long ts = Perf.start();
             String mainFp = null;
-            if (!TaskForecaster.classesDirHasContent(layout.classesDir())) {
-                // Resource-drift flag is computed later; empty classes uses compile
+            if (!classesTreeWhole(layout)) {
+                // Resource-drift flag is computed later; an empty or incomplete tree uses compile
                 // outputs + resource roots (same merge as package post-clean).
                 mainFp = PackagingKeys.classesTokenForPackage(
                         dir, compact, layout, project, actionCache, compileMainKey, null);
@@ -901,9 +905,17 @@ final class ModuleForecast {
         // dirtiness — restored outputs are byte-identical to what consumers hashed.
         if (steps.stream().allMatch(TaskForecast.Task::cached)) {
             boolean outputsAbsent = false;
+            // A non-empty tree that lacks an output its compile record owns is a missing output
+            // too: the key hits and every class file present is current, yet the jar packaged
+            // from the tree would lack the same classes, build after build, until something
+            // else moved the key. The restore brings the record's whole tree back.
+            boolean incomplete = false;
             if (producesJar) {
+                incomplete = TaskForecaster.classesDirHasContent(layout.classesDir())
+                        && !ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, layout.classesDir());
                 outputsAbsent = !Files.isRegularFile(layout.mainJar())
                         || !TaskForecaster.classesDirHasContent(layout.classesDir())
+                        || incomplete
                         || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()));
             } else if (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()) {
                 // Resources-only module: its classes tree (copied resources) is consumed
@@ -912,9 +924,23 @@ final class ModuleForecast {
             }
             if (outputsAbsent) {
                 steps.add(new TaskForecast.Task(
-                        TaskNames.RESTORE_OUTPUTS, TaskForecast.Status.RUN, "restore from cache", null));
+                        TaskNames.RESTORE_OUTPUTS,
+                        TaskForecast.Status.RUN,
+                        incomplete ? "restore from cache · classes tree incomplete" : "restore from cache",
+                        null));
             }
         }
+    }
+
+    /**
+     * True when the classes tree is present and holds every output its compile record owns —
+     * the tree a live package or test step would hash. Anything else is priced from the record,
+     * as after {@code jk clean}, so an incomplete tree forecasts a restore rather than a
+     * repackage of the tree it happens to have.
+     */
+    private boolean classesTreeWhole(BuildLayout layout) throws IOException {
+        return TaskForecaster.classesDirHasContent(layout.classesDir())
+                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, layout.classesDir());
     }
 
     private void orderAfter(Prepared prepared) throws Exception {

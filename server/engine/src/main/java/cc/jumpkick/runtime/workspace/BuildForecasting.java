@@ -214,7 +214,12 @@ public final class BuildForecasting {
         Map<Path, String> fps;
         Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();
         if (entryDir != null && memoSafe) {
-            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests, profile);
+            var memo = PreflightMemo.tryLoadDirty(
+                    entryDir,
+                    graph,
+                    skipTests,
+                    profile,
+                    new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
             if (memo.isPresent()) {
                 Perf.note(
                         "preflight-memo hit",
@@ -380,7 +385,12 @@ public final class BuildForecasting {
         if (entryDir != null
                 && !SessionContext.current().config().rebuildOr(false)
                 && !SessionContext.current().config().forceOr(false)) {
-            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests, profile);
+            var memo = PreflightMemo.tryLoadDirty(
+                    entryDir,
+                    graph,
+                    skipTests,
+                    profile,
+                    new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
             if (memo.isPresent() && memo.get().dirty().isEmpty()) {
                 Perf.note(
                         "explain preflight-memo hit fully-cached",

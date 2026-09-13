@@ -21,6 +21,7 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
@@ -203,6 +204,19 @@ public final class PreflightMemo {
      */
     public static Optional<DirtyMemo> tryLoadDirty(
             Path entryDir, BuildGraph.Result graph, boolean skipTests, @Nullable String profile) {
+        return tryLoadDirty(entryDir, graph, skipTests, profile, null);
+    }
+
+    /**
+     * As above with the action cache the build restores from, so a module's classes tree is held
+     * against the compile record it came from and not judged present by any one class file.
+     */
+    public static Optional<DirtyMemo> tryLoadDirty(
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            @Nullable String profile,
+            @Nullable ActionCache actionCache) {
         Path file = resolveDirtyMemoFile(entryDir);
         if (file == null || !Files.isRegularFile(file)) return Optional.empty();
         try {
@@ -266,7 +280,7 @@ public final class PreflightMemo {
                 fps.put(dir, row.fp());
                 if (row.dirty()) {
                     dirty.add(dir);
-                } else if (ModuleOutputs.packageOutputsMissing(root, dir, u.manifest())) {
+                } else if (ModuleOutputs.packageOutputsMissing(root, dir, u.manifest(), actionCache)) {
                     // Inputs still match — missing jars/classes need action-cache restore, not
                     // a memo miss that forces a full TaskForecaster rebuild wall.
                     restoreNeeded.add(dir);

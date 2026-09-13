@@ -439,6 +439,11 @@ public final class TaskForecaster {
         }
     }
 
+    /**
+     * Presence only: any non-stamp file under the tree. Whether the tree is <em>whole</em> is a
+     * different question, answered against its compile record by {@link
+     * ModuleOutputs#compileOutputsOnDisk}.
+     */
     static boolean classesDirHasContent(Path classesDir) throws IOException {
         // Terminates on the first hit with the attrs the walk already read — Files.walk's
         // anyMatch re-stats every entry to ask isRegularFile.

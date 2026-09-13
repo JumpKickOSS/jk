@@ -398,6 +398,9 @@ public final class PlannerCompile {
         ctx.put(JAVA_STAMP_DIGEST, optionsDigest);
         List<String> stampTokens = ActionKey.javacClasspathTokens(request);
         ctx.put(JAVA_STAMP_TOKENS, stampTokens);
+        // A fresh stamp vouches for the inputs, not for the tree: one that lost an output its
+        // compile record owns falls through to the action cache, whose hit restores the record's
+        // whole tree, instead of packaging the subset it has.
         if (!rerun
                 && FreshnessStamp.isFresh(
                         javaOut,
@@ -405,7 +408,8 @@ public final class PlannerCompile {
                         sources,
                         FreshnessStamp.ClasspathTokens.of(stampTokens),
                         ctx.require(RELEASE),
-                        optionsDigest)) {
+                        optionsDigest)
+                && ModuleOutputs.compileOutputsOnDisk(cx.actionCache(), javaOut)) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
             ctx.label("up to date");
             ctx.cached();

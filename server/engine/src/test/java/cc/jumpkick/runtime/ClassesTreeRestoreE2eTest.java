@@ -3,13 +3,18 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -18,6 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Stream;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -94,6 +102,68 @@ class ClassesTreeRestoreE2eTest {
         assertThat(constantPool(classFromJar(lib.mainJar(), "com/example/One.class")))
                 .as("the jar follows the tree")
                 .contains("revision-A");
+    }
+
+    /**
+     * A tree that lost a class its compile record owns, with every key still hitting, is made whole
+     * on the next plain build; the forecast names it a restore, not a rebuild.
+     */
+    @Test
+    void a_partial_classes_tree_is_made_whole_without_redo(@TempDir Path tmp) throws Exception {
+        Path cache = Path.of(System.getProperty("user.dir"), "build", "classes-tree-partial-cache");
+        Path ws = workspace(tmp, REVISION_A);
+        lock(ws, cache);
+        BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
+        Set<String> whole = Set.of("com/example/One.class", "com/example/Two.class");
+
+        build(ws, cache, "initial");
+        assertThat(classesUnder(lib.classesDir())).isEqualTo(whole);
+        assertThat(classesIn(lib.mainJar())).isEqualTo(whole);
+
+        Files.delete(lib.classesDir().resolve("com/example/Two.class"));
+        TaskForecast.Module forecast = forecast(ws, cache, "lib");
+        assertThat(forecast.steps())
+                .as("every step still hits; the only work is the restore, and it says why")
+                .anyMatch(s ->
+                        TaskNames.RESTORE_OUTPUTS.equals(s.name()) && s.text().contains("incomplete"))
+                .noneMatch(s -> !s.cached() && !TaskNames.RESTORE_OUTPUTS.equals(s.name()));
+
+        build(ws, cache, "after a class was deleted from the tree");
+        assertThat(classesUnder(lib.classesDir()))
+                .as("tree after the plain build")
+                .isEqualTo(whole);
+        assertThat(classesIn(lib.mainJar())).as("jar after the plain build").isEqualTo(whole);
+    }
+
+    private static TaskForecast.Module forecast(Path ws, Path cache, String module) throws IOException {
+        BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        return TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true).stream()
+                .filter(m -> m.dir().getFileName().toString().equals(module))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private static Set<String> classesUnder(Path dir) throws IOException {
+        Set<String> out = new TreeSet<>();
+        try (Stream<Path> files = Files.walk(dir)) {
+            for (Path f : (Iterable<Path>) files::iterator) {
+                if (f.toString().endsWith(".class"))
+                    out.add(dir.relativize(f).toString().replace('\\', '/'));
+            }
+        }
+        return out;
+    }
+
+    private static Set<String> classesIn(Path jar) throws IOException {
+        Set<String> out = new TreeSet<>();
+        assertThat(jar).isRegularFile();
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            zip.stream().map(e -> e.getName()).filter(n -> n.endsWith(".class")).forEach(out::add);
+        }
+        return out;
     }
 
     private static String constantPool(Path classFile) throws IOException {

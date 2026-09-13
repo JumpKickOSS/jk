@@ -292,6 +292,10 @@ public final class PackagingKeys {
      * <p>When the live classes tree is present but main/extra resources have drifted, projects the
      * post-{@code copy-resources} tree (class files + source resource roots) so package CACHED/RUN
      * matches the live package step after the copy — not the stale pre-copy classes dir.
+     *
+     * <p>A tree that lacks an output the compile record owns takes the record path as an empty
+     * tree does: the live build restores the whole tree before it packages, so the token of the
+     * partial tree names a jar that build never produces.
      */
     static String classesTokenForPackage(
             Path dir,
@@ -303,7 +307,8 @@ public final class PackagingKeys {
             @Nullable Boolean knownResourceDrift)
             throws IOException {
         Path classesDir = layout.classesDir();
-        if (TaskForecaster.classesDirHasContent(classesDir)) {
+        if (TaskForecaster.classesDirHasContent(classesDir)
+                && ModuleOutputs.compileOutputsOnDisk(actionCache, compileMainKey, classesDir)) {
             // Reuse the forecast's single drift detection when it ran — a re-walk here
             // could disagree with it and project the token from a different tree state.
             boolean drifted = knownResourceDrift != null
