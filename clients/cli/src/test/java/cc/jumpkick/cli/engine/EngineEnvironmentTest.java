@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 class EngineEnvironmentTest {
 
     @Test
-    void the_jvm_switches_credentials_proxies_and_build_tool_options_stay_behind() {
+    void the_jvm_switches_credentials_and_build_tool_options_stay_behind() {
         for (String poison : new String[] {
             "JAVA_TOOL_OPTIONS",
             "_JAVA_OPTIONS",
@@ -23,8 +23,6 @@ class EngineEnvironmentTest {
             "CLASSPATH",
             "MAVEN_OPTS",
             "GRADLE_OPTS",
-            "HTTPS_PROXY",
-            "http_proxy",
             "AWS_SECRET_ACCESS_KEY",
             "GITHUB_TOKEN",
             "CI"
@@ -50,6 +48,10 @@ class EngineEnvironmentTest {
             "GRAALVM_HOME",
             "SSH_AUTH_SOCK",
             "MISE_DATA_DIR",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "no_proxy",
+            "NO_PROXY",
             "JK_HOME",
             "JK_JVM_ARGS",
             "JK_PERF",

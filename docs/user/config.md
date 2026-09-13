@@ -91,6 +91,34 @@ They are not project-overridable.
 
 `JK_HTTP_ENABLED=false`, `JK_MCP_ENABLED=false`. Details: [MCP](mcp.md), [Web](web.md).
 
+## Network
+
+Corporate networks that only reach the internet through a proxy configure it once:
+
+```toml
+[network]
+proxy = "http://proxy.corp:3128"          # every request; user:password@ for Basic
+https-proxy = "http://proxy.corp:3129"    # https targets only, when they differ
+no-proxy = ["nexus.corp", ".internal.corp", "10.0.0.5:8081"]
+```
+
+Without a `[network]` table, the shell's `https_proxy` / `HTTPS_PROXY` (https targets),
+`http_proxy` / `HTTP_PROXY` (http targets) and `no_proxy` / `NO_PROXY` decide — lower case wins
+when both are set, and both `no-proxy` lists apply. A proxy URL is
+`http://[user:password@]host[:port]` (a bare `host:port` is http); https targets tunnel through it
+with `CONNECT`, and a `user:password@` is sent to the proxy as Basic (only to the proxy — a
+redirect to a host that goes direct never carries it). A `no-proxy` entry is
+`*`, a host, a `.suffix` (a bare suffix covers its subdomains too), or `host:port` for one port.
+Loopback targets always go direct.
+
+Every download jk makes — Maven Central and your repositories, JDK and tool distributions, the
+engine jar, release checks — goes through `Http`, so one setting covers them all. The decision is
+made per request, so a resident engine follows the network the current shell is on: the engine
+inherits the six proxy variables from the shell that spawned it as a fallback, and the shell that
+runs `jk` overrides them for its own command. A credential in a proxy URL is never printed;
+an unusable value is reported by the name that set it (`ignoring https_proxy: …`) and the request
+goes direct. `--offline` still refuses every request before any proxy is consulted.
+
 ## Other env
 
 Every boolean jk reads — from a `JK_*` variable, from `CI`, or from a quoted value in

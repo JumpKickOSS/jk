@@ -15,9 +15,9 @@ import java.util.stream.Collectors;
  * whatever that first shell happened to export would become the daemon's truth for days: {@code
  * JAVA_TOOL_OPTIONS} or {@code _JAVA_OPTIONS} silently altering the engine JVM (and defeating its
  * AOT cache, whose recorded flags must match), a cloud key or repository token reaching a process
- * no manifest asked to trust with it, a proxy that was right for one network. The engine gets the
- * variables it reads — the {@code JK_*} namespace, and the ones that say where the machine is and
- * how it talks — and nothing else. Its workers are narrowed again by {@code WorkerEnv}.
+ * no manifest asked to trust with it. The engine gets the variables it reads — the {@code JK_*}
+ * namespace, and the ones that say where the machine is and how it talks — and nothing else. Its
+ * workers are narrowed again by {@code WorkerEnv}.
  */
 final class EngineEnvironment {
 
@@ -27,9 +27,11 @@ final class EngineEnvironment {
      * Names inherited by exact spelling. Each is read by the engine or by something it launches
      * without a manifest naming it: the search path, home and user; the temp roots, time zone,
      * locale and terminal; the host JDK and GraalVM fallbacks; the SSH agent the git backend authenticates
-     * through; the SDK and JDK discovery roots; the display preferences shared config reads; and
-     * on Windows the system roots a process needs to run anything at all. Both platforms'
-     * spellings, so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes,
+     * through; the SDK and JDK discovery roots; the display preferences shared config reads; the
+     * proxy variables jk's HTTP client reads, in both cases (the client reads them through the
+     * request's environment first, so a shell that sets them for one command wins over the shell
+     * that spawned the engine); and on Windows the system roots a process needs to run anything at
+     * all. Both platforms' spellings, so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes,
      * matched in {@link #inherited}. No per-user application-data variable is carried: nothing the
      * engine runs needs one to start, and what reads one to discover another program's layout
      * falls back to that program's default location.
@@ -55,6 +57,12 @@ final class EngineEnvironment {
             "MISE_DATA_DIR",
             "NO_COLOR",
             "NERD_FONT",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
             // Windows
             "SystemRoot",
             "SystemDrive",

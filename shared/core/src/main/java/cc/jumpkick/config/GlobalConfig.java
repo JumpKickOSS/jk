@@ -221,6 +221,28 @@ public final class GlobalConfig {
         }
     }
 
+    // Network
+
+    /**
+     * The {@code [network]} table of {@code ~/.jk/config.toml} — the proxy jk's HTTP goes through.
+     * {@link NetworkConfig#EMPTY} when the file, the table or a usable value is absent: like every
+     * other read of this file, a malformed preference never fails a build.
+     */
+    public static NetworkConfig network() {
+        return network(JkDirs.userConfigFile());
+    }
+
+    /** As {@link #network()} but against an explicit config file — for tests. */
+    static NetworkConfig network(Path configFile) {
+        try {
+            return parseConfig(configFile)
+                    .map(toml -> NetworkConfig.parse(toml.getTable("network")))
+                    .orElse(NetworkConfig.EMPTY);
+        } catch (RuntimeException e) {
+            return NetworkConfig.EMPTY;
+        }
+    }
+
     // Repositories
 
     /**

@@ -333,4 +333,38 @@ class GlobalConfigTest {
                 .hasMessageContaining("repositories.corp")
                 .hasMessageContaining("${UNSET}");
     }
+
+    // ---- [network] ---------------------------------------------------------------------------
+
+    @Test
+    void the_network_table_names_a_proxy_an_https_proxy_and_a_bypass_list(@TempDir Path dir) throws IOException {
+        NetworkConfig network = GlobalConfig.network(write(dir, """
+                [network]
+                proxy = "http://proxy.corp:3128"
+                https-proxy = "http://proxy.corp:3129"
+                no-proxy = ["nexus.corp", ".internal.corp"]
+                """));
+
+        assertThat(network.proxy()).isEqualTo("http://proxy.corp:3128");
+        assertThat(network.httpsProxy()).isEqualTo("http://proxy.corp:3129");
+        assertThat(network.noProxy()).containsExactly("nexus.corp", ".internal.corp");
+    }
+
+    @Test
+    void the_bypass_list_may_be_the_comma_string_the_environment_variable_takes(@TempDir Path dir) throws IOException {
+        NetworkConfig network =
+                GlobalConfig.network(write(dir, "[network]\nno-proxy = \"nexus.corp, .internal.corp,\"\n"));
+
+        assertThat(network.proxy()).isNull();
+        assertThat(network.noProxy()).containsExactly("nexus.corp", ".internal.corp");
+    }
+
+    @Test
+    void an_absent_file_table_or_value_is_no_proxy_at_all(@TempDir Path dir) throws IOException {
+        assertThat(GlobalConfig.network(dir.resolve("nope.toml"))).isEqualTo(NetworkConfig.EMPTY);
+        assertThat(GlobalConfig.network(write(dir, "nerd-font = true\n"))).isEqualTo(NetworkConfig.EMPTY);
+        assertThat(GlobalConfig.network(write(dir, "[network]\nproxy = 3128\n")))
+                .as("a wrong type is unset, never a failed build")
+                .isEqualTo(NetworkConfig.EMPTY);
+    }
 }

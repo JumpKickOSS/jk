@@ -33,6 +33,12 @@ import org.jspecify.annotations.Nullable;
  * #MAX_REDIRECTS} hops, never from https to http, and a hop that leaves the request's origin (scheme,
  * host, port) is re-issued without {@code Authorization} or {@code Cookie}. A private repository
  * that hands a download to a CDN must not hand the CDN the repository token with it.
+ *
+ * <p>Whether a request goes through a proxy is decided per request by {@link ProxyEnvironment}:
+ * {@code ~/.jk/config.toml [network]}, then the caller's {@code http_proxy} / {@code https_proxy}
+ * / {@code no_proxy}. A proxy URL's credential rides the request as {@code Proxy-Authorization},
+ * recomputed for every redirect hop so it reaches the proxy and never an origin, and is never part
+ * of a message.
  */
 public final class Http {
 
@@ -41,6 +47,12 @@ public final class Http {
 
     /** Headers that authenticate the caller to one origin and must not travel to another. */
     private static final Set<String> CREDENTIAL_HEADERS = Set.of("authorization", "cookie");
+
+    /**
+     * The proxy's credential, recomputed for every hop: a redirect to a host the bypass list sends
+     * direct must not hand the proxy's password to that host.
+     */
+    private static final String PROXY_AUTHORIZATION = "Proxy-Authorization";
 
     private static final Duration[] BACKOFFS = {
         Duration.ofMillis(100),
@@ -52,6 +64,9 @@ public final class Http {
 
     private final HttpClient client;
     private final Duration[] backoffs;
+
+    /** Where a request goes through a proxy, and the credential the proxy wants; consulted per request. */
+    private final ProxyEnvironment proxies;
 
     /**
      * Central-rate-limit failover. Applied here, at the single transport choke point, so
@@ -67,7 +82,7 @@ public final class Http {
     private final Clock clock;
 
     public Http() {
-        this(standardClient(), BACKOFFS);
+        this(ProxyEnvironment.ambient(), BACKOFFS);
     }
 
     /**
@@ -75,11 +90,28 @@ public final class Http {
      * backoff. {@link HttpClient.Redirect#NEVER} because {@link #send} follows redirects itself.
      */
     static HttpClient standardClient() {
+        return standardClient(ProxyEnvironment.ambient());
+    }
+
+    /** As {@link #standardClient()} with the proxy decision injected — a test points it at a stub. */
+    static HttpClient standardClient(ProxyEnvironment proxies) {
         return HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_2)
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .connectTimeout(Duration.ofSeconds(10))
+                .proxy(proxies)
                 .build();
+    }
+
+    /** Production's client over {@code proxies}, with the backoff schedule given — a test's proxy stub. */
+    Http(ProxyEnvironment proxies, Duration[] backoffs) {
+        this(
+                standardClient(proxies),
+                backoffs,
+                CentralMirror.standard(),
+                HostCooldown.standard(),
+                Clock.SYSTEM,
+                proxies);
     }
 
     /**
@@ -108,11 +140,28 @@ public final class Http {
 
     /** Visible for tests — also injects the clock a {@code Retry-After} is read against. */
     Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror, HostCooldown cooldown, Clock clock) {
+        this(client, backoffs, centralMirror, cooldown, clock, ProxyEnvironment.ambient());
+    }
+
+    private Http(
+            HttpClient client,
+            Duration[] backoffs,
+            CentralMirror centralMirror,
+            HostCooldown cooldown,
+            Clock clock,
+            ProxyEnvironment proxies) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
         this.cooldown = cooldown;
         this.clock = clock;
+        this.proxies = proxies;
+    }
+
+    /** {@code builder} with the proxy credential the request for {@code uri} needs, if any. */
+    private HttpRequest.Builder withProxyAuthorization(HttpRequest.Builder builder, URI uri) {
+        proxies.proxyAuthorization(uri).ifPresent(value -> builder.setHeader(PROXY_AUTHORIZATION, value));
+        return builder;
     }
 
     public HttpResponse<byte[]> get(URI uri) throws IOException, InterruptedException {
@@ -138,7 +187,7 @@ public final class Http {
         if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
             builder.header("Accept-Encoding", "gzip");
         }
-        HttpRequest request = builder.build();
+        HttpRequest request = withProxyAuthorization(builder, uri).build();
         return sendWithRetry("GET", uri, request, gzipAwareByteArray(), null);
     }
 
@@ -171,7 +220,7 @@ public final class Http {
         if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
             builder.header("Accept-Encoding", "gzip");
         }
-        HttpRequest request = builder.build();
+        HttpRequest request = withProxyAuthorization(builder, uri).build();
         // Drain the streamed body before each retry so the connection can be reused.
         return sendWithRetry("GET", uri, request, gzipAwareInputStream(), response -> {
             try (var body = response.body()) {
@@ -193,12 +242,12 @@ public final class Http {
      */
     public HttpResponse<byte[]> postForm(URI uri, Map<String, String> form) throws IOException, InterruptedException {
         checkOffline(uri);
-        HttpRequest request = HttpRequest.newBuilder(uri)
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofString(urlEncode(form)))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(60))
-                .build();
+                .timeout(Duration.ofSeconds(60));
+        HttpRequest request = withProxyAuthorization(builder, uri).build();
         return sendWithRetry("POST", uri, request, gzipAwareByteArray(), null);
     }
 
@@ -229,7 +278,7 @@ public final class Http {
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
-        HttpRequest request = builder.build();
+        HttpRequest request = withProxyAuthorization(builder, uri).build();
         return sendWithRetry("PUT", uri, request, HttpResponse.BodyHandlers.ofByteArray(), null);
     }
 
@@ -407,14 +456,18 @@ public final class Http {
 
     /**
      * The request re-aimed at {@code target}: every header when the origin is unchanged, everything
-     * but {@link #CREDENTIAL_HEADERS} when it is not. Method and body are the caller's to decide.
+     * but {@link #CREDENTIAL_HEADERS} when it is not, and the proxy credential decided afresh for
+     * the target either way. Method and body are the caller's to decide.
      */
-    private static HttpRequest.Builder reissue(HttpRequest request, URI target) {
+    private HttpRequest.Builder reissue(HttpRequest request, URI target) {
         boolean sameOrigin = sameOrigin(request.uri(), target);
-        return HttpRequest.newBuilder(
-                        request,
-                        (name, value) -> sameOrigin || !CREDENTIAL_HEADERS.contains(name.toLowerCase(Locale.ROOT)))
+        HttpRequest.Builder next = HttpRequest.newBuilder(request, (name, value) -> {
+                    String lower = name.toLowerCase(Locale.ROOT);
+                    if (lower.equals("proxy-authorization")) return false;
+                    return sameOrigin || !CREDENTIAL_HEADERS.contains(lower);
+                })
                 .uri(target);
+        return withProxyAuthorization(next, target);
     }
 
     /**
@@ -422,7 +475,7 @@ public final class Http {
      * without the body — what browsers do and what the servers sending those statuses expect;
      * 307 and 308 keep the method and body.
      */
-    private static HttpRequest redirected(HttpRequest request, int status, URI target) {
+    private HttpRequest redirected(HttpRequest request, int status, URI target) {
         HttpRequest.Builder next = reissue(request, target);
         if (status == 303 || ((status == 301 || status == 302) && "POST".equals(request.method()))) {
             next.GET();

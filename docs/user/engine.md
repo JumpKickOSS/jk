@@ -112,6 +112,17 @@ while a build owns the connection). `jk engine status` prints the count as a `Dr
 These are not `[engine]` keys. They configure how the engine process is spawned or how
 jobs run inside it.
 
+The engine itself starts from an allow-list of the spawning shell, not from the shell: `PATH`,
+`HOME`, `USER`, `LOGNAME`, `SHELL`, `TERM`, `TMPDIR` / `TMP` / `TEMP`, `TZ`, `LANG` / `LANGUAGE` /
+`LC_*`, `JAVA_HOME`, `GRAALVM_HOME`, `SSH_AUTH_SOCK`, `ANDROID_HOME` / `ANDROID_SDK_ROOT`,
+`MISE_DATA_DIR`, `NO_COLOR`, `NERD_FONT`, every `JK_*` variable, the proxy variables
+`http_proxy` / `https_proxy` / `no_proxy` in either case ([Config § Network](config.md#network)),
+and on Windows the system roots (`SystemRoot`, `ComSpec`, `PATHEXT`, `USERPROFILE`, …). JVM
+switches (`JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`), build-tool options, cloud keys
+and forge tokens stay behind: a resident engine outlives the shell that started it, and what it
+inherited once would be every later terminal's truth. Workers are narrowed again —
+[Build § Worker environment](build.md#worker-environment-env).
+
 <!-- engine-process:start -->
 | Env | Default | Meaning |
 |---|---|---|
