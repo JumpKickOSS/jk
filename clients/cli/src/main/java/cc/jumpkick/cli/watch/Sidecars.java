@@ -109,7 +109,7 @@ public final class Sidecars implements AutoCloseable {
         for (Running r : snapshot()) {
             String failure = r.awaitReady();
             if (failure != null) return Optional.of(failure);
-            listener.ready(r.spec.name(), r.spec.ready(), r.spec.frontDoor());
+            listener.ready(r.spec.name(), r.spec.probe().ready(), r.spec.frontDoor());
         }
         return Optional.empty();
     }
@@ -119,7 +119,7 @@ public final class Sidecars implements AutoCloseable {
         return snapshot().stream()
                 .map(r -> r.spec)
                 .filter(ExecPlan.Sidecar::frontDoor)
-                .map(ExecPlan.Sidecar::ready)
+                .map(s -> s.probe().ready())
                 .filter(url -> !url.isEmpty())
                 .findFirst();
     }
@@ -251,13 +251,7 @@ public final class Sidecars implements AutoCloseable {
             this.clock = clock;
             this.startedAt = clock.nanos();
             this.probe = new ReadyProbe(
-                    "sidecar `" + spec.name() + "`",
-                    spec.ready(),
-                    spec.readyPattern(),
-                    spec.readyTimeoutMillis(),
-                    ReadyProbe.NO_PROBE_ALIVE_MILLIS,
-                    process,
-                    clock);
+                    "sidecar `" + spec.name() + "`", spec.probe(), ReadyProbe.NO_PROBE_ALIVE_MILLIS, process, clock);
         }
 
         void sawLine(String line) {

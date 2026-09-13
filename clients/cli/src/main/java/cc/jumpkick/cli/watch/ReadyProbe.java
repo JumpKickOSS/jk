@@ -3,6 +3,7 @@ package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -41,21 +42,16 @@ final class ReadyProbe {
     private final CountDownLatch patternSeen = new CountDownLatch(1);
 
     /**
+     * @param probe the process's probe as the plan carries it — the app's {@code appReady}, a
+     *     sidecar's {@code probe}; {@link ExecPlan.Probe#NONE} declares none
      * @param aliveMillis how long the process must stay up to count as ready when neither probe is
      *     set — {@link #NO_PROBE_ALIVE_MILLIS} for a sidecar, {@code 0} for the app
      */
-    ReadyProbe(
-            String subject,
-            String url,
-            String pattern,
-            long timeoutMillis,
-            long aliveMillis,
-            Process process,
-            Clock clock) {
+    ReadyProbe(String subject, ExecPlan.Probe probe, long aliveMillis, Process process, Clock clock) {
         this.subject = subject;
-        this.url = url;
-        this.pattern = pattern.isEmpty() ? null : Pattern.compile(pattern);
-        this.timeoutMillis = timeoutMillis;
+        this.url = probe.ready();
+        this.pattern = probe.readyPattern().isEmpty() ? null : Pattern.compile(probe.readyPattern());
+        this.timeoutMillis = probe.readyTimeoutMillis();
         this.aliveMillis = aliveMillis;
         this.process = process;
         this.clock = clock;

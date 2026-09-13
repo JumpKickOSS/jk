@@ -66,7 +66,7 @@ class ExecPlansSidecarsTest {
         // .env supplies what the real environment lacks; the real value is never overridden
         assertThat(web.env()).containsEntry("FROM_DOTENV", "file").containsEntry("PORT", "5173");
         assertThat(web.env()).doesNotContainKey("SHADOWED");
-        assertThat(web.ready()).isEqualTo("http://localhost:5173");
+        assertThat(web.probe().ready()).isEqualTo("http://localhost:5173");
         assertThat(web.frontDoor()).isTrue();
         assertThat(web.restart()).isEqualTo(Sidecar.Restart.NEVER);
 

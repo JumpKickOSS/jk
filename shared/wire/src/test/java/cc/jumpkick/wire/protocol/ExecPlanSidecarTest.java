@@ -20,9 +20,7 @@ class ExecPlanSidecarTest {
             List.of("npm", "run", "dev"),
             "/w/web",
             Map.of("PORT", "5173"),
-            "http://localhost:5173",
-            "",
-            60_000L,
+            new ExecPlan.Probe("http://localhost:5173", "", 60_000L),
             true,
             Sidecar.Restart.ON_EXIT);
 
@@ -61,7 +59,8 @@ class ExecPlanSidecarTest {
     void the_record_owns_copies_of_its_collections() {
         var command = new ArrayList<>(List.of("npm"));
         var env = new LinkedHashMap<>(Map.of("A", "1"));
-        ExecPlan.Sidecar s = new ExecPlan.Sidecar("web", command, "/w", env, "", "", 1L, false, Sidecar.Restart.NEVER);
+        ExecPlan.Sidecar s = new ExecPlan.Sidecar(
+                "web", command, "/w", env, new ExecPlan.Probe("", "", 1L), false, Sidecar.Restart.NEVER);
         command.add("run");
         env.put("B", "2");
         assertThat(s.command()).containsExactly("npm");

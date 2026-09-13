@@ -12,9 +12,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * One {@code [dev.sidecars]} entry as the manifest states it: {@code command} already split
  * into argv, {@code cwd} module-relative, {@code env} literal values laid over the inherited
- * environment. {@code ready} is an HTTP(S) URL polled for 2xx/3xx; {@code readyPattern} a
- * regex matched against the sidecar's output lines; at most one is set, and neither means
- * "ready once it has stayed alive for a second". {@code readyTimeoutMillis} bounds either probe.
+ * environment. {@code ready} is the sidecar's readiness probe — {@code ready} /
+ * {@code ready-pattern} / {@code ready-timeout}, the same {@link DevReady} the application's own
+ * {@code [dev]} probe is — and {@code null} means "ready once it has stayed alive for a second".
  * {@code frontDoor} names the URL {@code jk dev} prints once everything is ready.
  */
 public record Sidecar(
@@ -22,14 +22,9 @@ public record Sidecar(
         List<String> command,
         String cwd,
         Map<String, String> env,
-        @Nullable String ready,
-        @Nullable String readyPattern,
-        long readyTimeoutMillis,
+        @Nullable DevReady ready,
         boolean frontDoor,
         Restart restart) {
-
-    /** Default {@code ready-timeout}: a Vite or webpack cold start on a slow laptop fits in it. */
-    public static final long DEFAULT_READY_TIMEOUT_MILLIS = 60_000;
 
     public Sidecar {
         Objects.requireNonNull(name, "name");
@@ -37,10 +32,6 @@ public record Sidecar(
         if (command.isEmpty()) throw new IllegalArgumentException("sidecar `" + name + "` has an empty command");
         cwd = cwd == null || cwd.isBlank() ? "." : cwd;
         env = env == null || env.isEmpty() ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
-        if (ready != null && readyPattern != null) {
-            throw new IllegalArgumentException("sidecar `" + name + "` sets both ready and ready-pattern");
-        }
-        if (readyTimeoutMillis <= 0) readyTimeoutMillis = DEFAULT_READY_TIMEOUT_MILLIS;
         restart = restart == null ? Restart.NEVER : restart;
     }
 

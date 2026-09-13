@@ -4,6 +4,7 @@ package cc.jumpkick.cli.watch;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.wire.protocol.ExecPlan;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -27,7 +28,7 @@ class ReadyProbeTest {
     void the_app_with_no_probe_is_ready_the_moment_it_is_forked() throws Exception {
         Process p = sleeping();
         try {
-            ReadyProbe probe = new ReadyProbe("app", "", "", 5_000, 0, p, Clock.SYSTEM);
+            ReadyProbe probe = new ReadyProbe("app", new ExecPlan.Probe("", "", 5_000), 0, p, Clock.SYSTEM);
             assertThat(probe.declared()).isFalse();
             assertThat(probe.await()).isNull();
         } finally {
@@ -39,7 +40,8 @@ class ReadyProbeTest {
     void a_pattern_probe_passes_on_the_line_its_owner_feeds_it() throws Exception {
         Process p = sleeping();
         try {
-            ReadyProbe probe = new ReadyProbe("app", "", "Started \\w+ in", 5_000, 0, p, Clock.SYSTEM);
+            ReadyProbe probe =
+                    new ReadyProbe("app", new ExecPlan.Probe("", "Started \\w+ in", 5_000), 0, p, Clock.SYSTEM);
             probe.sawLine("Starting Api");
             Thread.ofVirtual().start(() -> probe.sawLine("Started Api in 0.4 s"));
             assertThat(probe.await()).isNull();
@@ -59,9 +61,11 @@ class ReadyProbeTest {
         Process p = sleeping();
         try {
             String base = "http://127.0.0.1:" + server.getAddress().getPort();
-            assertThat(new ReadyProbe("app", base + "/health", "", 5_000, 0, p, Clock.SYSTEM).await())
+            assertThat(new ReadyProbe("app", new ExecPlan.Probe(base + "/health", "", 5_000), 0, p, Clock.SYSTEM)
+                            .await())
                     .isNull();
-            assertThat(new ReadyProbe("app", base + "/missing", "", 1_000, 0, p, Clock.SYSTEM).await())
+            assertThat(new ReadyProbe("app", new ExecPlan.Probe(base + "/missing", "", 1_000), 0, p, Clock.SYSTEM)
+                            .await())
                     .isEqualTo("app was not ready after 1 s: " + base + "/missing never answered 2xx/3xx");
         } finally {
             p.destroyForcibly();
@@ -73,9 +77,15 @@ class ReadyProbeTest {
     void a_process_that_exits_before_its_probe_passes_fails_with_its_exit_code() throws Exception {
         Process p = new ProcessBuilder("sh", "-c", "exit 3").start();
         p.waitFor();
-        assertThat(new ReadyProbe("app", "", "never", 5_000, 0, p, Clock.SYSTEM).await())
+        assertThat(new ReadyProbe("app", new ExecPlan.Probe("", "never", 5_000), 0, p, Clock.SYSTEM).await())
                 .isEqualTo("app exited with 3 before it was ready");
-        assertThat(new ReadyProbe("sidecar `web`", "http://127.0.0.1:9/", "", 5_000, 0, p, Clock.SYSTEM).await())
+        assertThat(new ReadyProbe(
+                                "sidecar `web`",
+                                new ExecPlan.Probe("http://127.0.0.1:9/", "", 5_000),
+                                0,
+                                p,
+                                Clock.SYSTEM)
+                        .await())
                 .isEqualTo("sidecar `web` exited with 3 before it was ready");
     }
 
@@ -85,7 +95,11 @@ class ReadyProbeTest {
         try {
             long before = System.nanoTime();
             assertThat(new ReadyProbe(
-                                    "sidecar `docs`", "", "", 5_000, ReadyProbe.NO_PROBE_ALIVE_MILLIS, p, Clock.SYSTEM)
+                                    "sidecar `docs`",
+                                    new ExecPlan.Probe("", "", 5_000),
+                                    ReadyProbe.NO_PROBE_ALIVE_MILLIS,
+                                    p,
+                                    Clock.SYSTEM)
                             .await())
                     .isNull();
             assertThat(System.nanoTime() - before).isGreaterThanOrEqualTo(900_000_000L);

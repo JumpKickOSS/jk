@@ -80,9 +80,7 @@ class WireProducersFrozenBytesTest {
                         List.of("npm", "run", "dev"),
                         "/w/web",
                         Map.of("PORT", "5173"),
-                        "http://localhost:5173",
-                        "",
-                        60000L,
+                        new ExecPlan.Probe("http://localhost:5173", "", 60000L),
                         true,
                         Sidecar.Restart.NEVER)),
                 new ExecPlan.Probe("http://localhost:8080/health", "", 90000L));

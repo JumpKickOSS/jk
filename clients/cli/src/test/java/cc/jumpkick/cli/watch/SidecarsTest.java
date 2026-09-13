@@ -42,9 +42,7 @@ class SidecarsTest {
                 List.of("sh", "-c", script),
                 cwd.toString(),
                 Map.of("GREETING", "hi"),
-                "",
-                readyPattern,
-                5_000L,
+                new ExecPlan.Probe("", readyPattern, 5_000L),
                 false,
                 restart);
     }
@@ -151,9 +149,7 @@ class SidecarsTest {
                     List.of("sh", "-c", "sleep 30"),
                     dir.toString(),
                     Map.of(),
-                    url,
-                    "",
-                    5_000L,
+                    new ExecPlan.Probe(url, "", 5_000L),
                     true,
                     Sidecar.Restart.NEVER);
             try (Sidecars sidecars = start(List.of(spec), line -> {})) {
@@ -195,9 +191,7 @@ class SidecarsTest {
                     List.of("sh", "-c", "sleep 30"),
                     dir.toString(),
                     Map.of(),
-                    "http://web.example.test:8080/health",
-                    "",
-                    5_000L,
+                    new ExecPlan.Probe("http://web.example.test:8080/health", "", 5_000L),
                     true,
                     Sidecar.Restart.NEVER);
             try (Sidecars sidecars = start(List.of(spec), line -> {})) {
@@ -217,9 +211,7 @@ class SidecarsTest {
                 List.of("sh", "-c", "sleep 30"),
                 dir.toString(),
                 Map.of(),
-                "",
-                "never printed",
-                300L,
+                new ExecPlan.Probe("", "never printed", 300L),
                 false,
                 Sidecar.Restart.NEVER);
         try (Sidecars sidecars = start(List.of(spec), line -> {})) {

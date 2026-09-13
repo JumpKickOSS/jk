@@ -22,17 +22,19 @@ class JkBuildParserDevTest {
                 [dev.sidecars]
                 web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173", front-door = true }
                 docs = { command = ["mkdocs", "serve", "-a", "127.0.0.1:8001"], env = { PORT = "8001" }, restart = "on-exit", ready-pattern = "Serving on", ready-timeout = "2m" }
+                worker = { command = "npm run worker" }
                 """);
         List<Sidecar> sidecars = b.build().devSidecars();
-        assertThat(sidecars).extracting(Sidecar::name).containsExactly("web", "docs");
+        assertThat(sidecars).extracting(Sidecar::name).containsExactly("web", "docs", "worker");
 
         Sidecar web = sidecars.get(0);
         assertThat(web.command()).containsExactly("npm", "run", "dev");
         assertThat(web.cwd()).isEqualTo("../web");
         assertThat(web.env()).isEmpty();
-        assertThat(web.ready()).isEqualTo("http://localhost:5173");
-        assertThat(web.readyPattern()).isNull();
-        assertThat(web.readyTimeoutMillis()).isEqualTo(Sidecar.DEFAULT_READY_TIMEOUT_MILLIS);
+        DevReady webProbe = Objects.requireNonNull(web.ready(), "the sidecar's probe is the app's own model");
+        assertThat(webProbe.url()).isEqualTo("http://localhost:5173");
+        assertThat(webProbe.pattern()).isNull();
+        assertThat(webProbe.timeoutMillis()).isEqualTo(DevReady.DEFAULT_TIMEOUT_MILLIS);
         assertThat(web.frontDoor()).isTrue();
         assertThat(web.restart()).isEqualTo(Sidecar.Restart.NEVER);
 
@@ -40,9 +42,14 @@ class JkBuildParserDevTest {
         assertThat(docs.command()).containsExactly("mkdocs", "serve", "-a", "127.0.0.1:8001");
         assertThat(docs.cwd()).isEqualTo(".");
         assertThat(docs.env()).isEqualTo(Map.of("PORT", "8001"));
-        assertThat(docs.readyPattern()).isEqualTo("Serving on");
-        assertThat(docs.readyTimeoutMillis()).isEqualTo(120_000);
+        DevReady docsProbe = Objects.requireNonNull(docs.ready());
+        assertThat(docsProbe.pattern()).isEqualTo("Serving on");
+        assertThat(docsProbe.timeoutMillis()).isEqualTo(120_000);
         assertThat(docs.restart()).isEqualTo(Sidecar.Restart.ON_EXIT);
+
+        assertThat(sidecars.get(2).ready())
+                .as("a sidecar with neither ready nor ready-pattern has no probe")
+                .isNull();
     }
 
     @Test

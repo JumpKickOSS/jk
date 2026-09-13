@@ -325,14 +325,7 @@ public final class AppWatchLoop {
         boolean piped = json() || !plan.appReady().readyPattern().isEmpty();
         Process process =
                 piped ? pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start() : CliOutput.handOffTerminal(pb);
-        ReadyProbe probe = new ReadyProbe(
-                "app",
-                plan.appReady().ready(),
-                plan.appReady().readyPattern(),
-                plan.appReady().readyTimeoutMillis(),
-                0,
-                process,
-                Clock.SYSTEM);
+        ReadyProbe probe = new ReadyProbe("app", plan.appReady(), 0, process, Clock.SYSTEM);
         events.accept(SidecarOutput.appStarted(Clock.SYSTEM, process.pid()));
         if (piped) {
             pumpApp("stdout", process.getInputStream(), probe);

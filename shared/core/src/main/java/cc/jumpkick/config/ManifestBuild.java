@@ -518,7 +518,7 @@ public final class ManifestBuild {
                 env.put(key, value);
             }
         }
-        Probe probe = probe(table, where, Sidecar.DEFAULT_READY_TIMEOUT_MILLIS);
+        Probe probe = probe(table, where, DevReady.DEFAULT_TIMEOUT_MILLIS);
         boolean frontDoor = false;
         if (table.contains("front-door")) {
             if (!(table.get(List.of("front-door")) instanceof Boolean b)) {
@@ -534,8 +534,10 @@ public final class ManifestBuild {
                 throw new JkBuildParseException(where + ".restart " + e.getMessage());
             }
         }
-        return new Sidecar(
-                name, command, cwd, env, probe.url(), probe.pattern(), probe.timeoutMillis(), frontDoor, restart);
+        DevReady ready = probe.url() == null && probe.pattern() == null
+                ? null
+                : new DevReady(probe.url(), probe.pattern(), probe.timeoutMillis());
+        return new Sidecar(name, command, cwd, env, ready, frontDoor, restart);
     }
 
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*(ms|s|m)?");

@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.Sidecar.Restart;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -45,14 +46,24 @@ public record ExecPlan(
         Probe appReady) {
 
     /**
-     * The application's readiness probe, as {@code [dev]} states it: {@code ready} a URL polled
-     * for 2xx/3xx, {@code readyPattern} a regex over the app's output, one or neither, and the
-     * timeout bounding whichever is set. Written flat beside the plan's other scalars.
+     * A readiness probe as the manifest states it — the application's under {@code [dev]}, a
+     * sidecar's under its entry: {@code ready} a URL polled for 2xx/3xx, {@code readyPattern} a
+     * regex over the process's output, one or neither, and the timeout bounding whichever is set.
+     * Written flat beside its owner's other scalars.
      */
     public record Probe(String ready, String readyPattern, long readyTimeoutMillis) {
 
-        /** No probe: the app is ready once forked. */
+        /** No probe: the app is ready once forked, a sidecar once it has stayed alive a moment. */
         public static final Probe NONE = new Probe("", "", 0);
+
+        /** {@code ready} on the wire, or {@link #NONE} when the process declares no probe. */
+        public static Probe of(@Nullable DevReady ready) {
+            if (ready == null) return NONE;
+            return new Probe(
+                    ready.url() == null ? "" : ready.url(),
+                    ready.pattern() == null ? "" : ready.pattern(),
+                    ready.timeoutMillis());
+        }
 
         public boolean isEmpty() {
             return ready.isEmpty() && readyPattern.isEmpty();
@@ -70,17 +81,16 @@ public record ExecPlan(
 
     /**
      * One sidecar the client is to run beside the app: {@code cwd} absolute, {@code env} the
-     * values to lay over the inherited environment, probe fields as the manifest states them
-     * (empty when unset). Every field is written and every field is required on decode.
+     * values to lay over the inherited environment, {@code probe} as the manifest states it
+     * ({@link Probe#NONE} when unset), written flat. Every field is written and every field is
+     * required on decode.
      */
     public record Sidecar(
             String name,
             List<String> command,
             String cwd,
             Map<String, String> env,
-            String ready,
-            String readyPattern,
-            long readyTimeoutMillis,
+            Probe probe,
             boolean frontDoor,
             Restart restart) {
 
@@ -95,9 +105,9 @@ public record ExecPlan(
                     .array("command", command)
                     .string("cwd", cwd)
                     .map("env", env)
-                    .string("ready", ready)
-                    .string("readyPattern", readyPattern)
-                    .number("readyTimeoutMillis", readyTimeoutMillis)
+                    .string("ready", probe.ready())
+                    .string("readyPattern", probe.readyPattern())
+                    .number("readyTimeoutMillis", probe.readyTimeoutMillis())
                     .bool("frontDoor", frontDoor)
                     .string("restart", restart.manifestValue())
                     .finish();
@@ -114,9 +124,7 @@ public record ExecPlan(
                     Jsonl.strArray(object, "command"),
                     required(object, "cwd"),
                     Jsonl.strMap(object, "env"),
-                    required(object, "ready"),
-                    required(object, "readyPattern"),
-                    timeout,
+                    new Probe(required(object, "ready"), required(object, "readyPattern"), timeout),
                     Jsonl.bool(object, "frontDoor", false),
                     Restart.parse(required(object, "restart")));
         }

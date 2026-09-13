@@ -5,7 +5,6 @@ import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.DevReady;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
@@ -30,12 +29,7 @@ final class DevSidecars {
 
     /** {@code [dev] ready} / {@code ready-pattern} / {@code ready-timeout} on the wire, or {@link ExecPlan.Probe#NONE}. */
     static ExecPlan.Probe appReady(JkBuild module) {
-        DevReady ready = module.build().devReady();
-        if (ready == null) return ExecPlan.Probe.NONE;
-        return new ExecPlan.Probe(
-                ready.url() == null ? "" : ready.url(),
-                ready.pattern() == null ? "" : ready.pattern(),
-                ready.timeoutMillis());
+        return ExecPlan.Probe.of(module.build().devReady());
     }
 
     static List<ExecPlan.Sidecar> resolve(Path moduleDir, JkBuild module, Map<String, String> clientEnv)
@@ -69,9 +63,7 @@ final class DevSidecars {
                 s.command(),
                 declaredIn.resolve(s.cwd()).toAbsolutePath().normalize().toString(),
                 env,
-                s.ready() == null ? "" : s.ready(),
-                s.readyPattern() == null ? "" : s.readyPattern(),
-                s.readyTimeoutMillis(),
+                ExecPlan.Probe.of(s.ready()),
                 s.frontDoor(),
                 s.restart());
     }
