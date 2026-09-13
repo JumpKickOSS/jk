@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.rules;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -25,8 +27,9 @@ import org.tomlj.TomlParseResult;
 /**
  * Rule packs: {@code [guards] extends = ["g:a:v", …]} in the root rules file names jars whose entries
  * are a {@code jk-guards.toml} fragment and {@code guard-fixtures/**}. A pack is pinned in {@code
- * jk-lock.toml} like a plugin ({@code [[plugin]]} row: coordinate, version, sha256), located
- * offline through that pin in the store, and unpacked once per sha under {@code
+ * jk-lock.toml} like a plugin ({@code [[plugin]]} row: coordinate, version, and a sha256 unless
+ * {@link Coordinate#pinsByVersionOnly} holds), located offline through that pin in the store, and
+ * unpacked once per sha under {@code
  * target/jk-guards/guard-packs/<artifact>/}, where the loader reads it as the {@code PACK} layer and
  * {@code jk guard test} finds its fixtures.
  */
@@ -34,6 +37,9 @@ public final class GuardPacks {
 
     public static final String FRAGMENT = GuardsPresence.RULES_FILE;
     static final String STAMP = ".pack-sha256";
+
+    /** The Maven group every rule pack that ships inside jk publishes under. */
+    public static final String FIRST_PARTY_GROUP = "cc.jumpkick.guards";
 
     private GuardPacks() {}
 
@@ -45,6 +51,21 @@ public final class GuardPacks {
 
         public String ga() {
             return group + ":" + artifact;
+        }
+
+        /** True for a pack that ships inside jk ({@link #FIRST_PARTY_GROUP}). */
+        public boolean isFirstParty() {
+            return FIRST_PARTY_GROUP.equals(group);
+        }
+
+        /**
+         * True when the lock pins this pack by version alone. A first-party pack at a pre-release
+         * version is republished with every jk rebuild, so a digest would fix one moment of it and
+         * fail every committed consumer lock on the next side-load; the version already names the
+         * jk it ships with. A stable release, and every third-party pack, carries its digest.
+         */
+        public boolean pinsByVersionOnly() {
+            return isFirstParty() && Versions.isPreRelease(version);
         }
 
         /** {@code g:a:v} exactly; anything else is {@code null} — a floating version has no pin to read. */
@@ -174,10 +195,24 @@ public final class GuardPacks {
             }
             Lockfile.PluginEntry pin = pin(root, c);
             Path dir = unpackedDir(root, c);
-            String hex = pin == null ? null : pin.sha256Hex();
-            if (pin == null || hex == null) {
+            if (pin == null) {
                 if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
-                problems.add("pack " + c.gav() + " is not pinned to a jar in jk-lock.toml — run `jk lock`");
+                problems.add("pack " + c.gav() + " is not pinned in jk-lock.toml — run `jk lock`");
+                continue;
+            }
+            String hex = pin.sha256Hex();
+            if (hex == null) {
+                // Pinned by version alone: the jar the store holds at that version is the pack, and
+                // its digest is read from the bytes rather than from the lock.
+                Path jar = locateJar(c, pin, store);
+                if (jar == null) {
+                    if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
+                    problems.add("pack " + c.gav()
+                            + " is pinned by version but its jar is neither unpacked nor in the store — run `jk lock`");
+                    continue;
+                }
+                hex = Hashing.sha256Hex(jar);
+                if (!unpackedAs(dir, hex)) unpack(jar, dir, hex);
                 continue;
             }
             if (unpackedAs(dir, hex)) continue; // `jk lock` already unpacked these bytes

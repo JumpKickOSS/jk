@@ -493,7 +493,8 @@ public final class LockPipeline {
                 progress.note("note: " + GuardSuiteLibrary.COORDINATE + " could not be hashed; not pinned");
             }
         }
-        // Rule packs pin like plugins: the root jk-guards.toml names them, the lock fixes the bytes.
+        // Rule packs pin like plugins: the root jk-guards.toml names them, the lock fixes the bytes
+        // (or, for a first-party pack at a pre-release version, the version).
         List<String> packs;
         try {
             packs = GuardPacks.declared(lockDir);
@@ -535,7 +536,13 @@ public final class LockPipeline {
                     jarPath = fetched.fetched().cachePath();
                     sha = fetched.fetched().sha256();
                 }
-                entries.add(new Lockfile.PluginEntry(c.ga(), c.version(), "sha256:" + sha));
+                // A first-party pack at a pre-release version pins by version alone, for the reason
+                // a first-party plugin does: its bytes move with every rebuild, and a digest would
+                // leave every committed consumer lock red after the next side-load.
+                entries.add(
+                        c.pinsByVersionOnly()
+                                ? Lockfile.PluginEntry.versionOnly(c.ga(), c.version())
+                                : new Lockfile.PluginEntry(c.ga(), c.version(), "sha256:" + sha));
                 // The lock materializes the pack where the loader reads it, so a build after the lock
                 // needs neither the repository nor the store to find its rules.
                 GuardPacks.unpack(jarPath, GuardPacks.unpackedDir(lockDir, c), sha);

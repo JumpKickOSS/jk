@@ -273,8 +273,9 @@ fragment and its fixtures:
 extends = ["cc.jumpkick.guards:spring:0.13.0"]
 ```
 
-`jk lock` pins the exact coordinate as a `[[plugin]]` row and unpacks the fragment under
-`target/jk-guards/guard-packs/`. The root file may `allow` against a pack rule or turn a ban into a
+`jk lock` pins the exact coordinate as a `[[plugin]]` row — by digest, or by version alone for a
+first-party pack at a pre-release jk version ([Lockfile](lockfile.md#what-else-the-lock-pins)) — and
+unpacks the fragment under `target/jk-guards/guard-packs/`. The root file may `allow` against a pack rule or turn a ban into a
 baseline, unless the pack marked the rule `locked = true`. A workspace member's own
 `<module>/jk-guards.toml` may only tighten, and its rules default to that module's scope.
 `jk guard explain` groups the catalog by layer. Every `jk new` framework template ships the

@@ -105,6 +105,60 @@ class GuardPackPinTest {
                 .exists();
     }
 
+    /**
+     * A first-party pack at a pre-release version pins by version alone — the same rule a
+     * first-party plugin follows — and is still unpacked by the lock and read by the loader.
+     */
+    @Test
+    void a_first_party_pack_at_a_pre_release_version_is_pinned_by_version_alone(@TempDir Path tmp) throws Exception {
+        Path repo = tmp.resolve("repo");
+        packArtifact(repo, GuardPacks.FIRST_PARTY_GROUP, "house-rules", "0.9.0");
+        stubArtifact(repo, "org.junit.platform", "junit-platform-launcher", "1.10.0");
+        stubArtifact(repo, "org.junit.jupiter", "junit-jupiter", "5.10.0");
+        Path project = Files.createDirectories(tmp.resolve("proj"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+                """);
+        Files.writeString(project.resolve(GuardsPresence.RULES_FILE), """
+                [guards]
+                extends = ["cc.jumpkick.guards:house-rules:0.9.0"]
+                """);
+        BuildPlanResult lock = LockPlans.lockBuildPlan(
+                        project,
+                        JkBuildParser.parse(project.resolve("jk.toml")),
+                        tmp.resolve("cache"),
+                        repo.toUri(),
+                        List.of(),
+                        true,
+                        false,
+                        ResolveObserver.NOOP,
+                        null)
+                .run();
+        assertThat(lock.success()).as("lock errors: " + lock.errors()).isTrue();
+        Lockfile written = LockfileReader.read(LockPaths.lockFile(project));
+        Lockfile.PluginEntry pin = written.plugins().stream()
+                .filter(e -> e.coordinate().equals("cc.jumpkick.guards:house-rules"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(pin.version()).isEqualTo("0.9.0");
+        assertThat(pin.isVersionOnly())
+                .as("no checksum line for a first-party pre-release pack")
+                .isTrue();
+
+        GuardPacks.Coordinate c =
+                Objects.requireNonNull(GuardPacks.Coordinate.parse("cc.jumpkick.guards:house-rules:0.9.0"));
+        assertThat(GuardPacks.fragment(GuardPacks.unpackedDir(project, c))).exists();
+        deleteTree(repo);
+        LoadResult load = GuardRules.load(
+                project, GuardsConfig.ABSENT, JkStores.storeCas().root());
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        assertThat(load.rules().ids()).containsExactly("no-system-out");
+    }
+
     private static void metadata(Path dir, String group, String artifact, String version) throws Exception {
         Files.writeString(dir.resolve("maven-metadata.xml"), """
                 <?xml version="1.0" encoding="UTF-8"?>
