@@ -547,6 +547,24 @@ public final class TaskForecaster {
         };
     }
 
+    /**
+     * A stamp-language compile step ({@code compile-kotlin}, {@code compile-groovy}) priced by its
+     * action key, the way {@link #compileStep} prices javac's: CACHED when the key's record is
+     * present with its payloads, RUN when a compile-scope sibling is rebuilding (the key was
+     * computed against that sibling's current output and cannot be trusted), else a full compile
+     * — these workers have no incremental plan to consult — with {@code missReason} beside it.
+     */
+    static TaskForecast.Task langCompileStep(
+            String name, boolean hit, String key, int sourceCount, boolean compileDepDirty, String missReason) {
+        if (hit && compileDepDirty) {
+            return new TaskForecast.Task(name, TaskForecast.Status.RUN, "recompile · dependency changed", null);
+        }
+        if (hit) return new TaskForecast.Task(name, TaskForecast.Status.CACHED, "", key8(key));
+        String text = "full compile · " + count(sourceCount, "source");
+        if (!missReason.isBlank()) text = text + " · " + missReason;
+        return new TaskForecast.Task(name, TaskForecast.Status.FULL, text, null);
+    }
+
     // --- the build's test classpaths, mirrored (best-effort; misses fail safe) ---
 
     /**

@@ -431,10 +431,51 @@ public final class PlannerLang {
             @Nullable List<Path> javaSourceRoots,
             @Nullable Path stubsOut)
             throws IOException {
-        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
+        Files.createDirectories(outputDir);
+        if (stubsOut != null) Files.createDirectories(stubsOut);
+        // Joint mode sweeps.java sources through a real javac pass — annotation processors
+        // must run there or generated members fail resolution.
+        List<Path> processorCp =
+                javaSourceRoots == null ? List.of() : ctx.get(PROCESSOR_CP).orElse(List.of());
+        return groovyRequest(
+                ctx.require(PROJECT),
+                ctx.require(LOCKFILE),
+                in.dir(),
+                cas,
+                sources,
+                classpath,
+                outputDir,
+                javaSourceRoots,
+                stubsOut,
+                processorCp,
+                ctx.require(RELEASE),
+                ctx.require(JAVA_HOME));
+    }
+
+    /**
+     * {@link #groovyRequest(TaskContext, BuildPlanner.Inputs, Cas, List, List, Path, List, Path)}
+     * from resolved facts: the body both the build and {@code jk explain} derive the request from,
+     * so the forecast keys the compile the build will run. Creates nothing on disk — the forecast
+     * is read-only; the build's overload makes the output and stub dirs before delegating here.
+     */
+    static GroovycRequest groovyRequest(
+            JkBuild project,
+            Lockfile lock,
+            Path moduleDir,
+            Cas cas,
+            List<Path> sources,
+            List<Path> classpath,
+            Path outputDir,
+            @Nullable List<Path> javaSourceRoots,
+            @Nullable Path stubsOut,
+            List<Path> processorCp,
+            int release,
+            Path javaHome)
+            throws IOException {
+        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
         GroovyPluginSetup.Prepared gv;
         try {
-            RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
             gv = GroovyPluginSetup.prepare(repos, cas, groovyVersion);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -444,24 +485,17 @@ public final class PlannerLang {
         // code compiles against the Groovy runtime types).
         List<Path> compileCp = new ArrayList<>(classpath);
         compileCp.add(gv.groovyJar());
-        Files.createDirectories(outputDir);
-        if (stubsOut != null) Files.createDirectories(stubsOut);
         // Contributed groovyc args (e.g. grails' --parameters — data binding reflects on
         // parameter names), deduped; mirrors the javac/kotlinc lanes.
-        List<String> gvArgs = groovyArgs(ctx.require(PROJECT), ctx.require(LOCKFILE), in.dir());
-        // Joint mode sweeps.java sources through a real javac pass — annotation processors
-        // must run there or generated members fail resolution.
-        List<Path> processorCp =
-                javaSourceRoots == null ? List.of() : ctx.get(PROCESSOR_CP).orElse(List.of());
+        List<String> gvArgs = groovyArgs(project, lock, moduleDir);
         return GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
                 .classpath(compileCp)
-                .processorPath(processorCp)
+                .processorPath(javaSourceRoots == null ? List.of() : processorCp)
                 .outputDir(outputDir)
                 .stubsOut(stubsOut)
-                .jvmTarget(CompileSupport.effectiveRelease(
-                        ctx.require(RELEASE), JvmOptions.hostFeature(ctx.require(JAVA_HOME))))
+                .jvmTarget(CompileSupport.effectiveRelease(release, JvmOptions.hostFeature(javaHome)))
                 .workerClasspath(gv.workerClasspath())
                 .extraArgs(gvArgs)
                 .build();

@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -240,7 +241,8 @@ final class ModuleForecast {
         // them. Owner-derived so extra-src and contributed roots gate and stamp like the build.
         List<Path> ktSrc = PlannerCompile.mainKotlinSourcesWithGenerated(
                 PlannerCompile.mainKotlinSources(project, dir, compact), layout, pkgDecls);
-        List<Path> gvSrc = PlannerCompile.mainGroovySources(project, dir, compact);
+        List<Path> gvSrc = PlannerCompile.mainGroovySourcesWithGenerated(
+                PlannerCompile.mainGroovySources(project, dir, compact), layout, pkgDecls);
         // The same predicate BuildPlanner composes the plan from — a source-list emptiness
         // test is a different question and answers differently for a Scala module.
         var langs = CompileSupport.resolveLanguages(project.project(), dir);
@@ -424,28 +426,11 @@ final class ModuleForecast {
         List<Path> mainSrc = prepared.mainSrc();
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();
-        // ---- compile-groovy (stamp + post-clean restore, same as Kotlin) ----
-        // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
-        // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
+        // ---- compile-groovy (stamp, then the action key of the build's own request) ----
         if (!gvSrc.isEmpty()) {
-            boolean fresh = !compileDepDirty
-                    && !force
-                    && FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, gvSrc);
-            boolean restoreHit = !compileDepDirty
-                    && !force
-                    && !TaskForecaster.classesDirHasContent(layout.classesDir())
-                    && TaskForecaster.stampLangActionPresent(
-                            actionCache, ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir()));
-            if (fresh || restoreHit) {
-                steps.add(new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null));
-            } else {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.COMPILE_GROOVY,
-                        TaskForecast.Status.FULL,
-                        "full compile · " + TaskForecaster.count(gvSrc.size(), "source"),
-                        null));
-                compileDirty = true;
-            }
+            TaskForecast.Task step = groovyStep(prepared);
+            steps.add(step);
+            if (!step.cached()) compileDirty = true;
         }
 
         producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
@@ -455,6 +440,66 @@ final class ModuleForecast {
         } catch (Exception e) {
             Log.debug("compileGroovy: Exception ignored", e);
         }
+    }
+
+    /**
+     * compile-groovy priced the way the build decides it: the freshness stamp first — the
+     * Groovy sources (plus the Java sources joint mode reads), the request's classpath token
+     * lines and the toolchain digest, written where write-stamp-groovy writes them — then the
+     * {@code forGroovyc} key of the very request {@code PlannerLang.groovyRequest} builds for the
+     * build. A body-only edit upstream therefore forecasts CACHED once the sibling's ABI token is
+     * known, as the build answers it. A toolchain that cannot be resolved read-only forecasts a
+     * full compile: the pessimistic answer, never a false hit.
+     */
+    private TaskForecast.Task groovyStep(Prepared prepared) throws Exception {
+        BuildLayout layout = prepared.layout();
+        List<Path> gvSrc = prepared.gvSrc();
+        boolean mixed = prepared.mixedGroovy();
+        String full = "full compile · " + TaskForecaster.count(gvSrc.size(), "source");
+        GroovycRequest req;
+        try {
+            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+            List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
+            List<Path> javaRoots = mixed
+                    ? PlannerKsp.kotlinJavaSourceRoots(true, prepared.compact(), dir, layout, prepared.pkgDecls())
+                    : null;
+            req = PlannerLang.groovyRequest(
+                    project,
+                    prepared.lock(),
+                    dir,
+                    cas,
+                    gvSrc,
+                    cp,
+                    layout.groovyClassesDir(),
+                    javaRoots,
+                    mixed ? layout.groovyStubsDir() : null,
+                    prepared.processorCp(),
+                    prepared.release(),
+                    prepared.javaHome());
+        } catch (Exception e) {
+            Log.debug("groovyStep: the Groovy toolchain could not be resolved read-only", e);
+            return new TaskForecast.Task(
+                    TaskNames.COMPILE_GROOVY, TaskForecast.Status.FULL, full + " · toolchain unresolved", null);
+        }
+        List<Path> freshInputs = new ArrayList<>(gvSrc);
+        if (mixed) freshInputs.addAll(prepared.mainSrc());
+        if (!compileDepDirty
+                && !force
+                && FreshnessStamp.isFresh(
+                        layout.classesDir(),
+                        BuildStamps.GROOVY,
+                        freshInputs,
+                        FreshnessStamp.ClasspathTokens.of(ActionKey.groovycClasspathTokens(req)),
+                        prepared.release(),
+                        PlannerLang.groovyStampDigest(
+                                project, prepared.lock(), dir, prepared.release(), prepared.javaHome()))) {
+            return new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null);
+        }
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
+        String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion());
+        boolean hit = TaskForecaster.present(actionCache, key);
+        return TaskForecaster.langCompileStep(
+                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, "");
     }
 
     private void compileTest(Prepared prepared) throws Exception {

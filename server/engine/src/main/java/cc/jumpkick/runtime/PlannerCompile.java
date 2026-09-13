@@ -179,6 +179,23 @@ public final class PlannerCompile {
     }
 
     /**
+     * {@link #mainGroovySources} plus the generated Groovy compile-groovy folds in at execute
+     * time: plugin {@code contributesSources} and build-logic output. The build re-publishes it as
+     * {@code GROOVY_SOURCES} so write-stamp-groovy records the set the compile checked, and the
+     * forecast keys the same set.
+     */
+    public static List<Path> mainGroovySourcesWithGenerated(
+            List<Path> groovy, BuildLayout layout, PluginBuild.@Nullable Declarations decls) throws IOException {
+        List<Path> generated = pluginContributedSources(layout, decls, ".groovy");
+        List<Path> logic = BuildLogicSupport.generatedSources(layout, ".groovy");
+        if (generated.isEmpty() && logic.isEmpty()) return groovy;
+        List<Path> all = new ArrayList<>(groovy);
+        all.addAll(generated);
+        all.addAll(logic);
+        return all;
+    }
+
+    /**
      * Every fact compile-main's {@link CompileRequest} is derived from. {@code classpath} is the
      * <em>base</em> compile classpath (lock + workspace siblings); {@link #mainCompileRequest}
      * adds the sibling-language outputs, because which of those belong on it is part of the
@@ -785,16 +802,12 @@ public final class PlannerCompile {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     Files.createDirectories(classes); // compile-java may be skipped
-                    List<Path> gvSources = groovySources(ctx);
+                    List<Path> declaredGv = groovySources(ctx);
                     // Plugin-contributed generated Groovy joins the source list exactly like the
                     // Kotlin side — the freshness stamp and the worker see generated files as
                     // ordinary sources.
-                    List<Path> generatedGv = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".groovy");
-                    List<Path> logicGv = BuildLogicSupport.generatedSources(ctx.require(LAYOUT), ".groovy");
-                    if (!generatedGv.isEmpty() || !logicGv.isEmpty()) {
-                        gvSources = new ArrayList<>(gvSources);
-                        gvSources.addAll(generatedGv);
-                        gvSources.addAll(logicGv);
+                    List<Path> gvSources = mainGroovySourcesWithGenerated(declaredGv, ctx.require(LAYOUT), pluginDecls);
+                    if (gvSources != declaredGv) {
                         // Re-publish so write-stamp-groovy records what this compile checked.
                         ctx.put(GROOVY_SOURCES, gvSources);
                     }

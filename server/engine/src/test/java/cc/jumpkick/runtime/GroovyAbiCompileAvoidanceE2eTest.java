@@ -3,7 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -12,8 +14,10 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -159,6 +163,9 @@ class GroovyAbiCompileAvoidanceE2eTest {
                 .as("app's groovyc is a stamp skip or an action-cache hit, never a full compile")
                 .anyMatch(l -> l.equals("up to date") || l.startsWith("cache hit "));
         assertThat(Files.readAllBytes(usesLib)).isEqualTo(usesLibInitial);
+        assertThat(forecast(ws, cache, "app", TaskNames.COMPILE_GROOVY).cached())
+                .as("jk explain agrees: app's compile-groovy is cached after a body-only upstream edit")
+                .isTrue();
 
         // New API, and app uses it: the key misses, groovyc runs and resolves the new method.
         Files.writeString(libSource, LIB_NEW_METHOD);
@@ -173,6 +180,23 @@ class GroovyAbiCompileAvoidanceE2eTest {
         Files.writeString(libSource, LIB_CONSTANT_EDIT);
         Steps constant = build(ws, cache, "after lib's constant changed");
         assertThat(constant.labels("app", TaskNames.COMPILE_GROOVY)).anyMatch(l -> l.startsWith("compiling "));
+    }
+
+    /** The forecast's step for {@code module}, priced through the same keys the build uses. */
+    private static TaskForecast.Task forecast(Path ws, Path cache, String module, String step) throws IOException {
+        BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        List<TaskForecast.Module> plan = TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
+        TaskForecast.Module m = plan.stream()
+                .filter(x -> x.dir().getFileName().toString().equals(module))
+                .findFirst()
+                .orElseThrow();
+        return m.steps().stream()
+                .filter(s -> s.name().equals(step))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(module + " forecasts no " + step + ": " + m.steps()));
     }
 
     private static Steps build(Path ws, Path cache, String what) {
