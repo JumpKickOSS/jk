@@ -201,7 +201,7 @@ class VscodeCommandTest {
         // resolves locked deps out of, so seeding a blob left the model with no processors at all.
         Path cache = tmp.resolve("cache");
         Coordinate processor = Coordinate.of("org.example", "myprocessor", "1.0.0");
-        RepoArtifactStore.forRepoName(JkStores.store(), "central")
+        RepoArtifactStore.forStoreId(JkStores.store(), "central")
                 .materialize(MavenLayout.artifactPath(processor), new Cas(cache).put(processorJar), hex);
 
         Path jdks = tmp.resolve("jdks");

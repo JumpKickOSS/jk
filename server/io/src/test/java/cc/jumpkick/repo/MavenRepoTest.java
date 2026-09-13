@@ -20,6 +20,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,7 +100,7 @@ class MavenRepoTest {
         byte[] oldBytes = "old-widget-bytes".getBytes(StandardCharsets.UTF_8);
         Path stale = tempDir.resolve("stale.jar");
         Files.write(stale, oldBytes);
-        RepoArtifactStore.forRepoName(tempDir, "test").materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
+        RepoArtifactStore.forRepository(tempDir, "test", base).materialize(relPath, stale, Hashing.sha256Hex(oldBytes));
 
         // The repo now serves new bytes.
         byte[] newBytes = "new-widget-bytes".getBytes(StandardCharsets.UTF_8);
@@ -151,7 +152,7 @@ class MavenRepoTest {
         repo.fetchPom(coord);
 
         // metadata is deliberately not mirrored
-        assertThat(RepoArtifactStore.forRepoName(tempDir, "test").versions("com.example", "widget"))
+        assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).versions("com.example", "widget"))
                 .containsExactly("1.0");
     }
 
@@ -166,7 +167,7 @@ class MavenRepoTest {
             Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
             repo.fetchArtifact(coord);
 
-            assertThat(RepoArtifactStore.forRepoName(tempDir, "test").locate(MavenLayout.artifactPath(coord)))
+            assertThat(RepoArtifactStore.forRepository(tempDir, "test", base).locate(MavenLayout.artifactPath(coord)))
                     .isPresent();
             assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
         } finally {
@@ -256,7 +257,7 @@ class MavenRepoTest {
     @Test
     void offline_available_versions_come_from_the_named_repo_store(@TempDir Path tempDir) throws Exception {
         Cas cas = new Cas(tempDir);
-        RepoArtifactStore store = RepoArtifactStore.forRepoName(tempDir, "test");
+        RepoArtifactStore store = RepoArtifactStore.forRepository(tempDir, "test", base);
         store.materialize(
                 MavenLayout.artifactPath(Coordinate.of("com.example", "widget", "1.0")),
                 cas.put("jar-1".getBytes(StandardCharsets.UTF_8)),
@@ -334,7 +335,8 @@ class MavenRepoTest {
                 .hasMessageContaining("neither a .sha256 nor a .sha1 sidecar")
                 .hasMessageContaining("allow-unverified = true on [repositories.mirror]");
         assertThat(repo.unverifiedAllowed()).isZero();
-        assertThat(tempDir.resolve("repos").resolve("mirror"))
+        assertThat(Objects.requireNonNull(
+                        RepoArtifactStore.forRepository(tempDir, "mirror", base).root()))
                 .as("refused bytes are not left in the store")
                 .satisfiesAnyOf(dir -> assertThat(dir).doesNotExist(), dir -> assertThat(
                                 Files.list(dir).filter(Files::isRegularFile))
@@ -383,10 +385,11 @@ class MavenRepoTest {
                 .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
                 .hasMessageContaining("jk-lock.toml pins sha256");
 
-        assertThat(RepoArtifactStore.forRepoName(tempDir, "mirror").locate(relPath))
+        assertThat(RepoArtifactStore.forRepository(tempDir, "mirror", base).locate(relPath))
                 .as("rejected bytes are never placed in repos/<name>/")
                 .isEmpty();
-        Path shard = tempDir.resolve("repos").resolve("mirror");
+        Path shard = Objects.requireNonNull(
+                RepoArtifactStore.forRepository(tempDir, "mirror", base).root());
         if (Files.isDirectory(shard)) {
             try (var files = Files.walk(shard)) {
                 assertThat(files.filter(Files::isRegularFile))

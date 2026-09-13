@@ -879,7 +879,7 @@ class PomRuntimeClasspathTest {
         Path f = store.resolve("repos").resolve(repo).resolve(rel);
         Files.createDirectories(f.getParent());
         Files.write(f, bytes);
-        RepoArtifactStore.forRepoName(store, repo).writeMemo(rel, f, Hashing.sha256Hex(bytes));
+        RepoArtifactStore.forStoreId(store, repo).writeMemo(rel, f, Hashing.sha256Hex(bytes));
         return f;
     }
 }

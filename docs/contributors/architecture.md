@@ -317,12 +317,12 @@ and exclusions stay GA-scoped.
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `~/.jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<name>/…` plus `.jk` memos; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
+| **Artifact store** | `~/.jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<origin-id>/…` plus `.jk` memos — one tree per repository origin (`RepoIdentity`: reserved `central`/`google`/`jumpkick`, else `<host>-<digest>`), the project's name for it only a label in `.origin`; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
 | **Cache** | `~/.jk/cache/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
 Dependency jars are real `*.jar` files. Compile classpaths never use hash-named CAS blobs.
 A digest-matching file in the Maven local repo is used in place; a mismatch is left untouched
-and the locked bytes live under `repos/<name>/`. Action-cache restore stays copy-not-link so
+and the locked bytes live under `repos/<origin-id>/`. Action-cache restore stays copy-not-link so
 compilers cannot mutate cached outputs. `jk storage nuke` does not delete `~/.m2`.
 
 ### Action keys and future remote cache (design)

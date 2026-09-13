@@ -38,8 +38,10 @@ Same bucket as **releases** (`releases/<ver>/jk`, `jk-engine-…jar`); only the 
    `build.jumpkick.*` only. Those coordinates never resolve from Central (dependency-confusion
    safe). For every other groupId, remotes are **central then google** — JumpKick is **not**
    probed (no 404-then-fallthrough on first-party CDN for third-party GAVs).
-3. **Plugin workers** (`PluginJar`): look in `repos/jk-local`, then `repos/jumpkick`, then
-   `repos/central`; on miss, **HTTP-fetch** from the official repo into `repos/jumpkick/`.
+3. **Plugin workers** (`PluginJar`): look in `repos/jk-local`, then the official repository's
+   store (`repos/jumpkick` at the product URL; a `JK_OFFICIAL_REPO_URL` mirror gets its own
+   origin-keyed tree), then `repos/central`; on miss, **HTTP-fetch** from the official repo into
+   its store.
 4. **Path / git remotes** prepended for a project must **preserve exclusive group bindings**
    from the base remote set (otherwise a path overlay can drop JumpKick exclusivity and cause
    a 404 storm against the CDN for third-party coordinates).

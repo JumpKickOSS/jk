@@ -55,7 +55,7 @@ class CacheRootsLocalRepoTest {
         Path blob = cas.put(dep);
         String hex = Hashing.sha256Hex(dep);
         String rel = "com/example/widget/1.0/widget-1.0.jar";
-        RepoArtifactStore.forRepoName(cacheRoot, "central").materialize(rel, blob, hex);
+        RepoArtifactStore.forStoreId(cacheRoot, "central").materialize(rel, blob, hex);
         Path artifact = cacheRoot.resolve("repos/central").resolve(rel);
         Files.setLastModifiedTime(blob, FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
 

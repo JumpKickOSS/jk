@@ -18,7 +18,7 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 | Tier | Holds | Wipe |
 |------|--------|------|
 | **Cache** (`JK_CACHE_DIR`) | Action index + cache CAS (classes, tests, jars, natives, OCI, stamps), and compiled build-logic `.kts` under `kts/` | `jk cache nuke` |
-| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/` + `.jk` memos (deps, workers), `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). Maven local repo is the primary jar store when `[m2] integration` is on (default). | `jk storage nuke` (does **not** delete `~/.m2`) |
+| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). Maven local repo is the primary jar store when `[m2] integration` is on (default). | `jk storage nuke` (does **not** delete `~/.m2`) |
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 
 `jk clean` does **not** by itself force a full recompute: unchanged inputs restore from
@@ -64,6 +64,10 @@ sibling under `repos/jk-local` (installed from a checkout by `jk install` / `ins
 else `repos/jumpkick` (fetched from jumpkick.build). Nothing about that classpath is persisted
 between builds: the engine memoises it for its own lifetime and otherwise walks the POM again,
 so the same store yields the same classpath every time.
+
+`jk storage usage` and `jk doctor` print one `repo:` line per repository store — the name a
+project used, the origin that filled it, and the `repos/<origin-id>` tree — so a cache holding
+another origin's bytes is one line apart from the symptom.
 
 `jk doctor` prints one `worker:` line per installed worker — where its jar came from, how many
 dependencies its POM declares, how many entries the rebuilt classpath has — and `jk doctor -v`
@@ -157,7 +161,8 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
 
 - **The artifact store** (`JK_STORE_DIR`): Maven-layout `repos/`, worker jars and promoted
   blobs grow without limit. No budget, no eviction, no reachability sweep. `jk storage
-  clean` reclaims only leaked `.put-` download temps. `jk storage
+  clean` reclaims only leaked `.put-` download temps and legacy `repos/<name>` trees that
+  predate origin keying (nothing reads them; `jk storage usage` flags them). `jk storage
   nuke` is the only way to shrink it on purpose.
 - **The Maven local repository** (`~/.m2/repository`): jk does not own it and never deletes
   from it. `jk storage usage` reports its size for information only.

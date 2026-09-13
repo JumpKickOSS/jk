@@ -114,7 +114,7 @@ class LibrarySearchCommandTest {
         byte[] bytes = "junit-jar".getBytes(StandardCharsets.UTF_8);
         Path blob = new Cas(cache).put(bytes);
         String seededRel = MavenLayout.artifactPath(coord);
-        RepoArtifactStore.forRepoName(JkStores.store(), "central")
+        RepoArtifactStore.forStoreId(JkStores.store(), "central")
                 .materialize(seededRel, blob, Hashing.sha256Hex(bytes));
 
         try {

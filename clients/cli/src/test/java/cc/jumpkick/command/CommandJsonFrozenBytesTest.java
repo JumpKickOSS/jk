@@ -10,6 +10,7 @@ import cc.jumpkick.command.system.DoctorCommand;
 import cc.jumpkick.command.system.EngineAotCommand;
 import cc.jumpkick.command.system.EngineStatusCommand;
 import cc.jumpkick.command.system.EnvCommand;
+import cc.jumpkick.command.system.RepoStores;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
@@ -166,7 +167,8 @@ class CommandJsonFrozenBytesTest {
         var fail = new DoctorCommand.Check(DoctorCommand.Status.FAIL, "JDK", "missing \"25\"");
         assertThat(DoctorCommand.checkJson(fail)).isEqualTo("{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"}");
         var noWorkers = new DoctorCommand.Workers(List.of(), null);
-        assertThat(DoctorCommand.reportJson(ok, warn, ok, fail, ok, ok, 3, 1, 0, 0, 2, 0, null, noWorkers))
+        var noRepos = new RepoStores.Stores(List.of(), null);
+        assertThat(DoctorCommand.reportJson(ok, warn, ok, fail, ok, ok, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos))
                 .isEqualTo("{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
@@ -174,9 +176,10 @@ class CommandJsonFrozenBytesTest {
                         + "\"lock\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
-                        + "\"workers\":[]}");
-        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers))
-                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[]}");
+                        + "\"workers\":[],\"repos\":[]}");
+        assertThat(DoctorCommand.reportJson(
+                        ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers, noRepos))
+                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]}");
         var one = new DoctorCommand.Workers(
                 List.of(new DoctorCommand.Worker(
                         "jk-image-builder",
@@ -188,9 +191,15 @@ class CommandJsonFrozenBytesTest {
                         List.of("/s/w.jar"),
                         null)),
                 null);
-        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one))
+        var repos = new RepoStores.Stores(
+                List.of(new RepoStores.Store(
+                        "nexus.acme-0123456789ab", "private", "https://nexus.acme/maven", 2, 40, false)),
+                null);
+        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
-                                + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null}]}");
+                                + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null}],"
+                                + "\"repos\":[{\"id\":\"nexus.acme-0123456789ab\",\"name\":\"private\",\"origin\":\"https://nexus.acme/maven\","
+                                + "\"files\":2,\"bytes\":40,\"state\":\"ok\"}]}");
     }
 }

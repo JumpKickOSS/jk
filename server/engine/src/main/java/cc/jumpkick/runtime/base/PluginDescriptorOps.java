@@ -10,7 +10,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
@@ -21,9 +20,11 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -112,46 +113,26 @@ public final class PluginDescriptorOps {
     public static Optional<Path> pinnedLayoutJar(Cas cas, String module, String version, String sha256Hex) {
         String rel = MavenLayout.artifactPath(Coordinate.ofModule(module, version));
         Path storeRoot = cas.root();
-        // Fixed stores first; the repos/ directory listing is paid only on a miss — this runs
-        // per plugin per parse, and the common case lands in the first probe.
-        for (String repoName : FIXED_PROBE_ORDER) {
-            Optional<Path> stored =
-                    RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
+        // First-party stores first; the repos/ directory listing is paid only on a miss — this
+        // runs per plugin per parse, and the common case lands in the first probe.
+        List<RepoArtifactStore> firstParty = RepoArtifactStore.firstParty(storeRoot);
+        Set<Path> probed = new HashSet<>();
+        for (RepoArtifactStore store : firstParty) {
+            probed.add(Objects.requireNonNull(store.root(), "store root"));
+            Optional<Path> stored = store.locate(rel, sha256Hex);
             if (stored.isPresent()) return stored;
         }
-        for (String repoName : listedRepoNames(storeRoot)) {
-            if (FIXED_PROBE_ORDER.contains(repoName)) continue;
-            Optional<Path> stored =
-                    RepoArtifactStore.forRepoName(storeRoot, repoName).locate(rel, sha256Hex);
+        for (String storeId : RepoArtifactStore.storeIds(storeRoot)) {
+            RepoArtifactStore store = RepoArtifactStore.forStoreId(storeRoot, storeId);
+            if (probed.contains(Objects.requireNonNull(store.root(), "store root"))) continue;
+            Optional<Path> stored = store.locate(rel, sha256Hex);
             if (stored.isPresent()) return stored;
         }
         Path blob = cas.pathFor(sha256Hex);
         if (!Files.isRegularFile(blob)) return Optional.empty();
-        RepoArtifactStore local = RepoArtifactStore.forRepoName(storeRoot, RepoArtifactResolver.JK_LOCAL);
+        RepoArtifactStore local = RepoArtifactStore.forStoreId(storeRoot, RepoArtifactResolver.JK_LOCAL);
         local.materialize(rel, blob, sha256Hex);
         return local.locate(rel, sha256Hex);
-    }
-
-    /** First-party / official / Central — the stores that answer nearly every pinned lookup. */
-    private static final List<String> FIXED_PROBE_ORDER =
-            List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL);
-
-    /**
-     * Every other {@code repos/<name>/} directory, so a user-declared remote (e.g. {@code local})
-     * is still found with its sibling POM. Listed only when the fixed stores missed.
-     */
-    private static List<String> listedRepoNames(Path storeRoot) {
-        Path repos = storeRoot.resolve("repos");
-        if (!Files.isDirectory(repos)) return List.of();
-        List<String> names = new ArrayList<>();
-        try (var stream = Files.list(repos)) {
-            stream.filter(Files::isDirectory)
-                    .map(p -> p.getFileName().toString())
-                    .forEach(names::add);
-        } catch (IOException ignored) {
-            // best-effort directory listing
-        }
-        return names;
     }
 
     /** The declaration whose materialized manifest carries {@code pluginId}, or empty. */

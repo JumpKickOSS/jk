@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -49,6 +50,40 @@ class ArtifactLocatorTest {
         assertThat(locator.locate(pkg)).contains(m2Jar.toAbsolutePath().normalize());
     }
 
+    /**
+     * Two locks name a repository {@code private} for two different origins. The locator reads
+     * each row's URL, not its name, so each project gets the bytes its own origin served.
+     */
+    @Test
+    void two_lock_rows_naming_private_for_different_origins_read_different_stores(@TempDir Path dir) throws Exception {
+        Path store = dir.resolve("store");
+        String rel = "com/acme/lib/1.0/lib-1.0.jar";
+        Path fromA = Files.writeString(dir.resolve("a.jar"), "A");
+        Path fromB = Files.writeString(dir.resolve("b.jar"), "B");
+        String hexA = Hashing.sha256Hex(fromA);
+        String hexB = Hashing.sha256Hex(fromB);
+        RepoArtifactStore.forRepository(store, "private", URI.create("https://a.example/maven/"))
+                .materialize(rel, fromA, hexA);
+        RepoArtifactStore.forRepository(store, "private", URI.create("https://b.example/maven/"))
+                .materialize(rel, fromB, hexB);
+        ArtifactLocator locator = new ArtifactLocator(store);
+
+        Path a = locator.locate(row("private+https://a.example/maven/", hexA)).orElseThrow();
+        Path b = locator.locate(row("private+https://b.example/maven/", hexB)).orElseThrow();
+
+        assertThat(a).hasContent("A");
+        assertThat(b).hasContent("B");
+        assertThat(a.getParent()).isNotEqualTo(b.getParent());
+        assertThat(locator.locate(row("private+https://a.example/maven/", hexB)))
+                .as("B's bytes are not served for A's origin even under the shared name")
+                .isEmpty();
+    }
+
+    private static Lockfile.Artifact row(String source, String hex) {
+        return new Lockfile.Artifact(
+                "com.acme:lib", "1.0", source, "sha256:" + hex, null, List.of(Scope.MAIN), List.of());
+    }
+
     @Test
     void mismatching_m2_falls_back_to_store_and_leaves_m2_untouched(@TempDir Path dir) throws Exception {
         Path store = dir.resolve("store");
@@ -61,7 +96,7 @@ class ArtifactLocatorTest {
         Path src = dir.resolve("good.jar");
         Files.writeString(src, "genuine");
         String hex = Hashing.sha256Hex(src);
-        RepoArtifactStore.forRepoName(store, "central").materialize(rel, src, hex);
+        RepoArtifactStore.forStoreId(store, "central").materialize(rel, src, hex);
 
         Lockfile.Artifact pkg = new Lockfile.Artifact(
                 "com.foo:a",

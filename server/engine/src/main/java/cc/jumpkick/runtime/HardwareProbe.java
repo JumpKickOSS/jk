@@ -432,20 +432,16 @@ final class HardwareProbe {
     }
 
     /**
-     * Maven-layout roots the probe may read, in preference order: each named repository view under
+     * Maven-layout roots the probe may read, in preference order: each known repository store under
      * {@code <store>/repos/}, then the Maven local repository. Both are trees jk already resolves
      * against, so a hit here costs no network and no new bytes anywhere.
      */
     private static List<Path> artifactRoots(Path storeRoot) {
         List<Path> roots = new ArrayList<>();
         if (storeRoot != null) {
-            Path repos = storeRoot.resolve("repos");
-            if (Files.isDirectory(repos)) {
-                try (Stream<Path> stream = Files.list(repos)) {
-                    stream.filter(Files::isDirectory).sorted().forEach(roots::add);
-                } catch (IOException ignored) {
-                    // best-effort
-                }
+            // Known stores only: a legacy name-keyed tree has no origin anyone can vouch for.
+            for (String id : RepoArtifactStore.storeIds(storeRoot)) {
+                roots.add(storeRoot.resolve("repos").resolve(id));
             }
         }
         Path m2 = M2Dirs.localRepository();
@@ -519,7 +515,8 @@ final class HardwareProbe {
         Path tmp = Files.createTempFile("jk-calib-artifact", ".jar");
         try {
             Files.write(tmp, body);
-            RepoArtifactStore store = RepoArtifactStore.forRepoName(storeRoot, RepositorySpec.CENTRAL);
+            RepoArtifactStore store = RepoArtifactStore.forRepository(
+                    storeRoot, RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url());
             store.materialize(relativeMavenPath, tmp, Hashing.sha256Hex(body));
             return store.locate(relativeMavenPath).orElse(null);
         } finally {

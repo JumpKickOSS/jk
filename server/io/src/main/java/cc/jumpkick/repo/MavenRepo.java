@@ -179,8 +179,10 @@ public final class MavenRepo {
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.transport = Objects.requireNonNull(transport, "transport");
         this.cas = Objects.requireNonNull(cas, "cas");
-        // Full store for every repo: Maven-layout artifact + {@code .jk} memo under repos/<name>/.
-        this.repoStore = RepoArtifactStore.forRepoName(cas.root(), name);
+        // Full store for every repo: Maven-layout artifact + {@code .jk} memo under the store
+        // keyed by this repo's ORIGIN — the name is a label, and two projects calling different
+        // origins by one name must never read each other's bytes.
+        this.repoStore = RepoArtifactStore.forRepository(cas.root(), name, this.baseUrl);
         this.credential = Objects.requireNonNull(credential, "credential");
         this.m2integration = m2integration;
         this.allowUnverified = allowUnverified;
@@ -210,6 +212,11 @@ public final class MavenRepo {
 
     public String name() {
         return name;
+    }
+
+    /** This repository's tree under {@code <store>/repos/}, keyed by its origin. */
+    Path storeDir() {
+        return Objects.requireNonNull(repoStore.root(), "a remote's store has a root");
     }
 
     public URI baseUrl() {
@@ -403,7 +410,7 @@ public final class MavenRepo {
 
     /**
      * Put verified bytes on disk: Maven local repo when integration is on and the slot is empty or
-     * already equal; otherwise {@code repos/<name>/}. Never overwrites a mismatched local-repo file.
+     * already equal; otherwise this repository's store. Never overwrites a mismatched local-repo file.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
         if (m2integration && JkM2Config.resolve().integration()) {
@@ -531,7 +538,7 @@ public final class MavenRepo {
             Coordinate coord, URI uri, String relativePath, boolean mirror, Leg leg, @Nullable String expectedSha256)
             throws IOException, InterruptedException {
         long t0 = Clock.SYSTEM.nanos();
-        Path shard = cas.root().resolve("repos").resolve(name);
+        Path shard = storeDir();
         Files.createDirectories(shard);
         Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
         MessageDigest digest = Hashing.newSha256();
@@ -576,7 +583,7 @@ public final class MavenRepo {
     }
 
     /**
-     * If {@code repos/<name>/} already has a fully materialised artifact ({@code .jk} + bytes),
+     * If this repository's store already has a fully materialised artifact ({@code .jk} + bytes),
      * return it without network I/O.
      */
     private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
@@ -586,13 +593,7 @@ public final class MavenRepo {
             if (Files.isRegularFile(m2File) && hex.isPresent()) {
                 try {
                     if (ArtifactMemo.verify(
-                            m2File,
-                            repoStore.root() == null
-                                    ? ArtifactMemo.jkPath(
-                                            cas.root().resolve("repos").resolve(name), relativePath)
-                                    : ArtifactMemo.jkPath(repoStore.root(), relativePath),
-                            coord.toGav(),
-                            hex.get())) {
+                            m2File, ArtifactMemo.jkPath(storeDir(), relativePath), coord.toGav(), hex.get())) {
                         return Optional.of(
                                 new Fetched(baseUrl.resolve(relativePath), m2File, hex.get(), Files.size(m2File)));
                     }

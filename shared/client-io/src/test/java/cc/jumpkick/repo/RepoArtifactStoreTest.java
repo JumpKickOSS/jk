@@ -2,11 +2,15 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -71,6 +75,107 @@ class RepoArtifactStoreTest {
         assertThat(ArtifactMemo.jkPath(cache.resolve("repos/central"), rel)).doesNotExist();
         assertThat(source).exists();
         assertThat(store.evict(rel)).isFalse();
+    }
+
+    /**
+     * Two projects both call a repository {@code private} and point it at different origins. Each
+     * gets its own store, so a coordinate resolved through one never serves the other's bytes.
+     */
+    @Test
+    void two_repositories_sharing_a_name_but_not_an_origin_get_separate_stores(@TempDir Path dir) throws IOException {
+        Path store = dir.resolve("store");
+        String rel = "com/acme/lib/1.0/lib-1.0.jar";
+        Path fromA = Files.writeString(dir.resolve("a.jar"), "bytes served by origin A");
+        Path fromB = Files.writeString(dir.resolve("b.jar"), "bytes served by origin B");
+        RepoArtifactStore a = RepoArtifactStore.forRepository(store, "private", URI.create("https://a.example/maven/"));
+        RepoArtifactStore b = RepoArtifactStore.forRepository(store, "private", URI.create("https://b.example/maven/"));
+
+        a.materialize(rel, fromA, Hashing.sha256Hex(fromA));
+        b.materialize(rel, fromB, Hashing.sha256Hex(fromB));
+
+        assertThat(a.root()).isNotEqualTo(b.root());
+        assertThat(a.locate(rel).orElseThrow()).hasContent("bytes served by origin A");
+        assertThat(b.locate(rel).orElseThrow()).hasContent("bytes served by origin B");
+        assertThat(store.resolve("repos/private"))
+                .as("the name is a label, not a directory")
+                .doesNotExist();
+        RepoArtifactStore.Origin originA = Objects.requireNonNull(a.origin());
+        assertThat(originA.name()).isEqualTo("private");
+        assertThat(originA.origin()).isEqualTo("https://a.example/maven");
+        assertThat(originA.isLegacy()).isFalse();
+    }
+
+    @Test
+    void one_origin_under_two_names_is_one_store(@TempDir Path dir) throws IOException {
+        Path store = dir.resolve("store");
+        RepoArtifactStore corp = RepoArtifactStore.forRepository(store, "corp", URI.create("https://nexus.acme/maven"));
+        RepoArtifactStore mirror =
+                RepoArtifactStore.forRepository(store, "mirror", URI.create("https://NEXUS.acme:443/maven/"));
+
+        assertThat(corp.root()).isEqualTo(mirror.root());
+    }
+
+    @Test
+    void a_lock_source_resolves_to_the_store_of_its_url(@TempDir Path dir) {
+        Path store = dir.resolve("store");
+
+        assertThat(RepoArtifactStore.forSource(store, "central+https://repo.maven.apache.org/maven2/")
+                        .root())
+                .isEqualTo(store.resolve("repos/central"));
+        assertThat(RepoArtifactStore.forSource(store, "private+https://a.example/maven/")
+                        .root())
+                .isEqualTo(RepoArtifactStore.forRepository(store, "x", URI.create("https://a.example/maven"))
+                        .root());
+        assertThat(RepoArtifactStore.forSource(store, "jk-local").root()).isEqualTo(store.resolve("repos/jk-local"));
+        assertThat(RepoArtifactStore.forSource(store, "git:com.acme:lib:1.0+file:///tmp/x")
+                        .root())
+                .as("a synthetic source reads the first-party shelf")
+                .isEqualTo(store.resolve("repos/jk-local"));
+    }
+
+    @Test
+    void a_repository_served_out_of_the_store_is_that_tree_and_not_a_copy(@TempDir Path dir) {
+        Path store = dir.resolve("store");
+        Path central = store.resolve("repos/central");
+
+        assertThat(RepoArtifactStore.forRepository(store, "central", central.toUri())
+                        .root())
+                .isEqualTo(central);
+    }
+
+    /**
+     * A tree keyed by a repository name predates identity keying and nothing can say which origin
+     * filled it: it is listed as legacy, excluded from every lookup, and named for removal. The
+     * reserved public trees and the first-party shelf are adopted as they are.
+     */
+    @Test
+    void a_name_keyed_tree_is_legacy_while_reserved_and_identity_keyed_trees_are_known(@TempDir Path dir)
+            throws IOException {
+        Path store = dir.resolve("store");
+        Files.createDirectories(store.resolve("repos/central/g/a/1"));
+        Files.createDirectories(store.resolve("repos/jk-local/g/a/1"));
+        Files.createDirectories(store.resolve("repos/private/g/a/1"));
+        Path src = Files.writeString(dir.resolve("src.jar"), "x");
+        RepoArtifactStore.forRepository(store, "corp", URI.create("https://nexus.acme/maven"))
+                .materialize("g/a/1/a-1.jar", src, Hashing.sha256Hex(src));
+
+        List<RepoArtifactStore.Origin> all = RepoArtifactStore.describeAll(store);
+
+        assertThat(all)
+                .extracting(RepoArtifactStore.Origin::id, RepoArtifactStore.Origin::isLegacy)
+                .contains(
+                        tuple("central", false),
+                        tuple("jk-local", false),
+                        tuple("private", true),
+                        tuple(RepoIdentity.storeId(URI.create("https://nexus.acme/maven")), false));
+        assertThat(all.stream()
+                        .filter(o -> o.id().equals("central"))
+                        .findFirst()
+                        .orElseThrow()
+                        .origin())
+                .isEqualTo("https://repo.maven.apache.org/maven2");
+        assertThat(RepoArtifactStore.storeIds(store)).doesNotContain("private").contains("central", "jk-local");
+        assertThat(RepoArtifactStore.legacyStores(store)).containsExactly(store.resolve("repos/private"));
     }
 
     @Test

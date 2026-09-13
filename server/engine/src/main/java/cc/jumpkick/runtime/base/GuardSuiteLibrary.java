@@ -9,7 +9,6 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -17,7 +16,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -86,9 +84,8 @@ public final class GuardSuiteLibrary {
 
     /** Store-only: the jar in any repo store, or {@code null}. */
     public static @Nullable Path stored(Cas cas) {
-        for (String repo :
-                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
-            Optional<Path> hit = new RepoArtifactStore(cas.root(), repo).locate(relativePath());
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
+            Optional<Path> hit = store.locate(relativePath());
             if (hit.isPresent()) return hit.get();
         }
         return null;

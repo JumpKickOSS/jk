@@ -33,6 +33,13 @@ public final class ManifestPaths {
     /** A build plugin's descriptor: its module root, and the root entry of its jar. */
     public static final String PLUGIN_MANIFEST = "jk-plugin.toml";
 
+    /**
+     * Beside each repository store under {@code <store>/repos/}: the canonical origin that fills the
+     * tree and the name it was first filled under. A tree without one, that is not a reserved
+     * public origin or the first-party shelf, was keyed by a repository name and is read by nothing.
+     */
+    public static final String REPO_ORIGIN = ".origin";
+
     /** User config under the config root, and the per-app {@code <bin>/} override beside it. */
     public static final String CONFIG = "config.toml";
 

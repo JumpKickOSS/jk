@@ -6,8 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.PomRuntimeClasspath;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.wire.PluginJarNotFoundException;
@@ -16,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +54,13 @@ class PluginJarDepsFetchTest {
         } else {
             System.clearProperty(PluginJar.PUBLISHER.jarProperty());
         }
+    }
+
+    /** The official repository's store under this test's cache: keyed by the stub's origin, not by the word jumpkick. */
+    private static Path official(Path tmp) {
+        return Objects.requireNonNull(RepoArtifactStore.forRepository(
+                        tmp.resolve("cache"), RepositorySpec.JUMPKICK_NAME, PluginJar.officialRepoBase())
+                .root());
     }
 
     @Test
@@ -92,7 +102,7 @@ class PluginJarDepsFetchTest {
         Path pom = jar.resolveSibling(jar.getFileName().toString().replace(".jar", ".pom"));
         assertThat(pom).exists();
         List<Path> cp = PomRuntimeClasspath.resolve(jar);
-        Path dep = tmp.resolve("cache/repos/jumpkick/com/foo/lib/1.0/lib-1.0.jar");
+        Path dep = official(tmp).resolve("com/foo/lib/1.0/lib-1.0.jar");
         assertThat(cp).contains(dep.toAbsolutePath().normalize());
         assertThat(Files.readString(dep)).isEqualTo("dep-bytes");
     }
@@ -113,11 +123,10 @@ class PluginJarDepsFetchTest {
 
         assertThatThrownBy(() -> PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache"))))
                 .hasMessageContaining("checksum mismatch");
-        assertThat(tmp.resolve("cache/repos/jumpkick"))
-                .satisfiesAnyOf(p -> assertThat(p).doesNotExist(), p -> assertThat(Files.walk(p)
-                                .filter(Files::isRegularFile)
-                                .filter(f -> f.getFileName().toString().endsWith(".jar")))
-                        .isEmpty());
+        assertThat(official(tmp)).satisfiesAnyOf(p -> assertThat(p).doesNotExist(), p -> assertThat(Files.walk(p)
+                        .filter(Files::isRegularFile)
+                        .filter(f -> f.getFileName().toString().endsWith(".jar")))
+                .isEmpty());
     }
 
     @Test
@@ -203,7 +212,7 @@ class PluginJarDepsFetchTest {
 
         Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
         List<Path> cp = PomRuntimeClasspath.resolve(jar);
-        Path annotations = tmp.resolve("cache/repos/jumpkick/org/example/annotations/2.21/annotations-2.21.jar");
+        Path annotations = official(tmp).resolve("org/example/annotations/2.21/annotations-2.21.jar");
         assertThat(cp).contains(annotations.toAbsolutePath().normalize());
         assertThat(Files.readString(annotations)).isEqualTo("annotations-bytes");
     }
@@ -267,7 +276,7 @@ class PluginJarDepsFetchTest {
 
         Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
         List<Path> cp = PomRuntimeClasspath.resolve(jar);
-        Path lib = tmp.resolve("cache/repos/jumpkick/org/example/lib/9.9.9/lib-9.9.9.jar");
+        Path lib = official(tmp).resolve("org/example/lib/9.9.9/lib-9.9.9.jar");
         assertThat(cp).contains(lib.toAbsolutePath().normalize());
         assertThat(Files.readString(lib)).isEqualTo("lib-bytes");
     }

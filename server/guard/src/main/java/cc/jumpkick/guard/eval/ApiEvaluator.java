@@ -9,11 +9,11 @@ import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Rule;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -283,16 +283,16 @@ final class ApiEvaluator implements Evaluator {
                     .resolve(hex.substring(2, 4))
                     .resolve(hex.substring(4));
             if (Files.isRegularFile(cas)) return cas;
-            Path repos = store.resolve("repos");
             String tail = parts[0].replace('.', '/') + "/" + parts[1] + "/" + parts[2] + "/" + parts[1] + "-" + parts[2]
                     + ".jar";
             Path[] found = new Path[1];
-            if (Files.isDirectory(repos)) {
-                PathUtil.forEachChild(repos, (repo, attrs) -> {
-                    Path jar = repo.resolve(tail);
-                    if (attrs.isDirectory() && Files.isRegularFile(jar)) found[0] = jar;
-                    return found[0] == null;
-                });
+            // Known stores only: a legacy name-keyed tree has no origin anyone can vouch for.
+            for (Path dir : RepoStoreDirs.known(store)) {
+                Path jar = dir.resolve(tail);
+                if (Files.isRegularFile(jar)) {
+                    found[0] = jar;
+                    break;
+                }
             }
             return found[0];
         }

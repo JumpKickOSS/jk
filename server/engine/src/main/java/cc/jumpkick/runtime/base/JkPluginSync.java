@@ -50,7 +50,8 @@ public final class JkPluginSync {
         Path m2 = M2Dirs.localRepository();
         Path cacheRoot = cas.root();
         RepoArtifactStore localStore = new RepoArtifactStore(cacheRoot, RepoArtifactResolver.JK_LOCAL);
-        RepoArtifactStore centralStore = new RepoArtifactStore(cacheRoot, RepositorySpec.CENTRAL);
+        RepoArtifactStore centralStore =
+                RepoArtifactStore.forRepository(cacheRoot, RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url());
         int present = 0;
         int fetched = 0;
         int missing = 0;

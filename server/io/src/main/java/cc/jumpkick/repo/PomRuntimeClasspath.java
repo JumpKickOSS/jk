@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,8 +37,6 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PomRuntimeClasspath {
 
-    private static final List<String> REPOS =
-            List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK.name(), RepositorySpec.CENTRAL);
     private static final Pattern VERSION = Pattern.compile("\\d+(?:[._-][A-Za-z0-9]+)*");
 
     /**
@@ -229,23 +228,13 @@ public final class PomRuntimeClasspath {
     private static RepoGroup buildStoreRepos(Path storeRoot, @Nullable Path extraStore) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
-        MavenRepo local = storeOnlyRepo(
-                RepoArtifactResolver.JK_LOCAL,
-                storeRoot
-                        .resolve("repos")
-                        .resolve(RepoArtifactResolver.JK_LOCAL)
-                        .toUri(),
-                http,
-                cas);
+        List<RepoArtifactStore> firstParty = RepoArtifactStore.firstParty(storeRoot);
+        MavenRepo local = storeOnlyRepo(RepoArtifactResolver.JK_LOCAL, storeUri(firstParty.get(0)), http, cas);
         // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
         // jumpkick specialist's warm mirror is only consulted at last resort — after central's
         // network leg. Prepending it as a priority store keeps warm forks off the network
         // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
-        MavenRepo jumpkickStore = storeOnlyRepo(
-                RepositorySpec.JUMPKICK_NAME,
-                storeRoot.resolve("repos").resolve(RepositorySpec.JUMPKICK_NAME).toUri(),
-                http,
-                cas);
+        MavenRepo jumpkickStore = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, storeUri(firstParty.get(1)), http, cas);
         MavenRepo jumpkick = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, RepositorySpec.officialUrl(), http, cas);
         MavenRepo central = storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
         RepoGroup remotes =
@@ -267,12 +256,19 @@ public final class PomRuntimeClasspath {
     private static List<MavenRepo> fileRepos(Path storeRoot) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
-        List<MavenRepo> repos = new ArrayList<>(REPOS.size());
-        for (String name : REPOS) {
-            Path dir = storeRoot.resolve("repos").resolve(name);
-            repos.add(storeOnlyRepo(name, dir.toUri(), http, cas));
+        List<String> names =
+                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL);
+        List<RepoArtifactStore> stores = RepoArtifactStore.firstParty(storeRoot);
+        List<MavenRepo> repos = new ArrayList<>(stores.size());
+        for (int i = 0; i < stores.size(); i++) {
+            repos.add(storeOnlyRepo(names.get(i), storeUri(stores.get(i)), http, cas));
         }
         return repos;
+    }
+
+    /** A store's tree as a {@code file:} repository; reading it through {@link MavenRepo} writes nothing elsewhere. */
+    private static URI storeUri(RepoArtifactStore store) {
+        return Objects.requireNonNull(store.root(), "store root").toUri();
     }
 
     /** Worker closures stay under {@code JK_STORE_DIR}; they do not write-through {@code ~/.m2}. */
@@ -365,11 +361,7 @@ public final class PomRuntimeClasspath {
                     String n =
                             cur.getFileName() == null ? "" : cur.getFileName().toString();
                     Path parent = cur.getParent();
-                    if (parent != null
-                            && "repos".equals(fileName(parent))
-                            && (RepoArtifactResolver.isFirstPartyStoreName(n)
-                                    || n.equals(RepositorySpec.JUMPKICK_NAME)
-                                    || n.equals(RepositorySpec.CENTRAL))) {
+                    if (parent != null && "repos".equals(fileName(parent)) && RepoIdentity.looksLikeStoreId(n)) {
                         break;
                     }
                     if (!n.isEmpty()) groupSegs.add(0, n);
@@ -623,8 +615,8 @@ public final class PomRuntimeClasspath {
     }
 
     private static Optional<Path> locate(Path storeRoot, String relativePath) {
-        for (String repo : REPOS) {
-            Optional<Path> hit = new RepoArtifactStore(storeRoot, repo).locate(relativePath);
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(storeRoot)) {
+            Optional<Path> hit = store.locate(relativePath);
             if (hit.isPresent()) return hit;
         }
         return Optional.empty();

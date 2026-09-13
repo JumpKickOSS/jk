@@ -280,6 +280,16 @@ public final class StorageCommand extends GroupCommand {
             for (String line : CacheCommand.renderStoreUsageTable(s, lastPruned)) {
                 CliOutput.out(line);
             }
+            CacheInventoryAck repos;
+            try {
+                repos = EngineClient.cacheInventory(
+                        EnginePaths.current(), "repos", cacheRoot, storeRoot, List.of(), List.of(), false);
+            } catch (IOException e) {
+                repos = CacheInventoryAck.error(String.valueOf(e.getMessage()));
+            }
+            for (String line : RepoStores.render(RepoStores.decode(repos), Theme.active())) {
+                CliOutput.out(line);
+            }
             return 0;
         }
     }

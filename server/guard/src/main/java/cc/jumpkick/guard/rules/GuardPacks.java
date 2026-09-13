@@ -7,6 +7,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.RepoStoreDirs;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
@@ -126,18 +127,14 @@ public final class GuardPacks {
                     .resolve(hex.substring(4));
             if (Files.isRegularFile(cas)) return cas;
         }
-        Path repos = store.resolve("repos");
         String tail = c.group().replace('.', '/') + "/" + c.artifact() + "/" + c.version() + "/" + c.artifact() + "-"
                 + c.version() + ".jar";
-        Path[] found = new Path[1];
-        if (Files.isDirectory(repos)) {
-            PathUtil.forEachChild(repos, (repo, attrs) -> {
-                Path jar = repo.resolve(tail);
-                if (attrs.isDirectory() && Files.isRegularFile(jar)) found[0] = jar;
-                return found[0] == null;
-            });
+        // Known stores only: a legacy name-keyed tree has no origin anyone can vouch for.
+        for (Path dir : RepoStoreDirs.known(store)) {
+            Path jar = dir.resolve(tail);
+            if (Files.isRegularFile(jar)) return jar;
         }
-        return found[0];
+        return null;
     }
 
     /**

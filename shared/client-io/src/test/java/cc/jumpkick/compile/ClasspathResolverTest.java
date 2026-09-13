@@ -131,7 +131,7 @@ class ClasspathResolverTest {
     private static Path putJar(Path store, String relative, String payload) throws Exception {
         Path src = store.resolve("src.bin");
         Files.writeString(src, payload);
-        RepoArtifactStore.forRepoName(store, "central").materialize(relative, src, Hashing.sha256Hex(src));
+        RepoArtifactStore.forStoreId(store, "central").materialize(relative, src, Hashing.sha256Hex(src));
         Files.deleteIfExists(src);
         return store.resolve("repos/central").resolve(relative);
     }

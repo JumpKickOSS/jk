@@ -185,9 +185,8 @@ public final class CacheSync {
             String hex = Objects.requireNonNull(pkg.sourcesChecksumHex());
             Coordinate sourcesCoord =
                     new Coordinate(pkg.moduleGroup(), pkg.moduleArtifact(), pkg.version(), "sources", "jar");
-            String repoName = RepoArtifactResolver.repoName(pkg.source());
             String rel = MavenLayout.artifactPath(sourcesCoord);
-            if (locator.locate(repoName, rel, hex, sourcesCoord.toGav()).isPresent()) {
+            if (locator.locate(pkg.source(), rel, hex, sourcesCoord.toGav()).isPresent()) {
                 observer.upToDate(pkg);
                 continue;
             }

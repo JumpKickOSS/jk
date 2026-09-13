@@ -482,7 +482,7 @@ public final class InstallPlans {
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {
-        return RepoArtifactStore.forRepoName(JkStores.store(), RepoArtifactResolver.JK_LOCAL);
+        return RepoArtifactStore.forStoreId(JkStores.store(), RepoArtifactResolver.JK_LOCAL);
     }
 
     /** Write byte content into {@code repos/jk-local/} as a full-store entry with a {@code .jk} memo. */

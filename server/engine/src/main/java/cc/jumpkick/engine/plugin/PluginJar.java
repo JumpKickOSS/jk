@@ -11,7 +11,6 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
-import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.wire.PluginJarNotFoundException;
@@ -23,14 +22,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
- * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then local cache
- * stores ({@code repos/jk-local}, {@code repos/jumpkick}, {@code repos/central}), then a one-shot
- * fetch from the official JumpKick Maven repository into {@code repos/jumpkick/}.
+ * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then the
+ * first-party stores ({@code repos/jk-local}, the official repository's, Central's), then a
+ * one-shot fetch from the official JumpKick Maven repository into that repository's store.
  */
 public enum PluginJar {
     TEST_RUNNER("jk-test-runner", "jk.test.runner.jar", ":test-runner:installLocal"),
@@ -105,12 +105,10 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName :
-                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
-            RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cacheRoot)) {
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
-            checked.add(cacheRoot.resolve("repos").resolve(repoName).resolve(relPath));
+            checked.add(Objects.requireNonNull(store.root(), "store root").resolve(relPath));
         }
 
         // First-run / clean cache: pull from the official Maven layout on GCS (or JK_OFFICIAL_REPO_URL).
@@ -138,9 +136,8 @@ public enum PluginJar {
             Path jar = Path.of(override);
             return Files.isRegularFile(jar) ? jar : null;
         }
-        for (String repoName :
-                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
-            var result = new RepoArtifactStore(cas.root(), repoName).locate(relativePath());
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
+            var result = store.locate(relativePath());
             if (result.isPresent()) return result.get();
         }
         return null;
@@ -148,7 +145,7 @@ public enum PluginJar {
 
     /**
      * Download {@code relPath} and its sibling {@code .pom} (+ optional {@code .sha256}) from the
-     * official Maven repo into {@code repos/jumpkick/}. Returns the local jar path, {@code null} if
+     * official Maven repo into that repository's store. Returns the local jar path, {@code null} if
      * the jar 404s, or throws if the jar exists without a POM.
      */
     public static @Nullable Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
@@ -200,7 +197,7 @@ public enum PluginJar {
             }
             sha = published.get();
         }
-        RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), RepositorySpec.JUMPKICK_NAME);
+        RepoArtifactStore store = RepoArtifactStore.forRepository(cas.root(), RepositorySpec.JUMPKICK_NAME, base);
         Files.createDirectories(cas.root());
         Path tmpJar = Files.createTempFile(cas.root(), ".worker-", ".jar");
         Path tmpPom = Files.createTempFile(cas.root(), ".worker-", ".pom");

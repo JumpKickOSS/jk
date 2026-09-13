@@ -34,7 +34,6 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginDeclaration;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
@@ -516,9 +515,8 @@ public final class LockPipeline {
                 String rel = c.group().replace('.', '/') + "/" + c.artifact() + "/" + c.version() + "/" + c.artifact()
                         + "-" + c.version() + ".jar";
                 Path staged = null;
-                for (String store :
-                        List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
-                    Optional<Path> hit = new RepoArtifactStore(cas.root(), store).locate(rel);
+                for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
+                    Optional<Path> hit = store.locate(rel);
                     if (hit.isPresent()) {
                         staged = hit.get();
                         break;
@@ -769,7 +767,7 @@ public final class LockPipeline {
             String repoName = RepoArtifactResolver.repoName(pkg.source());
             if (repoName == null || !RepoArtifactResolver.isNamedRemote(repoName)) return "";
             String m2Path = MavenLayout.artifactPath(pkg.coordinate());
-            String stored = RepoArtifactStore.forRepoName(cas.root(), repoName)
+            String stored = RepoArtifactStore.forSource(cas.root(), pkg.source())
                     .storedSha256(m2Path)
                     .orElse(null);
             if (stored == null || stored.equalsIgnoreCase(lockedHex)) return "";

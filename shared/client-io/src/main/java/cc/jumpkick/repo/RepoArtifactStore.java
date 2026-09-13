@@ -3,8 +3,16 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.RepoSource;
+import cc.jumpkick.lock.RepoStoreDirs;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -22,45 +30,121 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Per-named-repository Maven-layout store under {@code <store>/repos/<name>/}.
+ * Per-repository Maven-layout store under {@code <store>/repos/<id>/}, keyed by the repository's
+ * identity ({@link RepoIdentity#storeId}: where its bytes come from), never by the name a project
+ * gives it. The name is kept beside the tree as a label ({@link #ORIGIN_FILE}) for {@code jk
+ * storage} and {@code jk doctor} to show.
  *
  * <p>Each artifact is a real {@code .jar}/{@code .pom}/… file plus one {@link ArtifactMemo}
  * {@code .jk} file. Writers use temp + atomic replace. This tree is jk-owned; the Maven local
  * repository (when {@code m2integration} is on) is a separate candidate cache and never holds
  * {@code .jk} files.
+ *
+ * <p>The first-party shelf {@code repos/jk-local} is not a remote and has no origin; the three
+ * public origins jk ships with keep their reserved directories ({@code central}, {@code google},
+ * {@code jumpkick}). Any other directory that carries no {@link #ORIGIN_FILE} was keyed by a
+ * repository <em>name</em> and nothing can say which origin filled it: it is a legacy store, read
+ * by nothing, listed as such, and removed by {@code jk storage clean}.
  */
 public final class RepoArtifactStore {
 
     /** No-op store for callers that don't participate in per-repo storage. */
-    public static final RepoArtifactStore NONE = new RepoArtifactStore(null);
+    public static final RepoArtifactStore NONE = new RepoArtifactStore(null, null, null);
 
-    private final @Nullable Path root; // <cache>/repos/<name>/
+    /**
+     * Beside each identity-keyed tree: {@code origin = "<canonical origin>"} and {@code name =
+     * "<the label the first project to fill it used>"}. Written on the first write.
+     */
+    public static final String ORIGIN_FILE = ManifestPaths.REPO_ORIGIN;
 
-    private RepoArtifactStore(@Nullable Path root) {
+    private final @Nullable Path root; // <store>/repos/<id>/
+    private final @Nullable String label;
+    private final @Nullable String origin;
+
+    private RepoArtifactStore(@Nullable Path root, @Nullable String label, @Nullable String origin) {
         this.root = root;
-    }
-
-    /** Artifact and sidecar both live under {@code repos/<repoName>/}. */
-    public RepoArtifactStore(Path cacheRoot, String repoName) {
-        Objects.requireNonNull(cacheRoot, "cacheRoot");
-        Objects.requireNonNull(repoName, "repoName");
-        // A repo name is a raw substring from the project's config/lockfile; refuse one that would
-        // escape repos/ into an attacker-chosen directory.
-        MavenLayout.requireSafeSegment(repoName, "repository name");
-        this.root = cacheRoot.resolve("repos").resolve(repoName);
+        this.label = label;
+        this.origin = origin;
     }
 
     /**
-     * Marker in {@code repos/}: this store has been through the local → jk-local rename. Before
-     * the marker exists, a {@code repos/local} directory can only be the pre-rename first-party
-     * store (older jk reserved the name and never fetched a remote into it); once the marker is
-     * written, {@code repos/local} is an ordinary user-named remote and must be left alone.
+     * The tree at {@code repos/<storeId>/} as it is on disk. For a remote, {@link #forRepository}
+     * derives the id; this constructor is for the first-party shelf ({@link RepositorySpec#JK_LOCAL})
+     * and for walking ids {@link #storeIds} listed.
      */
-    private static final String LEGACY_LOCAL_MARKER = ".jk-local-renamed";
+    public RepoArtifactStore(Path cacheRoot, String storeId) {
+        this(dirFor(cacheRoot, storeId), null, null);
+    }
 
-    /** Factory: the full store for {@code repoName} under {@code cacheRoot}. */
-    public static RepoArtifactStore forRepoName(Path cacheRoot, String repoName) {
-        return new RepoArtifactStore(cacheRoot, repoName);
+    private static Path dirFor(Path cacheRoot, String storeId) {
+        Objects.requireNonNull(cacheRoot, "cacheRoot");
+        Objects.requireNonNull(storeId, "storeId");
+        // An id may echo a raw substring of the project's config or lockfile; refuse one that
+        // would escape repos/ into an attacker-chosen directory.
+        MavenLayout.requireSafeSegment(storeId, "store id");
+        return cacheRoot.resolve("repos").resolve(storeId);
+    }
+
+    /** The tree at {@code repos/<storeId>/}; see the constructor. */
+    public static RepoArtifactStore forStoreId(Path cacheRoot, String storeId) {
+        return new RepoArtifactStore(cacheRoot, storeId);
+    }
+
+    /**
+     * The store for the repository at {@code origin}, whatever a project calls it. A repository
+     * served out of this very store ({@code file:} at {@code <cacheRoot>/repos/<id>}, the view the
+     * worker launcher reads through) is that tree itself, not a copy of it.
+     */
+    public static RepoArtifactStore forRepository(Path cacheRoot, String name, URI origin) {
+        Objects.requireNonNull(cacheRoot, "cacheRoot");
+        Objects.requireNonNull(name, "name");
+        Objects.requireNonNull(origin, "origin");
+        String self = selfView(cacheRoot, origin);
+        if (self != null) return new RepoArtifactStore(cacheRoot, self);
+        String canonical = RepoIdentity.canonicalOrigin(origin);
+        return new RepoArtifactStore(dirFor(cacheRoot, RepoIdentity.storeId(origin)), name, canonical);
+    }
+
+    /**
+     * The store a lockfile {@code source} ({@code "<name>+<url>"}) names: the identity of its URL
+     * for a named remote, the first-party shelf for {@code jk-local} and synthetic sources.
+     */
+    public static RepoArtifactStore forSource(Path cacheRoot, String source) {
+        RepoSource parsed = RepoSource.parse(source);
+        String name = parsed.name();
+        if (!RepoArtifactResolver.isNamedRemote(name)) return forStoreId(cacheRoot, RepoArtifactResolver.JK_LOCAL);
+        String url = parsed.url();
+        try {
+            return forRepository(cacheRoot, Objects.requireNonNull(name), new URI(url.strip()));
+        } catch (URISyntaxException | IllegalArgumentException malformed) {
+            return new RepoArtifactStore(
+                    dirFor(cacheRoot, RepoIdentity.storeId(url)), name, RepoIdentity.canonicalOrigin(url));
+        }
+    }
+
+    /**
+     * The stores every first-party lookup probes, in order: the {@code jk-local} shelf a checkout
+     * installs onto, the official repository at its configured URL, then Maven Central.
+     */
+    public static List<RepoArtifactStore> firstParty(Path cacheRoot) {
+        return List.of(
+                forStoreId(cacheRoot, RepoArtifactResolver.JK_LOCAL),
+                forRepository(cacheRoot, RepositorySpec.JUMPKICK_NAME, RepositorySpec.officialUrl()),
+                forRepository(cacheRoot, RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url()));
+    }
+
+    /** The store id when {@code origin} is a {@code file:} URI at {@code <cacheRoot>/repos/<id>}; else null. */
+    private static @Nullable String selfView(Path cacheRoot, URI origin) {
+        if (!"file".equalsIgnoreCase(origin.getScheme()) || origin.getPath() == null) return null;
+        Path repos = cacheRoot.resolve("repos").toAbsolutePath().normalize();
+        Path dir;
+        try {
+            dir = Path.of(origin).toAbsolutePath().normalize();
+        } catch (IllegalArgumentException | FileSystemNotFoundException notLocal) {
+            return null;
+        }
+        if (dir.getParent() == null || !dir.getParent().equals(repos)) return null;
+        return String.valueOf(dir.getFileName());
     }
 
     // -------------------------------------------------------------------------
@@ -170,6 +254,7 @@ public final class RepoArtifactStore {
                 return;
             }
             Files.createDirectories(artifact.getParent());
+            recordOrigin();
             boolean same = Files.isRegularFile(artifact) && Files.isSameFile(source, artifact);
             if (!same) {
                 // Unique temp per writer: a shared fixed ".part" name let two concurrent fetchers
@@ -200,7 +285,100 @@ public final class RepoArtifactStore {
     /** Write or refresh the {@code .jk} memo for {@code blob} (which may live outside this store). */
     public void writeMemo(String relativePath, Path blob, String sha256) throws IOException {
         if (root == null || blob == null || !Files.isRegularFile(blob)) return;
-        ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256).write(sidecarPath(relativePath));
+        Path sidecar = sidecarPath(relativePath);
+        Files.createDirectories(Objects.requireNonNull(sidecar.getParent(), "sidecar dir"));
+        recordOrigin();
+        ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256).write(sidecar);
+    }
+
+    // -------------------------------------------------------------------------
+    // Identity
+    // -------------------------------------------------------------------------
+
+    /** What a store is on disk: its id, the label it was first filled under, and its canonical origin. */
+    public record Origin(
+            String id, @Nullable String name, @Nullable String origin) {
+        /** True when nothing says which origin filled the tree: keyed by name, read by nothing. */
+        public boolean isLegacy() {
+            return origin == null && !RepoArtifactResolver.JK_LOCAL.equals(id);
+        }
+    }
+
+    /**
+     * Write {@link #ORIGIN_FILE} once for a store that knows its origin. A reserved tree gets one
+     * too, so a listing does not have to know the reserved table; the first-party shelf has none.
+     */
+    private void recordOrigin() {
+        if (root == null || origin == null) return;
+        Path marker = root.resolve(ORIGIN_FILE);
+        if (Files.exists(marker)) return;
+        try {
+            Files.createDirectories(root);
+            String text = "origin = \"" + origin + "\"\n" + (label == null ? "" : "name = \"" + label + "\"\n");
+            Path tmp = Files.createTempFile(root, ".origin.", ".part");
+            boolean moved = false;
+            try {
+                Files.writeString(tmp, text);
+                AtomicWrites.moveInto(tmp, marker);
+                moved = true;
+            } finally {
+                if (!moved) Files.deleteIfExists(tmp);
+            }
+        } catch (IOException | RuntimeException e) {
+            Log.warn("jk: warning: could not record the origin of " + root + ": " + e);
+        }
+    }
+
+    /** This store's on-disk identity; {@code null} for {@link #NONE}. */
+    public @Nullable Origin origin() {
+        return root == null ? null : describe(root);
+    }
+
+    /** The identity of the tree at {@code dir}: its marker, else the reserved table, else legacy ({@link RepoStoreDirs}). */
+    static Origin describe(Path dir) {
+        String id = String.valueOf(dir.getFileName());
+        String name = null;
+        String origin = null;
+        Path marker = dir.resolve(ORIGIN_FILE);
+        if (Files.isRegularFile(marker)) {
+            try {
+                for (String line : Files.readAllLines(marker)) {
+                    String[] kv = line.split("=", 2);
+                    if (kv.length != 2) continue;
+                    String key = kv[0].strip();
+                    String value = kv[1].strip();
+                    if (value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+                        value = value.substring(1, value.length() - 1);
+                    }
+                    if (key.equals("origin")) origin = value;
+                    else if (key.equals("name")) name = value;
+                }
+            } catch (IOException unreadable) {
+                // fall through to the reserved table
+            }
+        }
+        if (origin == null) origin = RepoIdentity.reservedOrigin(id);
+        if (name == null && (origin != null || RepoArtifactResolver.JK_LOCAL.equals(id))) name = id;
+        return new Origin(id, name, origin);
+    }
+
+    /**
+     * Every store under {@code <cacheRoot>/repos/} with what is known of its identity, sorted by
+     * id — the listing {@code jk storage usage} and {@code jk doctor} print. Legacy trees are
+     * included, flagged; see {@link Origin#isLegacy}.
+     */
+    public static List<Origin> describeAll(Path cacheRoot) {
+        List<Path> dirs = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(cacheRoot.resolve("repos"), (child, attrs) -> {
+                if (attrs.isDirectory()) dirs.add(child);
+                return true;
+            });
+        } catch (IOException e) {
+            return List.of();
+        }
+        dirs.sort(null);
+        return dirs.stream().map(RepoArtifactStore::describe).toList();
     }
 
     // -------------------------------------------------------------------------
@@ -209,7 +387,7 @@ public final class RepoArtifactStore {
 
     /**
      * Version directories present in this index — directories under
-     * {@code repos/<name>/<group>/<artifact>/} that hold at least one tracked sidecar.
+     * {@code repos/<id>/<group>/<artifact>/} that hold at least one tracked sidecar.
      */
     public List<String> versions(String group, String artifact) {
         if (root == null) return List.of();
@@ -276,32 +454,35 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Names of every per-repo store under {@code <cacheRoot>/repos/} — the repos jk has fetched
-     * through so far. Empty for a cold cache.
+     * Ids of every store under {@code <cacheRoot>/repos/} whose origin is known — the first-party
+     * shelf, the reserved public origins, and every identity-keyed tree. A legacy name-keyed tree
+     * is not among them: nothing reads it. Empty for a cold cache.
      */
-    public static List<String> repoNames(Path cacheRoot) {
-        Path reposDir = cacheRoot.resolve("repos");
-        if (!Files.isDirectory(reposDir)) return List.of();
-        try (Stream<Path> entries = Files.list(reposDir)) {
-            return entries.filter(Files::isDirectory)
-                    .map(p -> p.getFileName().toString())
-                    .sorted()
-                    .toList();
-        } catch (IOException e) {
-            return List.of();
-        }
+    public static List<String> storeIds(Path cacheRoot) {
+        return describeAll(cacheRoot).stream()
+                .filter(o -> !o.isLegacy())
+                .map(Origin::id)
+                .toList();
+    }
+
+    /** The legacy name-keyed trees under {@code <cacheRoot>/repos/}; {@code jk storage clean} removes them. */
+    public static List<Path> legacyStores(Path cacheRoot) {
+        return describeAll(cacheRoot).stream()
+                .filter(Origin::isLegacy)
+                .map(o -> cacheRoot.resolve("repos").resolve(o.id()))
+                .toList();
     }
 
     /**
-     * Every {@code group:artifact} cached under any named repo in {@code cacheRoot}, merged by
+     * Every {@code group:artifact} cached under any known store in {@code cacheRoot}, merged by
      * module key — the repo-agnostic view {@code jk repo search} and {@code jk library search
      * --offline} want, since neither is scoped to one particular declared repository.
      */
     public static List<Module> allModules(Path cacheRoot) {
         Map<String, String[]> ga = new LinkedHashMap<>();
         Map<String, Set<String>> versionsByModule = new LinkedHashMap<>();
-        for (String repoName : repoNames(cacheRoot)) {
-            for (Module m : forRepoName(cacheRoot, repoName).modules()) {
+        for (String storeId : storeIds(cacheRoot)) {
+            for (Module m : forStoreId(cacheRoot, storeId).modules()) {
                 ga.putIfAbsent(m.moduleKey(), new String[] {m.group(), m.artifact()});
                 versionsByModule
                         .computeIfAbsent(m.moduleKey(), k -> new LinkedHashSet<>())
@@ -317,18 +498,18 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Versions of {@code group:artifact} cached under any named repo in {@code cacheRoot}, merged
+     * Versions of {@code group:artifact} cached under any known store in {@code cacheRoot}, merged
      * and deduplicated — the repo-agnostic counterpart to {@link #versions(String, String)}.
      */
     public static List<String> allVersions(Path cacheRoot, String group, String artifact) {
         Set<String> out = new LinkedHashSet<>();
-        for (String repoName : repoNames(cacheRoot)) {
-            out.addAll(forRepoName(cacheRoot, repoName).versions(group, artifact));
+        for (String storeId : storeIds(cacheRoot)) {
+            out.addAll(forStoreId(cacheRoot, storeId).versions(group, artifact));
         }
         return List.copyOf(out);
     }
 
-    /** The root directory ({@code <cache>/repos/<name>}), or {@code null} for {@link #NONE}. */
+    /** The root directory ({@code <store>/repos/<id>}), or {@code null} for {@link #NONE}. */
     public @Nullable Path root() {
         return root;
     }

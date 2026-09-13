@@ -14,7 +14,9 @@ import org.jspecify.annotations.Nullable;
  * came from, {@code declared} the compile/runtime dependencies its POM names, {@code entries} the
  * size of the launch classpath the engine rebuilt from it — and {@code entries} rows are
  * {@code artifact|path}, that classpath entry by entry. Dropped workers {@code lines} rows are
- * {@code artifact|version|repo}; {@code files}/{@code bytes} count what went.
+ * {@code artifact|version|repo}; {@code files}/{@code bytes} count what went. Repos {@code lines}
+ * rows are {@code id|name|origin|files|bytes|state} — one per repository store, {@code state}
+ * {@code ok} or {@code legacy}.
  */
 public record CacheInventoryAck(
         @Nullable String error,
@@ -54,6 +56,10 @@ public record CacheInventoryAck(
     public static CacheInventoryAck workers(List<String> lines, List<String> entries) {
         return new CacheInventoryAck(
                 null, "workers", List.of(), 0, 0, List.copyOf(entries), List.copyOf(lines), 0, 0, 0, 0);
+    }
+
+    public static CacheInventoryAck repos(List<String> lines) {
+        return new CacheInventoryAck(null, "repos", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, 0, 0);
     }
 
     public static CacheInventoryAck droppedWorkers(List<String> lines, long files, long bytes) {

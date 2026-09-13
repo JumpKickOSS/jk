@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -138,7 +139,11 @@ class MavenRepoM2LookupTest {
 
         assertThat(fetched.cachePath()).isEqualTo(m2.resolve(REL));
         assertThat(new Cas(store).contains(Hashing.sha256Hex(REAL))).isFalse();
-        assertThat(ArtifactMemo.jkPath(store.resolve("repos/test"), REL)).exists();
+        Path repoStore = Objects.requireNonNull(
+                RepoArtifactStore.forRepository(store, "test", base).root());
+        assertThat(ArtifactMemo.jkPath(repoStore, REL))
+                .as("the memo lives in the store keyed by the repository's origin")
+                .exists();
     }
 
     @Test

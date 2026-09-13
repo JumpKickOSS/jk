@@ -58,9 +58,18 @@ class UpdateCommandTest {
                 .isEqualTo(0);
         Files.delete(tempDir.resolve("jk-lock.toml"));
 
-        // Offline re-solve must come entirely from the journal.
+        // Offline re-solve must come entirely from the journal. The store is keyed by origin, so
+        // the offline solve names the same repository the warm-up fetched from.
         maven.stop();
-        int exit = run("update", "--offline", "-C", tempDir.toString(), "--cache-dir", cache.toString());
+        int exit = run(
+                "update",
+                "--offline",
+                "-C",
+                tempDir.toString(),
+                "--repo-url",
+                maven.base().toString(),
+                "--cache-dir",
+                cache.toString());
         assertThat(exit).isEqualTo(0);
 
         Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));

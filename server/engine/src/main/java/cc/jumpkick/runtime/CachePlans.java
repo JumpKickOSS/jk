@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
@@ -14,6 +15,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
@@ -204,9 +206,9 @@ public final class CachePlans {
     public record SweepReport(long files, long bytes) {}
 
     /**
-     * Artifact-store GC: leaked {@code .put-} download temps, nothing else.
-     * The store is never size-bounded and its blobs are never collected — {@code jk storage nuke} is
-     * the only way to shrink it.
+     * Artifact-store GC: leaked {@code .put-} download temps and legacy name-keyed repository
+     * stores, nothing else. The store is never size-bounded and its blobs are never collected —
+     * {@code jk storage nuke} is the only way to shrink it.
      */
     public static SweepReport sweepStore(Path root, boolean dryRun) throws IOException {
         long totalFiles = 0;
@@ -221,6 +223,16 @@ public final class CachePlans {
         TempSweep repoTemps = sweepCasTemps(JkStores.resolve("repos"), dryRun);
         totalFiles += repoTemps.files();
         totalBytes += repoTemps.bytes();
+
+        // A repository store keyed by a project's NAME for the repository is unreadable by design:
+        // nothing can say which origin filled it, so no lookup reads it and the next resolve
+        // re-fetches into the identity-keyed tree. Reclaiming it is the deliberate invalidation.
+        for (Path legacy : RepoArtifactStore.legacyStores(JkStores.store())) {
+            DiskUsage.Stats stats = DiskUsage.of(legacy);
+            totalFiles += stats.files();
+            totalBytes += stats.bytes();
+            if (!dryRun) PathUtil.deleteRecursivelyOrThrow(legacy);
+        }
 
         return new SweepReport(totalFiles, totalBytes);
     }

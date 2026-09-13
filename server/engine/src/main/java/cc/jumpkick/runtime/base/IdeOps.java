@@ -30,7 +30,6 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
-import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import java.io.IOException;
@@ -433,7 +432,7 @@ public final class IdeOps {
                 Coordinate srcCoord =
                         new Coordinate(coord.group(), coord.artifact(), coord.version(), "sources", "jar");
                 sourcesPath = locator.locate(
-                                RepoArtifactResolver.repoName(pkg.source()),
+                                pkg.source(),
                                 MavenLayout.artifactPath(srcCoord),
                                 pkg.sourcesChecksumHex(),
                                 srcCoord.toGav())

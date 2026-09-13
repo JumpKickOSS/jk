@@ -13,14 +13,12 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParser;
 import cc.jumpkick.repo.PomRuntimeClasspath;
-import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.JkDirs;
@@ -38,6 +36,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -69,6 +68,7 @@ public final class CacheInventoryOps {
             case "repo-refresh" -> repoRefresh(store, req.coords() == null ? List.of() : req.coords());
             case "wipe-store" -> wipeStore(store, req.dryRun());
             case "workers" -> workers(store);
+            case "repos" -> repos(store);
             case "drop-workers" -> dropWorkers(store, req.dryRun());
             default -> CacheInventoryAck.error("unknown cache inventory query: " + query);
         };
@@ -266,9 +266,35 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.repoSearch(entries);
     }
 
+    /**
+     * Every repository store under {@code repos/}: {@code id|name|origin|files|bytes|state}, where
+     * {@code state} is {@code ok} for a tree whose origin is known and {@code legacy} for one keyed
+     * by a repository name that nothing reads any more. {@code jk storage usage} and {@code jk
+     * doctor} print these; the first-party shelf has no origin and is not legacy.
+     */
+    private static CacheInventoryAck repos(Path storeRoot) {
+        List<String> lines = new ArrayList<>();
+        for (RepoArtifactStore.Origin o : RepoArtifactStore.describeAll(storeRoot)) {
+            DiskUsage.Stats stats;
+            try {
+                stats = DiskUsage.of(storeRoot.resolve("repos").resolve(o.id()));
+            } catch (IOException | RuntimeException unreadable) {
+                stats = new DiskUsage.Stats(0, 0);
+            }
+            lines.add(String.join(
+                    "|",
+                    o.id(),
+                    o.name() == null ? "" : o.name(),
+                    o.origin() == null ? "" : o.origin(),
+                    Long.toString(stats.files()),
+                    Long.toString(stats.bytes()),
+                    o.isLegacy() ? "legacy" : "ok"));
+        }
+        return CacheInventoryAck.repos(lines);
+    }
+
     private static CacheInventoryAck repoRefresh(Path storeRoot, List<String> coords) {
-        Path reposRoot = storeRoot.resolve("repos");
-        List<String> repoNames = repoNames(reposRoot);
+        List<String> repoNames = RepoArtifactStore.storeIds(storeRoot);
         List<String> lines = new ArrayList<>();
         int evicted = 0;
         int missed = 0;
@@ -282,7 +308,7 @@ public final class CacheInventoryOps {
             String relPath = MavenLayout.artifactPath(coord);
             List<String> hitRepos = new ArrayList<>();
             for (String repo : repoNames) {
-                if (RepoArtifactStore.forRepoName(storeRoot, repo).evict(relPath)) hitRepos.add(repo);
+                if (RepoArtifactStore.forStoreId(storeRoot, repo).evict(relPath)) hitRepos.add(repo);
             }
             String packed =
                     coord.group() + "|" + coord.artifact() + "|" + coord.version() + "|" + String.join(",", hitRepos);
@@ -366,7 +392,8 @@ public final class CacheInventoryOps {
 
     /**
      * Delete every installed version of every first-party plugin worker — jar, POM and memo
-     * sidecars under {@code repos/jk-local}, {@code repos/jumpkick} and {@code repos/central} — and
+     * sidecars under the first-party stores ({@code repos/jk-local}, the official repository's,
+     * Central's) — and
      * forget the launch classpaths and POM models memoised from them. The closure jars stay: they
      * are shared with project resolution and the next fork re-walks them from the re-fetched
      * published POM. {@code dryRun} counts without deleting.
@@ -375,13 +402,12 @@ public final class CacheInventoryOps {
         List<String> lines = new ArrayList<>();
         long files = 0;
         long bytes = 0;
-        Path repos = storeRoot.resolve("repos");
         for (PluginJar worker : PluginJar.values()) {
-            for (String repo :
-                    List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
-                Path artifactDir = repos.resolve(repo)
-                        .resolve(PluginJar.GROUP.replace('.', '/'))
-                        .resolve(worker.artifactId());
+            for (RepoArtifactStore store : RepoArtifactStore.firstParty(storeRoot)) {
+                Path storeDir = Objects.requireNonNull(store.root(), "store root");
+                String repo = String.valueOf(storeDir.getFileName());
+                Path artifactDir =
+                        storeDir.resolve(PluginJar.GROUP.replace('.', '/')).resolve(worker.artifactId());
                 if (!Files.isDirectory(artifactDir)) continue;
                 List<String> versions = new ArrayList<>();
                 PathUtil.forEachChild(artifactDir, (child, attrs) -> {
@@ -462,21 +488,6 @@ public final class CacheInventoryOps {
         }
         return base + " — stopped " + killedTrainers.size() + " jk AOT trainer(s) (pid " + killedTrainers
                 + ") first, so the holder is a process outside jk";
-    }
-
-    private static List<String> repoNames(Path reposRoot) {
-        if (!Files.isDirectory(reposRoot)) {
-            return List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL);
-        }
-        try (var s = Files.list(reposRoot)) {
-            List<String> names = s.filter(Files::isDirectory)
-                    .map(p -> p.getFileName().toString())
-                    .sorted()
-                    .toList();
-            return names.isEmpty() ? List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL) : names;
-        } catch (IOException e) {
-            return List.of(RepositorySpec.CENTRAL, RepoArtifactResolver.JK_LOCAL);
-        }
     }
 
     private static String pack(String name, long files, long bytes) {

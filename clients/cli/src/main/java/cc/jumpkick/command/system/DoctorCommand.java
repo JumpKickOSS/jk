@@ -96,6 +96,7 @@ public final class DoctorCommand implements CliCommand {
         int healthy = tally.healthy(), pruned = tally.pruned(), verified = tally.verified();
         int drifted = tally.drifted(), firstSeen = tally.firstSeen(), empty = tally.empty();
         Workers workers = workers(DoctorCommand::queryWorkers);
+        RepoStores.Stores repos = queryRepos();
 
         boolean hasFail = engine.status == Status.FAIL
                 || cache.status == Status.FAIL
@@ -118,7 +119,8 @@ public final class DoctorCommand implements CliCommand {
                     firstSeen,
                     empty,
                     toolsError,
-                    workers));
+                    workers,
+                    repos));
             return hasFail ? 1 : 0;
         }
 
@@ -170,6 +172,7 @@ public final class DoctorCommand implements CliCommand {
         }
 
         for (String line : renderWorkers(workers, global.verbose, t)) CliOutput.out(line);
+        for (String line : RepoStores.render(repos, t)) CliOutput.out(line);
 
         CliOutput.out(Theme.paint("---", t.darkGray()));
         String summary = Theme.colorize(String.valueOf(healthy), t.focused())
@@ -215,6 +218,16 @@ public final class DoctorCommand implements CliCommand {
     private static CacheInventoryAck queryWorkers() throws IOException {
         return EngineClient.cacheInventory(
                 EnginePaths.current(), "workers", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+    }
+
+    /** The repository stores and their origins, so a wrong-origin cache is one line apart from the symptom. */
+    private static RepoStores.Stores queryRepos() {
+        try {
+            return RepoStores.decode(EngineClient.cacheInventory(
+                    EnginePaths.current(), "repos", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false));
+        } catch (IOException | RuntimeException e) {
+            return new RepoStores.Stores(List.of(), "engine query failed: " + e.getMessage());
+        }
     }
 
     /**
@@ -698,7 +711,8 @@ public final class DoctorCommand implements CliCommand {
             int firstSeen,
             int empty,
             @Nullable String toolsError,
-            Workers workers) {
+            Workers workers,
+            RepoStores.Stores repos) {
         return JsonFields.object()
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
@@ -718,6 +732,7 @@ public final class DoctorCommand implements CliCommand {
                                 .string("error", toolsError)
                                 .finish())
                 .token("workers", workersJson(workers))
+                .token("repos", RepoStores.json(repos))
                 .finish();
     }
 

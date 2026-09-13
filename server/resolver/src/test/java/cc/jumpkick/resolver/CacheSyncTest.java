@@ -46,7 +46,7 @@ class CacheSyncTest {
         Path store = tempDir.resolve("cache");
         Path src = tempDir.resolve("leaf.jar");
         Files.write(src, jar);
-        RepoArtifactStore.forRepoName(store, "central").materialize("com/foo/leaf/1.0/leaf-1.0.jar", src, hex);
+        centralStore(store).materialize("com/foo/leaf/1.0/leaf-1.0.jar", src, hex);
         registerJar("com.foo", "leaf", "1.0", jar);
 
         CacheSync.Report report = new CacheSync(new Cas(store), new Http(), false)
@@ -84,7 +84,9 @@ class CacheSyncTest {
 
         assertThat(report.errors()).isEmpty();
         assertThat(Files.readAllBytes(m2Jar)).isEqualTo("poisoned".getBytes(StandardCharsets.UTF_8));
-        Path storeJar = tempDir.resolve("cache/repos/central/com/foo/leaf/1.0/leaf-1.0.jar");
+        Path storeJar = centralStore(tempDir.resolve("cache"))
+                .locate("com/foo/leaf/1.0/leaf-1.0.jar")
+                .orElseThrow();
         assertThat(storeJar).exists();
         assertThat(Files.readAllBytes(storeJar)).isEqualTo(jar);
     }
@@ -137,6 +139,11 @@ class CacheSyncTest {
 
     private Lockfile lockOf(Lockfile.Artifact... packages) {
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(packages));
+    }
+
+    /** The store the lock rows' source resolves to: keyed by the stub's origin, whatever the row calls it. */
+    private RepoArtifactStore centralStore(Path store) {
+        return RepoArtifactStore.forSource(store, "central+" + http.base() + "/");
     }
 
     private Lockfile.Artifact pkg(String module, String version, @Nullable String checksum) {

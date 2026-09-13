@@ -365,11 +365,20 @@ class LockCommandTest {
                         cache.toString()))
                 .isEqualTo(0);
 
-        // Fresh project, no lockfile, offline — must resolve from the journal.
+        // Fresh project, no lockfile, offline — must resolve from the journal. The store is keyed
+        // by origin, so the offline solve names the same repository the warm-up fetched from.
         Path fresh = Files.createDirectories(tempDir.resolve("fresh"));
         writeProjectWithRootDep(fresh);
         maven.stop();
-        int exit = run("lock", "--offline", "-C", fresh.toString(), "--cache-dir", cache.toString());
+        int exit = run(
+                "lock",
+                "--offline",
+                "-C",
+                fresh.toString(),
+                "--repo-url",
+                maven.base().toString(),
+                "--cache-dir",
+                cache.toString());
         assertThat(exit).isEqualTo(0);
 
         Lockfile lock = LockfileReader.read(fresh.resolve("jk-lock.toml"));

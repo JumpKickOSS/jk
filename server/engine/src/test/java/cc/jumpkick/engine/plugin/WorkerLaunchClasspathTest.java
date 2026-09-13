@@ -108,7 +108,7 @@ class WorkerLaunchClasspathTest {
         Path f = store.resolve("repos/jk-local").resolve(rel);
         Files.createDirectories(f.getParent());
         Files.write(f, bytes);
-        RepoArtifactStore.forRepoName(store, RepoArtifactResolver.JK_LOCAL).writeMemo(rel, f, Hashing.sha256Hex(bytes));
+        RepoArtifactStore.forStoreId(store, RepoArtifactResolver.JK_LOCAL).writeMemo(rel, f, Hashing.sha256Hex(bytes));
         return f.toAbsolutePath().normalize();
     }
 }

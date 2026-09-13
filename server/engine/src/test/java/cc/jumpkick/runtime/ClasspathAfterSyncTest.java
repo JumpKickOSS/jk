@@ -236,7 +236,7 @@ class ClasspathAfterSyncTest {
         String hex = Hashing.sha256Hex(jarSrc);
         Path libJar = store.resolve("repos/central/com/foo/lib/1.0/lib-1.0.jar");
         if (materializeLib) {
-            RepoArtifactStore.forRepoName(store, "central").materialize("com/foo/lib/1.0/lib-1.0.jar", jarSrc, hex);
+            RepoArtifactStore.forStoreId(store, "central").materialize("com/foo/lib/1.0/lib-1.0.jar", jarSrc, hex);
         }
 
         Lockfile lock = new Lockfile(

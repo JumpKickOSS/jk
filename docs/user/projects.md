@@ -51,7 +51,7 @@ their plugins.
 | `groovy` | Groovy compiler version — **5+** (Groovy modules) |
 | `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — a floating `"3.8.4"` moves compiler and library together, an exact `"=3.8.4"` holds both (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |
-| `[m2] integration` | Use the Maven local repository as the primary third-party jar store (default **true**). `false` hosts those jars only under `JK_STORE_DIR/repos/<name>/`. First-party workers always stay in `repos/jk-local`. Machine override: `JK_M2_INTEGRATION=false` or user-config `[m2] integration = false`. |
+| `[m2] integration` | Use the Maven local repository as the primary third-party jar store (default **true**). `false` hosts those jars only under `JK_STORE_DIR/repos/<origin-id>/` (one tree per repository origin — [Repositories](repositories.md#store-layout-one-tree-per-origin)). First-party workers always stay in `repos/jk-local`. Machine override: `JK_M2_INTEGRATION=false` or user-config `[m2] integration = false`. |
 | `[m2] install` | Write `jk install` artifacts into the Maven local repository (default **true**). Independent of `integration`: `[m2] install = false` keeps `jk install` under `repos/jk-local` even when third-party jars still come from `~/.m2`. Machine override: `JK_M2_INSTALL=false` or user-config `[m2] install = false`. |
 
 **Language mix:** Java is the default. A module may mix Java with Kotlin, Groovy, **or**

@@ -60,7 +60,7 @@ class PinnedWorkerJarTest {
         Path jar = writeJar(tmp.resolve("acme-rules.jar"));
         String hex = Hashing.sha256Hex(jar);
         Path blob = new Cas(cache).putFile(jar, hex);
-        RepoArtifactStore.forRepoName(cache, "jumpkick").materialize(REL, blob, hex);
+        RepoArtifactStore.forStoreId(cache, "jumpkick").materialize(REL, blob, hex);
 
         Path resolved = PluginDescriptorOps.pinnedLayoutJar(new Cas(cache), MODULE, VERSION, hex)
                 .orElseThrow();

@@ -4,12 +4,16 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.RepoArtifactResolver;
+import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoIdentity;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -241,8 +245,14 @@ class CacheInventoryOpsTest {
     void repo_refresh_evicts_across_repos_and_reports_misses(@TempDir Path tmp) throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("cache"));
         Path store = Files.createDirectories(tmp.resolve("store"));
-        Path a = m2Artifact(store, "central", "org/example/foo/1.0/foo-1.0.jar");
-        Path b = m2Artifact(store, "mirror", "org/example/foo/1.0/foo-1.0.jar");
+        String rel = "org/example/foo/1.0/foo-1.0.jar";
+        Path a = m2Artifact(store, "central", rel);
+        URI mirrorOrigin = URI.create("https://mirror.example/maven/");
+        String mirrorId = RepoIdentity.storeId(mirrorOrigin);
+        Path b = m2Artifact(store, mirrorId, rel);
+        RepoArtifactStore.forRepository(store, "mirror", mirrorOrigin).writeMemo(rel, b, Hashing.sha256Hex(b));
+        // A tree keyed by a repository name has no origin anyone can vouch for: read by nothing, touched by nothing.
+        Path legacy = m2Artifact(store, "private", rel);
 
         CacheInventoryAck ack = CacheInventoryOps.run(new CacheInventoryOps.Request(
                 "repo-refresh",
@@ -255,9 +265,10 @@ class CacheInventoryOpsTest {
         assertThat(ack.error()).isNull();
         assertThat(ack.evicted()).isEqualTo(1);
         assertThat(ack.missed()).isEqualTo(1);
-        assertThat(ack.lines()).containsExactly("org.example|foo|1.0|central,mirror", "org.example|gone|9.9|");
+        assertThat(ack.lines()).containsExactly("org.example|foo|1.0|central," + mirrorId, "org.example|gone|9.9|");
         assertThat(a).doesNotExist();
         assertThat(b).doesNotExist();
+        assertThat(legacy).exists();
     }
 
     @Test
@@ -279,7 +290,7 @@ class CacheInventoryOpsTest {
 
     private static Path m2Artifact(Path storeRoot, String repo, String rel) throws Exception {
         // repos/ lives under the STORE root — the same tree production reaches via
-        // RepoArtifactStore.forRepoName(cas.root(), name).
+        // RepoArtifactStore.forStoreId(cas.root(), name).
         Path f = storeRoot.resolve("repos").resolve(repo).resolve(rel);
         Files.createDirectories(f.getParent());
         Files.writeString(f, "jar-bytes");
@@ -303,6 +314,30 @@ class CacheInventoryOpsTest {
             Files.deleteIfExists(y);
             Files.deleteIfExists(x);
         }
+    }
+
+    /**
+     * {@code jk storage usage} / {@code jk doctor} show every repository store with the origin
+     * that filled it beside the name a project used; a tree keyed by name alone is flagged legacy.
+     */
+    @Test
+    void repos_lists_each_store_with_its_origin_and_flags_a_name_keyed_tree(@TempDir Path store) throws Exception {
+        Path src = Files.writeString(store.resolveSibling(store.getFileName() + "-src.jar"), "bytes");
+        RepoArtifactStore.forRepository(store, "private", URI.create("https://nexus.acme/maven/"))
+                .materialize("g/a/1/a-1.jar", src, Hashing.sha256Hex(src));
+        Files.createDirectories(store.resolve("repos/legacy-name/g"));
+        Files.createDirectories(store.resolve("repos/jk-local"));
+
+        CacheInventoryAck ack =
+                CacheInventoryOps.run(new CacheInventoryOps.Request("repos", null, store, List.of(), List.of(), false));
+
+        assertThat(ack.error()).isNull();
+        String id = RepoIdentity.storeId(URI.create("https://nexus.acme/maven/"));
+        assertThat(ack.lines())
+                .anySatisfy(line -> assertThat(line).startsWith(id + "|private|https://nexus.acme/maven|"))
+                .anySatisfy(line -> assertThat(line).startsWith(id + "|").endsWith("|ok"))
+                .anySatisfy(line -> assertThat(line).isEqualTo("legacy-name|||0|0|legacy"))
+                .anySatisfy(line -> assertThat(line).startsWith("jk-local|jk-local||0|0|ok"));
     }
 
     @Test

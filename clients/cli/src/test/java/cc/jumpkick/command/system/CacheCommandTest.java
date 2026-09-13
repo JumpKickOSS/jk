@@ -562,7 +562,7 @@ class CacheCommandTest {
             var coord = Coordinate.of(group, artifact, version);
             SEEDED_PATHS.add(MavenLayout.artifactPath(coord));
             // repos/ lives under the STORE root — where MavenRepo writes.
-            RepoArtifactStore.forRepoName(JkStores.store(), "central")
+            RepoArtifactStore.forStoreId(JkStores.store(), "central")
                     .materialize(MavenLayout.artifactPath(coord), blob, Hashing.sha256Hex(bytes));
         } catch (Exception e) {
             throw new RuntimeException(e);

@@ -109,7 +109,7 @@ class HardwareProbeStoreTest {
 
         Path centralRepo = store.resolve("repos").resolve(RepositorySpec.CENTRAL);
         assertThat(cp).hasSameSizeAs(PINNED).allSatisfy(p -> assertThat(p).startsWith(centralRepo));
-        RepoArtifactStore repo = RepoArtifactStore.forRepoName(store, RepositorySpec.CENTRAL);
+        RepoArtifactStore repo = RepoArtifactStore.forStoreId(store, RepositorySpec.CENTRAL);
         for (String rel : PINNED) {
             assertThat(repo.contains(rel))
                     .as("%s stored without a .jk memo is an orphan no resolve will trust", rel)
@@ -146,7 +146,7 @@ class HardwareProbeStoreTest {
         assertThat(HardwareProbe.resolveJunitClasspath(HardwareProbe.Options.of(true), new Fake(PINNED, false)))
                 .isEmpty();
 
-        assertThat(RepoArtifactStore.forRepoName(store, RepositorySpec.CENTRAL).contains(PINNED.get(0)))
+        assertThat(RepoArtifactStore.forStoreId(store, RepositorySpec.CENTRAL).contains(PINNED.get(0)))
                 .isFalse();
         assertThat(cache).doesNotExist();
     }

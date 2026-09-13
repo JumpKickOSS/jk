@@ -23,7 +23,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
-import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.build.ProjectFacts;
@@ -36,7 +35,6 @@ import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
-import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
@@ -966,9 +964,8 @@ public final class PluginBuild {
         if (JkVersion.VERSION.equals(pin.version())) return null;
         Cas cas = JkStores.storeCas();
         String rel = MavenLayout.artifactPath(Coordinate.ofModule(pin.coordinate(), pin.version()));
-        for (String repoName :
-                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL)) {
-            Optional<Path> stored = new RepoArtifactStore(cas.root(), repoName).locate(rel);
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
+            Optional<Path> stored = store.locate(rel);
             if (stored.isPresent()) return stored.get();
         }
         String fetchFailure = null;

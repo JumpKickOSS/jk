@@ -282,7 +282,7 @@ class IdeIdeaGenerationTest {
         // below reachable: a blob is named by its digest and carries no coordinate.
         Path cache = tmp.resolve("cache");
         Coordinate processor = Coordinate.of("org.example", "myprocessor", "1.0.0");
-        RepoArtifactStore.forRepoName(JkStores.store(), "central")
+        RepoArtifactStore.forStoreId(JkStores.store(), "central")
                 .materialize(MavenLayout.artifactPath(processor), new Cas(cache).put(processorJar), hex);
 
         Path jdks = tmp.resolve("jdks");

@@ -9,11 +9,32 @@ Credentials: env, `jk repo login`, or Maven `settings.xml` — see [Credentials]
 the order and for why a credential only travels to the origin its name is bound to. Prefer
 `${VAR}` references in your own `~/.jk/config.toml` over secrets in TOML. Corporate mirrors, forge
 package registries, S3/MinIO, and GCS are supported. After lock, a digest-matching file in the Maven local repository is used in
-place; otherwise `JK_STORE_DIR/repos/<name>/`. Set `[m2] integration = false` to keep
+place; otherwise the repository's store under `JK_STORE_DIR/repos/` (see below). Set `[m2] integration = false` to keep
 third-party jars only under the jk store. `jk install` writes the Maven local repo
 when `[m2] install` is on (default); `[m2] install = false` or `JK_M2_INSTALL=false`
 keeps those artifacts in `repos/jk-local`. First-party workers always live in `repos/jk-local`
 (`jk-local` is reserved; `[repositories.local]` is a normal user remote name).
+
+## Store layout: one tree per origin
+
+The name you give a repository is yours alone — a label. The store keys each repository's tree
+by **where its bytes come from**: `repos/<origin-id>/`, where the id is the origin's host followed
+by a digest of its canonical URL (`repos/nexus.acme.com-3f9a1c2b4d5e/`), and the three public
+origins jk ships with keep their reserved words (`repos/central`, `repos/google`,
+`repos/jumpkick`). So two projects that both call a repository `private` but point it at
+different servers never share a cache — a POM or jar fetched for one origin is never served as
+the other's, and a poisoned mirror reaches only the projects that actually resolve from it —
+while one origin declared under two names is cached once. Each tree records the origin and the
+first name it was filled under in `.origin`; `jk storage usage` and `jk doctor` print
+`repo: <name> → <origin>` for every tree.
+
+A `repos/<name>` tree from before this rule carries no origin anyone can vouch for, so nothing
+reads it; `jk storage usage` flags it and `jk storage clean` removes it. The next resolve
+re-fetches into the identity-keyed tree. The cost of that upgrade is bounded: the reserved trees
+(`central`, `google`, `jumpkick`) and the `jk-local` shelf are kept as they are, and with
+`[m2] integration` on (the default) third-party jars come from `~/.m2/repository`, so what is
+fetched again is the POMs and jars of the repositories you named yourself. Lockfile `source`
+fields are unchanged (`"<name>+<url>"`): the URL in the row is what the lookup keys on.
 
 ## Built-in remotes
 
