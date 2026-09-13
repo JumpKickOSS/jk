@@ -28,7 +28,9 @@ import org.jspecify.annotations.Nullable;
  * <li>the project JDK's identity ({@link #jdkToken})
  * <li>each source file's module-relative path and SHA-256 (so editing a file invalidates the key,
  *     and two checkouts of the same module compute the same key)
- * <li>each classpath entry's content identity ({@code file:<sha256>} / directory tree hash)
+ * <li>each compile-classpath entry's JVM ABI ({@link ClasspathAbi}: {@code abi:<sha256>}) and each
+ *     processor-path entry's content identity ({@code file:<sha256>} / directory tree hash) —
+ *     see {@link #javacClasspathTokens}
  * </ul>
  */
 public final class ActionKey {
@@ -56,25 +58,30 @@ public final class ActionKey {
 
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
-
-        // Classpath: CAS jar paths already include the content hash in their layout;
-        // DIRECTORY entries (a sibling lane's classes dir) do not — hash their tree, or a
-        // Groovy/Kotlin-only change leaves stale Java bytecode behind a key hit.
-        List<Path> cp = new ArrayList<>(request.classpath());
-        cp.sort(Comparator.comparing(Path::toString));
-        for (Path entry : cp) {
-            appendCpToken(sb, "cp:", entry);
-        }
-
-        // Processor path: a processor change can regenerate everything, so it must
-        // invalidate the key (CAS paths encode the processor jar's content).
-        List<Path> pp = new ArrayList<>(request.processorPath());
-        pp.sort(Comparator.comparing(Path::toString));
-        for (Path entry : pp) {
-            appendCpToken(sb, "pp:", entry);
-        }
-
+        for (String line : javacClasspathTokens(request)) sb.append(line).append('\n');
         return Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * The classpath lines {@link #forJavac} hashes, one per entry in key order: {@code cp:} for the
+     * compile classpath, then {@code pp:} for the processor path.
+     *
+     * <p>A {@code cp:} entry is its JVM ABI ({@link ClasspathAbi}) — what javac can see of it:
+     * signatures, supers, inlined constants, API annotations — never its bodies. A dependency whose
+     * implementation changed therefore keys the same compile: the consumer forks no worker and runs
+     * no Zinc analysis, and the dependents of an unchanged consumer keep hitting. A {@code pp:}
+     * entry is full content: a processor's behaviour is its bodies, and what it generates is this
+     * compile's output. Directory entries (a sibling lane's classes dir) go through the same
+     * extractor as jars, so a Kotlin- or Groovy-only API change still moves the key.
+     *
+     * <p>The freshness stamp in front of the key records these very lines, so the stamp moves
+     * exactly when the key would and on nothing else.
+     */
+    public static List<String> javacClasspathTokens(CompileRequest request) throws IOException {
+        List<String> lines = new ArrayList<>();
+        appendCpTokens(lines, "cp:", request.classpath(), ClasspathAbi::token);
+        appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
+        return lines;
     }
 
     /**
@@ -177,19 +184,25 @@ public final class ActionKey {
         // .java the roots feed joint resolution — an edit to a swept file invalidates the key
         // just like an explicit source, and the worker compiles exactly what was hashed.
         appendSources(sb, GroovycInputs.compileSet(request));
-
-        List<Path> cp = new ArrayList<>(request.classpath());
-        cp.addAll(request.workerClasspath());
-        cp.sort(Comparator.comparing(Path::toString));
-        for (Path entry : cp) {
-            appendCpToken(sb, "cp:", entry); // dirs tree-hashed
-        }
-        List<Path> pp = new ArrayList<>(request.processorPath());
-        pp.sort(Comparator.comparing(Path::toString));
-        for (Path entry : pp) {
-            appendCpToken(sb, "pp:", entry);
-        }
+        for (String line : groovycClasspathTokens(request)) sb.append(line).append('\n');
         return Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * The classpath lines {@link #forGroovyc} hashes, in key order. {@code cp:} is the compile
+     * classpath's JVM ABI — groovyc's compile-time view of a Java or Groovy dependency is JVM
+     * signatures and constant values, the same token javac keys on ({@link #javacClasspathTokens});
+     * the Groovy worker is always a full compile, so this is the only skip a body-only sibling
+     * change can give it. {@code worker:} is the worker's Groovy closure by content — that is the
+     * compiler, and its CAS paths already encode the version. {@code pp:} is the processor path by
+     * content, as for javac.
+     */
+    public static List<String> groovycClasspathTokens(GroovycRequest request) throws IOException {
+        List<String> lines = new ArrayList<>();
+        appendCpTokens(lines, "cp:", request.classpath(), ClasspathAbi::token);
+        appendCpTokens(lines, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
+        appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
+        return lines;
     }
 
     /**
@@ -212,28 +225,51 @@ public final class ActionKey {
     /**
      * Snapshot of inputs that produced an action — for {@code jk why-rebuilt} diffs. Source hashes
      * reuse {@link FileHashMemo#contentHash} so a prior {@link #forJavac} on the same thread does
-     * not re-read file bytes.
+     * not re-read file bytes. Classpath entries are keyed by path and valued by the very token the
+     * key hashed ({@link #javacClasspathTokens}), so a body-only dependency change diffs as
+     * "nothing changed" and an API change names the entry that moved.
      */
     public static Map<String, String> snapshotInputs(CompileRequest request) throws IOException {
         Map<String, String> result = new LinkedHashMap<>();
-        List<Path> sortedSources = new ArrayList<>(request.sources());
-        sortedSources.sort(Comparator.comparing(Path::toString));
-        for (Path src : sortedSources) {
-            Path abs = src.toAbsolutePath().normalize();
-            result.put(abs.toString(), FileHashMemo.contentHash(abs));
-        }
-        for (Path cp : request.classpath()) {
-            result.put("cp:" + FreshnessStamp.identityKey(cp), "");
-        }
-        for (Path pp : request.processorPath()) {
-            result.put("pp:" + FreshnessStamp.identityKey(pp), "");
-        }
+        snapshotSources(result, request.sources());
+        snapshotEntries(result, "cp:", request.classpath(), ClasspathAbi::token);
+        snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("release", Integer.toString(request.release()));
         result.put("options", String.join(",", request.extraOptions()));
         // The key hashes the JDK, so the why-rebuilt diff has to be able to name it: without this
         // a JDK switch reads as "nothing changed, rebuilt anyway".
         result.put("jdk", jdkToken(request.javaHome()));
         return result;
+    }
+
+    /** As {@link #snapshotInputs(CompileRequest)} for a Groovy compile: its source set and its token lines. */
+    public static Map<String, String> snapshotInputs(GroovycRequest request) throws IOException {
+        Map<String, String> result = new LinkedHashMap<>();
+        snapshotSources(result, GroovycInputs.compileSet(request));
+        snapshotEntries(result, "cp:", request.classpath(), ClasspathAbi::token);
+        snapshotEntries(result, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
+        snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
+        result.put("jvmTarget", Integer.toString(request.jvmTarget()));
+        result.put("args", String.join(",", request.extraArgs()));
+        return result;
+    }
+
+    private static void snapshotSources(Map<String, String> into, List<Path> sources) throws IOException {
+        List<Path> sorted = new ArrayList<>(sources);
+        sorted.sort(Comparator.comparing(Path::toString));
+        for (Path src : sorted) {
+            Path abs = src.toAbsolutePath().normalize();
+            into.put(abs.toString(), FileHashMemo.contentHash(abs));
+        }
+    }
+
+    private static void snapshotEntries(Map<String, String> into, String prefix, List<Path> entries, EntryToken token)
+            throws IOException {
+        List<Path> sorted = new ArrayList<>(entries);
+        sorted.sort(Comparator.comparing(Path::toString));
+        for (Path entry : sorted) {
+            into.put(prefix + entry.toAbsolutePath().normalize(), token.of(entry));
+        }
     }
 
     /**
@@ -258,12 +294,25 @@ public final class ActionKey {
         return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : PortablePath.of(abs);
     }
 
+    /** How one classpath entry is spelled in a key: by ABI, or by content. */
+    private interface EntryToken {
+        String of(Path entry) throws IOException;
+    }
+
     /**
      * One classpath/processorpath token. Identity is content (lock digest / file hash), not the
      * on-disk path — the same jar may live under the Maven local repo or {@code repos/<name>/}.
      */
     private static void appendCpToken(StringBuilder sb, String prefix, Path entry) throws IOException {
         sb.append(prefix).append(ClasspathFingerprint.entry(entry)).append('\n');
+    }
+
+    /** {@code prefix + token} per entry, sorted by path so list order cannot move a key. */
+    private static void appendCpTokens(List<String> into, String prefix, List<Path> entries, EntryToken token)
+            throws IOException {
+        List<Path> sorted = new ArrayList<>(entries);
+        sorted.sort(Comparator.comparing(Path::toString));
+        for (Path entry : sorted) into.add(prefix + token.of(entry));
     }
 
     private static void appendSources(StringBuilder sb, List<Path> sources) throws IOException {

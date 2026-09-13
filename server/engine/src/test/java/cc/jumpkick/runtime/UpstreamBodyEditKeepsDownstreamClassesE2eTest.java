@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -37,11 +38,10 @@ import org.junit.jupiter.api.io.TempDir;
  * End-to-end: a dependency's body-only edit, and the revert that returns it to a cached key, leave
  * the dependent module's {@code classes/main} whole.
  *
- * <p>The dependent's compile sees the upstream change only through its classpath. Its own sources
- * are untouched, so the freshness stamp reads stale (the upstream tree's mtime moved), the action
- * key misses (the classpath fingerprint is content-based) and Zinc recompiles the sources that
- * reference the upstream class while the rest of the tree stays as the previous compile left it.
- * Reverting the edit returns both modules to keys the action cache already holds, and a hit
+ * <p>The dependent's compile sees the upstream change only through its classpath, and it is keyed
+ * on that classpath's API, not its bytes: a body-only upstream edit leaves the dependent's stamp
+ * fresh and its key intact, so nothing compiles and the tree is whatever the previous compile
+ * left. Reverting the edit returns both modules to keys the action cache already holds, and a hit
  * restores by pruning every file the record does not own before copying the record's outputs
  * back. Each of those steps is a place where a partial tree — a compile that touched a subset, a
  * record that lists a subset — becomes the module's whole output: the classes that are missing
@@ -105,15 +105,15 @@ class UpstreamBodyEditKeepsDownstreamClassesE2eTest {
         assertThat(classesUnder(app.classesDir())).as("initial classes tree").isEqualTo(APP_CLASSES);
         assertThat(classesIn(app.mainJar())).as("initial jar").isEqualTo(APP_CLASSES);
 
-        // Upstream body-only edit: lib's bytecode changes, its API does not; nothing under app moves.
+        // Upstream body-only edit: lib's bytecode changes, its API does not; nothing under app moves
+        // and app's compile, keyed on lib's API, does not run.
         Files.writeString(libSource, LIB_SOURCE_EDITED);
         Steps edited = build(ws, cache, "after the upstream edit");
         assertThat(edited.labels("app", TaskNames.COMPILE_JAVA))
-                .as("app's compile sees lib's new bytecode on its classpath and compiles, not a stamp skip or a hit")
-                .anyMatch(label -> label.startsWith("compiling "))
-                .noneMatch(label -> label.startsWith("cache hit"));
+                .as("app's compile is keyed on lib's API, which did not move")
+                .noneMatch(label -> label.startsWith("compiling "));
         assertThat(classesUnder(app.classesDir()))
-                .as("classes tree after app recompiled against the edited lib")
+                .as("classes tree after the upstream body-only edit")
                 .isEqualTo(APP_CLASSES);
         assertThat(classesIn(app.mainJar())).as("jar after the upstream edit").isEqualTo(APP_CLASSES);
 
@@ -126,9 +126,10 @@ class UpstreamBodyEditKeepsDownstreamClassesE2eTest {
                 .isEqualTo(APP_CLASSES);
         assertThat(classesIn(app.mainJar())).as("jar after the revert").isEqualTo(APP_CLASSES);
 
-        // Scheduled by hand, app's stamp reads stale (lib's restore rewrote Lib.class) and its key
-        // is the initial build's: the classes come back through the action cache's restore, which
-        // prunes whatever the record does not own before it copies.
+        // Scheduled by hand with its stamp gone, app's key is the initial build's: the classes come
+        // back through the action cache's restore, which prunes whatever the record does not own
+        // before it copies.
+        Files.delete(app.classesDir().resolve(BuildStamps.JAVA));
         Steps restored = build(ws, cache, "app forced after the revert", Set.of(ws.resolve("app")));
         assertThat(restored.labels("app", TaskNames.COMPILE_JAVA))
                 .as("app's compile is a cache restore, not a stamp skip or a recompile")

@@ -302,9 +302,8 @@ final class ModuleForecast {
                     mainSrc.stream().anyMatch(pth -> pth.toString().endsWith(".scala"))
                             ? ScalaCompile.prepare(project, lock, cas)
                             : null;
-            List<Path> stampInputs = PlannerCompile.mainStampInputs(
-                    cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar, scalaSetup);
-            // The same request the live compile keys with: its option digest is a stamp input.
+            // The same request the live compile keys with: its option digest and its classpath
+            // token lines are the stamp's inputs.
             CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
                     mainSrc,
                     cp,
@@ -323,7 +322,12 @@ final class ModuleForecast {
             if (!compileDepDirty && !force && !groovyJarUnavailable) {
                 try {
                     stampFresh = FreshnessStamp.isFresh(
-                            out, BuildStamps.JAVA, mainSrc, stampInputs, release, ActionKey.javacOptionsDigest(req));
+                            out,
+                            BuildStamps.JAVA,
+                            mainSrc,
+                            FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(req)),
+                            release,
+                            ActionKey.javacOptionsDigest(req));
                 } catch (IOException ignored) {
                     stampFresh = false;
                 }

@@ -9,8 +9,6 @@ import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 import static cc.jumpkick.runtime.PlannerSupport.contributionsToken;
 import static cc.jumpkick.runtime.PlannerSupport.existingContributedDirs;
-import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
-import static cc.jumpkick.runtime.PlannerSupport.mainStampClasspath;
 import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
 import static cc.jumpkick.runtime.PlannerSupport.stageClassesWithContributions;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
@@ -237,18 +235,8 @@ public final class PlannerPackage {
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path javaOut = classes; // javac always writes to java/main/
                     List<Path> sources = ctx.require(JAVA_SOURCES);
-                    List<Path> baseClasspath = ctx.require(CLASSPATH);
-                    List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
-                    // Match compile-java's freshness inputs exactly, including the processor path and
-                    // the Scala stdlib jars.
-                    List<Path> stampInputs = new ArrayList<>(mainStampClasspath(
-                            baseClasspath,
-                            processorCp,
-                            mixed,
-                            cx.mixedGroovy(),
-                            ctx.require(LAYOUT),
-                            cx.mixedGroovy() ? groovyCompileJar(ctx, cx.cas()) : null));
-                    stampInputs.addAll(PlannerSupport.scalaStampLibs(ctx, in.dir(), compact, cas));
+                    // The classpath lines and option digest compile-java checked — the ones its
+                    // action key hashed — so the next check compares like with like.
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     FreshnessStamp.write(
                             javaOut,
@@ -256,7 +244,7 @@ public final class PlannerPackage {
                             TaskNames.COMPILE_MAIN,
                             actionKey,
                             sources,
-                            stampInputs,
+                            FreshnessStamp.ClasspathTokens.of(ctx.require(JAVA_STAMP_TOKENS)),
                             ctx.require(RELEASE),
                             ctx.require(JAVA_STAMP_DIGEST));
                     ctx.progress(1);

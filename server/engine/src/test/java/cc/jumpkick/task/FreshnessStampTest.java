@@ -48,6 +48,70 @@ class FreshnessStampTest {
                 .isTrue();
     }
 
+    /**
+     * A token-spelled classpath is compared as a set and never stat'ed: the entry behind a token
+     * may be rewritten at will (a sibling jar after a body-only change) and the stamp holds; a
+     * different token set is stale; and a stamp written by path never satisfies a token check.
+     */
+    @Test
+    void token_spelled_classpath_holds_on_equal_tokens_and_ignores_mtimes(@TempDir Path tempDir) throws IOException {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Path src = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        Path dep = writeFile(tempDir.resolve("dep.jar"), "v1");
+        List<String> tokens = List.of("cp:abi:0001", "pp:file:0002");
+        FreshnessStamp.write(
+                classes,
+                BuildStamps.JAVA,
+                "compile-main",
+                "key123",
+                List.of(src),
+                FreshnessStamp.ClasspathTokens.of(tokens),
+                RELEASE,
+                DIGEST);
+
+        // The dependency's bytes and mtime move; the tokens (its ABI) do not.
+        writeFile(dep, "v2-rewritten-later");
+        Files.setLastModifiedTime(dep, FileTime.fromMillis(System.currentTimeMillis() + 5_000));
+        assertThat(FreshnessStamp.isFresh(
+                        classes,
+                        BuildStamps.JAVA,
+                        List.of(src),
+                        FreshnessStamp.ClasspathTokens.of(List.of("pp:file:0002", "cp:abi:0001")),
+                        RELEASE,
+                        DIGEST))
+                .as("same token set, in any order")
+                .isTrue();
+        assertThat(FreshnessStamp.isFresh(
+                        classes,
+                        BuildStamps.JAVA,
+                        List.of(src),
+                        FreshnessStamp.ClasspathTokens.of(List.of("cp:abi:0009", "pp:file:0002")),
+                        RELEASE,
+                        DIGEST))
+                .as("a moved token is a moved key")
+                .isFalse();
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(src), List.of(dep), RELEASE, DIGEST))
+                .as("a token stamp does not answer a path check")
+                .isFalse();
+        assertThat(FreshnessStamp.stampedKey(classes, BuildStamps.JAVA)).contains("key123");
+
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "", List.of(src), List.of(dep), RELEASE, DIGEST);
+        assertThat(FreshnessStamp.isFresh(
+                        classes,
+                        BuildStamps.JAVA,
+                        List.of(src),
+                        FreshnessStamp.ClasspathTokens.of(tokens),
+                        RELEASE,
+                        DIGEST))
+                .as("a path stamp does not answer a token check")
+                .isFalse();
+        assertThat(FreshnessStamp.stampedKey(classes, BuildStamps.JAVA))
+                .as("a stamp that names no key")
+                .isEmpty();
+    }
+
     @Test
     void absent_stamp_is_not_fresh(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");

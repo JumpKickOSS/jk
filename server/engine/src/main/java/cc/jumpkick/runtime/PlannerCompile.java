@@ -12,7 +12,6 @@ import static cc.jumpkick.runtime.PlannerNative.groovySources;
 import static cc.jumpkick.runtime.PlannerNative.javaSources;
 import static cc.jumpkick.runtime.PlannerNative.kotlinSources;
 import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
-import static cc.jumpkick.runtime.PlannerSupport.mainStampClasspath;
 import static cc.jumpkick.runtime.PlannerSupport.mergeLanguageOutput;
 
 import cc.jumpkick.cache.Cas;
@@ -299,26 +298,6 @@ public final class PlannerCompile {
         return req;
     }
 
-    /**
-     * compile-main's freshness-stamp inputs. The stamp is the cheap gate in front of the action
-     * key, so it has to move on the same facts: a scala-version bump must invalidate the stat-only
-     * fast path, which it only does if the resolved stdlib jars are in here.
-     */
-    public static List<Path> mainStampInputs(
-            List<Path> compileCp,
-            List<Path> processorCp,
-            boolean mixedKotlin,
-            boolean mixedGroovy,
-            BuildLayout layout,
-            @Nullable Path groovyJar,
-            ScalaCompile.@Nullable Setup scala) {
-        List<Path> inputs = mainStampClasspath(compileCp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
-        if (scala == null) return inputs;
-        List<Path> withScala = new ArrayList<>(inputs);
-        withScala.addAll(scala.libraryJars());
-        return withScala;
-    }
-
     static Task compileJavaStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
         Supplier<EffortWeights.Plan> plan = cx.plan();
         AtomicReference<@Nullable List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
@@ -385,17 +364,14 @@ public final class PlannerCompile {
         List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
         boolean rerun = in.session().config().rebuildOr(false);
         // Resolve the Scala toolchain before the stamp check so the stdlib jars are part
-        // of the freshness inputs — a scala-version bump must invalidate the stat-only
-        // fast path. Cheap on a warm closure cache. Gate on the *merged* source
+        // of the request the stamp is derived from — a scala-version bump must invalidate
+        // the fast path. Cheap on a warm closure cache. Gate on the *merged* source
         // set (which includes extra-src / plugin-root .scala published by PlannerSetup),
         // not the narrow main-roots walk — otherwise a variant-overlay .scala reaches the
         // Zinc worker with the Java-only dummy compiler and fails cryptically.
         boolean hasScala = sources.stream().anyMatch(p -> p.toString().endsWith(".scala"));
         ScalaCompile.Setup scalaSetup =
                 hasScala ? ScalaCompile.prepare(ctx.require(PROJECT), ctx.require(LOCKFILE), cas) : null;
-        // The shared stamp recipe — the forecast and write-stamp use it too.
-        List<Path> stampInputs = mainStampInputs(
-                baseClasspath, processorCp, cx.mixed(), cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar, scalaSetup);
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
         CompileRequest request = mainCompileRequest(new MainCompile(
                 sources,
@@ -413,13 +389,22 @@ public final class PlannerCompile {
                 scalaSetup));
         // The stamp gates on the option-bearing inputs too — [build] lint/debug, [javac] args and
         // plugins, --profile args, the JDK — through the digest of the very request the action
-        // key hashes. write-stamp records the same digest, so an option edit with untouched
-        // sources reads stale here instead of packaging the old classes.
+        // key hashes, and on the classpath through the token lines that key hashes (the ABI of
+        // each compile-classpath entry, the content of each processor). write-stamp records the
+        // same digest and lines, so an option edit with untouched sources reads stale here instead
+        // of packaging the old classes, and a sibling's body-only rewrite reads fresh.
         String optionsDigest = ActionKey.javacOptionsDigest(request);
         ctx.put(JAVA_STAMP_DIGEST, optionsDigest);
+        List<String> stampTokens = ActionKey.javacClasspathTokens(request);
+        ctx.put(JAVA_STAMP_TOKENS, stampTokens);
         if (!rerun
                 && FreshnessStamp.isFresh(
-                        javaOut, BuildStamps.JAVA, sources, stampInputs, ctx.require(RELEASE), optionsDigest)) {
+                        javaOut,
+                        BuildStamps.JAVA,
+                        sources,
+                        FreshnessStamp.ClasspathTokens.of(stampTokens),
+                        ctx.require(RELEASE),
+                        optionsDigest)) {
             ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
             ctx.label("up to date");
             ctx.cached();

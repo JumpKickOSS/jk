@@ -16,6 +16,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Cheap mtime-based up-to-date check written into a compile output dir under one of the
@@ -28,12 +29,35 @@ import java.util.TreeSet;
  * also records a digest of those option-bearing inputs and a stamp whose digest differs is stale.
  * The producer of each stamp owns the digest recipe; {@link #optionsDigest} folds the parts.
  *
+ * <p>A stamp names its classpath in one of two ways. By path ({@code CP} lines): identity is the
+ * jar's content hash or the directory's location, and a non-CAS entry newer than the stamp is
+ * stale. By token ({@code TOKEN} lines, {@link ClasspathTokens}): each entry is the very line its
+ * action key hashes — for a compile classpath its JVM ABI — so the stamp holds across a sibling
+ * jar rewrite the key ignores and moves on exactly the changes that move the key; no mtime is
+ * consulted for those entries. A producer picks one spelling and checks with the same one.
+ *
  * <p>The stamp names and the predicate that recognises them live on the host leaf instead, where
  * the forked plugin workers that must keep stamps out of their archives can reach them.
  */
 public final class FreshnessStamp {
 
     private FreshnessStamp() {}
+
+    /**
+     * A stamp's classpath section as the {@code prefix:token} lines its producer's action key
+     * hashes ({@code ActionKey.javacClasspathTokens}, {@code groovycClasspathTokens}), one per
+     * entry. Its own type rather than a bare list so a call site cannot hand a path list to the
+     * token arm, or the reverse, by accident.
+     */
+    public record ClasspathTokens(List<String> lines) {
+        public ClasspathTokens {
+            lines = List.copyOf(lines);
+        }
+
+        public static ClasspathTokens of(List<String> lines) {
+            return new ClasspathTokens(lines);
+        }
+    }
 
     /**
      * True when the stamp matches the current source/classpath sets and option digest and no
@@ -47,24 +71,16 @@ public final class FreshnessStamp {
             int release,
             String optionsDigest)
             throws IOException {
-        Optional<Stamp> read = read(outputDir, stampName);
-        if (read.isEmpty()) return false;
-        Stamp stamp = read.get();
-
-        // A stamp written before release tracking was added has release=0; treat as stale.
-        if (stamp.release() != release) return false;
-        // Options, plugins, the JDK: a change there moves no file mtime, only this digest.
-        if (!stamp.optionsDigest().equals(optionsDigest)) return false;
-
-        Set<Path> currentSrc = normalise(sources);
-        Set<Path> recordedSrc = normalise(stamp.sources());
-        if (!currentSrc.equals(recordedSrc)) return false;
+        Stamp stamp = matching(outputDir, stampName, sources, release, optionsDigest);
+        if (stamp == null) return false;
+        // A token-spelled stamp names no paths; it matches only a producer that checks by token.
+        if (!stamp.classpathTokens().isEmpty()) return false;
 
         Set<Path> currentCp = normalise(classpath);
         Set<Path> recordedCp = normalise(stamp.classpath());
         if (!currentCp.equals(recordedCp)) return false;
 
-        for (Path src : currentSrc) {
+        for (Path src : normalise(sources)) {
             if (newerThan(src, stamp.stampMillis())) return false;
         }
         for (Path cp : currentCp) {
@@ -77,6 +93,57 @@ public final class FreshnessStamp {
             if (newerThan(cp, stamp.stampMillis())) return false;
         }
         return true;
+    }
+
+    /**
+     * True when the stamp matches the current source set, option digest and classpath token set
+     * and no source is newer. The tokens are compared as a set and never stat'ed: each one is
+     * content-derived, so equality is the whole proof.
+     */
+    public static boolean isFresh(
+            Path outputDir,
+            String stampName,
+            List<Path> sources,
+            ClasspathTokens classpath,
+            int release,
+            String optionsDigest)
+            throws IOException {
+        Stamp stamp = matching(outputDir, stampName, sources, release, optionsDigest);
+        if (stamp == null) return false;
+        // A path-spelled stamp carries no tokens; it matches only a producer that checks by path.
+        if (!stamp.classpath().isEmpty()) return false;
+        if (!new TreeSet<>(classpath.lines()).equals(new TreeSet<>(stamp.classpathTokens()))) return false;
+        for (Path src : normalise(sources)) {
+            if (newerThan(src, stamp.stampMillis())) return false;
+        }
+        return true;
+    }
+
+    /** The stamp, when its release, option digest and source set are the producer's; else null. */
+    private static @Nullable Stamp matching(
+            Path outputDir, String stampName, List<Path> sources, int release, String optionsDigest)
+            throws IOException {
+        Optional<Stamp> read = read(outputDir, stampName);
+        if (read.isEmpty()) return null;
+        Stamp stamp = read.get();
+        // A stamp written before release tracking was added has release=0; treat as stale.
+        if (stamp.release() != release) return null;
+        // Options, plugins, the JDK: a change there moves no file mtime, only this digest.
+        if (!stamp.optionsDigest().equals(optionsDigest)) return null;
+        if (!normalise(sources).equals(normalise(stamp.sources()))) return null;
+        return stamp;
+    }
+
+    /**
+     * The action key the stamp under {@code outputDir} records — the key of the compile that
+     * produced the tree it sits in — or empty when there is no stamp or it names none.
+     */
+    public static Optional<String> stampedKey(Path outputDir, String stampName) {
+        try {
+            return read(outputDir, stampName).map(Stamp::actionKey).filter(k -> !k.isBlank());
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     /**
@@ -145,6 +212,34 @@ public final class FreshnessStamp {
             int release,
             String optionsDigest)
             throws IOException {
+        write(outputDir, stampName, taskId, actionKey, sources, classpath, List.of(), release, optionsDigest);
+    }
+
+    /** As {@link #write(Path, String, String, String, List, List, int, String)} with the classpath spelled as tokens. */
+    public static void write(
+            Path outputDir,
+            String stampName,
+            String taskId,
+            String actionKey,
+            List<Path> sources,
+            ClasspathTokens classpath,
+            int release,
+            String optionsDigest)
+            throws IOException {
+        write(outputDir, stampName, taskId, actionKey, sources, List.of(), classpath.lines(), release, optionsDigest);
+    }
+
+    private static void write(
+            Path outputDir,
+            String stampName,
+            String taskId,
+            String actionKey,
+            List<Path> sources,
+            List<Path> classpath,
+            List<String> classpathTokens,
+            int release,
+            String optionsDigest)
+            throws IOException {
         Files.createDirectories(outputDir);
         // Same-clock stamping: isFresh compares stampMillis against input mtimes, which come
         // from the filesystem's coarse clock — and that clock can LAG currentTimeMillis by a
@@ -167,6 +262,9 @@ public final class FreshnessStamp {
         for (Path cp : sortedAbs(classpath)) {
             sb.append("CP ").append(cp).append('\n');
         }
+        for (String token : new TreeSet<>(classpathTokens)) {
+            sb.append("TOKEN ").append(token).append('\n');
+        }
         Files.writeString(stampFile, sb.toString(), StandardCharsets.UTF_8);
     }
 
@@ -182,6 +280,7 @@ public final class FreshnessStamp {
         String optionsDigest = "";
         List<Path> sources = new ArrayList<>();
         List<Path> classpath = new ArrayList<>();
+        List<String> classpathTokens = new ArrayList<>();
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
             if (line.startsWith("TASK ")) {
@@ -199,12 +298,16 @@ public final class FreshnessStamp {
                 sources.add(Path.of(line.substring("SOURCE ".length()).trim()));
             } else if (line.startsWith("CP ")) {
                 classpath.add(Path.of(line.substring("CP ".length()).trim()));
+            } else if (line.startsWith("TOKEN ")) {
+                classpathTokens.add(line.substring("TOKEN ".length()).trim());
             }
         }
         if (taskId == null || actionKey == null) return Optional.empty();
-        return Optional.of(new Stamp(taskId, actionKey, stampMillis, release, optionsDigest, sources, classpath));
+        return Optional.of(
+                new Stamp(taskId, actionKey, stampMillis, release, optionsDigest, sources, classpath, classpathTokens));
     }
 
+    /** One stamp; exactly one of {@code classpath} and {@code classpathTokens} is non-empty. */
     public record Stamp(
             String taskId,
             String actionKey,
@@ -212,13 +315,15 @@ public final class FreshnessStamp {
             int release,
             String optionsDigest,
             List<Path> sources,
-            List<Path> classpath) {
+            List<Path> classpath,
+            List<String> classpathTokens) {
         public Stamp {
             Objects.requireNonNull(taskId, "taskId");
             Objects.requireNonNull(actionKey, "actionKey");
             Objects.requireNonNull(optionsDigest, "optionsDigest");
             sources = List.copyOf(sources);
             classpath = List.copyOf(classpath);
+            classpathTokens = List.copyOf(classpathTokens);
         }
     }
 

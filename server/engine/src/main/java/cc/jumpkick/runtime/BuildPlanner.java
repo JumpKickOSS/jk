@@ -93,6 +93,14 @@ public final class BuildPlanner {
      */
     public static final BuildPlanKey<String> JAVA_STAMP_DIGEST = BuildPlanKey.scalar("java-stamp-digest", String.class);
 
+    /**
+     * The classpath token lines compile-main checked its freshness stamp against ({@code
+     * ActionKey.javacClasspathTokens} of the request it keyed), published for write-stamp so the
+     * stamp records the same lines the key hashed.
+     */
+    public static final BuildPlanKey<List<String>> JAVA_STAMP_TOKENS =
+            BuildPlanKey.list("java-stamp-tokens", String.class);
+
     public static final BuildPlanKey<String> KOTLIN_STAMP_DIGEST =
             BuildPlanKey.scalar("kotlin-stamp-digest", String.class);
     public static final BuildPlanKey<String> GROOVY_STAMP_DIGEST =
@@ -147,6 +155,7 @@ public final class BuildPlanner {
             COMPILE_TEST_KOTLIN_ACTION_KEY,
             COMPILE_TEST_GROOVY_ACTION_KEY,
             JAVA_STAMP_DIGEST,
+            JAVA_STAMP_TOKENS,
             KOTLIN_STAMP_DIGEST,
             GROOVY_STAMP_DIGEST,
             TEST_SOURCES,

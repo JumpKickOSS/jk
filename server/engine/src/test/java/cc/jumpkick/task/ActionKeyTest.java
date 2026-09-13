@@ -95,6 +95,91 @@ class ActionKeyTest {
         });
     }
 
+    /**
+     * Compile avoidance: the compile classpath is keyed by JVM ABI, so a dependency whose method
+     * bodies changed keys the same compile, while a dependency whose API changed does not.
+     */
+    @Test
+    void a_body_only_classpath_change_keeps_the_javac_key_and_an_api_change_moves_it(@TempDir Path tempDir)
+            throws IOException {
+        Path src = Files.writeString(tempDir.resolve("Hello.java"), "class Hello {}");
+        Path dep = AbiJars.jar(tempDir.resolve("dep.jar"), AbiJars.classReturning(1));
+        String before = ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0");
+
+        AbiJars.jar(dep, AbiJars.classReturning(2));
+        assertThat(ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0"))
+                .as("a body-only change of a classpath jar is not a compile input")
+                .isEqualTo(before);
+
+        AbiJars.jar(dep, AbiJars.classWithMethods("n", "added"));
+        String apiChanged = ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0");
+        assertThat(apiChanged).as("a new public method is").isNotEqualTo(before);
+
+        AbiJars.jar(dep, AbiJars.classWithIntConst(1));
+        String constOne = ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0");
+        AbiJars.jar(dep, AbiJars.classWithIntConst(2));
+        assertThat(ActionKey.forJavac("compile-main", withClasspath(src, tempDir, dep), "0.1.0"))
+                .as("an inlined constant is API: javac copies its value into the consumer")
+                .isNotEqualTo(constOne);
+    }
+
+    /** The processor path stays full content: a processor's behaviour is its bodies. */
+    @Test
+    void a_body_only_processor_change_moves_the_javac_key(@TempDir Path tempDir) throws IOException {
+        Path src = Files.writeString(tempDir.resolve("Hello.java"), "class Hello {}");
+        Path processor = AbiJars.jar(tempDir.resolve("processor.jar"), AbiJars.classReturning(1));
+        String before = ActionKey.forJavac("compile-main", withProcessor(src, tempDir, processor), "0.1.0");
+
+        AbiJars.jar(processor, AbiJars.classReturning(2));
+        assertThat(ActionKey.forJavac("compile-main", withProcessor(src, tempDir, processor), "0.1.0"))
+                .isNotEqualTo(before);
+    }
+
+    /** The token lines are the key's classpath section, and the snapshot names each entry by them. */
+    @Test
+    void the_token_lines_spell_each_entry_by_abi_or_content_and_the_snapshot_carries_them(@TempDir Path tempDir)
+            throws IOException {
+        Path src = Files.writeString(tempDir.resolve("Hello.java"), "class Hello {}");
+        Path dep = AbiJars.jar(tempDir.resolve("dep.jar"), AbiJars.classReturning(1));
+        Path processor = AbiJars.jar(tempDir.resolve("processor.jar"), AbiJars.classReturning(1));
+        CompileRequest request = CompileRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of(dep))
+                .processorPath(List.of(processor))
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+
+        List<String> lines = ActionKey.javacClasspathTokens(request);
+        assertThat(lines)
+                .containsExactly("cp:" + ClasspathAbi.token(dep), "pp:" + ClasspathFingerprint.entry(processor));
+        assertThat(lines.get(0)).startsWith("cp:abi:");
+        assertThat(lines.get(1)).startsWith("pp:file:");
+
+        var snapshot = ActionKey.snapshotInputs(request);
+        assertThat(snapshot)
+                .containsEntry("cp:" + dep.toAbsolutePath().normalize(), ClasspathAbi.token(dep))
+                .containsEntry("pp:" + processor.toAbsolutePath().normalize(), ClasspathFingerprint.entry(processor));
+    }
+
+    private static CompileRequest withClasspath(Path src, Path tempDir, Path dep) {
+        return CompileRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of(dep))
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+    }
+
+    private static CompileRequest withProcessor(Path src, Path tempDir, Path processor) {
+        return CompileRequest.builder()
+                .sources(List.of(src))
+                .processorPath(List.of(processor))
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+    }
+
     @Test
     void editing_a_source_changes_the_key(@TempDir Path tempDir) throws IOException {
         Path src = tempDir.resolve("Hello.java");

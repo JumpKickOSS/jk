@@ -256,9 +256,40 @@ public final class JavaCompile {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "javac options changed");
         }
         List<Path> changed = changedSources(request, in);
+        if (changed.isEmpty()) {
+            // No source moved, yet the key missed: a classpath entry's API or a processor did.
+            // Naming it is what keeps why-rebuilt from reading "nothing changed, rebuilt anyway".
+            String classpathReason = changedClasspath(request, in);
+            if (classpathReason != null) {
+                return new Prediction(Outcome.INCREMENTAL, key, 0, classpathReason, List.of());
+            }
+        }
         int n = changed.size();
         String reason = n == 1 ? "1 source changed" : n + " sources changed";
         return new Prediction(Outcome.INCREMENTAL, key, n, reason, changed);
+    }
+
+    /**
+     * Which classpath entries' tokens differ from the prior record's, spelled as the record spells
+     * them ({@link ActionKey#snapshotInputs}): {@code cp:} by ABI, {@code pp:} by content. Null when
+     * none differ.
+     */
+    private static @Nullable String changedClasspath(CompileRequest request, Map<String, String> priorInputs)
+            throws IOException {
+        Map<String, String> now = ActionKey.snapshotInputs(request);
+        List<String> api = new ArrayList<>();
+        List<String> processors = new ArrayList<>();
+        for (Map.Entry<String, String> e : now.entrySet()) {
+            String k = e.getKey();
+            boolean cp = k.startsWith("cp:");
+            if (!cp && !k.startsWith("pp:")) continue;
+            if (e.getValue().equals(priorInputs.get(k))) continue;
+            Path entry = Path.of(k.substring(3));
+            (cp ? api : processors).add(String.valueOf(entry.getFileName()));
+        }
+        if (api.isEmpty() && processors.isEmpty()) return null;
+        if (!api.isEmpty()) return "dependency API changed (" + String.join(", ", api) + ")";
+        return "processor changed (" + String.join(", ", processors) + ")";
     }
 
     private static List<Path> changedSources(CompileRequest request, Map<String, String> priorInputs)

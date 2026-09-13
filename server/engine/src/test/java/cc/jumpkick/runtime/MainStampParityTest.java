@@ -8,24 +8,29 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.task.AbiJars;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FreshnessStamp;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * the compile-main freshness-stamp inputs come from ONE recipe
- * ({@link PlannerSupport#mainStampClasspath}) shared by the live check, {@code write-stamp}, and
- * the forecast. Two hand-maintained copies drifted before: the forecast missed the mixed-language
- * classpath entries (mixed modules never forecast stamp-fresh) and write-stamp missed the
- * processor path (processor modules never checked stamp-fresh).
+ * The compile-main freshness stamp is derived from the one request the action key hashes
+ * ({@link PlannerCompile#mainCompileRequest}): its classpath section is {@link
+ * ActionKey#javacClasspathTokens} and its option digest is {@link ActionKey#javacOptionsDigest},
+ * on the live check, in {@code write-stamp} and in the forecast alike. Two hand-maintained input
+ * recipes drifted before (the forecast missed the mixed-language classpath entries, write-stamp
+ * missed the processor path); one request cannot.
  */
 class MainStampParityTest {
+
+    private static final int RELEASE = 21;
 
     private static BuildLayout layout(Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
@@ -44,87 +49,69 @@ class MainStampParityTest {
         return p;
     }
 
-    @Test
-    void mixed_kotlin_stamp_written_by_the_recipe_is_fresh_under_the_recipe(@TempDir Path dir) throws Exception {
-        BuildLayout layout = layout(dir);
+    private static Path source(Path dir) throws Exception {
         Path src = dir.resolve("src/main/java/A.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "public class A {}");
-        aged(src);
-        Path dep = dir.resolve("dep.jar");
-        Files.writeString(dep, "jar");
-        aged(dep);
-        Path processor = dir.resolve("processor.jar");
-        Files.writeString(processor, "proc");
-        aged(processor);
-        // A compiled mixed module has the sibling compiler's output dir.
-        aged(Files.createDirectories(layout.kotlinClassesDir()));
-        List<Path> sources = List.of(src);
-        Path out = layout.classesDir();
-
-        List<Path> written =
-                PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
-        FreshnessStamp.write(out, BuildStamps.JAVA, "compile-main", "", sources, written, 21, "");
-
-        // The forecast/check recompute through the same recipe → fresh.
-        List<Path> recomputed =
-                PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
-        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, recomputed, 21, ""))
-                .isTrue();
-
-        // The pre-fix forecast recipe (base classpath + processors only, no kotlin classes dir)
-        // hashes different inputs → never fresh. This is theclass divergence the shared
-        // recipe closes.
-        List<Path> oldForecast = new ArrayList<>(List.of(dep));
-        oldForecast.add(processor);
-        assertThat(FreshnessStamp.isFresh(out, BuildStamps.JAVA, sources, oldForecast, 21, ""))
-                .isFalse();
+        return aged(src);
     }
 
     @Test
-    void processor_path_busts_the_stamp(@TempDir Path dir) throws Exception {
+    void a_mixed_kotlin_stamp_written_from_the_request_is_fresh_under_the_same_request(@TempDir Path dir)
+            throws Exception {
         BuildLayout layout = layout(dir);
-        Path src = dir.resolve("src/main/java/A.java");
-        Files.createDirectories(src.getParent());
-        Files.writeString(src, "public class A {}");
-        aged(src);
-        Path dep = dir.resolve("dep.jar");
-        Files.writeString(dep, "jar");
-        aged(dep);
-        Path processor = dir.resolve("processor.jar");
-        Files.writeString(processor, "proc-v1");
-        aged(processor);
-        List<Path> sources = List.of(src);
+        List<Path> sources = List.of(source(dir));
+        Path dep = AbiJars.jar(dir.resolve("dep.jar"), AbiJars.classReturning(1));
+        Path processor = AbiJars.jar(dir.resolve("processor.jar"), AbiJars.classReturning(1));
+        // A compiled mixed module has the sibling compiler's output dir.
+        Files.createDirectories(layout.kotlinClassesDir());
         Path out = layout.classesDir();
+        Path javaHome = Path.of(System.getProperty("java.home"));
 
-        FreshnessStamp.write(
-                out,
-                BuildStamps.JAVA,
-                "compile-main",
-                "",
-                sources,
-                PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
-                21,
-                "");
+        CompileRequest written = PlannerCompile.mainCompileRequest(
+                mainCompile(sources, List.of(dep), List.of(processor), layout, out, List.of(), javaHome, true));
+        write(out, sources, written);
 
-        assertThat(FreshnessStamp.isFresh(
-                        out,
-                        BuildStamps.JAVA,
-                        sources,
-                        PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
-                        21,
-                        ""))
+        CompileRequest recomputed = PlannerCompile.mainCompileRequest(
+                mainCompile(sources, List.of(dep), List.of(processor), layout, out, List.of(), javaHome, true));
+        assertThat(fresh(out, sources, recomputed)).isTrue();
+        assertThat(ActionKey.javacClasspathTokens(recomputed))
+                .as("the sibling compiler's output dir is a classpath token")
+                .contains("cp:" + ClasspathAbi.token(layout.kotlinClassesDir()));
+
+        // A request without the Kotlin classes dir hashes a different classpath → never fresh.
+        CompileRequest javaOnly = PlannerCompile.mainCompileRequest(
+                mainCompile(sources, List.of(dep), List.of(processor), layout, out, List.of(), javaHome, false));
+        assertThat(fresh(out, sources, javaOnly)).isFalse();
+    }
+
+    /**
+     * A classpath jar rewritten with the same API keeps the stamp — that is compile avoidance —
+     * while a processor jar rewritten the same way busts it, because the processor path is keyed by
+     * content.
+     */
+    @Test
+    void a_body_only_dependency_rewrite_keeps_the_stamp_and_a_processor_rewrite_busts_it(@TempDir Path dir)
+            throws Exception {
+        BuildLayout layout = layout(dir);
+        List<Path> sources = List.of(source(dir));
+        Path dep = AbiJars.jar(dir.resolve("dep.jar"), AbiJars.classReturning(1));
+        Path processor = AbiJars.jar(dir.resolve("processor.jar"), AbiJars.classReturning(1));
+        Path out = layout.classesDir();
+        Path javaHome = Path.of(System.getProperty("java.home"));
+
+        write(out, sources, request(sources, dep, processor, layout, out, javaHome));
+        assertThat(fresh(out, sources, request(sources, dep, processor, layout, out, javaHome)))
                 .isTrue();
 
-        // A processor bump must invalidate — it is not on the compile classpath.
-        Files.writeString(processor, "proc-v2-different-bytes");
-        assertThat(FreshnessStamp.isFresh(
-                        out,
-                        BuildStamps.JAVA,
-                        sources,
-                        PlannerSupport.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
-                        21,
-                        ""))
+        AbiJars.jar(dep, AbiJars.classReturning(2));
+        assertThat(fresh(out, sources, request(sources, dep, processor, layout, out, javaHome)))
+                .as("same API, new bytes: the consumer's compile is not due")
+                .isTrue();
+
+        AbiJars.jar(processor, AbiJars.classReturning(2));
+        assertThat(fresh(out, sources, request(sources, dep, processor, layout, out, javaHome)))
+                .as("a processor's behaviour is its bodies")
                 .isFalse();
     }
 
@@ -136,59 +123,105 @@ class MainStampParityTest {
     @Test
     void javac_args_bust_the_stamp_through_the_shared_request(@TempDir Path dir) throws Exception {
         BuildLayout layout = layout(dir);
-        Path src = dir.resolve("src/main/java/A.java");
-        Files.createDirectories(src.getParent());
-        Files.writeString(src, "public class A {}");
-        aged(src);
-        List<Path> sources = List.of(src);
+        List<Path> sources = List.of(source(dir));
         Path out = layout.classesDir();
         Path javaHome = Path.of(System.getProperty("java.home"));
-        List<Path> inputs = PlannerSupport.mainStampClasspath(List.of(), List.of(), false, false, layout, null);
 
-        CompileRequest lenient =
-                PlannerCompile.mainCompileRequest(mainCompile(sources, layout, out, List.of(), javaHome));
-        FreshnessStamp.write(
-                out, BuildStamps.JAVA, "compile-main", "", sources, inputs, 21, ActionKey.javacOptionsDigest(lenient));
+        CompileRequest lenient = PlannerCompile.mainCompileRequest(
+                mainCompile(sources, List.of(), List.of(), layout, out, List.of(), javaHome, false));
+        write(out, sources, lenient);
 
-        CompileRequest same = PlannerCompile.mainCompileRequest(mainCompile(sources, layout, out, List.of(), javaHome));
-        assertThat(FreshnessStamp.isFresh(
-                        out, BuildStamps.JAVA, sources, inputs, 21, ActionKey.javacOptionsDigest(same)))
-                .isTrue();
+        CompileRequest same = PlannerCompile.mainCompileRequest(
+                mainCompile(sources, List.of(), List.of(), layout, out, List.of(), javaHome, false));
+        assertThat(fresh(out, sources, same)).isTrue();
 
-        CompileRequest strict = PlannerCompile.mainCompileRequest(
-                mainCompile(sources, layout, out, List.of("-Xlint:all", "-Werror"), javaHome));
-        assertThat(FreshnessStamp.isFresh(
-                        out, BuildStamps.JAVA, sources, inputs, 21, ActionKey.javacOptionsDigest(strict)))
+        CompileRequest strict = PlannerCompile.mainCompileRequest(mainCompile(
+                sources, List.of(), List.of(), layout, out, List.of("-Xlint:all", "-Werror"), javaHome, false));
+        assertThat(fresh(out, sources, strict))
                 .as("changed [javac] args with untouched sources recompile")
                 .isFalse();
     }
 
-    private static PlannerCompile.MainCompile mainCompile(
-            List<Path> sources, BuildLayout layout, Path out, List<String> javacArgs, Path javaHome) {
-        return new PlannerCompile.MainCompile(
-                sources,
-                List.of(),
+    @Test
+    void a_mixed_groovy_request_folds_the_classes_dir_and_the_groovy_jar_into_the_tokens(@TempDir Path dir)
+            throws Exception {
+        BuildLayout layout = layout(dir);
+        Path dep = AbiJars.jar(dir.resolve("dep.jar"), AbiJars.classReturning(1));
+        Path groovyJar = AbiJars.jar(dir.resolve("groovy.jar"), AbiJars.classReturning(1));
+        Files.createDirectories(layout.groovyClassesDir());
+
+        CompileRequest req = PlannerCompile.mainCompileRequest(new PlannerCompile.MainCompile(
+                List.of(source(dir)),
+                List.of(dep),
                 List.of(),
                 layout,
+                layout.classesDir(),
+                RELEASE,
+                List.of(),
+                JavacConfig.EMPTY,
+                Path.of(System.getProperty("java.home")),
+                false,
+                true,
+                groovyJar,
+                null));
+
+        assertThat(ActionKey.javacClasspathTokens(req))
+                .containsExactlyInAnyOrder(
+                        "cp:" + ClasspathAbi.token(dep),
+                        "cp:" + ClasspathAbi.token(layout.groovyClassesDir()),
+                        "cp:" + ClasspathAbi.token(groovyJar));
+    }
+
+    private static void write(Path out, List<Path> sources, CompileRequest request) throws IOException {
+        FreshnessStamp.write(
                 out,
-                21,
+                BuildStamps.JAVA,
+                "compile-main",
+                "",
+                sources,
+                FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(request)),
+                RELEASE,
+                ActionKey.javacOptionsDigest(request));
+    }
+
+    private static boolean fresh(Path out, List<Path> sources, CompileRequest request) throws IOException {
+        return FreshnessStamp.isFresh(
+                out,
+                BuildStamps.JAVA,
+                sources,
+                FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(request)),
+                RELEASE,
+                ActionKey.javacOptionsDigest(request));
+    }
+
+    private static CompileRequest request(
+            List<Path> sources, Path dep, Path processor, BuildLayout layout, Path out, Path javaHome) {
+        return PlannerCompile.mainCompileRequest(
+                mainCompile(sources, List.of(dep), List.of(processor), layout, out, List.of(), javaHome, false));
+    }
+
+    private static PlannerCompile.MainCompile mainCompile(
+            List<Path> sources,
+            List<Path> classpath,
+            List<Path> processorPath,
+            BuildLayout layout,
+            Path out,
+            List<String> javacArgs,
+            Path javaHome,
+            boolean mixedKotlin) {
+        return new PlannerCompile.MainCompile(
+                sources,
+                classpath,
+                processorPath,
+                layout,
+                out,
+                RELEASE,
                 javacArgs,
                 JavacConfig.EMPTY,
                 javaHome,
-                false,
+                mixedKotlin,
                 false,
                 null,
                 null);
-    }
-
-    @Test
-    void mixed_groovy_folds_classes_dir_and_jar(@TempDir Path dir) throws Exception {
-        BuildLayout layout = layout(dir);
-        Path dep = dir.resolve("dep.jar");
-        Path groovyJar = dir.resolve("groovy.jar");
-
-        List<Path> inputs = PlannerSupport.mainStampClasspath(List.of(dep), List.of(), false, true, layout, groovyJar);
-
-        assertThat(inputs).containsExactly(dep, layout.groovyClassesDir(), groovyJar);
     }
 }
