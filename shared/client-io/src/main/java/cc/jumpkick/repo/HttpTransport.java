@@ -33,7 +33,7 @@ public final class HttpTransport implements RepoTransport {
         HttpResponse<byte[]> response = http.get(uri, AuthHeaders.of(credential));
         int status = response.statusCode();
         if (status == 404) return Optional.empty();
-        if (status >= 400) {
+        if (!success(status)) {
             throw new IOException("HTTP " + status + " fetching " + SafeUri.forMessage(uri));
         }
         return Optional.of(response.body());
@@ -48,11 +48,20 @@ public final class HttpTransport implements RepoTransport {
             drain(response.body());
             return Optional.empty();
         }
-        if (status >= 400) {
+        if (!success(status)) {
             drain(response.body());
             throw new IOException("HTTP " + status + " fetching " + SafeUri.forMessage(uri));
         }
         return Optional.of(response.body());
+    }
+
+    /**
+     * 2xx only. {@link Http} raises on every 3xx it does not follow and hands back a 304 for the
+     * conditional requests it is asked to make; this transport makes none, so to it a 304 is as
+     * much a failure as a 403.
+     */
+    private static boolean success(int status) {
+        return status >= 200 && status < 300;
     }
 
     /** Consume and discard a non-success body so the connection can be reused. */

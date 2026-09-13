@@ -102,6 +102,60 @@ class HttpRedirectTest {
         assertThat(hits).as("a policy answer, not a fault to retry").hasValue(1);
     }
 
+    /**
+     * A 300 Multiple Choices or a 305 Use Proxy is a 3xx this client does not follow. Handed back,
+     * either would read as a success to a caller drawing the failure line at 400; the answer is an
+     * error naming the status and the URL.
+     */
+    @Test
+    void a_3xx_that_is_not_followed_is_an_error_naming_the_status() {
+        for (int status : new int[] {300, 305}) {
+            String path = "/choices-" + status;
+            origin.server().createContext(path, exchange -> {
+                exchange.getResponseHeaders()
+                        .add("Location", origin.base().resolve("/elsewhere").toString());
+                exchange.sendResponseHeaders(status, -1);
+                exchange.close();
+            });
+
+            assertThatThrownBy(() -> http().get(origin.base().resolve(path)))
+                    .as("HTTP " + status)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining(String.valueOf(status))
+                    .hasMessageContaining(path);
+        }
+    }
+
+    /** The success line is 2xx only; the whole range of it still passes through. */
+    @Test
+    void every_2xx_is_still_handed_back() throws Exception {
+        for (int status : new int[] {200, 201, 204, 206, 299}) {
+            String path = "/ok-" + status;
+            origin.server().createContext(path, exchange -> {
+                exchange.sendResponseHeaders(status, -1);
+                exchange.close();
+            });
+
+            assertThat(http().get(origin.base().resolve(path)).statusCode())
+                    .as("HTTP " + status)
+                    .isEqualTo(status);
+        }
+    }
+
+    /** 304 is the one 3xx that is a document: the answer to a conditional GET. */
+    @Test
+    void a_304_to_a_conditional_get_is_handed_back() throws Exception {
+        origin.server().createContext("/cached", exchange -> {
+            exchange.sendResponseHeaders(304, -1);
+            exchange.close();
+        });
+
+        HttpResponse<byte[]> response =
+                http().get(origin.base().resolve("/cached"), Map.of("If-None-Match", "\"etag\""));
+
+        assertThat(response.statusCode()).isEqualTo(304);
+    }
+
     @Test
     void a_downgrade_from_https_to_http_is_not_followed() {
         URI secure = URI.create("https://repo.example.com/a.jar");

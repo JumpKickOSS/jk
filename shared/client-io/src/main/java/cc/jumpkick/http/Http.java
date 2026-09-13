@@ -321,10 +321,11 @@ public final class Http {
     /**
      * One request and the redirect chain it starts. A hop that stays on the request's origin keeps
      * every header; one that leaves it is re-issued without the caller's credentials. A downgrade
-     * from https to http, a chain longer than {@link #MAX_REDIRECTS}, or a 3xx without a usable
-     * {@code Location} is an error rather than a 3xx handed back as if it were a result — a caller
-     * reading {@code status >= 400} as failure would otherwise take a redirect for a success with
-     * an empty body.
+     * from https to http, a chain longer than {@link #MAX_REDIRECTS}, a 3xx without a usable
+     * {@code Location}, or a 3xx this client never follows (300, 305, …) is an error rather than a
+     * 3xx handed back as if it were a result — a caller reading {@code status >= 400} as failure
+     * would otherwise take a redirect for a success with an empty body. 304 alone is handed back:
+     * it is the answer to a conditional GET, not a redirect.
      */
     private <T> HttpResponse<T> send(
             HttpRequest request, HttpResponse.BodyHandler<T> handler, @Nullable BodyDrain<T> drain)
@@ -351,12 +352,18 @@ public final class Http {
             request = redirected(request, response.statusCode(), target);
             response = client.send(request, handler);
         }
+        int status = response.statusCode();
+        if (status >= 300 && status < 400 && status != 304) {
+            if (drain != null) drain.handle(response);
+            throw new RedirectRefusedException(status + " from " + SafeUri.forMessage(request.uri())
+                    + " is a redirect this client does not follow");
+        }
         return response;
     }
 
     /**
-     * A redirect this client will not follow — too long a chain, a downgrade to http, or a 3xx
-     * naming no target. Not retried: the same answer would come back.
+     * A redirect this client will not follow — too long a chain, a downgrade to http, a 3xx naming
+     * no target, or a 3xx it never follows. Not retried: the same answer would come back.
      */
     static final class RedirectRefusedException extends IOException {
         RedirectRefusedException(String message) {

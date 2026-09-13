@@ -103,6 +103,26 @@ class HttpTransportTest {
                 .hasMessageContaining("403");
     }
 
+    /**
+     * The transport's success line is 2xx. The client raises on every other 3xx before it gets
+     * here; 304 is the one it hands back, and to a transport that sent no conditional request it
+     * is not a document.
+     */
+    @Test
+    void fetch_treats_a_3xx_it_is_handed_as_a_failure_naming_the_status() {
+        server.createContext("/a.jar", ex -> {
+            ex.sendResponseHeaders(304, -1);
+            ex.close();
+        });
+
+        assertThatThrownBy(() -> transport().fetch(base.resolve("/a.jar"), RepoCredential.ANONYMOUS))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("HTTP 304");
+        assertThatThrownBy(() -> transport().fetchStream(base.resolve("/a.jar"), RepoCredential.ANONYMOUS))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("HTTP 304");
+    }
+
     @Test
     void fetchStream_returns_body_and_sends_auth() throws Exception {
         AtomicReference<String> seenAuth = new AtomicReference<>();
