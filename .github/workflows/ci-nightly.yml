@@ -1,5 +1,10 @@
-# Integration / e2e on Linux. Unit tests stay on every push/PR in ci.yml.
+# The slow tiers, the coverage ratchet, the doc examples and the product smoke, on Linux and macOS.
+# Unit tests and the curated integration lane stay on every push/PR in ci.yml.
 # Manual re-run: Actions → "CI (nightly)" → Run workflow.
+#
+# Every job bootstraps the way ci.yml's self-host job does: the hosted release
+# .jk/ci-bootstrap-version pins builds the checkout, then `jk install` hands the isolated JK_HOME
+# to the checkout's own client, engine and workers, so each tier is run by the commit's jk.
 name: CI (nightly)
 
 on:
@@ -16,12 +21,10 @@ env:
   TERM: xterm-256color
 
 jobs:
-  # The integration tier under both builds, on one commit, compared: every class and every test
-  # case Gradle's integrationTest ran, jk's integration profile ran too, with the same verdict.
-  # This is cut-over gate two (docs/contributors/self-host.md) measured nightly rather than
-  # asserted; a difference fails the job and the report names it.
+  # The whole integration profile. The branch gate runs the curated subset (curated-integration.txt);
+  # this is the complete tier, and the curated lane is never a replacement for it.
   integration:
-    name: Integration tier (Gradle and jk, compared)
+    name: Integration profile
     runs-on: ubuntu-latest
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
@@ -34,103 +37,41 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
 
-      - name: Bootstrap jk from Gradle artifacts
+      - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
-          ./gradlew dist installLocal --no-daemon
-          ./install.sh build/dist/jk
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
-      # A red class is a verdict the comparison reads, not a reason to stop before jk's half runs.
-      - name: Gradle integration tier
-        run: ./gradlew integrationTest --continue --no-daemon
-
-      - name: jk integration profile
-        run: scripts/measure-tier-parity.sh run-jk
-
-      - name: Compare the two runs
-        run: scripts/measure-tier-parity.sh compare
-
-      - name: Publish the comparison
-        if: always()
+      - name: The checkout's own jk takes over
         run: |
-          if [ -f target/tier-parity/report.txt ]; then
-            { echo '## Integration tier parity'; echo '```'; cat target/tier-parity/report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
+
+      # A red class is a verdict about its module; --continue reports every module's.
+      - name: Integration profile
+        run: jk test --profile integration --continue --no-ansi
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: tier-parity
-          path: target/tier-parity/
+          name: integration-results
+          path: target/**/reports/test-results/
           if-no-files-found: warn
           retention-days: 14
 
-  # @Tag("slow") lives here. Framework/language e2e — Android, Grails, Scala, KSP,
-  # Protobuf, Groovy, Minified — measured at 426s of integrationTest's 1419s for 28 tests, 15s
-  # each. What it asserts moves when a plugin or a toolchain moves, not when the change under
-  # review does, so paying it on every merge bought coverage the change could not affect.
+  # @Tag("slow") lives here: framework and language e2e — Android, Grails, Scala, KSP, Protobuf,
+  # Groovy, Minified. What it asserts moves when a plugin or a toolchain moves, not when the change
+  # under review does, so paying it on every merge bought coverage the change could not affect.
   slow:
-    name: Gradle slow e2e test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
-
-      - name: Slow e2e test
-        run: ./gradlew slowTest --no-daemon
-
-  # @Tag("network") lives here and nowhere else. It is off `checkAll` on purpose:
-  # Sonatype enforces a per-IP quota on Maven Central and this repo has a documented history of
-  # 429s from it, so a PR gate that needs the network fails for reasons the change did
-  # not cause. Nightly, a 429 costs a re-run instead of a blocked merge.
-  network:
-    name: Gradle network test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
-
-      - name: Network test
-        run: ./gradlew networkTest --no-daemon
-
-  # Microbenchmarks print medians and assert nothing about deltas, so they stay off the merge
-  # gate. They still have to run somewhere or they rot.
-  bench:
-    name: Microbenchmarks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
-
-      - name: Microbenchmarks
-        run: ./gradlew benchTest --no-daemon
-
-  # Unit-test coverage inventory. Not a gate: no percentage, and the JaCoCo agent stays off
-  # unless -Pjk.coverage so checkFast does not pay for it.
-  coverage:
-    name: Coverage inventory and ratchet
+    name: Slow profile (framework and language e2e)
     runs-on: ubuntu-latest
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
@@ -143,32 +84,134 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
+
+      - name: Bootstrap jk from the hosted release
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
+
+      - name: Slow profile
+        run: jk test --profile slow --continue --no-ansi
+
+  # @Tag("network") lives here and nowhere else. It is off the branch gate on purpose: Sonatype
+  # enforces a per-IP quota on Maven Central, so a gate that needs the network fails for reasons
+  # the change did not cause. Nightly, a 429 costs a re-run instead of a blocked merge.
+  network:
+    name: Network profile
+    runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap jk from the hosted release
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
+
+      - name: Network profile
+        run: jk test --profile network --continue --no-ansi
+
+  # Microbenchmarks print medians and assert nothing about deltas, so they stay off the merge
+  # gate. They still have to run somewhere or they rot. The jar-size bench packages its fixtures
+  # with the installed jk, Maven and the fixtures' own Gradle wrappers — those are the products it
+  # compares against, provisioned by the fixtures themselves.
+  bench:
+    name: Bench profile (microbenchmarks)
+    runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap jk from the hosted release
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
+
+      - name: Bench profile
+        run: jk test --profile bench --continue --no-ansi
+
+  # The per-module coverage ratchet (G91): every module's unit tier under the JaCoCo agent, then
+  # the house-rule gate reads each module's reports/jacoco.xml against its baselined entry. A module
+  # more than half a point below its entry fails the job; one above it would tighten the baseline,
+  # which a CI run reports instead of writing — run `jk test --coverage` and `jk guard` locally and
+  # commit jk-guards-baseline.toml. Never a percentage target, never on the branch gate.
+  coverage:
+    name: Coverage ratchet
+    runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
 
-      - name: Aggregate JaCoCo report
-        run: ./gradlew coverageReport -Pjk.coverage --no-daemon
-
-      # The per-module ratchet (G91) runs on the jk side: every module's unit tier under the JaCoCo
-      # agent, then the house-rule gate reads each module's reports/jacoco.xml against its baselined
-      # entry. A module more than half a point below its entry fails the job; one above it would
-      # tighten the baseline, which a CI run reports instead of writing — run `jk test --coverage`
-      # and `jk guard` locally and commit jk-guards-baseline.toml.
-      - name: Bootstrap jk from Gradle artifacts
+      - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
-          ./gradlew dist installLocal --no-daemon
-          ./install.sh build/dist/jk
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
+
       - name: Unit tier under the JaCoCo agent
-        run: jk test --coverage
+        run: jk test --coverage --no-ansi
 
       - name: Coverage ratchet
-        run: jk guard
+        run: jk guard --no-ansi
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -176,14 +219,6 @@ jobs:
           name: jacoco-per-module
           path: target/**/reports/jacoco.xml
           if-no-files-found: warn
-          retention-days: 14
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: jacoco-coverage
-          path: build/reports/jacoco/
-          if-no-files-found: error
           retention-days: 14
 
   lombok-scope-guard:
@@ -198,32 +233,33 @@ jobs:
   engine-heap-guard:
     name: Engine heap guard (committed-after-idle)
     runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bootstrap thin client + engine jar + workers
+      - name: Bootstrap jk from the hosted release
         run: |
-          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
-          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
-          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
-          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
-          # The smoke script takes the client from JK_BIN, so the MSYS-vs-Windows spelling of a
-          # PATH entry cannot decide whether `jk` resolves. PATH still gets the bin dir, in the
-          # spelling the host's PATH actually uses.
-          echo "JK_BIN=$CLIENT_BIN" >> "$GITHUB_ENV"
-          BIN_DIR="$PWD/clients/cli/build/install/jk/bin"
-          if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
-          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
 
       - name: Run the house-rule lanes; every guard fixture must bite
-        run: |
-          "$JK_BIN" guard --no-ansi
+        run: jk guard --no-ansi
 
       - name: Build synthetic monorepo and gate committed-after-idle
         run: |
@@ -252,28 +288,34 @@ jobs:
   examples:
     name: Doc examples build and test
     runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bootstrap thin client + engine jar + workers
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Bootstrap jk from the hosted release
         run: |
-          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
-          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
-          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
-          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
-          # The smoke script takes the client from JK_BIN, so the MSYS-vs-Windows spelling of a
-          # PATH entry cannot decide whether `jk` resolves. PATH still gets the bin dir, in the
-          # spelling the host's PATH actually uses.
-          echo "JK_BIN=$CLIENT_BIN" >> "$GITHUB_ENV"
-          BIN_DIR="$PWD/clients/cli/build/install/jk/bin"
-          if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
-          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
 
       - name: Build and test every sample
         run: |
@@ -301,39 +343,45 @@ jobs:
       - name: A sample relock may move first-party plugin checksums and nothing else; an npm lock may not move
         run: scripts/examples-lock-drift.sh
 
-  # Thin-client product smoke on the OSes the PR gate does not run. Native images stay on
-  # release.yml. Network is required (first lock/build of a fresh project).
+  # Product smoke on the OS the PR gate does not run. Bootstraps the hosted macOS client, hands the
+  # home to the checkout's own jk, and drives a fresh project end to end. Windows joins this matrix
+  # when jumpkick.build serves a Windows client at the pin; until then there is no jk to smoke there
+  # (docs/contributors/releases.md, "Platforms without a hosted client"). Network is required (first
+  # lock/build of a fresh project).
   os-smoke:
     name: Product smoke (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: gradle
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Bootstrap thin client + engine jar + workers
+      - name: Bootstrap jk from the hosted release
         shell: bash
         run: |
-          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
-          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
-          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
-          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
-          # The smoke script takes the client from JK_BIN, so the MSYS-vs-Windows spelling of a
-          # PATH entry cannot decide whether `jk` resolves. PATH still gets the bin dir, in the
-          # spelling the host's PATH actually uses.
-          echo "JK_BIN=$CLIENT_BIN" >> "$GITHUB_ENV"
-          BIN_DIR="$PWD/clients/cli/build/install/jk/bin"
-          if command -v cygpath >/dev/null 2>&1; then BIN_DIR="$(cygpath -w "$BIN_DIR")"; fi
-          echo "$BIN_DIR" >> "$GITHUB_PATH"
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        shell: bash
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
 
       - name: Product smoke
         shell: bash
-        run: ./scripts/ci-product-smoke.sh
+        run: JK_BIN=jk ./scripts/ci-product-smoke.sh

@@ -36,28 +36,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # `bootstrap: hosted` — jumpkick.build serves a client for this platform at the release
-        # .jk/ci-bootstrap-version pins, so jk is installed the way a user installs it, the same
-        # bootstrap as ci.yml's self-host job. `bootstrap: gradle` — no hosted client for the
-        # platform (linux-aarch64 and macos-x86_64: none published at the pin; windows-x86_64: the
-        # self-host lane is not green there), so this commit's Gradle artifacts stand in. When a
-        # release ships a platform's client, its row flips with the pin bump.
+        # One row per platform jumpkick.build serves a client for at the release
+        # .jk/ci-bootstrap-version pins: jk is installed the way a user installs it, the same
+        # bootstrap as ci.yml's self-host job, and builds this commit's dist. A platform with no
+        # hosted client cannot bootstrap here — linux-aarch64, macos-x86_64 and windows-x86_64 are
+        # absent until the owner publishes a first client for each from a machine of that
+        # architecture (docs/contributors/releases.md, "Platforms without a hosted client"); a row
+        # joins this list with the pin bump that follows. Until every platform has a row, the
+        # publish job's flatten refuses the partial tree by design.
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
-            bootstrap: hosted
-          - os: ubuntu-24.04-arm
-            arch_label: linux-aarch64
-            bootstrap: gradle
-          - os: macos-15-intel
-            arch_label: macos-x86_64
-            bootstrap: gradle
           - os: macos-14
             arch_label: macos-aarch64
-            bootstrap: hosted
-          - os: windows-latest
-            arch_label: windows-x86_64
-            bootstrap: gradle
     runs-on: ${{ matrix.os }}
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
@@ -70,7 +61,6 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
 
       - uses: actions/setup-node@v4
         with:
@@ -95,7 +85,6 @@ jobs:
       # environment is the release being cut, so the bootstrap version rides the installer's own
       # environment and nothing else.
       - name: Bootstrap jk from the hosted release
-        if: matrix.bootstrap == 'hosted'
         shell: bash
         run: |
           set -euo pipefail
@@ -104,33 +93,12 @@ jobs:
           curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$bootstrap" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
 
-      # A platform with no hosted client at the pin (the matrix says which) bootstraps from this
-      # commit's Gradle artifacts. Windows builds its whole dist with Gradle below.
-      - name: Bootstrap jk from Gradle artifacts
-        if: matrix.bootstrap == 'gradle' && runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew dist installLocal --no-daemon
-          ./install.sh build/dist/jk
-          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
-
       - name: Dist (native client + engine), built by jk
-        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
           jk build --skip-tests
           ls -la target/dist target/dist/lib
-
-      # Windows still ships from Gradle: the self-host lane is not green there yet.
-      - name: Dist (native client + engine), built by Gradle
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew clean dist --no-daemon
-          ls -la build/dist build/dist/lib
 
       # The first-party plugins (formatter, compilers, test runner, guard packs, …) the release
       # ships to jumpkick.build/repo/ are the ones this commit builds, put on this runner's shelf
@@ -163,7 +131,7 @@ jobs:
       - name: Assemble release dir
         shell: bash
         env:
-          DIST_DIR: ${{ runner.os == 'Windows' && 'build/dist' || 'target/dist' }}
+          DIST_DIR: target/dist
         run: |
           set -euo pipefail
           chmod +x scripts/assemble-release-dir.sh
@@ -217,7 +185,10 @@ jobs:
 
       # One tree from five: each platform's client, and the engine jar from linux-x86_64 alone.
       # The refusals (a missing platform, an engine jar whose bytes differ, two trees carrying one
-      # name) live in the script, which scripts/test-flatten-release.sh exercises in the gate.
+      # name) live in the script, which scripts/test-flatten-release.sh exercises in the gate. With
+      # the matrix above short of five platforms this step refuses, so the workflow builds and
+      # stages the platforms it has and the release itself is published by hand
+      # (docs/contributors/releases.md, "Manual upload").
       - name: Flatten into version directory
         shell: bash
         run: scripts/flatten-release.sh staging "out/${JK_VERSION}" "$JK_VERSION"

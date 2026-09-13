@@ -24,12 +24,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: jk test --profile network --continue --no-ansi
 
-  bench:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: jk test --profile bench --continue --no-ansi
-
   # Coverage is measured nightly, never in the branch gate: the ratchet reads what the agent wrote.
   coverage:
     runs-on: ubuntu-latest

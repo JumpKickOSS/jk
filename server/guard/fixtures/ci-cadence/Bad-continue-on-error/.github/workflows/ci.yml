@@ -10,13 +10,14 @@ jobs:
   self-host:
     name: Self-host (jk builds jk)
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
     steps:
       - uses: actions/checkout@v4
 
-      # No step here runs Gradle: the ci-cadence guard fails the build on a `gradlew` in this job.
-      # The version is read from the pin, never spelled here, so a release bumps one file.
+      # No step here runs a second build system: the ci-cadence guard fails the build on a `gradlew`
+      # in this job. The version is read from the pin, never spelled here, so a release bumps one file.
       - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
@@ -36,21 +37,6 @@ jobs:
       - name: Self-host fast test tier
         run: jk test --no-ansi
 
-  # Gradle, run for parity and nothing else: advisory by design, the one job allowed continue-on-error.
-  gradle-parity:
-    name: Gradle parity (advisory, not a merge requirement)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Unit tests, buildSrc tests and the Gradle-only guard
-        run: ./gradlew checkFast --no-daemon
-
-  curated-integration:
-    name: Curated integration lane
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Curated integration tests
-        run: ./gradlew curatedIntegrationTest --no-daemon
+      - name: Curated integration lane
+        timeout-minutes: 8
+        run: scripts/curated-integration.sh

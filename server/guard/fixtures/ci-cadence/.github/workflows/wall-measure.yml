@@ -6,10 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  # A wall time is a record, not a verdict.
   wall:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - run: ./scripts/dogfood-wall-measure.sh rebuild noop touched

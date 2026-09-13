@@ -5,6 +5,7 @@ import cc.jumpkick.guard.api.Blank;
 import cc.jumpkick.guard.api.Fixture;
 import cc.jumpkick.guard.api.Guard;
 import cc.jumpkick.guard.api.GuardSuite;
+import cc.jumpkick.guard.api.Model;
 import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Skipped;
 import cc.jumpkick.guard.api.Text;
@@ -291,8 +292,13 @@ final class ParityRules {
     private static final String WALL = ".github/workflows/wall-measure.yml";
     /** The one place the release CI bootstraps jk from is written; every workflow step reads it. */
     private static final String BOOTSTRAP_PIN = ".jk/ci-bootstrap-version";
-    /** The branch gate's Gradle job: advisory by design, the one job {@code continue-on-error} is allowed on. */
-    private static final String GRADLE_PARITY_JOB = "gradle-parity";
+    /** The tiers a nightly run owns: each is one `jk test` invocation the workflow must spell. */
+    private static final List<String> NIGHTLY_TIERS = List.of(
+            "jk test --profile integration",
+            "jk test --profile slow",
+            "jk test --profile network",
+            "jk test --profile bench",
+            "jk test --coverage");
 
     private static final Pattern RELEASE_VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
     private static final Pattern LITERAL_BOOTSTRAP = Pattern.compile("JK_VERSION=[\"']?\\d");
@@ -301,7 +307,7 @@ final class ParityRules {
     @Guard(
             id = "ci-cadence",
             why =
-                    "nightly CI runs the benches, coverage and the product smoke; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
+                    "nightly CI runs the slow tiers, the coverage ratchet and the product smoke; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
                             + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
@@ -311,19 +317,14 @@ final class ParityRules {
         String branch = HouseRules.owner(text, CI);
         List<String> problems = new ArrayList<>();
         if (!exists(text, "scripts/ci-product-smoke.sh")) problems.add("scripts/ci-product-smoke.sh is missing");
-        if (!nightly.contains("./gradlew benchTest")) problems.add(NIGHTLY + " must run ./gradlew benchTest");
-        if (!nightly.contains("coverageReport") || !nightly.contains("-Pjk.coverage"))
-            problems.add(NIGHTLY + " must run coverageReport -Pjk.coverage");
-        if (!nightly.contains("jk test --coverage"))
-            problems.add(
-                    NIGHTLY + " must run jk test --coverage before its jk guard step — the coverage ratchet (G91)");
+        for (String tier : NIGHTLY_TIERS)
+            if (!nightly.contains(tier)) problems.add(NIGHTLY + " must run `" + tier + "`");
+        if (!nightly.contains("jk guard"))
+            problems.add(NIGHTLY + " must run jk guard after jk test --coverage — the coverage ratchet (G91)");
         if (!nightly.contains("macos-")) problems.add(NIGHTLY + " must have a macOS smoke runner");
-        if (!nightly.contains("windows-")) problems.add(NIGHTLY + " must have a Windows smoke runner");
         if (!nightly.contains("ci-product-smoke.sh")) problems.add(NIGHTLY + " must run scripts/ci-product-smoke.sh");
-        if (branch.contains("coverageReport") || branch.contains("-Pjk.coverage") || branch.contains("benchTest"))
+        if (branch.contains("--coverage") || branch.contains("--profile bench"))
             problems.add(CI + " must not run coverage or benches (they are nightly, non-gating)");
-        if (!text(text, "build.gradle.kts").contains("\"coverageReport\""))
-            problems.add("build.gradle.kts must register coverageReport");
         Map<String, String> jobs = jobs(branch);
         String selfHost = jobs.get("self-host");
         if (selfHost == null)
@@ -339,17 +340,16 @@ final class ParityRules {
             if (selfHost.contains("gradlew"))
                 problems.add(CI + "'s self-host job must not invoke gradlew: it bootstraps from the hosted release "
                         + BOOTSTRAP_PIN
-                        + " pins, and a Gradle step there puts the bootstrap oracle back in the merge gate");
+                        + " pins, and a second build system in the merge gate is a second oracle");
             if (!selfHost.contains("install.sh") || !selfHost.contains(BOOTSTRAP_PIN))
                 problems.add(CI + "'s self-host job must bootstrap with install.sh at the version " + BOOTSTRAP_PIN
                         + " names, never a version spelled in the workflow");
         }
         for (Map.Entry<String, String> job : jobs.entrySet())
-            if (job.getValue().contains("continue-on-error") && !job.getKey().equals(GRADLE_PARITY_JOB))
+            if (job.getValue().contains("continue-on-error"))
                 problems.add(CI + "'s `" + job.getKey()
                         + "` job must not carry continue-on-error — the flag makes a merge requirement advisory without"
-                        + " deleting the job; only `" + GRADLE_PARITY_JOB
-                        + "` is advisory by design (docs/contributors/self-host.md)");
+                        + " deleting the job");
         String pin = textOrNull(text, BOOTSTRAP_PIN);
         Matcher treeVersion = TREE_VERSION.matcher(text(text, "jk.toml"));
         if (pin == null)
@@ -369,9 +369,8 @@ final class ParityRules {
             problems.add("scripts/dogfood-wall-measure.sh is missing");
         String wall = textOrNull(text, WALL);
         if (wall == null) {
-            problems.add(
-                    WALL
-                            + " is missing — the Gradle/jk wall comparison is scheduled, not something a contributor has to remember");
+            problems.add(WALL
+                    + " is missing — the wall measurement is scheduled, not something a contributor has to remember");
         } else {
             for (String must : List.of("schedule:", "dogfood-wall-measure.sh", "upload-artifact", "row.jsonl"))
                 if (!wall.contains(must))
@@ -379,14 +378,7 @@ final class ParityRules {
                             + " machine-readable result nobody keeps, is not a baseline");
         }
         for (String p : problems)
-            v.add(
-                    new TextSite(
-                            p.startsWith(".github") || p.startsWith("build.gradle") || p.startsWith(".jk/")
-                                    ? p.split("['\\s]")[0]
-                                    : CI,
-                            0,
-                            p),
-                    p);
+            v.add(new TextSite(p.startsWith(".github") || p.startsWith(".jk/") ? p.split("['\\s]")[0] : CI, 0, p), p);
         v.population(4);
     }
 
@@ -597,9 +589,8 @@ final class ParityRules {
     // ---- G63 ---------------------------------------------------------------------------------
 
     private static final String REGISTRY = "curated-integration.txt";
+    private static final String LANE = "scripts/curated-integration.sh";
     private static final Map<String, String> SURFACES = new LinkedHashMap<>();
-    private static final Map<String, String> CURATED_MODULES =
-            Map.of(":cli", "clients/cli", ":engine", "server/engine");
     private static final Set<String> OUTCOMES = Set.of("success", "failure");
     private static final List<String> FAILURE_ASSERTIONS = List.of(
             "assertThatThrownBy",
@@ -652,8 +643,10 @@ final class ParityRules {
             why =
                     "the curated integration lane is the only integration coverage a pull request gets; an entry that no longer runs, lost its tag, or claims a path it does not show is a boundary nobody is watching until the nightly build",
             instead =
-                    "fix the registry entry, the class, or the workflow the detail names — never reclassify a class to make the gate pass")
-    void curatedIntegration(Text text, Violations v) {
+                    "fix the registry entry, the class, the lane script or the workflow the detail names — never reclassify a class to make the gate pass")
+    void curatedIntegration(Model model, Text text, Violations v) {
+        Set<String> workspace = new TreeSet<>();
+        for (String module : model.modules()) if (!module.isEmpty()) workspace.add(module);
         List<String> lines = text.lines(REGISTRY);
         List<Entry> entries = new ArrayList<>();
         for (int i = 0; i < lines.size(); i++) {
@@ -672,8 +665,8 @@ final class ParityRules {
             Set<String> paths = new TreeSet<>();
             for (String p : fields[3].split(",")) paths.add(p.strip());
             String fault = null;
-            if (!CURATED_MODULES.containsKey(fields[0]))
-                fault = "unknown module '" + fields[0] + "'; one of " + CURATED_MODULES.keySet();
+            if (!workspace.contains(fields[0]))
+                fault = "'" + fields[0] + "' is not a workspace module directory the root jk.toml lists";
             else if (!fields[1].contains(".")) fault = "'" + fields[1] + "' is not a fully-qualified class name";
             else if (!SURFACES.containsKey(fields[2]))
                 fault = "unknown surface '" + fields[2] + "'; one of " + SURFACES.keySet();
@@ -706,8 +699,7 @@ final class ParityRules {
                         new TextSite(REGISTRY, e.getValue().get(0).line(), e.getKey() + " duplicate"),
                         e.getKey() + " is listed " + e.getValue().size() + " times");
         for (Entry entry : entries) {
-            String rel = CURATED_MODULES.get(entry.module()) + "/src/test/java/"
-                    + entry.fqcn().replace('.', '/') + ".java";
+            String rel = entry.module() + "/src/test/java/" + entry.fqcn().replace('.', '/') + ".java";
             if (!exists(text, rel)) {
                 v.add(
                         new TextSite(REGISTRY, entry.line(), entry.fqcn()),
@@ -719,7 +711,7 @@ final class ParityRules {
             if (!body.contains("@Tag(\"integration\")"))
                 v.add(
                         new TextSite(rel, 0, "untagged"),
-                        entry.fqcn() + ": not @Tag(\"integration\"), so the lane's filters never select it");
+                        entry.fqcn() + ": not @Tag(\"integration\"), so the profile's filters never select it");
             for (String d : DISQUALIFYING)
                 if (body.contains("@Tag(\"" + d + "\")"))
                     v.add(
@@ -741,19 +733,6 @@ final class ParityRules {
                                     + " and no test method naming a refusal. Drop the claim, or register a class that has one");
             }
         }
-        Set<String> modules = new TreeSet<>();
-        for (Entry e : entries) modules.add(e.module());
-        for (String module : modules) {
-            String script = CURATED_MODULES.get(module) + "/build.gradle.kts";
-            String body = textOrNull(text, script);
-            if (body != null
-                    && body.contains("integrationTest")
-                    && !body.contains("CuratedIntegration.integrationTasks"))
-                v.add(
-                        new TextSite(script, 0, "integrationTest by name"),
-                        module + " configures integrationTest by name; the registry"
-                                + " names classes in it, so it must configure CuratedIntegration.integrationTasks instead and give the lane the tier's environment");
-        }
         for (var s : SURFACES.entrySet()) {
             List<Entry> here =
                     entries.stream().filter(e -> e.surface().equals(s.getKey())).toList();
@@ -772,16 +751,21 @@ final class ParityRules {
                         "surface '" + s.getKey() + "' (" + s.getValue() + ") has no " + String.join(" or ", gaps)
                                 + " path");
         }
-        if (!HouseRules.owner(text, CI).contains("./gradlew curatedIntegrationTest"))
+        String lane = textOrNull(text, LANE);
+        if (lane == null) v.add(new TextSite(LANE, 0, "missing"), LANE + " is missing — the registry has no runner");
+        else if (!lane.contains(REGISTRY) || !lane.contains("--profile integration"))
             v.add(
-                    new TextSite(CI, 0, "curatedIntegrationTest"),
-                    CI
-                            + " must run ./gradlew curatedIntegrationTest — a registry no pull request executes is documentation, not a gate");
-        if (!HouseRules.owner(text, NIGHTLY).contains("./gradlew integrationTest"))
+                    new TextSite(LANE, 0, "registry"),
+                    LANE + " must read " + REGISTRY + " and run its classes under `jk test --profile integration`");
+        if (!HouseRules.owner(text, CI).contains(LANE))
             v.add(
-                    new TextSite(NIGHTLY, 0, "integrationTest"),
+                    new TextSite(CI, 0, LANE),
+                    CI + " must run " + LANE + " — a registry no pull request executes is documentation, not a gate");
+        if (!HouseRules.owner(text, NIGHTLY).contains("jk test --profile integration"))
+            v.add(
+                    new TextSite(NIGHTLY, 0, "integration"),
                     NIGHTLY
-                            + " must still run the full ./gradlew integrationTest; the curated lane is a subset, never a replacement");
+                            + " must still run the full `jk test --profile integration`; the curated lane is a subset, never a replacement");
         String doc = text(text, TIERS_DOC);
         if (!doc.contains(REGISTRY))
             v.add(new TextSite(TIERS_DOC, 0, "registry"), TIERS_DOC + " must name " + REGISTRY);
@@ -789,7 +773,7 @@ final class ParityRules {
             v.add(
                     new TextSite(TIERS_DOC, 0, "budget"),
                     TIERS_DOC
-                            + " must state the lane's budget as '8 minutes', the number buildSrc/src/main/kotlin/CuratedIntegration.kt owns");
+                            + " must state the lane's budget as '8 minutes', the number ci.yml's step timeout enforces");
         v.population(entries.size());
     }
 

@@ -1,14 +1,14 @@
-# Gradle vs JumpKick wall-clock comparison of this tree, on a schedule.
+# JumpKick's wall clock on this tree, on a schedule.
 # Manual re-run: Actions → "Dogfood wall measurement" → Run workflow.
 #
 # A ratchet with a wide band, not a benchmark. A hosted runner's wall time moves with the runner
 # it lands on, so the band starts at 15 % and is tuned from the noise the series records; within
-# it nothing happens, above it a jk row fails this run and names the commit range since its line
+# it nothing happens, above it a row fails this run and names the commit range since its line
 # was banked, below it by 5 % the line is rewritten (scripts/wall-band.py, wall-baseline.toml).
 #
-# The jk side is a raw build (`[guards] on-build = false`, the Gradle-comparable number) and, on
-# the same rows, the dogfooded build with jk's house-rule guards on, labelled opt-in — so the
-# guards' cost is a series of its own instead of a drift in the comparison.
+# Two series per row: a raw build (`[guards] on-build = false`, the published number) and the
+# dogfooded build with jk's house-rule guards on, labelled opt-in — so the guards' cost is a
+# series of its own instead of a drift in the product number.
 name: Dogfood wall measurement
 
 on:
@@ -38,8 +38,8 @@ jobs:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
       OUT_DIR: ${{ github.workspace }}/build/dogfood-wall
-      # One timed run per side. A hosted runner is too noisy for a median to mean anything, and
-      # the rebuild row builds a native image on both sides.
+      # One timed run per row. A hosted runner is too noisy for a median to mean anything, and
+      # the rebuild row builds a native image.
       RUNS: '1'
     steps:
       - uses: actions/checkout@v4
@@ -49,18 +49,26 @@ jobs:
           java-version: '25'
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          cache: 'gradle'
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
 
-      - name: Bootstrap jk from Gradle artifacts
+      # The measured jk is this commit's own: the hosted release .jk/ci-bootstrap-version pins
+      # builds the checkout, then `jk install` hands the home to the checkout's client, engine and
+      # workers — the same two steps as ci.yml's self-host job.
+      - name: Bootstrap jk from the hosted release
         run: |
           set -euo pipefail
-          ./gradlew dist installLocal --no-daemon
-          ./install.sh build/dist/jk
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
           echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --no-ansi
+          jk install --skip-tests --no-ansi
 
       # continue-on-error, deliberately: the measurement is a record, and a slow or flaky runner
       # must not read as a product regression until a baseline says what normal is.
@@ -82,10 +90,12 @@ jobs:
         if: always()
         run: |
           if ! git diff --quiet -- wall-baseline.toml; then
-            echo "## wall-baseline.toml rewritten — commit this" >> "$GITHUB_STEP_SUMMARY"
-            echo '```diff' >> "$GITHUB_STEP_SUMMARY"
-            git diff -- wall-baseline.toml >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "## wall-baseline.toml rewritten — commit this"
+              echo '```diff'
+              git diff -- wall-baseline.toml
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - uses: actions/upload-artifact@v4

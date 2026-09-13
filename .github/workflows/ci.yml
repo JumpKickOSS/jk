@@ -26,11 +26,12 @@ jobs:
       - name: Scan commit messages
         run: bash scripts/check-no-agent-attribution.sh
 
-  # The shell fixtures behind the installers, the wrapper, the Maven-repository publisher and the
-  # release scripts: network-free, and they need bash, openssl and xz rather than a JDK, so they
-  # are a merge requirement of their own instead of sharing a verdict with the Gradle job.
+  # The shell fixtures behind the installers, the wrapper, the Maven-repository publisher, the
+  # release scripts and the curated lane's runner: network-free, and they need bash, openssl and xz
+  # rather than a JDK, so they are a merge requirement of their own instead of sharing a verdict
+  # with the self-host job.
   fixtures:
-    name: Shell fixtures (installer, wrapper, publish, release)
+    name: Shell fixtures (installer, wrapper, publish, release, curated lane)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,11 +54,15 @@ jobs:
       - name: Example lock-drift fixtures
         run: bash scripts/test-examples-lock-drift.sh
 
+      - name: Curated integration lane fixtures
+        run: bash scripts/test-curated-integration.sh
+
   # JumpKick building JumpKick: the merge authority. A released jk, installed the way a user
   # installs it, builds the checked-out jk.toml / jk-lock.toml graph; then the checkout's own
   # client, engine and workers take the home over (`jk install`), so the house-rule gate and the
-  # fast test tier are run by the commit's jk, not by the release that bootstrapped it. No step
-  # here runs Gradle: the `ci-cadence` guard fails the build on a `gradlew` in this job.
+  # fast test tier and the curated integration lane are run by the commit's jk, not by the release
+  # that bootstrapped it. No step here runs a second build system: the `ci-cadence` guard fails the
+  # build on a `gradlew` in this job.
   #
   # The bootstrap release is the one line in .jk/ci-bootstrap-version, read here and by
   # release.yml, and bumped after a release ships (docs/contributors/self-host.md, "The bootstrap
@@ -81,7 +86,7 @@ jobs:
 
       # jk's native step links the client against the GraalVM the request's GRAALVM_HOME names
       # before it looks for an installed one; the action provides it so the lane does not download
-      # a Graal of its own. Nothing here is Gradle, so no Gradle cache.
+      # a Graal of its own.
       - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
           java-version: '25'
@@ -165,87 +170,27 @@ jobs:
       - name: Self-host fast test tier
         run: jk test --no-ansi
 
-      # Lockfile is law: jk.toml pins exactly, so a build that rewrites the committed lock means
-      # a pin drifted or the lock writer put something non-deterministic in the file.
-      - name: The build must not rewrite the committed lock
-        run: git diff --exit-code -- jk-lock.toml
-
-  # Gradle, the build jk grew up under, run for parity and nothing else: `checkFast` is the unit
-  # tier, the buildSrc tests and the one letter only Gradle's task graph can see (G64). A red run
-  # here is a report to read beside the self-host verdict, not a blocked merge. `continue-on-error`
-  # is the flag the `ci-cadence` guard forbids on every other job of this workflow, because it
-  # turns a merge requirement into a courtesy run; this job is a courtesy run by design
-  # (docs/contributors/self-host.md, "Which build is the oracle").
-  gradle-parity:
-    name: Gradle parity (advisory, not a merge requirement)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: gradle
-
-      # WebClientJsTest runs the dashboard's JS suites under `node --test`. The version is `.nvmrc`.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      # checkFast runs scripts/shellcheck.sh (G100); the runner image ships shellcheck, and with CI set
-      # the script fails rather than skips when it is absent here.
-      - name: Unit tests, buildSrc tests and the Gradle-only guard
-        run: ./gradlew checkFast --no-daemon
-
-  # The boundary lane. The self-host job's `jk test` is the fast tier and runs no integration
-  # class, so a wire, spawn, worker, workspace, install or lock regression can merge with a
-  # deterministic integration test sitting in the nightly tier that would have caught it.
-  # Membership is curated-integration.txt; guard G63 (the `curated-integration` guard test) owns
-  # the registry's integrity and the existence of this job. It runs under Gradle and stays a merge
-  # requirement: it is the only integration coverage a pull request gets. The full tier stays
-  # nightly and complete.
-  #
-  # Its own job, alongside `self-host` rather than after it: a curated failure and a unit failure
-  # are different reports and a contributor should get both from one push.
-  curated-integration:
-    name: Curated integration lane
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: gradle
-
-      # The budget below is for the lane, not for compiling the tree: a cold runner spends six
-      # minutes on the compile alone, so it happens here, unbudgeted, and the budgeted step starts
-      # with every test class on disk.
-      - name: Compile
-        run: ./gradlew testClasses --no-daemon
-
-      # Budget: 8 minutes wall clock for this step. Over it, drop or split an entry — raising the
-      # number turns the lane back into the full tier the branch gate cannot afford. The elapsed
-      # seconds land in the run summary so the budget is checked against a measurement.
-      - name: Curated integration tests
+      # The boundary lane: the integration classes curated-integration.txt names, module by module,
+      # under the same engine, workers and home the fast tier just ran with. The full integration
+      # profile is nightly; this subset is the only integration coverage a pull request gets, so
+      # guard G63 owns the registry's integrity and this step's existence.
+      #
+      # Budget: 8 minutes wall clock. Over it, drop or split an entry — raising the number turns the
+      # lane back into the full profile the branch gate cannot afford. The elapsed seconds land in
+      # the run summary so the budget is checked against a measurement.
+      - name: Curated integration lane
         timeout-minutes: 8
         run: |
           set -euo pipefail
           start=$SECONDS
-          ./gradlew curatedIntegrationTest --no-daemon
+          scripts/curated-integration.sh
           echo "curated integration lane: $((SECONDS - start))s of an 8 minute budget" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: curated-integration-results
-          path: '**/build/test-results/curatedIntegrationTest/'
-          if-no-files-found: warn
-          retention-days: 7
+      # Lockfile is law: jk.toml pins exactly, so a build that rewrites the committed lock means
+      # a pin drifted or the lock writer put something non-deterministic in the file.
+      - name: The build must not rewrite the committed lock
+        run: git diff --exit-code -- jk-lock.toml
 
   installer-windows:
     name: PowerShell 5.1 installer verification
