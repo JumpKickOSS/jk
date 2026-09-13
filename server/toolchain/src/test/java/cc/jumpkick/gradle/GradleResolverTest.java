@@ -52,6 +52,27 @@ class GradleResolverTest {
         assertThat(dist.downloadUri()).isEqualTo(URI.create("http://localhost:8081/gradle-8.14-bin.zip"));
     }
 
+    @Test
+    void a_file_wrapper_url_is_accepted(@TempDir Path project) throws Exception {
+        wrapper(project, "distributionUrl=file\\:///srv/mirror/gradle-8.14-bin.zip\n");
+        ToolDistribution dist = new GradleResolver().resolve(project);
+        assertThat(dist.downloadUri()).isEqualTo(URI.create("file:///srv/mirror/gradle-8.14-bin.zip"));
+        assertThat(dist.version()).isEqualTo("8.14");
+    }
+
+    @Test
+    void a_wrapper_url_with_an_unsupported_scheme_is_refused_naming_what_would_work(@TempDir Path project)
+            throws Exception {
+        wrapper(project, "distributionUrl=ftp\\://mirror.example.com/gradle-8.14-bin.zip\n");
+        assertThatThrownBy(() -> new GradleResolver().resolve(project))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("gradle-wrapper.properties")
+                .hasMessageContaining("ftp://mirror.example.com/gradle-8.14-bin.zip")
+                .hasMessageContaining("https://")
+                .hasMessageContaining("loopback")
+                .hasMessageContaining("file://");
+    }
+
     private static void wrapper(Path project, String properties) throws IOException {
         Path props = project.resolve("gradle/wrapper/gradle-wrapper.properties");
         Files.createDirectories(props.getParent());

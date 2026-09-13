@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -20,6 +21,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
@@ -35,6 +37,9 @@ import java.util.zip.ZipInputStream;
  * The sidecar is fetched first, so a distribution that cannot be verified is refused before the
  * archive is downloaded at all; an archive with neither is never installed. What arrives here is
  * executed — the Kotlin compiler on every {@code .kt} build — so TLS alone is not enough.
+ *
+ * <p>A {@code file:} distribution — a wrapper pointing at an offline mirror — is copied from disk
+ * and held to the same rule: its pin, or a checksum file beside the archive on that disk.
  */
 public final class ToolInstaller {
 
@@ -56,21 +61,7 @@ public final class ToolInstaller {
         ExpectedDigest expected = expectedDigest(dist);
         Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
         try {
-            // Streamed to disk, never held whole. The engine runs under a memory cap (248 MiB by
-            // default) and the Kotlin compiler distribution alone is 83 MiB, so buffering the body
-            // in a byte[] made every first `.kts` build-logic run, and every Kotlin/Maven/Gradle
-            // provision, an OutOfMemoryError on a stock engine.
-            HttpResponse<InputStream> response = http.getStream(dist.downloadUri());
-            try (InputStream body = response.body()) {
-                if (response.statusCode() != 200) {
-                    throw new IOException(dist.tool().slug()
-                            + " download "
-                            + dist.downloadUri()
-                            + " returned "
-                            + response.statusCode());
-                }
-                Files.copy(body, archive, StandardCopyOption.REPLACE_EXISTING);
-            }
+            fetch(dist, archive);
             String actual = Hashing.fileHex(expected.algorithm(), archive);
             if (!actual.equalsIgnoreCase(expected.hex())) {
                 throw new IOException(expected.label()
@@ -83,7 +74,6 @@ public final class ToolInstaller {
                         + "), got "
                         + actual);
             }
-            SessionContext.current().io().remoteDown(archive);
 
             // Stage NEXT TO the target (same filesystem): the install is then one atomic
             // rename, so a crash or a racing provision never leaves a partial tree at target
@@ -113,6 +103,48 @@ public final class ToolInstaller {
         return new InstalledTool(dist.tool(), dist.version(), target);
     }
 
+    /** Copy the distribution's archive to {@code archive}: from disk for a {@code file:} URI, else by download. */
+    private void fetch(ToolDistribution dist, Path archive) throws IOException, InterruptedException {
+        URI uri = dist.downloadUri();
+        if (isFile(uri)) {
+            Path source = localFile(uri, dist);
+            if (!Files.isRegularFile(source)) {
+                throw new IOException(
+                        dist.tool().slug() + " distribution " + uri + " is not a file on this machine: " + source);
+            }
+            Files.copy(source, archive, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        // Streamed to disk, never held whole. The engine runs under a memory cap (248 MiB by
+        // default) and the Kotlin compiler distribution alone is 83 MiB, so buffering the body
+        // in a byte[] made every first `.kts` build-logic run, and every Kotlin/Maven/Gradle
+        // provision, an OutOfMemoryError on a stock engine.
+        HttpResponse<InputStream> response = http.getStream(uri);
+        try (InputStream body = response.body()) {
+            if (response.statusCode() != 200) {
+                throw new IOException(dist.tool().slug() + " download " + uri + " returned " + response.statusCode());
+            }
+            Files.copy(body, archive, StandardCopyOption.REPLACE_EXISTING);
+        }
+        SessionContext.current().io().remoteDown(archive);
+    }
+
+    private static boolean isFile(URI uri) {
+        return uri.getScheme() != null
+                && uri.getScheme().toLowerCase(Locale.ROOT).equals("file");
+    }
+
+    /** The path a {@code file:} URI names; refused with the distribution named when it names none. */
+    private static Path localFile(URI uri, ToolDistribution dist) throws IOException {
+        try {
+            return Path.of(uri);
+        } catch (IllegalArgumentException | FileSystemNotFoundException e) {
+            throw new IOException(
+                    dist.tool().slug() + " distribution " + uri + " is not an absolute file:// path: " + e.getMessage(),
+                    e);
+        }
+    }
+
     /** What the archive must hash to, and where that expectation came from. */
     private record ExpectedDigest(String label, String algorithm, String hex, String source) {}
 
@@ -128,21 +160,20 @@ public final class ToolInstaller {
         }
         PublishedChecksum sidecar = dist.tool().publishedChecksum();
         URI sidecarUri = sidecar.beside(dist.downloadUri());
-        HttpResponse<byte[]> response = http.get(sidecarUri);
-        if (response.statusCode() != 200) {
-            throw new IOException(dist.tool().slug()
-                    + " distribution "
-                    + dist.downloadUri()
-                    + " cannot be verified: no "
-                    + sidecar.suffix()
-                    + " checksum is published beside it ("
-                    + sidecarUri
-                    + " returned "
-                    + response.statusCode()
-                    + "). Refusing to install an archive nothing vouches for; pin its SHA-256"
-                    + " (wrapper distributionSha256Sum) or publish the checksum beside it.");
+        String body;
+        if (isFile(sidecarUri)) {
+            Path sidecarFile = localFile(sidecarUri, dist);
+            if (!Files.isRegularFile(sidecarFile)) {
+                throw new IOException(unverifiable(dist, sidecar, sidecarUri, "is not there"));
+            }
+            body = Files.readString(sidecarFile, StandardCharsets.UTF_8);
+        } else {
+            HttpResponse<byte[]> response = http.get(sidecarUri);
+            if (response.statusCode() != 200) {
+                throw new IOException(unverifiable(dist, sidecar, sidecarUri, "returned " + response.statusCode()));
+            }
+            body = new String(response.body(), StandardCharsets.UTF_8);
         }
-        String body = new String(response.body(), StandardCharsets.UTF_8);
         String hex = Hashing.checksumFromSidecar(body, sidecar.hexLength())
                 .orElseThrow(() -> new IOException(dist.tool().slug()
                         + " distribution "
@@ -153,6 +184,20 @@ public final class ToolInstaller {
                         + sidecar.label()
                         + " digest. Refusing to install an archive nothing vouches for."));
         return new ExpectedDigest(sidecar.label(), sidecar.algorithm(), hex, "published at " + sidecarUri);
+    }
+
+    private static String unverifiable(ToolDistribution dist, PublishedChecksum sidecar, URI sidecarUri, String why) {
+        return dist.tool().slug()
+                + " distribution "
+                + dist.downloadUri()
+                + " cannot be verified: no "
+                + sidecar.suffix()
+                + " checksum is published beside it ("
+                + sidecarUri
+                + " "
+                + why
+                + "). Refusing to install an archive nothing vouches for; pin its SHA-256"
+                + " (wrapper distributionSha256Sum) or publish the checksum beside it.";
     }
 
     static void extract(Path archive, Path destDir, String archiveType) throws IOException {

@@ -183,6 +183,66 @@ class ToolInstallerTest {
     }
 
     @Test
+    void a_file_distribution_installs_from_disk_against_the_checksum_beside_it(@TempDir Path tempDir) throws Exception {
+        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
+        Path mirror = Files.createDirectories(tempDir.resolve("mirror"));
+        Path archive = Files.write(mirror.resolve("apache-maven-3.9.9-bin.zip"), zip);
+        Files.writeString(mirror.resolve("apache-maven-3.9.9-bin.zip.sha512"), Hashing.fileHex("SHA-512", archive));
+
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist = new ToolDistribution(BuildTool.MAVEN, "3.9.9", archive.toUri(), "zip", null);
+
+        InstalledTool installed = installer.install(dist);
+        assertThat(installed.home()).isEqualTo(tempDir.resolve("tools/maven/3.9.9"));
+        assertThat(installed.home().resolve("bin/mvn")).hasContent("#!/bin/sh\n");
+        assertThat(http.requestsFor("/"))
+                .as("nothing is fetched over the network")
+                .isZero();
+    }
+
+    @Test
+    void a_file_distribution_without_a_pin_or_a_checksum_beside_it_is_refused(@TempDir Path tempDir) throws Exception {
+        byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n"));
+        Path mirror = Files.createDirectories(tempDir.resolve("mirror"));
+        Path archive = Files.write(mirror.resolve("apache-maven-3.9.9-bin.zip"), zip);
+
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist = new ToolDistribution(BuildTool.MAVEN, "3.9.9", archive.toUri(), "zip", null);
+
+        assertThatThrownBy(() -> installer.install(dist))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("cannot be verified")
+                .hasMessageContaining(archive.toUri() + ".sha512");
+        assertThat(tempDir.resolve("tools/maven/3.9.9")).doesNotExist();
+    }
+
+    @Test
+    void a_pinned_file_distribution_that_does_not_match_its_pin_is_refused(@TempDir Path tempDir) throws Exception {
+        byte[] zip = buildZip("gradle-9.5.1", Map.of("bin/gradle", "#!/bin/sh\n"));
+        Path archive = Files.write(tempDir.resolve("gradle-9.5.1-bin.zip"), zip);
+
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist = new ToolDistribution(BuildTool.GRADLE, "9.5.1", archive.toUri(), "zip", "deadbeef");
+
+        assertThatThrownBy(() -> installer.install(dist))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("sha256 mismatch");
+        assertThat(tempDir.resolve("tools/gradle/9.5.1")).doesNotExist();
+    }
+
+    @Test
+    void a_file_distribution_that_is_not_on_disk_is_refused_naming_the_path(@TempDir Path tempDir) throws Exception {
+        Path missing = tempDir.resolve("mirror/gradle-9.5.1-bin.zip");
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist = new ToolDistribution(BuildTool.GRADLE, "9.5.1", missing.toUri(), "zip", "deadbeef");
+
+        assertThatThrownBy(() -> installer.install(dist))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("not a file on this machine")
+                .hasMessageContaining(missing.toString());
+    }
+
+    @Test
     @DisabledOnOs(OS.WINDOWS)
     void a_zip_entry_routed_through_a_planted_link_is_refused_before_anything_is_written(@TempDir Path tempDir)
             throws Exception {

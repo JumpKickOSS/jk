@@ -57,6 +57,28 @@ class MavenResolverTest {
         assertThat(dist.sha256()).isNull();
     }
 
+    @Test
+    void a_file_wrapper_url_is_accepted(@TempDir Path project) throws Exception {
+        wrapper(project, "distributionUrl=file:///srv/mirror/maven/apache-maven-3.9.6-bin.zip\n");
+        ToolDistribution dist = new MavenResolver().resolve(project);
+        assertThat(dist.downloadUri()).isEqualTo(URI.create("file:///srv/mirror/maven/apache-maven-3.9.6-bin.zip"));
+        assertThat(dist.version()).isEqualTo("3.9.6");
+        assertThat(dist.archiveType()).isEqualTo("zip");
+    }
+
+    @Test
+    void a_wrapper_url_with_an_unsupported_scheme_is_refused_naming_what_would_work(@TempDir Path project)
+            throws Exception {
+        Path props = wrapper(project, "distributionUrl=ftp://mirror.example.com/maven/apache-maven-3.9.6-bin.zip\n");
+        assertThatThrownBy(() -> new MavenResolver().resolve(project))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining(props.toString())
+                .hasMessageContaining("ftp://mirror.example.com/maven/apache-maven-3.9.6-bin.zip")
+                .hasMessageContaining("https://")
+                .hasMessageContaining("loopback")
+                .hasMessageContaining("file://");
+    }
+
     private static Path wrapper(Path project, String properties) throws IOException {
         Path props = project.resolve(".mvn/wrapper/maven-wrapper.properties");
         Files.createDirectories(props.getParent());
