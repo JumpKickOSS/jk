@@ -14,10 +14,13 @@ import cc.jumpkick.repo.RepoIdentity;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,6 +65,9 @@ class CacheInventoryOpsTest {
             assertThat(f[5]).as("declared compile/runtime deps").isEqualTo("0");
             assertThat(f[6]).as("classpath entries").isEqualTo("1");
             assertThat(f[7]).as("no resolution error").isEmpty();
+            assertThat(f[8])
+                    .as("a jar without a root descriptor has no loader verdict")
+                    .isEmpty();
             assertThat(ack.entries())
                     .contains("jk-image-builder|" + jar.toAbsolutePath().normalize());
         } finally {
@@ -99,6 +105,42 @@ class CacheInventoryOpsTest {
                 .doesNotExist();
         assertThat(store.resolve("repos/jumpkick/cc/jumpkick/jk-image-builder")).doesNotExist();
         assertThat(library).as("a first-party library is not a worker").exists();
+    }
+
+    /**
+     * A shelved first-party jar whose root descriptor is a sibling's: the loader refuses it at
+     * start, lazy fetch and lock, and the worker row carries that verdict so the health check
+     * reads red where the shelf is wrong.
+     */
+    @Test
+    void a_shelved_worker_whose_descriptor_the_loader_refuses_carries_the_refusal_on_its_row(@TempDir Path store)
+            throws Exception {
+        String saved = System.getProperty(PluginJar.IMAGE_BUILDER.jarProperty());
+        System.clearProperty(PluginJar.IMAGE_BUILDER.jarProperty());
+        try {
+            Path jar = installWorker(store, RepoArtifactResolver.JK_LOCAL, PluginJar.IMAGE_BUILDER, JkVersion.VERSION);
+            try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
+                out.putNextEntry(new JarEntry("jk-plugin.toml"));
+                out.write("[plugin]\nid = \"spring-boot\"\ntable = \"spring-boot\"\njk-compat = \">=0.10\"\n"
+                        .getBytes(StandardCharsets.UTF_8));
+                out.closeEntry();
+            }
+
+            CacheInventoryAck ack = CacheInventoryOps.run(
+                    new CacheInventoryOps.Request("workers", null, store, List.of(), List.of(), false));
+
+            String row = ack.lines().stream()
+                    .filter(l -> l.startsWith("jk-image-builder|"))
+                    .findFirst()
+                    .orElseThrow();
+            String[] f = row.split("\\|", -1);
+            assertThat(f[8])
+                    .contains("describes plugin `spring-boot`")
+                    .contains("worker jk-spring-boot")
+                    .contains("jk storage clean --workers");
+        } finally {
+            if (saved != null) System.setProperty(PluginJar.IMAGE_BUILDER.jarProperty(), saved);
+        }
     }
 
     /** A worker jar with a dependency-free POM under {@code repos/<repo>/cc/jumpkick/<artifact>/<version>/}. */

@@ -9,11 +9,12 @@ import org.jspecify.annotations.Nullable;
  * Cache/store inventory ({@link EngineProtocol#CACHE_INVENTORY_REQUEST}). {@code stats} rows are
  * {@code name|files|bytes}. Repo search {@code entries} rows are {@code group|artifact|v1,v2}.
  * Repo refresh {@code lines} rows are {@code group|artifact|version|repo1,repo2} (evicting repos).
- * Workers {@code lines} rows are {@code artifact|version|source|jar|pom|declared|entries|error}
+ * Workers {@code lines} rows are {@code artifact|version|source|jar|pom|declared|entries|error|refused}
  * — one per installed plugin worker, {@code source} the store repo (or {@code override}) its jar
  * came from, {@code declared} the compile/runtime dependencies its POM names, {@code entries} the
- * size of the launch classpath the engine rebuilt from it — and {@code entries} rows are
- * {@code artifact|path}, that classpath entry by entry. Dropped workers {@code lines} rows are
+ * size of the launch classpath the engine rebuilt from it, {@code refused} the loader's reason
+ * when the jar's root descriptor is another plugin's and the jar is not registered — and
+ * {@code entries} rows are {@code artifact|path}, that classpath entry by entry. Dropped workers {@code lines} rows are
  * {@code artifact|version|repo}; {@code files}/{@code bytes} count what went. Repos {@code lines}
  * rows are {@code id|name|origin|files|bytes|state} — one per repository store, {@code state}
  * {@code ok} or {@code legacy}.

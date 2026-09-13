@@ -4,6 +4,7 @@ package cc.jumpkick.engine.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
@@ -337,6 +338,7 @@ public final class CacheInventoryOps {
             if (jar == null) continue;
             jar = jar.toAbsolutePath().normalize();
             String source = workerSource(worker, jar);
+            String refused = descriptorVerdict(worker, jar);
             Path pom = PomRuntimeClasspath.pomOf(jar);
             int declared = pom == null ? 0 : declaredRuntimeDeps(pom);
             List<Path> classpath;
@@ -356,10 +358,33 @@ public final class CacheInventoryOps {
                     pom == null ? "" : pom.toString(),
                     Integer.toString(declared),
                     Integer.toString(classpath.size()),
-                    error));
+                    error,
+                    refused));
             for (Path entry : classpath) entries.add(worker.artifactId() + "|" + entry);
         }
         return CacheInventoryAck.workers(lines, entries);
+    }
+
+    /**
+     * The loader's verdict on the jar's root descriptor: empty when the jar carries none or its
+     * own, else the refusal {@link BuiltInPluginJars#describe} states. A refused jar sits on the
+     * shelf unregistered, its table unowned, and only the engine log said so at start — this puts
+     * the same verdict on the worker's doctor row.
+     */
+    private static String descriptorVerdict(PluginJar worker, Path jar) {
+        String toml;
+        try {
+            toml = BuiltInPluginJars.manifestToml(jar);
+        } catch (IOException unreadable) {
+            return "";
+        }
+        if (toml == null || toml.isBlank()) return "";
+        try {
+            BuiltInPluginJars.describe(new BuiltInPluginJars.Located(worker, jar, toml), false);
+            return "";
+        } catch (RuntimeException refused) {
+            return Errors.text(refused).replace('|', '/').replace('\n', ' ');
+        }
     }
 
     /** {@code override} for a {@code -D<jar property>} jar, else the {@code repos/<name>} the jar sits in. */

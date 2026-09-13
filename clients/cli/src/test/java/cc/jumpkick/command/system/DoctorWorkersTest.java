@@ -18,10 +18,18 @@ class DoctorWorkersTest {
 
     private static final String IMAGE_ROW = "jk-image-builder|0.13.3|jk-local|/store/repos/jk-local/cc/jumpkick/"
             + "jk-image-builder/0.13.3/jk-image-builder-0.13.3.jar|/store/repos/jk-local/cc/jumpkick/"
-            + "jk-image-builder/0.13.3/jk-image-builder-0.13.3.pom|3|41|";
+            + "jk-image-builder/0.13.3/jk-image-builder-0.13.3.pom|3|41||";
 
     private static final String BROKEN_ROW = "jk-formatter|0.13.3|jumpkick|/store/repos/jumpkick/cc/jumpkick/"
-            + "jk-formatter/0.13.3/jk-formatter-0.13.3.jar||0|0|worker runtime dependency org.x:y:1 was not found";
+            + "jk-formatter/0.13.3/jk-formatter-0.13.3.jar||0|0|worker runtime dependency org.x:y:1 was not found|";
+
+    private static final String REFUSED_ROW = "jk-grails|0.13.3|jk-local|/store/repos/jk-local/cc/jumpkick/"
+            + "jk-grails/0.13.3/jk-grails-0.13.3.jar|/store/repos/jk-local/cc/jumpkick/jk-grails/0.13.3/"
+            + "jk-grails-0.13.3.pom|2|7||/store/repos/jk-local/cc/jumpkick/jk-grails/0.13.3/jk-grails-0.13.3.jar"
+            + " is the jk-grails worker but its root jk-plugin.toml describes plugin `spring-boot` (table"
+            + " [spring-boot], worker jk-spring-boot) — a vendored sibling's descriptor took the jar root; the"
+            + " jar is not registered. Reinstall it so its own descriptor sits at the root: `jk install` from"
+            + " the jk checkout, or `jk storage clean --workers` and let the next build fetch the published jar.";
 
     @Test
     void each_installed_worker_is_one_row_naming_its_source_and_classpath_size() {
@@ -67,6 +75,26 @@ class DoctorWorkersTest {
                 .startsWith("warn:")
                 .contains("jk-formatter 0.13.3 from jumpkick")
                 .contains("did not resolve: worker runtime dependency org.x:y:1 was not found");
+    }
+
+    @Test
+    void a_worker_whose_descriptor_the_loader_refused_is_a_warning_naming_the_descriptor_and_the_fix() {
+        DoctorCommand.Workers workers =
+                DoctorCommand.workers(() -> CacheInventoryAck.workers(List.of(REFUSED_ROW), List.of()));
+
+        DoctorCommand.Worker w = workers.rows().get(0);
+        assertThat(w.refused()).contains("describes plugin `spring-boot`");
+        assertThat(w.error()).isNull();
+        List<String> plain = strip(DoctorCommand.renderWorkers(workers, false, Theme.active()));
+        assertThat(plain).hasSize(1);
+        assertThat(plain.get(0))
+                .startsWith("warn:")
+                .contains("jk-grails 0.13.3 from jk-local")
+                .contains("describes plugin `spring-boot` (table [spring-boot], worker jk-spring-boot)")
+                .contains("`jk install` from the jk checkout, or `jk storage clean --workers`");
+        assertThat(DoctorCommand.workersJson(workers))
+                .contains("\"refused\":\"")
+                .contains("describes plugin `spring-boot`");
     }
 
     @Test

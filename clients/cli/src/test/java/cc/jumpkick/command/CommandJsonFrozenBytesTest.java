@@ -189,6 +189,7 @@ class CommandJsonFrozenBytesTest {
                         "/s/w.pom",
                         2,
                         List.of("/s/w.jar"),
+                        null,
                         null)),
                 null);
         var repos = new RepoStores.Stores(
@@ -198,7 +199,7 @@ class CommandJsonFrozenBytesTest {
         assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
-                                + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null}],"
+                                + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null}],"
                                 + "\"repos\":[{\"id\":\"nexus.acme-0123456789ab\",\"name\":\"private\",\"origin\":\"https://nexus.acme/maven\","
                                 + "\"files\":2,\"bytes\":40,\"state\":\"ok\"}]}");
     }
