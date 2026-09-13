@@ -41,8 +41,8 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Real tools, really fetched: aapt2 (per-OS classifier) and r8 from Google Maven, the
  * Step-1 platform stand-in (Maven-published android-all — see the plugin manifest's note) from
- * Central. The CAS lives under the module's build dir, not a @TempDir, so repeat runs are warm
- * (the platform jar is ~115MB once).
+ * Central. The CAS and the managed SDK root live in the shared test cache, not a @TempDir, so
+ * repeat runs are warm (the platform jar is ~115MB once).
  */
 @Tag("slow")
 @ExtendWith(SysProps.class)
@@ -56,8 +56,13 @@ class AndroidSpikeTest {
     private static final Path CACHE = TestCaches.dir("android-spike-cache");
     private static final Path SDK_ROOT = TestCaches.dir("android-spike-sdk");
 
+    /**
+     * One directory for the whole class: the hello-world is built once and every test reads it,
+     * so it must outlive the test that happened to build it. A per-method directory is re-injected
+     * and deleted around each test, and the build would vanish under the tests after the first.
+     */
     @TempDir
-    Path tmp;
+    static Path tmp;
 
     /** Built once per class, by whichever test asks first; every test reads the same APK. */
     private @Nullable Built built;
