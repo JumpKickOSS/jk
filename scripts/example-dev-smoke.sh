@@ -59,4 +59,14 @@ if kill -0 "$web_pid" 2>/dev/null || kill -0 "$app_pid" 2>/dev/null; then
   kill -KILL "$web_pid" "$app_pid" 2>/dev/null || true
   exit 1
 fi
+# The README's `npm ci` does not touch the lock, and neither does the dev server; a committed
+# package-lock.json that reads differently now was rewritten by something else (an `npm install`,
+# a Node upgrade) and would fail the next `npm ci` — say so here, where the sample was just run.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  npm_drift="$(git diff --name-only -- '*package-lock.json')"
+  if [[ -n "$npm_drift" ]]; then
+    echo "the sample's npm lock changed: $npm_drift (commit the lock package.json needs, or restore it)" >&2
+    exit 1
+  fi
+fi
 echo "dev smoke ok: $example served $front_door and $api_path, Ctrl-C left nothing behind"

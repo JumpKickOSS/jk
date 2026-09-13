@@ -50,6 +50,9 @@ jobs:
       - name: Release-flatten fixtures
         run: bash scripts/test-flatten-release.sh
 
+      - name: Example lock-drift fixtures
+        run: bash scripts/test-examples-lock-drift.sh
+
   # JumpKick building JumpKick: the merge authority. A released jk, installed the way a user
   # installs it, builds the checked-out jk.toml / jk-lock.toml graph; then the checkout's own
   # client, engine and workers take the home over (`jk install`), so the house-rule gate and the
