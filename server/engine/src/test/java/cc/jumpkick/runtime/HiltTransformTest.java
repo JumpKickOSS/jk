@@ -179,6 +179,12 @@ class HiltTransformTest {
                 hilt-android = { group = "com.google.dagger", name = "hilt-android", version = "=2.60.1" }
                 # Pinned pre-navigationevent, same as KspRoomHiltTest.
                 activity     = { group = "androidx.activity", name = "activity", version = "=1.9.3" }
+                # Aligned with the core the graph floats to: fragment and lifecycle ask for core-ktx
+                # 1.2.0, which floats to 1.13.1, an AAR that still carries the androidx.core.animation
+                # classes core 1.19.0 also ships, and d8 refuses a type defined twice. androidx aligns
+                # the pair through the constraints in its Gradle module metadata, which the resolver
+                # does not read; the pin aligns them by hand (1.19.0 is a shell over core).
+                core-ktx     = { group = "androidx.core", name = "core-ktx", version = "=1.19.0" }
 
                 [processor-dependencies]
                 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version = "=2.60.1" }
