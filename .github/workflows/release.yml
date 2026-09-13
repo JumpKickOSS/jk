@@ -9,10 +9,19 @@
 #                                sees it, since only the combined SHA256SUMS is signed
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
+#   GITHUB_TOKEN (automatic)   — read-only everywhere but the publish job, which writes the
+#                                GitHub Release (contents) and its provenance attestations
+#                                (id-token, attestations)
 #
 # Hosting: objects in GCS; public CDN will be Firebase later. Path:
 #   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/{LATEST,LATEST.sig,VERSION}
 # Public HTTPS (until Firebase): https://storage.googleapis.com/$BUCKET/releases/…
+#
+# Beside the bucket, a GitHub Release for the tag: the same version tree (clients, engine jar,
+# SHA256SUMS and its signature), the CycloneDX SBOM jk wrote of itself into the engine jar, notes
+# from scripts/release-notes.sh (the version's highlights in docs/contributors/releases.md, then
+# the commits since the previous tag) and a build-provenance attestation per artifact. It is a
+# draft until the GCS tree and pointer are up; a tag push publishes it, a dispatch leaves the draft.
 
 name: Release
 
@@ -158,8 +167,19 @@ jobs:
     # Runs once the matrix has finished, whatever its outcome, so a missing platform is reported
     # here by name instead of the job being skipped; the flatten step refuses a partial tree.
     if: ${{ always() && !cancelled() }}
+    # The one job that writes: the GitHub Release (contents) and the provenance attestations
+    # (id-token for the OIDC identity, attestations for the store). GCS is reached with the
+    # service-account secret, never with this token.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
+      # The whole history and every tag: the notes list the commits since the previous release.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       # The dispatch input reaches the shell as a variable, never as text spliced into the script.
       - name: Resolve version
@@ -173,6 +193,16 @@ jobs:
           fi
           VER="$(scripts/release-version.sh "$REQUESTED_VERSION")"
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+
+      # A precondition, before anything is downloaded: the version's highlights entry in
+      # docs/contributors/releases.md, then the commits since the previous tag. A version with no
+      # entry is refused here, with nothing published yet.
+      - name: Release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/release-notes.sh "$JK_VERSION" > "$RUNNER_TEMP/RELEASE_NOTES.md"
+          cat "$RUNNER_TEMP/RELEASE_NOTES.md"
 
       - name: Download platform artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -212,11 +242,39 @@ jobs:
           scripts/sign-release.sh "out/${JK_VERSION}/SHA256SUMS"
           ls -la "out/${JK_VERSION}/SHA256SUMS"*
 
+      # The SBOM jk wrote of itself: every application jar jk packages carries
+      # META-INF/sbom/application.cdx.json, CycloneDX derived from jk-lock.toml at build time
+      # (docs/user/packaging.md), so the engine jar in the flattened tree already holds the
+      # release's bill of materials. It is lifted out beside the tree, not into it: the signed
+      # SHA256SUMS the installers verify stays byte for byte what the build job signed.
+      - name: Lift the SBOM out of the engine jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/sbom
+          sbom="out/sbom/jk-${JK_VERSION}.cdx.json"
+          unzip -p "out/${JK_VERSION}/jk-engine-${JK_VERSION}.jar" META-INF/sbom/application.cdx.json > "$sbom"
+          jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0 and (.metadata.component.name == "jk-engine")' "$sbom" >/dev/null
+          echo "SBOM: $(jq '.components | length' "$sbom") components, CycloneDX $(jq -r .specVersion "$sbom")"
+
       - name: Upload merged release tree (artifact)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ env.JK_VERSION }}-merged
           path: out/
+
+      # The GitHub Release, as a draft: the version tree, the SBOM and the notes, attached to the
+      # tag that triggered the run (the script refuses to cut one). A draft is invisible, so it can
+      # exist before the bucket holds the bytes; it is published as the last step, and a re-run
+      # replaces the draft's assets while a published release is never rewritten.
+      - name: Draft the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          scripts/publish-github-release.sh draft "$JK_VERSION" "$RUNNER_TEMP/RELEASE_NOTES.md" \
+            out/"${JK_VERSION}"/* out/sbom/jk-"${JK_VERSION}".cdx.json
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
@@ -263,3 +321,23 @@ jobs:
           echo "  https://jumpkick.build/repo/cc/jumpkick/jk-formatter/${VER}/jk-formatter-${VER}.jar"
           gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
           gsutil cat "gs://${BUCKET}/releases/latest/LATEST"
+
+      # One build-provenance attestation per artifact — the clients, the engine jar and the SBOM —
+      # signed with this run's OIDC identity and stored with the repository, verifiable with
+      # `gh attestation verify <file> --repo <owner>/<repo>`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            out/${{ env.JK_VERSION }}/jk-*
+            out/sbom/jk-${{ env.JK_VERSION }}.cdx.json
+
+      # The tree and the pointer are in the bucket and the attestations are stored: the release
+      # goes live and becomes latest. A dispatch is a dry run and leaves the draft for a person to
+      # read, or delete.
+      - name: Publish the GitHub Release
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/publish-github-release.sh publish "$JK_VERSION"

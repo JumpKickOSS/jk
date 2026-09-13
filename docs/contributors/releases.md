@@ -16,6 +16,29 @@ Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' 
 `hosting/public/`) together — search for the old version string.
 `InstallerCopyTest` fails when the floor and `JkVersion` disagree.
 
+## Highlights
+
+One `### <version>` entry per release, newest first, written before the tag is pushed: what a
+user deciding whether to update needs to know, in a handful of bullets. `scripts/release-notes.sh
+<version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
+previous tag, and refuses a version that has none — a release whose notes are only a commit list
+has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.13.3
+
+- `jk audit` is a gate: it exits non-zero on any unignored finding at or above `--severity`, names
+  OSV's lowest fixed version above the locked one, and prints one JSON line per finding.
+  `[audit] ignore` in `jk.toml` accepts an advisory with a reason and an optional expiry.
+- `jk test --coverage` runs every suite under the JaCoCo agent with a report per module, and the
+  coverage ratchet is a `jk-guards.toml` rule. `jk test --class` runs only the named classes;
+  `jk test --debug-jvm` and `jk run --debug-jvm` start the JVM with a JDWP listener.
+- The engine logs through one leveled facade to a capped log that rolls itself; `jk engine status`
+  reports the log's size and a connection that never speaks is closed and counted.
+- Workers start from an environment allow-list; `[env] inherit` opts a module back in.
+- Every jk-built Java module compiles under NullAway with JSpecify null-marking, in jk's own build.
+- The release workflow ships what jk builds of itself, bootstrapped from the hosted release
+  `.jk/ci-bootstrap-version` pins.
+
 ## Hosting (GCS + Firebase CDN)
 
 | Layer | Role |
@@ -124,13 +147,25 @@ refuses a floating tag or a writing top-level `permissions:` on every pull reque
    so the first-party plugins it stages for `repo/` are the commit's own.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs +
    `SHA256SUMS` + `.sig`.
-4. Merge job flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial
-   matrix or a differing engine jar), re-signs the combined `SHA256SUMS`, then **`gsutil rsync`**
-   to GCS when secrets are set.
-5. Sign and upload the pointer (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then
-   `LATEST`, then `VERSION`, all with no-cache headers. A client reading between the two copies
-   gets a signature refusal and retries; it never gets an unverified version.
-6. Bump `.jk/ci-bootstrap-version` to the new release and add a matrix row for every platform
+4. The publish job first writes the release notes (`scripts/release-notes.sh <version>`: the
+   version's entry under [Highlights](#highlights), then the commits since the previous tag) and
+   refuses a version with no entry before anything is downloaded.
+5. It flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial matrix
+   or a differing engine jar), re-signs the combined `SHA256SUMS`, lifts the CycloneDX SBOM jk
+   wrote of itself out of the engine jar (`META-INF/sbom/application.cdx.json`, derived from
+   `jk-lock.toml` at build time) to `out/sbom/jk-<version>.cdx.json` — beside the tree, so the
+   signed `SHA256SUMS` the installers verify is untouched — and drafts the GitHub Release for the
+   tag with the tree, the SBOM and the notes (`scripts/publish-github-release.sh draft`; the tag
+   must exist, the script never cuts one).
+6. **`gsutil rsync`** to GCS when secrets are set, then the pointer
+   (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then `LATEST`, then `VERSION`, all
+   with no-cache headers. A client reading between the two copies gets a signature refusal and
+   retries; it never gets an unverified version.
+7. `actions/attest-build-provenance` stores one build-provenance attestation per client, the
+   engine jar and the SBOM (`gh attestation verify <file> --repo <owner>/<repo>` checks one), and
+   on a tag push the draft is published and marked latest (`publish-github-release.sh publish`).
+   A `workflow_dispatch` run leaves the draft in place: that is the dry run.
+8. Bump `.jk/ci-bootstrap-version` to the new release and add a matrix row for every platform
    it shipped a client for ([self-host](self-host.md#the-bootstrap-pin)).
 
 ### Platforms without a hosted client
@@ -158,6 +193,7 @@ Windows and macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
 | `JK_RELEASE_RSA_SIGNING_KEY` | Base64 PKCS#8 DER RSA-3072 private key (signing) |
 | `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick` |
 | `JK_RELEASE_GCS_SA_JSON` | Service account JSON with object create/overwrite on that bucket |
+| `GITHUB_TOKEN` (automatic) | Read-only in every job but `publish`, which holds `contents: write` for the GitHub Release and `id-token`/`attestations: write` for the provenance attestations |
 
 Until GCS secrets exist, the workflow still **builds and signs** artifacts as GitHub Actions
 workflow artifacts for a staged dry-run.
@@ -186,6 +222,13 @@ openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST
 cat LATEST                                                                        # version 0.13.3 / issued …
 
 # 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
+
+# 5. The GitHub Release, from the same tree: the highlights entry must exist (step 4 of the CI
+#    flow refuses without it), the tag must be pushed, GH_TOKEN must be able to write releases.
+scripts/release-notes.sh 0.13.3 > RELEASE_NOTES.md
+unzip -p build/release/0.13.3/jk-engine-0.13.3.jar META-INF/sbom/application.cdx.json > jk-0.13.3.cdx.json
+scripts/publish-github-release.sh draft 0.13.3 RELEASE_NOTES.md build/release/0.13.3/* jk-0.13.3.cdx.json
+scripts/publish-github-release.sh publish 0.13.3
 ```
 
 `release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in
