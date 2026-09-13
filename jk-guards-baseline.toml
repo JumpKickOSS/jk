@@ -7,6 +7,7 @@ population = { constants = 1, files = 3359, literals = 103330 }
 [archive-instant-owner]
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
@@ -25,6 +26,7 @@ population = { files = 1865 }
 "plugins/micronaut" = { classes = 1, sites = 192 }
 "plugins/minified" = { classes = 5, sites = 536 }
 "plugins/protobuf" = { classes = 2, sites = 104 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
@@ -736,6 +738,7 @@ population = { constants = 29, files = 1947, literals = 35490 }
 [case-conversion-locale]
 [case-conversion-locale.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
@@ -766,7 +769,7 @@ population = { files = 1959 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
-"plugins/publisher" = { classes = 15, sites = 710 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 170, sites = 10374 }
@@ -1075,10 +1078,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "plugins/publisher"
 at     = "cc.jumpkick.plugin.publish.Publisher#publish(Lcc/jumpkick/plugin/build/PublishContext;)Lcc/jumpkick/plugin/build/PublishResult; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/publisher"
-at     = "cc.jumpkick.plugin.publish.Sbom#cyclonedx(Lcc/jumpkick/model/JkBuild;Lcc/jumpkick/lock/Lockfile;)[B -> java.time.Instant#now()Ljava/time/Instant;"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "plugins/publisher"
@@ -1766,6 +1765,7 @@ population = { files = 1413 }
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 0 }
@@ -2103,6 +2103,7 @@ population = { files = 4038 }
 [null-marked-packages]
 [null-marked-packages.populations]
 "clients/cli" = { classes = 661, elements = 18 }
+"plugins/publisher" = { classes = 16, elements = 1 }
 "server/engine" = { classes = 921, elements = 19 }
 "server/io" = { classes = 34, elements = 1 }
 "shared/client-io" = { classes = 88, elements = 6 }
@@ -2110,6 +2111,7 @@ population = { files = 4038 }
 [one-digest-surface]
 [one-digest-surface.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
@@ -2118,6 +2120,7 @@ population = { files = 4038 }
 [one-hex-spelling]
 [one-hex-spelling.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
@@ -2126,6 +2129,7 @@ population = { files = 4038 }
 [one-host-surface]
 [one-host-surface.populations]
 "clients/cli" = { classes = 661, sites = 30668 }
+"plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
 "server/io" = { classes = 34, sites = 1555 }
@@ -2134,6 +2138,7 @@ population = { files = 4038 }
 [one-http-client]
 [one-http-client.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "server/engine" = { classes = 921, sites = 60097 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -2146,6 +2151,7 @@ population = { files = 1865 }
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
 "clients/cli" = { classes = 661, sites = 30668 }
+"plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
 "server/io" = { classes = 34, sites = 1555 }
@@ -2155,6 +2161,7 @@ population = { files = 1865 }
 [package-cycles.populations]
 "clients/cli" = { edges = 76, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
+"plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
 "server/engine" = { edges = 92, slices = 19 }
 "server/io" = { edges = 0, slices = 1 }
@@ -2227,11 +2234,13 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 
 [plugin-fork-owner]
 [plugin-fork-owner.populations]
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 
 [properties-render-owner]
 [properties-render-owner.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
@@ -2255,6 +2264,7 @@ population = { files = 1985 }
 [runnable-owner]
 [runnable-owner.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
@@ -2338,6 +2348,7 @@ population = { files = 1434 }
 
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
+"plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
 "server/io" = { classes = 34, sites = 1555 }
@@ -2361,6 +2372,7 @@ population = { files = 1 }
 [xml-parser-owner]
 [xml-parser-owner.populations]
 "clients/cli" = { classes = 661, sites = 40795 }
+"plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }

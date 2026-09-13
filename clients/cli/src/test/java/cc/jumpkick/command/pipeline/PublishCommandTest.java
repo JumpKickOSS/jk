@@ -229,7 +229,8 @@ class PublishCommandTest {
                         stem + "-spdx.json",
                         stem + "-spdx.json.sha256");
         assertThat(new String(received.get(stem + "-cyclonedx.json"), StandardCharsets.UTF_8))
-                .contains("\"bomFormat\":\"CycloneDX\"")
+                .contains("\"bomFormat\": \"CycloneDX\"")
+                .contains("\"specVersion\": \"1.6\"")
                 .contains("pkg:maven/com.example/widget@1.0.0");
         assertThat(new String(received.get(stem + "-spdx.json"), StandardCharsets.UTF_8))
                 .contains("\"spdxVersion\":\"SPDX-2.3\"")

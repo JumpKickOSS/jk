@@ -6,7 +6,6 @@ import static cc.jumpkick.runtime.PlannerSupport.restorePackaged;
 import static cc.jumpkick.runtime.PlannerSupport.storePackaged;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Errors;
@@ -510,7 +509,6 @@ public final class PlannerPlugin {
         PluginBuild.Active active = Objects.requireNonNull(declaredActive, "active plugin");
         Lockfile lock = ctx.require(LOCKFILE);
         BuildLayout layout = ctx.require(LAYOUT);
-        ClasspathResolver resolver = new ClasspathResolver(cas);
         // Key AND spec from one derivation (PackagingKeys): the facts, runtime entries and tool
         // artifacts the packager body receives below are the very objects that keyed its output,
         // so nothing can reach the plugin without reaching its key — and `jk explain` prices this
@@ -533,12 +531,6 @@ public final class PlannerPlugin {
         ProjectFacts facts = packaging.facts();
         List<PluginBuild.ProdEntry> entries = packaging.entries();
         Map<String, Path> extras = packaging.extras();
-        List<CycloneDxSbom.Component> sbomComponents = new ArrayList<>();
-        for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
-            Lockfile.Artifact a = entry.artifact();
-            sbomComponents.add(
-                    new CycloneDxSbom.Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex()));
-        }
         String pkgTask = packaging.keyed().taskId();
         String pkgKey = packaging.keyed().key();
         if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
@@ -549,11 +541,7 @@ public final class PlannerPlugin {
         }
 
         // SBOM (always on): free and deterministic straight from the lockfile.
-        byte[] sbom = CycloneDxSbom.write(
-                project.project().group(),
-                project.project().name(),
-                project.project().version(),
-                sbomComponents);
+        byte[] sbom = applicationSbom(project, lock);
         Path sbomFile = Files.createTempFile("jk-plugin-sbom-", ".cdx.json");
         Files.write(sbomFile, sbom);
 
@@ -655,21 +643,15 @@ public final class PlannerPlugin {
 
     /**
      * The application SBOM entry + manifest headers shared by every packager: the lockfile's
-     * production RUNTIME components as CycloneDX (see {@link CycloneDxSbom}). Returns null when
-     * there is no lockfile to speak from.
+     * production RUNTIME components as CycloneDX (see {@link CycloneDxSbom}), the same document
+     * {@code jk publish --sbom} writes beside the module.
      */
-    static byte[] applicationSbom(JkBuild project, Lockfile lock, Cas cas) {
-        List<CycloneDxSbom.Component> components = new ArrayList<>();
-        for (ClasspathResolver.Entry entry : new ClasspathResolver(cas).entriesFor(lock, ClasspathResolver.RUNTIME)) {
-            Lockfile.Artifact a = entry.artifact();
-            components.add(
-                    new CycloneDxSbom.Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex()));
-        }
+    static byte[] applicationSbom(JkBuild project, Lockfile lock) {
         return CycloneDxSbom.write(
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),
-                components);
+                CycloneDxSbom.components(lock));
     }
 
     /** SBOM path inside plain/assembly application jars (jar root = classpath root). */

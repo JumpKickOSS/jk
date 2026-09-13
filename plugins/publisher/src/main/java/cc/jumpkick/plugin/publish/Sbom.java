@@ -1,73 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
+import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Generates CycloneDX 1.6 and SPDX 2.3 SBOM JSON from {@link JkBuild} + optional {@link Lockfile}
- * (root-only when no lock). Hand-rolled JSON for a lean worker.
+ * The SBOM sidecars of a publish, from {@link JkBuild} + optional {@link Lockfile} (root-only when
+ * no lock): CycloneDX through the writer every application jar embeds ({@link CycloneDxSbom}), so a
+ * module's sidecar is the document its jar carries, and SPDX 2.3 over the same runtime rows.
+ * Hand-rolled JSON for a lean worker.
  */
 public final class Sbom {
 
     private Sbom() {}
 
-    /** Render a CycloneDX 1.6 JSON SBOM. */
+    /** Render the CycloneDX JSON SBOM; deterministic for a given project and lock. */
     public static byte[] cyclonedx(JkBuild project, @Nullable Lockfile lock) {
-        StringBuilder sb = new StringBuilder(512);
-        sb.append('{');
-        kv(sb, "$schema", "http://cyclonedx.org/schema/bom-1.6.schema.json");
-        comma(sb);
-        kv(sb, "bomFormat", "CycloneDX");
-        comma(sb);
-        kv(sb, "specVersion", "1.6");
-        comma(sb);
-        kv(sb, "serialNumber", "urn:uuid:" + UUID.randomUUID());
-        comma(sb);
-        sb.append("\"version\":1");
-        comma(sb);
-
-        sb.append("\"metadata\":{");
-        kv(sb, "timestamp", Instant.now().toString());
-        comma(sb);
-        sb.append("\"tools\":{\"components\":[");
-        sb.append('{');
-        kv(sb, "type", "application");
-        comma(sb);
-        kv(sb, "name", "jk");
-        sb.append('}');
-        sb.append("]}");
-        comma(sb);
-        sb.append("\"component\":");
-        appendCdxComponent(
-                sb,
+        return CycloneDxSbom.write(
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),
-                null);
-        sb.append('}');
-        comma(sb);
-
-        sb.append("\"components\":[");
-        if (lock != null) {
-            boolean first = true;
-            for (Lockfile.Artifact pkg : lock.artifacts()) {
-                String[] ga = splitModule(pkg.name());
-                if (!first) sb.append(',');
-                first = false;
-                appendCdxComponent(sb, ga[0], ga[1], pkg.version(), stripSha256Prefix(pkg.checksum()));
-            }
-        }
-        sb.append(']');
-
-        sb.append('}');
-        sb.append('\n');
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
+                lock == null ? List.of() : CycloneDxSbom.components(lock));
     }
 
     /** Render an SPDX 2.3 JSON SBOM. */
@@ -113,16 +74,15 @@ public final class Sbom {
                 null);
         if (lock != null) {
             int i = 0;
-            for (Lockfile.Artifact pkg : lock.artifacts()) {
-                String[] ga = splitModule(pkg.name());
+            for (Lockfile.Artifact pkg : ClasspathResolver.artifactsFor(lock, ClasspathResolver.RUNTIME)) {
                 sb.append(',');
                 appendSpdxPackage(
                         sb,
                         "SPDXRef-Package-" + sanitizeId(pkg.name()) + "-" + i++,
-                        ga[0],
-                        ga[1],
+                        pkg.moduleGroup(),
+                        pkg.moduleArtifact(),
                         pkg.version(),
-                        stripSha256Prefix(pkg.checksum()));
+                        pkg.checksumHex());
             }
         }
         sb.append(']');
@@ -133,32 +93,6 @@ public final class Sbom {
     }
 
     // --- helpers ----------------------------------------------------------
-
-    private static void appendCdxComponent(
-            StringBuilder sb, String group, String artifact, String version, @Nullable String sha256Hex) {
-        String purl = "pkg:maven/" + group + "/" + artifact + "@" + version;
-        sb.append('{');
-        kv(sb, "type", "library");
-        comma(sb);
-        kv(sb, "bom-ref", purl);
-        comma(sb);
-        kv(sb, "group", group);
-        comma(sb);
-        kv(sb, "name", artifact);
-        comma(sb);
-        kv(sb, "version", version);
-        comma(sb);
-        kv(sb, "purl", purl);
-        if (sha256Hex != null) {
-            comma(sb);
-            sb.append("\"hashes\":[{");
-            kv(sb, "alg", "SHA-256");
-            comma(sb);
-            kv(sb, "content", sha256Hex);
-            sb.append("}]");
-        }
-        sb.append('}');
-    }
 
     private static void appendSpdxPackage(
             StringBuilder sb,
@@ -194,19 +128,6 @@ public final class Sbom {
             sb.append("}]");
         }
         sb.append('}');
-    }
-
-    private static String[] splitModule(String module) {
-        int colon = module.indexOf(':');
-        return colon > 0
-                ? new String[] {module.substring(0, colon), module.substring(colon + 1)}
-                : new String[] {"unknown", module};
-    }
-
-    private static @Nullable String stripSha256Prefix(@Nullable String checksum) {
-        if (checksum == null) return null;
-        if (checksum.startsWith("sha256:")) return checksum.substring("sha256:".length());
-        return checksum;
     }
 
     private static String sanitizeId(String s) {

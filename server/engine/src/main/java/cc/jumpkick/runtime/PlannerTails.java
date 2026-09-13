@@ -247,7 +247,7 @@ public final class PlannerTails {
                     byte[] assemblySbom = null;
                     Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
-                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), JkStores.storeCas());
+                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile));
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
                         assemblyAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
                     }

@@ -19,10 +19,10 @@ class SbomTest {
     @Test
     void cyclonedx_without_lockfile_lists_only_the_root() {
         String json = new String(Sbom.cyclonedx(PROJECT, null), StandardCharsets.UTF_8);
-        assertThat(json).contains("\"bomFormat\":\"CycloneDX\"");
-        assertThat(json).contains("\"specVersion\":\"1.6\"");
-        assertThat(json).contains("\"purl\":\"pkg:maven/com.example/widget@1.0.0\"");
-        assertThat(json).contains("\"components\":[]");
+        assertThat(json).contains("\"bomFormat\": \"CycloneDX\"");
+        assertThat(json).contains("\"specVersion\": \"1.6\"");
+        assertThat(json).contains("\"purl\": \"pkg:maven/com.example/widget@1.0.0\"");
+        assertThat(json).contains("\"components\": []");
     }
 
     @Test
@@ -41,9 +41,41 @@ class SbomTest {
                         List.of())));
 
         String json = new String(Sbom.cyclonedx(PROJECT, lock), StandardCharsets.UTF_8);
-        assertThat(json).contains("\"purl\":\"pkg:maven/com.example/lib@1.2.3\"");
-        assertThat(json).contains("\"alg\":\"SHA-256\"");
-        assertThat(json).contains("\"content\":\"abcdef\"");
+        assertThat(json).contains("\"purl\": \"pkg:maven/com.example/lib@1.2.3\"");
+        assertThat(json).contains("\"alg\": \"SHA-256\"");
+        assertThat(json).contains("\"content\": \"abcdef\"");
+    }
+
+    @Test
+    void cyclonedx_is_the_same_document_twice_and_leaves_test_rows_out() {
+        Lockfile lock = new Lockfile(
+                5,
+                "jk test",
+                "pubgrub-v1",
+                List.of(
+                        new Lockfile.Artifact(
+                                "com.example:lib",
+                                "1.2.3",
+                                "central+https://repo.maven.apache.org/maven2/",
+                                "sha256:abcdef",
+                                null,
+                                List.of(Scope.MAIN),
+                                List.of()),
+                        new Lockfile.Artifact(
+                                "org.junit:junit",
+                                "6.0.0",
+                                "central+https://repo.maven.apache.org/maven2/",
+                                "sha256:ffff",
+                                null,
+                                List.of(Scope.TEST),
+                                List.of())));
+
+        byte[] first = Sbom.cyclonedx(PROJECT, lock);
+        assertThat(first).isEqualTo(Sbom.cyclonedx(PROJECT, lock));
+        String json = new String(first, StandardCharsets.UTF_8);
+        assertThat(json).contains("pkg:maven/com.example/lib@1.2.3").doesNotContain("junit");
+        String spdx = new String(Sbom.spdx(PROJECT, lock), StandardCharsets.UTF_8);
+        assertThat(spdx).contains("pkg:maven/com.example/lib@1.2.3").doesNotContain("junit");
     }
 
     @Test

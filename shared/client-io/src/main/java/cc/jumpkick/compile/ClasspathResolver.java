@@ -191,13 +191,32 @@ public final class ClasspathResolver {
 
     /** As {@link #entriesFor(Lockfile, Set)} with optional post-sync presence enforcement. */
     public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent) {
-        // Collect matches first, then collapse dual-version rows (R5/R6 per-scope locks can
-        // emit the same module at different versions for main vs test vs processor).
+        return resolveEntries(selected(lock, scopes), requirePresent, effectiveLocator(lock));
+    }
+
+    /**
+     * The lock rows a classpath over {@code scopes} is made of, without locating a jar: one per
+     * module, dual-scoped rows collapsed as {@link #entriesFor} collapses them, POM-only aliases
+     * (rows with no checksum, never classpath jars) left out. What a bill of materials names.
+     */
+    public static List<Lockfile.Artifact> artifactsFor(Lockfile lock, Set<Scope> scopes) {
+        List<Lockfile.Artifact> out = new ArrayList<>();
+        for (Lockfile.Artifact pkg : selected(lock, scopes)) {
+            if (pkg.checksum() != null) out.add(pkg);
+        }
+        return out;
+    }
+
+    /**
+     * Matches first, then dual-version rows collapsed (R5/R6 per-scope locks can emit the same
+     * module at different versions for main vs test vs processor).
+     */
+    private static List<Lockfile.Artifact> selected(Lockfile lock, Set<Scope> scopes) {
         List<Lockfile.Artifact> matched = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.inAnyScope(scopes)) matched.add(pkg);
         }
-        return resolveEntries(selectPerModule(matched, scopes), requirePresent, effectiveLocator(lock));
+        return selectPerModule(matched, scopes);
     }
 
     /**

@@ -112,7 +112,7 @@ public final class PlannerPackage {
                     byte[] sbom = null;
                     if (project.isApplication()) {
                         Lockfile sbomLock = ctx.get(LOCKFILE).orElse(null);
-                        if (sbomLock != null) sbom = applicationSbom(project, sbomLock, cas);
+                        if (sbomLock != null) sbom = applicationSbom(project, sbomLock);
                     }
                     // Packaging cache: the jar is a pure function of the main classes
                     // (resources already copied in), the plugin-contributed dirs merged over

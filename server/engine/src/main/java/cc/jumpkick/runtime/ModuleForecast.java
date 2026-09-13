@@ -745,7 +745,7 @@ final class ModuleForecast {
             byte[] sbom = null;
             if (project.isApplication()) {
                 try {
-                    sbom = PlannerPlugin.applicationSbom(project, lock, cas);
+                    sbom = PlannerPlugin.applicationSbom(project, lock);
                 } catch (Exception e) {
                     // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     Log.debug("packageJar: best-effort", e);
