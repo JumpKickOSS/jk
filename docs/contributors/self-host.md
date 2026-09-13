@@ -79,9 +79,40 @@ After a release ships to jumpkick.build:
    `releases/<new>/SHA256SUMS` lists ([releases](releases.md#platforms-without-a-hosted-client)).
 4. `jk guard`, then commit the pin and the workflows together.
 
-A branch whose manifest or lock format the pinned release cannot read cannot be bootstrapped by
-that release: land the engine change in a commit the release can build first, and the format
-change on top of it.
+### The bootstrap chain
+
+The pinned release is the only jk that can build this tree from nothing, so the tree must stay
+within what that release reads. Two facts keep it there, and `BootstrapPinTest` (fast tier,
+`clients/cli`) holds both: the lock's `version` is the frozen schema every hosted release reads,
+and the lock's `jk-min` floor never exceeds the pin. A branch that changes a manifest key or the
+lock format so that the pinned release cannot read the tree has no bootstrap at all — there is no
+second build to fall back on — so a format change ships as two releases, in this order:
+
+1. **Reader first.** A release whose engine reads the new format *and* the old one, while the
+   tree still writes the old. Host it, prove it with the probe above, bump the pin to it.
+2. **Writer second.** Only once that pin is in place does the tree start writing the new format.
+   The pinned release reads it, so the self-host job keeps its bootstrap.
+
+When a branch must carry the new format before step 1 has shipped — a schema bump under
+development — build it from the last commit the pinned release can read, and let that build
+bootstrap the branch:
+
+```bash
+export JK_HOME=/some/scratch/home            # never your ~/.jk
+git worktree add ../jk-reader <last commit the pinned release reads>
+(cd ../jk-reader && curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash \
+   && "$JK_HOME/bin/jk" build --skip-tests && "$JK_HOME/bin/jk" install --skip-tests)   # a jk that reads the branch
+"$JK_HOME/bin/jk" build --skip-tests && "$JK_HOME/bin/jk" install --skip-tests            # the branch, built by it
+JK_HOME="$JK_HOME" jk engine stop --now
+```
+
+The failure mode names itself: a jk older than the lock's writer refuses the lock with
+`written by jk <newer> and this is jk <older>; a newer lock format needs a newer reader, not a
+re-lock` and points here, instead of suggesting `jk lock` — which would restate the branch's lock
+in the old format and hand a newer tree an older lock. A manifest key the pinned release does not
+know fails its parse with the key's name and the keys that table accepts; the remedy is the same
+chain. The self-host job's bootstrap step is where either shows up first, which is why the pin
+moves only after step 1's release is hosted.
 
 ### What the lane catches
 

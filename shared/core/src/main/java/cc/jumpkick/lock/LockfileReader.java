@@ -2,7 +2,9 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -115,18 +117,19 @@ public final class LockfileReader {
             throw new IllegalArgumentException("jk-lock.toml is missing required key `version`");
         }
         int lockVersion = lockVersionLong.intValue();
+        String writer = newerWriter(result);
         if (lockVersion != Lockfile.CURRENT_VERSION) {
             throw new IllegalArgumentException("jk-lock.toml schema version "
                     + lockVersion
                     + " is not supported (this jk reads v"
                     + Lockfile.CURRENT_VERSION
-                    + ") — re-run `jk lock` to restate it");
+                    + ") — " + remedy(writer, origin));
         }
         Set<String> unknown = new TreeSet<>(result.keySet());
         unknown.removeAll(TOP_LEVEL_KEYS);
         if (!unknown.isEmpty()) {
             throw new IllegalArgumentException("jk-lock.toml in " + origin + " has unknown top-level key(s) " + unknown
-                    + " — re-run `jk lock` to restate it");
+                    + " — " + remedy(writer, origin));
         }
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
@@ -327,6 +330,38 @@ public final class LockfileReader {
         String sourcesChecksum = table.getString("sources"); // optional
         return new Lockfile.Artifact(
                 name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum, declared);
+    }
+
+    /**
+     * The version in {@code generated-by} when it is ahead of this jk, else null. A lock this jk
+     * cannot read was written either by a newer jk — the format moved on — or by hand; the writer's
+     * version tells the two apart, and the remedy differs.
+     */
+    static @Nullable String newerWriter(TomlParseResult result) {
+        String generatedBy = result.getString("generated-by");
+        if (generatedBy == null) return null;
+        String version = generatedBy.trim();
+        if (version.startsWith("jk ")) version = version.substring(3).trim();
+        if (version.isEmpty()) return null;
+        try {
+            return Versions.compare(version, JkVersion.VERSION) > 0 ? version : null;
+        } catch (RuntimeException notAVersion) {
+            return null;
+        }
+    }
+
+    /**
+     * What to do about a lock this jk cannot read. Written by a newer jk, the answer is a newer
+     * reader: re-locking with this one would restate the lock in the old format and hand the
+     * newer tree an older lock. Written by anything else, the lock is malformed and a re-lock
+     * restates it.
+     */
+    static String remedy(@Nullable String newerWriter, String origin) {
+        if (newerWriter == null) return "re-run `jk lock` to restate it";
+        return "it was written by jk " + newerWriter + " and this is jk " + JkVersion.VERSION
+                + "; a newer lock format needs a newer reader, not a re-lock. Bootstrap " + origin
+                + " with a jk built from the last commit this one can read"
+                + " (docs/contributors/self-host.md, \"The bootstrap chain\")";
     }
 
     private static String requireString(TomlParseResult result, String key) {
