@@ -40,7 +40,7 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 
 | Question | Answer |
 |---|---|
-| What must be green to merge | the self-host job, the shell fixtures job and the authorship scan |
+| What must be green to merge | the self-host job, the shell fixtures job, the workflow lint (actionlint, commit-pinned actions, read-only tokens: `scripts/check-workflows.sh`) and the authorship scan |
 | What produces the `jk` under test | the hosted release the pin names bootstraps; `jk install` then swaps in the checkout's own client, engine and workers |
 | Where CI installs it | `$GITHUB_WORKSPACE/.ci-jk-home` — never the runner's `~/.jk` |
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |

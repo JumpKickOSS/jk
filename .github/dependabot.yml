@@ -1,0 +1,23 @@
+# Every action in .github/workflows is pinned to a commit sha with its release tag in a trailing
+# comment (scripts/check-workflows.sh refuses anything else); Dependabot is what moves those pins,
+# one grouped pull request a week, so a pin never rots by hand. There is no build-tool ecosystem
+# here: jk locks its own dependencies in jk-lock.toml, and `jk audit` in the self-host job is the
+# vulnerability gate over them. The npm trees under clients/vscode and docs/user/examples keep
+# their own lockfiles deliberately and are not managed from here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    labels:
+      - dependencies
+      - ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5

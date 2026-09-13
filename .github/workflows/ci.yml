@@ -62,6 +62,35 @@ jobs:
       - name: Curated integration lane fixtures
         run: bash scripts/test-curated-integration.sh
 
+  # The workflow files themselves. actionlint (syntax, expressions, shellcheck of every run:
+  # script), then the two rules scripts/check-workflows.sh owns: every action pinned to a commit
+  # sha with its tag in a comment, every workflow's token read-only unless a job says otherwise.
+  # A floating tag on a uses: line is a name someone else can move under the job that holds the
+  # signing key; this is the job that refuses one on a pull request. actionlint arrives as a
+  # release archive checked against a checksum written here, never a `go install` of a branch.
+  workflows:
+    name: Workflow lint (actionlint, pins, permissions)
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: '1.7.12'
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install actionlint, pinned by version and checksum
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/bin" actionlint
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Pins, permissions and actionlint
+        run: scripts/check-workflows.sh
+
   # JumpKick building JumpKick: the merge authority. A released jk, installed the way a user
   # installs it, builds the checked-out jk.toml / jk-lock.toml graph; then the checkout's own
   # client, engine and workers take the home over (`jk install`), so the house-rule gate and the

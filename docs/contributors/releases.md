@@ -110,6 +110,12 @@ path, network-free, against a fixture release signed with a throwaway key.
 
 Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
+The workflow's token is read-only except where a job names the scope it writes, and every action
+it uses is pinned to a commit SHA with the tag in a trailing comment — a floating tag in the job
+that holds the signing key would be a signed release someone else cut. `scripts/check-workflows.sh`
+refuses a floating tag or a writing top-level `permissions:` on every pull request, and
+`.github/dependabot.yml` moves the pins weekly.
+
 1. Push tag `v0.13.3` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
