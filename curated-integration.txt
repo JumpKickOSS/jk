@@ -35,6 +35,7 @@
 :cli    | cc.jumpkick.command.pipeline.TestCommandTest            | workspace | success,failure | The test verb end to end, including a failing suite surfacing as a failed build.
 :cli    | cc.jumpkick.command.pipeline.SelectiveCommandTest       | workspace | success,failure | Module selection flags pick the right subgraph and reject a module the workspace does not have.
 :engine | cc.jumpkick.runtime.WorkspaceTestsKindE2eTest  | workspace | success         | A workspace member's tests compile against a sibling test-helper module, which is the multi-module test classpath in one case.
+:engine | cc.jumpkick.runtime.KotlinDependencyApiChangeE2eTest | workspace | success,failure | A sibling module's API change reaches a Kotlin test module's incremental compile through the classpath snapshots, so a stale snapshot cannot leave a broken test green.
 :cli    | cc.jumpkick.command.pipeline.InstallCommandTest         | install   | success,failure | Install writes the lib layout and launcher, publishes to the local Maven repo, and returns a usage error with no manifest.
 :cli    | cc.jumpkick.command.InstallWorkspaceTest       | install   | success,failure | Installing a workspace publishes every member and not the coordinator root, and a failing member names the module instead of exiting silently.
 :cli    | cc.jumpkick.cli.engine.EngineJarFetcherTest    | install   | success,failure | Materializing the engine jar into the home, and the checksum and missing-artifact refusals that keep a bad jar out.
