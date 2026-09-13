@@ -36,6 +36,10 @@ class JavaCompilerHostLanesTest {
     void concurrent_modules_run_on_separate_lanes(@TempDir Path dir) throws Exception {
         Path worker = workerJar();
         int modules = 4;
+        // The budget is pinned, not read off this JVM: a test JVM forked as one worker of a module's
+        // share may see a single processor, and the claim here is about the pool fanning out when
+        // the budget allows, not about how many processors the harness handed the test.
+        JavaCompilerHost.overrideLaneBudgetForTests(modules);
         List<ForkedJavac.Request> requests = new ArrayList<>();
         for (int i = 0; i < modules; i++) requests.add(moduleRequest(dir, worker, "m" + i));
 
