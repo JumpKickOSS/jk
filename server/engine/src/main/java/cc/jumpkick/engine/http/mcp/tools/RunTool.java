@@ -16,26 +16,30 @@ public final class RunTool implements McpTool {
                 "jk_run",
                 "Start a job (build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import; publish is always a dry-run — credentialed uploads are CLI-only; guard runs every house-rule lane, see jk://guards). "
                         + "wait defaults true. dir optional after jk_bind. Aliases: jk_build/jk_test/jk_lock.",
-                McpSchemas.object(Map.of(
-                        "kind",
-                        McpSchemas.string(
-                                "build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import"),
-                        "dir",
-                        McpSchemas.string(McpSchemas.BOUND_ROOT),
-                        "modules",
-                        McpSchemas.strings("Module names/globs"),
-                        "include_tags",
-                        McpSchemas.strings(),
-                        "exclude_tags",
-                        McpSchemas.strings(),
-                        "suites",
-                        McpSchemas.strings(),
-                        "skip_tests",
-                        McpSchemas.bool(),
-                        "wait",
-                        McpSchemas.bool("Block until finish (default true)"),
-                        "timeout_s",
-                        McpSchemas.integer("Wait timeout seconds (default 600, max 3600)"))));
+                McpSchemas.object(
+                        Map.of(
+                                "kind",
+                                McpSchemas.string(
+                                        "build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import"),
+                                "dir",
+                                McpSchemas.string(McpSchemas.BOUND_ROOT),
+                                "modules",
+                                McpSchemas.strings("Module names/globs"),
+                                "include_tags",
+                                McpSchemas.strings(),
+                                "exclude_tags",
+                                McpSchemas.strings(),
+                                "suites",
+                                McpSchemas.strings(),
+                                "skip_tests",
+                                McpSchemas.bool(),
+                                "wait",
+                                McpSchemas.bool("Block until finish (default true)"),
+                                "timeout_s",
+                                McpSchemas.integer("Wait timeout seconds (default 600, max 3600)"),
+                                "deadline_s",
+                                McpSchemas.integer(
+                                        "Job wall deadline in seconds; the engine cancels the job past it (default: the engine's detached-deadline-ms, 1 hour; 0 = none)"))));
     }
 
     @Override

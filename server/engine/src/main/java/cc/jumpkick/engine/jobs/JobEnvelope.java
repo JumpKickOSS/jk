@@ -85,13 +85,17 @@ public final class JobEnvelope {
      * reading the connection for EOF (cancellation arrives out-of-band as
      * {@link EngineProtocol#CANCEL_REQUEST}), joining before
      * return; {@link JobTransport.FireAndForget} returns the jid immediately (progress is the
-     * sink) and throws {@link AlreadyRunning} / {@link IllegalStateException} on refusal.
+     * sink) and throws {@link AlreadyRunning} / {@link IllegalStateException} on refusal. The wall
+     * deadline is the transport's: EOF bounds a socket job, so it runs under the engine-wide cap
+     * ({@code 0} by default); nothing but the clock bounds a detached job, so it runs under the
+     * submission's own deadline or the engine's detached default.
      */
     public long submit(String requestLine, JobRequest job, JobTransport transport) {
         BufferedReader reader = transport instanceof JobTransport.SocketWatch w ? w.reader() : null;
         BufferedWriter writer = transport instanceof JobTransport.SocketWatch w ? w.writer() : null;
         SocketChannel channel = transport instanceof JobTransport.SocketWatch w ? w.channel() : null;
         boolean detached = transport instanceof JobTransport.FireAndForget;
+        WallDeadline deadline = WallDeadline.of(limits, transport);
         String threadPrefix = job.threadPrefix();
         String kind = job.verb();
         JobBody runner = job.body();
@@ -185,11 +189,13 @@ public final class JobEnvelope {
                 writer,
                 channel,
                 watch,
-                connectionThread);
+                connectionThread,
+                deadline);
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        final Thread watchdog = watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer);
+        final Thread watchdog =
+                watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer, deadline, eventStartMillis);
         Runnable finish = () -> finish(admitted, reader, watchdog);
         if (detached) {
             Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
@@ -241,7 +247,8 @@ public final class JobEnvelope {
 
     /**
      * One admitted job as its two threads see it: the request and body, the identity the journal
-     * and the wire carry, and the handles the runner thread signals and the connection thread waits on.
+     * and the wire carry, the handles the runner thread signals and the connection thread waits on,
+     * and the wall deadline it runs under.
      */
     private record Admitted(
             String requestLine,
@@ -260,7 +267,8 @@ public final class JobEnvelope {
             @Nullable BufferedWriter writer,
             @Nullable SocketChannel channel,
             ConnectionWatch watch,
-            Thread connectionThread) {}
+            Thread connectionThread,
+            WallDeadline deadline) {}
 
     /** The runner thread: open the request's scopes, run the body, stamp the verdict, tear down. */
     private void runBody(Admitted a) {
@@ -372,11 +380,12 @@ public final class JobEnvelope {
             watch.awaitRunner(
                     eventRequestId,
                     done,
-                    limits,
+                    a.deadline(),
+                    limits.deadlineGraceMs(),
                     cancelGraceMs,
                     eventStartMillis,
                     a.cancelSignal(),
-                    () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer),
+                    () -> watchdogs.enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, a.deadline()),
                     () -> {
                         JobWorkers.shutdownForRequest(eventRequestId, 0L);
                         LiveJobRegistry.interruptRunner(runnerRef.get());

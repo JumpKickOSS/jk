@@ -52,7 +52,7 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * <p>Measured when written: 1,244 production sources, 1,017 literal-key reads, 443 distinct read
- * keys, 824 distinct written keys, <strong>5</strong> read with no writer — all five listed below.
+ * keys, 824 distinct written keys, <strong>5</strong> read with no writer; every orphan is listed below.
  */
 class WireKeyClosureTest {
 
@@ -68,7 +68,9 @@ class WireKeyClosureTest {
             "java-options", "foreign format: jbang-catalog.json",
             "script-ref", "foreign format: jbang-catalog.json",
             // The dashboard SPA writes this one, in JavaScript, as a query param and a POST body field.
-            "project", "written by clients/web, not by Java: HttpProjectApi request field");
+            "project", "written by clients/web, not by Java: HttpProjectApi request field",
+            // A POST /api/build body field an HTTP client sets; the engine only ever reads it.
+            "deadlineMs", "written by HTTP clients, not by Java: the job's wall deadline on POST /api/build");
 
     /**
      * Production sources on the day this landed (re-measured at 1,244 once the walk stopped

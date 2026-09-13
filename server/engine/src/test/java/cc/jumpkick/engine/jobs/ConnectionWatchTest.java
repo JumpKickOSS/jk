@@ -77,7 +77,8 @@ class ConnectionWatchTest {
         watch.awaitRunner(
                 7L,
                 new CountDownLatch(1),
-                JobLimits.DEFAULTS,
+                new WallDeadline(0L, ""),
+                JobLimits.DEFAULT_DEADLINE_GRACE_MS,
                 50L,
                 0L,
                 new CountDownLatch(0),
@@ -97,7 +98,8 @@ class ConnectionWatchTest {
         watch.awaitRunner(
                 8L,
                 new CountDownLatch(1),
-                new JobLimits(0L, 50L, 100L, 500L),
+                new WallDeadline(50L, "test"),
+                100L,
                 0L,
                 System.currentTimeMillis(),
                 new CountDownLatch(1),
@@ -121,7 +123,16 @@ class ConnectionWatchTest {
             }
             done.countDown();
         });
-        watch.awaitRunner(9L, done, JobLimits.DEFAULTS, 0L, 0L, new CountDownLatch(1), () -> {}, () -> {});
+        watch.awaitRunner(
+                9L,
+                done,
+                new WallDeadline(0L, ""),
+                JobLimits.DEFAULT_DEADLINE_GRACE_MS,
+                0L,
+                0L,
+                new CountDownLatch(1),
+                () -> {},
+                () -> {});
         assertThat(done.getCount()).isZero();
     }
 }

@@ -68,7 +68,13 @@ public final class EngineControls {
                     "JK_LOG_LEVEL",
                     "info",
                     ENGINE_START,
-                    "Engine log threshold: debug, info, warn or error. debug adds the perf probes."));
+                    "Engine log threshold: debug, info, warn or error. debug adds the perf probes."),
+            control(
+                    "detached-deadline-ms",
+                    "JK_ENGINE_DETACHED_DEADLINE_MS",
+                    "3600000",
+                    ENGINE_START,
+                    "Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off."));
 
     /** {@code JK_ENGINE_*} env that is not an {@code [engine]} key. */
     public static final List<Control> PROCESS = List.of(
@@ -91,7 +97,12 @@ public final class EngineControls {
                     ENGINE_START,
                     "Force tcp or unix for the client-engine wire."),
             control("", "JK_ENGINE_HEARTBEAT_MS", "30000", ENGINE_START, "Heartbeat while async jobs run. 0 disables."),
-            control("", "JK_ENGINE_JOB_DEADLINE_MS", "0", ENGINE_START, "Job wall deadline in ms. 0 = off."),
+            control(
+                    "",
+                    "JK_ENGINE_JOB_DEADLINE_MS",
+                    "0",
+                    ENGINE_START,
+                    "Wall deadline for a job a client owns over its socket, in ms. 0 = off."),
             control(
                     "",
                     "JK_ENGINE_JOB_DEADLINE_GRACE_MS",

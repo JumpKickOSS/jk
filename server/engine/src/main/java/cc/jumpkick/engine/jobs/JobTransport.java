@@ -29,6 +29,21 @@ public sealed interface JobTransport {
         }
     }
 
-    /** HTTP/MCP: return request id immediately; progress is the sink (SSE). */
-    record FireAndForget() implements JobTransport {}
+    /**
+     * HTTP/MCP: return request id immediately; progress is the sink (SSE). {@code deadlineMs} is the
+     * wall deadline the submission asked for — {@code 0} for none — or {@code null} to run under the
+     * engine's detached default. No connection ends a detached job, so the deadline is its only bound.
+     */
+    record FireAndForget(@Nullable Long deadlineMs) implements JobTransport {
+        /** Under the engine's detached default. */
+        public FireAndForget() {
+            this(null);
+        }
+
+        public FireAndForget {
+            if (deadlineMs != null && deadlineMs < 0) {
+                throw new IllegalArgumentException("deadlineMs must be >= 0 (0 = no deadline)");
+            }
+        }
+    }
 }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.jobs.JobSpec;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -93,6 +94,25 @@ class HttpEventStreamTest extends HttpEngineServerHarness {
         assertThat(resp.statusCode()).isEqualTo(202);
         assertThat(resp.body()).contains("\"jid\":7").contains("\"events\":\"/api/events\"");
         assertThat(triggeredDirs).containsExactly("/some/workspace");
+    }
+
+    /**
+     * A detached job's only bound is its wall deadline, so the body may set it: absent leaves the
+     * engine's detached default, {@code 0} lifts the cap, and a negative is the caller's error.
+     */
+    @Test
+    void build_trigger_carries_the_requests_deadline() throws Exception {
+        assertThat(postBuild("{\"dir\":\"/some/workspace\"}").statusCode()).isEqualTo(202);
+        assertThat(postBuild("{\"dir\":\"/some/workspace\",\"deadlineMs\":90000}")
+                        .statusCode())
+                .isEqualTo(202);
+        assertThat(postBuild("{\"dir\":\"/some/workspace\",\"deadlineMs\":0}").statusCode())
+                .isEqualTo(202);
+        assertThat(triggeredSpecs).extracting(JobSpec::deadlineMs).containsExactly(null, 90_000L, 0L);
+        HttpResponse<String> negative = postBuild("{\"dir\":\"/some/workspace\",\"deadlineMs\":-1}");
+        assertThat(negative.statusCode()).isEqualTo(400);
+        assertThat(negative.body()).contains("deadlineMs");
+        assertThat(triggeredSpecs).hasSize(3);
     }
 
     @Test

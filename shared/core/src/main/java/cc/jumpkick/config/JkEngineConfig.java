@@ -151,7 +151,7 @@ public record JkEngineConfig(
                         scanInt(scan, "engine.vfs-max-mb")),
                 AUTO_WARMUP.layer(
                         EnvValues.bool(env, "JK_AUTO_WARMUP").orElse(null), scanBool(scan, "engine.auto-warmup")),
-                JobLimits.resolve(env),
+                JobLimits.resolve(env, scanLong(scan, "engine.detached-deadline-ms")),
                 LOG_MAX_MB.layer(
                         EnvValues.intValue(env, "JK_ENGINE_LOG_MAX_MB").orElse(null),
                         scanInt(scan, "engine.log-max-mb")),
@@ -182,8 +182,9 @@ public record JkEngineConfig(
     }
 
     /**
-     * {@code [engine]} table; missing/malformed/out-of-range → non-CI defaults for that field. Job
-     * limits are env-only knobs, so they stay at their defaults here.
+     * {@code [engine]} table; missing/malformed/out-of-range → non-CI defaults for that field. Of
+     * the job limits only the detached deadline is a file key; the rest are env-only knobs and stay
+     * at their defaults here.
      */
     public static JkEngineConfig fromToml(Path file) {
         TomlScan scan = scan(file);
@@ -193,7 +194,7 @@ public record JkEngineConfig(
                 KEEP_GOING.layer(scanBool(scan, "engine.continue")),
                 VFS_MAX_MB.layer(scanInt(scan, "engine.vfs-max-mb")),
                 AUTO_WARMUP.layer(scanBool(scan, "engine.auto-warmup")),
-                JobLimits.DEFAULTS,
+                JobLimits.fromFile(scanLong(scan, "engine.detached-deadline-ms")),
                 LOG_MAX_MB.layer(scanInt(scan, "engine.log-max-mb")),
                 LOG_LEVEL.layer(scan.get("engine.log-level")));
     }
@@ -212,6 +213,16 @@ public record JkEngineConfig(
         if (v == null) return null;
         try {
             return Integer.parseInt(v);
+        } catch (NumberFormatException e) {
+            return null; // malformed value — advisory layer, fall back
+        }
+    }
+
+    private static @Nullable Long scanLong(TomlScan scan, String key) {
+        String v = scan.get(key);
+        if (v == null) return null;
+        try {
+            return Long.parseLong(v);
         } catch (NumberFormatException e) {
             return null; // malformed value — advisory layer, fall back
         }

@@ -204,7 +204,9 @@ final class HttpReadApi {
     /**
      * {@code POST /api/build} — acknowledge with a request id; progress streams on
      * {@code /api/events}. Optional {@code kind} (default {@code build}) starts any HTTP-exposed
-     * job kind (test, lock, …) through the same admission point MCP {@code jk_run} uses.
+     * job kind (test, lock, …) through the same admission point MCP {@code jk_run} uses. Optional
+     * {@code deadlineMs} bounds the job's wall time ({@code 0} = none); absent, the engine's
+     * detached default applies.
      */
     void handleBuild(HttpExchange exchange) throws IOException {
         String body = HttpRequests.body(exchange);
@@ -219,7 +221,11 @@ final class HttpReadApi {
         String kind = Jsonl.str(body, "kind");
         long requestId;
         try {
-            requestId = jobs.trigger(JobSpec.of(kind == null ? "build" : kind, dir));
+            JobSpec spec = JobSpec.of(kind == null ? "build" : kind, dir);
+            if (Jsonl.has(body, "deadlineMs")) {
+                spec = spec.withDeadlineMs(Jsonl.longValue(body, "deadlineMs", -1L));
+            }
+            requestId = jobs.trigger(spec);
         } catch (JobEnvelope.AlreadyRunning e) {
             HttpResponses.sendJson(
                     exchange,

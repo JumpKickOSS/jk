@@ -27,6 +27,8 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PipedReader;
+import java.io.PipedWriter;
 import java.io.PrintStream;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -179,8 +181,13 @@ class JobEnvelopeTest {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
-        new JobWatchdog(new JobLimits(0L, 1234L, 0L, 500L), () -> 1_000L, id -> host.accumulator)
-                .enforceDeadline(7L, Session.CancelToken.live(), null, null);
+        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> host.accumulator)
+                .enforceDeadline(
+                        7L,
+                        Session.CancelToken.live(),
+                        null,
+                        null,
+                        new WallDeadline(1234L, "JK_ENGINE_JOB_DEADLINE_MS"));
         assertThat(host.accumulator.wasCancelled()).isTrue();
         assertThat(host.accumulator.cancelReason()).contains("1234ms");
     }
@@ -188,39 +195,154 @@ class JobEnvelopeTest {
     /**
      * The wall deadline is the one cancel the engine raises on its own, and it is driven here with a
      * millisecond {@link JobLimits} — nothing in this test touches the environment, and nothing
-     * waits longer than the job takes to be killed.
+     * waits longer than the job takes to be killed. A detached job runs under the detached deadline.
      */
     @Test
     void a_wall_deadline_cancels_a_running_job_and_names_the_deadline() throws Exception {
         FakeHost host = new FakeHost();
         host.clock = System::currentTimeMillis;
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 50L, 100L, 500L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L));
         CountDownLatch release = new CountDownLatch(1);
 
         env.submit(
                 "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
-                JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
-                    try {
-                        // The deadline kill interrupts this wait long before it expires.
-                        release.await(10, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return JobOutcome.declined();
-                }),
+                JobRequest.plan("build", "jk-test-", parkedBody(release)),
                 new JobTransport.FireAndForget());
 
         Await.until(Duration.ofSeconds(10), () -> host.journalWritten);
         release.countDown();
         assertThat(host.journalWritten).isTrue();
         assertThat(host.journalCancelled).isTrue();
-        assertThat(host.accumulator.cancelReason()).contains("50ms wall deadline");
+        assertThat(host.accumulator.cancelReason())
+                .contains("50ms wall deadline")
+                .contains("detached-deadline-ms / JK_ENGINE_DETACHED_DEADLINE_MS");
         assertThat(host.events)
                 .as("request-finish carries the deadline as its cancel reason")
                 .anyMatch(e -> e.contains("request-finish")
                         && e.contains("\"cancelled\":true")
                         && e.contains("wall deadline"));
+    }
+
+    /**
+     * A detached job has no connection thread reading EOF, so a body that never finishes and is
+     * never cancelled would hold its project fingerprint and journal row forever. Under the
+     * engine's defaults it is settled at the detached deadline, and the row says why. The clock is
+     * the host's, so the hour passes in one step.
+     */
+    @Test
+    void a_detached_job_nobody_cancels_is_settled_at_the_default_detached_deadline() throws Exception {
+        FakeHost host = new FakeHost();
+        AtomicLong now = new AtomicLong(1_000L);
+        host.clock = now::get;
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        CountDownLatch release = new CountDownLatch(1);
+
+        env.submit(
+                "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                JobRequest.plan("build", "jk-test-", parkedBody(release)),
+                new JobTransport.FireAndForget());
+        now.addAndGet(JobLimits.DEFAULT_DETACHED_DEADLINE_MS);
+
+        Await.until(Duration.ofSeconds(10), () -> host.journalWritten);
+        release.countDown();
+        assertThat(host.journalCancelled).isTrue();
+        assertThat(host.accumulator.cancelReason())
+                .contains(JobLimits.DEFAULT_DETACHED_DEADLINE_MS + "ms wall deadline")
+                .contains("JK_ENGINE_DETACHED_DEADLINE_MS");
+        assertThat(Jsonl.str(requestFinish(host), "cancelReason")).contains("wall deadline");
+    }
+
+    /** EOF is a socket job's deadline: under the defaults the clock alone never cancels it. */
+    @Test
+    void a_socket_job_runs_unbounded_under_the_defaults() throws Exception {
+        FakeHost host = new FakeHost();
+        AtomicLong now = new AtomicLong(1_000L);
+        host.clock = now::get;
+        host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
+        JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch started = new CountDownLatch(1);
+        // A reader that stays open: the client is still connected, just quiet, for the whole job.
+        PipedWriter clientEnd = new PipedWriter();
+        BufferedReader reader = new BufferedReader(new PipedReader(clientEnd));
+        StringWriter out = new StringWriter();
+        Thread connection = Thread.ofVirtual()
+                .start(() -> env.submit(
+                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                            started.countDown();
+                            return parkedBody(release).run(line, tok, w);
+                        }),
+                        new JobTransport.SocketWatch(reader, new BufferedWriter(out))));
+        assertThat(started.await(10, TimeUnit.SECONDS)).isTrue();
+        try {
+            now.addAndGet(2 * JobLimits.DEFAULT_DETACHED_DEADLINE_MS);
+            // Longer than the deadline-only watchdog tick, so a deadline arm that existed would fire.
+            Thread.sleep(1_500);
+            assertThat(host.accumulator.wasCancelled()).isFalse();
+            assertThat(host.journalWritten).isFalse();
+        } finally {
+            release.countDown();
+            connection.join(10_000);
+            clientEnd.close();
+        }
+        assertThat(host.journalWritten).isTrue();
+        assertThat(host.journalCancelled).isFalse();
+    }
+
+    /** A detached submission may bring its own deadline, or lift the engine's with {@code 0}. */
+    @Test
+    void a_detached_submission_may_carry_its_own_deadline_or_lift_the_cap() throws Exception {
+        FakeHost own = new FakeHost();
+        own.clock = System::currentTimeMillis;
+        own.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        CountDownLatch release = new CountDownLatch(1);
+        new JobEnvelope(own, JobLimits.DEFAULTS)
+                .submit(
+                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        JobRequest.plan("build", "jk-test-", parkedBody(release)),
+                        new JobTransport.FireAndForget(50L));
+        Await.until(Duration.ofSeconds(10), () -> own.journalWritten);
+        release.countDown();
+        assertThat(own.journalCancelled).isTrue();
+        assertThat(own.accumulator.cancelReason())
+                .contains("50ms wall deadline")
+                .contains("the request's deadline");
+
+        FakeHost lifted = new FakeHost();
+        lifted.clock = System::currentTimeMillis;
+        lifted.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
+        new JobEnvelope(lifted, JobLimits.DEFAULTS.withDetachedDeadlineMs(50L))
+                .submit(
+                        "{\"type\":\"build-request\",\"dir\":\"/tmp/job-env\"}",
+                        JobRequest.plan("build", "jk-test-", (line, tok, w) -> {
+                            // Outlives the 50ms cap the engine would apply; the submission lifted it.
+                            boolean released = false;
+                            try {
+                                released = new CountDownLatch(1).await(300, TimeUnit.MILLISECONDS);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            return released ? JobOutcome.declined() : JobOutcome.ok();
+                        }),
+                        new JobTransport.FireAndForget(0L));
+        Await.until(Duration.ofSeconds(10), () -> lifted.journalWritten);
+        assertThat(lifted.journalCancelled).isFalse();
+        assertThat(lifted.accumulator.wasCancelled()).isFalse();
+    }
+
+    /** A body that parks until released; a deadline kill's interrupt ends the wait early. */
+    private static JobBody parkedBody(CountDownLatch release) {
+        return (line, tok, w) -> {
+            try {
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return JobOutcome.declined();
+        };
     }
 
     /**
@@ -256,7 +378,7 @@ class JobEnvelopeTest {
     void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses() throws Exception {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L));
         AtomicReference<Process> worker = new AtomicReference<>();
         CountDownLatch release = new CountDownLatch(1);
 
@@ -304,7 +426,7 @@ class JobEnvelopeTest {
     void a_cancelled_detached_job_whose_body_ignores_interrupts_is_settled_within_the_grace() throws Exception {
         FakeHost host = new FakeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 100L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L));
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
 
@@ -357,8 +479,13 @@ class JobEnvelopeTest {
 
         FakeHost byDeadline = new FakeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
-        new JobWatchdog(new JobLimits(0L, 1234L, 0L, 500L), () -> 1_000L, id -> byDeadline.accumulator)
-                .enforceDeadline(2L, Session.CancelToken.live(), null, null);
+        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> byDeadline.accumulator)
+                .enforceDeadline(
+                        2L,
+                        Session.CancelToken.live(),
+                        null,
+                        null,
+                        new WallDeadline(1234L, "JK_ENGINE_JOB_DEADLINE_MS"));
 
         assertThat(byUser.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);
         assertThat(byDeadline.journalRecord().exitCode()).isEqualTo(Exit.INTERRUPTED);

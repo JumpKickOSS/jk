@@ -72,6 +72,9 @@ abstract class HttpEngineServerHarness {
     HttpEvents events;
     final List<String> triggeredDirs = new ArrayList<>();
 
+    /** Every spec the stub admitted, so a test can read what the body decoded to. */
+    final List<JobSpec> triggeredSpecs = new ArrayList<>();
+
     /** Rows served by {@code GET /api/metrics} — tests seed this list directly. */
     final List<BuildMetrics.Entry> metricsRows = new ArrayList<>();
 
@@ -105,6 +108,7 @@ abstract class HttpEngineServerHarness {
         public long trigger(JobSpec spec) {
             if (spec.dir().contains("reject")) throw new IllegalArgumentException("no jk.toml in " + spec.dir());
             triggeredDirs.add(spec.dir());
+            triggeredSpecs.add(spec);
             return 7;
         }
 

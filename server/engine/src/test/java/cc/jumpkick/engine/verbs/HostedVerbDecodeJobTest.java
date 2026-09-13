@@ -55,7 +55,7 @@ class HostedVerbDecodeJobTest {
         project(dir);
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
         String line = verb.decodeJob(new JobSpec(
-                "test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false, false));
+                "test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false, false, null));
         var sel = ProtoJobs.testSelectionOf(line);
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.excludeTags()).containsExactly("slow");

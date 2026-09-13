@@ -10,7 +10,6 @@ import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
-import cc.jumpkick.engine.jobs.JobTransport;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
@@ -153,7 +152,7 @@ public final class EngineHttpFront {
         if (verb == null) throw new IllegalArgumentException("kind not hosted: " + spec.kind());
         LockFloor.refuseIfBelow(entryDir, verb.wireType(), version);
         String line = verb.decodeJob(spec.withDir(entryDir.toString()));
-        return jobs.submit(line, verb.toJobRequest(line), new JobTransport.FireAndForget());
+        return jobs.submit(line, verb.toJobRequest(line), spec.transport());
     }
 
     private static Path requireProject(String dirStr) {

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
-import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.host.Log;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -80,15 +79,17 @@ final class ConnectionWatch {
     void awaitRunner(
             long jid,
             CountDownLatch done,
-            JobLimits limits,
+            WallDeadline deadline,
+            long deadlineGraceMs,
             long cancelGraceMs,
             long startMillis,
             CountDownLatch cancelled,
             Runnable enforceDeadline,
             Runnable forceKill) {
         try {
-            if (limits.deadlineMs() > 0) {
-                joinUnderDeadline(jid, done, limits, cancelGraceMs, startMillis, enforceDeadline);
+            if (deadline.bounded()) {
+                joinUnderDeadline(
+                        jid, done, deadline.ms(), deadlineGraceMs, cancelGraceMs, startMillis, enforceDeadline);
             } else {
                 awaitRunnerOrCancel(done, cancelled);
                 if (done.getCount() > 0) joinAfterCancel(jid, done, cancelGraceMs, forceKill);
@@ -114,13 +115,12 @@ final class ConnectionWatch {
     private void joinUnderDeadline(
             long jid,
             CountDownLatch done,
-            JobLimits limits,
+            long deadlineMs,
+            long graceMs,
             long cancelGraceMs,
             long startMillis,
             Runnable enforceDeadline)
             throws InterruptedException {
-        long deadlineMs = limits.deadlineMs();
-        long graceMs = limits.deadlineGraceMs();
         long elapsed = nowMillis.getAsLong() - startMillis;
         long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
         if (done.await(budget, TimeUnit.MILLISECONDS)) return;

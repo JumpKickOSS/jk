@@ -79,7 +79,8 @@ public final class McpJobRuns {
                 in.strings("exclude_tags"),
                 in.strings("suites"),
                 in.flag("skip_tests"),
-                affected);
+                affected,
+                deadlineMs(in));
         boolean wait = in.flagOr("wait", true);
         int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
         long triggeredAt = System.currentTimeMillis();
@@ -160,6 +161,17 @@ public final class McpJobRuns {
         fields.put("cancelled", ok);
         if (!ok && noteWhenMissed != null) fields.put("note", noteWhenMissed);
         return in.ok(McpEnvelope.of("cancel", fields), ok ? "cancelled " + jid : "jid " + jid + " not cancelled");
+    }
+
+    /**
+     * {@code deadline_s} as the job's wall deadline in ms: absent leaves the engine's detached
+     * default, {@code 0} lifts the cap, a negative is the caller's error.
+     */
+    private static @Nullable Long deadlineMs(McpCall in) {
+        Long seconds = in.num("deadline_s");
+        if (seconds == null) return null;
+        if (seconds < 0) throw new McpError(-32602, "deadline_s must be >= 0 (0 = no deadline)");
+        return seconds * 1000L;
     }
 
     /** Modules and test filters, emitted only when the caller narrowed the job. */

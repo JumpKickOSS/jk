@@ -115,6 +115,11 @@ public final class EffectiveUserConfig {
         add(out, "engine.auto-warmup", d.autoWarmup(), e.autoWarmup());
         add(out, "engine.log-max-mb", d.logMaxMb(), e.logMaxMb());
         add(out, "engine.log-level", d.logLevel(), e.logLevel());
+        add(
+                out,
+                "engine.detached-deadline-ms",
+                d.jobLimits().detachedDeadlineMs(),
+                e.jobLimits().detachedDeadlineMs());
     }
 
     private static void addCache(

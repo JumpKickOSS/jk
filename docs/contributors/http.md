@@ -279,6 +279,22 @@ owner's config path and raw values, the same class as `/api/projects/defaults`.
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
 
+## Starting a job (`POST /api/build`)
+
+One admission point for every HTTP and MCP job: the body's `dir` (required) and `kind`
+(default `build`; any HTTP-exposed kind — `test`, `lock`, `guard`, …) resolve to the hosted verb,
+decode to the same wire request line the CLI would send, and submit detached. The reply is
+`202` with the `jid`; progress is the SSE stream. `409` carries the `jid` of a same-project job
+already in flight, `400` a body the verb cannot run.
+
+A detached job has no connection whose EOF would end it, so it always runs under a wall
+deadline: the body's `deadlineMs` when present (`0` = none; a negative is a `400`), else the
+engine's `[engine] detached-deadline-ms` / `JK_ENGINE_DETACHED_DEADLINE_MS` (default one hour).
+Past it the job takes the same bounded cancel path a user cancel does, and `request-finish` and
+the journal row carry a `cancelReason` naming the deadline and the knob that set it. Socket jobs
+the CLI owns are unchanged: their EOF is the deadline, and `JK_ENGINE_JOB_DEADLINE_MS` stays off
+unless set. MCP `jk_run` exposes the same field as `deadline_s`.
+
 ## Live updates (`GET /api/events`)
 
 One SSE stream serves **build activity** and **chrome vitals**. Additive event names only (no

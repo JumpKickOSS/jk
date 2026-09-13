@@ -65,6 +65,7 @@ and `auto-warmup` do not follow CI.
 | `auto-warmup` | `JK_AUTO_WARMUP` | true | each idle cycle | Idle AOT train and host calibration. false skips the whole pass. |
 | `log-max-mb` | `JK_ENGINE_LOG_MAX_MB` | 16 | engine start | Engine log size cap in MiB; at the cap the log rolls to .1 (one generation kept). 0 = no cap. |
 | `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
+| `detached-deadline-ms` | `JK_ENGINE_DETACHED_DEADLINE_MS` | 3600000 | engine start | Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off. |
 <!-- engine-config:end -->
 
 Short-lived CI engines should set `JK_AOT_TRAIN=off` (skip train-on-miss; still use
@@ -118,7 +119,7 @@ jobs run inside it.
 | `JK_ENGINE_JDK` | unset | JDK the engine JVM runs on. Same pin as [toolchain].jdk. |
 | `JK_ENGINE_TRANSPORT` | unix; tcp on Windows | Force tcp or unix for the client-engine wire. |
 | `JK_ENGINE_HEARTBEAT_MS` | 30000 | Heartbeat while async jobs run. 0 disables. |
-| `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Job wall deadline in ms. 0 = off. |
+| `JK_ENGINE_JOB_DEADLINE_MS` | 0 | Wall deadline for a job a client owns over its socket, in ms. 0 = off. |
 | `JK_ENGINE_JOB_DEADLINE_GRACE_MS` | 30000 | Join grace after a deadline cancel, in ms. |
 | `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |
 <!-- engine-process:end -->

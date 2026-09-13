@@ -87,7 +87,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
 | **Engine-side reader** | A connection sends its first line, then keeps sending between requests; the engine closes one that does not and counts it as `idleDropped` in status | **10 s** for the first line; `JK_STREAM_IDLE_MS` between requests afterwards; off while a job owns the connection (a quiet client mid-build is normal — the job watchdogs bound it) |
 | **Job heartbeat** | Engine emits `heartbeat` while async wire jobs run; detached (HTTP/MCP) jobs have no stream to keep alive, so only the wall-deadline watchdog runs | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
-| **Job wall deadline** | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
+| **Job wall deadline** | Cancel token + worker shutdown + interrupt runner; connection join bounded. A socket job's EOF is its real bound, so its cap is off unless set; a detached job has no connection to end it, so it always runs under a cap — the submission's own (`POST /api/build` `deadlineMs`, MCP `deadline_s`; `0` = none) or the engine's detached default. The cancel reason names the knob | Socket: `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off). Detached: `[engine] detached-deadline-ms` / `JK_ENGINE_DETACHED_DEADLINE_MS` (default **1 hour**). Join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
 | **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
@@ -96,7 +96,9 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
-idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap.
+idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap. A
+dashboard or agent whose builds legitimately run past an hour raises `detached-deadline-ms`, or
+passes a deadline on the submission itself.
 
 ### Logging
 
