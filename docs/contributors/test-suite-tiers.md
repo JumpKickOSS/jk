@@ -16,13 +16,13 @@ one Gradle-only guard, G64), buildSrc's tests and the two registry tasks. It is 
 cases and verdicts; the nightly `integration` job is that comparison.
 
 <!-- test-tiers:start -->
-| Command | Includes | Excludes | In `checkAll`? |
-|---------|----------|----------|----------------|
-| `./gradlew test` | untagged | `integration`, `slow`, `network`, `bench` | yes |
-| `./gradlew integrationTest` | `integration` | `slow`, `network`, `bench` | yes |
-| `./gradlew slowTest` | `slow` | `network`, `bench` | no |
-| `./gradlew networkTest` | `network` | `bench` | no |
-| `./gradlew benchTest` | `bench` | — | no |
+| Command | Includes | Excludes |
+|---------|----------|----------|
+| `jk test` | untagged | `integration`, `slow`, `network`, `bench` |
+| `jk test --profile integration` | `integration` | `slow`, `network`, `bench` |
+| `jk test --profile slow` | `slow` | `network`, `bench` |
+| `jk test --profile network` | `network` | `bench` |
+| `jk test --profile bench` | `bench` | — |
 <!-- test-tiers:end -->
 
 Tag new heavy tests at class level:

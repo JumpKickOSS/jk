@@ -730,9 +730,6 @@ in     = "shared/wire"
 at     = "cc.jumpkick.wire.EnginePaths#identitiesIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 
-[both-builds-see-modules]
-population = { left = 38, right = 38 }
-
 [cache-tiers]
 population = { constants = 29, files = 1931, literals = 34955 }
 
@@ -743,9 +740,6 @@ population = { constants = 29, files = 1931, literals = 34955 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/io" = { classes = 34, sites = 1989 }
 "shared/client-io" = { classes = 88, sites = 4844 }
-
-[catalog-is-the-version-source]
-population = { files = 59 }
 
 [central-address]
 population = { files = 1942 }
@@ -1767,9 +1761,6 @@ population = { rows = 18 }
 [guard-registry-doc]
 population = { rows = 73 }
 
-[guard-rules-registered]
-population = { left = 73, right = 73 }
-
 [guard-schemas-doc]
 population = { rows = 84 }
 
@@ -2111,9 +2102,6 @@ population = { files = 3349 }
 [no-historical-narration]
 population = { files = 3604 }
 
-[no-link-following-delete]
-population = { files = 79 }
-
 [no-retired-code-markers]
 population = { files = 1942 }
 
@@ -2285,9 +2273,6 @@ population = { files = 3349 }
 [schema-freeze]
 population = { files = 11 }
 
-[ship-layout-installer-gradle]
-population = { left = 1, right = 1 }
-
 [ship-layout-installer-jk]
 population = { left = 1, right = 1 }
 
@@ -2352,9 +2337,6 @@ population = { constants = 1, files = 1931, literals = 34909 }
 [task-names]
 population = { constants = 64, files = 1931, literals = 34900 }
 
-[test-fixtures-stay-out-of-production]
-population = { files = 52 }
-
 [test-paths-from-checkout-root]
 population = { files = 1392 }
 
@@ -2376,9 +2358,6 @@ population = { constants = 119, files = 1931, literals = 34831 }
 
 [worker-offline-from-spec]
 population = { files = 151 }
-
-[wrapper-version-parity]
-population = { left = 1, right = 1 }
 
 [xml-parser-hardening]
 population = { files = 1 }

@@ -477,20 +477,20 @@ miss    = 'Jk.execute("install", "--m2-dir", m2.toString(), dir.toString());'
 instead = "pass --m2-dir into the test's own temp dir"
 why     = "an install test without --m2-dir publishes into the developer's real ~/.m2"
 
-# G65. A tree walk in build logic that follows symbolic links can reach the JDK install behind a
-# stable pointer in a test home and delete it. Trees.deleteNoFollow / exceedsNoFollow never enter a
+# G65. A tree walk in a build script that follows symbolic links can reach the JDK install behind a
+# stable pointer in a test home and delete it. Files.walkFileTree without FOLLOW_LINKS never enters a
 # link.
-[guards.no-link-following-delete]
+[guards.script-walks-never-follow-links]
 kind     = "text"
-files    = ["**/*.gradle.kts", "buildSrc/src/**/*.kt", ".jk/**/*.kts"]
+files    = [".jk/**/*.kts"]
 blank    = "comments+strings"
 patterns = [
   '\.deleteRecursively\(', '\.walkTopDown\(', '\.walkBottomUp\(',
   '(?<!Files)\.walk\(\)', '(?<!NO)FOLLOW_LINKS',
 ]
 hit      = "dir.toFile().deleteRecursively()"
-miss     = "Trees.deleteNoFollow(dir)"
-instead  = "Trees.deleteNoFollow or Trees.exceedsNoFollow: a link is one entry there, never a directory to enter"
+miss     = "Files.walkFileTree(dir, deleteChildrenFirst)"
+instead  = "Files.walkFileTree with no FOLLOW_LINKS, deleting children first: a link is one entry, never a directory to enter"
 why      = "a walk that follows links can delete the install behind a stable JDK pointer"
 
 # G10. Unenforced caps regrow: a class finished its peel at 1,064 lines and was back over 1,200
@@ -646,19 +646,6 @@ reason = "image configuration and repository credentials are public model types"
 in     = "plugins/minified -> shared/dynamic-surface"
 reason = "R8 keep rules and native reachability share one model"
 
-# G34. A testFixtures variant wired into a production configuration puts test code — and the
-# JUnit it compiles against — on a worker's flattened POM and inside the native image, where
-# nothing else notices until GraalVM fails to see a reflective JUnit lookup at runtime. This is
-# the wiring arm over the Gradle scripts; the classpath arm is G73/G74 below.
-[guards.test-fixtures-stay-out-of-production]
-kind    = "text"
-files   = ["build.gradle.kts", "**/build.gradle.kts", "buildSrc/src/main/kotlin/*.gradle.kts"]
-pattern = "^\\s*(api|implementation|compileOnly|compileOnlyApi|runtimeOnly|annotationProcessor)\\s*\\(\\s*testFixtures\\s*\\("
-hit     = "    implementation(testFixtures(project(\":host\")))"
-miss    = "    testImplementation(testFixtures(project(\":host\")))"
-instead = "testImplementation / testCompileOnly / testRuntimeOnly"
-why     = "a testFixtures variant on a production configuration ships test code in a worker POM and the native image"
-
 # G73. The native client's runtime is the native image: a test framework, an analysis library or a
 # resolver-side Maven helper on its classpath is a mis-scoped dependency the image would carry and
 # GraalVM would fail to see through, caught here rather than merely absent.
@@ -684,30 +671,8 @@ why    = "a CLI edge to an engine-side module puts engine code in the native ima
 in     = "clients/cli -> plugins/*"
 reason = "the CLI embeds the bundled worker plugins' jar digests: build-order inputs, never classes on its classpath"
 
-# G44. Both builds see the same modules: a module only one build knows about is outside half the
-# self-host gate (`plugins/micronaut` sat in settings.gradle.kts and in no jk.toml for a release).
-[guards.both-builds-see-modules]
-kind  = "parity"
-left  = { workspace-modules = "jk.toml" }
-right = { gradle-includes = "settings.gradle.kts" }
-why   = "a module one build cannot see is built half the time"
-
-# G56. The wrapper task and gradle-wrapper.properties pin the same Gradle; the Node pin stays in the
-# gate script, where the workflow's setup-node arms live.
-[guards.wrapper-version-parity]
-kind  = "parity"
-left  = { regex = { file = "gradle/wrapper/gradle-wrapper.properties", pattern = 'gradle-(\d+\.\d+(?:\.\d+)?)' } }
-right = { regex = { file = "build.gradle.kts", pattern = 'gradleVersion\s*=\s*"([^"]+)"' } }
-why   = "a wrapper task that pins one Gradle while the properties download another builds with the wrong one"
-
-# G62. The ship layout is one directory name, spelled by the installer and by both dist writers; a
-# rename in one is silent in the others and pairs a fresh client with the released engine.
-[guards.ship-layout-installer-gradle]
-kind  = "parity"
-left  = { regex = { file = "install.sh", pattern = 'SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)"' } }
-right = { regex = { file = "build.gradle.kts", pattern = 'shadowJar"\)\) \{ into\("([A-Za-z0-9_-]+)"\)' } }
-why   = "install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past"
-
+# G75. The ship layout is one directory name, spelled by the installer and by the dist script; a
+# rename in one is silent in the other and pairs a fresh client with the released engine.
 [guards.ship-layout-installer-jk]
 kind  = "parity"
 left  = { regex = { file = "install.sh", pattern = 'SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)"' } }
@@ -793,9 +758,9 @@ fixture    = "server/guard/fixtures/properties-render-owner"
 instead    = "cc.jumpkick.host.DeterministicProperties.render, sorted and undated"
 why        = "Properties.store() dates the file and orders it by hash, so the same input yields different bytes"
 
-# G35. Gradle runs a test with CWD at the owning module; a workspace `jk build` runs it with CWD at
-# the engine's state dir. A test that locates a checkout file from the working directory is red
-# under one build and green under the other.
+# G35. A module-rooted test run has CWD at the owning module; a workspace `jk build` runs the same
+# test with CWD at the engine's state dir. A test that locates a checkout file from the working
+# directory is red in one and green in the other.
 [guards.test-paths-from-checkout-root]
 kind     = "text"
 files    = ["**/src/test/java/**/*.java", "**/src/fixtures/java/**/*.java"]
@@ -804,7 +769,7 @@ hit      = "Path here = Path.of(Bad.class.getProtectionDomain().getCodeSource().
 miss     = 'Path manifest = RepoRoot.file(OkTest.class, "plugins/android/jk-plugin.toml");'
 owner    = "shared/host/src/fixtures/java/cc/jumpkick/testing/RepoRoot.java"
 instead  = "cc.jumpkick.testing.RepoRoot.find / file / dir(<ThisTest>.class, \"<path-from-root>\")"
-why      = "a path from the working directory differs between Gradle and a workspace jk build"
+why      = "a path from the working directory differs between a module-rooted test run and a workspace jk build"
 
 # G37. jk links its toolchain registry entries at host-installed JDKs, so a delete that follows a
 # link reaches files jk did not install. Both Files.walk and walkFileTree decline to follow links by
@@ -888,14 +853,6 @@ signatures = ["java.lang.String#toLowerCase()", "java.lang.String#toUpperCase()"
 fixture    = "server/guard/fixtures/case-conversion-locale"
 instead    = "toLowerCase(Locale.ROOT) / toUpperCase(Locale.ROOT)"
 why        = "a case conversion in the default locale misparses identifiers under tr_TR and az"
-
-# G51. Every rule of this file is a letter in the registry and every registered ruleId is a rule
-# here; the letter parity between the two builds is the `guard-parity` guard test.
-[guards.guard-rules-registered]
-kind  = "parity"
-left  = { regex = { file = "buildSrc/src/main/kotlin/Guards.kt", pattern = 'ruleId = "([a-z0-9-]+)"' } }
-right = { guard-ids = true }
-why   = "a rule no letter claims, or a letter whose rule is gone, is the registry lagging the code"
 
 # The user documentation's kind and key tables are renderings of the loader's own schema, so the
 # docs cannot drift from what the loader accepts.
@@ -983,19 +940,6 @@ hit      = "@Deprecated static int old() {}"
 miss     = "// @Deprecated in prose"
 instead  = "delete the alias or the helper"
 why      = "a deprecated alias is a dual path with no users to protect"
-
-# A pin lives in gradle/libs.versions.toml or it does not exist: the lockfiles and the verification
-# metadata are written from the catalog, so a literal coordinate in a build script is a version they
-# never saw. Plugin ids use `version "x"` syntax and are not coordinates.
-[guards.catalog-is-the-version-source]
-kind     = "text"
-files    = ["**/*.gradle.kts"]
-blank    = "comments"
-patterns = ['"[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:[0-9]+\.[0-9]+[^"]*"']
-why      = "a version pinned in a build script is one the lockfiles and verification metadata were never written from, so it drifts unseen"
-instead  = "add the coordinate to gradle/libs.versions.toml and reference it as libs.<alias>"
-hit      = 'implementation("org.example:lib:1.2.3")'
-miss     = 'implementation(libs.example.lib)'
 
 # Time is read in one place. A stamp, an age or a duration taken straight from the JVM cannot be
 # moved by a test, so the test sleeps instead — and a sleep asserts a duration, not a condition.

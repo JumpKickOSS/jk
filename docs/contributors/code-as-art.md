@@ -44,7 +44,7 @@ that standard.
   - [Verify the number before it lands in a Done criterion](#verify-the-number-before-it-lands-in-a-done-criterion)
   - [A test that passes without executing is worse than a missing test](#a-test-that-passes-without-executing-is-worse-than-a-missing-test)
   - [A delete that follows a symbolic link is not a delete](#a-delete-that-follows-a-symbolic-link-is-not-a-delete)
-  - [The repo builds itself twice, so it has two manifests and one truth](#the-repo-builds-itself-twice-so-it-has-two-manifests-and-one-truth)
+  - [One manifest per module, and the build that ships is the build that gates](#one-manifest-per-module-and-the-build-that-ships-is-the-build-that-gates)
   - [A test that reads the source tree names it from the checkout root](#a-test-that-reads-the-source-tree-names-it-from-the-checkout-root)
 - [Campaign](#campaign)
   - [Scoreboard](#scoreboard)
@@ -277,12 +277,11 @@ declaring it again is a copy that has to be kept in sync, and a guard
 reading the directory would still have to consult the descriptor to know
 whether the directory was right — two spellings of one fact, which is the
 defect this campaign exists to remove. The directory also carries no
-build-graph meaning: Gradle project names here are family-neutral
-(`:android`, `:auditor`), so every `project(":x")` reference is invariant
-under a rename, *including* the worker-jar lists in
-`clients/cli/build.gradle.kts` and `server/engine/build.gradle.kts`. What
-a rename would buy is legibility, at the cost of 8 `git mv`s, 15
-`projectDir` lines, `jk.toml`, a `jk-lock.toml` re-lock and 13 test files.
+build-graph meaning: the artifact names are family-neutral (`jk-android`,
+`jk-auditor`), so every `[build] test-plugin-jars` entry and every workspace
+edge is invariant under a rename. What a rename would buy is legibility, at
+the cost of 8 `git mv`s, the root `[workspace]` list, a `jk-lock.toml`
+re-lock and 13 test files.
 What G25 buys instead is the case a directory name cannot see: a module
 whose family and whose actual engine wiring disagree.
 
@@ -566,19 +565,17 @@ Zero-runtime. Safe on the Graal CLI. Dogfoods `jk init`.
    `@NonNull`.
 3. No JetBrains / JSR-305 / Lombok nullness in engine or shared.
    IntelliJ keeps JetBrains because the platform API uses it.
-4. The null-marked modules — every root `NullMarking.enforcedRoots` names, which is every module
-   with Java sources except those `NullMarking.unenforcedModules` lists with what turning it on
-   costs — compile with Error Prone + NullAway in `OnlyNullMarked` JSpecify mode at error
-   severity under **both builds**: the Gradle convention `jk.nullmarked-conventions` and the
-   module's own `[javac]` table in `jk.toml` pass the same flags. `checkGuardParity` fails when a
-   module is on one list and not the other. Nothing spares a unit suite: every enforced module's
-   compiles under the same plugins as its production code (`[javac.test]` exists for a suite that
-   needs it; none of jk's does), and production is never spared. Every production package in
-   those modules is marked; `checkNullMarkedApiPackages` (G53) prevents unmarked additions.
+4. Every module with Java sources compiles with Error Prone + NullAway in `OnlyNullMarked`
+   JSpecify mode at error severity: the module's own `[javac]` and `[javac.plugins.ErrorProne]`
+   tables in `jk.toml` carry the flags, one identical block per module. Nothing spares a unit
+   suite: every module's tests compile under the same plugins as its production code
+   (`[javac.test]` exists for a suite that needs it; none of jk's does), and production is never
+   spared. Every production package in those modules is marked; `null-marked-packages` (G53)
+   prevents unmarked additions.
 5. Three-state `Boolean success` on the accumulator is correct (unset /
    ok / fail). Mark `@Nullable`; do not “fix” it to `boolean`.
 
-Add `org.jspecify:jspecify` as `compileOnly` via `jk.java-conventions`.
+Add `org.jspecify:jspecify` under a module's `[provided-dependencies]`.
 
 ### Lombok (project-wide)
 
@@ -627,10 +624,10 @@ on the same surface.
   handling or a real signature).
 - `@ExtensionMethod` — implicit static imports hide call sites.
 
-Wire Lombok into the monorepo Gradle conventions the same way jspecify
-is wired: `compileOnly` + `annotationProcessor`, never `implementation`.
-User projects scaffold Lombok under `[processor-dependencies]` and
-`[provided-dependencies]` (see `NewScaffolder`).
+Lombok sits in a module's `[processor-dependencies]` and `[provided-dependencies]`, the same
+scopes jspecify does, never in `[dependencies]`; `scripts/check-lombok-diet.sh` refuses a manifest
+that puts it anywhere a runtime can reach. User projects scaffold it the same way (see
+`NewScaffolder`).
 
 ### Patterns
 
@@ -654,7 +651,7 @@ accumulator stamps are the state machine — do not draw a 12-type
 
 ### Tests
 
-- `./gradlew test` is the default loop. New UDS/HTTP/e2e:
+- `jk test` is the default loop. New UDS/HTTP/e2e:
   `@Tag("integration")`.
 - `EngineServerTest` stays a real-socket contract. New units sit under
   the extracted type (`JobEnvelopeTest`: fake verb, fake transport,
@@ -715,17 +712,16 @@ method under `src/guard`. No annotation processing, no new dependency.
 
 ### Where a guard runs
 
-**The repo builds itself twice, so a rule enforced by one build is enforced
-half the time.** Every guard therefore has a home in each build, and the two
-homes are not symmetrical.
+**jk builds jk, and jk enforces the rules.** Every guard has one home, in the build that runs
+on every commit.
 
-| | Gradle | jk |
-|---|---|---|
-| Home | `Guards` in buildSrc is the registry; the one Gradle task is G64 (`jk.verification`), plus `checkGuardParity`, `checkGuardRegistry` and `checkShellcheck` at the root | `jk-guards.toml` at the workspace root, plus guard tests under a module's `src/guard` |
-| Unit | one Gradle task for the letter only Gradle can see (its own task graph) | one `[guards.<id>]` table per rule, or one `@Guard` method |
-| Scope | the module's `JavaCompile` tasks | a lane: model (manifests, lock), module (one module's classes), workspace, tree (the text corpus), output (packaged artifacts) |
-| Re-runs | when the task graph changes | when the lane's input changes |
-| Reports | the task | every broken rule, each with its baseline state and its exemption path; SARIF and JSONL under `target/` |
+| | jk |
+|---|---|
+| Home | `jk-guards.toml` at the workspace root, plus guard tests under a module's `src/guard` |
+| Unit | one `[guards.<id>]` table per rule, or one `@Guard` method |
+| Scope | a lane: model (manifests, lock), module (one module's classes), workspace, tree (the text corpus), output (packaged artifacts) |
+| Re-runs | when the lane's input changes |
+| Reports | every broken rule, each with its baseline state and its exemption path; SARIF and JSONL under `target/` |
 
 **A rule the vocabulary can express is a table; a rule it cannot is a guard
 test.** `jk guard --schema <kind>` prints what each kind can say: a `forbid`
@@ -737,10 +733,10 @@ method in the module whose sources it reads: `HouseRules` and `ParityRules` in
 `server/guard/src/guard` for the workspace-wide ones, `EngineRules` and
 `CliRules` for one module's own. A guard test gets `Text`, `Model` and
 `Violations` from the engine, reports sites the way a table does, and proves it
-bites with a `@Fixture` where the rule is a ban. The registry (`Guards.kt`)
-records which it is — `ruleId`, `guardTestId`, or `engineCode` for an invariant
-the engine checks itself under a reserved code (G23's `tiers`) — and G51 fails
-a letter that has a Gradle task and no jk side.
+bites with a `@Fixture` where the rule is a ban. The registry table below
+records which it is — a rule id with its kind, a guard test id, or an engine
+validation for an invariant the engine checks itself under a reserved code
+(G23's `tiers`) — and G79 fails a row that names none of them.
 
 Ask which it is before writing one: *can `jk guard --schema` spell it?* Yes →
 a table. No → a guard test. Never a script: the closed vocabulary is what lets
@@ -751,34 +747,23 @@ the model lane to the manifests and the lock, a module lane to that module's
 compiled classes and its rules, the tree lane to the text corpus — so an
 unchanged input skips the lane and an edit re-runs only the lanes it can affect.
 A lane writes a **verdict**, never an artifact, and only a success is recorded,
-so a red lane goes red again rather than replaying itself. That is the property
-Gradle needs `inputs.files(...)` for, obtained from the other direction, and it
-is why a guard test runs in the engine's lane rather than under JUnit's
-up-to-date check. (`ActionTreeTest` is the cautionary case: as a plain test it
-went `UP-TO-DATE` and passed with the violation reintroduced.)
+so a red lane goes red again rather than replaying itself. That is why a
+guard test runs in the engine's lane, keyed to the tree it reads, rather than as
+a unit test keyed to its own module: a plain test that scans other modules'
+sources is replayed green when only those sources change.
 
 Every rule states the population it examined, and a rule that examined nothing
 is not green: the floor under the scans is each rule's own, so no separate
 corpus guard is needed (G0 is subsumed by it).
 
-**When each build runs them.** `jk build` runs the model, module, workspace and
-output lanes on every build that does work; the tree lane (text, metric, parity
-and generated rules) and the fixture proofs run on `jk guard`, `jk test --guard`
-and `jk build --guard`, so an inner `jk build` never pays a tree scan. CI's
-self-host job runs `jk guard` after the build. The Gradle build runs the one letter
-its task graph alone can see, G64 (`checkNoDisabledCompile`, on every module's
-`check`), and two registry tasks at the root: `checkGuardRegistry` renders the
-table below, and `checkGuardParity` fails a letter that has a Gradle task and no
-jk side, an excuse in `guard-parity.txt` for a letter that has one, and a
-`jk-guards.toml` whose digest differs from the one the last `jk build` recorded
-under `target/` — the two builds must have enforced the same rules. One more
-root task has a jk twin on purpose: `checkShellcheck` (G100) runs
-`scripts/shellcheck.sh` because checkFast runs no guard suite, and the
-`shellcheck` guard test runs the same script under `jk guard`. `./gradlew
-checkFast` therefore means the unit tier, buildSrc's tests and those four
-tasks; the house rules are the self-host lane's, under `jk guard`. Gradle
-running `jk-guards.toml` itself (a `JavaExec` over `server/guard`) is the
-follow-up `guard-parity.txt` records.
+**When they run.** `jk build` runs the model, module, workspace and output
+lanes on every build that does work; the tree lane (text, metric, parity and
+generated rules) and the fixture proofs run on `jk guard`, `jk test --guard` and
+`jk build --guard`, so an inner `jk build` never pays a tree scan. CI's self-host
+job runs `jk guard` after the build, and `jk guard` is the second step of the
+local gate (`jk format`, `jk guard`, `jk build`, `jk test --profile integration`).
+The shell scripts have their lint in the same place: the `shellcheck` guard test
+(G100) runs `scripts/shellcheck.sh` under `jk guard`.
 
 ### How to write one
 
@@ -834,8 +819,7 @@ follow-up `guard-parity.txt` records.
   every such view (comments blanked, comments and literals blanked, comments
   only), length-preserving so an offset in the view is an offset in the
   source. It replaced three copies that had each learned a different edge
-  case; buildSrc keeps its own only until the Gradle-side follow-up, and
-  `CodeTextSingleOwnerTest` fails a fourth.
+  case, and `CodeTextSingleOwnerTest` fails a fourth.
 - **Prefer a zero-allowlist ban to a ratchet, and a ratchet to nothing.**
   An allowlist is a feature, not a concession: it *is* the ownership map,
   checked in and reviewable. When a rule has too many violations to gate
@@ -867,123 +851,124 @@ follow-up `guard-parity.txt` records.
 
 ### The guard registry
 
-Letters are allocated when a guard lands and are never reused. `Guards.kt` is the Gradle
-side's record and the table below is rendered from it; the jk side is `jk-guards.toml` and
-the guard tests, which the last column names. Retiring `Guards.kt` itself — Gradle running
-`jk-guards.toml` through a `JavaExec` over `server/guard` instead of keeping a twin task per
-letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
+Letters are allocated when a guard lands and are never reused. The table below is the
+registry: one row per letter, and the last column names what enforces it — a `jk-guards.toml`
+rule with its kind, a guard test under some module's `src/guard`, or an engine validation. A
+retired letter keeps its row and its last column says why. G79 (`guard-letters-registry`) holds
+the table to the code: every letter from G0 up has a row, every named rule, guard test and
+validation exists with that kind, and every rule and guard test is claimed by exactly one letter.
 
 <!-- guards:start -->
-| id | task | rule | form | jk side |
-|---|---|---|---|---|
-| G0 | *(subsumed: each rule states its population)* | a scan reporting green over a corpus that has shrunk below the population it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards | subsumed: every rule reports the population it examined, so the floor is each rule's own | subsumed: each rule states its population |
-| G1 | — | a hand-built `<javaHome>/bin/java` (use `JdkFingerprint`) | ban | guard test `hand-built-java-binary` |
-| G2 | — | `System.exit` / `halt` with an integer literal (use `Exit`) | ban, no allowlist | `named-exit-codes` (text) |
-| G3 | — | an XML parser outside `cc.jumpkick.host.DomXml`, plus the six flags required inside it by name | ban | `xml-parser-owner` (forbid) |
-| G4 | *(folded into the `cli-no-parse-types` guard test)* | the planned `org.tomlj` / `TomlValues` ban in `clients/cli/src/main/java` landed as two entries on the existing CLI guard rather than a new letter — one rule, one owner, no new task | ban | guard test `cli-no-parse-types` |
-| G5 | — | a `##JK*:` protocol prefix not named exactly twice | ban | `wire-prefix-pairs` (text) |
-| G6 | — | a `MessageDigest` lookup outside `cc.jumpkick.host.Hashing` | ban | `one-digest-surface` (forbid) |
-| G7 | — | a hand-rolled boolean truth set, true **or** false side (use `EnvValues.parseBool`) | ban | guard test `single-truth-set` |
-| G8 | — | an archive entry stamped outside `DeterministicZip` | ban | `archive-instant-owner` (forbid) |
-| G9 | — | a per-byte hex loop, or `java.util.HexFormat` outside `cc.jumpkick.host.Hashing` (use `Hashing.hex`) | ban, no allowlist | `one-hex-spelling` (forbid) |
-| G10 | — | growth past `size-baseline.txt` or over a language's hard cap | ratchet | `file-size` (metric) |
-| G11 | — | a file gaining a fully-qualified class name (`fqcn-baseline.txt`) | ratchet | `no-fqcn` (metric) |
-| G12 | — | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | `task-names` (vocabulary) |
-| G13 | — | a jk file name typed as a literal (use `ManifestPaths`) | ban | `manifest-names` (vocabulary) |
-| G14 | *(guard test, `server/engine/src/guard`)* | a forecast key hashing a different fact set than the build key | ban | guard test `forecast-key-parity` |
-| G15 | — | a cache-tier directory typed as a literal (use `CacheTree`) | ban | `cache-tiers` (vocabulary) |
-| G16 | — | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` (vocabulary) |
-| G17 | — | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | `wire-types` (vocabulary) |
-| G18 | — | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban | `target-dir` (vocabulary) |
-| G19 | — | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist | `published-poms` (output) |
-| G20 | — | an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`) | ban | `one-host-surface` (forbid) |
-| G21 | — | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | guard test `one-json-codec` |
-| G22 | *(guard test, `clients/cli/src/guard`)* | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | guard test `ide-client-wiring` |
-| G23 | — | a `@Tag` no test task runs, a tag no tier owns, or a `TestTiers` table that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions | engine validation `tiers` |
-| G24 | — | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist | `aot-marker` (vocabulary) |
-| G25 | — | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist | guard test `plugin-family` |
-| G26 | — | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet) | `plugin-fork-owner` (forbid) |
-| G27 | *(guard test, `clients/cli/src/guard`)* | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist | guard test `cli-stdio-handoff-owner` |
-| G28 | — | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors | `retired-wire-keys` (text) |
-| G29 | — | a `JK_OFFLINE` / offline-property read in worker sources (use `TaskExec.offline()`) | ban, no allowlist | `worker-offline-from-spec` (text) |
-| G30 | — | a `Properties.store()` call in main sources (use `DeterministicProperties.render`) | ban, no allowlist | `properties-render-owner` (forbid) |
-| G31 | *(guard test, `clients/cli/src/guard`)* | a `:cli` test reading the ambient state root without `@IsolatedState` | ratchet | guard test `cli-test-isolated-state` |
-| G32 | *(guard test, `server/engine/src/guard`)* | a spike-cache test that does not root its project in a `@TempDir` | ban, one env-gated exception | guard test `spike-cache-temp-dir` |
-| G33 | — | `gradle/libs.versions.toml` and `jk-lock.toml` disagreeing on a shared module version | ban | engine validation `catalog-lock` |
-| G34 | — | a `testFixtures(...)` dependency on a non-test configuration, or a test-fixtures/JUnit/AssertJ jar on the CLI's runtime classpath — scans every build script, plus a self-fail arm | ban, no allowlist | `test-fixtures-stay-out-of-production` (text) |
-| G35 | — | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist | `test-paths-from-checkout-root` (text) |
-| G36 | — | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `fixtures = true` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist | guard test `manifest-dep-parity` |
-| G37 | — | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete | `one-recursive-delete` (text) |
-| G38 | — | a toolchain env var read straight from the daemon's own environment instead of the request (use `BuildEnv.forModule` / `ambient`) — `JK_JDK=temurin-21 jk build` was silently ignored, so which JDK you compiled against depended on how the resident engine happened to be started | ban; `server/` + `shared/` main sources only (`clients/` is exempt by shape — there `System.getenv` **is** the request), one narrow in-scope exemption | `toolchain-env-from-request` (forbid) |
-| G39 | — | an `isRegularFile` filter placed before a free name-only predicate — the walk already read the attributes, and re-resolving the path costs 10.3 µs on NTFS against 1.0 on ext4 | ban | guard test `cheapest-rejection-first` |
-| G40 | — | a `Files.isExecutable` outside `PathUtil.isRunnable` — 33.4 µs on Windows against 0.52 on Linux, for a question Windows does not answer that way (there the extension decides) | ban, one exemption (`ActionCache.executableBit`, which wants the bit itself) | `runnable-owner` (forbid) |
-| G41 | — | never allocated. Letters are issued when a guard lands; this one never was, and is not reusable. G44 briefly carried the same claim and was wrong: it is live in the self-hosted build. | — | — |
-| G42 | — | a hand-rolled recursive copy outside `PathUtil.copyTree` — the mirror of G37 for the write direction; all twelve callers shared the same three defects (`createDirectories` per *file*, no byte-identity check, walk attributes discarded) | ban, commented exemptions, each a copy deliberately not the owner's shape | `tree-copy-owner` (text) |
-| G43 | — | an archive byte sink that bypasses `DeterministicZip.archiveStream` / `newArchive` — `ZipOutputStream` inherits a 512-byte buffer, turning a 9 MB jar into ~18,000 `write(2)` calls where 64 KB gives ~143 | ban + self-fail on the owner still offering the sink | `archive-stream-owner` (text) |
-| G44 | `both-builds-see-modules` (jk-guards.toml, `parity`) | a module `settings.gradle.kts` and the root `jk.toml` `[workspace]` do not both see — Gradle never builds it, or `jk build` never compiles it and `jk test` never runs its suite; plus a stale `singleBuildModules` exception that one of the builds has since picked up | ban, one declared single-build exception (`clients/intellij`) | `both-builds-see-modules` (parity) |
-| G45 | — | a module gaining a blind `Files.walk` / `walkFileTree` / `newDirectoryStream` / `list` in `src/main/java` (prefer `PathUtil.forEachRegularFile`, which hands the walk's attributes to the visitor) | ratchet against `walk-baseline.txt`; a module may only shrink | `blind-tree-walks` (forbid) |
-| G46 | — | JDK removal reachable from anything but an explicit `jk jdk` verb — an ordinary build deleted the JDK it was running on, twice in one afternoon, taking four installs including both GraalVMs | ban + self-fail on `JdkGarbage` still carrying the members it reads | `jdk-removal-confined` (forbid) |
-| G47 | — | a `toLowerCase()` / `toUpperCase()` in `src/main` without `Locale.ROOT` — under tr_TR/az `'i' ⇄ 'I'` do not round-trip, so an identifier parser is wrong for an entire locale family; one silently rewrote an MCP client's `runtime` scope into `main` | ban + a self-fail arm on scanning zero files | `case-conversion-locale` (forbid) |
-| G48 | — | an inline Javadoc tag glued to its payload (`{@code.asc}`) — renders as literal garbage, and blocks FQCN shortening for the whole file | ban, no allowlist | `no-glued-inline-tag` (text) |
-| G49 | — | a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; extension-blind like G50; self-fail arms: stale allowlist entry, fixture set no longer caught, marker isolation, empty candidate set | ban; nine-file allowlist, each entry carrying the reason it reads another program's layout | `single-home-root` (text) |
-| G50 | — | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set | `no-ticket-ids` (text) |
-| G51 | `checkGuardParity` (root project) | a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other | ban; exceptions carry the reason parity is impossible, and "not ported yet" is not one | `guard-rules-registered` (parity) |
-| G52 | — | the contributor tier table differs from `TestTiers` task names, include/exclude tags, order, or `checkAll` membership | exact generated-block comparison in both builds | guard test `test-tier-docs` |
-| G53 | — | a production package in an enforced null-marked root (every root `NullMarking.enforcedRoots` names) lacks package-level `@NullMarked` without a `NullMarking.excludedPackages` entry, an exclusion goes stale, or the measured 30-package corpus drifts | ban, no allowlist | `null-marked-packages` (annotate) |
-| G54 | — | a first-party plugin adds an unclassified project dependency, or an exception disappears without removing its allowlist row | SDK/host baseline plus the current invariant table in `docs/contributors/plugins.md`; server dependencies are banned | `plugin-sdk-boundary` (layers) |
-| G55 | — | the published engine-config tables differ from `EngineControls` keys, env names, defaults, or meaning | exact generated-block comparison in both builds | guard test `engine-config-docs` |
-| G56 | — | the wrapper task version disagrees with `gradle-wrapper.properties`, or a `setup-node` step does not read `.nvmrc` | exact version comparison in both builds | `wrapper-version-parity` (parity) |
-| G57 | — | nightly CI no longer runs `benchTest`, `coverageReport`, or the macOS/Windows product smoke; the branch gate loses the self-host job, its isolated `JK_HOME`, its bootstrap from the hosted release `.jk/ci-bootstrap-version` pins or the `jk install` that hands the gate to the checkout's own jk, runs `gradlew` in that job, or carries `continue-on-error` outside the advisory `gradle-parity` job; or the scheduled Gradle-vs-jk wall measurement stops running or stops keeping a machine-readable result | workflow text scan in both builds; a fixture proves the bite | guard test `ci-cadence` |
-| G58 | — | the security-reporting page, the GitHub `SECURITY.md` pointer, or the advisory URL is missing | file and pointer scan in both builds | guard test `security-docs` |
-| G59 | — | a comment or doc narrates a previous design instead of the current invariant | phrase scan in both builds; AGENTS.md and comments.md exempt because they name the ban | `no-historical-narration` (text) |
-| G60 | — | a JSON object spliced by hand in `src/main/java` — a closing brace chopped and appended to, or a literal `{` opened onto another object's tail — outside `Jsonl.append` | ban in both builds; self-fail when the owner stops splicing or the scan sees too few sources | `one-json-splicer` (text) |
-| G61 | — | a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2` | ban in both builds; self-fail when the scan stops finding install invocations | `install-tests-redirect-m2` (text) |
-| G62 | — | the two builds and `install.sh` disagree on the ship layout's engine directory | compare the directory name in both builds and the installer; self-fail when an anchor stops matching | `ship-layout-installer-gradle` (parity) |
-| G63 | — | a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full tier | registry scan in both builds, floored on the integration population it is carved out of | guard test `curated-integration` |
-| G64 | `checkNoDisabledCompile` | a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints "did not run" | ban; self-fail when the module has no compile tasks to scan | Gradle-only: task-graph state |
-| G65 | — | build logic deleting or sizing a tree with a walk that follows symbolic links — Kotlin's `File.deleteRecursively`, `walkTopDown`, `walkBottomUp` and `File.walk`, or `FOLLOW_LINKS` — anywhere but `buildSrc/src/main/kotlin/Trees.kt` | ban in both builds, comment- and string-blind; self-fail when the owner stops using `walkFileTree` or the scan sees too few build files | `no-link-following-delete` (text) |
-| G66 | — | a production package declared by two or more modules without a `package-owners.txt` row naming the pair and why it is legal — package-private reach works across a jar boundary on a flat classpath and stops working under JPMS, so a split package is latent breakage that grows quietly | ratchet, single-owner allowlist (`package-owners.txt`) | `one-module-per-package` (split-package) |
-| G67 | — | a module's production packages sitting in a package-import cycle growing past its `cycle-baseline.txt` band — and a module that improves without tightening its line, because a number nobody banks stops meaning anything. Reports component membership, never cycle paths: a 15-package component has thousands of elementary cycles and none of them says which edge to cut | ratchet, both directions (`cycle-baseline.txt`) | `package-cycles` (cycles) |
-| G68 | — | the six XXE flags inside `DomXml.hardened`, each by name — the only XXE posture jk has | count, exactly six | `xml-parser-hardening` (text) |
-| G69 | — | jk's own digest algorithm spelled at a `Hashing` door (`newDigest` / `fileHex` / `hashHex`) instead of `newSha256` / `sha256Hex` | ban, owner exempt | `own-algorithm-by-name` (forbid) |
-| G70 | — | Maven Central addressed by its alias host or by a hand-typed URL outside `RepositorySpec.MAVEN_CENTRAL` | ban, foreign-build readers allowed | `central-address` (text) |
-| G71 | — | `class` read as a field key in the dashboard SPA (the wire says `testClass`) | ban, SPA assets only | `spa-no-class-key` (text) |
-| G72 | *(guard test, `server/guard/src/guard`)* | the size caps code-as-art.md states and the caps `[guards.file-size]` enforces disagreeing, or the charter's Contents list drifting from its headings | parity, self-hosted build only | guard test `charter-parity` |
-| G73 | — | maven-artifact, plexus-utils, jline, test-fixtures or a test/analysis framework on the CLI runtime classpath | ban | `cli-runtime-classpath` (depend) |
-| G74 | *(folded into `cli-runtime-modules`)* | a CLI workspace edge to an engine-side module (plugin-sdk, guard, resolver) — the same `checkCliRuntimeClasspath` task on the Gradle side, a `layers` rule here | ban | `cli-runtime-modules` (layers) |
-| G75 | `ship-layout-installer-jk` (jk-guards.toml, `parity`) | `install.sh` and jk's dist script (`.jk/after-build-dist.kts`) disagreeing on the ship layout's engine directory — G62's third anchor, one `parity` rule per pair | parity, two extractions must agree | `ship-layout-installer-jk` (parity) |
-| G76 | `guard-registry-doc` (jk-guards.toml, `generated`) | the declarative rules' registry block in `docs/contributors/code-as-art.md` not being what `jk-guards.toml` renders (id, kind, why) | generated, rendered from `guard-ids` | `guard-registry-doc` (generated) |
-| G77 | — | a doc publishing a stage list that is not `BuildStage`'s wire values in pipeline order — `machine-output.md` is a contract consumers integrate against | generated list, read off the enum | guard test `stage-docs` |
-| G78 | — | a relative link under `docs/` that resolves to nothing — code spans and fenced blocks are prose, not navigation | ban | guard test `doc-links-resolve` |
-| G79 | `checkGuardRegistry` (root project) + guard test `guard-letters-registry` | the guard registry table in `code-as-art.md` not listing exactly the letters `Guards.kt` declares, or a `ruleId` / `guardTestId` naming a rule that does not exist | generated table (Gradle renders the cells; jk checks the letters and the ids) | guard test `guard-letters-registry` |
-| G80 | `no-agent-trailers` (jk-guards.toml, `commit`) + `scripts/check-no-agent-attribution.sh` (CI) | a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes | commit rule, forbid-trailers globs; CI's history scan is the other half | `no-agent-trailers` (commit) |
-| G81 | — | `hosting/public/install.sh` differing from the repo-root copy — served to `curl | bash` users, so a stale copy installs jk where the CLI does not look | parity, line sets of the two copies (Gradle: byte identity) | `published-installer-sh` (parity) |
-| G82 | `published-installer-ps1` (jk-guards.toml, `parity`) | `hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81 | parity, line sets of the two copies | `published-installer-ps1` (parity) |
-| G83 | `guard-kinds-doc` (jk-guards.toml, `generated`) | the kinds table in `docs/user/guards.md` not being what the loader's kind list renders | generated, rendered from `guard-kinds` | `guard-kinds-doc` (generated) |
-| G84 | `guard-schemas-doc` (jk-guards.toml, `generated`) | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | generated, rendered from `guard-schemas` | `guard-schemas-doc` (generated) |
-| G85 | `schema-freeze` (jk-guards.toml, `text`) | an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0 | text, exactly five `= 1` constants across the named owners | `schema-freeze` (text) |
-| G86 | `lock-version-is-one` (jk-guards.toml, `text`) | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
-| G87 | `no-retired-code-markers` (jk-guards.toml, `text`) | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
-| G88 | `method-size` (jk-guards.toml, `metric`) | a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800 | metric, `lines` per method, baselined and tightened on every build | `method-size` (metric) |
-| G89 | `catalog-is-the-version-source` (jk-guards.toml, `text`) | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | `catalog-is-the-version-source` (text) |
-| G90 | `clock-owner` (jk-guards.toml, `forbid`) | a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep | forbid, baselined at the swept count and tightened on every build | `clock-owner` (forbid) |
-| G91 | `coverage-band` (jk-guards.toml, `metric`) | a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything | metric, `coverage.line` per module against a floor, baselined with a half-point band; nightly, after `jk test --coverage` | `coverage-band` (metric) |
-| G92 | `json-concat` (jk-guards.toml, `text`) | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code; measured here, held by G93 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `json-concat` (text) |
-| G93 | `json-concat-ratchet` (jk-guards.toml, `metric`) | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
-| G94 | `schema-compared-to-its-constant` (jk-guards.toml, `text`) | a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant, this pins every comparison against it | text, no match tree-wide | `schema-compared-to-its-constant` (text) |
-| G95 | `git-writes-are-pinned` (jk-guards.toml, `text`) | a git verb after `-C <dir>` that is not a known read — the write searches upward and lands in whatever repository encloses the path, not the one meant | text, no match tree-wide | `git-writes-are-pinned` (text) |
-| G96 | `engine-log-owner` (jk-guards.toml, `forbid`) | a write to System.out / System.err, printStackTrace() or dumpStack() in server or shared main code outside `cc.jumpkick.host.Log` — a print has no level, misses the engine log's size cap and skips its redaction | forbid, `@jdk-system-out`, scope `server/*` and `shared/*` | `engine-log-owner` (forbid) |
-| G97 | `swallowed-broad-catch` (jk-guards.toml, `text`) | a catch of Exception, Throwable or RuntimeException whose body is only a comment, in main code; measured here, held by G98 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `swallowed-broad-catch` (text) |
-| G98 | `swallowed-broad-catch-ratchet` (jk-guards.toml, `metric`) | a file's count of comment-only broad catches growing past its baseline — zero since every one got a debug line carrying the exception | metric, `matches:swallowed-broad-catch` per file, baselined and tightened on every build | `swallowed-broad-catch-ratchet` (metric) |
-| G99 | — | a workflow `run:` step pipes into `tee` without pipefail — no `shell: bash` on the step or under a `defaults.run`, and no `set -o pipefail` in the script — so the piped command's failure is tee's success | workflow text scan in both builds; a fixture proves the bite | guard test `workflow-tee-pipefail` |
-| G100 | `checkShellcheck` (root project) + guard test `shellcheck` | a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `$var` in a `[ ]` test (SC2086) first among them | `scripts/shellcheck.sh` in both builds: the binary, else a container runtime; skipped with a notice on a developer machine that has neither, failed under CI | guard test `shellcheck` |
-| G101 | `one-http-client` (jk-guards.toml, `forbid`) | an `HttpClient.newBuilder()` outside `cc.jumpkick.http.Http` — a client that goes direct behind the proxy every other request honours; `Http.proxiedClientBuilder()` + `proxiedRequest(uri)` is the door for a request shape the verbs do not fit | forbid, owner probed every run | `one-http-client` (forbid) |
+| id | rule | form | jk side |
+|---|---|---|---|
+| G0 | a scan reporting green over a corpus that has shrunk below the population it was measured against — module dirs, `src/main/java`, `src/test/java`, `plugins/*`. Not a rule about the code: a floor under the *other* guards | subsumed: every rule reports the population it examined, so the floor is each rule's own | subsumed: each rule states its population |
+| G1 | a hand-built `<javaHome>/bin/java` (use `JdkFingerprint`) | ban | guard test `hand-built-java-binary` |
+| G2 | `System.exit` / `halt` with an integer literal (use `Exit`) | ban, no allowlist | `named-exit-codes` (text) |
+| G3 | an XML parser outside `cc.jumpkick.host.DomXml`, plus the six flags required inside it by name | ban | `xml-parser-owner` (forbid) |
+| G4 | the planned `org.tomlj` / `TomlValues` ban in `clients/cli/src/main/java` landed as two entries on the existing CLI guard rather than a new letter — one rule, one owner, no new task | ban | guard test `cli-no-parse-types` |
+| G5 | a `##JK*:` protocol prefix not named exactly twice | ban | `wire-prefix-pairs` (text) |
+| G6 | a `MessageDigest` lookup outside `cc.jumpkick.host.Hashing` | ban | `one-digest-surface` (forbid) |
+| G7 | a hand-rolled boolean truth set, true **or** false side (use `EnvValues.parseBool`) | ban | guard test `single-truth-set` |
+| G8 | an archive entry stamped outside `DeterministicZip` | ban | `archive-instant-owner` (forbid) |
+| G9 | a per-byte hex loop, or `java.util.HexFormat` outside `cc.jumpkick.host.Hashing` (use `Hashing.hex`) | ban, no allowlist | `one-hex-spelling` (forbid) |
+| G10 | growth past `size-baseline.txt` or over a language's hard cap | ratchet | `file-size` (metric) |
+| G11 | a file gaining a fully-qualified class name (`fqcn-baseline.txt`) | ratchet | `no-fqcn` (metric) |
+| G12 | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | `task-names` (vocabulary) |
+| G13 | a jk file name typed as a literal (use `ManifestPaths`) | ban | `manifest-names` (vocabulary) |
+| G14 | a forecast key hashing a different fact set than the build key | ban | guard test `forecast-key-parity` |
+| G15 | a cache-tier directory typed as a literal (use `CacheTree`) | ban | `cache-tiers` (vocabulary) |
+| G16 | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` (vocabulary) |
+| G17 | a hyphenated wire message type typed as a literal (use `EngineProtocol`) | ban | `wire-types` (vocabulary) |
+| G18 | jk's build output directory typed as a literal (use `BuildLayout.TARGET`) | ban | `target-dir` (vocabulary) |
+| G19 | a generated POM naming a coordinate this build does not publish (`unspecified`, the `jk` fallback group, or an unpublished artifact in a group we do publish) | ban, no allowlist | `published-poms` (output) |
+| G20 | an `os.name` read outside `cc.jumpkick.host.Os`, or a path separator outside `Classpaths` (`-cp`) and `SearchPath` (`PATH`) | ban | `one-host-surface` (forbid) |
+| G21 | a JSON escaper or an escape-decoding parser outside `cc.jumpkick.jsonl` — exempt by spec, so `MinimalToml.quote` beside `Jsonl.quote` passes | ban, no allowlist | guard test `one-json-codec` |
+| G22 | an IDE client naming a command, verb, class or wire field that does not exist, or pinning `untilBuild` — five arms, each self-failing on an empty scan | ban, no allowlist | guard test `ide-client-wiring` |
+| G23 | a `@Tag` no tier runs, a tag no tier owns, or a tier table in `jk.toml` that does not partition its own vocabulary — three arms, exhaustive over the 2⁴ tag subsets, plus an import-vs-literal blindness balance | ban, two named fixture exceptions | engine validation `tiers` |
+| G24 | the `.noaot` refusal-marker suffix typed outside `cc.jumpkick.host.AotCacheFiles` — banned outright in `src/main/java`, and in `src/test/java` as a bare suffix (a whole fixture file name is allowed) | ban, no allowlist | `aot-marker` (vocabulary) |
+| G25 | a plugin module whose family (SPI plugin vs forked worker, decided by the presence of `jk-plugin.toml`) disagrees with its wire-prefix wiring, or an SPI plugin reading a config key its `[schema]` does not declare — four arms, per module, each self-failing on an empty scan | ban, no allowlist | guard test `plugin-family` |
+| G26 | a plugin forking a process outside `TaskExec.ToolRun.start()` | ban, one commented file exemption (a container runtime named on `PATH`, which `ToolRun` cannot express yet) | `plugin-fork-owner` (forbid) |
+| G27 | a `clients/cli` command inheriting stdio outside `CliOutput.handOffTerminal` — comment-blind, plus a self-fail arm on the owner still calling `inheritIO()` | ban, no allowlist | guard test `cli-stdio-handoff-owner` |
+| G28 | a retired wire-key spelling typed as a field key in production source | ban, declared inputs + self-fail floors | `retired-wire-keys` (text) |
+| G29 | a `JK_OFFLINE` / offline-property read in worker sources (use `TaskExec.offline()`) | ban, no allowlist | `worker-offline-from-spec` (text) |
+| G30 | a `Properties.store()` call in main sources (use `DeterministicProperties.render`) | ban, no allowlist | `properties-render-owner` (forbid) |
+| G31 | a `:cli` test reading the ambient state root without `@IsolatedState` | ratchet | guard test `cli-test-isolated-state` |
+| G32 | a spike-cache test that does not root its project in a `@TempDir` | ban, one env-gated exception | guard test `spike-cache-temp-dir` |
+| G33 | `gradle/libs.versions.toml` and `jk-lock.toml` disagreeing on a shared module version | ban | retired with the Gradle build: no version catalog to hold against the lock |
+| G34 | a `testFixtures(...)` dependency on a non-test configuration, or a test-fixtures/JUnit/AssertJ jar on the CLI's runtime classpath — scans every build script, plus a self-fail arm | ban, no allowlist | retired with the Gradle build: the wiring arm read Gradle scripts; the classpath arm is G73 `cli-runtime-classpath` |
+| G35 | a test locating a checkout file from the working directory — `getProtectionDomain` outside `cc.jumpkick.testing.RepoRoot`, or a `user.dir` line escaping with `..`; comment-blind, plus a self-fail arm on the fixture's signatures | ban, no allowlist | `test-paths-from-checkout-root` (text) |
+| G36 | a module whose `build.gradle.kts` and `jk.toml` declare different workspace dependencies, in either direction, including a Gradle `testFixtures(...)` edge with no `fixtures = true` twin — plus a self-fail arm on the project-path-to-artifact-name map | ban, no allowlist | retired with the Gradle build: one manifest per module |
+| G37 | a hand-rolled children-first delete outside `cc.jumpkick.host.PathUtil`, or `FOLLOW_LINKS` in any file that deletes — comment-blind, plus a self-fail arm on the owner still using `walkFileTree` and `NOFOLLOW_LINKS` | ban; four commented exemptions, each a *selective* delete rather than a tree delete | `one-recursive-delete` (text) |
+| G38 | a toolchain env var read straight from the daemon's own environment instead of the request (use `BuildEnv.forModule` / `ambient`) — `JK_JDK=temurin-21 jk build` was silently ignored, so which JDK you compiled against depended on how the resident engine happened to be started | ban; `server/` + `shared/` main sources only (`clients/` is exempt by shape — there `System.getenv` **is** the request), one narrow in-scope exemption | `toolchain-env-from-request` (forbid) |
+| G39 | an `isRegularFile` filter placed before a free name-only predicate — the walk already read the attributes, and re-resolving the path costs 10.3 µs on NTFS against 1.0 on ext4 | ban | guard test `cheapest-rejection-first` |
+| G40 | a `Files.isExecutable` outside `PathUtil.isRunnable` — 33.4 µs on Windows against 0.52 on Linux, for a question Windows does not answer that way (there the extension decides) | ban, one exemption (`ActionCache.executableBit`, which wants the bit itself) | `runnable-owner` (forbid) |
+| G41 | never allocated. Letters are issued when a guard lands; this one never was, and is not reusable. G44 briefly carried the same claim and was wrong: it is live in the self-hosted build. | — | — |
+| G42 | a hand-rolled recursive copy outside `PathUtil.copyTree` — the mirror of G37 for the write direction; all twelve callers shared the same three defects (`createDirectories` per *file*, no byte-identity check, walk attributes discarded) | ban, commented exemptions, each a copy deliberately not the owner's shape | `tree-copy-owner` (text) |
+| G43 | an archive byte sink that bypasses `DeterministicZip.archiveStream` / `newArchive` — `ZipOutputStream` inherits a 512-byte buffer, turning a 9 MB jar into ~18,000 `write(2)` calls where 64 KB gives ~143 | ban + self-fail on the owner still offering the sink | `archive-stream-owner` (text) |
+| G44 | a module `settings.gradle.kts` and the root `jk.toml` `[workspace]` do not both see — Gradle never builds it, or `jk build` never compiles it and `jk test` never runs its suite; plus a stale `singleBuildModules` exception that one of the builds has since picked up | ban, one declared single-build exception (`clients/intellij`) | retired with the Gradle build: one workspace list |
+| G45 | a module gaining a blind `Files.walk` / `walkFileTree` / `newDirectoryStream` / `list` in `src/main/java` (prefer `PathUtil.forEachRegularFile`, which hands the walk's attributes to the visitor) | ratchet against `walk-baseline.txt`; a module may only shrink | `blind-tree-walks` (forbid) |
+| G46 | JDK removal reachable from anything but an explicit `jk jdk` verb — an ordinary build deleted the JDK it was running on, twice in one afternoon, taking four installs including both GraalVMs | ban + self-fail on `JdkGarbage` still carrying the members it reads | `jdk-removal-confined` (forbid) |
+| G47 | a `toLowerCase()` / `toUpperCase()` in `src/main` without `Locale.ROOT` — under tr_TR/az `'i' ⇄ 'I'` do not round-trip, so an identifier parser is wrong for an entire locale family; one silently rewrote an MCP client's `runtime` scope into `main` | ban + a self-fail arm on scanning zero files | `case-conversion-locale` (forbid) |
+| G48 | an inline Javadoc tag glued to its payload (`{@code.asc}`) — renders as literal garbage, and blocks FQCN shortening for the whole file | ban, no allowlist | `no-glued-inline-tag` (text) |
+| G49 | a path spelling from the pre-`~/.jk` layout, or a retired per-role `JK_*_DIR`, anywhere a reader can see it — sources, tests, docs and installers, deliberately **not** comment-blind, since comments are the surface being protected; extension-blind like G50; self-fail arms: stale allowlist entry, fixture set no longer caught, marker isolation, empty candidate set | ban; nine-file allowlist, each entry carrying the reason it reads another program's layout | `single-home-root` (text) |
+| G50 | a KanArtist ticket id anywhere in the tree — extension-blind, because every scope this rule was given by extension is where it was missed next: `*.kts` held 153 after the first sweep reported clean, the web client's CSS/JS held ~50 after the second, and a Giter8 template wrote one into a user's own new project | ban, two exemptions (`AGENTS.md`'s board protocol, this page's ban examples) + a self-fail on an empty candidate set | `no-ticket-ids` (text) |
+| G51 | a guard letter enforced by one build and not the other — G46 through G50 lived on the Gradle side only, so `jk build` printed "house rules clean" while enforcing 36 of the 41 it claimed, and neither gate's count was wrong about itself. Deliberately implemented twice: a parity check only one build runs has the shape of the problem it prevents. The exception list is single-owner (`guard-parity.txt`), so a letter cannot be excused on one side and demanded on the other | ban; exceptions carry the reason parity is impossible, and "not ported yet" is not one | retired with the Gradle build: one build enforces the rules |
+| G52 | the contributor tier table differs from the root manifest's `[test]` and `[profiles.*]` tiers — command, include or exclude tags, order | exact generated-block comparison | guard test `test-tier-docs` |
+| G53 | a production package in a null-marked module (the rule's `scope`) lacks package-level `@NullMarked` without an allow entry carrying its reason, or an allow goes stale | ban, no allowlist | `null-marked-packages` (annotate) |
+| G54 | a first-party plugin adds an unclassified project dependency, or an exception disappears without removing its allowlist row | SDK/host baseline plus the current invariant table in `docs/contributors/plugins.md`; server dependencies are banned | `plugin-sdk-boundary` (layers) |
+| G55 | the published engine-config tables differ from `EngineControls` keys, env names, defaults, or meaning | exact generated-block comparison | guard test `engine-config-docs` |
+| G56 | a `setup-node` step that does not read `.nvmrc`, or a Node pin that is not one version token | workflow text scan | guard test `node-pin-parity` |
+| G57 | nightly CI no longer runs the `integration`, `slow`, `network` or `bench` profile, the coverage ratchet (`jk test --coverage` then `jk guard`) or the macOS product smoke; the branch gate loses the self-host job, its isolated `JK_HOME`, its bootstrap from the hosted release `.jk/ci-bootstrap-version` pins or the `jk install` that hands the gate to the checkout's own jk, runs `gradlew` in that job, or carries `continue-on-error` on any job; or the scheduled wall measurement stops running or stops keeping a machine-readable result | workflow text scan; a fixture proves the bite | guard test `ci-cadence` |
+| G58 | the security-reporting page, the GitHub `SECURITY.md` pointer, or the advisory URL is missing | file and pointer scan | guard test `security-docs` |
+| G59 | a comment or doc narrates a previous design instead of the current invariant | phrase scan; AGENTS.md and comments.md exempt because they name the ban | `no-historical-narration` (text) |
+| G60 | a JSON object spliced by hand in `src/main/java` — a closing brace chopped and appended to, or a literal `{` opened onto another object's tail — outside `Jsonl.append` | ban; self-fail when the owner stops splicing or the scan sees too few sources | `one-json-splicer` (text) |
+| G61 | a test that runs the install verb without `--m2-dir`, which publishes the fixture into the developer's real `~/.m2` | ban; self-fail when the scan stops finding install invocations | `install-tests-redirect-m2` (text) |
+| G62 | the two builds and `install.sh` disagree on the ship layout's engine directory | compare the directory name in both builds and the installer; self-fail when an anchor stops matching | retired with the Gradle build: G75 `ship-layout-installer-jk` holds the installer to jk's dist script |
+| G63 | a curated integration entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a failure path the class does not show — plus a surface with only happy paths, a branch gate that stopped running the lane, and a nightly that stopped running the full integration profile | registry scan, floored on the integration population it is carved out of | guard test `curated-integration` |
+| G64 | a disabled `JavaCompile` task, which takes its source set out of every gate while the build stays green — the tests it would compile report `NO-SOURCE` and the tier prints "did not run" | ban; self-fail when the module has no compile tasks to scan | retired with the Gradle build: a disabled compile task is a Gradle task-graph state |
+| G65 | a jk build script (`.jk/**/*.kts`) deleting or sizing a tree with a walk that follows symbolic links — Kotlin's `File.deleteRecursively`, `walkTopDown`, `walkBottomUp` and `File.walk`, or `FOLLOW_LINKS` | ban, comment- and string-blind | `script-walks-never-follow-links` (text) |
+| G66 | a production package declared by two or more modules without a `package-owners.txt` row naming the pair and why it is legal — package-private reach works across a jar boundary on a flat classpath and stops working under JPMS, so a split package is latent breakage that grows quietly | ratchet, single-owner allowlist (`package-owners.txt`) | `one-module-per-package` (split-package) |
+| G67 | a module's production packages sitting in a package-import cycle growing past its `cycle-baseline.txt` band — and a module that improves without tightening its line, because a number nobody banks stops meaning anything. Reports component membership, never cycle paths: a 15-package component has thousands of elementary cycles and none of them says which edge to cut | ratchet, both directions (`cycle-baseline.txt`) | `package-cycles` (cycles) |
+| G68 | the six XXE flags inside `DomXml.hardened`, each by name — the only XXE posture jk has | count, exactly six | `xml-parser-hardening` (text) |
+| G69 | jk's own digest algorithm spelled at a `Hashing` door (`newDigest` / `fileHex` / `hashHex`) instead of `newSha256` / `sha256Hex` | ban, owner exempt | `own-algorithm-by-name` (forbid) |
+| G70 | Maven Central addressed by its alias host or by a hand-typed URL outside `RepositorySpec.MAVEN_CENTRAL` | ban, foreign-build readers allowed | `central-address` (text) |
+| G71 | `class` read as a field key in the dashboard SPA (the wire says `testClass`) | ban, SPA assets only | `spa-no-class-key` (text) |
+| G72 | the size caps code-as-art.md states and the caps `[guards.file-size]` enforces disagreeing, or the charter's Contents list drifting from its headings | parity | guard test `charter-parity` |
+| G73 | maven-artifact, plexus-utils, jline, test-fixtures or a test/analysis framework on the CLI runtime classpath | ban | `cli-runtime-classpath` (depend) |
+| G74 | a CLI workspace edge to an engine-side module (plugin-sdk, guard, resolver) — G73 reads the classpath, this `layers` rule the manifest | ban | `cli-runtime-modules` (layers) |
+| G75 | `install.sh` and jk's dist script (`.jk/after-build-dist.kts`) disagreeing on the ship layout's engine directory — G62's third anchor, one `parity` rule per pair | parity, two extractions must agree | `ship-layout-installer-jk` (parity) |
+| G76 | the declarative rules' registry block in `docs/contributors/code-as-art.md` not being what `jk-guards.toml` renders (id, kind, why) | generated, rendered from `guard-ids` | `guard-registry-doc` (generated) |
+| G77 | a doc publishing a stage list that is not `BuildStage`'s wire values in pipeline order — `machine-output.md` is a contract consumers integrate against | generated list, read off the enum | guard test `stage-docs` |
+| G78 | a relative link under `docs/` that resolves to nothing — code spans and fenced blocks are prose, not navigation | ban | guard test `doc-links-resolve` |
+| G79 | the guard registry table in `code-as-art.md` not being total over the letters, a row whose jk side names a rule, guard test or engine validation that does not exist or has another kind, or a rule or guard test no row claims | registry scan over the table, `jk-guards.toml` and every `src/guard` | guard test `guard-letters-registry` |
+| G80 | a commit message carrying a tool's co-author, generator or assistant trailer — refused at the commit boundary by the `commit-msg` hook `jk guard hooks install` writes | commit rule, forbid-trailers globs; CI's history scan is the other half | `no-agent-trailers` (commit) |
+| G81 | `hosting/public/install.sh` differing from the repo-root copy — served to `curl | bash` users, so a stale copy installs jk where the CLI does not look | parity, line sets of the two copies | `published-installer-sh` (parity) |
+| G82 | `hosting/public/install.ps1` differing from the repo-root copy — the PowerShell half of G81 | parity, line sets of the two copies | `published-installer-ps1` (parity) |
+| G83 | the kinds table in `docs/user/guards.md` not being what the loader's kind list renders | generated, rendered from `guard-kinds` | `guard-kinds-doc` (generated) |
+| G84 | the key tables in `docs/user/guards.md` not being what the loader's `KeySpec` tables render | generated, rendered from `guard-schemas` | `guard-schemas-doc` (generated) |
+| G85 | an external format constant (`Lockfile.CURRENT_VERSION`, `EngineProtocol.PROTOCOL`, MCP / JSONL / transcript `SCHEMA`) not equal to 1 before 1.0 | text, exactly five `= 1` constants across the named owners | `schema-freeze` (text) |
+| G86 | a committed `jk-lock.toml` whose `version` is not 1 | text, max 0 matches over every lock in the tree | `lock-version-is-one` (text) |
+| G87 | `@Deprecated` or `@SuppressWarnings("unused")` in main code — a dual path or a parked helper the charter says to delete on touch | text, max 0 matches over `**/src/main/**/*.java` | `no-retired-code-markers` (text) |
+| G88 | a method or constructor body over 120 code lines in main, test or fixture Java — the file cap alone let 34 members pass 150 inside files parked under 800 | metric, `lines` per method, baselined and tightened on every build | `method-size` (metric) |
+| G89 | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | retired with the Gradle build: the lock is the one version source |
+| G90 | a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep | forbid, baselined at the swept count and tightened on every build | `clock-owner` (forbid) |
+| G91 | a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything | metric, `coverage.line` per module against a floor, baselined with a half-point band; nightly, after `jk test --coverage` | `coverage-band` (metric) |
+| G92 | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code; measured here, held by G93 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `json-concat` (text) |
+| G93 | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
+| G94 | a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant, this pins every comparison against it | text, no match tree-wide | `schema-compared-to-its-constant` (text) |
+| G95 | a git verb after `-C <dir>` that is not a known read — the write searches upward and lands in whatever repository encloses the path, not the one meant | text, no match tree-wide | `git-writes-are-pinned` (text) |
+| G96 | a write to System.out / System.err, printStackTrace() or dumpStack() in server or shared main code outside `cc.jumpkick.host.Log` — a print has no level, misses the engine log's size cap and skips its redaction | forbid, `@jdk-system-out`, scope `server/*` and `shared/*` | `engine-log-owner` (forbid) |
+| G97 | a catch of Exception, Throwable or RuntimeException whose body is only a comment, in main code; measured here, held by G98 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `swallowed-broad-catch` (text) |
+| G98 | a file's count of comment-only broad catches growing past its baseline — zero since every one got a debug line carrying the exception | metric, `matches:swallowed-broad-catch` per file, baselined and tightened on every build | `swallowed-broad-catch-ratchet` (metric) |
+| G99 | a workflow `run:` step pipes into `tee` without pipefail — no `shell: bash` on the step or under a `defaults.run`, and no `set -o pipefail` in the script — so the piped command's failure is tee's success | workflow text scan; a fixture proves the bite | guard test `workflow-tee-pipefail` |
+| G100 | a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `$var` in a `[ ]` test (SC2086) first among them | `scripts/shellcheck.sh`: the binary, else a container runtime; skipped with a notice on a developer machine that has neither, failed under CI | guard test `shellcheck` |
+| G101 | an `HttpClient.newBuilder()` outside `cc.jumpkick.http.Http` — a client that goes direct behind the proxy every other request honours; `Http.proxiedClientBuilder()` + `proxiedRequest(uri)` is the door for a request shape the verbs do not fit | forbid, owner probed every run | `one-http-client` (forbid) |
+| G102 | an import of `cc.jumpkick.cli.run` or `cc.jumpkick.command` from `cc.jumpkick.cli.engine`, the client half of the wire — it closes a package cycle across the line the wire client depends on nothing behind | ban; self-fail when the package scan shrinks | guard test `cli-engine-package-cycle` |
 <!-- guards:end -->
 
-`checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
-Both read only `clients/cli`, so both are now arms of `CliSourceRulesTest`
-— jk checks the manifest where Gradle checks the resolved classpath,
-which is the half each build can see.
+G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
+`depend` rule over the resolved runtime classpath, G4 an arm of the CLI's
+own guard suite.
 
 **This table drifted twice, and that is worth recording.** Six guards landed
 carrying no letter at all — G28 through G33 above were lettered when the
@@ -994,11 +979,11 @@ the same defect as a baseline that lags the tree, and it has the same fix:
 reconcile by listing both sides and diffing them.
 
 Twice by hand is the argument for the third time not being by hand.
-`Guards` in buildSrc is the typed catalog: letters, task names, descriptions,
-attach set, and fast-gate membership. `checkGuardRegistry` diffs this table
-against `Guards.tableMarkdown()`. Add a row by adding a `GuardSpec`; the
-marked table is generated, not edited. Retired and never-issued letters keep
-a row saying so, because the set has to be total for the diff to mean
+The table is the record, and G79 reads both sides of it: the letters against
+the integers from G0 up, the last column against `jk-guards.toml`, every
+`src/guard` and the engine's validation codes. Add a row when a guard lands;
+a row whose rule is gone is red. Retired and never-issued letters keep a row
+saying so, because the set has to be total for the diff to mean
 anything.
 
 The declarative tier has its own registry: every rule of `jk-guards.toml`,
@@ -1012,10 +997,8 @@ by id, kind and why. This block is a `generated` guard's rendering
 | archive-instant-owner | forbid | an archive stamped through the default timezone is a function of the build host's TZ |
 | archive-stream-owner | text | an archive written over an unbuffered sink pays one system call per 512 bytes |
 | blind-tree-walks | forbid | re-resolving each path to ask again is the dominant cost of walking a large tree |
-| both-builds-see-modules | parity | a module one build cannot see is built half the time |
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |
-| catalog-is-the-version-source | text | a version pinned in a build script is one the lockfiles and verification metadata were never written from, so it drifts unseen |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link) |
@@ -1026,7 +1009,6 @@ by id, kind and why. This block is a `generated` guard's rendering
 | git-writes-are-pinned | text | a write that searches upward mutates whichever repository encloses the path, not the one meant |
 | guard-kinds-doc | generated | a kind the docs describe and the loader does not know is a rule nobody can write |
 | guard-registry-doc | generated | the registry drifted twice by hand; the third reconciliation is not by hand |
-| guard-rules-registered | parity | a rule no letter claims, or a letter whose rule is gone, is the registry lagging the code |
 | guard-schemas-doc | generated | a key the docs describe and the loader does not accept is a rule that fails to load |
 | install-tests-redirect-m2 | text | an install test without --m2-dir publishes into the developer's real ~/.m2 |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
@@ -1040,7 +1022,6 @@ by id, kind and why. This block is a `generated` guard's rendering
 | no-fqcn | metric | a package-qualified reference in a body is a name the formatter could not shorten, or a collision that must say so |
 | no-glued-inline-tag | text | a glued inline tag renders as garbage and blocks the shortener for the whole file |
 | no-historical-narration | text | historical narration describes a tree that no longer exists |
-| no-link-following-delete | text | a walk that follows links can delete the install behind a stable JDK pointer |
 | no-retired-code-markers | text | a deprecated alias is a dual path with no users to protect |
 | no-ticket-ids | text | a ticket id names a tracker the reader does not have; a Giter8 template writes it into a user's project |
 | null-marked-packages | annotate | NullAway checks a package only where it says @NullMarked; an unmarked package is one where every nullness finding is off |
@@ -1064,7 +1045,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |
 | schema-compared-to-its-constant | text | G85 pins the constant and nothing pinned the comparisons against it |
 | schema-freeze | text | a bump before 1.0 mints a dual reader with no users |
-| ship-layout-installer-gradle | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
+| script-walks-never-follow-links | text | a walk that follows links can delete the install behind a stable JDK pointer |
 | ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
 | single-home-root | text | jk has one home; a layout it does not have, named anywhere, misleads the reader |
 | spa-no-class-key | text | the dashboard hand-types every key it reads, so a retired key there is silent |
@@ -1072,53 +1053,37 @@ by id, kind and why. This block is a `generated` guard's rendering
 | swallowed-broad-catch-ratchet | metric | a broad catch that only comments has written down its intent and dropped its evidence |
 | target-dir | vocabulary | the output directory is named once; renaming it must not miss a spelling |
 | task-names | vocabulary | a step name typed by hand is an edge that quietly does not exist |
-| test-fixtures-stay-out-of-production | text | a testFixtures variant on a production configuration ships test code in a worker POM and the native image |
-| test-paths-from-checkout-root | text | a path from the working directory differs between Gradle and a workspace jk build |
+| test-paths-from-checkout-root | text | a path from the working directory differs between a module-rooted test run and a workspace jk build |
 | toolchain-env-from-request | forbid | a toolchain variable read from the daemon's environment selects a JDK by how the engine was started, not by this build |
 | tree-copy-owner | text | a hand-rolled tree copy is the shape twelve callers got wrong the same three ways |
 | wire-prefix-pairs | text | a protocol prefix has exactly two ends: one writes it, one reads it |
 | wire-types | vocabulary | a wire type typed by hand is an event nobody handles |
 | worker-offline-from-spec | text | a worker reading the daemon's environment answers from the shell that started the engine |
-| wrapper-version-parity | parity | a wrapper task that pins one Gradle while the properties download another builds with the wrong one |
 | xml-parser-hardening | text | DomXml is the only parser jk builds, so its flags are the only XXE posture jk has |
 | xml-parser-owner | forbid | a second XML parser is a second XXE posture to get wrong |
 <!-- guard-rules:end -->
 
-    guards in gradle:   `Guards` in `buildSrc/src/main/kotlin/Guards.kt`
-    rules in jk:        jk guard explain        # every table of jk-guards.toml, by layer
+    rules:              jk guard explain        # every table of jk-guards.toml, by layer
     guard tests:        ls */*/src/guard/java/**/*Rules.java
+    registry:           the marked table above
 
-A new rule is a `[guards.<id>]` table (or a `@Guard` method) plus a `spec(…)`
-entry in `Guards.kt` naming it as the letter's `ruleId` / `guardTestId`; the
-registry table regenerates from that entry. A Gradle `check*` task is for a
-question only Gradle's task graph can answer (G64 is the one), and a new one
-that is not in `Guards` fails `checkGateCoverage`: wire it with
-`registerGuard("checkFoo") { … }`.
+A new rule is a `[guards.<id>]` table (or a `@Guard` method) plus its row in
+the registry table above, naming the id and kind; G79 fails a rule with no
+row and a row with no rule.
 
-A third home: a **convention script**. G25 and G26 live in
-`jk.plugin-conventions`, so each of the 15 plugin modules checks *itself*
-— the failure names the offending module, the fix is local, and the
-revert check is one narrow task (`./gradlew :auditor:checkPluginFamily`)
-rather than a tree-wide scan whose message has to say where it looked.
-Use this when the rule is per-module and the family already has a script.
+**Per-module guards loop rather than fan out.** A per-module rule scopes
+itself (`scope = ["plugins/*"]`) or is a `@Guard` in the module whose sources
+it reads (`EngineRules`, `CliRules`), so the failure names the module and the
+file and the fix stays local, without a second copy of the text primitives per
+module. See [Where a guard runs](#where-a-guard-runs).
 
-**On the jk side there is one home, the workspace root's `.jk/`, and
-per-module guards loop rather than fan out.** A `.jk/` of its own for
-`:cli` or `:engine` would buy the same locality, and would cost a second
-`kotlinc -script` start-up per module and a second copy of every text
-primitive — which is the duplication the rest of this file exists to
-prevent. The failure still names the module and the file, so the fix stays
-local. See [Where a guard runs](#where-a-guard-runs).
-
-**A guard that ships as a test is subject to Gradle's up-to-date
-check.** `ActionTreeTest` enforces an owner-sourced ban list from
-`:host:test`, and its first revert check *passed with the violation
-reintroduced* — because `:host:test` was `UP-TO-DATE`: nothing declared
-the other modules' sources as its inputs. A guard task declares
-`inputs.files(...)`; a test that does a guard's job has to declare the
-same tree-wide fileTree on the test task, or it silently stops looking.
-Verify it fires **without** `--rerun-tasks`, which is the only way to see
-this.
+**A guard that ships as a plain unit test is keyed to the wrong inputs.**
+`ActionTreeTest` enforces an owner-sourced ban list over every module's
+production sources from `shared/host`'s suite; a test runner that replays a
+suite whose own module did not change replays it green with the violation
+reintroduced elsewhere. Under `jk build` the test-tier stamp for a module
+covers the sources the suite reads, and a guard that scans the tree belongs
+in a lane keyed to the tree — a `@Guard`, not a `@Test`.
 
 **Give every guard a self-fail arm.** G22, G23 and G24 each fail when
 their own scan comes back empty or their owner-read returns nothing — so
@@ -1249,46 +1214,32 @@ directory — and G37 names each one with its reason, because "this is a
 different operation" and "this is a copy" look identical from a
 distance.
 
-### The repo builds itself twice, so it has two manifests and one truth
+### One manifest per module, and the build that ships is the build that gates
 
-jk builds jk. Every module carries a `build.gradle.kts` **and** a
-`jk.toml`, and the two say the same thing in different vocabularies:
-`implementation(project(":core"))` is `jk-core.workspace = true`,
-`testImplementation` is `[test-dependencies]`, and Gradle's
-`testFixtures(project(":host"))` is jk's
-`jk-host = { workspace = true, fixtures = true }`.
+jk builds jk. Every module carries one `jk.toml`, and the workspace edges it
+declares — `jk-core.workspace = true`, `[test-dependencies]`,
+`jk-host = { workspace = true, fixtures = true }` — are the edges every gate
+compiles, tests and guards against. There is no second declaration of the
+graph anywhere in the tree, so there is nothing for it to disagree with.
 
-Nothing was checking that they agreed. Thirteen edges were out of step at
-once, all in the direction of "Gradle knows, jk does not", so
-`./gradlew checkAll` was green while `jk test` could not compile the tree.
-The maintainer found it the only way it could be found: by wiping
-`~/.jk` and running `jk test`.
-
-The drift is not symmetric and the asymmetry is the lesson. Gradle was
-right about nine edges that jk had never been told (`clients/web` taking
-`:wire` for `WireTokenParityTest`; the five modules that consume `:host`'s
-test fixtures; the four plugin modules that consume `:plugin-sdk`'s).
-**jk** was right about two that Gradle still declared after a cleanup
-deleted them as unimported — so a guard that only checked one direction
-would have "fixed" the tree by re-adding dead edges. G36 checks both.
-
-**A ratchet on one build is not a ratchet.** Every rule in this document
-about owners, guards and baselines assumed one build graph. Two build
-graphs means every structural claim needs asking twice, and the second
-build is the one nobody runs before pushing.
+**A ratchet on one build is a ratchet only when that build is the one everyone
+runs.** Every rule in this document about owners, guards and baselines assumes
+one build graph, and the self-host job in CI runs that graph on every commit
+with the checkout's own jk. A structural claim is asked once, by the build
+nobody can skip.
 
 ### A test that reads the source tree names it from the checkout root
 
-The same round found the smaller sibling of that defect. Gradle runs a
-test with CWD at the owning module; a workspace `jk build` runs it with
-CWD at `~/.jk/state/engine`. A source tripwire that spells its
+The same round found the smaller sibling of that defect. A module-rooted
+test run has CWD at the owning module; a workspace `jk build` runs the same
+test with CWD at `~/.jk/state/engine`. A source tripwire that spells its
 target `Path.of(System.getProperty("user.dir"), "../../plugins/android/…")`
-therefore reads `~/.jk/state/plugins/android/…` under jk — green under
-Gradle for months.
+therefore reads `~/.jk/state/plugins/android/…` under the workspace build —
+green for months everywhere else.
 
 Fourteen test classes had solved this, each with its own copy of the
 walk-up-from-my-own-class-file loop, and each copy with a different
-per-module marker baked in (`settings.gradle.kts` + `server/engine`,
+per-module marker baked in (`jk-lock.toml` + `server/engine`,
 `jk.toml` + `shared/plugin-sdk`, `jk.toml` + `install.sh`…). That is why
 they were not literally identical, and it is why nobody noticed the
 fifteenth site had been written without one.
@@ -1301,7 +1252,7 @@ the nine above, three more times.
 
 One fixture replaced all fourteen: `cc.jumpkick.testing.RepoRoot`, in
 `shared/host`'s test fixtures, reachable from anywhere in the tree. It
-walks to the **checkout** root — the one anchor both builds share, since
+walks to the **checkout** root — the one anchor a module-rooted run and a workspace build share, since
 neither the module directory nor the CWD is reliably an ancestor of the
 loaded classes — and every path is then spelled from there, where the two
 layouts agree. It throws rather than returning null, which is what turned

@@ -5,7 +5,6 @@ import cc.jumpkick.guard.api.Blank;
 import cc.jumpkick.guard.api.Fixture;
 import cc.jumpkick.guard.api.Guard;
 import cc.jumpkick.guard.api.GuardSuite;
-import cc.jumpkick.guard.api.Model;
 import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Skipped;
 import cc.jumpkick.guard.api.Text;
@@ -19,7 +18,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,16 +31,12 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The parity and generated letters whose two sides the closed extractor vocabulary cannot both
- * read: Gradle scripts, Kotlin tables, workflow YAML, a registry with five fields, docs whose
- * expected text is a rendering. Each reads exactly what the gate script did and reports the site;
+ * read: the root manifest's tier tables, workflow YAML, a registry with five fields, docs whose
+ * expected text is a rendering. Each reads exactly what the gate compares and reports the site;
  * the engine owns the baseline, the {@code code} and the rendering.
  */
 @GuardSuite(scope = Scope.WORKSPACE)
 final class ParityRules {
-
-    private static final String SETTINGS = "settings.gradle.kts";
-    private static final Pattern PROJECT_DIR =
-            Pattern.compile("project\\(\"(:[\\w-]+)\"\\)\\.projectDir\\s*=\\s*file\\(\"([^\"]+)\"\\)");
 
     private static String text(Text text, String path) {
         return String.join("\n", text.lines(path));
@@ -78,224 +72,44 @@ final class ParityRules {
         return null;
     }
 
-    // ---- G36 ---------------------------------------------------------------------------------
-
-    private static final Set<String> TEST_CONFS = Set.of(
-            "testImplementation",
-            "testApi",
-            "testRuntimeOnly",
-            "testCompileOnly",
-            "testFixturesApi",
-            "testFixturesImplementation",
-            "integrationTestImplementation");
-    private static final Set<String> MAIN_CONFS =
-            Set.of("implementation", "api", "compileOnly", "runtimeOnly", "annotationProcessor", "compileOnlyApi");
-    private static final Pattern PROJECT_DEP =
-            Pattern.compile("(\\w+)\\(\\s*(testFixtures\\(\\s*)?project\\(\"(:[\\w-]+)\"\\)");
-    private static final Pattern MANIFEST_NAME = Pattern.compile("(?m)^name\\s*=\\s*\"([^\"]+)\"");
-    private static final Pattern DOTTED_WS = Pattern.compile("^([\\w-]+)\\.workspace\\s*=\\s*true");
-    private static final Pattern INLINE_DEP = Pattern.compile("^([\\w-]+)\\s*=\\s*\\{(.*)}");
-
-    @Guard(
-            id = "manifest-dep-parity",
-            why =
-                    "the repo builds itself with Gradle and with jk, so a workspace edge declared to one build is green there and broken in the other",
-            instead =
-                    "declare the edge in both build.gradle.kts and jk.toml — jk's `fixtures = true` is Gradle's `testFixtures(...)`, [test-dependencies] is testImplementation; fix whichever manifest is wrong, never delete the other declaration")
-    void manifestDepParity(Model model, Text text, Violations v) {
-        String settings = textOrNull(text, SETTINGS);
-        if (settings == null) {
-            // No Gradle build to compare against: every module manifest is examined for a script
-            // twin and none has one, so there is nothing to reconcile and no site. The population
-            // is the manifests looked at — zero would read as a rule that examined nothing.
-            long manifests = 0;
-            for (String module : model.modules()) {
-                if (!module.isEmpty() && exists(text, module + "/jk.toml")) manifests++;
-            }
-            v.population(manifests);
-            return;
-        }
-        Map<String, String> dirOf = new LinkedHashMap<>();
-        Matcher pd = PROJECT_DIR.matcher(settings);
-        while (pd.find()) dirOf.put(pd.group(1), pd.group(2));
-        Map<String, String> nameOf = new LinkedHashMap<>();
-        for (var e : dirOf.entrySet()) {
-            String manifest = textOrNull(text, e.getValue() + "/jk.toml");
-            if (manifest == null) continue;
-            Matcher n = MANIFEST_NAME.matcher(manifest);
-            if (n.find()) nameOf.put(e.getKey(), n.group(1));
-        }
-        if (nameOf.size() < 20)
-            throw new IllegalStateException("mapped only " + nameOf.size()
-                    + " project paths to artifact names, so this guard has lost settings.gradle.kts or the manifests");
-        long compared = 0;
-        for (String module : model.modules()) {
-            if (module.isEmpty()) continue;
-            String script = module + "/build.gradle.kts";
-            String manifest = module + "/jk.toml";
-            if (!exists(text, script) || !exists(text, manifest)) continue;
-            compared++;
-            Set<String> gradleMain = new TreeSet<>();
-            Set<String> gradleTest = new TreeSet<>();
-            Set<String> fixtures = new TreeSet<>();
-            int edges = 0;
-            String scriptText = text.blanked(script, Blank.COMMENTS);
-            for (String line : scriptText.split("\n")) {
-                Matcher m = PROJECT_DEP.matcher(line);
-                while (m.find()) {
-                    String name = nameOf.get(m.group(3));
-                    if (name == null) continue;
-                    edges++;
-                    boolean isFixture = m.group(2) != null;
-                    if (TEST_CONFS.contains(m.group(1))) {
-                        gradleTest.add(name);
-                        if (isFixture) fixtures.add(name);
-                    } else if (MAIN_CONFS.contains(m.group(1))) gradleMain.add(name);
-                }
-            }
-            if (scriptText.contains("project(\":") && edges == 0) {
-                v.add(
-                        new TextSite(script, 0, "scan broke"),
-                        "found no project dependency in " + script + " although the text contains one; fix the scan");
-                continue;
-            }
-            Set<String> jkMain = new TreeSet<>();
-            Set<String> jkTest = new TreeSet<>();
-            Set<String> jkFixtures = new TreeSet<>();
-            String table = "";
-            for (String raw : text.lines(manifest)) {
-                int hash = raw.indexOf('#');
-                String line = (hash >= 0 ? raw.substring(0, hash) : raw).strip();
-                if (line.startsWith("[")) {
-                    table = line.replace("[", "").replace("]", "");
-                    continue;
-                }
-                if (!table.endsWith("dependencies")) continue;
-                Matcher dotted = DOTTED_WS.matcher(line);
-                Matcher inline = INLINE_DEP.matcher(line);
-                String name = null;
-                boolean takesFixtures = false;
-                if (dotted.find()) name = dotted.group(1);
-                else if (inline.find()
-                        && inline.group(2).contains("workspace")
-                        && inline.group(2).contains("true")) {
-                    name = inline.group(1);
-                    takesFixtures = inline.group(2).matches(".*fixtures\\s*=\\s*true.*");
-                }
-                if (name == null) continue;
-                if (table.startsWith("test-")) {
-                    jkTest.add(name);
-                    if (takesFixtures) jkFixtures.add(name);
-                } else jkMain.add(name);
-            }
-            for (String d : minus(gradleMain, jkMain))
-                fault(
-                        v,
-                        manifest,
-                        module,
-                        "Gradle declares " + d + " for the main tier; jk.toml [dependencies] does not");
-            for (String d : minus(jkMain, gradleMain))
-                fault(v, manifest, module, "jk.toml [dependencies] declares " + d + "; build.gradle.kts does not");
-            Set<String> gradleTestOnly = minus(gradleTest, fixtures);
-            gradleTestOnly.removeAll(jkTest);
-            gradleTestOnly.removeAll(jkMain);
-            for (String d : gradleTestOnly)
-                fault(
-                        v,
-                        manifest,
-                        module,
-                        "Gradle declares " + d + " for the test tier; jk.toml [test-dependencies] does not");
-            Set<String> jkTestOnly = minus(jkTest, gradleTest);
-            jkTestOnly.removeAll(gradleMain);
-            for (String d : jkTestOnly)
-                fault(v, manifest, module, "jk.toml [test-dependencies] declares " + d + "; build.gradle.kts does not");
-            for (String d : minus(fixtures, jkFixtures))
-                fault(
-                        v,
-                        manifest,
-                        module,
-                        "Gradle takes " + d + "'s testFixtures; jk.toml needs `" + d
-                                + " = { workspace = true, fixtures = true }` under a [test-*dependencies] table");
-            for (String d : minus(jkFixtures, fixtures))
-                fault(
-                        v,
-                        manifest,
-                        module,
-                        "jk.toml takes " + d
-                                + " with fixtures = true; build.gradle.kts does not take its testFixtures");
-        }
-        v.population(compared);
-    }
-
     private static Set<String> minus(Set<String> a, Set<String> b) {
         Set<String> out = new TreeSet<>(a);
         out.removeAll(b);
         return out;
     }
 
-    private static void fault(Violations v, String file, String module, String what) {
-        v.add(new TextSite(file, 0, what), module + " declares different dependencies to its two builds: " + what);
-    }
-
     // ---- G52 ---------------------------------------------------------------------------------
 
-    private static final String TEST_TIERS = "buildSrc/src/main/kotlin/TestTiers.kt";
+    private static final String MANIFEST = "jk.toml";
     private static final String TIERS_DOC = "docs/contributors/test-suite-tiers.md";
-    private static final Pattern TIER = Pattern.compile(
-            "TestTier\\(\\s*(\\w+),\\s*include\\s*=\\s*(emptySet\\(\\)|setOf\\([^)]*\\)),\\s*exclude\\s*=\\s*(emptySet\\(\\)|setOf\\([^)]*\\)|slowTags\\.toSet\\(\\))\\s*,?\\s*\\)");
+    private static final Pattern TIER_TABLE = Pattern.compile("^\\[(test|profiles\\.([a-z0-9-]+))]$");
+    private static final Pattern TAG_LIST = Pattern.compile("^(include|exclude)-tags\\s*=\\s*\\[([^]]*)]");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]+)\"");
+
+    /** One tier as the root manifest declares it: the command that runs it and its tag filters. */
+    private record Tier(String command, List<String> include, List<String> exclude) {}
 
     @Guard(
             id = "test-tier-docs",
-            why = "the documented tier table is read off TestTiers, never retyped; the list drifted by hand",
+            why =
+                    "the documented tier table is read off the root manifest's [test] and [profiles.*] tables, never retyped; the list drifted by hand",
             instead =
                     "replace the marked table in docs/contributors/test-suite-tiers.md with the rendering in the detail")
     void testTierDocs(Text text, Violations v) {
-        String model = HouseRules.owner(text, TEST_TIERS);
-        Map<String, String> constants = new LinkedHashMap<>();
-        Matcher c = Pattern.compile("const val (\\w+) = \"([^\"]+)\"").matcher(model);
-        while (c.find()) constants.put(c.group(1), c.group(2));
-        Matcher st = Pattern.compile("val slowTags = listOf\\(([^)]*)\\)").matcher(model);
-        if (!st.find()) throw new IllegalStateException("cannot read TestTiers.slowTags");
-        Set<String> slowTags = quoted(st.group(1));
-        List<String[]> tiers = new ArrayList<>();
-        List<Set<String>> includes = new ArrayList<>();
-        List<Set<String>> excludes = new ArrayList<>();
-        Matcher t = TIER.matcher(model);
-        while (t.find()) {
-            String task = constants.get(t.group(1));
-            if (task == null) throw new IllegalStateException("cannot resolve tier constant " + t.group(1));
-            tiers.add(new String[] {task});
-            includes.add(t.group(2).equals("slowTags.toSet()") ? slowTags : quoted(t.group(2)));
-            excludes.add(t.group(3).equals("slowTags.toSet()") ? slowTags : quoted(t.group(3)));
-        }
-        if (tiers.size() != 5)
-            throw new IllegalStateException("read " + tiers.size() + " tiers from TestTiers.all; expected 5");
-        Matcher g = Pattern.compile("val gating = setOf\\(([^)]*)\\)").matcher(model);
-        if (!g.find()) throw new IllegalStateException("cannot read TestTiers.gating");
-        Set<String> gating = new LinkedHashSet<>();
-        for (String n : g.group(1).split(",")) {
-            String name = n.strip();
-            if (name.isEmpty()) continue;
-            String task = constants.get(name);
-            if (task == null) throw new IllegalStateException("cannot resolve gating constant " + name);
-            gating.add(task);
-        }
+        List<Tier> tiers = tiers(text.lines(MANIFEST));
+        if (tiers.size() < 2)
+            throw new IllegalStateException("read " + tiers.size() + " tiers from " + MANIFEST + "; the parse broke");
         StringBuilder expected = new StringBuilder("<!-- test-tiers:start -->\n");
-        expected.append("| Command | Includes | Excludes | In `checkAll`? |\n");
-        expected.append("|---------|----------|----------|----------------|\n");
-        for (int i = 0; i < tiers.size(); i++) {
-            String task = tiers.get(i)[0];
-            expected.append("| `./gradlew ")
-                    .append(task)
+        expected.append("| Command | Includes | Excludes |\n");
+        expected.append("|---------|----------|----------|\n");
+        for (Tier t : tiers)
+            expected.append("| `")
+                    .append(t.command())
                     .append("` | ")
-                    .append(tags(includes.get(i), "untagged"))
+                    .append(tags(t.include(), "untagged"))
                     .append(" | ")
-                    .append(tags(excludes.get(i), "—"))
-                    .append(" | ")
-                    .append(gating.contains(task) ? "yes |" : "no |")
-                    .append('\n');
-        }
+                    .append(tags(t.exclude(), "—"))
+                    .append(" |\n");
         expected.append("<!-- test-tiers:end -->");
         List<String> doc = text.lines(TIERS_DOC);
         String actual = block(doc, "test-tiers");
@@ -303,18 +117,50 @@ final class ParityRules {
         if (!actual.equals(expected.toString()))
             v.add(
                     new TextSite(TIERS_DOC, markerLine(doc, "test-tiers"), "test-tiers table"),
-                    TIERS_DOC + " differs from TestTiers; replace its marked table with:\n" + expected);
+                    TIERS_DOC + " differs from " + MANIFEST + "; replace its marked table with:\n" + expected);
         v.population(tiers.size());
     }
 
-    private static Set<String> quoted(String expression) {
-        Set<String> out = new LinkedHashSet<>();
-        Matcher q = QUOTED.matcher(expression);
-        while (q.find()) out.add(q.group(1));
+    /**
+     * The tiers in manifest order: {@code [test]} is {@code jk test}, and every {@code [profiles.<name>]}
+     * but {@code ci} (the fast tier under another name, auto-selected on CI) is {@code jk test --profile
+     * <name>}. The engine's {@code tiers} validation reads the same tables; this renders them.
+     */
+    private static List<Tier> tiers(List<String> manifest) {
+        List<Tier> out = new ArrayList<>();
+        String command = null;
+        List<String> include = new ArrayList<>();
+        List<String> exclude = new ArrayList<>();
+        for (String raw : manifest) {
+            int hash = raw.indexOf('#');
+            String line = (hash >= 0 ? raw.substring(0, hash) : raw).strip();
+            if (line.startsWith("[")) {
+                if (command != null) out.add(new Tier(command, include, exclude));
+                command = null;
+                Matcher h = TIER_TABLE.matcher(line);
+                if (h.matches()) {
+                    String profile = h.group(2);
+                    if (profile == null) command = "jk test";
+                    else if (!profile.equals("ci")) command = "jk test --profile " + profile;
+                    include = new ArrayList<>();
+                    exclude = new ArrayList<>();
+                }
+                continue;
+            }
+            if (command == null) continue;
+            Matcher t = TAG_LIST.matcher(line);
+            if (!t.find()) continue;
+            List<String> tags = new ArrayList<>();
+            Matcher q = QUOTED.matcher(t.group(2));
+            while (q.find()) tags.add(q.group(1));
+            if (t.group(1).equals("include")) include = tags;
+            else exclude = tags;
+        }
+        if (command != null) out.add(new Tier(command, include, exclude));
         return out;
     }
 
-    private static String tags(Set<String> items, String fallback) {
+    private static String tags(List<String> items, String fallback) {
         if (items.isEmpty()) return fallback;
         List<String> ticked = new ArrayList<>();
         for (String i : items) ticked.add("`" + i + "`");
@@ -1042,136 +888,161 @@ final class ParityRules {
         return String.join("/", out);
     }
 
-    // ---- checkGuardRegistry's twin -----------------------------------------------------------
+    // ---- G79 ---------------------------------------------------------------------------------
 
-    private static final String GUARDS_KT = "buildSrc/src/main/kotlin/Guards.kt";
     private static final String CHARTER = "docs/contributors/code-as-art.md";
+    private static final String RULES = "jk-guards.toml";
+    private static final String VALIDATIONS = "server/guard/src/main/java/cc/jumpkick/guard/validate/*.java";
+    private static final Pattern RULE_CELL = Pattern.compile("^`([a-z0-9-]+)` \\(([a-z-]+)\\)$");
+    private static final Pattern GUARD_TEST_CELL = Pattern.compile("^guard test `([a-z0-9-]+)`$");
+    private static final Pattern VALIDATION_CELL = Pattern.compile("^engine validation `([a-z0-9-]+)`$");
+    private static final Pattern RULE_TABLE = Pattern.compile("^\\[guards\\.([a-z0-9-]+)]$");
+    private static final Pattern RULE_KIND = Pattern.compile("^kind\\s*=\\s*\"([a-z-]+)\"");
+    private static final Pattern GUARD_ID = Pattern.compile("id = \"([a-z0-9-]+)\"");
+    private static final Pattern VALIDATION_CODE = Pattern.compile("String CODE = \"([a-z0-9-]+)\"");
+
+    /** One registry row: the letter, its line, and the cell naming what enforces it. */
+    private record Row(int letter, int line, String jkSide) {}
 
     @Guard(
             id = "guard-letters-registry",
             why =
-                    "the published guard registry lists exactly the letters the build enforces; it fell behind the code twice by hand",
+                    "the registry table in code-as-art.md is the one record of every guard letter and of what enforces it; a letter with no row, or a row naming a rule that is gone, is the registry lagging the code",
             instead =
-                    "regenerate the marked table (./gradlew checkGuardRegistry prints it) and keep every ruleId / guardTestId pointing at a rule that exists")
+                    "add or fix the row — id, rule, form, jk side — so every letter from G0 up has one, every jk side names a rule, guard test or engine validation that exists with that kind, and every rule and guard test is claimed by exactly one letter; a retired letter keeps its row and says why")
     void guardLettersRegistry(Text text, Violations v) {
-        String kt = HouseRules.owner(text, GUARDS_KT);
-        Set<String> letters = new TreeSet<>();
-        Matcher s = Pattern.compile("spec\\(\\s*(\\d+),").matcher(kt);
-        while (s.find()) letters.add("G" + s.group(1));
-        if (letters.size() < 60)
-            throw new IllegalStateException("read " + letters.size() + " letters from Guards.kt — the parse broke");
-        Set<String> rows = new TreeSet<>();
-        for (String line : text.lines(CHARTER)) {
-            Matcher r = Pattern.compile("^\\| (G\\d+) \\|").matcher(line);
-            if (r.find()) rows.add(r.group(1));
+        List<String> charter = text.lines(CHARTER);
+        String block = block(charter, "guards");
+        if (block == null)
+            throw new IllegalStateException(CHARTER + " is missing its guards:start/end registry markers");
+        List<Row> rows = new ArrayList<>();
+        int at = markerLine(charter, "guards") - 1;
+        for (String line : block.split("\n")) {
+            at++;
+            if (!line.startsWith("| G") || !line.endsWith(" |")) continue;
+            // Only the ends of the row are read: the rule cell may itself hold a ` | ` inside a code span.
+            String[] cells = line.substring(2, line.length() - 2).split(" \\| ");
+            rows.add(new Row(Integer.parseInt(cells[0].substring(1)), at, cells[cells.length - 1].strip()));
         }
-        for (String g : minus(letters, rows))
-            v.add(new TextSite(CHARTER, 0, g), g + " is in Guards.kt and not in the registry table");
-        for (String g : minus(rows, letters))
-            v.add(new TextSite(CHARTER, 0, g), g + " is in the registry table and not in Guards.kt");
-        Set<String> ruleIds = new TreeSet<>();
-        for (String line : text.lines("jk-guards.toml")) {
-            Matcher r = Pattern.compile("^\\[guards\\.([a-z0-9-]+)]").matcher(line);
-            if (r.find()) ruleIds.add(r.group(1));
+        if (rows.size() < 90)
+            throw new IllegalStateException(
+                    "read " + rows.size() + " registry rows from " + CHARTER + "; the parse broke");
+        Set<Integer> seen = new TreeSet<>();
+        int highest = 0;
+        for (Row r : rows) {
+            if (!seen.add(r.letter())) v.add(site(r), "G" + r.letter() + " has two rows");
+            highest = Math.max(highest, r.letter());
         }
-        Matcher rid = Pattern.compile("ruleId = \"([a-z0-9-]+)\"").matcher(kt);
-        while (rid.find())
-            if (!ruleIds.contains(rid.group(1)))
+        for (int n = 0; n <= highest; n++)
+            if (!seen.contains(n))
                 v.add(
-                        new TextSite(GUARDS_KT, 0, rid.group(1)),
-                        "Guards.kt names ruleId `" + rid.group(1) + "` and jk-guards.toml has no such rule");
+                        new TextSite(CHARTER, markerLine(charter, "guards"), "G" + n),
+                        "G" + n + " has no row; letters are never reused, so a retired one keeps its row and says why");
+        Map<String, String> ruleKinds = ruleKinds(text.lines(RULES));
         Set<String> guardIds = new TreeSet<>();
         for (String f : text.files("**/src/guard/java/**/*.java")) {
-            Matcher g = Pattern.compile("id = \"([a-z0-9-]+)\"").matcher(text.blanked(f, Blank.COMMENTS));
+            Matcher g = GUARD_ID.matcher(text.blanked(f, Blank.COMMENTS));
             while (g.find()) guardIds.add(g.group(1));
         }
-        Matcher gid = Pattern.compile("guardTestId = \"([a-z0-9-]+)\"").matcher(kt);
-        while (gid.find())
-            if (!guardIds.contains(gid.group(1)))
-                v.add(
-                        new TextSite(GUARDS_KT, 0, gid.group(1)),
-                        "Guards.kt names guardTestId `" + gid.group(1) + "` and no @Guard declares it");
-        v.population(letters.size());
-    }
-    // ---- G51 -------------------------------------------------------------------------------------
-
-    private static final String PARITY_EXCUSES = "guard-parity.txt";
-
-    /**
-     * One registry letter, merged over its entries (a letter may have one per side): whether any entry
-     * is a Gradle task, and whether any names a jk side.
-     */
-    private record Letter(int n, boolean gradle, boolean jkSide) {}
-
-    private static boolean gradleEntry(String block) {
-        Matcher o = Pattern.compile("gradleLetter = (true|false)").matcher(block);
-        if (o.find()) return Boolean.parseBoolean(o.group(1));
-        Matcher h = Pattern.compile("GuardHome\\.(\\w+)").matcher(block);
-        String home = h.find() ? h.group(1) : "";
-        return !home.equals("SELF_HOSTED") && !home.equals("TEST") && !home.equals("FOLDED") && !home.equals("NEVER");
-    }
-
-    private static List<Letter> letters(String kt) {
-        List<Integer> starts = new ArrayList<>();
-        Matcher s = Pattern.compile("spec\\(\\s*(\\d+),").matcher(kt);
-        while (s.find()) starts.add(s.start());
-        int end = kt.indexOf("private fun spec(");
-        if (end < 0) end = kt.length();
-        Map<Integer, boolean[]> byLetter = new TreeMap<>();
-        for (int i = 0; i < starts.size(); i++) {
-            String block = kt.substring(starts.get(i), i + 1 < starts.size() ? starts.get(i + 1) : end);
-            Matcher n = Pattern.compile("spec\\(\\s*(\\d+),").matcher(block);
-            if (!n.find()) continue;
-            boolean[] sides = byLetter.computeIfAbsent(Integer.parseInt(n.group(1)), k -> new boolean[2]);
-            if (gradleEntry(block)) sides[0] = true;
-            if (block.contains("ruleId = \"")
-                    || block.contains("engineCode = \"")
-                    || block.contains("guardTestId = \"")) sides[1] = true;
+        Set<String> validations = new TreeSet<>();
+        for (String f : text.files(VALIDATIONS)) {
+            Matcher c = VALIDATION_CODE.matcher(text.blanked(f, Blank.COMMENTS));
+            while (c.find()) validations.add(c.group(1));
         }
-        List<Letter> out = new ArrayList<>();
-        for (var e : byLetter.entrySet()) out.add(new Letter(e.getKey(), e.getValue()[0], e.getValue()[1]));
+        if (ruleKinds.isEmpty() || guardIds.isEmpty() || validations.isEmpty())
+            throw new IllegalStateException("read " + ruleKinds.size() + " rules, " + guardIds.size()
+                    + " guard tests and " + validations.size() + " engine validations; one scan broke");
+        Map<String, List<Integer>> claimedRules = new TreeMap<>();
+        Map<String, List<Integer>> claimedTests = new TreeMap<>();
+        Map<String, List<Integer>> claimedValidations = new TreeMap<>();
+        for (Row r : rows) {
+            Matcher rule = RULE_CELL.matcher(r.jkSide());
+            Matcher test = GUARD_TEST_CELL.matcher(r.jkSide());
+            Matcher validation = VALIDATION_CELL.matcher(r.jkSide());
+            if (rule.matches()) {
+                String kind = ruleKinds.get(rule.group(1));
+                if (kind == null)
+                    v.add(
+                            site(r),
+                            "G" + r.letter() + " names `" + rule.group(1) + "` and " + RULES + " has no such table");
+                else if (!kind.equals(rule.group(2)))
+                    v.add(
+                            site(r),
+                            "G" + r.letter() + ": `" + rule.group(1) + "` is a " + kind + " rule, the row says "
+                                    + rule.group(2));
+                claimedRules
+                        .computeIfAbsent(rule.group(1), k -> new ArrayList<>())
+                        .add(r.letter());
+            } else if (test.matches()) {
+                if (!guardIds.contains(test.group(1)))
+                    v.add(
+                            site(r),
+                            "G" + r.letter() + " names guard test `" + test.group(1) + "` and no @Guard declares it");
+                claimedTests
+                        .computeIfAbsent(test.group(1), k -> new ArrayList<>())
+                        .add(r.letter());
+            } else if (validation.matches()) {
+                if (!validations.contains(validation.group(1)))
+                    v.add(
+                            site(r),
+                            "G" + r.letter() + " names engine validation `" + validation.group(1)
+                                    + "` and no validation reports under it");
+                claimedValidations
+                        .computeIfAbsent(validation.group(1), k -> new ArrayList<>())
+                        .add(r.letter());
+            } else if (r.jkSide().isBlank()) {
+                v.add(
+                        site(r),
+                        "G" + r.letter()
+                                + " has an empty jk side; name what enforces it, or say why the letter is retired");
+            }
+        }
+        unclaimed(v, ruleKinds.keySet(), claimedRules, "[guards.%s] in " + RULES);
+        unclaimed(v, guardIds, claimedTests, "guard test `%s`");
+        unclaimed(v, validations, claimedValidations, "engine validation `%s`");
+        v.population(rows.size());
+    }
+
+    private static TextSite site(Row r) {
+        return new TextSite(CHARTER, r.line(), "G" + r.letter());
+    }
+
+    /** Every live id is claimed by exactly one letter. */
+    private static void unclaimed(Violations v, Set<String> live, Map<String, List<Integer>> claimed, String what) {
+        for (String id : live) {
+            List<Integer> letters = claimed.getOrDefault(id, List.of());
+            if (letters.isEmpty())
+                v.add(
+                        new TextSite(CHARTER, 0, id),
+                        String.format(what, id) + " is claimed by no letter; give it a row");
+            else if (letters.size() > 1)
+                v.add(
+                        new TextSite(CHARTER, 0, id),
+                        String.format(what, id) + " is claimed by " + letters.size() + " letters: " + letters);
+        }
+    }
+
+    /** Rule id → kind, from the tables of the rule file; an allow block belongs to no rule here. */
+    private static Map<String, String> ruleKinds(List<String> lines) {
+        Map<String, String> out = new TreeMap<>();
+        String current = null;
+        for (String raw : lines) {
+            String line = raw.strip();
+            Matcher t = RULE_TABLE.matcher(line);
+            if (t.matches()) {
+                current = t.group(1);
+                out.put(current, "");
+                continue;
+            }
+            if (line.startsWith("[")) {
+                current = null;
+                continue;
+            }
+            if (current == null) continue;
+            Matcher k = RULE_KIND.matcher(line);
+            if (k.find() && out.get(current).isEmpty()) out.put(current, k.group(1));
+        }
         return out;
-    }
-
-    @Guard(
-            id = "guard-parity",
-            why =
-                    "the repo builds itself twice, so a house rule one build enforces and the other does not is enforced half the time; the registry says which side each letter lives on",
-            instead =
-                    "give the letter a jk side in Guards.kt (ruleId, engineCode or guardTestId), or record in guard-parity.txt why it is Gradle-only; drop an entry once the letter has both")
-    void guardParity(Text text, Violations v) {
-        String kt = HouseRules.owner(text, GUARDS_KT);
-        List<Letter> letters = letters(kt);
-        if (letters.size() < 60)
-            throw new IllegalStateException(
-                    "read " + letters.size() + " registry entries from Guards.kt; the parse broke");
-        Set<Integer> excused = new TreeSet<>();
-        List<String> excuseLines = text.lines(PARITY_EXCUSES);
-        for (String line : excuseLines) {
-            Matcher m = Pattern.compile("^G(\\d+)\\s").matcher(line);
-            if (m.find()) excused.add(Integer.parseInt(m.group(1)));
-        }
-        if (excused.isEmpty())
-            throw new IllegalStateException(
-                    PARITY_EXCUSES + " lists no letters, so this guard would pass over anything");
-        Set<Integer> seen = new TreeSet<>();
-        for (Letter l : letters) {
-            seen.add(l.n());
-            if (l.gradle() && !l.jkSide() && !excused.contains(l.n()))
-                v.add(
-                        new TextSite(GUARDS_KT, 0, "G" + l.n()),
-                        "G" + l.n() + " is enforced by Gradle only: name its jk side, or excuse it in "
-                                + PARITY_EXCUSES);
-            if (l.jkSide() && excused.contains(l.n()))
-                v.add(
-                        new TextSite(PARITY_EXCUSES, 0, "G" + l.n()),
-                        "G" + l.n()
-                                + " is excused as Gradle-only but has a jk side; drop the entry, parity is real now");
-        }
-        for (int n : excused)
-            if (!seen.contains(n))
-                v.add(new TextSite(PARITY_EXCUSES, 0, "G" + n), "G" + n + " is excused but is not a registry letter");
-        v.population(letters.size());
     }
 
     // ---- G72 -------------------------------------------------------------------------------------
