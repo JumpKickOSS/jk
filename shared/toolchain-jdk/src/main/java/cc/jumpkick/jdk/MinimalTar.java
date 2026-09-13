@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -172,6 +173,39 @@ public final class MinimalTar {
         Path link = realParent.resolve(out.getFileName());
         Files.deleteIfExists(link);
         Files.createSymbolicLink(link, target);
+    }
+
+    /**
+     * Fail when any symlink under {@code root} resolves outside it, naming the link and its target.
+     *
+     * <p>Extraction judges each link against the directory it unpacks into. An installer then
+     * lifts the archive's single top-level directory out of that staging directory to become the
+     * installed root, and a link that reached up out of the top-level directory — {@code
+     * jdk/bin/x -> ../../other}, which resolved to a sibling of {@code jdk/} inside staging — now
+     * points outside the installed tree, where whatever later runs from the JDK follows it. So the
+     * lifted root is judged again as a whole before it is moved into place. Links that stay inside
+     * the top-level directory ({@code jre/lib -> ../lib}) resolve the same either way.
+     */
+    public static void requireSymlinksInside(Path root) throws IOException {
+        Path rootReal = root.toRealPath();
+        // Links arrive as leaves with their own attributes; the walk never follows them.
+        PathUtil.forEachEntry(root, dir -> false, (link, attrs) -> {
+            if (!attrs.isSymbolicLink()) return true;
+            Path target = Files.readSymbolicLink(link);
+            Path parent = link.getParent() == null ? root : link.getParent();
+            Path resolved = target.isAbsolute()
+                    ? target
+                    : resolveFollowingLinks(parent.toRealPath(), target, target.toString());
+            if (!resolved.startsWith(rootReal)) {
+                throw new IOException("tar symlink escapes the installed tree once "
+                        + root.getFileName()
+                        + " is lifted out of the extraction directory: "
+                        + root.relativize(link)
+                        + " -> "
+                        + target);
+            }
+            return true;
+        });
     }
 
     /**

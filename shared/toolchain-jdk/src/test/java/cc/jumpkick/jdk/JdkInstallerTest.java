@@ -435,6 +435,59 @@ class JdkInstallerTest {
                 .exists();
     }
 
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_link_that_leaves_the_lifted_root_refuses_the_install(@TempDir Path tempDir) throws Exception {
+        // jdk/bin/x -> ../../other stays inside the staging directory while jdk/ wraps the tree;
+        // installed, jdk/ becomes the root and the link points at a sibling of the install.
+        byte[] archive = buildTarGzRaw(new String[][] {
+            {"jdk/", null},
+            {"jdk/bin/", null},
+            {"jdk/bin/java", "#!/fake"},
+            {"jdk/bin/x", null, "../../other"},
+        });
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
+        assertThatThrownBy(() -> installer.install(entry))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes the installed tree")
+                .hasMessageContaining("bin/x -> ../../other");
+
+        try (var children = Files.list(jdksRoot)) {
+            assertThat(children.filter(Files::isDirectory)
+                            .filter(p -> !p.getFileName().toString().startsWith(".")))
+                    .as("no install published from the refused archive")
+                    .isEmpty();
+        }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void links_inside_the_lifted_root_install(@TempDir Path tempDir) throws Exception {
+        byte[] archive = buildTarGzRaw(new String[][] {
+            {"jdk/", null},
+            {"jdk/bin/", null},
+            {"jdk/bin/java", "#!/fake"},
+            {"jdk/lib/", null},
+            {"jdk/lib/modules", "mods"},
+            {"jdk/jre/", null},
+            {"jdk/jre/lib", null, "../lib"},
+        });
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        InstalledJdk installed = installer.install(
+                entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive)));
+
+        Path link = installed.home().resolve("jre/lib");
+        assertThat(Files.isSymbolicLink(link)).isTrue();
+        assertThat(link.resolve("modules")).hasContent("mods");
+    }
+
     /** A JDK-shaped tree: enough for alreadyInstalled and JdkFingerprint to recognise it. */
     private static Path fakeJdk(Path root, String name, String version) throws IOException {
         Path home = root.resolve(name);

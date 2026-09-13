@@ -109,6 +109,35 @@ class MinimalTarContainmentTest {
     }
 
     @Test
+    void a_link_that_stays_inside_staging_but_leaves_the_lifted_root_is_refused(@TempDir Path tmp) throws Exception {
+        // Extraction accepts jdk/bin/x -> ../../other: it resolves to <staging>/other. Once jdk/
+        // is lifted out of staging to become the install root, the same link points beside it.
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        Path top = Files.createDirectories(staging.resolve("jdk"));
+        Files.createDirectories(top.resolve("bin"));
+        MinimalTar.createSymlinkInside(staging, top.resolve("bin/x"), "../../other");
+        assertThat(Files.isSymbolicLink(top.resolve("bin/x"))).isTrue();
+
+        assertThatThrownBy(() -> MinimalTar.requireSymlinksInside(top))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("escapes the installed tree")
+                .hasMessageContaining("bin/x -> ../../other");
+    }
+
+    @Test
+    void links_inside_the_lifted_root_are_accepted(@TempDir Path tmp) throws Exception {
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        Path top = Files.createDirectories(staging.resolve("jdk"));
+        Files.createDirectories(top.resolve("lib"));
+        Files.createDirectories(top.resolve("jre"));
+        MinimalTar.createSymlinkInside(staging, top.resolve("jre/lib"), "../lib");
+        MinimalTar.createSymlinkInside(staging, top.resolve("lib/current"), "../lib");
+        MinimalTar.createSymlinkInside(staging, top.resolve("lib/missing"), "not-there-yet");
+
+        MinimalTar.requireSymlinksInside(top);
+    }
+
+    @Test
     void nested_directories_are_created_and_reported_by_real_path(@TempDir Path tmp) throws Exception {
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
         Path real = MinimalTar.createDirectoryInside(dest, dest.resolve("lib/security/policy"));

@@ -544,7 +544,11 @@ public final class JdkInstaller {
             stream.forEach(children::add);
         }
         if (children.size() == 1 && Files.isDirectory(children.getFirst())) {
-            return children.getFirst();
+            Path lifted = children.getFirst();
+            // Extraction judged every link against the staging directory; lifted one level, a link
+            // that reached up out of this directory would point outside the installed tree.
+            MinimalTar.requireSymlinksInside(lifted);
+            return lifted;
         }
         return stagingDir;
     }
