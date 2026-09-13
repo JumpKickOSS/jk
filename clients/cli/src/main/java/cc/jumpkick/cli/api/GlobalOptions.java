@@ -248,13 +248,17 @@ public final class GlobalOptions {
         // JdkResolution walks SWITCH then JK_ENV with nothing between them, so "switch, else env"
         // resolves to exactly what the two-tier walk resolves to — and it means the engine needs one
         // field, not two, to see the caller's choice at all.
-        SessionContext.install(SessionContext.current()
-                .withToolchainSpecs(
+        var current = SessionContext.current();
+        SessionContext.install(current.withToolchainSpecs(
                         firstNonBlank(g.jdk, System.getenv("JK_JDK")),
                         firstNonBlank(g.graal, System.getenv("JK_GRAAL")),
                         graalHomeFromEnv())
                 .withWorkingDir(g.workingDir())
-                .withJvm(PluginTunings.resolveClient(g.jvmCli())));
+                .withJvm(PluginTunings.resolveClient(g.jvmCli()))
+                // The machine-shaped forward set and the JK_REPO_* credentials ride every hosted
+                // request from here, not only the ones that resolve a project's declared references
+                // (VariantSelection layers those on top): a lock's resolve reads the caller's token.
+                .withVariant(current.variant(), ClientEnvForward.layerUnder(current.clientEnv())));
         return g;
     }
 

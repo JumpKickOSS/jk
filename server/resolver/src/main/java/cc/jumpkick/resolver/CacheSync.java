@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
@@ -40,12 +41,23 @@ public final class CacheSync {
     private final ArtifactLocator locator;
 
     public CacheSync(Cas cas, Http http) {
-        this(cas, http, new RepoCredentialResolver(), true);
+        this(cas, http, requestCredentials(), true);
     }
 
     /** As above, with the resolving project's {@code m2integration} value. */
     public CacheSync(Cas cas, Http http, boolean m2integration) {
-        this(cas, http, new RepoCredentialResolver(), m2integration);
+        this(cas, http, requestCredentials(), m2integration);
+    }
+
+    /**
+     * Credentials from the request's shell first, this process's environment second. Inside the
+     * engine the process environment is whichever shell started the daemon, so a
+     * {@code JK_REPO_<ID>_TOKEN} exported in the terminal that ran {@code jk} arrives only through
+     * the request. Captured here, on the request thread, so the fetches on the I/O pool answer for
+     * the session that asked.
+     */
+    private static RepoCredentialResolver requestCredentials() {
+        return RepoCredentialResolver.withEnv(BuildEnv.ambient());
     }
 
     /** Visible for tests — inject a credential resolver. */

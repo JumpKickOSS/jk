@@ -161,6 +161,10 @@ JK_REPO_INTERNAL_HOST=attacker.example, or run `jk repo login internal --url htt
 A literal credential written into either file is that file's own secret and is used as written;
 committing one to a project is a leak of the project's secret, not of yours.
 
+Every `JK_REPO_*` variable is read from the shell that runs `jk` and sent with the request, so it
+reaches a resident engine that another terminal started, for that request only. Exporting a token
+in a new terminal is enough; no `jk engine stop` is needed.
+
 ## Related
 
 [Lockfile](lockfile.md) · [Publish](publish.md) · [Dependencies](dependencies.md)

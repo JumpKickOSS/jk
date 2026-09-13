@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command;
+package cc.jumpkick.cli.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -31,9 +32,11 @@ class ClientEnvForwardTest {
     void it_does_not_forward_anything_a_manifest_could_declare() {
         // The line this list must not cross. TZ changes what code computes, so it belongs in
         // [test] env where it is hashed into the action key; forwarding it here would change test
-        // outcomes through a channel no key can see. Same for anything credential-shaped.
+        // outcomes through a channel no key can see. Repository credentials travel by prefix and
+        // stay out of this list: nothing here seeds them into a test JVM.
         assertThat(ClientEnvForward.names())
-                .doesNotContain("TZ", "CI", "JAVA_HOME", "JAVA_TOOL_OPTIONS", "GRADLE_OPTS", "MAVEN_OPTS");
+                .doesNotContain("TZ", "CI", "JAVA_HOME", "JAVA_TOOL_OPTIONS", "GRADLE_OPTS", "MAVEN_OPTS")
+                .noneMatch(n -> n.startsWith(ClientEnvForward.REPO_PREFIX));
     }
 
     @Test
@@ -46,9 +49,32 @@ class ClientEnvForwardTest {
     @Test
     void it_reports_only_what_the_caller_actually_has() {
         var resolved = ClientEnvForward.resolve();
-        assertThat(resolved.keySet()).isSubsetOf(ClientEnvForward.names());
         for (var e : resolved.entrySet()) {
+            if (e.getKey().startsWith(ClientEnvForward.REPO_PREFIX)) continue; // by prefix, tested below
+            assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
+        }
+    }
+
+    @Test
+    void it_forwards_repository_credentials_and_host_bindings_by_prefix() {
+        // A JK_REPO_<ID>_TOKEN exported in this terminal has to reach the resident engine's
+        // resolver for this request — the daemon's own environment is whichever shell started it.
+        // The name is the user's standing with a repository, not the build: no manifest can declare
+        // it, it enters no action key, and no test JVM is seeded with it.
+        System.setProperty("jk.env.JK_REPO_X_TOKEN", "t0k3n");
+        System.setProperty("jk.env.JK_REPO_X_HOST", "repo.example:8443");
+        try {
+            assertThat(ClientEnvForward.resolve())
+                    .containsEntry("JK_REPO_X_TOKEN", "t0k3n")
+                    .containsEntry("JK_REPO_X_HOST", "repo.example:8443");
+            // A command's own resolution of a declared reference wins over the forward set.
+            assertThat(ClientEnvForward.layerUnder(Map.of("JK_REPO_X_TOKEN", "declared")))
+                    .containsEntry("JK_REPO_X_TOKEN", "declared")
+                    .containsEntry("JK_REPO_X_HOST", "repo.example:8443");
+        } finally {
+            System.clearProperty("jk.env.JK_REPO_X_TOKEN");
+            System.clearProperty("jk.env.JK_REPO_X_HOST");
         }
     }
 }

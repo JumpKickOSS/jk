@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.RepositoryToml;
@@ -76,8 +77,14 @@ public final class RepoGroupBuilder {
                 RepositoryToml.interpolate(cfg.sessionToken(), strict, where, env));
     }
 
+    /**
+     * As the four-argument form with the ambient environment: the request's shell, then this
+     * process's own. Never {@code System::getenv} alone — inside the engine that is whichever shell
+     * started the daemon, so a {@code JK_REPO_<ID>_TOKEN} from the terminal that ran {@code jk}
+     * would not reach the resolve.
+     */
     public static RepoGroup buildFor(JkBuild project, @Nullable URI overrideUrl, Cas cas) {
-        return buildFor(project, overrideUrl, cas, System::getenv);
+        return buildFor(project, overrideUrl, cas, BuildEnv.ambient());
     }
 
     /**
@@ -87,7 +94,7 @@ public final class RepoGroupBuilder {
      * <p>Inline {@code ${VAR}} credentials are expanded here rather than during the parse, so this
      * is where the request's environment has to arrive. Build-path callers pass
      * {@code Inputs.env}, which layers the project's {@code .env} under the caller's shell
-     * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
+     * environment; the three-argument overload is for tooling that has no module directory in hand.
      */
     public static RepoGroup buildFor(
             JkBuild project, @Nullable URI overrideUrl, Cas cas, Function<String, @Nullable String> env) {
