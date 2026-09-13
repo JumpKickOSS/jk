@@ -184,14 +184,25 @@ public interface TaskExec {
         }
 
         /**
-         * Start the child and hand it back, stderr merged into stdout. The one {@code
-         * ProcessBuilder} construction in the plugin family: {@link #run()} and {@link #stream}
-         * are drains over this, and a plugin that needs its own drain — a timeout, a daemon it
-         * leaves running, an early return on a marker line — takes the {@link Process} from here
-         * rather than assembling a second launcher.
+         * Start the child and hand it back, stderr merged into stdout on a pipe. {@link #run()}
+         * and {@link #stream} are drains over this, and a plugin that needs its own drain — a
+         * timeout, an early return on a marker line — takes the {@link Process} from here rather
+         * than assembling a second launcher. {@link #start(ProcessBuilder.Redirect)} is the same
+         * fork with the output sent elsewhere.
          */
         public Process start() throws IOException {
-            ProcessBuilder pb = new ProcessBuilder(command()).redirectErrorStream(true);
+            return start(ProcessBuilder.Redirect.PIPE);
+        }
+
+        /**
+         * As {@link #start()}, with the child's combined output sent to {@code output} instead of
+         * a pipe: a file ({@link ProcessBuilder.Redirect#appendTo}) for a child that keeps writing
+         * after the plugin has returned — an emulator's log — where a pipe would need a reader for
+         * the child's whole life and break its next write when that reader went away.
+         */
+        public Process start(ProcessBuilder.Redirect output) throws IOException {
+            ProcessBuilder pb =
+                    new ProcessBuilder(command()).redirectErrorStream(true).redirectOutput(output);
             if (cwd != null) pb.directory(cwd.toFile());
             pb.environment().putAll(env);
             return pb.start();

@@ -19,50 +19,76 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code jk avd boot} returns at the emulator's boot line and leaves the emulator running. The
- * emulator keeps writing to its stdout after that line; the pipe it writes into is the command's,
- * and closing it turns the emulator's next log line into a broken pipe.
+ * emulator keeps writing after that line, so its output goes to a log file under the AVD home:
+ * the command follows the file up to the boot line and then has nothing left open — no pipe the
+ * emulator's next write could break on, no thread left draining it.
  */
 @DisabledOnOs(OS.WINDOWS)
 class AvdCommandBootTest {
 
     @Test
-    void the_emulators_output_stays_writable_after_the_boot_line(@TempDir Path tmp) throws Exception {
+    void the_command_returns_at_the_boot_line_and_the_emulators_later_lines_land_in_the_log(@TempDir Path tmp)
+            throws Exception {
         Path marker = tmp.resolve("wrote-after-boot");
-        // The line after the sleep reaches a reader only while the pipe is open; on a closed one
-        // the write fails and the marker is never created.
+        // The line after the sleep is written once the command has returned; a redirect the
+        // command no longer reads still takes it, and the marker records that the write succeeded.
         Path emulator = script(tmp.resolve("emulator"), """
                 echo "emulator: INFO: boot completed"
                 sleep 1
                 echo "emulator: INFO: adb connected" || exit 3
                 : > '%s'
                 """.formatted(marker));
-        Process process = new TaskExec.ToolRun(emulator).start();
+        Path log = tmp.resolve("pixel.log");
+        Process process = new TaskExec.ToolRun(emulator).start(ProcessBuilder.Redirect.appendTo(log.toFile()));
         List<String> out = new ArrayList<>();
 
         long start = System.nanoTime();
-        int exit = AvdCommand.awaitBoot(process, out::add);
+        int exit = AvdCommand.awaitBoot(process, log, out::add);
 
         assertThat(exit).isZero();
         assertThat(Duration.ofNanos(System.nanoTime() - start))
                 .as("the command returns at the boot line, not at the emulator's exit")
                 .isLessThan(Duration.ofSeconds(5));
         assertThat(out).anyMatch(line -> line.contains("boot completed"));
+        assertThat(out).as("the user is told where to tail").anyMatch(line -> line.contains(log.toString()));
         assertThat(process.waitFor(10, TimeUnit.SECONDS)).isTrue();
         assertThat(process.exitValue())
                 .as("the emulator's write after the boot line succeeds")
                 .isZero();
         assertThat(marker).exists();
+        assertThat(Files.readString(log, StandardCharsets.UTF_8))
+                .contains("boot completed")
+                .contains("adb connected");
+        assertThat(out)
+                .as("nothing in the command keeps reading after it has returned")
+                .noneMatch(line -> line.contains("adb connected"));
     }
 
     @Test
     void an_emulator_that_exits_before_booting_reports_its_exit_status(@TempDir Path tmp) throws Exception {
         Path emulator = script(tmp.resolve("emulator"), "echo 'emulator: ERROR: no accel'\nexit 7\n");
+        Path log = tmp.resolve("pixel.log");
+        Process process = new TaskExec.ToolRun(emulator).start(ProcessBuilder.Redirect.appendTo(log.toFile()));
         List<String> out = new ArrayList<>();
 
-        int exit = AvdCommand.awaitBoot(new TaskExec.ToolRun(emulator).start(), out::add);
+        int exit = AvdCommand.awaitBoot(process, log, out::add);
 
         assertThat(exit).isEqualTo(7);
         assertThat(out).anyMatch(line -> line.contains("no accel"));
+    }
+
+    @Test
+    void a_line_the_emulator_wrote_without_a_newline_before_dying_is_still_reported(@TempDir Path tmp)
+            throws Exception {
+        Path emulator = script(tmp.resolve("emulator"), "printf 'emulator: ERROR: no kvm'\nexit 5\n");
+        Path log = tmp.resolve("pixel.log");
+        Process process = new TaskExec.ToolRun(emulator).start(ProcessBuilder.Redirect.appendTo(log.toFile()));
+        List<String> out = new ArrayList<>();
+
+        int exit = AvdCommand.awaitBoot(process, log, out::add);
+
+        assertThat(exit).isEqualTo(5);
+        assertThat(out).anyMatch(line -> line.contains("no kvm"));
     }
 
     private static Path script(Path file, String body) throws IOException {

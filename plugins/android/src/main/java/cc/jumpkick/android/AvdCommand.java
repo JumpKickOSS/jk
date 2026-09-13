@@ -4,20 +4,21 @@ package cc.jumpkick.android;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.build.PluginCommandExec;
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
  * {@code avd create|list|boot} — managed AVDs under the jk SDK root ({@code ANDROID_AVD_HOME}).
- * Definitions written in avdmanager on-disk format; boot is headless emulator.
+ * Definitions written in avdmanager on-disk format; boot is a headless emulator whose output goes
+ * to {@code <avd home>/<name>.log}.
  */
 final class AvdCommand {
 
@@ -142,50 +143,65 @@ final class AvdCommand {
             return 1;
         }
         exec.label("emulator " + name);
-        // start(), not stream(): the emulator is left running after the boot line, so this drives
-        // its own drain rather than waiting for EOF. The argv and the environment still come from
-        // the one fork owner.
+        // The emulator writes for as long as it runs, which is long after this command has
+        // returned; its output goes to a log under the AVD home rather than to a pipe this
+        // process would have to keep draining. One boot, one log: the follow below must not
+        // find a previous boot's boot line.
+        Path log = avdHome.resolve(name + ".log");
+        Files.writeString(log, "", StandardCharsets.UTF_8);
+        // start(), not stream(): the emulator is left running after the boot line. The argv and
+        // the environment still come from the one fork owner.
         Process process = exec.tool(emulator)
                 .args(List.of("-avd", name, "-no-window", "-no-audio", "-no-boot-anim"))
                 .env("ANDROID_AVD_HOME", avdHome.toAbsolutePath().toString())
                 .env("ANDROID_SDK_ROOT", root.toAbsolutePath().toString())
-                .start();
-        return awaitBoot(process, exec::out);
+                .start(ProcessBuilder.Redirect.appendTo(log.toFile()));
+        return awaitBoot(process, log, exec::out);
     }
 
+    /** How long the follow waits for the emulator to append to its log before looking again. */
+    private static final Duration FOLLOW_POLL = Duration.ofMillis(50);
+
     /**
-     * Follow the emulator's output up to the boot line and return; the emulator keeps running.
-     *
-     * <p>Its stdout is never closed: the emulator writes to that pipe for as long as it runs, and a
-     * closed reader turns its next line into a broken pipe. A daemon thread keeps draining it
-     * after the command has returned. An emulator that exits before booting is reaped and its
-     * status returned.
+     * Follow the emulator's {@code log} up to the boot line and return; the emulator keeps running
+     * and keeps appending to the log, which nothing in this process holds open. An emulator that
+     * exits before booting is reaped and its status returned.
      */
-    static int awaitBoot(Process process, Consumer<String> out) throws InterruptedException {
-        CompletableFuture<Boolean> booted = new CompletableFuture<>();
-        Thread.ofVirtual().name("emulator-drain").start(() -> {
-            BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-            try {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (booted.isDone()) continue; // the command has returned; only keep the pipe drained
-                    if (!line.isBlank()) out.accept("  " + line);
-                    if (line.contains("boot completed") || line.contains("Successfully loaded snapshot")) {
-                        booted.complete(true);
+    static int awaitBoot(Process process, Path log, Consumer<String> out) throws IOException, InterruptedException {
+        out.accept("emulator log: " + log);
+        try (InputStream in = Files.newInputStream(log)) {
+            ByteArrayOutputStream partial = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            while (true) {
+                int n = in.read(buf);
+                if (n < 0) {
+                    // At the end of what is written so far: more arrives while the emulator lives.
+                    if (!process.isAlive()) break;
+                    Thread.sleep(FOLLOW_POLL);
+                    continue;
+                }
+                for (int i = 0; i < n; i++) {
+                    if (buf[i] != '\n') {
+                        partial.write(buf[i]);
+                        continue;
+                    }
+                    if (report(partial, out)) {
+                        out.accept("emulator is up (leave it running; `adb devices` sees it)");
+                        return 0;
                     }
                 }
-            } catch (IOException ignored) {
-                // The pipe closed with the emulator.
-            } finally {
-                booted.complete(false);
             }
-        });
-        if (booted.join()) {
-            out.accept("emulator is up (leave it running; `adb devices` sees it)");
-            return 0;
+            report(partial, out);
         }
         return process.waitFor();
+    }
+
+    /** Print the buffered line and empty the buffer; true when it is the boot line. */
+    private static boolean report(ByteArrayOutputStream partial, Consumer<String> out) {
+        String line = partial.toString(StandardCharsets.UTF_8).stripTrailing();
+        partial.reset();
+        if (!line.isBlank()) out.accept("  " + line);
+        return line.contains("boot completed") || line.contains("Successfully loaded snapshot");
     }
 
     private static @Nullable String flag(List<String> args, String name) {

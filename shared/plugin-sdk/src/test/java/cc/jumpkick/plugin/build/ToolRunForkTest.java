@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The fork half of {@link TaskExec.ToolRun}: {@code start()} is the one {@code ProcessBuilder} in
@@ -60,6 +62,20 @@ class ToolRunForkTest {
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertThat(process.waitFor()).isZero();
         assertThat(output).contains("arg=solo");
+    }
+
+    @Test
+    void start_with_a_file_redirect_appends_the_childs_output_to_that_file(@TempDir Path tmp) throws Exception {
+        Path log = tmp.resolve("child.log");
+        Files.writeString(log, "kept\n", StandardCharsets.UTF_8);
+
+        Process process = probe().arg("logged").start(ProcessBuilder.Redirect.appendTo(log.toFile()));
+
+        assertThat(process.waitFor()).isZero();
+        assertThat(process.getInputStream().read())
+                .as("nothing is piped back: the output went to the file")
+                .isEqualTo(-1);
+        assertThat(Files.readString(log, StandardCharsets.UTF_8)).isEqualTo("kept\narg=logged\nenv=<unset>\n");
     }
 
     /** {@code java -cp <test classpath> EnvEchoMain} on the JVM running the test. */
