@@ -187,7 +187,8 @@ public final class WorkspacePreflightPhase {
                     request.target(),
                     terminalTargetDirs(units, request),
                     true,
-                    request.profile());
+                    request.profile(),
+                    request.spec() == null ? null : request.spec().m2Dir());
             preflight = Optional.of(computed);
             dirty = computed.dirty();
             restoreNeeded = computed.restoreNeeded();

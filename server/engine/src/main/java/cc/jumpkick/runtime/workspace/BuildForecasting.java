@@ -173,6 +173,24 @@ public final class BuildForecasting {
             Set<Path> terminalDirs,
             boolean persistMemo,
             @Nullable String profile) {
+        return forecastWithFingerprints(
+                graph, cache, skipTests, entryDir, target, terminalDirs, persistMemo, profile, null);
+    }
+
+    /**
+     * As above with the install request's {@code --m2-dir}, which the cache-install forecast reads
+     * so that it and the step it predicts judge "already installed" against the same local repo.
+     */
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph,
+            Path cache,
+            boolean skipTests,
+            @Nullable Path entryDir,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            boolean persistMemo,
+            @Nullable String profile,
+            @Nullable Path m2Dir) {
         WorkspaceTarget t = target == null ? WorkspaceTarget.PACKAGE : target;
         // The dirty memo's clean claim covers package outputs only (it checks the module target
         // dir, not terminal artifacts). NATIVE/IMAGE/COMPILE/INSTALL must always run the
@@ -224,7 +242,15 @@ public final class BuildForecasting {
             Cas cas = JkStores.storeCas(); // artifact CAS for classpath fingerprints
             ActionCache ac = new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache));
             List<TaskForecast.Module> modules = TaskForecaster.of(
-                    graph, cas, ac, cache, skipTests, t, terminalDirs == null ? Set.of() : terminalDirs, profile);
+                    graph,
+                    cas,
+                    ac,
+                    cache,
+                    skipTests,
+                    t,
+                    terminalDirs == null ? Set.of() : terminalDirs,
+                    profile,
+                    m2Dir);
             Set<Path> dirty = new HashSet<>();
             Set<Path> restoreNeeded = new HashSet<>();
             for (TaskForecast.Module m : modules) {

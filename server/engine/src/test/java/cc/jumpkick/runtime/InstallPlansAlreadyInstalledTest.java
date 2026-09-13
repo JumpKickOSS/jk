@@ -101,6 +101,20 @@ class InstallPlansAlreadyInstalledTest {
             assertThat(InstallPlans.alreadyInstalled(project, layout, cache, tmp.resolve("other-m2")))
                     .as("a different --m2-dir has not been installed to")
                     .isFalse();
+
+            // The forecast judges the same step against the same root: explain and build agree.
+            assertThat(ModuleForecast.cacheInstallForecast(project, layout, cache, m2Dir, false)
+                            .cached())
+                    .as("the forecast reads the redirected repo the install wrote to")
+                    .isTrue();
+            assertThat(ModuleForecast.cacheInstallForecast(project, layout, cache, tmp.resolve("other-m2"), false)
+                            .cached())
+                    .as("the forecast under another --m2-dir predicts the install the build would run")
+                    .isFalse();
+            assertThat(ModuleForecast.cacheInstallForecast(project, layout, cache, m2Dir, true)
+                            .cached())
+                    .as("a jar this build rewrites is reinstalled whatever the repo holds")
+                    .isFalse();
         } finally {
             if (prevStore != null) System.setProperty("jk.env.JK_STORE_DIR", prevStore);
             else System.clearProperty("jk.env.JK_STORE_DIR");

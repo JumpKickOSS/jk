@@ -108,6 +108,24 @@ public final class TaskForecaster {
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             @Nullable String profile) {
+        return of(graph, cas, actionCache, cache, skipTests, target, terminalDirs, profile, null);
+    }
+
+    /**
+     * As above with the install request's {@code --m2-dir}: the cache-install step judges "already
+     * installed" against the Maven local repo it writes to, so the forecast reads the same root or
+     * {@code jk explain} reports the install done, or pending, against the machine's {@code ~/.m2}.
+     */
+    public static List<TaskForecast.Module> of(
+            BuildGraph.Result graph,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache,
+            boolean skipTests,
+            WorkspaceTarget target,
+            Set<Path> terminalDirs,
+            @Nullable String profile,
+            @Nullable Path m2Dir) {
         // One resolver for the whole walk: every module resolves its classpath against the same
         // lock and store, so its per-artifact resolve memo is only useful if it outlives a module.
         ClasspathResolver resolver = new ClasspathResolver(cas);
@@ -120,7 +138,17 @@ public final class TaskForecaster {
         }
         try (JavaCompilerHost.Scope ignored = JavaCompilerHost.open()) {
             return forecastModules(
-                    graph, cas, resolver, actionCache, cache, skipTests, target, terminalDirs, workerJar, profile);
+                    graph,
+                    cas,
+                    resolver,
+                    actionCache,
+                    cache,
+                    skipTests,
+                    target,
+                    terminalDirs,
+                    workerJar,
+                    profile,
+                    m2Dir);
         }
     }
 
@@ -134,7 +162,8 @@ public final class TaskForecaster {
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             @Nullable Path workerJar,
-            @Nullable String profile) {
+            @Nullable String profile,
+            @Nullable Path m2Dir) {
         List<TaskForecast.Module> out = new ArrayList<>();
         // --force/--rerun bypasses jk's build caches, so every step runs — the forecast must say
         // so too (otherwise the plan tree renders "Fully Cached" while the ETA, which honors force,
@@ -176,7 +205,8 @@ public final class TaskForecaster {
                     target,
                     terminalDirs,
                     workerJar,
-                    profile);
+                    profile,
+                    m2Dir);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
             // consumed jar/classes will change — not when only test-scope work is dirty.
@@ -348,7 +378,8 @@ public final class TaskForecaster {
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             @Nullable Path workerJar,
-            @Nullable String profile) {
+            @Nullable String profile,
+            @Nullable Path m2Dir) {
         return new ModuleForecast(
                         u,
                         dep,
@@ -362,7 +393,8 @@ public final class TaskForecaster {
                         target,
                         terminalDirs,
                         workerJar,
-                        profile)
+                        profile,
+                        m2Dir)
                 .run();
     }
 

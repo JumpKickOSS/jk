@@ -84,6 +84,7 @@ final class ModuleForecast {
     private List<TaskForecast.Task> steps = new ArrayList<>();
     private List<Path> testCompileCp = List.of();
     private final @Nullable String profileName;
+    private final @Nullable Path m2Dir;
     private int testCount;
     private boolean testDepDirty;
     private boolean testDirty;
@@ -104,7 +105,8 @@ final class ModuleForecast {
             WorkspaceTarget target,
             Set<Path> terminalDirs,
             @Nullable Path workerJar,
-            @Nullable String profileName) {
+            @Nullable String profileName,
+            @Nullable Path m2Dir) {
         this.u = u;
         this.dep = dep;
         this.force = force;
@@ -118,6 +120,7 @@ final class ModuleForecast {
         this.terminalDirs = terminalDirs;
         this.workerJar = workerJar;
         this.profileName = profileName;
+        this.m2Dir = m2Dir;
         this.project = u.manifest();
         this.dir = u.dir();
         this.lockFile = LockPaths.lockFile(dir);
@@ -843,17 +846,27 @@ final class ModuleForecast {
     }
 
     private void cacheInstall(Prepared prepared) throws Exception {
-        // ---- cache-install — jk install terminal. Skip when repos/jk-local already has this
-        // jar (matching SHA) and its POM. A packaged-but-never-installed module still runs.
+        // ---- cache-install — jk install terminal ----
         if (target == WorkspaceTarget.INSTALL && terminalDirs.contains(dir)) {
             boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
-            boolean skip = !jarDirty && InstallPlans.alreadyInstalled(project, BuildLayout.of(dir, project), cache);
-            steps.add(new TaskForecast.Task(
-                    TaskNames.CACHE_INSTALL,
-                    skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
-                    skip ? "" : "install to local repo",
-                    null));
+            steps.add(cacheInstallForecast(project, BuildLayout.of(dir, project), cache, m2Dir, jarDirty));
         }
+    }
+
+    /**
+     * The cache-install step's forecast: cached when the shelf already holds this jar (matching
+     * SHA) and its POM — and, with {@code [m2] install} on, the Maven local repo under {@code
+     * m2Dir}, the request's {@code --m2-dir} root the step writes to. A packaged-but-never-installed
+     * module still runs, and so does one whose jar this build rewrites.
+     */
+    static TaskForecast.Task cacheInstallForecast(
+            JkBuild project, BuildLayout layout, Path cache, @Nullable Path m2Dir, boolean jarDirty) {
+        boolean skip = !jarDirty && InstallPlans.alreadyInstalled(project, layout, cache, m2Dir);
+        return new TaskForecast.Task(
+                TaskNames.CACHE_INSTALL,
+                skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
+                skip ? "" : "install to local repo",
+                null);
     }
 
     private void emit(Prepared prepared) throws Exception {
