@@ -4,8 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.GroovycRequest;
-import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -34,7 +32,6 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
-import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.task.SourceApiIndex;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
@@ -148,7 +145,7 @@ final class ModuleForecast {
     }
 
     /** Resolved once before the phases run; never rewritten. */
-    private record Prepared(
+    record Prepared(
             Lockfile lock,
             boolean compact,
             BuildLayout layout,
@@ -442,15 +439,16 @@ final class ModuleForecast {
             // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
             // Reading the wrong directory never found a stamp, so every Kotlin module
             // forecast a full compile no matter how cached the build actually was.
-            KotlinArm arm = kotlinArm(prepared);
-            boolean fresh = !compileDepDirty && !force && kotlinStampFresh(prepared, arm);
+            ForecastLangArms arms = arms();
+            ForecastLangArms.KotlinArm arm = arms.kotlinArm(prepared);
+            boolean fresh = !compileDepDirty && !force && arms.kotlinStampFresh(prepared, arm);
             if (fresh) {
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_KOTLIN, TaskForecast.Status.CACHED, "", null));
             } else {
                 // The stamp is gone (a wiped target/) or stale: price the step by the action key of
                 // the build's own request, as the build will — never by the tasks/ pointer, whose
                 // last record may belong to another edit of the sources.
-                TaskForecast.Task step = kotlinStep(prepared, arm);
+                TaskForecast.Task step = arms.kotlinStep(prepared, arm);
                 steps.add(step);
                 if (!step.cached()) {
                     compileDirty = true;
@@ -460,92 +458,6 @@ final class ModuleForecast {
         }
     }
 
-    /** The kotlinc config and compile classpath the build derives for this module. */
-    private record KotlinArm(PlannerLang.KotlinConfig config, List<Path> classpath, boolean mixedWithJava) {}
-
-    private KotlinArm kotlinArm(Prepared prepared) throws Exception {
-        var langs = CompileSupport.resolveLanguages(project.project(), dir);
-        List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
-                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
-        PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
-                project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-        List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
-        return new KotlinArm(config, cp, langs.java());
-    }
-
-    /**
-     * compile-kotlin priced by the {@code forKotlinc} key of the request {@code
-     * PlannerLang.kotlinWorker} builds for the build — CACHED when that record is present, a full
-     * compile otherwise. Read-only: a classpath token not yet memoized keys on content here and
-     * misses, which is the pessimistic answer; a toolchain that cannot be resolved without a
-     * fetch forecasts a full compile for the same reason.
-     */
-    private TaskForecast.Task kotlinStep(Prepared prepared, KotlinArm arm) {
-        BuildLayout layout = prepared.layout();
-        List<Path> ktSrc = prepared.ktSrc();
-        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
-        String key;
-        KotlincRequest request;
-        try {
-            Path workingDir = ActionTree.INCREMENTAL_KOTLIN
-                    .under(CacheTree.ACTIONS.under(cache))
-                    .resolve(taskId);
-            PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
-                    project,
-                    dir,
-                    cache,
-                    cas,
-                    ktSrc,
-                    arm.classpath(),
-                    layout.kotlinClassesDir(),
-                    workingDir,
-                    arm.config());
-            request = worker.request();
-            key = ActionKey.forKotlinc(
-                    taskId, request, BuildIdentity.cacheKeyVersion(), KotlinClasspathAbi.MEMOIZED_ONLY);
-        } catch (Exception e) {
-            Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
-            return new TaskForecast.Task(
-                    TaskNames.COMPILE_KOTLIN,
-                    TaskForecast.Status.FULL,
-                    "full compile · " + TaskForecaster.count(ktSrc.size(), "source") + " · toolchain unresolved",
-                    null);
-        }
-        boolean hit = TaskForecaster.present(actionCache, key);
-        String why = "";
-        if (!hit) {
-            try {
-                why = TaskForecaster.langMissReason(
-                        actionCache, taskId, ActionKey.kotlincInputs(request, KotlinClasspathAbi.MEMOIZED_ONLY));
-            } catch (IOException e) {
-                Log.debug("kotlinStep: no miss reason", e);
-            }
-        }
-        return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why, depHint);
-    }
-
-    /**
-     * The build's compile-kotlin stamp check, from the same derivation: the kotlinc config's digest,
-     * the ABI token line of each compile-classpath entry, and the sources the compile stamps — the
-     * Kotlin sources plus, in a mixed module, the Java sources kotlinc reads. Read-only — a token
-     * not yet memoized keys on content here, which can only make the forecast say "not fresh"
-     * where the build, after one snapshot, would say fresh.
-     */
-    private boolean kotlinStampFresh(Prepared prepared, KotlinArm arm) throws Exception {
-        List<Path> freshInputs = new ArrayList<>(prepared.ktSrc());
-        if (arm.mixedWithJava()) freshInputs.addAll(prepared.mainSrc());
-        return FreshnessStamp.isFresh(
-                prepared.layout().classesDir(),
-                BuildStamps.KOTLIN,
-                freshInputs,
-                FreshnessStamp.ClasspathTokens.of(
-                        PlannerLang.kotlinStampTokens(arm.classpath(), KotlinClasspathAbi.MEMOIZED_ONLY)),
-                prepared.release(),
-                arm.config().digest());
-    }
-
     private void compileGroovy(Prepared prepared) throws Exception {
         BuildLayout layout = prepared.layout();
         List<Path> mainSrc = prepared.mainSrc();
@@ -553,7 +465,7 @@ final class ModuleForecast {
         List<Path> gvSrc = prepared.gvSrc();
         // ---- compile-groovy (stamp, then the action key of the build's own request) ----
         if (!gvSrc.isEmpty()) {
-            TaskForecast.Task step = groovyStep(prepared);
+            TaskForecast.Task step = arms().groovyStep(prepared);
             steps.add(step);
             if (!step.cached()) {
                 compileDirty = true;
@@ -570,65 +482,9 @@ final class ModuleForecast {
         }
     }
 
-    /**
-     * compile-groovy priced the way the build decides it: the freshness stamp first — the
-     * Groovy sources (plus the Java sources joint mode reads), the request's classpath token
-     * lines and the toolchain digest, written where write-stamp-groovy writes them — then the
-     * {@code forGroovyc} key of the very request {@code PlannerLang.groovyRequest} builds for the
-     * build. A body-only edit upstream therefore forecasts CACHED once the sibling's ABI token is
-     * known, as the build answers it. A toolchain that cannot be resolved read-only forecasts a
-     * full compile: the pessimistic answer, never a false hit.
-     */
-    private TaskForecast.Task groovyStep(Prepared prepared) throws Exception {
-        BuildLayout layout = prepared.layout();
-        List<Path> gvSrc = prepared.gvSrc();
-        boolean mixed = prepared.mixedGroovy();
-        String full = "full compile · " + TaskForecaster.count(gvSrc.size(), "source");
-        GroovycRequest req;
-        try {
-            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-            List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
-            List<Path> javaRoots = mixed
-                    ? PlannerKsp.kotlinJavaSourceRoots(true, prepared.compact(), dir, layout, prepared.pkgDecls())
-                    : null;
-            req = PlannerLang.groovyRequest(
-                    project,
-                    prepared.lock(),
-                    dir,
-                    cas,
-                    gvSrc,
-                    cp,
-                    layout.groovyClassesDir(),
-                    javaRoots,
-                    mixed ? layout.groovyStubsDir() : null,
-                    prepared.processorCp(),
-                    prepared.release(),
-                    prepared.javaHome());
-        } catch (Exception e) {
-            Log.debug("groovyStep: the Groovy toolchain could not be resolved read-only", e);
-            return new TaskForecast.Task(
-                    TaskNames.COMPILE_GROOVY, TaskForecast.Status.FULL, full + " · toolchain unresolved", null);
-        }
-        List<Path> freshInputs = new ArrayList<>(gvSrc);
-        if (mixed) freshInputs.addAll(prepared.mainSrc());
-        if (!compileDepDirty
-                && !force
-                && FreshnessStamp.isFresh(
-                        layout.classesDir(),
-                        BuildStamps.GROOVY,
-                        freshInputs,
-                        FreshnessStamp.ClasspathTokens.of(ActionKey.groovycClasspathTokens(req)),
-                        prepared.release(),
-                        PlannerLang.groovyStampDigest(
-                                project, prepared.lock(), dir, prepared.release(), prepared.javaHome()))) {
-            return new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null);
-        }
-        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
-        String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion());
-        boolean hit = TaskForecaster.present(actionCache, key);
-        String why = hit ? "" : TaskForecaster.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
-        return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint);
+    /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */
+    private ForecastLangArms arms() {
+        return new ForecastLangArms(project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint);
     }
 
     private void compileTest(Prepared prepared) throws Exception {
