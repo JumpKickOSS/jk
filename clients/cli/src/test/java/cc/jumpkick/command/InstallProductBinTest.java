@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.command.pipeline.InstallCommand;
+import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,9 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code [install] product-bin} — jk's own client replacing the PATH client. The freshness question
- * is the destination's, as with {@code product-lib}: the engine's forecast knows the build output,
- * not whether {@code bin/jk} holds it.
+ * {@code [install] product-bin} — jk's own client replacing the PATH client, with the JVM launcher
+ * {@code jk-jvm} beside it. The freshness question is the destination's, as with {@code
+ * product-lib}: the engine's forecast knows the build output, not whether {@code bin/jk} holds it
+ * or whether the launcher is there at all.
  */
 class InstallProductBinTest {
 
@@ -40,6 +42,7 @@ class InstallProductBinTest {
     @Test
     void the_path_client_is_stale_until_it_holds_the_built_bytes(@TempDir Path tmp) throws Exception {
         Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Files.writeString(bin.resolve(AppLauncher.launcherFileName("jk-jvm")), "launcher");
         Path built = Files.writeString(tmp.resolve("jk"), "built");
         ProjectInfo info = info("jk", built.toString());
 
@@ -53,6 +56,20 @@ class InstallProductBinTest {
     }
 
     @Test
+    void a_home_without_the_jvm_launcher_is_stale_whatever_the_client_holds(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path built = Files.writeString(tmp.resolve("jk"), "built");
+        Files.writeString(bin.resolve("jk"), "built");
+        ProjectInfo info = info("jk", built.toString());
+
+        assertThat(InstallCommand.productBinStale(info, bin))
+                .as("the client is current but the launcher beside it is missing")
+                .isTrue();
+        Files.writeString(bin.resolve(AppLauncher.launcherFileName("jk-jvm")), "launcher");
+        assertThat(InstallCommand.productBinStale(info, bin)).isFalse();
+    }
+
+    @Test
     void an_ordinary_module_is_never_product_bin_stale(@TempDir Path tmp) throws Exception {
         assertThat(InstallCommand.productBinStale(info("", tmp.resolve("jk").toString())))
                 .isFalse();
@@ -60,10 +77,13 @@ class InstallProductBinTest {
     }
 
     @Test
-    void a_client_that_was_never_built_is_not_stale_either(@TempDir Path tmp) throws Exception {
-        assertThat(InstallCommand.productBinStale(
-                        info("jk", tmp.resolve("missing").toString()), tmp))
-                .isFalse();
+    void a_client_that_was_never_built_is_not_stale_once_the_launcher_is_there(@TempDir Path tmp) throws Exception {
+        ProjectInfo info = info("jk", tmp.resolve("missing").toString());
+        assertThat(InstallCommand.productBinStale(info, tmp))
+                .as("no native client, no launcher: the launcher is owed")
+                .isTrue();
+        Files.writeString(tmp.resolve(AppLauncher.launcherFileName("jk-jvm")), "launcher");
+        assertThat(InstallCommand.productBinStale(info, tmp)).isFalse();
     }
 
     private static ProjectInfo info(String productBin, String nativeBinPath) {

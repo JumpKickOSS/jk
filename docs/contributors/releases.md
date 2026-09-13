@@ -180,9 +180,13 @@ The first client for a platform is produced by the owner on a machine of that ar
 JDK 25 with GraalVM, this checkout, and a jk to build it — the client module is a plain JVM
 program (`cc.jumpkick.cli.Jk`, published as `cc.jumpkick:jk-cli:<version>` with its POM on
 `jumpkick.build/repo/` by `jk install` + `scripts/publish-maven-repo.sh`), so on a machine with no
-native client it runs from that closure on a JVM; `jk build --skip-tests` then writes the native
-client for the host under `target/dist`, `DIST_DIR=target/dist scripts/assemble-release-dir.sh`
-assembles it, and it is signed and uploaded beside the other platforms' artifacts. Once
+native client it runs from that closure on a JVM, and `jk install` on this checkout writes it as
+`bin/jk-jvm` ([self-host](self-host.md#the-jvm-client)). The closure must be published for the
+same version as the hosted engine: a JVM client pairs only with its own version's engine, and
+`repo/` at 0.13.2 beside `releases/` at 0.13.3 pairs with nothing. `jk build --skip-tests` then
+writes the native client for the host under `target/dist`, `DIST_DIR=target/dist
+scripts/assemble-release-dir.sh` assembles it, and it is signed and uploaded beside the other
+platforms' artifacts. Once
 `releases/<version>/SHA256SUMS` lists the platform, its row joins `release.yml` (and, for
 Windows and macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
 

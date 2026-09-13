@@ -657,19 +657,28 @@ public final class ExecPlans {
         if (productBin != null) {
             // jk's own client. The built native binary replaces the PATH client under <home>/bin —
             // the one name LauncherName refuses to every other install, because a tool launcher
-            // there would truncate the product. No launcher script and no lib dir: the binary is
-            // the whole install, and the client applies the link with the same parking as a
-            // release update.
-            Path nativeBin = layout.nativeBinary();
+            // there would truncate the product — and the client applies the link with the same
+            // parking as a release update. Beside it, under <product-bin>-jvm, the same classpath
+            // launcher every application install gets: cc.jumpkick.cli.Jk on a JVM over the
+            // shelf's thin jar and its closure. On a machine that linked no native binary — no
+            // GraalVM, a platform with no hosted client — that launcher is the whole install, and
+            // the PATH client is left as it is.
+            Path jvmLauncher = LauncherName.resolveChild(binDir, AppLauncher.launcherFileName(productBin + "-jvm"));
+            String jvmScript = AppLauncher.renderScript(
+                    projectJavaHome(dir),
+                    resolveMain(project, layout, mainOverride),
+                    thinClasspath(dir, project, layout));
             if (!InstallPlans.installsNativeBinary(project, layout)) {
-                return ExecPlan.error(
-                        "install",
-                        "[install] product-bin needs the native client binary at " + nativeBin
-                                + " — the module must build native (`[native] enabled = \"always\"`)");
+                return installAck(List.of(), List.of(), jvmLauncher.toString(), jvmScript, jvmLauncher.toString());
             }
+            Path nativeBin = layout.nativeBinary();
             Path dest = binDir.resolve(BuildLayout.nativeExecutableFileName(productBin));
             return installAck(
-                    List.of(nativeBin.toAbsolutePath().toString()), List.of(dest.toString()), "", "", dest.toString());
+                    List.of(nativeBin.toAbsolutePath().toString()),
+                    List.of(dest.toString()),
+                    jvmLauncher.toString(),
+                    jvmScript,
+                    dest.toString());
         }
         Path javaHome = projectJavaHome(dir);
         Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.productLib();
@@ -699,6 +708,18 @@ public final class ExecPlans {
             return fatJarPlan(layout.mainJar(), libDir, launcherPath, javaHome);
         }
 
+        String script = AppLauncher.renderScript(
+                javaHome, resolveMain(project, layout, mainOverride), thinClasspath(dir, project, layout));
+        return installAck(List.of(), List.of(), launcherPath.toString(), script, launcherPath.toString());
+    }
+
+    /**
+     * The thin-jar install's classpath: the module's jar on the shelf (its {@code target/} jar
+     * until the shelf has it), the lock's runtime entries that exist, then the workspace siblings
+     * it runs on. What {@code java -cp} launchers are rendered over, jk's own JVM client included.
+     */
+    private static List<Path> thinClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
+        var p = project.project();
         Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
         Path repoJar = JkStores.store()
                 .resolve("repos")
@@ -722,8 +743,7 @@ public final class ExecPlans {
         for (Path sib : siblings.jars()) {
             classpath.add(sib);
         }
-        String script = AppLauncher.renderScript(javaHome, resolveMain(project, layout, mainOverride), classpath);
-        return installAck(List.of(), List.of(), launcherPath.toString(), script, launcherPath.toString());
+        return classpath;
     }
 
     private static ExecPlan fatJarPlan(Path src, Path libDir, Path launcherPath, Path javaHome) {

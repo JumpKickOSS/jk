@@ -30,6 +30,7 @@ import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.tool.JarManifest;
 import cc.jumpkick.tool.LauncherName;
 import cc.jumpkick.tool.ToolEnv;
@@ -580,6 +581,9 @@ public final class InstallCommand {
     }
 
     public static boolean productBinStale(ProjectInfo info, Path binDir) {
+        // The JVM launcher beside the client is part of the install: a home without it is stale
+        // whether or not a native client was built, since the launcher needs no GraalVM.
+        if (!Files.isRegularFile(binDir.resolve(AppLauncher.launcherFileName(info.productBin() + "-jvm")))) return true;
         String builtPath = info.nativeBinPath();
         if (builtPath == null || builtPath.isBlank()) return false;
         Path built = Path.of(builtPath);
@@ -640,7 +644,23 @@ public final class InstallCommand {
             return null; // a jar the client launches — no launcher/bin to link
         }
         if (!productBin.isBlank()) {
-            if (plan.linkSrcs().isEmpty()) return null;
+            // The JVM launcher first: on a machine that linked no native client it is the whole
+            // install and the path reported; beside a native client it is written and the native
+            // swap is what is reported, as before.
+            Path jvmLauncher = null;
+            if (!plan.launcherScript().isEmpty()) {
+                jvmLauncher = Path.of(plan.launcherPath());
+                Files.createDirectories(jvmLauncher.getParent());
+                Files.writeString(jvmLauncher, plan.launcherScript());
+                markExecutable(jvmLauncher);
+            }
+            if (plan.linkSrcs().isEmpty()) {
+                if (jvmLauncher != null) {
+                    CliOutput.err("no native client was built here — " + jvmLauncher.getFileName()
+                            + " runs jk on a JVM; the PATH client " + productBin + " is unchanged");
+                }
+                return jvmLauncher;
+            }
             return installProductBin(Path.of(plan.linkSrcs().get(0)), binDir(), JkStores.storeCas());
         }
         for (int i = 0; i < plan.linkSrcs().size(); i++) {

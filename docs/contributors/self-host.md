@@ -151,6 +151,32 @@ A platform with no hosted client (Linux aarch64, macOS x86_64, Windows) has noth
 from until one is published; [releases](releases.md#platforms-without-a-hosted-client) says how the
 first client for a platform is produced.
 
+### The JVM client
+
+The client module is a plain JVM program, and two things run it without a native binary:
+
+- **`jk install` writes `bin/jk-jvm`** beside the native client — the same `java -cp` launcher
+  every application install gets, over the shelf's `jk-cli` jar and its closure — and writes it
+  alone when the build linked no native binary. `jk-jvm --version` and `jk-jvm build` talk to the
+  engine this same install put under `lib/jk-engine/`, so a checkout that has a jk of any kind can
+  produce a JVM client for the machine it runs on with no GraalVM at all.
+- **The published closure**, `cc.jumpkick:jk-cli:<version>` on `jumpkick.build/repo/`, runs from
+  any project that names the repository and depends on it: `jk run . -- --version` executes
+  `cc.jumpkick.cli.Jk` from the resolved jars, and `jk install` of that project writes a launcher
+  of the project's name that does the same. Both were exercised against the hosted 0.13.2 closure
+  and print `jk 0.13.2`.
+
+What the JVM client cannot do yet is *bootstrap* a platform with no jk: a JVM client only pairs
+with an engine of its own version, and the hosted pieces do not pair today — `repo/` holds the
+0.13.2 closure while `releases/` holds the 0.13.3 engine (there is no `releases/0.13.2/`), so a
+0.13.2 JVM client stops at `no build engine for jk 0.13.2` on its first build. The owner closes
+the gap by publishing the 0.13.3 closure the way [releases](releases.md#platforms-without-a-hosted-client)
+describes (`jk install`, then `scripts/publish-maven-repo.sh`), after which a JVM client from the
+closure materializes the hosted engine with `jk self materialize <client> <engine-jar>`. Until
+then the JVM client is produced by the tree's own build, and the smoke a runner without GraalVM
+runs is `jk install --skip-tests`, then `bin/jk-jvm --version` and a `bin/jk-jvm build` of a
+sample under the same `JK_HOME`.
+
 ## Dogfood (same tree)
 
 After `jk` is on `PATH`, stay in this checkout:
@@ -235,7 +261,7 @@ jk install            # or --skip-tests; install runs the suite like `jk build`
 | Library (`shared/*`, `server/*`, rule packs) | Thin jar + POM onto the shelf, `~/.jk/store/repos/jk-local/<g>/<a>/<v>/` |
 | Plugin worker (`plugins/*`) | Same shelf entry; launch rebuilds the runtime classpath from that POM |
 | `server/engine` — declares `[install] product-lib = "jk-engine"` | Assembly jar materialized into `~/.jk/lib/jk-engine/`, pointer stamped by sha; the next client invocation takes over the resident engine |
-| `clients/cli` — declares `[install] product-bin = "jk"` | Native binary replaces `~/.jk/bin/jk` (previous client parked as `.old`, `jkx` re-linked), the same swap `jk self update` performs |
+| `clients/cli` — declares `[install] product-bin = "jk"` | Native binary replaces `~/.jk/bin/jk` (previous client parked as `.old`, `jkx` re-linked), the same swap `jk self update` performs — and `~/.jk/bin/jk-jvm` (`jk-jvm.cmd` on Windows) is written beside it: `cc.jumpkick.cli.Jk` on a JVM over the shelf's `jk-cli` closure. On a machine that built no native client (no GraalVM) the launcher is the whole install and the PATH client is left alone |
 
 The shelf always holds the full entry; with the machine default `[m2] install` on, the same bytes
 are also copied into `~/.m2` for Maven and Gradle builds beside jk. The two `[install]` keys exist
