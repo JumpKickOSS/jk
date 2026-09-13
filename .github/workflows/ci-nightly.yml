@@ -440,3 +440,44 @@ jobs:
       - name: Product smoke
         shell: bash
         run: JK_BIN=jk ./scripts/ci-product-smoke.sh
+
+  # The JVM client on a runner that brings a plain JDK and no GraalVM — the shape of every platform
+  # with no hosted native client, and the one place nothing else exercises bin/jk-jvm. The
+  # checkout's build still links jk's native client, so it provisions the GraalVM that step needs
+  # itself (--yes answers the installer's offer; nothing here reaches for setup-graalvm). What the
+  # job then proves is the launcher jk install writes beside that client: jk-jvm answers --version
+  # on the runner's JDK and builds a fresh sample through the engine the same install put in place
+  # (scripts/ci-product-smoke.sh, with the JVM client as the jk under test).
+  jvm-client:
+    name: JVM client smoke (plain JDK, no GraalVM)
+    runs-on: ubuntu-latest
+    env:
+      JK_HOME: ${{ github.workspace }}/.ci-jk-home
+      JK_AOT_TRAIN: 'off'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - name: Bootstrap jk from the hosted release
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < .jk/ci-bootstrap-version)"
+          curl -fsSL https://jumpkick.build/install.sh | JK_VERSION="$version" bash
+          echo "$JK_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: The checkout's own jk takes over
+        run: |
+          set -euo pipefail
+          jk build --skip-tests --yes --no-ansi
+          jk install --skip-tests --yes --no-ansi
+
+      - name: The JVM client answers and builds a sample through the installed engine
+        run: |
+          set -euo pipefail
+          test -x "$JK_HOME/bin/jk-jvm"
+          jk-jvm --version
+          JK_BIN=jk-jvm scripts/ci-product-smoke.sh

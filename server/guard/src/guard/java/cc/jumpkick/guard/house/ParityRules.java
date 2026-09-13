@@ -306,7 +306,7 @@ final class ParityRules {
     @Guard(
             id = "ci-cadence",
             why =
-                    "nightly CI runs the slow tiers, the coverage ratchet and the product smoke; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
+                    "nightly CI runs the slow tiers, the coverage ratchet, the product smoke and the JVM client on a runner without GraalVM; the branch gate keeps the self-host job that is the only evidence jk still builds jk, bootstrapped from the hosted release "
                             + BOOTSTRAP_PIN + " pins and judged by the checkout's own jk",
             instead =
                     "restore the job, step, script or pin the detail names — a workflow that stops running a gate leaves the claim in the docs with nothing behind it")
@@ -322,6 +322,23 @@ final class ParityRules {
             problems.add(NIGHTLY + " must run jk guard after jk test --coverage — the coverage ratchet (G91)");
         if (!nightly.contains("macos-")) problems.add(NIGHTLY + " must have a macOS smoke runner");
         if (!nightly.contains("ci-product-smoke.sh")) problems.add(NIGHTLY + " must run scripts/ci-product-smoke.sh");
+        String jvmClient = jobs(nightly).get("jvm-client");
+        if (jvmClient == null)
+            problems.add(
+                    NIGHTLY
+                            + " must keep the jvm-client job — nothing else runs bin/jk-jvm, and a launcher no run exercises is a claim in the docs with nothing behind it");
+        else {
+            if (jvmClient.contains("setup-graalvm"))
+                problems.add(
+                        NIGHTLY
+                                + "'s jvm-client job must not use setup-graalvm: it is the one run on a runner that brings no GraalVM, which is where the JVM client matters");
+            if (!jvmClient.contains("jk-jvm --version"))
+                problems.add(NIGHTLY + "'s jvm-client job must run `jk-jvm --version`");
+            if (!jvmClient.contains("JK_BIN=jk-jvm"))
+                problems.add(
+                        NIGHTLY
+                                + "'s jvm-client job must run scripts/ci-product-smoke.sh with `JK_BIN=jk-jvm` — a sample built through the installed engine by the JVM client");
+        }
         if (branch.contains("--coverage") || branch.contains("--profile bench"))
             problems.add(CI + " must not run coverage or benches (they are nightly, non-gating)");
         Map<String, String> jobs = jobs(branch);

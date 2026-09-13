@@ -45,12 +45,13 @@ eight minutes). A guard failure is annotated with the rule that owns it.
 | Where CI installs it | `$GITHUB_WORKSPACE/.ci-jk-home` — never the runner's `~/.jk` |
 | What proves the graph is honest | `jk build` must not rewrite the committed `jk-lock.toml`; `cmp` of `target/dist/jk` against `$JK_HOME/bin/jk` and the engine sha against `jk-engine.toml` prove the takeover |
 | What audits the graph | `jk audit --severity HIGH --output json` over the committed lock, after the drift check, by the checkout's own jk: HIGH, CRITICAL and unlabelled advisories fail the job, `scripts/ci-audit-annotate.sh` names each one, the JSON is the `jk-audit` artifact; a pin bump or an `[audit] ignore` with a reason is the fix, never a skipped step |
-| What runs nightly | `jk test --profile integration`, `--profile slow`, `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational) and the macOS product smoke (`ci-nightly.yml`) |
+| What runs nightly | `jk test --profile integration`, `--profile slow`, `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`), the heap guard, the doc examples, the audit at `LOW` (informational), the macOS product smoke and the JVM client smoke on a runner with a plain JDK and no GraalVM (`ci-nightly.yml`) |
 | Wall-clock series | `.github/workflows/wall-measure.yml`, weekly, ratcheted by `scripts/wall-band.py` against `wall-baseline.toml` |
 
 Guard **G57** (`ci-cadence`) keeps the self-host job, its isolated `JK_HOME`, the four verbs it
 runs (`jk build`, `jk install`, `jk guard`, `jk test`), its bootstrap through `install.sh` at the
-pinned version, the nightly tiers and the scheduled wall measurement in place. It fails on a
+pinned version, the nightly tiers, the JVM client smoke and the scheduled wall measurement in
+place. It fails on a
 `gradlew` in the self-host job, on a `JK_VERSION=<digits>` literal in any workflow, and on
 `continue-on-error` on any job of `ci.yml`: that flag is how a merge requirement becomes a
 courtesy run without anyone deleting a job. The weekly wall measurement keeps its own
@@ -161,7 +162,9 @@ The client module is a plain JVM program, and two things run it without a native
   every application install gets, over the shelf's `jk-cli` jar and its closure — and writes it
   alone when the build linked no native binary. `jk-jvm --version` and `jk-jvm build` talk to the
   engine this same install put under `lib/jk-engine/`, so a checkout that has a jk of any kind can
-  produce a JVM client for the machine it runs on with no GraalVM at all.
+  produce a JVM client for the machine it runs on. The tree's own build still links the native
+  client, so on a machine with no GraalVM it provisions one (`--yes` answers the offer) rather
+  than needing one preinstalled.
 - **The published closure**, `cc.jumpkick:jk-cli:<version>` on `jumpkick.build/repo/`, runs from
   any project that names the repository and depends on it: `jk run . -- --version` executes
   `cc.jumpkick.cli.Jk` from the resolved jars, and `jk install` of that project writes a launcher
@@ -175,9 +178,11 @@ with an engine of its own version, and the hosted pieces do not pair today — `
 the gap by publishing the 0.13.3 closure the way [releases](releases.md#platforms-without-a-hosted-client)
 describes (`jk install`, then `scripts/publish-maven-repo.sh`), after which a JVM client from the
 closure materializes the hosted engine with `jk self materialize <client> <engine-jar>`. Until
-then the JVM client is produced by the tree's own build, and the smoke a runner without GraalVM
-runs is `jk install --skip-tests`, then `bin/jk-jvm --version` and a `bin/jk-jvm build` of a
-sample under the same `JK_HOME`.
+then the JVM client is produced by the tree's own build, and `ci-nightly.yml`'s `jvm-client` job
+runs it nightly on a runner that brings a plain JDK and no GraalVM: `jk install --skip-tests`
+writes the launcher, then `jk-jvm --version` and `scripts/ci-product-smoke.sh` with
+`JK_BIN=jk-jvm` build a fresh sample through the installed engine under the same `JK_HOME`.
+G57 holds the job, its lack of `setup-graalvm` and both commands in place.
 
 ## Dogfood (same tree)
 
