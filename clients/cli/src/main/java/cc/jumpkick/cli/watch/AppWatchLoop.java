@@ -34,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * <p>On a terminal the app owns stdout and stderr and every sidecar line is prefixed with its
  * name. Under {@code --output json} the app is piped too, so stdout stays one JSONL stream: its
  * lines become {@code app-output} events beside the sidecars' {@code sidecar-output}, and its
- * starts and exits {@code app-started} / {@code app-exited}.
+ * starts and exits {@code app-started} / {@code app-exited}. {@code dev-ready} says the whole stack
+ * is up, and says it again after a process restart of the app when the app is the front door.
  */
 @RequiredArgsConstructor
 public final class AppWatchLoop {
@@ -98,10 +99,8 @@ public final class AppWatchLoop {
                     CliOutput.err(logPrefix + ": " + notReady.get());
                     return Exit.SOFTWARE;
                 }
-                CliOutput.err(logPrefix + ": ready · "
-                        + sidecars.frontDoor().map(url -> url + " ").orElse("")
-                        + "(" + plan.display() + ")");
             }
+            ready(sidecars, plan);
             while (true) {
                 Optional<SourceWatch.Changes> maybe = watch.pollChange(500, TimeUnit.MILLISECONDS);
                 if (maybe.isEmpty()) {
@@ -128,6 +127,7 @@ public final class AppWatchLoop {
                         }
                         app = restartApp(app, plan, appArgs);
                         running.set(app);
+                        if (sidecars.frontDoor().isEmpty()) ready(sidecars, plan);
                     }
                     continue;
                 }
@@ -141,11 +141,25 @@ public final class AppWatchLoop {
                 } else {
                     app = restartApp(app, plan, appArgs);
                     running.set(app);
+                    if (sidecars.frontDoor().isEmpty()) ready(sidecars, plan);
                 }
             }
         } finally {
             sidecars.stopAlongside(List.of(app));
         }
+    }
+
+    /**
+     * The one line that says the stack is up, and its {@code dev-ready} event under {@code --output
+     * json}: once every sidecar's probe has passed, and again after each process restart of the app
+     * when the app itself is the front door. A sidecar outlives the restart, so its address stays
+     * true; the app's process is new, and the terminal would otherwise keep pointing at the old one.
+     */
+    private void ready(Sidecars sidecars, ExecPlan plan) {
+        Optional<String> frontDoor = sidecars.frontDoor();
+        CliOutput.err(
+                logPrefix + ": ready · " + frontDoor.map(url -> url + " ").orElse("") + "(" + plan.display() + ")");
+        if (json()) CliOutput.out(SidecarOutput.devReady(Clock.SYSTEM, frontDoor.orElse(""), plan.display()));
     }
 
     private int deviceLoop(Path projectDir, Path cache, ExecPlan plan, List<String> appArgs)

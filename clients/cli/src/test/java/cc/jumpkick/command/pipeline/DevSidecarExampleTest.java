@@ -15,7 +15,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -28,12 +30,13 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The manual's {@code examples/vite-sidecar} under {@code jk dev}: the JVM API and the sidecar come
- * up, the front door answers, every sidecar line is an event with its source, and Ctrl-C takes both
- * processes down. Vite itself needs {@code npm install}, which this tier does not have, so the
- * sidecar's command is swapped for a single-file Java HTTP server that plays the dev server's part:
- * it listens on the example's port, prints a line and a carriage-return progress bar, and answers
- * {@code /}. Everything else — the manifest, the sources, the probe, the front door — is the
- * example as documented, and {@code jk dev} is spawned as a real process so the SIGINT is a real one.
+ * up, the front door answers, every sidecar line is an event with its source, a source change
+ * restarts the JVM and leaves the sidecar alone, and Ctrl-C takes both processes down. Vite itself
+ * needs {@code npm install}, which this tier does not have, so the sidecar's command is swapped for
+ * a single-file Java HTTP server that plays the dev server's part: it listens on the example's
+ * port, prints a line and a carriage-return progress bar, and answers {@code /}. Everything else —
+ * the manifest, the sources, the probe, the front door — is the example as documented, and {@code
+ * jk dev} is spawned as a real process so the SIGINT is a real one.
  */
 @Tag("integration")
 @DisabledOnOs(OS.WINDOWS)
@@ -45,16 +48,19 @@ class DevSidecarExampleTest {
     /** A cold engine, a compile, a JVM start and a probe all fit; a hang does not. */
     private static final long READY_WAIT_SECONDS = 180;
 
+    private static final String READY_LINE = "ready · ";
+
     @Test
     void the_example_serves_its_front_door_and_its_api_and_ctrl_c_stops_both(@TempDir Path dir) throws Exception {
         int webPort = freePort();
         int apiPort = freePort();
         Path project = stage(dir.resolve("vite-sidecar"), webPort);
-        Path out = dir.resolve("stdout.jsonl");
-        Path err = dir.resolve("stderr.log");
-        Process jk = spawnDev(project, out, err, apiPort);
+        Session session = Session.spawn(project, dir, apiPort);
+        Process jk = session.jk;
+        Path out = session.out;
+        Path err = session.err;
         try {
-            Optional<String> ready = awaitLine(out, l -> "sidecar-ready".equals(Jsonl.str(l, "type")), jk);
+            Optional<String> ready = awaitLine(out, typed("sidecar-ready"), jk);
             assertThat(ready)
                     .as("no sidecar-ready within the wait\nstdout:\n%s\nstderr:\n%s", read(out), read(err))
                     .isPresent();
@@ -63,10 +69,8 @@ class DevSidecarExampleTest {
             assertThat(Jsonl.bool(ready.get(), "frontDoor", false)).isTrue();
 
             List<String> events = lines(out);
-            String started = events.stream()
-                    .filter(l -> "sidecar-started".equals(Jsonl.str(l, "type")))
-                    .findFirst()
-                    .orElseThrow();
+            String started =
+                    events.stream().filter(typed("sidecar-started")).findFirst().orElseThrow();
             long webPid = Jsonl.longValue(started, "pid", -1);
             assertThat(webPid).isPositive();
             assertThat(events)
@@ -81,22 +85,105 @@ class DevSidecarExampleTest {
                     .as("a carriage-return progress bar shows its final state only")
                     .contains("bundling 100%")
                     .doesNotContain("bundling 10%");
-            Optional<String> appStarted = awaitLine(out, l -> "app-started".equals(Jsonl.str(l, "type")), jk);
+            Optional<String> appStarted = awaitLine(out, typed("app-started"), jk);
             assertThat(appStarted).isPresent();
             long appPid = Jsonl.longValue(appStarted.get(), "pid", -1);
-            Optional<String> listening = awaitLine(
-                    out,
-                    l -> "app-output".equals(Jsonl.str(l, "type"))
-                            && String.valueOf(Jsonl.str(l, "line")).startsWith("listening on"),
-                    jk);
-            assertThat(listening)
+            assertThat(awaitCount(out, listening(), 1, jk))
                     .as("the app's own stdout rides the stream as app-output\n%s", read(out))
-                    .isPresent();
+                    .isTrue();
 
-            assertThat(awaitText(err, "ready · http://localhost:" + webPort, jk))
+            Optional<String> devReady = awaitLine(out, typed("dev-ready"), jk);
+            assertThat(devReady)
+                    .as("the ready line has its event\n%s", read(out))
+                    .isPresent();
+            assertThat(Jsonl.str(devReady.get(), "url")).isEqualTo("http://localhost:" + webPort);
+            assertThat(Jsonl.str(devReady.get(), "app")).contains("demo.Api");
+            assertThat(awaitText(err, READY_LINE + "http://localhost:" + webPort, jk))
                     .as("the one ready line names the front door\n%s", read(err))
                     .isTrue();
             assertThat(get("http://127.0.0.1:" + webPort + "/")).contains("stub dev server");
+            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
+
+            // A source change restarts the JVM. The sidecar is the front door and survives the
+            // restart, so its address is still true and the ready line is not said again.
+            touchSource(project);
+            Optional<String> restarted = awaitLine(out, typed("app-started").and(l -> pid(l) != appPid), jk);
+            assertThat(restarted)
+                    .as("no restart after a source change\n%s", read(err))
+                    .isPresent();
+            assertThat(awaitCount(out, listening(), 2, jk)).isTrue();
+            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
+            assertThat(lines(out).stream().filter(typed("app-exited")).map(DevSidecarExampleTest::pid))
+                    .contains(appPid);
+            assertThat(lines(out).stream().filter(typed("dev-ready")).count())
+                    .as("a sidecar front door is announced once\n%s", read(out))
+                    .isEqualTo(1);
+            assertThat(count(read(err), READY_LINE)).isEqualTo(1);
+            assertThat(lines(out).stream().filter(typed("sidecar-started")).count())
+                    .as("the sidecar outlives the app's restart")
+                    .isEqualTo(1);
+            assertThat(alive(webPid)).isTrue();
+
+            interrupt(jk);
+            assertThat(jk.waitFor(30, TimeUnit.SECONDS))
+                    .as("Ctrl-C did not end the session\n%s", read(err))
+                    .isTrue();
+            assertThat(jk.exitValue()).isEqualTo(Exit.INTERRUPTED);
+            long newPid = pid(restarted.get());
+            awaitGone(webPid);
+            awaitGone(newPid);
+            assertThat(alive(webPid)).as("the sidecar survived the session").isFalse();
+            assertThat(alive(newPid)).as("the app survived the session").isFalse();
+        } finally {
+            session.reap();
+        }
+    }
+
+    @Test
+    void with_the_app_as_the_front_door_the_ready_line_returns_after_every_restart(@TempDir Path dir) throws Exception {
+        int apiPort = freePort();
+        Path project = stage(dir.resolve("vite-sidecar"), freePort());
+        Session session = Session.spawn(project, dir, apiPort, "--no-sidecars");
+        Process jk = session.jk;
+        Path out = session.out;
+        Path err = session.err;
+        try {
+            Optional<String> ready = awaitLine(out, typed("dev-ready"), jk);
+            assertThat(ready)
+                    .as("no dev-ready within the wait\nstdout:\n%s\nstderr:\n%s", read(out), read(err))
+                    .isPresent();
+            assertThat(Jsonl.has(ready.get(), "url"))
+                    .as("the app is the front door: no url")
+                    .isFalse();
+            assertThat(Jsonl.str(ready.get(), "app")).contains("demo.Api");
+            assertThat(lines(out)).noneMatch(typed("sidecar-started"));
+            assertThat(awaitText(err, READY_LINE + "(", jk)).isTrue();
+            assertThat(count(read(err), READY_LINE)).isEqualTo(1);
+
+            String started =
+                    lines(out).stream().filter(typed("app-started")).findFirst().orElseThrow();
+            long appPid = pid(started);
+            assertThat(awaitCount(out, listening(), 1, jk)).isTrue();
+            assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
+
+            touchSource(project);
+            Optional<String> restarted = awaitLine(out, typed("app-started").and(l -> pid(l) != appPid), jk);
+            assertThat(restarted)
+                    .as("no restart after a source change\n%s", read(err))
+                    .isPresent();
+            assertThat(awaitCount(out, typed("dev-ready"), 2, jk))
+                    .as("the ready event returns with the restarted app\n%s", read(out))
+                    .isTrue();
+            List<String> events = lines(out);
+            int secondStart = events.indexOf(restarted.get());
+            int secondReady = indexOfNth(events, typed("dev-ready"), 2);
+            assertThat(secondReady)
+                    .as("dev-ready follows the restarted app's start")
+                    .isGreaterThan(secondStart);
+            assertThat(Jsonl.has(events.get(secondReady), "url")).isFalse();
+            assertThat(awaitText(err, "restarting app", jk)).isTrue();
+            assertThat(count(read(err), READY_LINE)).as(read(err)).isEqualTo(2);
+            assertThat(awaitCount(out, listening(), 2, jk)).isTrue();
             assertThat(get("http://127.0.0.1:" + apiPort + "/api/hello")).contains("hello from the JVM");
 
             interrupt(jk);
@@ -104,14 +191,45 @@ class DevSidecarExampleTest {
                     .as("Ctrl-C did not end the session\n%s", read(err))
                     .isTrue();
             assertThat(jk.exitValue()).isEqualTo(Exit.INTERRUPTED);
-            awaitGone(webPid);
-            awaitGone(appPid);
-            assertThat(alive(webPid)).as("the sidecar survived the session").isFalse();
-            assertThat(alive(appPid)).as("the app survived the session").isFalse();
+            long newPid = pid(restarted.get());
+            awaitGone(newPid);
+            assertThat(alive(newPid)).as("the app survived the session").isFalse();
         } finally {
-            // A failure path must not leave the session's children on the machine: SIGKILL on jk
-            // alone would orphan the app and the sidecar, so end the session the way a user does
-            // first, and reap whatever the events say was spawned.
+            session.reap();
+        }
+    }
+
+    /** One spawned {@code jk dev} with its two output files, and the reaping a failure path owes the machine. */
+    private record Session(Process jk, Path out, Path err) {
+
+        static Session spawn(Path project, Path dir, int apiPort, String... options) throws IOException {
+            Path out = dir.resolve("stdout.jsonl");
+            Path err = dir.resolve("stderr.log");
+            List<String> command = new ArrayList<>(List.of(
+                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-cp",
+                    System.getProperty("java.class.path"),
+                    "cc.jumpkick.cli.Jk",
+                    "dev",
+                    "--output",
+                    "json"));
+            command.addAll(List.of(options));
+            command.add("--");
+            command.add(Integer.toString(apiPort));
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.directory(project.toFile());
+            pb.redirectOutput(out.toFile());
+            pb.redirectError(err.toFile());
+            pb.redirectInput(new File("/dev/null"));
+            return new Session(pb.start(), out, err);
+        }
+
+        /**
+         * A failure path must not leave the session's children on the machine: SIGKILL on jk alone
+         * would orphan the app and the sidecar, so end the session the way a user does first, and
+         * reap whatever the events say was spawned.
+         */
+        void reap() throws Exception {
             if (jk.isAlive()) {
                 interrupt(jk);
                 jk.waitFor(15, TimeUnit.SECONDS);
@@ -120,7 +238,7 @@ class DevSidecarExampleTest {
             for (String l : lines(out)) {
                 String type = Jsonl.str(l, "type");
                 if ("sidecar-started".equals(type) || "app-started".equals(type)) {
-                    ProcessHandle.of(Jsonl.longValue(l, "pid", -1)).ifPresent(ProcessHandle::destroyForcibly);
+                    ProcessHandle.of(pid(l)).ifPresent(ProcessHandle::destroyForcibly);
                 }
             }
             // Into the test report, so a failure on a runner can be read without the temp dir.
@@ -129,8 +247,9 @@ class DevSidecarExampleTest {
                     + String.join(
                             "\n",
                             lines(out).stream()
-                                    .filter(l -> !"sidecar-output".equals(Jsonl.str(l, "type"))
-                                            && !"app-output".equals(Jsonl.str(l, "type")))
+                                    .filter(typed("sidecar-output")
+                                            .or(typed("app-output"))
+                                            .negate())
                                     .toList()));
         }
     }
@@ -180,22 +299,10 @@ class DevSidecarExampleTest {
         return project;
     }
 
-    private static Process spawnDev(Path project, Path out, Path err, int apiPort) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                "-cp",
-                System.getProperty("java.class.path"),
-                "cc.jumpkick.cli.Jk",
-                "dev",
-                "--output",
-                "json",
-                "--",
-                Integer.toString(apiPort));
-        pb.directory(project.toFile());
-        pb.redirectOutput(out.toFile());
-        pb.redirectError(err.toFile());
-        pb.redirectInput(new File("/dev/null"));
-        return pb.start();
+    /** A source change the way an editor makes one: the file's content moves, the program does not. */
+    private static void touchSource(Path project) throws IOException {
+        Files.writeString(
+                project.resolve("src/main/java/demo/Api.java"), "\n// a saved edit\n", StandardOpenOption.APPEND);
     }
 
     private static void interrupt(Process jk) throws Exception {
@@ -205,6 +312,32 @@ class DevSidecarExampleTest {
                 .start()
                 .waitFor();
         assertThat(killed).as("could not deliver SIGINT").isZero();
+    }
+
+    private static Predicate<String> typed(String type) {
+        return l -> type.equals(Jsonl.str(l, "type"));
+    }
+
+    private static Predicate<String> listening() {
+        return typed("app-output").and(l -> String.valueOf(Jsonl.str(l, "line")).startsWith("listening on"));
+    }
+
+    private static long pid(String event) {
+        return Jsonl.longValue(event, "pid", -1);
+    }
+
+    private static int indexOfNth(List<String> events, Predicate<String> match, int n) {
+        int seen = 0;
+        for (int i = 0; i < events.size(); i++) {
+            if (match.test(events.get(i)) && ++seen == n) return i;
+        }
+        return -1;
+    }
+
+    private static int count(String text, String needle) {
+        int n = 0;
+        for (int at = text.indexOf(needle); at >= 0; at = text.indexOf(needle, at + needle.length())) n++;
+        return n;
     }
 
     private static Optional<String> awaitLine(Path out, Predicate<String> match, Process jk) throws Exception {
@@ -225,6 +358,17 @@ class DevSidecarExampleTest {
                 + " after " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) + " ms; jk alive="
                 + jk.isAlive());
         return result;
+    }
+
+    /** True once at least {@code n} events match; false when the session ends or the wait runs out first. */
+    private static boolean awaitCount(Path out, Predicate<String> match, int n, Process jk) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(READY_WAIT_SECONDS);
+        while (System.nanoTime() < deadline) {
+            if (lines(out).stream().filter(match).count() >= n) return true;
+            if (!jk.isAlive()) return false;
+            Thread.sleep(200);
+        }
+        return false;
     }
 
     private static boolean awaitText(Path file, String text, Process jk) throws Exception {

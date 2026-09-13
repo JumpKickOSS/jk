@@ -92,11 +92,13 @@ is one JSONL stream from the first byte to the last; on a terminal the app owns 
 | `app-started` | `pid` | The app JVM was started or restarted |
 | `app-output` | `stream`, `line` | One line of the app's stdout or stderr |
 | `app-exited` | `pid`, `exit` | The app exited or was stopped for a restart |
+| `dev-ready` | `url` (the `front-door` sidecar's `ready` URL; absent when the app itself is the front door), `app` (the app's command as displayed) | The whole stack is up: every sidecar's probe passed. Emitted again after each process restart of the app when the app is the front door — a sidecar outlives the restart, the app's process does not |
 
 ```json
 {"schema":1,"ts":1721664002000,"type":"sidecar-started","name":"web","pid":48213}
 {"schema":1,"ts":1721664002410,"type":"sidecar-output","name":"web","stream":"stdout","line":"  VITE v8.3.0  ready in 212 ms"}
 {"schema":1,"ts":1721664002655,"type":"sidecar-ready","name":"web","url":"http://localhost:5173","frontDoor":true}
+{"schema":1,"ts":1721664002656,"type":"dev-ready","url":"http://localhost:5173","app":"java -cp target/classes/main demo.Api"}
 {"schema":1,"ts":1721664031002,"type":"sidecar-exited","name":"web","pid":48213,"exit":1,"restartInMs":500}
 ```
 
@@ -137,7 +139,7 @@ differs; field **names** match.
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |
-| Dev session | `sidecar-started` / `sidecar-output` / `sidecar-ready` / `sidecar-exited`, `app-started` / `app-output` / `app-exited` — [`jk dev`](#jk-dev) |
+| Dev session | `sidecar-started` / `sidecar-output` / `sidecar-ready` / `sidecar-exited`, `app-started` / `app-output` / `app-exited`, `dev-ready` — [`jk dev`](#jk-dev) |
 | Guard violation | `guard` — one per violation row of the last `jk guard` run, after the build's events: `code`, `kind`, `baseline` (`new`/`baselined`), `file`, `line`, `at` (fingerprint), `message`, `instead`, `why`, `source` |
 | Audit finding | `audit-finding` — one per `jk audit` finding, after the run's plan events: `id`, `package`, `version`, `severity`, `summary`, `fixedIn`, `ignored` (+ `reason`, `until`, `ignoreExpired`) — [Publish](publish.md#json) |
 

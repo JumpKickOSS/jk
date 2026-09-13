@@ -36,6 +36,7 @@ public final class SidecarOutput {
     static final String APP_STARTED = "app-started";
     static final String APP_OUTPUT = "app-output";
     static final String APP_EXITED = "app-exited";
+    static final String DEV_READY = "dev-ready";
 
     private SidecarOutput() {}
 
@@ -77,6 +78,18 @@ public final class SidecarOutput {
         return JsonlEnvelope.open(clock.millis(), APP_OUTPUT)
                 .string("stream", stream)
                 .string("line", line)
+                .finish();
+    }
+
+    /**
+     * The session's {@code dev-ready} line: the stack is up. {@code url} is the front-door
+     * sidecar's address, or empty when the app itself is the front door; {@code app} is the app's
+     * command as displayed.
+     */
+    public static String devReady(Clock clock, String url, String app) {
+        return JsonlEnvelope.open(clock.millis(), DEV_READY)
+                .optionalNonEmptyString("url", url)
+                .string("app", app)
                 .finish();
     }
 

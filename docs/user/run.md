@@ -71,7 +71,7 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 | `ready` | An HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx. A `localhost` URL is tried on both `127.0.0.1` and `[::1]` — Node binds only `::1` on many hosts | none |
 | `ready-pattern` | A regex matched against the sidecar's stdout and stderr lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready | none |
 | `ready-timeout` | `"60s"`, `"2m"`, `"500ms"`, or a bare number of seconds. A probe that times out **fails the session** — a broken dev server is not a warning | `"60s"` |
-| `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)` | `false` |
+| `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)`. With no front-door sidecar the app is the front door, and the `ready ·` line returns after every process restart of the app | `false` |
 | `restart` | `never` (the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) | `"never"` |
 
 The table is also in [`jk.toml.schema.json`](jk.toml.schema.json), and
@@ -104,8 +104,9 @@ web exited with 1
 ```
 
 Under `--output json` every line is an event with its source — `sidecar-output` with `name`,
-`stream`, and `line`; `sidecar-started`, `sidecar-ready`, `sidecar-exited` for the lifecycle — and
-the app is piped too, as `app-output`, so stdout stays one JSONL stream. Field by field:
+`stream`, and `line`; `sidecar-started`, `sidecar-ready`, `sidecar-exited` for the lifecycle;
+`dev-ready` for the `ready ·` line — and the app is piped too, as `app-output`, so stdout stays one
+JSONL stream. Field by field:
 [Machine output](machine-output.md#jk-dev).
 
 The workspace root may declare `[dev.sidecars]` too; `jk dev` in a module unions root and module

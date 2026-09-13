@@ -65,6 +65,23 @@ class SidecarOutputTest {
     }
 
     @Test
+    void dev_ready_names_the_front_door_only_when_a_sidecar_is_it() {
+        FakeClock clock = new FakeClock();
+        String sidecar =
+                SidecarOutput.devReady(clock, "http://localhost:5173", "java -cp target/classes/main demo.Api");
+        assertThat(Jsonl.str(sidecar, "type")).isEqualTo("dev-ready");
+        assertThat(Jsonl.str(sidecar, "url")).isEqualTo("http://localhost:5173");
+        assertThat(Jsonl.str(sidecar, "app")).isEqualTo("java -cp target/classes/main demo.Api");
+        assertThat(Jsonl.longValue(sidecar, "ts", -1)).isEqualTo(clock.millis());
+
+        String app = SidecarOutput.devReady(clock, "", "java -cp target/classes/main demo.Api");
+        assertThat(Jsonl.has(app, "url"))
+                .as("the app is the front door: no url")
+                .isFalse();
+        assertThat(Jsonl.str(app, "app")).isEqualTo("java -cp target/classes/main demo.Api");
+    }
+
+    @Test
     void jsonl_events_carry_the_documented_fields() {
         List<String> lines = new ArrayList<>();
         FakeClock clock = new FakeClock();
