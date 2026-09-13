@@ -5,11 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,9 +73,7 @@ class TaskForecasterExtraRootTest {
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
 
         // A stored build stamped every source the compile actually read — both roots.
-        var layout = BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
-        FreshnessStamp.write(
-                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo, bar), List.of(), 21, "");
+        GroovyForecastStamps.writeBuildStamp(tmp, mod, List.of(foo, bar), cas);
         TaskForecast.Task warm = groovyStep(TaskForecaster.of(graph, cas, actionCache, cache));
         assertThat(warm.cached()).isTrue();
 

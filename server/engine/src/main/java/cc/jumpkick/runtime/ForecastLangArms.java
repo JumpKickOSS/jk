@@ -187,8 +187,18 @@ final class ForecastLangArms {
                     prepared.javaHome());
         } catch (Exception e) {
             Log.debug("groovyStep: the Groovy toolchain could not be resolved read-only", e);
-            return new TaskForecast.Task(
-                    TaskNames.COMPILE_GROOVY, TaskForecast.Status.FULL, full + " · toolchain unresolved", null);
+            // Without the toolchain the request cannot be keyed: the stamp's presence and the
+            // sources' mtimes are the evidence left, and a stamp that vouches for every source the
+            // compile read is the same answer the build's own stamp check gives.
+            List<Path> inputs = new ArrayList<>(gvSrc);
+            if (mixed) inputs.addAll(prepared.mainSrc());
+            boolean fresh = !compileDepDirty
+                    && !force
+                    && FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, inputs);
+            return fresh
+                    ? new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null)
+                    : new TaskForecast.Task(
+                            TaskNames.COMPILE_GROOVY, TaskForecast.Status.FULL, full + " · toolchain unresolved", null);
         }
         List<Path> freshInputs = new ArrayList<>(gvSrc);
         if (mixed) freshInputs.addAll(prepared.mainSrc());

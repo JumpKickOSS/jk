@@ -5,11 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The forecast's compile-groovy block is stamp-only (like Kotlin's): no stamp ⇒ FULL and the
+ * The forecast's compile-groovy block checks the build's own stamp first: no stamp ⇒ FULL and the
  * module seeds downstream dirtiness; a fresh {@code .gstamp} in the merged classes dir ⇒ CACHED.
  */
 class TaskForecasterGroovyTest {
@@ -75,10 +72,8 @@ class TaskForecasterGroovyTest {
                 .orElseThrow();
         assertThat(gv.cached()).isFalse();
 
-        // Stamp the merged classes dir (where write-stamp-groovy writes it) — CACHED.
-        var layout = BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
-        FreshnessStamp.write(
-                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(foo), List.of(), 21, "");
+        // Stamp the merged classes dir the way write-stamp-groovy does — CACHED.
+        GroovyForecastStamps.writeBuildStamp(tmp, mod, List.of(foo), cas);
         List<TaskForecast.Module> warm = TaskForecaster.of(graph, cas, actionCache, cache);
         TaskForecast.Task warmGv =
                 warm.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
