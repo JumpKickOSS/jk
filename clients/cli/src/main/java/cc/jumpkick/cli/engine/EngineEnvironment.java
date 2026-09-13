@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.host.Os;
 import java.util.Locale;
 import java.util.Map;
@@ -28,11 +29,11 @@ final class EngineEnvironment {
      * without a manifest naming it: the search path, home and user; the temp roots, time zone,
      * locale and terminal; the host JDK and GraalVM fallbacks; the SSH agent the git backend authenticates
      * through; the SDK and JDK discovery roots; the display preferences shared config reads; the
-     * proxy variables jk's HTTP client reads, in both cases (the client reads them through the
-     * request's environment first, so a shell that sets them for one command wins over the shell
-     * that spawned the engine); and on Windows the system roots a process needs to run anything at
-     * all. Both platforms' spellings, so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes,
-     * matched in {@link #inherited}. No per-user application-data variable is carried: nothing the
+     * proxy variables jk's HTTP client reads, in both cases; and on Windows the system roots a
+     * process needs to run anything at all. Both platforms' spellings, so the rule reads the same
+     * everywhere. {@code LC_*} and {@code JK_*} are prefixes, matched in {@link #inherited}, less
+     * the {@link #PER_REQUEST} names that travel on each request. No per-user application-data
+     * variable is carried: nothing the
      * engine runs needs one to start, and what reads one to discover another program's layout
      * falls back to that program's default location.
      */
@@ -83,6 +84,15 @@ final class EngineEnvironment {
             MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 
     /**
+     * {@code JK_*} names that ride each request instead: the shell's spellings of {@code --jvm-arg}
+     * and {@code --ram-percent}, which the client folds into the request's tuning. Seeding them here
+     * would make the first shell's worker-JVM flags the daemon's truth for every later terminal, and
+     * the engine reads worker tuning from the request only, so they have no reader on that side.
+     */
+    static final Set<String> PER_REQUEST = Set.of(
+            PluginTunings.ENV_ARGS, PluginTunings.ENV_MAX_RAM, PluginTunings.ENV_GC, PluginTunings.ENV_STRING_DEDUP);
+
+    /**
      * Replace {@code env} (a {@link ProcessBuilder#environment()}, pre-filled with this process's
      * whole environment) with the inherited subset of {@code shell}.
      */
@@ -101,6 +111,7 @@ final class EngineEnvironment {
      */
     static boolean inherited(String name, boolean caseInsensitive) {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
+        if (PER_REQUEST.contains(key)) return false;
         if (key.startsWith("JK_") || key.startsWith("LC_")) return true;
         return caseInsensitive ? MACHINE_UPPER.contains(key) : MACHINE.contains(key);
     }

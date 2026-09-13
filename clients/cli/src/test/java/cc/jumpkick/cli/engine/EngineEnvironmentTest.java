@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +54,6 @@ class EngineEnvironmentTest {
             "no_proxy",
             "NO_PROXY",
             "JK_HOME",
-            "JK_JVM_ARGS",
             "JK_PERF",
             "JK_GIT",
             "JK_OFFLINE",
@@ -64,6 +64,24 @@ class EngineEnvironmentTest {
         }) {
             assertThat(EngineEnvironment.inherited(needed, false)).as(needed).isTrue();
         }
+    }
+
+    @Test
+    void worker_jvm_tuning_rides_each_request_and_never_seeds_the_daemon() {
+        // JK_JVM_ARGS is the shell's spelling of --jvm-arg: the client folds it into the request, the
+        // engine reads it from nowhere else. Seeded here, a second terminal exporting a different
+        // value silently got the first one's until `jk engine stop`.
+        for (String perRequest :
+                new String[] {"JK_JVM_ARGS", "JK_JVM_GC", "JK_JVM_STRING_DEDUP", "JK_MAX_RAM_PERCENT"}) {
+            assertThat(EngineEnvironment.inherited(perRequest, false))
+                    .as(perRequest)
+                    .isFalse();
+            assertThat(EngineEnvironment.inherited(perRequest.toLowerCase(Locale.ROOT), true))
+                    .as(perRequest)
+                    .isFalse();
+        }
+        assertThat(EngineEnvironment.PER_REQUEST)
+                .containsExactlyInAnyOrder("JK_JVM_ARGS", "JK_JVM_GC", "JK_JVM_STRING_DEDUP", "JK_MAX_RAM_PERCENT");
     }
 
     @Test

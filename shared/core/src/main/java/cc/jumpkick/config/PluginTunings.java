@@ -2,14 +2,23 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
  * Resolves {@link PluginTuning} layers: client ({@link #resolveClient}: CLI &gt; {@code JK_JVM_*}),
  * then project {@code [jvm]} ({@link #overlayProject}) at worker-fork time.
+ *
+ * <p>The {@code JK_JVM_*} variables are the shell's spelling of {@code --jvm-arg} and
+ * {@code --ram-percent}: read once, client-side, where the process really is the caller's shell,
+ * and carried on the request beside the flags. The engine is a daemon whose own environment is
+ * whichever shell started it, so nothing on its side reads them — a resident engine that did kept
+ * the first terminal's worker-JVM flags for every later one until {@code jk engine stop}.
  */
 public final class PluginTunings {
 
@@ -39,9 +48,12 @@ public final class PluginTunings {
         return overlayProject(resolveClient(cli), projectDir);
     }
 
-    /** Client layers only: CLI &gt; {@code JK_JVM_*} env (no TOML I/O). */
+    /**
+     * Client layers only: CLI &gt; {@code JK_JVM_*} env (no TOML I/O). The environment is read
+     * through {@link JkDirs#env}, so a test varies it per invocation the way it varies the layout.
+     */
     public static PluginTuning resolveClient(PluginTuning cli) {
-        return overlay(cli == null ? PluginTuning.NONE : cli, fromEnv());
+        return overlay(cli == null ? PluginTuning.NONE : cli, fromEnv(JkDirs::env));
     }
 
     /**
@@ -55,13 +67,13 @@ public final class PluginTunings {
                 : overlay(eff, JkBuildParser.jvmTuning(projectDir.resolve(ManifestPaths.MANIFEST)));
     }
 
-    /** The {@code JK_*} environment layer. Coercion via the shared {@link EnvValues}. */
-    public static PluginTuning fromEnv() {
+    /** The {@code JK_*} environment layer as {@code env} answers it. Coercion via the shared {@link EnvValues}. */
+    public static PluginTuning fromEnv(Function<String, @Nullable String> env) {
         return new PluginTuning(
-                EnvValues.doubleValue(System::getenv, ENV_MAX_RAM).orElse(null),
-                EnvValues.string(System::getenv, ENV_GC).orElse(null),
-                EnvValues.bool(System::getenv, ENV_STRING_DEDUP).orElse(null),
-                splitArgs(System.getenv(ENV_ARGS)));
+                EnvValues.doubleValue(env, ENV_MAX_RAM).orElse(null),
+                EnvValues.string(env, ENV_GC).orElse(null),
+                EnvValues.bool(env, ENV_STRING_DEDUP).orElse(null),
+                splitArgs(env.apply(ENV_ARGS)));
     }
 
     /**
@@ -80,7 +92,7 @@ public final class PluginTunings {
                 TomlValues.stringList(jvm, "args"));
     }
 
-    private static List<String> splitArgs(String s) {
+    private static List<String> splitArgs(@Nullable String s) {
         if (s == null || s.isBlank()) return List.of();
         List<String> out = new ArrayList<>();
         for (String part : s.trim().split("\\s+")) if (!part.isBlank()) out.add(part);

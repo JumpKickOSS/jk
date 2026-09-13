@@ -135,6 +135,13 @@ inherited once would be every later terminal's truth. Workers are narrowed again
 | `JK_CANCEL_GRACE_MS` | 500 | Shared SIGTERM-to-SIGKILL window for forked workers on cancel, in ms; clamped to 5000. |
 <!-- engine-process:end -->
 
+A resident engine keeps that environment for its whole life, so anything that must follow the
+*calling* shell rides each request instead: `JK_JVM_ARGS`, `JK_JVM_GC`, `JK_JVM_STRING_DEDUP` and `JK_MAX_RAM_PERCENT`
+are the shell spellings of `--jvm-arg` / `--ram-percent`, read by the client per invocation and
+sent with the request, so two terminals exporting different values get their own worker-JVM flags
+from one engine. The same holds for `JK_REPO_*` credentials and host bindings
+([Repositories](repositories.md)).
+
 HTTP / MCP knobs are `[http]` / `[mcp]`: [Config](config.md), [Web](web.md), [MCP](mcp.md).
 
 ## Related

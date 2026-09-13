@@ -92,15 +92,17 @@ public final class JvmOptions {
     }
 
     /**
-     * The request-scoped worker tuning, read from the current {@link cc.jumpkick.config.Session}. When
-     * the session carries none (e.g. a direct engine/test call that bypassed the CLI composition
-     * root), fall back to the {@code JK_*} env layer — mirroring the old {@code processSettings()}
-     * default.
+     * The request-scoped worker tuning, read from the current {@link cc.jumpkick.config.Session}
+     * and nowhere else. The client folds {@code --jvm-arg}/{@code --ram-percent} and their
+     * {@code JK_JVM_*} spellings into the request, so a session that carries none means the caller
+     * asked for none — not that the daemon's own environment should answer. The engine outlives the
+     * shell that started it, and reading that shell's {@code JK_JVM_ARGS} here handed its flags to
+     * every later terminal until {@code jk engine stop}.
      */
     private static PluginTuning tuning() {
         var session = SessionContext.current();
         PluginTuning t = session.jvm();
-        PluginTuning base = (t == null || t == PluginTuning.NONE) ? PluginTunings.fromEnv() : t;
+        PluginTuning base = t == null ? PluginTuning.NONE : t;
         // The jk.toml [jvm] table overlays here, at fork time, engine-side (thin-client contract):
         // the session carries only the client's flag/env layers, so a client of any age gets
         // current-engine [jvm] interpretation.
