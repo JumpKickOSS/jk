@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One rule's slice of the baseline. A rule the module lanes run is reconciled one module at a
@@ -15,8 +16,12 @@ import java.util.TreeMap;
  *
  * @param populations the population the rule examined when the entries were recorded, by lane and
  *     then by unit ({@code classes}, {@code files}, …) — the scope-shrunk floor
+ * @param entries the tolerated violations, every lane's
+ * @param scopeReasons by lane, the reason a human gave when a smaller population was accepted as
+ *     the floor ({@code jk guard freeze --accept-scope}); a lane with no population carries none
  */
-public record RuleBaseline(Map<String, Map<String, Long>> populations, List<Entry> entries) {
+public record RuleBaseline(
+        Map<String, Map<String, Long>> populations, List<Entry> entries, Map<String, String> scopeReasons) {
     public static final RuleBaseline EMPTY = new RuleBaseline(Map.of(), List.of());
 
     public RuleBaseline {
@@ -28,6 +33,15 @@ public record RuleBaseline(Map<String, Map<String, Long>> populations, List<Entr
         List<Entry> sorted = new ArrayList<>(entries);
         sorted.sort(Comparator.comparing((Entry e) -> e.in()).thenComparing(Entry::key));
         entries = List.copyOf(sorted);
+        Map<String, String> reasons = new TreeMap<>();
+        scopeReasons.forEach((lane, r) -> {
+            if (pops.containsKey(lane) && !r.isEmpty()) reasons.put(lane, r);
+        });
+        scopeReasons = Collections.unmodifiableMap(reasons);
+    }
+
+    public RuleBaseline(Map<String, Map<String, Long>> populations, List<Entry> entries) {
+        this(populations, entries, Map.of());
     }
 
     /** A rule one lane owns: its population and entries under {@code ""}. */
@@ -48,6 +62,11 @@ public record RuleBaseline(Map<String, Map<String, Long>> populations, List<Entr
         return populations.getOrDefault(lane, Map.of());
     }
 
+    /** The reason lane {@code lane}'s population was accepted as a smaller floor, or {@code null}. */
+    public @Nullable String scopeReason(String lane) {
+        return scopeReasons.get(lane);
+    }
+
     /** The entries lane {@code lane} owns. */
     public List<Entry> entries(String lane) {
         List<Entry> out = new ArrayList<>();
@@ -63,6 +82,13 @@ public record RuleBaseline(Map<String, Map<String, Long>> populations, List<Entr
         List<Entry> all = new ArrayList<>();
         for (Entry e : entries) if (!e.in().equals(lane)) all.add(e);
         for (Entry e : laneEntries) all.add(e.in(lane));
-        return new RuleBaseline(pops, all);
+        return new RuleBaseline(pops, all, scopeReasons);
+    }
+
+    /** This baseline with lane {@code lane}'s population carrying {@code reason} for the floor it records. */
+    public RuleBaseline withScopeReason(String lane, String reason) {
+        Map<String, String> reasons = new TreeMap<>(scopeReasons);
+        reasons.put(lane, reason);
+        return new RuleBaseline(populations, entries, reasons);
     }
 }

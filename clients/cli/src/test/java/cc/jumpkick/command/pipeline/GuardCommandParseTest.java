@@ -32,6 +32,10 @@ class GuardCommandParseTest {
         assertThat(in.positionals()).containsExactly("freeze", "one-digest-surface");
         assertThat(in.value("reason")).contains("legacy sites");
         assertThat(parse("freeze", "x", "--retire").isSet("retire")).isTrue();
+        Invocation scope = parse("freeze", "x", "--accept-scope", "--reason", "the corpus shrank");
+        assertThat(scope.isSet("accept-scope")).isTrue();
+        assertThat(scope.value("reason")).contains("the corpus shrank");
+        assertThat(in.isSet("accept-scope")).isFalse();
     }
 
     @Test

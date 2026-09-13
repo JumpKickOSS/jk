@@ -25,10 +25,14 @@ import org.jspecify.annotations.Nullable;
  * <pre>
  * [one-digest-surface]
  * population = { classes = 1266 }
+ * scope-reason = "the second build definition left the tree"
  * [[one-digest-surface.entries]]
  * at     = "cc.jumpkick.publish.Gpg#sign([B)[B -> java.security.MessageDigest#getInstance(**)"
  * reason = "PGP needs SHA-1 by spec"
  * </pre>
+ *
+ * {@code scope-reason} (and {@code [id.scope-reasons]} by lane) is written by a freeze that accepted
+ * a smaller population as the floor, with the reason the human gave.
  */
 public final class BaselineFile {
 
@@ -60,9 +64,11 @@ public final class BaselineFile {
         String name = file == null ? "baseline" : file.getFileName().toString();
         Map<String, RuleBaseline> rules = new TreeMap<>();
         Map<String, Map<String, Map<String, Long>>> pops = new TreeMap<>();
+        Map<String, Map<String, String>> reasons = new TreeMap<>();
         Map<String, List<Entry>> entries = new TreeMap<>();
         String rule = null;
         boolean inLanes = false;
+        boolean inReasons = false;
         // The entry under construction: rule id, in, at | unit, value, reason.
         String[] cur = null;
         int lineNo = 0;
@@ -76,6 +82,7 @@ public final class BaselineFile {
                 if (!id.equals(rule)) throw refuse(name, lineNo, "entries for `" + id + "` outside its table");
                 cur = new String[] {id, "", null, null, null, null};
                 inLanes = false;
+                inReasons = false;
                 continue;
             }
             if (line.startsWith("[") && line.endsWith(".populations]")) {
@@ -84,17 +91,29 @@ public final class BaselineFile {
                 String id = line.substring(1, line.length() - ".populations]".length());
                 if (!id.equals(rule)) throw refuse(name, lineNo, "populations for `" + id + "` outside its table");
                 inLanes = true;
+                inReasons = false;
+                continue;
+            }
+            if (line.startsWith("[") && line.endsWith(".scope-reasons]")) {
+                finish(cur, entries, name, lineNo);
+                cur = null;
+                String id = line.substring(1, line.length() - ".scope-reasons]".length());
+                if (!id.equals(rule)) throw refuse(name, lineNo, "scope-reasons for `" + id + "` outside its table");
+                inLanes = false;
+                inReasons = true;
                 continue;
             }
             if (line.startsWith("[") && line.endsWith("]") && !line.startsWith("[[")) {
                 finish(cur, entries, name, lineNo);
                 cur = null;
                 inLanes = false;
+                inReasons = false;
                 rule = line.substring(1, line.length() - 1);
                 if (rule.isEmpty() || rules.containsKey(rule) || pops.containsKey(rule) || entries.containsKey(rule)) {
                     throw refuse(name, lineNo, "rule table `" + rule + "` is empty or repeated");
                 }
                 pops.put(rule, new TreeMap<>());
+                reasons.put(rule, new TreeMap<>());
                 entries.put(rule, new ArrayList<>());
                 continue;
             }
@@ -114,17 +133,27 @@ public final class BaselineFile {
                 continue;
             }
             Map<String, Map<String, Long>> lanes = Objects.requireNonNull(pops.get(rule), "pops");
+            Map<String, String> laneReasons = Objects.requireNonNull(reasons.get(rule), "reasons");
             if (inLanes) {
                 lanes.put(string(key, name, lineNo), counts(value, name, lineNo));
+            } else if (inReasons) {
+                laneReasons.put(string(key, name, lineNo), string(value, name, lineNo));
             } else if (key.equals("population")) {
                 lanes.put("", counts(value, name, lineNo));
+            } else if (key.equals("scope-reason")) {
+                laneReasons.put("", string(value, name, lineNo));
             } else {
                 throw refuse(name, lineNo, "unknown key `" + key + "`");
             }
         }
         finish(cur, entries, name, lineNo);
         for (var e : pops.entrySet()) {
-            rules.put(e.getKey(), new RuleBaseline(e.getValue(), entries.getOrDefault(e.getKey(), List.of())));
+            rules.put(
+                    e.getKey(),
+                    new RuleBaseline(
+                            e.getValue(),
+                            entries.getOrDefault(e.getKey(), List.of()),
+                            reasons.getOrDefault(e.getKey(), Map.of())));
         }
         return new Baseline(rules);
     }
@@ -196,6 +225,11 @@ public final class BaselineFile {
             sb.append('\n').append('[').append(id).append("]\n");
             if (!rb.population().isEmpty())
                 sb.append("population = ").append(inline(rb.population())).append('\n');
+            String wholeReason = rb.scopeReason("");
+            if (wholeReason != null)
+                sb.append("scope-reason = ")
+                        .append(MinimalToml.quote(wholeReason))
+                        .append('\n');
             boolean lanes = false;
             for (var p : rb.populations().entrySet()) {
                 if (p.getKey().isEmpty()) continue;
@@ -204,6 +238,16 @@ public final class BaselineFile {
                 sb.append(MinimalToml.quote(p.getKey()))
                         .append(" = ")
                         .append(inline(p.getValue()))
+                        .append('\n');
+            }
+            boolean reasons = false;
+            for (var r : rb.scopeReasons().entrySet()) {
+                if (r.getKey().isEmpty()) continue;
+                if (!reasons) sb.append('[').append(id).append(".scope-reasons]\n");
+                reasons = true;
+                sb.append(MinimalToml.quote(r.getKey()))
+                        .append(" = ")
+                        .append(MinimalToml.quote(r.getValue()))
                         .append('\n');
             }
             for (Entry en : rb.entries()) {

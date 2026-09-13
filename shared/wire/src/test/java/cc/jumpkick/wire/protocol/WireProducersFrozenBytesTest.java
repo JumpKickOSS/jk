@@ -143,8 +143,8 @@ class WireProducersFrozenBytesTest {
                         .encode())
                 .isEqualTo("{\"type\":\"outdated-ack\",\"error\":null,\"workspace\":true,"
                         + "\"rows\":[\"m|g:a|a|compile|1.0|1.1|2.0|null\"]}");
-        assertThat(new GuardFreezeAck("e", 1, 2).encode())
-                .isEqualTo("{\"type\":\"guard-freeze-ack\",\"error\":\"e\",\"accepted\":1,\"total\":2}");
+        assertThat(new GuardFreezeAck("e", 1, 2, 3).encode())
+                .isEqualTo("{\"type\":\"guard-freeze-ack\",\"error\":\"e\",\"accepted\":1,\"total\":2,\"rebased\":3}");
         assertThat(new GeneratedFiles(null, List.of("a.java"), List.of("class A {}"), List.of("note")).encode())
                 .isEqualTo(
                         "{\"type\":\"generate-ack\",\"error\":null,\"paths\":[\"a.java\"],\"contents\":[\"class A {}\"],"

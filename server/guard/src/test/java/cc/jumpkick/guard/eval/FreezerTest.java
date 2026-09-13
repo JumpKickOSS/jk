@@ -45,7 +45,7 @@ class FreezerTest {
     @Test
     void freeze_accepts_the_current_new_sites_with_the_reason(@TempDir Path dir) throws Exception {
         Path p = project(dir);
-        Freezer.Result r = Freezer.freeze(p, "one-digest", "PGP needs SHA-1 by spec", false);
+        Freezer.Result r = Freezer.freeze(p, "one-digest", "PGP needs SHA-1 by spec", false, false);
         assertThat(r.error()).isNull();
         assertThat(r.accepted()).isEqualTo(1);
         Baseline b = BaselineFile.read(GuardsPresence.baselineFile(p));
@@ -55,25 +55,58 @@ class FreezerTest {
         });
         assertThat(b.of("one-digest").population()).containsKey("classes");
         // A second freeze has nothing new.
-        assertThat(Freezer.freeze(p, "one-digest", "again", false).accepted()).isZero();
+        assertThat(Freezer.freeze(p, "one-digest", "again", false, false).accepted())
+                .isZero();
     }
 
     @Test
     void refusals_no_reason_unknown_rule_and_retire(@TempDir Path dir) throws Exception {
         Path p = project(dir);
-        assertThat(Freezer.freeze(p, "one-digest", "", false).error()).contains("--reason");
-        assertThat(Freezer.freeze(p, "nope", "r", false).error())
+        assertThat(Freezer.freeze(p, "one-digest", "", false, false).error()).contains("--reason");
+        assertThat(Freezer.freeze(p, "nope", "r", false, false).error())
                 .contains("no rule `nope`")
                 .contains("one-digest");
-        assertThat(Freezer.freeze(p, "one-digest", null, true).error()).contains("still declared");
+        assertThat(Freezer.freeze(p, "one-digest", null, true, false).error()).contains("still declared");
         // Retire a rule that is gone from the file but still in the baseline.
         BaselineFile.write(
                 GuardsPresence.baselineFile(p),
                 Baseline.EMPTY.with("gone", RuleBaseline.of(Map.of(), List.of(new Entry.Site("x", "r")))));
-        Freezer.Result retired = Freezer.freeze(p, "gone", null, true);
+        Freezer.Result retired = Freezer.freeze(p, "gone", null, true, false);
         assertThat(retired.error()).isNull();
         assertThat(retired.accepted()).isEqualTo(1);
         assertThat(BaselineFile.read(GuardsPresence.baselineFile(p)).rules()).isEmpty();
+    }
+
+    /** A shrink is a question a plain freeze refuses to answer; --accept-scope is the answer, recorded with its reason. */
+    @Test
+    void a_shrunk_population_is_refused_until_accept_scope_records_it_with_the_reason(@TempDir Path dir)
+            throws Exception {
+        Path p = project(dir);
+        // The baseline remembers a population the tree no longer has: ten classes, and the fixture holds one.
+        Path file = GuardsPresence.baselineFile(p);
+        BaselineFile.write(file, Baseline.EMPTY.with("one-digest", RuleBaseline.of(Map.of("classes", 10L), List.of())));
+        Freezer.Result plain = Freezer.freeze(p, "one-digest", "sites", false, false);
+        assertThat(plain.error()).contains("classes: 10 → ").contains("jk guard freeze one-digest --accept-scope");
+        assertThat(BaselineFile.read(file).of("one-digest").population())
+                .as("a refused freeze writes nothing")
+                .containsEntry("classes", 10L);
+
+        Freezer.Result accepted = Freezer.freeze(p, "one-digest", "the sample corpus is one class", false, true);
+        assertThat(accepted.error()).isNull();
+        assertThat(accepted.rebased()).isEqualTo(1);
+        assertThat(accepted.accepted())
+                .as("the fresh site rides the same freeze")
+                .isEqualTo(1);
+        RuleBaseline after = BaselineFile.read(file).of("one-digest");
+        assertThat(after.population()).containsKey("classes").doesNotContainEntry("classes", 10L);
+        assertThat(after.scopeReason("")).isEqualTo("the sample corpus is one class");
+        assertThat(Files.readString(file)).contains("\nscope-reason = \"the sample corpus is one class\"\n");
+
+        // Nothing shrank and nothing is new: an accept-scope freeze has nothing to record and says so.
+        Freezer.Result nothing = Freezer.freeze(p, "one-digest", "again", false, true);
+        assertThat(nothing.error()).isNull();
+        assertThat(nothing.rebased()).isZero();
+        assertThat(nothing.accepted()).isZero();
     }
 
     @Test
@@ -94,6 +127,6 @@ class FreezerTest {
         BaselineFile.write(
                 GuardsPresence.baselineFile(p),
                 Baseline.EMPTY.with("still-here", RuleBaseline.of(Map.of(), List.of(new Entry.Site("x", "r")))));
-        assertThat(Freezer.freeze(p, "still-here", null, true).error()).contains("still declared");
+        assertThat(Freezer.freeze(p, "still-here", null, true, false).error()).contains("still declared");
     }
 }

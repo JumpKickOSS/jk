@@ -252,11 +252,19 @@ public final class EngineClient {
         return EngineReads.guardCommitMsg(paths, dir, message);
     }
 
-    /** {@code jk guard freeze}: the engine grows (or retires) one rule's baseline; one sync round trip. */
+    /**
+     * {@code jk guard freeze}: the engine grows (or retires) one rule's baseline, or accepts its
+     * smaller population as the floor; one sync round trip.
+     */
     public static GuardFreezeAck guardFreeze(
-            EnginePaths.Paths paths, Path dir, String ruleId, @Nullable String reason, boolean retire)
+            EnginePaths.Paths paths,
+            Path dir,
+            String ruleId,
+            @Nullable String reason,
+            boolean retire,
+            boolean acceptScope)
             throws IOException {
-        return EngineReads.guardFreeze(paths, dir, ruleId, reason, retire);
+        return EngineReads.guardFreeze(paths, dir, ruleId, reason, retire, acceptScope);
     }
 
     /** {@code jk guard explain}: rule card, catalog or schema; one sync round trip, never a build. */

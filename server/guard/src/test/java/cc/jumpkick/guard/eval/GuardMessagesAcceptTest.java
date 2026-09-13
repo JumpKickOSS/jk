@@ -4,6 +4,7 @@ package cc.jumpkick.guard.eval;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.baseline.Baseline;
+import cc.jumpkick.guard.baseline.RuleBaseline;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
@@ -33,6 +34,10 @@ class GuardMessagesAcceptTest {
     }
 
     private static RuleReport report(Path dir, Rule rule) {
+        return report(dir, rule, Baseline.EMPTY);
+    }
+
+    private static RuleReport report(Path dir, Rule rule, Baseline baseline) {
         ClassFacts user = new ClassFacts(
                 "p/User",
                 1,
@@ -46,9 +51,20 @@ class GuardMessagesAcceptTest {
         FactsIndex idx = new FactsIndex(Map.of(user.name(), user), Map.of(), "");
         EvalContext ctx = new EvalContext(
                 Lane.MODULE, dir, "m", dir.resolve("m"), List.of(dir.resolve("m")), () -> idx, () -> null, List::of);
-        return LaneRun.run(Lane.MODULE, List.of(rule), ctx, Baseline.EMPTY)
-                .reports()
-                .getFirst();
+        return LaneRun.run(Lane.MODULE, List.of(rule), ctx, baseline).reports().getFirst();
+    }
+
+    @Test
+    void a_shrunk_scope_names_the_accept_scope_freeze(@TempDir Path dir) throws Exception {
+        Rule rule = rule(dir, "signatures = [\"java.lang.ref.SoftReference\"]\nbaseline = true\n");
+        // The module lane reconciles against its own slice: the population is recorded under lane m.
+        Baseline recorded =
+                Baseline.EMPTY.with("r", RuleBaseline.EMPTY.withLane("m", Map.of("classes", 100L), List.of()));
+        RuleReport r = report(dir, rule, recorded);
+        assertThat(r.outcome()).isEqualTo(Outcome.SCOPE_SHRUNK);
+        assertThat(GuardMessages.render(r))
+                .contains("Accept:   jk guard freeze r --accept-scope --reason")
+                .doesNotContain("Exempt:");
     }
 
     @Test

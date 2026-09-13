@@ -11,6 +11,7 @@ jk guard explain                  # the catalog: every rule, its last verdict, i
 jk guard explain <id>             # one rule's card: what, instead, why, where it came from
 jk guard explain --schema forbid  # a kind's keys and one example
 jk guard freeze <id> --reason "…" # accept a rule's current sites into the baseline
+jk guard freeze <id> --accept-scope --reason "…" # accept a rule's smaller population as its floor
 jk guard hooks install            # commit-msg and pre-commit hooks
 jk guard --output sarif           # print target/jk-guards.sarif
 ```
@@ -228,7 +229,13 @@ new ones. Landing is an explicit act: the first run reports today's sites red, w
 accepted sites live in **`jk-guards-baseline.toml`**, which only the engine writes: it tightens
 on its own as sites disappear, and grows only through a freeze, which records the reason beside
 the sites. A
-`--retire` freeze drops the entries of a rule that no longer exists. Hand edits to the
+`--retire` freeze drops the entries of a rule that no longer exists. A rule that examines under
+80 % of the population its baseline recorded is `scope-shrunk`: red, and the baseline is left
+alone, because a shrink is a question, not a fact. When the answer is that the corpus legitimately
+shrank — a build definition left the tree, a population was re-seeded — `jk guard freeze <id>
+--accept-scope --reason "…"` records the smaller population as the floor, with the reason beside
+it as `scope-reason` in the baseline; a plain freeze refuses under a shrink and names that
+command, so a silent shrink stays red. Hand edits to the
 baseline are refused by the pre-commit hook; a freeze and an engine tightening both leave the
 marker the hook looks for, so either commits without ceremony. `metric` rules are ratchets by nature: a cap a
 file already exceeds becomes that file's own ceiling, and it may only shrink.

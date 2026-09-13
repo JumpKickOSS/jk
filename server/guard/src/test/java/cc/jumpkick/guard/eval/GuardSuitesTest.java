@@ -390,7 +390,7 @@ class GuardSuitesTest {
         Rule rule = GuardSuites.rule(esc.declared(), root, "m");
         assertThat(GuardSuites.moduleOf(rule)).isEqualTo("m");
 
-        Freezer.Result frozen = Freezer.freeze(root, "esc", "grandfathered until the codec lands", false);
+        Freezer.Result frozen = Freezer.freeze(root, "esc", "grandfathered until the codec lands", false, false);
         assertThat(frozen.error()).isNull();
         assertThat(frozen.accepted()).isEqualTo(1);
         String baseline = Files.readString(GuardsPresence.baselineFile(root));
@@ -398,7 +398,7 @@ class GuardSuitesTest {
                 .contains("[esc]")
                 .contains("a.Esc#write()V -> java.lang.String#replace(CC)Ljava/lang/String;")
                 .contains("grandfathered");
-        assertThat(Freezer.freeze(root, "nope", "r", false).error()).contains("no rule `nope`");
+        assertThat(Freezer.freeze(root, "nope", "r", false, false).error()).contains("no rule `nope`");
     }
 
     @Test

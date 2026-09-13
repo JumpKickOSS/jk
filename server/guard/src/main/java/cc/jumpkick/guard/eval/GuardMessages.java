@@ -67,6 +67,12 @@ public final class GuardMessages {
                     .append(rule.id())
                     .append("].allow with a reason\n");
         }
+        if (r.outcome() == Outcome.SCOPE_SHRUNK) {
+            sb.append("  Accept:   jk guard freeze ")
+                    .append(rule.id())
+                    .append(" --accept-scope --reason \"…\" records the smaller population as the floor, if the corpus")
+                    .append(" legitimately shrank; a silent shrink stays red\n");
+        }
         sb.append("  Explain:  jk guard explain ").append(rule.id());
         return sb.toString();
     }

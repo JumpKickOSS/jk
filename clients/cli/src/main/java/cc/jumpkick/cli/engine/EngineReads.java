@@ -353,11 +353,16 @@ final class EngineReads {
 
     /** One engine-hosted deny check: policy parse + lock read + violations, engine-side. */
     static GuardFreezeAck guardFreeze(
-            EnginePaths.Paths paths, Path dir, String ruleId, @Nullable String reason, boolean retire)
+            EnginePaths.Paths paths,
+            Path dir,
+            String ruleId,
+            @Nullable String reason,
+            boolean retire,
+            boolean acceptScope)
             throws IOException {
         return request(
                 paths,
-                new GuardFreezeRequest(dir.toString(), ruleId, reason, retire).encode(),
+                new GuardFreezeRequest(dir.toString(), ruleId, reason, retire, acceptScope).encode(),
                 EngineProtocol.GUARD_FREEZE_ACK,
                 "guard freeze",
                 GuardFreezeAck::decode);

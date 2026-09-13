@@ -5,14 +5,16 @@ import cc.jumpkick.jsonl.Jsonl;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk guard freeze <id> --reason "…"} / {@code --retire}: grow the baseline for one rule, or
- * drop a retired rule's entries. Refused engine-side without a reason or under CI.
+ * {@code jk guard freeze <id> --reason "…"} / {@code --retire} / {@code --accept-scope}: grow the
+ * baseline for one rule, drop a retired rule's entries, or accept a rule's smaller population as its
+ * floor. Refused engine-side without a reason or under CI.
  */
 public record GuardFreezeRequest(
         @Nullable String dir,
         @Nullable String ruleId,
         @Nullable String reason,
-        boolean retire) {
+        boolean retire,
+        boolean acceptScope) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.GUARD_FREEZE_REQUEST)
@@ -20,6 +22,7 @@ public record GuardFreezeRequest(
                 .string("ruleId", ruleId)
                 .string("reason", reason)
                 .bool("retire", retire)
+                .bool("acceptScope", acceptScope)
                 .finish();
     }
 
@@ -28,6 +31,7 @@ public record GuardFreezeRequest(
                 Jsonl.str(json, "dir"),
                 Jsonl.str(json, "ruleId"),
                 Jsonl.str(json, "reason"),
-                Jsonl.bool(json, "retire", false));
+                Jsonl.bool(json, "retire", false),
+                Jsonl.bool(json, "acceptScope", false));
     }
 }

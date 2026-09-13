@@ -57,6 +57,7 @@ public final class GuardCommand implements CliCommand {
                 Arity.ZERO_OR_MORE,
                 "explain [<rule-id>] prints a rule's card or the catalog;\n"
                         + "freeze <rule-id> --reason \"…\" accepts its new violations;\n"
+                        + "freeze <rule-id> --accept-scope accepts a shrunk population;\n"
                         + "test proves every fixture-bearing rule bites;\n"
                         + "commit-msg <file> judges a commit message;\n"
                         + "hooks [install] prints or installs the git hooks.\n"
@@ -68,6 +69,7 @@ public final class GuardCommand implements CliCommand {
         List<Opt> opts = new ArrayList<>(build.options());
         opts.add(Opt.value("<text>", "freeze: why these sites are accepted", "--reason"));
         opts.add(Opt.flag("freeze: drop a removed rule's entries", "--retire"));
+        opts.add(Opt.flag("freeze: accept a shrunk population", "--accept-scope"));
         opts.add(Opt.value("<kind>", "explain: a kind's keys and example", "--schema"));
         opts.add(Opt.flag("hooks install: overwrite hooks", "--replace"));
         return opts;
@@ -278,6 +280,7 @@ public final class GuardCommand implements CliCommand {
 
     private int freeze(Invocation in, Path dir, List<String> positionals) throws IOException {
         boolean retire = in.isSet("retire");
+        boolean acceptScope = in.isSet("accept-scope");
         String reason = in.value("reason").orElse(null);
         if (positionals.size() < 2) {
             CommandWedge.printFail("Guard", "freeze needs a rule id: jk guard freeze <id> --reason \"…\"");
@@ -292,7 +295,7 @@ public final class GuardCommand implements CliCommand {
         }
         GuardFreezeAck ack;
         try {
-            ack = EngineClient.guardFreeze(EnginePaths.current(), dir, id, reason, retire);
+            ack = EngineClient.guardFreeze(EnginePaths.current(), dir, id, reason, retire, acceptScope);
         } catch (IOException e) {
             CommandWedge.printFail("Guard", e.getMessage());
             return Exit.SOFTWARE;
@@ -305,8 +308,19 @@ public final class GuardCommand implements CliCommand {
         if (retire) {
             CliOutput.out("jk guard: retired " + id + " — dropped " + ack.accepted() + " baseline "
                     + (ack.accepted() == 1 ? "entry" : "entries") + "; " + ack.total() + " remain");
+        } else if (ack.rebased() > 0) {
+            CliOutput.out("jk guard: recorded " + id + "'s smaller population as its floor in " + ack.rebased()
+                    + (ack.rebased() == 1 ? " lane" : " lanes")
+                    + (ack.accepted() == 0
+                            ? ""
+                            : " and froze " + ack.accepted() + (ack.accepted() == 1 ? " violation" : " violations"))
+                    + " in jk-guards-baseline.toml (" + ack.total()
+                    + " entries) — commit the baseline with the reason");
         } else if (ack.accepted() == 0) {
-            CliOutput.out("jk guard: " + id + " has no new violations to freeze");
+            CliOutput.out("jk guard: " + id
+                    + (acceptScope
+                            ? " examines what the baseline recorded and has no new violations; nothing to accept"
+                            : " has no new violations to freeze"));
         } else {
             CliOutput.out("jk guard: froze " + ack.accepted() + " " + (ack.accepted() == 1 ? "violation" : "violations")
                     + " of " + id + " into jk-guards-baseline.toml (" + ack.total()

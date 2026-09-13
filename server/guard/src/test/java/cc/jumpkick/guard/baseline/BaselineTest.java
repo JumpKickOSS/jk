@@ -201,6 +201,31 @@ class BaselineTest {
         assertThat(Tolerance.CAP.better(1000, 1000)).isFalse();
     }
 
+    /** An accepted shrink keeps its reason beside the population it records, per lane, and round-trips. */
+    @Test
+    void a_scope_reason_rides_with_its_lane_s_population_and_round_trips(@TempDir Path dir) throws IOException {
+        RuleBaseline whole = RuleBaseline.of(Map.of("files", 30L), List.of(new Entry.Site("a", "r")))
+                .withScopeReason("", "the second build definition left the tree");
+        RuleBaseline lanes = RuleBaseline.EMPTY
+                .withLane("shared/host", Map.of("classes", 20L), List.of())
+                .withScopeReason("shared/host", "host lost its fixtures module");
+        Baseline b = Baseline.EMPTY.with("walks", lanes).with("whole", whole);
+        Path f = dir.resolve("jk-guards-baseline.toml");
+        BaselineFile.write(f, b);
+        String text = Files.readString(f);
+        assertThat(text)
+                .contains("[whole]\npopulation = { files = 30 }\n"
+                        + "scope-reason = \"the second build definition left the tree\"\n[[whole.entries]]")
+                .contains("[walks.populations]\n\"shared/host\" = { classes = 20 }\n"
+                        + "[walks.scope-reasons]\n\"shared/host\" = \"host lost its fixtures module\"\n");
+        assertThat(BaselineFile.read(f)).isEqualTo(b);
+        // A reason without a population is nothing: dropping the lane drops it, and it never makes a rule non-empty.
+        assertThat(lanes.withLane("shared/host", Map.of(), List.of()).scopeReasons())
+                .isEmpty();
+        assertThat(RuleBaseline.EMPTY.withScopeReason("", "no population here").isEmpty())
+                .isTrue();
+    }
+
     @Test
     void scope_shrunk_below_eighty_percent_is_red_and_never_tightens() {
         RuleBaseline before = RuleBaseline.of(Map.of("classes", 100L), List.of(new Entry.Site("a", "r")));

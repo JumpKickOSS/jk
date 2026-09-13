@@ -30,36 +30,48 @@ import org.jspecify.annotations.Nullable;
  * or retire a removed rule's entries. Evaluates the one rule in-process over the last build's
  * outputs — the facts indexes beside each module's classes, the manifests and lock, the tree — so
  * a freeze needs no build. Growth is the only privileged write; the engine tightens on its own.
+ *
+ * <p>A rule examining far less than its baseline recorded is {@code scope-shrunk}: a plain freeze
+ * refuses it, because a shrink is a question, and {@code acceptScope} is the answer that the
+ * corpus legitimately shrank — the observed population becomes the floor, with the reason beside
+ * it.
  */
 public final class Freezer {
 
-    public record Result(@Nullable String error, int accepted, int total) {}
+    /**
+     * @param accepted sites (or metric units) newly frozen, or entries dropped by a retire
+     * @param total the baseline's entry count after the write
+     * @param rebased lanes whose smaller population was accepted as the new floor
+     */
+    public record Result(@Nullable String error, int accepted, int total, int rebased) {}
 
     private Freezer() {}
 
-    public static Result freeze(Path root, String ruleId, @Nullable String reason, boolean retire) throws IOException {
+    public static Result freeze(Path root, String ruleId, @Nullable String reason, boolean retire, boolean acceptScope)
+            throws IOException {
         String refusal = Baselines.freezeRefusal(retire ? "retire" : reason, Baselines.ciMode());
-        if (refusal != null) return new Result(refusal, 0, 0);
+        if (refusal != null) return new Result(refusal, 0, 0, 0);
         Path baselineFile = GuardsPresence.baselineFile(root);
         Baseline baseline = BaselineFile.read(baselineFile);
         GuardsConfig cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
         LoadResult load = GuardRules.load(root, cfg);
         if (load.hasErrors())
             return new Result(
-                    "jk-guards.toml did not load: " + load.errors().get(0).render(), 0, 0);
+                    "jk-guards.toml did not load: " + load.errors().get(0).render(), 0, 0, 0);
         if (retire) {
             if (load.rules().rule(ruleId).isPresent()
                     || GuardSuites.declaredIdsInSource(root).contains(ruleId))
                 return new Result(
                         "`" + ruleId + "` is still declared; remove the rule first, then retire its baseline entries",
                         0,
+                        0,
                         0);
             int dropped = baseline.of(ruleId).entries().size();
             if (dropped == 0 && baseline.of(ruleId).isEmpty())
-                return new Result("the baseline has no entries for `" + ruleId + "`", 0, baseline.entryCount());
+                return new Result("the baseline has no entries for `" + ruleId + "`", 0, baseline.entryCount(), 0);
             Baseline after = baseline.without(ruleId);
             BaselineFile.write(baselineFile, after);
-            return new Result(null, dropped, after.entryCount());
+            return new Result(null, dropped, after.entryCount(), 0);
         }
         Rule rule = load.rules().rule(ruleId).orElse(null);
         if (rule == null) {
@@ -72,15 +84,18 @@ public final class Freezer {
                     "no rule `" + ruleId + "` in jk-guards.toml; ids are "
                             + String.join(", ", load.rules().ids()),
                     0,
+                    0,
                     0);
         if (!Evaluators.acceptsBaseline(rule))
             return new Result(
                     "`" + ruleId
                             + "` has breaking = \"forbid\": a breaking change stays red; set breaking = \"baseline\" to accept one with a reason",
                     0,
-                    baseline.entryCount());
+                    baseline.entryCount(),
+                    0);
         RuleBaseline current = baseline.of(ruleId);
         int accepted = 0;
+        int rebased = 0;
         Lane lane = Evaluators.laneOf(rule);
         for (EvalContext bare : contexts(root, lane, rule)) {
             // The measure may name another rule (`metric matches:<id>`); the lane run hands every
@@ -98,19 +113,35 @@ public final class Freezer {
                         "`" + ruleId + "` is " + e.outcome().id() + " (" + e.note()
                                 + "); only violations can be frozen",
                         0,
-                        baseline.entryCount());
+                        baseline.entryCount(),
+                        0);
             }
             String slice = LaneRun.sliceOf(lane, rule, ctx.module());
             Reconciliation rec = Reconciliation.of(
                     ruleId, current, e.observations(), e.population(), slice, Evaluators.toleranceOf(rule));
-            if (rec.fresh().isEmpty()) continue;
+            String shrunk = rec.scopeShrunk();
+            if (shrunk != null && !acceptScope)
+                return new Result(
+                        "`" + ruleId + "` examines less than its baseline recorded (" + shrunk
+                                + (slice.isEmpty() ? "" : " in " + slice)
+                                + "); a shrink is a question, not a fact — `jk guard freeze " + ruleId
+                                + " --accept-scope --reason \"…\"` records the smaller population as the floor",
+                        0,
+                        baseline.entryCount(),
+                        0);
+            if (rec.fresh().isEmpty() && shrunk == null) continue;
             accepted += rec.fresh().size();
-            current = rec.frozen(reason == null ? "" : reason);
+            String why = reason == null ? "" : reason;
+            current = rec.frozen(why);
+            if (shrunk != null) {
+                rebased++;
+                current = current.withScopeReason(slice, why);
+            }
         }
-        if (accepted == 0) return new Result(null, 0, baseline.entryCount());
+        if (accepted == 0 && rebased == 0) return new Result(null, 0, baseline.entryCount(), 0);
         Baseline after = baseline.with(ruleId, current);
         BaselineFile.write(baselineFile, after);
-        return new Result(null, accepted, after.entryCount());
+        return new Result(null, accepted, after.entryCount(), rebased);
     }
 
     /** One context per module for the module lane; one root context otherwise. */

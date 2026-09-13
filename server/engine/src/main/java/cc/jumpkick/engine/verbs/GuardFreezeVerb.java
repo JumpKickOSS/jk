@@ -53,8 +53,12 @@ public final class GuardFreezeVerb implements HostedVerb {
                 Path dir = Path.of(Objects.requireNonNull(req.dir(), "dir"));
                 Path root = WorkspaceScan.findRoot(dir).orElse(dir);
                 Freezer.Result r = Freezer.freeze(
-                        root, Objects.requireNonNull(req.ruleId(), "ruleId"), req.reason(), req.retire());
-                ack = new GuardFreezeAck(r.error(), r.accepted(), r.total());
+                        root,
+                        Objects.requireNonNull(req.ruleId(), "ruleId"),
+                        req.reason(),
+                        req.retire(),
+                        req.acceptScope());
+                ack = new GuardFreezeAck(r.error(), r.accepted(), r.total(), r.rebased());
             } catch (Exception e) {
                 ack = GuardFreezeAck.error(Errors.text(e));
             }
