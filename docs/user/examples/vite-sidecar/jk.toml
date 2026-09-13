@@ -1,0 +1,15 @@
+group   = "com.example"
+name    = "vite-sidecar"
+version = "0.0.1"
+java    = 25
+
+[application]
+main = "demo.Api"
+
+# The frontend's own dev server runs beside the JVM under `jk dev` — and only there. `jk run`,
+# `jk build`, and `jk test` never read this table; nothing about it enters the action cache.
+[dev.sidecars]
+web = { command = "npm run dev", cwd = "web", ready = "http://localhost:5173", front-door = true }
+
+[test-dependencies]
+junit-jupiter = "=6.1.3"

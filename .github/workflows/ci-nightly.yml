@@ -288,6 +288,14 @@ jobs:
           done
           exit "$failed"
 
+      # The one sample with a `[dev.sidecars]` table is also run the way its README says to run
+      # it: `jk dev`, Vite beside the JVM, the API fetched through Vite's proxy, Ctrl-C. The
+      # runner's Node is the one the sample's package-lock.json was cut for.
+      - name: Run the vite-sidecar sample under jk dev
+        run: |
+          (cd docs/user/examples/vite-sidecar/web && npm ci --no-audit --no-fund)
+          scripts/example-dev-smoke.sh docs/user/examples/vite-sidecar http://localhost:5173 /api/hello
+
       - name: A sample relock may move first-party plugin checksums and nothing else
         run: |
           set -euo pipefail

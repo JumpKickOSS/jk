@@ -63,16 +63,20 @@ web  = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173
 docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern = "Serving on", restart = "on-exit" }
 ```
 
-| Key | Meaning |
-|---|---|
-| `command` | A string split like a shell would — whitespace separates, quotes group, and a backslash is literal unless it sits right before a quote, a space, or another backslash, so `C:\tools\node.exe run dev` splits as written; nothing is expanded and no shell runs. When the string rules get in the way, write the argv array: `command = ["npm", "run", "dev"]` |
-| `cwd` | Working directory, relative to the manifest that declares the sidecar. Default `.` |
-| `env` | Values laid over the inherited environment. `.env` at the workspace root and the module apply first, the way they do for every process jk spawns |
-| `ready` | An HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx. A `localhost` URL is tried on both `127.0.0.1` and `[::1]` — Node binds only `::1` on many hosts |
-| `ready-pattern` | A regex matched against the sidecar's output lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready |
-| `ready-timeout` | `"60s"` (default), `"2m"`, `"500ms"`, or seconds. A probe that times out **fails the session** — a broken dev server is not a warning |
-| `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)` |
-| `restart` | `never` (default: the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) |
+| Key | Meaning | Default |
+|---|---|---|
+| `command` | A string split like a shell would — whitespace separates, quotes group, and a backslash is literal unless it sits right before a quote, a space, or another backslash, so `C:\tools\node.exe run dev` splits as written; nothing is expanded and no shell runs. When the string rules get in the way, write the argv array: `command = ["npm", "run", "dev"]` | required |
+| `cwd` | Working directory, relative to the manifest that declares the sidecar | `"."` |
+| `env` | Values laid over the inherited environment. `.env` at the workspace root and the module apply first, the way they do for every process jk spawns | none |
+| `ready` | An HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx. A `localhost` URL is tried on both `127.0.0.1` and `[::1]` — Node binds only `::1` on many hosts | none |
+| `ready-pattern` | A regex matched against the sidecar's stdout and stderr lines — the other probe; a sidecar has one or the other. With neither, one second alive is ready | none |
+| `ready-timeout` | `"60s"`, `"2m"`, `"500ms"`, or a bare number of seconds. A probe that times out **fails the session** — a broken dev server is not a warning | `"60s"` |
+| `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)` | `false` |
+| `restart` | `never` (the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) | `"never"` |
+
+The table is also in [`jk.toml.schema.json`](jk.toml.schema.json), and
+[examples/vite-sidecar](examples/vite-sidecar/) is the whole thing running: a JVM API on 8080, Vite
+on 5173 proxying `/api`, one `jk dev`.
 
 Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Ctrl-C
 stops the app and every sidecar together, along with everything they spawned. Editing

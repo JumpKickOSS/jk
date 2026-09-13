@@ -277,13 +277,13 @@
                 "description": "A string split like a shell would (quotes group; a backslash is literal unless it precedes a quote, a space, or a backslash; no expansion, no shell) or an argv array.",
                 "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
               },
-              "cwd": { "type": "string", "description": "Working directory, relative to the manifest that declares the sidecar (default \".\")." },
-              "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Values laid over the inherited environment and the .env files." },
-              "ready": { "type": "string", "description": "HTTP(S) URL polled until it answers 2xx/3xx." },
-              "ready-pattern": { "type": "string", "description": "Regex matched against the sidecar's output lines; the alternative to `ready`." },
-              "ready-timeout": { "description": "How long a probe may take: \"60s\" (default), \"2m\", \"500ms\", or seconds.", "oneOf": [{ "type": "string" }, { "type": "integer" }] },
-              "front-door": { "type": "boolean", "description": "Print this sidecar's `ready` URL once the whole session is ready." },
-              "restart": { "type": "string", "enum": ["never", "on-exit"], "description": "What to do when the sidecar exits on its own (default never)." }
+              "cwd": { "type": "string", "description": "Working directory, relative to the manifest that declares the sidecar. Default \".\" (the manifest's own directory)." },
+              "env": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Values laid over the inherited environment and the .env files. Default: none." },
+              "ready": { "type": "string", "description": "HTTP(S) URL polled every 250 ms (HTTP/1.1) until it answers 2xx/3xx; `localhost` is tried on both loopbacks. Default: no URL probe — with neither `ready` nor `ready-pattern`, one second alive is ready." },
+              "ready-pattern": { "type": "string", "description": "Regex matched against the sidecar's stdout and stderr lines; the alternative to `ready`. Default: none." },
+              "ready-timeout": { "description": "How long a probe may take: \"60s\", \"2m\", \"500ms\", or a bare number of seconds. A probe that times out fails the `jk dev` session. Default \"60s\".", "oneOf": [{ "type": "string" }, { "type": "integer" }] },
+              "front-door": { "type": "boolean", "description": "Print this sidecar's `ready` URL in the one `ready ·` line once the whole session is ready. Default false." },
+              "restart": { "type": "string", "enum": ["never", "on-exit"], "description": "What to do when the sidecar exits on its own: `never` reports the exit once and the session continues; `on-exit` restarts with backoff, up to five failures in a row. Default \"never\"." }
             },
             "required": ["command"],
             "additionalProperties": false
