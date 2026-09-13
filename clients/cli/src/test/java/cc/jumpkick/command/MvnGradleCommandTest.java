@@ -5,6 +5,7 @@ import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.host.Hashing;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
  * Exercises {@link MvnCommand} and {@link GradleCommand} end-to-end against a local HTTP server
  * serving a synthetic distribution. The "binary" inside the zip is a tiny shell script that records
  * its argv and env so we can verify passthrough + env scrubbing without depending on a real
- * Maven/Gradle.
+ * Maven/Gradle. jk's own globals ({@code -C}) go before the command name; everything after it
+ * belongs to the tool, except the command's own exactly-spelled options.
  */
 @DisabledOnOs(OS.WINDOWS) // launcher scripts are .sh-only.
 @Tag("integration")
@@ -39,15 +41,15 @@ class MvnGradleCommandTest {
         Path argsLog = tempDir.resolve("argv.log");
         Path envLog = tempDir.resolve("env.log");
 
-        maven.served().put("/apache-maven-3.9.9-bin.zip", recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
+        serveMaven(recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
         Files.writeString(
                 projectDir.resolve(".mvn/wrapper/maven-wrapper.properties"),
                 "distributionUrl=" + maven.base().resolve("/apache-maven-3.9.9-bin.zip") + "\n");
 
         int exit = run(
-                "mvn",
                 "-C",
                 projectDir.toString(),
+                "mvn",
                 "--tools-dir",
                 tempDir.resolve("tools").toString(),
                 "--no-discover",
@@ -74,15 +76,19 @@ class MvnGradleCommandTest {
         Path argsLog = tempDir.resolve("argv.log");
         Path envLog = tempDir.resolve("env.log");
 
-        maven.served().put("/gradle-9.5.1-bin.zip", recordingZip("gradle-9.5.1", "gradle", argsLog, envLog));
+        byte[] zip = recordingZip("gradle-9.5.1", "gradle", argsLog, envLog);
+        maven.served().put("/gradle-9.5.1-bin.zip", zip);
+        // Gradle publishes a bare sha256 hex beside every distribution.
+        maven.served()
+                .put("/gradle-9.5.1-bin.zip.sha256", Hashing.sha256Hex(zip).getBytes(StandardCharsets.UTF_8));
         Files.writeString(
                 projectDir.resolve("gradle/wrapper/gradle-wrapper.properties"),
                 "distributionUrl=" + maven.base().resolve("/gradle-9.5.1-bin.zip") + "\n");
 
         int exit = run(
-                "gradle",
                 "-C",
                 projectDir.toString(),
+                "gradle",
                 "--tools-dir",
                 tempDir.resolve("tools").toString(),
                 "--no-discover",
@@ -103,15 +109,15 @@ class MvnGradleCommandTest {
         Path argsLog = tempDir.resolve("argv.log");
         Path envLog = tempDir.resolve("env.log");
 
-        maven.served().put("/apache-maven-3.9.9-bin.zip", recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
+        serveMaven(recordingZip("apache-maven-3.9.9", "mvn", argsLog, envLog));
         Files.writeString(
                 projectDir.resolve(".mvn/wrapper/maven-wrapper.properties"),
                 "distributionUrl=" + maven.base().resolve("/apache-maven-3.9.9-bin.zip") + "\n");
 
         run(
-                "mvn",
                 "-C",
                 projectDir.toString(),
+                "mvn",
                 "--tools-dir",
                 tempDir.resolve("tools").toString(),
                 "--no-discover",
@@ -124,9 +130,9 @@ class MvnGradleCommandTest {
         // Drop the served archive; second invocation must not need it.
         maven.served().clear();
         int exit = run(
-                "mvn",
                 "-C",
                 projectDir.toString(),
+                "mvn",
                 "--tools-dir",
                 tempDir.resolve("tools").toString(),
                 "--no-discover",
@@ -139,6 +145,19 @@ class MvnGradleCommandTest {
                 .toMillis();
         assertThat(secondMtime).isEqualTo(firstMtime);
         assertThat(Files.readString(argsLog).trim()).isEqualTo("second");
+    }
+
+    /**
+     * Serve a Maven distribution the way Central does: the archive, and beside it the sha512sum
+     * form of its digest. An unverifiable archive is refused before it is downloaded.
+     */
+    private void serveMaven(byte[] zip) {
+        maven.served().put("/apache-maven-3.9.9-bin.zip", zip);
+        maven.served()
+                .put(
+                        "/apache-maven-3.9.9-bin.zip.sha512",
+                        (Hashing.hashHex("SHA-512", zip) + "  apache-maven-3.9.9-bin.zip\n")
+                                .getBytes(StandardCharsets.UTF_8));
     }
 
     /**
