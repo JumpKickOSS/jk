@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
@@ -305,13 +306,18 @@ public final class Jk {
             if (CliFailure.isWorkingDirectoryGone(e)) throw new CliFailure.WorkingDirectoryGone(e);
             throw e;
         }
+        // One invocation is one shell: the process-static session starts from defaults, so a
+        // host that runs several invocations in one JVM (a test suite, an IDE server) hands each
+        // its own caller's environment — the previous caller's JK_REPO_* credentials, variant and
+        // worker-JVM tuning end with the invocation that carried them. GlobalOptions layers the
+        // shell's forward set under whatever the session already holds, which must be nothing.
         try {
             JkConfig resolved = JkConfigLoader.load(cwd, switches.noConfig(), switches.explicit());
-            SessionContext.installConfig(resolved);
+            SessionContext.install(Session.defaults().withConfig(resolved));
         } catch (IOException e) {
             // Best-effort — a broken user/project config shouldn't kill the CLI.
             System.err.println("jk: warning: could not load config (" + e.getMessage() + "); using defaults.");
-            SessionContext.installConfig(JkConfig.empty());
+            SessionContext.install(Session.defaults().withConfig(JkConfig.empty()));
         }
     }
 
