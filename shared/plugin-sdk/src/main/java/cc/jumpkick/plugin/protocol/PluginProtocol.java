@@ -23,6 +23,11 @@ public final class PluginProtocol {
     public static final String OP_COMPILE = "compile";
     /** Read-only Zinc invalidation forecast (no class files written). */
     public static final String OP_PLAN = "plan";
+    /**
+     * Write the Kotlin classpath-entry ABI snapshots of the {@code cp} entries into the layout's
+     * {@code snapshotDir} and report each one's digest ({@link #CP_SNAPSHOT}); compiles nothing.
+     */
+    public static final String OP_SNAPSHOT = "snapshot";
 
     public static final String OP_IMAGE = "image";
     public static final String OP_PUBLISH = "publish";
@@ -69,6 +74,8 @@ public final class PluginProtocol {
     public static final String FILE = "file"; // format per-file outcome
     public static final String WROTE = "wrote"; // compat import wrote a file
     public static final String RESULT = "result"; // terminal typed payload
+    /** One classpath entry's ABI snapshot: {path, sha256} — the {@link #OP_SNAPSHOT} reply. */
+    public static final String CP_SNAPSHOT = "cp-snapshot";
     /** Pull-protocol slot: the worker can accept one COMPILE/PLAN (or DONE). */
     public static final String READY = "ready";
 
@@ -109,6 +116,7 @@ public final class PluginProtocol {
     public static final String SEVERITY = "sev";
     public static final String COL = "col";
     public static final String STATUS = "status";
+    public static final String SHA256 = "sha256";
 
     /**
      * Set in the shell that runs {@code jk}, names a file the compiler worker appends one line of

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.List;
@@ -77,6 +78,18 @@ public final class PluginReply {
     /** Pull-protocol: the worker can accept one {@code COMPILE}/{@code PLAN} (or {@code DONE}). */
     public static String ready() {
         return "{\"t\":\"ready\"}";
+    }
+
+    /**
+     * One classpath entry's ABI snapshot, reported by the Kotlin worker's {@code snapshot} op: the
+     * entry as the engine named it and the SHA-256 of the snapshot file's bytes.
+     */
+    public static String classpathSnapshot(String path, String sha256) {
+        return JsonFields.object()
+                .string("t", "cp-snapshot")
+                .string("path", path)
+                .string("sha256", sha256)
+                .finish();
     }
 
     /** A terminal typed result payload; {@code fields} serialized by shape. */

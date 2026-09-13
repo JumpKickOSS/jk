@@ -52,6 +52,11 @@ public final class CompilerProtocol {
         out.emit(PluginReply.diagnostic(severity, file, line, col, message));
     }
 
+    /** One classpath entry's ABI snapshot digest — the reply of the {@code snapshot} op. */
+    public void classpathSnapshot(String entry, String sha256) {
+        out.emit(PluginReply.classpathSnapshot(entry, sha256));
+    }
+
     /** The terminal outcome, e.g. {@code COMPILATION_SUCCESS}. */
     public void result(String status) {
         out.emit(PluginReply.result(Map.of("status", status)));

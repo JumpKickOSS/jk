@@ -9,6 +9,8 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.CompilerProtocol;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.File;
 import java.io.IOException;
@@ -21,6 +23,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -32,6 +35,7 @@ import org.jetbrains.kotlin.buildtools.api.SourcesChanges;
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain;
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmSnapshotBasedIncrementalCompilationConfiguration;
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmSnapshotBasedIncrementalCompilationConfiguration.Builder;
+import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmClasspathSnapshottingOperation;
 import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation;
 
 /**
@@ -48,6 +52,10 @@ import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperatio
  * CompilationService} flow is deprecated). It depends on nothing but the Build Tools API at compile
  * time — the implementation and the Kotlin compiler arrive on the classpath at runtime,
  * version-matched by jk, so the plugin never leaks compiler deps into jk.
+ *
+ * <p>Its second op, {@code snapshot}, writes the classpath-entry ABI snapshots the incremental
+ * compile consumes and reports their digests, so the engine can key a compile on a dependency's
+ * ABI rather than its bytes without loading the Kotlin compiler itself.
  */
 public final class KotlinCompiler implements Plugin {
 
@@ -59,7 +67,61 @@ public final class KotlinCompiler implements Plugin {
     @Override
     public int run(List<String> args, ProtocolWriter out) {
         return CompilerProtocol.compileFromSpec(
-                manifest().id(), args, out, (spec, proto) -> compile(CompileSpec.from(spec), proto));
+                manifest().id(),
+                args,
+                out,
+                (spec, proto) -> PluginProtocol.OP_SNAPSHOT.equals(spec.op())
+                        ? snapshot(spec, proto)
+                        : compile(CompileSpec.from(spec), proto));
+    }
+
+    /**
+     * The {@code snapshot} op: write the classpath-entry ABI snapshot of every {@code cp} entry
+     * into the spec's {@code snapshotDir} — the same files, under the same names, the incremental
+     * compile reads — and report each one's digest. The engine keys a Kotlin compile on those
+     * digests, so a dependency whose bytes moved but whose ABI did not leaves the key alone. An
+     * entry that is absent or fails to snapshot is left unreported; the engine falls back to that
+     * entry's full-content identity.
+     */
+    static int snapshot(PluginSpec spec, CompilerProtocol proto) throws Exception {
+        Path snapshotDir = Objects.requireNonNull(spec.snapshotDir(), "spec missing layout.snapshotDir");
+        List<File> entries = spec.compileClasspath().stream().map(Path::toFile).toList();
+        KotlinToolchains toolchains = KotlinToolchains.loadImplementation(KotlinCompiler.class.getClassLoader());
+        JvmPlatformToolchain jvm = JvmPlatformToolchain.from(toolchains);
+        try (KotlinToolchains.BuildSession session = toolchains.createBuildSession()) {
+            ExecutionPolicy policy = toolchains.createInProcessExecutionPolicy();
+            KcLogger logger = new KcLogger(proto);
+            snapshotEntries(entries, snapshotDir, btaSnapshotter(jvm, session, policy, logger), proto);
+        }
+        proto.result(SNAPSHOT_SUCCESS);
+        return Exit.SUCCESS;
+    }
+
+    /** The {@code result} status of a completed {@code snapshot} op. */
+    static final String SNAPSHOT_SUCCESS = "SNAPSHOT_SUCCESS";
+
+    /**
+     * Snapshot each entry on its own and report the digest of the snapshot's bytes. One entry per
+     * {@link #snapshotClasspath} call so one failure costs that entry alone: the others are still
+     * reported and only the failed one falls back to a full-content key on the engine side.
+     */
+    static void snapshotEntries(List<File> entries, Path dir, Snapshotter snapshotter, CompilerProtocol proto)
+            throws IOException {
+        for (File entry : entries) {
+            for (Path snapshot : snapshotClasspath(List.of(entry), dir, snapshotter)) {
+                proto.classpathSnapshot(entry.getAbsolutePath(), Hashing.sha256Hex(snapshot));
+            }
+        }
+    }
+
+    /** The Build Tools API's classpath snapshotting, against one open session. */
+    private static Snapshotter btaSnapshotter(
+            JvmPlatformToolchain jvm, KotlinToolchains.BuildSession session, ExecutionPolicy policy, KcLogger logger) {
+        return (entry, out) -> {
+            JvmClasspathSnapshottingOperation snapOp =
+                    jvm.classpathSnapshottingOperationBuilder(entry).build();
+            session.executeOperation(snapOp, policy, logger).saveSnapshot(out);
+        };
     }
 
     static int compile(CompileSpec spec, CompilerProtocol proto) throws Exception {
@@ -108,12 +170,8 @@ public final class KotlinCompiler implements Plugin {
                 // the working dir under SourcesChanges.ToBeCalculated regardless.
                 File snapshotDir = spec.snapshotDir;
                 List<Path> depSnapshots = snapshotDir != null
-                        ? snapshotClasspath(spec.classpath, snapshotDir.toPath(), (entry, out) -> {
-                            org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmClasspathSnapshottingOperation
-                                    snapOp = jvm.classpathSnapshottingOperationBuilder(entry)
-                                            .build();
-                            session.executeOperation(snapOp, policy, logger).saveSnapshot(out);
-                        })
+                        ? snapshotClasspath(
+                                spec.classpath, snapshotDir.toPath(), btaSnapshotter(jvm, session, policy, logger))
                         : List.of();
                 Builder ic = op.snapshotBasedIcConfigurationBuilder(
                         workingDir.toPath(), SourcesChanges.ToBeCalculated.INSTANCE, depSnapshots);
