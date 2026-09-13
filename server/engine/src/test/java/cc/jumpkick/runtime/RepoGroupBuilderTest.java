@@ -10,9 +10,13 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.MavenSettings;
+import cc.jumpkick.repo.RepoCredentialResolver;
+import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
@@ -24,6 +28,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.AfterEach;
@@ -299,24 +304,169 @@ class RepoGroupBuilderTest {
                 .satisfies(repo -> assertThat(repo.baseUrl().toString()).isEqualTo("https://nexus.example.com/repo/"));
     }
 
+    private static final URI CORP_BUCKET = URI.create("s3://corp-bucket/releases/");
+    private static final String VICTIM_HOME = "/home/victim";
+
+    /** The engine's resolver with every source empty but the two provenance inputs a test varies. */
+    private static RepoCredentialResolver resolver(
+            Path dir,
+            Map<String, String> env,
+            Map<String, String> hostBindings,
+            List<RepositorySpec> userRepositories) {
+        return new RepoCredentialResolver(
+                env::get,
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                new ForgeAuth(),
+                (endpoint, field, token) -> Optional.empty(),
+                hostBindings::get,
+                () -> userRepositories);
+    }
+
+    /** A project's {@code [repositories.corp]} on an object store, keys written as {@code cfg}. */
+    private static RepositorySpec corp(ObjectStoreConfig cfg) {
+        return new RepositorySpec("corp", CORP_BUCKET, null, cfg);
+    }
+
     /**
-     * Object-store {@code ${VAR}} expansion is the owner's STRICT policy against the request env:
-     * an unset variable is a {@link JkBuildParseException} naming the {@code repositories.<name>}
-     * position, and a set one resolves from the injected lookup, never the real environ.
+     * The object-store hole an inline credential no longer has: a cloned project writing
+     * {@code secret-key = "${HOME}"} beside its own bucket. The key is left unset — the transport
+     * goes unsigned rather than signing with the caller's value — the literal key beside it stays,
+     * and the once-per-run warning names the variable, never what it holds.
      */
     @Test
-    void object_store_vars_expand_strictly_against_the_request_env() {
-        ObjectStoreConfig cfg = new ObjectStoreConfig("${JK_TEST_S3_REGION}", null, "${JK_TEST_S3_ACCESS}", null, null);
+    void a_project_object_store_key_naming_a_foreign_variable_is_left_unset_and_warned_once(@TempDir Path dir) {
+        RepositorySpec spec = corp(new ObjectStoreConfig("us-east-1", null, "AKIAEXAMPLE", "${HOME}", null));
+        RepoCredentialResolver creds = resolver(dir, Map.of("HOME", VICTIM_HOME), Map.of(), List.of());
+        Map<String, String> env = Map.of("HOME", VICTIM_HOME);
 
-        assertThatThrownBy(() -> RepoGroupBuilder.expandObjectStore("corp", cfg, var -> null))
+        var expanded = new AtomicReference<ObjectStoreConfig>();
+        String out = inOneRun(() -> {
+            expanded.set(RepoGroupBuilder.expandObjectStore(spec, creds, env::get));
+            RepoGroupBuilder.expandObjectStore(spec, creds, env::get);
+            RepoGroupBuilder.expandObjectStore(spec, creds, env::get);
+        });
+
+        assertThat(expanded.get()).isEqualTo(new ObjectStoreConfig("us-east-1", null, "AKIAEXAMPLE", null, null));
+        assertThat(expanded.get().hasExplicitCredentials()).isFalse();
+        assertThat(occurrencesOf(out, "interpolates ${HOME}")).isEqualTo(1);
+        assertThat(out)
+                .contains("repository `corp`")
+                .contains("object-store keys")
+                .contains("JK_REPO_CORP_TOKEN")
+                .doesNotContain(VICTIM_HOME);
+    }
+
+    /** The same declaration in the user's own config is the user's word, and its value is sent. */
+    @Test
+    void the_same_object_store_declaration_in_the_user_config_is_expanded_and_sent(@TempDir Path dir) {
+        ObjectStoreConfig declared = new ObjectStoreConfig(null, null, "AKIAEXAMPLE", "${HOME}", null);
+        RepoCredentialResolver creds = resolver(dir, Map.of("HOME", VICTIM_HOME), Map.of(), List.of(corp(declared)));
+
+        var expanded = new AtomicReference<ObjectStoreConfig>();
+        String out = inOneRun(() -> expanded.set(
+                RepoGroupBuilder.expandObjectStore(corp(declared), creds, Map.of("HOME", VICTIM_HOME)::get)));
+
+        assertThat(expanded.get().secretKey()).isEqualTo(VICTIM_HOME);
+        assertThat(expanded.get().hasExplicitCredentials()).isTrue();
+        assertThat(out).isEmpty();
+    }
+
+    /**
+     * Project and user both declare the repository at one origin: the user's object-store table is
+     * the one expanded, whatever the project wrote into its own.
+     */
+    @Test
+    void the_users_own_object_store_table_is_used_whatever_the_project_wrote(@TempDir Path dir) {
+        RepositorySpec users = corp(new ObjectStoreConfig("eu-west-1", null, "${CORP_ACCESS}", "${CORP_SECRET}", null));
+        RepositorySpec projects = corp(new ObjectStoreConfig(null, null, "${HOME}", "${HOME}", null));
+        Map<String, String> env = Map.of("HOME", VICTIM_HOME, "CORP_ACCESS", "AKIACORP", "CORP_SECRET", "corp-secret");
+        RepoCredentialResolver creds = resolver(dir, env, Map.of(), List.of(users));
+
+        ObjectStoreConfig expanded = RepoGroupBuilder.expandObjectStore(projects, creds, env::get);
+
+        assertThat(expanded).isEqualTo(new ObjectStoreConfig("eu-west-1", null, "AKIACORP", "corp-secret", null));
+    }
+
+    /**
+     * A project may spell out the convention — the repository's own {@code JK_REPO_<ID>_*} names —
+     * and under a binding they expand strictly: an unset one is a {@link JkBuildParseException}
+     * naming the position, not a silent fall-through to the ambient chain. Unbound, the same
+     * reference is refused like any other name-keyed source.
+     */
+    @Test
+    void a_project_reference_to_the_repositorys_own_variables_expands_strictly_under_a_binding(@TempDir Path dir) {
+        RepositorySpec spec = corp(new ObjectStoreConfig(
+                "${JK_REPO_CORP_REGION}", null, "${JK_REPO_CORP_ACCESS_KEY}", "${JK_REPO_CORP_SECRET_KEY}", null));
+        Map<String, String> bound = Map.of("JK_REPO_CORP_HOST", "corp-bucket");
+        Map<String, String> shell = Map.of(
+                "JK_REPO_CORP_REGION", "us-east-1",
+                "JK_REPO_CORP_ACCESS_KEY", "AKIAEXAMPLE",
+                "JK_REPO_CORP_SECRET_KEY", "s3cr3t");
+
+        ObjectStoreConfig expanded =
+                RepoGroupBuilder.expandObjectStore(spec, resolver(dir, shell, bound, List.of()), shell::get);
+        assertThat(expanded).isEqualTo(new ObjectStoreConfig("us-east-1", null, "AKIAEXAMPLE", "s3cr3t", null));
+
+        assertThatThrownBy(() -> RepoGroupBuilder.expandObjectStore(
+                        spec, resolver(dir, Map.of(), bound, List.of()), var -> null))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("repositories.corp")
-                .hasMessageContaining("${JK_TEST_S3_REGION}");
+                .hasMessageContaining("${JK_REPO_CORP_REGION}");
 
-        Map<String, String> env = Map.of("JK_TEST_S3_REGION", "us-east-1", "JK_TEST_S3_ACCESS", "AKIAEXAMPLE");
-        ObjectStoreConfig expanded = RepoGroupBuilder.expandObjectStore("corp", cfg, env::get);
-        assertThat(expanded.region()).isEqualTo("us-east-1");
-        assertThat(expanded.accessKey()).isEqualTo("AKIAEXAMPLE");
-        assertThat(expanded.endpoint()).isNull();
+        var unbound = new AtomicReference<ObjectStoreConfig>();
+        String out = inOneRun(() -> unbound.set(
+                RepoGroupBuilder.expandObjectStore(spec, resolver(dir, shell, Map.of(), List.of()), shell::get)));
+        assertThat(unbound.get()).isEqualTo(ObjectStoreConfig.EMPTY);
+        assertThat(out)
+                .contains("nothing binds the name `corp`")
+                .contains("JK_REPO_CORP_HOST=corp-bucket")
+                .doesNotContain("s3cr3t");
+    }
+
+    /** Keys written out in full are the declaring manifest's own secret; no resolver is consulted. */
+    @Test
+    void literal_object_store_keys_are_used_as_written(@TempDir Path dir) {
+        ObjectStoreConfig literal =
+                new ObjectStoreConfig("us-east-1", "https://minio.corp:9000", "AKIA", "s3cr3t", null);
+
+        String out = inOneRun(() -> assertThat(RepoGroupBuilder.expandObjectStore(
+                        corp(literal), resolver(dir, Map.of(), Map.of(), List.of()), var -> null))
+                .isSameAs(literal));
+
+        assertThat(out).isEmpty();
+    }
+
+    /**
+     * The wiring: building the group for a project whose object-store repository interpolates a
+     * variable of the caller's shell says so once, and never prints the value.
+     */
+    @Test
+    void building_a_group_refuses_a_projects_object_store_reference(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+
+                [repositories.corp]
+                url = "s3://corp-bucket/releases/"
+                access-key = "AKIAEXAMPLE"
+                secret-key = "${HOME}"
+                """);
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        Files.writeString(tmp.resolve("config.toml"), "");
+        System.setProperty("jk.env.JK_HOME", tmp.toString());
+
+        String out;
+        try {
+            out = inOneRun(() -> RepoGroupBuilder.buildFor(
+                    project, null, new Cas(tmp.resolve("store")), Map.of("HOME", VICTIM_HOME)::get));
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+        assertThat(out)
+                .contains("repository `corp`")
+                .contains("interpolates ${HOME}")
+                .doesNotContain(VICTIM_HOME);
     }
 }

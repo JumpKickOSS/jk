@@ -237,22 +237,38 @@ public final class RepoCredentialResolver {
         if (references.isEmpty()) return Optional.of(declared);
         Optional<RepoCredential> own = userDeclaration(repoId, url).flatMap(RepositorySpec::credentialOpt);
         if (own.isPresent()) return Optional.of(expand(repoId, own.get()));
-        if (repoId == null || repoId.isBlank()) return Optional.empty();
+        if (!projectMayRead(repoId, url, references)) return Optional.empty();
+        return Optional.of(expand(repoId, declared));
+    }
+
+    /**
+     * Whether a project manifest's {@code ${VAR}} references in a {@code [repositories.<id>]} value
+     * may be read for the repository at {@code url} — the one rule behind an inline credential and
+     * an object-store key, so the two cannot drift. Asked once the user's own declaration has had
+     * its turn ({@link #userDeclaration}); what remains is the project's word alone.
+     *
+     * <p>A project may read only the repository's own {@code JK_REPO_<ID>_*} variables, and only
+     * when something binds the name to the origin. Any other variable, or an unbound name, is
+     * refused with a once-per-run warning that names the variables and the remedies — never a
+     * value. A declaration with no repository id has no convention to read and is refused quietly.
+     */
+    public boolean projectMayRead(@Nullable String repoId, @Nullable URI url, Set<String> references) {
+        if (repoId == null || repoId.isBlank()) return false;
         String prefix = envVarPrefix(repoId);
         List<String> foreign =
                 references.stream().filter(v -> !v.startsWith(prefix)).toList();
         if (!foreign.isEmpty()) {
             refuseProjectReference(repoId, url, foreign);
-            return Optional.empty();
+            return false;
         }
         Binding binding = bindingOf(repoId, url);
-        if (binding.bound()) return Optional.of(expand(repoId, declared));
+        if (binding.bound()) return true;
         refuse(
                 repoId,
                 url,
                 "the " + spelled(references) + " reference of its [repositories." + repoId + "] table",
                 binding);
-        return Optional.empty();
+        return false;
     }
 
     /** Every {@code ${VAR}} name the credential's text carries, in order of appearance. */
@@ -274,8 +290,12 @@ public final class RepoCredentialResolver {
         return String.join(", ", references.stream().map(v -> "${" + v + "}").toList());
     }
 
-    /** The user's own {@code [repositories.<id>]} declaration at this origin, when there is one. */
-    private Optional<RepositorySpec> userDeclaration(@Nullable String repoId, @Nullable URI url) {
+    /**
+     * The user's own {@code [repositories.<id>]} declaration at this origin, when there is one. Its
+     * values are the user's word: whichever of them the merged declaration also carries — a
+     * credential, an object-store key — is taken from here, whatever the project wrote.
+     */
+    public Optional<RepositorySpec> userDeclaration(@Nullable String repoId, @Nullable URI url) {
         if (repoId == null || repoId.isBlank() || url == null || url.getHost() == null) return Optional.empty();
         for (RepositorySpec spec : userRepositories.get()) {
             if (spec.name().equals(repoId) && Http.sameOrigin(spec.url(), url)) return Optional.of(spec);
@@ -295,8 +315,9 @@ public final class RepoCredentialResolver {
             String prefix = envVarPrefix(repoId);
             return "jk: warning: repository `" + repoId + "` at " + origin
                     + " is accessed anonymously: its [repositories." + repoId + "] table interpolates " + refs
-                    + ", and a project manifest may not read a variable of your shell into a credential — a "
-                    + "cloned project could name any of them. To send one, declare [repositories." + repoId
+                    + ", and a project manifest may not read a variable of your shell into a repository's "
+                    + "credential or object-store keys — a cloned project could name any of them. To send one, "
+                    + "declare [repositories." + repoId
                     + "] with this URL and the ${VAR} reference in ~/.jk/config.toml, export " + prefix + "TOKEN (or "
                     + prefix + "USERNAME + " + prefix + "PASSWORD) with " + prefix + "HOST="
                     + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run `jk repo login "

