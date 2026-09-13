@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
 import cc.jumpkick.guard.api.Guard;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.platform.launcher.Launcher;
@@ -20,7 +21,12 @@ import org.junit.platform.launcher.listeners.TestExecutionSummary;
  */
 class GuardExtensionTest {
 
-    /** An ordinary failing test running with the extension attached, as every test in an autodetecting tier does. */
+    /**
+     * An ordinary failing test running with the extension attached, as every test in an autodetecting
+     * tier does. {@code @Disabled} keeps the build's own discovery off it; the launcher below
+     * deactivates that condition and runs it on purpose.
+     */
+    @Disabled("a fixture the launcher runs; never a test of its own")
     @ExtendWith(GuardExtension.class)
     static class PlainFailure {
         @Test
@@ -29,7 +35,12 @@ class GuardExtensionTest {
         }
     }
 
-    /** A guard that throws, outside jk: the condition disables it rather than letting it run without views. */
+    /**
+     * A guard that throws. Outside jk the extension's own condition skips it (no views to hand it);
+     * once a runtime is installed in the JVM — by jk, or by another test in the same run — it runs
+     * and its exception is recorded for the engine's report. Neither outcome is a failure.
+     */
+    @Disabled("a fixture the launcher runs; never a test of its own")
     @ExtendWith(GuardExtension.class)
     static class ThrowingGuard {
         @Guard(id = "probe", why = "probe", instead = "probe")
@@ -42,6 +53,7 @@ class GuardExtensionTest {
     private static TestExecutionSummary run(Class<?> testClass) {
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
                 .selectors(selectClass(testClass))
+                .configurationParameter("junit.jupiter.conditions.deactivate", "org.junit.*DisabledCondition")
                 .build();
         Launcher launcher = LauncherFactory.create();
         SummaryGeneratingListener listener = new SummaryGeneratingListener();
@@ -56,10 +68,18 @@ class GuardExtensionTest {
         assertThat(summary.getFailures().getFirst().getException()).hasMessage("the assertion the tier must see");
     }
 
+    /**
+     * The verdict on a guard is the engine's, never JUnit's: whether the runtime is absent (the guard
+     * is skipped) or installed (its exception is recorded and swallowed), the tier does not go red.
+     * {@link GuardRuntime#install} is process-wide and other tests in this JVM call it, so the test
+     * asserts the invariant that holds either way rather than the order it happened to run in.
+     */
     @Test
-    void a_guard_outside_jk_is_skipped_not_failed() {
+    void a_throwing_guard_is_never_the_tier_s_failure() {
         TestExecutionSummary summary = run(ThrowingGuard.class);
+        assertThat(summary.getTestsFoundCount()).isEqualTo(1);
         assertThat(summary.getTestsFailedCount()).isZero();
-        assertThat(summary.getTestsSkippedCount()).isEqualTo(1);
+        assertThat(summary.getTestsSkippedCount() + summary.getTestsSucceededCount())
+                .isEqualTo(1);
     }
 }
