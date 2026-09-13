@@ -126,6 +126,17 @@ public final class SessionContext {
     }
 
     /**
+     * Start a virtual thread that runs {@code body} under the calling thread's session. A bare
+     * {@code Thread.ofVirtual().start} carries no {@link ScopedValue} binding, so code on it reads
+     * the process default — a worker JVM forked from such a thread is sized and flagged without the
+     * request's tuning and runs without its cancel token.
+     */
+    public static Thread startVirtual(String name, Runnable body) {
+        Session session = current();
+        return Thread.ofVirtual().name(name).start(() -> runWhere(session, body));
+    }
+
+    /**
      * The process-static fallback itself, ignoring any {@link ScopedValue} binding on the calling
      * thread. Test support: {@link #current()} prefers the binding, so snapshotting it and writing
      * it back with {@link #install} publishes one thread's session to every other. Snapshot this

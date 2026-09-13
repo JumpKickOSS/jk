@@ -10,6 +10,7 @@ import static cc.jumpkick.test.TestEventFields.xmlName;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.PluginLoader;
@@ -633,9 +634,9 @@ public final class JUnitLauncher {
             final int totalWorkers = actualWorkers;
             // Virtual: the thread blocks on the child's stdout for the worker's whole life —
             // exactly the shape VT is for.
-            Thread t = Thread.ofVirtual()
-                    .name("jk-test-worker-" + workerId)
-                    .start(() -> exits[idx] = driveWorker(
+            Thread t = SessionContext.startVirtual(
+                    "jk-test-worker-" + workerId,
+                    () -> exits[idx] = driveWorker(
                             javaBinary,
                             classpath,
                             workerId,
