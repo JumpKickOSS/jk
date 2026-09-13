@@ -95,7 +95,7 @@ How jk is structured today. For day-to-day usage see [user documentation](../use
 | **Engine log** | The spawner redirects the engine's stderr to `<state>/engine/<key>.log` and rotates it to `.1` at each spawn; the engine writes through a byte-counting sink on the same file and rolls it to `.1` itself when it reaches the cap, so a warning loop cannot fill the disk. One generation is kept. `jk engine status` shows the size and the last roll. Lines are leveled and redacted — see [Logging](#logging) | `[engine] log-max-mb` / `JK_ENGINE_LOG_MAX_MB` (default **16** MiB; `0` = no cap); `[engine] log-level` / `JK_LOG_LEVEL` (default **info**) |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
-recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
+recover with `jk engine stop --now`). Heartbeats keep long quiet compiles honest against the
 idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap. A
 dashboard or agent whose builds legitimately run past an hour raises `detached-deadline-ms`, or
 passes a deadline on the submission itself.
