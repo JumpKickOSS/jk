@@ -40,9 +40,10 @@ import org.jspecify.annotations.Nullable;
  * starts and exits {@code app-started} / {@code app-exited}. {@code dev-ready} says the whole stack
  * is up, and says it again after a process restart of the app when the app is the front door.
  *
- * <p>The session keeps a {@link CliSessionTranscript} like every build verb: the loop's builds, the
- * sidecar and app events, and the finish — on Ctrl-C too — land in {@code details.jsonl} whatever
- * the output mode, the app's own lines excepted on a terminal, where the app owns stdout.
+ * <p>The session keeps one {@link CliSessionTranscript} for its whole life: the loop's builds — each
+ * an engine job with its own {@code job} line — the sidecar and app events, and the finish — on
+ * Ctrl-C too — land in a single {@code details.jsonl} whatever the output mode, the app's own lines
+ * excepted on a terminal, where the app owns stdout.
  */
 @RequiredArgsConstructor
 public final class AppWatchLoop {
@@ -65,7 +66,7 @@ public final class AppWatchLoop {
     private final Consumer<String> events = line -> JsonlShape.emitEvent(line, json());
 
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
-        CliSessionTranscript session = CliSessionTranscript.open(projectDir, "dev", devArgv(appArgs));
+        CliSessionTranscript session = CliSessionTranscript.openAcrossJobs(projectDir, "dev", devArgv(appArgs));
         if (session != null) session.announceIf(global.verbose);
         int code;
         try {

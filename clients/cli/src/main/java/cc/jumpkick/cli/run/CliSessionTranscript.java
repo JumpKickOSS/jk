@@ -5,6 +5,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.WireStream;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -32,6 +33,11 @@ import org.jspecify.annotations.Nullable;
  * <p>On open the session buffers until {@link #bindJob} (from engine {@code job-start}) points at the
  * journal run's details path. If the command never receives job-start (failure before admit), a
  * local run dir is created at {@link #finish} so the transcript is still retained.
+ *
+ * <p>A build verb is one engine job, so its transcript is that job's file. A loop verb ({@code jk
+ * dev}) runs many jobs in one session and opens with {@link #openAcrossJobs}: the first job-start
+ * binds the file and every later one adds its {@code job} line to the same file, so a session with
+ * twenty rebuilds reads back as one stream rather than twenty run dirs to stitch in build order.
  *
  * <p>Never throws into the user command path: open/append/finish failures are silent no-ops. Disable
  * with {@code JK_CLI_DETAILS=off} (or {@code 0}).
@@ -75,17 +81,21 @@ public final class CliSessionTranscript {
     private @Nullable String wedgeSummary;
     private boolean closed;
     private boolean bound;
+    /** True when the first bound file is kept for every later job-start; see {@link #openAcrossJobs}. */
+    private final boolean acrossJobs;
 
     private long jid = -1;
     private long buildNumber;
     private long etaMs = -1;
 
-    private CliSessionTranscript(Path projectDir, Instant started, String command, List<String> argv) {
+    private CliSessionTranscript(
+            Path projectDir, Instant started, String command, List<String> argv, boolean acrossJobs) {
         this.projectDir = projectDir;
         this.started = started;
         this.command = command;
         this.argv = List.copyOf(argv);
-        this.lastFlushMs = System.currentTimeMillis();
+        this.acrossJobs = acrossJobs;
+        this.lastFlushMs = Clock.SYSTEM.millis();
     }
 
     public static @Nullable CliSessionTranscript active() {
@@ -97,12 +107,27 @@ public final class CliSessionTranscript {
      * project path is unusable. Writes a {@code session-start} line into the buffer immediately.
      */
     public static @Nullable CliSessionTranscript open(Path projectDir, String command, List<String> argv) {
+        return open(projectDir, command, argv, false);
+    }
+
+    /**
+     * Open a transcript for a session that runs many engine jobs — {@code jk dev}'s loop. The first
+     * {@code job-start} binds the file; every later one records its {@code job} line (jid, build
+     * number, the engine run's own details path) in that same file instead of moving the transcript
+     * to the new run, so the whole session is one {@code details.jsonl}.
+     */
+    public static @Nullable CliSessionTranscript openAcrossJobs(Path projectDir, String command, List<String> argv) {
+        return open(projectDir, command, argv, true);
+    }
+
+    private static @Nullable CliSessionTranscript open(
+            Path projectDir, String command, List<String> argv, boolean acrossJobs) {
         if (projectDir == null || command == null || command.isBlank()) return null;
         if (disabled()) return null;
         try {
-            Instant started = Instant.now();
+            Instant started = Clock.SYSTEM.instant();
             List<String> args = argv == null || argv.isEmpty() ? List.of(command) : List.copyOf(argv);
-            CliSessionTranscript session = new CliSessionTranscript(projectDir, started, command, args);
+            CliSessionTranscript session = new CliSessionTranscript(projectDir, started, command, args, acrossJobs);
             LiveProgress.get().clear();
             active = session;
             session.appendRaw(JsonlShape.withProgress(JsonlShape.sessionStart(command, args), null), true);
@@ -134,7 +159,8 @@ public final class CliSessionTranscript {
     /**
      * Bind to the engine journal run (from {@code job-start}). Opens {@code detailsPath} (under
      * {@code runs/<buildNumber>/}) and flushes buffered events. Emits a {@code job} metadata line
-     * with jid / buildNumber / ETA when known.
+     * with jid / buildNumber / ETA when known. A transcript opened {@link #openAcrossJobs across
+     * jobs} that is already bound keeps its file and only records the line.
      */
     public void bindJob(long jid, long buildNumber, @Nullable String detailsPath, long etaMs) {
         synchronized (lock) {
@@ -143,7 +169,9 @@ public final class CliSessionTranscript {
             this.buildNumber = buildNumber;
             this.etaMs = etaMs;
             try {
-                if (detailsPath != null && !detailsPath.isBlank()) {
+                if (acrossJobs && bound && out != null) {
+                    // The file stays where the first job put it; the line says where this job's run is.
+                } else if (detailsPath != null && !detailsPath.isBlank()) {
                     openFile(Path.of(detailsPath));
                 } else if (buildNumber > 0 && projectDir != null) {
                     // Fallback: resolve runs/<N>/details.jsonl for this project under the live builds root.

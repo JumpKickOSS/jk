@@ -121,9 +121,10 @@ A `jk dev` session keeps a transcript too, whatever the output mode: `session-st
 `dev`), every build the loop runs, the [`jk dev`](#jk-dev) events — `sidecar-*`, `app-started` /
 `app-exited`, `dev-ready`; `app-output` only under `--output json`, since on a terminal the app
 owns stdout — and `session-finish`, on Ctrl-C as well (`exit` 130). The loop's builds are engine
-runs, and the transcript follows them: each build binds it to that build's run dir, so the events
-between two builds sit in the run of the build before them, and the whole session reads back as
-the project's runs in order. The dev events carry no `progress`.
+runs, but the transcript is the session's: it lives in the first build's run dir and stays there,
+and every later build adds its own `job` line (jid, build number, that run's `detailsPath`) to the
+same file, so a session with twenty rebuilds is one `details.jsonl` rather than twenty to stitch in
+build order. The dev events carry no `progress`.
 
 With `-v`, the CLI prints `Details: <path>` and `Results: <target/jk-results.md>` after a
 run. `jk results -v` / `jk results --details -v` print the path on stderr, then the file. MCP

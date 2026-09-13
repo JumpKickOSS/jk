@@ -19,7 +19,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -310,27 +309,37 @@ class DevSidecarExampleTest {
     }
 
     /**
-     * The session's transcript, replayed: every run dir the loop's builds bound it to, in build
-     * order, read as one stream. It opens with {@code session-start}, closes with {@code
-     * session-finish} carrying the Ctrl-C exit, and holds every dev event stdout showed — each
-     * once, in the same order — with nothing else of the kind.
+     * The session's transcript: one {@code details.jsonl} for the whole session, however many
+     * builds the loop ran. It opens with {@code session-start}, closes with {@code session-finish}
+     * carrying the Ctrl-C exit, records one {@code job} line per build the loop ran — as many as
+     * the plans stdout showed — and holds every dev event stdout showed, each once, in the same
+     * order, with nothing else of the kind. The other run dirs hold no transcript of their own.
      */
     private static void replayTranscript(Path project, Path out) throws IOException {
         Path home = ProjectBuilds.projectHome(project);
-        List<Path> runs = new ArrayList<>(ProjectBuilds.listRuns(home));
-        Collections.reverse(runs);
-        List<String> transcript = new ArrayList<>();
-        for (Path run : runs) {
+        List<Path> transcripts = new ArrayList<>();
+        for (Path run : ProjectBuilds.listRuns(home)) {
             Path details = run.resolve(ProjectBuilds.DETAILS);
-            if (Files.exists(details)) transcript.addAll(Files.readAllLines(details));
+            if (Files.exists(details)) transcripts.add(details);
         }
-        assertThat(transcript).as("no transcript under %s", home).isNotEmpty();
+        assertThat(transcripts)
+                .as("one transcript for the session under %s", home)
+                .hasSize(1);
+        List<String> transcript = Files.readAllLines(transcripts.getFirst());
         assertThat(Jsonl.str(transcript.getFirst(), "type")).isEqualTo("session-start");
         assertThat(Jsonl.str(transcript.getFirst(), "command")).isEqualTo("dev");
         assertThat(Jsonl.str(transcript.getLast(), "type"))
                 .as("Ctrl-C finishes the transcript\n%s", String.join("\n", transcript))
                 .isEqualTo("session-finish");
         assertThat(Jsonl.intValue(transcript.getLast(), "exit", -1)).isEqualTo(Exit.INTERRUPTED);
+        long builds = lines(out).stream().filter(typed("buildplan-start")).count();
+        assertThat(builds).as("the loop built more than once").isGreaterThan(1);
+        assertThat(transcript.stream().filter(typed("job")).count())
+                .as("one job line per build the loop ran\n%s", String.join("\n", transcript))
+                .isEqualTo(builds);
+        assertThat(transcript.stream().filter(typed("buildplan-start")).count()).isEqualTo(builds);
+        assertThat(transcript.stream().filter(typed("buildplan-finish")).count())
+                .isEqualTo(builds);
         List<String> live = lines(out).stream().filter(DEV_EVENT).toList();
         assertThat(live).isNotEmpty();
         assertThat(transcript.stream().filter(DEV_EVENT).toList())

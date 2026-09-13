@@ -92,6 +92,60 @@ class CliSessionTranscriptTest {
     }
 
     @Test
+    void a_session_across_jobs_keeps_its_first_file_and_records_every_later_job(@TempDir Path project)
+            throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.openAcrossJobs(project, "dev", List.of("dev"));
+        assertNotNull(session);
+        Path first = bind(session, project);
+
+        Path second = project.resolve("runs").resolve("8").resolve(CliSessionTranscript.FILE_NAME);
+        session.bindJob(43, 8, second.toString(), -1);
+        session.appendRaw("{\"schema\":1,\"type\":\"app-started\",\"pid\":7}", true);
+        Path third = project.resolve("runs").resolve("9").resolve(CliSessionTranscript.FILE_NAME);
+        session.bindJob(44, 9, third.toString(), -1);
+        session.finish(0);
+
+        assertEquals(first, session.file());
+        assertFalse(Files.exists(second), "a later job opens no file of its own");
+        assertFalse(Files.exists(third));
+        List<String> lines = Files.readAllLines(first);
+        assertEquals("session-start", type(lines.getFirst()));
+        assertEquals("session-finish", type(lines.getLast()));
+        List<String> jobs = lines.stream().filter(l -> "job".equals(type(l))).toList();
+        assertEquals(3, jobs.size(), "one job line per engine job, in order:\n" + String.join("\n", lines));
+        assertTrue(jobs.get(0).contains("\"buildNumber\":7"));
+        assertTrue(jobs.get(1).contains("\"buildNumber\":8"));
+        assertTrue(jobs.get(2).contains("\"buildNumber\":9"));
+        assertTrue(lines.indexOf(jobs.get(1))
+                < lines.stream()
+                        .filter(l -> "app-started".equals(type(l)))
+                        .findFirst()
+                        .map(lines::indexOf)
+                        .orElseThrow());
+    }
+
+    @Test
+    void a_build_verb_s_session_follows_its_job_to_the_new_run(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build", List.of("build"));
+        assertNotNull(session);
+        Path first = bind(session, project);
+        Path second = project.resolve("runs").resolve("8").resolve(CliSessionTranscript.FILE_NAME);
+        session.bindJob(43, 8, second.toString(), -1);
+        session.finish(0);
+
+        assertEquals(second, session.file());
+        assertTrue(Files.exists(first));
+        assertEquals("session-finish", type(Files.readAllLines(second).getLast()));
+    }
+
+    private static String type(String line) {
+        int at = line.indexOf("\"type\":\"");
+        if (at < 0) return "";
+        int start = at + "\"type\":\"".length();
+        return line.substring(start, line.indexOf('"', start));
+    }
+
+    @Test
     void error_writes_jsonl_line(@TempDir Path project) throws Exception {
         CliSessionTranscript session = CliSessionTranscript.open(project, "test");
         assertNotNull(session);
