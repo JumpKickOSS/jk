@@ -166,6 +166,27 @@ class GuardFixturesTest {
         assertThat(GuardFixtures.COMPILES.get()).isEqualTo(before);
     }
 
+    /** The verb judges from the compiled suite; a checkout that has not compiled one hears which command does, not "no fixtures". */
+    @Test
+    void a_guard_suite_without_its_compiled_index_is_named_with_the_command_that_writes_it(
+            @TempDir Path root, @TempDir Path store) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njava = 25\n");
+        Files.writeString(
+                root.resolve("jk-guards.toml"),
+                "[guards.a]\nkind = \"text\"\npattern = \"x\"\ninstead = \"y\"\nwhy = \"w\"\n");
+        Path suite = Files.createDirectories(root.resolve("src/guard/java/g"));
+        Files.writeString(suite.resolve("Rules.java"), "package g;\nfinal class Rules {}\n");
+        int before = GuardFixtures.COMPILES.get();
+        GuardFixtures.Result r = GuardFixtures.run(root, new Cas(store));
+        assertThat(r.loadErrors()).singleElement().satisfies(e -> assertThat(e)
+                .contains("the workspace root declares a guard suite")
+                .contains("target/incremental/guard-guard.idx is missing")
+                .contains("run `jk guard`"));
+        assertThat(r.ok()).isFalse();
+        assertThat(r.text()).startsWith("load error  ");
+        assertThat(GuardFixtures.COMPILES.get()).isEqualTo(before);
+    }
+
     @Test
     void load_errors_are_all_listed_and_nothing_compiles(@TempDir Path root, @TempDir Path store) throws Exception {
         Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");

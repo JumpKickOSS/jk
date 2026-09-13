@@ -9,6 +9,8 @@ import cc.jumpkick.guard.eval.Evaluation;
 import cc.jumpkick.guard.eval.FixtureCheck;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.Outcome;
+import cc.jumpkick.guard.eval.WorkspaceModel;
+import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -85,6 +87,7 @@ public final class GuardFixtures {
         List<String> loadErrors = new ArrayList<>();
         for (LoadError e : load.errors()) loadErrors.add(e.render());
         Map<String, GuardSuites.Located> guards = GuardSuites.declaredAcrossWorkspace(root);
+        loadErrors.addAll(unindexedSuites(root));
         List<GuardSuites.Declared> declared = new ArrayList<>();
         for (GuardSuites.Located g : guards.values()) declared.add(g.declared());
         loadErrors.addAll(GuardSuites.loadErrors(declared, load.rules()));
@@ -115,6 +118,34 @@ public final class GuardFixtures {
         for (var e : byModule.entrySet()) verdicts.addAll(compiledVerdicts(root, e.getKey(), e.getValue(), cas));
         verdicts.sort((a, b) -> a.id().compareTo(b.id()));
         return new Result(loadErrors, verdicts, FixtureCheck.render(verdicts, loadErrors));
+    }
+
+    /**
+     * Modules whose {@code src/guard} suite has no compiled index. Guard tests and their fixtures are
+     * discovered from {@code target/incremental/guard-guard.idx}, which {@code jk guard} (or a {@code
+     * --guard} build) writes when it compiles the suite; a standalone {@code jk guard test} on a
+     * checkout that has run neither would otherwise report the suite's fixtures as simply absent.
+     * Each is a load error naming the module and the command that writes the index.
+     */
+    static List<String> unindexedSuites(Path root) throws IOException {
+        List<String> out = new ArrayList<>();
+        List<Path> modules = new ArrayList<>();
+        modules.add(root);
+        for (Path m : WorkspaceModules.of(root)) if (!modules.contains(m)) modules.add(m);
+        for (Path m : modules) {
+            // Both layouts, as the source-side declaration scan reads them.
+            if (!Files.isDirectory(m)
+                    || (!PlannerGuardSuite.declared(m, false) && !PlannerGuardSuite.declared(m, true))) continue;
+            Path idx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root, m), "guard");
+            if (Files.isRegularFile(idx)) continue;
+            String rel = WorkspaceModel.rel(root, m);
+            out.add((rel.isEmpty() ? "the workspace root" : rel)
+                    + " declares a guard suite under src/guard and its compiled index "
+                    + root.relativize(idx).toString().replace('\\', '/')
+                    + " is missing — guard tests and their fixtures are discovered from the compiled suite; run"
+                    + " `jk guard` (or `jk build --guard`) first, then `jk guard test`");
+        }
+        return out;
     }
 
     /**
