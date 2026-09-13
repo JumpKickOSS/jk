@@ -113,11 +113,14 @@ Loopback targets always go direct.
 
 Every download jk makes — Maven Central and your repositories, JDK and tool distributions, the
 engine jar, release checks — goes through `Http`, so one setting covers them all. The decision is
-made per request, so a resident engine follows the network the current shell is on: the engine
-inherits the six proxy variables from the shell that spawned it as a fallback, and the shell that
-runs `jk` overrides them for its own command. A credential in a proxy URL is never printed;
-an unusable value is reported by the name that set it (`ignoring https_proxy: …`) and the request
-goes direct. `--offline` still refuses every request before any proxy is consulted.
+made per request: `[network]` is re-read when the file changes, so it is the setting to change on
+a laptop that moves between networks; the engine reads the six proxy variables from the shell
+that spawned it, so after exporting new ones run `jk engine stop` and the next command starts an
+engine that sees them. A credential in a proxy URL is never printed; an unusable value is reported
+by the name that set it (`ignoring https_proxy: …`) and the request goes direct. For a proxy that
+wants Basic on an https `CONNECT`, jk clears the JDK's `jdk.http.auth.tunneling.disabledSchemes`
+in its own processes unless you set that property yourself. `--offline` still refuses every
+request before any proxy is consulted.
 
 ## Other env
 
