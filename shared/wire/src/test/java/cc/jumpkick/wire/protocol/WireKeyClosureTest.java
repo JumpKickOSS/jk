@@ -96,7 +96,7 @@ class WireKeyClosureTest {
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
                 String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
                 if (name.equals(".git")) return FileVisitResult.SKIP_SUBTREE;
-                boolean moduleOutput = OutputDirs.isGradleBuildDir(dir)
+                boolean moduleOutput = OutputDirs.isBuildOutputDir(dir)
                         || (name.equals("build") || name.equals("target"))
                                 && (Files.exists(dir.resolveSibling("jk.toml"))
                                         || dir.getParent() != null

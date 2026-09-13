@@ -25,7 +25,7 @@ public final class WalkSkip {
 
     /**
      * {@code target}, {@code .git}, {@code .gradle}, {@code .idea}, {@code node_modules} by name, and
-     * Gradle's {@code build/} by position ({@link OutputDirs#isGradleBuildDir}): a package named
+     * Gradle's {@code build/} by position ({@link OutputDirs#isBuildOutputDir}): a package named
      * {@code build} under {@code src/} is walked.
      */
     private static final Set<String> WORKSPACE_KEY =
@@ -33,7 +33,7 @@ public final class WalkSkip {
 
     public static boolean workspaceKey(Path dir) {
         Path name = dir.getFileName();
-        return name != null && (WORKSPACE_KEY.contains(name.toString()) || OutputDirs.isGradleBuildDir(dir));
+        return name != null && (WORKSPACE_KEY.contains(name.toString()) || OutputDirs.isBuildOutputDir(dir));
     }
 
     /** {@link #workspaceKey} plus {@code out}. */
@@ -41,7 +41,7 @@ public final class WalkSkip {
         Path name = dir.getFileName();
         if (name == null) return false;
         String s = name.toString();
-        return WORKSPACE_KEY.contains(s) || s.equals("out") || OutputDirs.isGradleBuildDir(dir);
+        return WORKSPACE_KEY.contains(s) || s.equals("out") || OutputDirs.isBuildOutputDir(dir);
     }
 
     /**
@@ -76,6 +76,6 @@ public final class WalkSkip {
     public static boolean formatSkip(Path dir) {
         Path name = dir.getFileName();
         if (name == null) return false;
-        return formatSegment(name.toString()) || OutputDirs.isGradleBuildDir(dir);
+        return formatSegment(name.toString()) || OutputDirs.isBuildOutputDir(dir);
     }
 }

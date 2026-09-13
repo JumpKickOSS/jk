@@ -168,9 +168,9 @@ reason = "GraalVM's native-image launcher file name is not a step name; it has i
 # constant either: give that vocabulary its own owner.
 [guards.manifest-names]
 kind    = "vocabulary"
-owner   = "cc.jumpkick.lock.ManifestPaths"
-instead = "ManifestPaths.<CONSTANT>"
-why     = "a file jk owns is named once, in ManifestPaths"
+owner   = "cc.jumpkick.host.ManifestNames"
+instead = "ManifestNames.<CONSTANT>, or ManifestPaths.<CONSTANT> from core upward"
+why     = "a file jk owns is named once, in ManifestNames"
 
 # G15. A cache tier is named once, in the CacheTree enum. A directory that is not a cache tier —
 # a module's own build/generated, say — must not borrow the constant.

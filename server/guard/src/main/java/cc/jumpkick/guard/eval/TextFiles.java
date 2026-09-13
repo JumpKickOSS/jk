@@ -100,7 +100,7 @@ final class TextFiles {
         if (WalkSkip.nestedCheckout(dir)) return true;
         String n = name.toString();
         // Gradle's build/ is the one beside a Gradle script; a package named build is a package.
-        if (n.equals("build")) return OutputDirs.isGradleBuildDir(dir);
+        if (n.equals("build")) return OutputDirs.isBuildOutputDir(dir);
         if (!SKIP_DIRS.contains(n)) return false;
         String rel = root.relativize(dir).toString().replace('\\', '/');
         // `target` under a source root is a package, not output.

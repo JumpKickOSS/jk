@@ -769,7 +769,7 @@ The shell scripts have their lint in the same place: the `shellcheck` guard test
 
 - **Read the ban list from the owner, never re-type it.** `G12` reads the
   step names out of `TaskNames.java` and `G13` reads the filenames out of
-  `ManifestPaths.java` at task time. A guard that restates its owner's
+  `ManifestNames.java` at task time. A guard that restates its owner's
   facts is a tenth copy of them.
 - **But know what that buys you: closure, not coverage.** A guard whose
   ban list comes from the owner can only find literals the owner already
@@ -874,7 +874,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G10 | growth past `size-baseline.txt` or over a language's hard cap | ratchet | `file-size` (metric) |
 | G11 | a file gaining a fully-qualified class name (`fqcn-baseline.txt`) | ratchet | `no-fqcn` (metric) |
 | G12 | a step name typed as a literal (use `TaskNames`) | ban, no allowlist | `task-names` (vocabulary) |
-| G13 | a jk file name typed as a literal (use `ManifestPaths`) | ban | `manifest-names` (vocabulary) |
+| G13 | a jk file name typed as a literal (use `ManifestNames`, or `ManifestPaths` from core upward) | ban | `manifest-names` (vocabulary) |
 | G14 | a forecast key hashing a different fact set than the build key | ban | guard test `forecast-key-parity` |
 | G15 | a cache-tier directory typed as a literal (use `CacheTree`) | ban | `cache-tiers` (vocabulary) |
 | G16 | a Central URL, its `repo1.maven.org` alias, or the repo name `central` typed as a literal (use `RepositorySpec`) | ban | `repository-names` (vocabulary) |
@@ -1015,7 +1015,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | json-concat | text | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
 | json-concat-ratchet | metric | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
 | lock-version-is-one | text | the lockfile schema is version 1 until 1.0 |
-| manifest-names | vocabulary | a file jk owns is named once, in ManifestPaths |
+| manifest-names | vocabulary | a file jk owns is named once, in ManifestNames |
 | method-size | metric | a member that no longer fits a screen no longer fits a reviewer |
 | named-exit-codes | text | an exit code is the one integer a user's script sees, and a bare one is a meaning nobody wrote down |
 | no-agent-trailers | commit | attribution trailers are noise in blame |
