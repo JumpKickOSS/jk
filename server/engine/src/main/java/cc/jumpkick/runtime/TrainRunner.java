@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TrainConfig;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
@@ -377,7 +378,7 @@ public final class TrainRunner {
         // Drain the pipe: a chatty assembler fills the 64K buffer, stalls, gets force-killed at
         // the timeout, and is then misreported as "did not produce a cache".
         StringBuilder createOut = new StringBuilder();
-        Thread drain = Thread.ofVirtual().start(() -> {
+        Thread drain = SessionContext.startVirtual("jk-train-aot-drain", () -> {
             try (var in = p.inputReader()) {
                 in.lines().forEach(l -> createOut.append(l).append('\n'));
             } catch (IOException ignored) {
@@ -403,7 +404,7 @@ public final class TrainRunner {
         Process process = JobWorkers.start(pb);
         StringBuilder out = new StringBuilder();
         AtomicLong lastOutput = new AtomicLong(System.nanoTime());
-        Thread reader = Thread.ofVirtual().start(() -> {
+        Thread reader = SessionContext.startVirtual("jk-train-run-reader", () -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
                     synchronized (out) {

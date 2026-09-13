@@ -66,6 +66,7 @@ public final class EngineMaintenance implements AutoCloseable {
         this.stampFile = stampFile;
         this.configFile = configFile;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            // Engine-lifetime scheduler: its ticks read config files, never a request's session.
             Thread t = new Thread(r, "jk-engine-maintenance");
             t.setDaemon(true);
             return t;

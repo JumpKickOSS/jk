@@ -191,6 +191,8 @@ public final class JobEnvelope {
                 watch,
                 connectionThread,
                 deadline);
+        // The job body binds its own session inside the verb (SessionContext.where); unstarted so runnerRef is set
+        // first.
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
@@ -198,6 +200,7 @@ public final class JobEnvelope {
                 watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer, deadline, eventStartMillis);
         Runnable finish = () -> finish(admitted, reader, watchdog);
         if (detached) {
+            // Joins and journals the detached job; reads no session.
             Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
             return eventRequestId;
         }

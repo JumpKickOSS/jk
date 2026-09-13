@@ -63,6 +63,7 @@ final class DisplacementWatchdog {
 
     /** Tick on a daemon thread until the engine shuts down or the decision is made. */
     void start() {
+        // Engine-lifetime election watch; reads no session.
         Thread t = new Thread(
                 () -> {
                     while (!shuttingDown.getAsBoolean()) {

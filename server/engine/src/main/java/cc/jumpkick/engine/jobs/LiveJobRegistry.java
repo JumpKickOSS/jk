@@ -67,6 +67,7 @@ public final class LiveJobRegistry {
         markUserCancelled(eventRequestId, explicit);
         LiveJob job = liveJobs.get(eventRequestId);
         if (job != null) job.cancelSignal().countDown();
+        // Cancel runs after the request thread may be gone; the token and request id are explicit.
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             // Workers first (SIGTERM → grace → SIGKILL), then interrupt the runner so
             // the scheduler does not join the rest of the DAG.
@@ -122,6 +123,7 @@ public final class LiveJobRegistry {
         // without waiting behind that monitor. Order inside the task still matters: terminal
         // first, then the wake — a half-close where the transport allows it, so the write side
         // stays open for the job-finish the client blocks on.
+        // Settles the cancelled terminal off the request thread; reads no session.
         Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
             pushCancelledTerminal(job);
             if (job.connectionThread() != null)

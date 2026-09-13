@@ -38,6 +38,7 @@ public final class CoalescingLockPackages implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        // Shared timer across every lock; reads no session.
         Thread t = new Thread(r, "jk-wire-lock-packages");
         t.setDaemon(true);
         return t;

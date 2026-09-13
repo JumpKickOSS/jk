@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
@@ -84,7 +85,7 @@ public final class BuildLogicGroovyHost {
             // Drained on a thread of its own so this one can watch the cancel probe between
             // polls; a blocking read would see the cancel only once the script chose to exit.
             ByteArrayOutputStream captured = new ByteArrayOutputStream();
-            Thread pump = Thread.ofVirtual().name("jk-groovy-pump").start(() -> {
+            Thread pump = SessionContext.startVirtual("jk-groovy-pump", () -> {
                 try {
                     p.getInputStream().transferTo(captured);
                 } catch (IOException gone) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -237,7 +238,7 @@ public final class PluginProcess {
         final AtomicLong lastLineAt = new AtomicLong(System.currentTimeMillis());
         Thread watchdog = null;
         if (idleTimeoutMs > 0) {
-            watchdog = Thread.ofVirtual().name("jk-worker-watchdog").unstarted(() -> {
+            watchdog = SessionContext.startVirtual("jk-worker-watchdog", () -> {
                 while (process.isAlive() || hasLiveDescendant(process)) {
                     long idle = System.currentTimeMillis() - lastLineAt.get();
                     if (idle >= idleTimeoutMs) {
@@ -251,7 +252,6 @@ public final class PluginProcess {
                     }
                 }
             });
-            watchdog.start();
         }
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
@@ -261,6 +261,9 @@ public final class PluginProcess {
         // produces neither EOF nor a visible descendant — descendants() of a dead process is
         // empty, and closing the fd does not wake a blocked native pipe read. The job thread
         // waits root-exit + a drain grace, then abandons the reader instead of hanging forever.
+        //
+        // Both threads start under the calling request's session: the handler the pump invokes
+        // runs on the pump, and a bare virtual thread would hand it the process-default session.
         BufferedReader reader =
                 new BoundedLineReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         AtomicBoolean abandoned = new AtomicBoolean();
@@ -275,7 +278,7 @@ public final class PluginProcess {
             if (closeStdinImmediately) {
                 convo.closeInput();
             }
-            Thread pump = Thread.ofVirtual().name("jk-worker-pump").start(() -> {
+            Thread pump = SessionContext.startVirtual("jk-worker-pump", () -> {
                 try {
                     String line;
                     while ((line = reader.readLine()) != null) {

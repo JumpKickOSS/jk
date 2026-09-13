@@ -53,6 +53,7 @@ final class JobWatchdog {
         long heartbeatMs = limits.heartbeatMs();
         boolean heartbeats = heartbeatMs > 0 && writer != null;
         if (!(heartbeats || deadline.bounded())) return null;
+        // Holds the job's cancel token explicitly; reads no session.
         return Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
             long start = startMillis;
             while (done.getCount() > 0) {

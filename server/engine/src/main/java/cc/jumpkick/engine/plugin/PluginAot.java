@@ -373,6 +373,8 @@ public final class PluginAot {
             TRAINING.remove(cache);
             return;
         }
+        // A trainer belongs to the cache, not to the request that triggered it: a bare start keeps a cancel from
+        // killing it.
         Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer, meta), "jk-worker-aot-train");
         t.setDaemon(true);
         t.start();
@@ -397,6 +399,8 @@ public final class PluginAot {
             TRAINING.remove(cache);
             return;
         }
+        // A trainer belongs to the cache, not to the request that triggered it: a bare start keeps a cancel from
+        // killing it.
         Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer, meta), "jk-worker-aot-train-sync");
         t.start();
         try {

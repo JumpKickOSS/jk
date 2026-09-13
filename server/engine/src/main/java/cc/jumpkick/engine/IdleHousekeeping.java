@@ -147,6 +147,7 @@ public final class IdleHousekeeping {
 
     public void scheduleResolveClassWarmup() {
         if (shuttingDown.getAsBoolean() || draining.getAsBoolean()) return;
+        // Idle-time class preload; reads no session.
         Thread.ofVirtual().name("jk-resolve-warmup").start(() -> {
             try {
                 Class.forName("cc.jumpkick.resolver.pubgrub.PubGrubSolver");
@@ -170,6 +171,7 @@ public final class IdleHousekeeping {
             pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
             return;
         }
+        // Idle-time host warmup runs only while no build is live; reads no session.
         Thread t = new Thread(
                 () -> {
                     try {

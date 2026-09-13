@@ -53,6 +53,7 @@ public final class LiveVitals implements AutoCloseable {
     private final AtomicReference<CacheSnapshot> lastCacheSnapshot = new AtomicReference<>();
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        // Engine-lifetime vitals publisher; reads no session.
         Thread t = new Thread(r, "jk-live-vitals");
         t.setDaemon(true);
         return t;

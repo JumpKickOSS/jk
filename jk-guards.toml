@@ -1041,3 +1041,97 @@ min      = 100
 band     = 0.5
 baseline = true
 why      = "a coverage number nobody tightens stops meaning anything"
+
+# G103. A bare thread start carries no ScopedValue, so code on it reads the process-default
+# session: a worker JVM forked from such a thread is sized and flagged without the request's
+# --jvm-arg / JK_JVM_ARGS and runs without its cancel token — a per-request defect invisible until
+# two terminals disagree. Request-path threads start through SessionContext.startVirtual; every
+# engine-lifetime or housekeeping start below is an allow entry stating what it does not read.
+[guards.request-thread-carries-session]
+kind     = "text"
+files    = ["server/engine/src/main/java/**/*.java"]
+patterns = ['Thread\.ofVirtual\(\)', 'Thread\.ofPlatform\(\)', 'new Thread\(', 'Thread\.startVirtualThread\(']
+hit      = 'Thread pump = Thread.ofVirtual().name("jk-worker-pump").start(() -> pump());'
+miss     = 'Thread pump = SessionContext.startVirtual("jk-worker-pump", () -> pump());'
+instead  = "SessionContext.startVirtual(name, body); engine-lifetime starts are allow entries"
+why      = "a bare thread reads the default session, not the request's"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/OwnerWatchdog.java"
+reason = "engine-lifetime poll of the owner pid"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineMaintenance.java"
+reason = "engine-lifetime scheduler whose ticks read config files, never a session"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/IdleHousekeeping.java"
+reason = "idle-time warmup and class preload run while no build is live"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineMain.java"
+reason = "the AOT trainer's serving loop and halt timer; no request exists in a trainer process"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/DrainReporter.java"
+reason = "engine-lifetime drain report to the successor"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/EngineServer.java"
+reason = "one thread per connection; each verb binds the request's session itself"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/DisplacementWatchdog.java"
+reason = "engine-lifetime election watch"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/http/LiveVitals.java"
+reason = "engine-lifetime vitals publisher"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/http/HttpEngineServer.java"
+reason = "one thread per HTTP exchange; each handler binds the request's session itself"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/plugin/PluginAot.java"
+reason = "an AOT trainer belongs to the cache, not to the request that triggered it; a cancel must not kill it"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobEnvelope.java"
+reason = "the job body binds its own session inside the verb; the detached join reads none"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/JobWatchdog.java"
+reason = "holds the job's cancel token explicitly"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/jobs/LiveJobRegistry.java"
+reason = "cancel and settle run after the request thread may be gone; token and request id are explicit"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/journal/JournalWriter.java"
+reason = "byte pump for the git probe's output"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingBuildPlanListener.java"
+reason = "shared progress timer and its flushers only hand coalesced events to the delegate"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingLockPackages.java"
+reason = "shared lock-progress timer"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/git/GitCliExtension.java"
+reason = "byte pump for the git child's output"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/PlannerKsp.java"
+reason = "byte pump for KSP's output"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/base/KtsSession.java"
+reason = "the .kts host outlives any one build: its reader, reaper and shutdown hook carry no request"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
+reason = "polls the output directory for finished class files"

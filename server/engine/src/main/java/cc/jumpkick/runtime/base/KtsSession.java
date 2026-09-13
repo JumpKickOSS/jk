@@ -104,6 +104,7 @@ final class KtsSession {
         this.toChild = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
         BufferedReader fromChild =
                 new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        // The .kts host outlives any one build, so its reader must not carry a request's session.
         Thread.ofVirtual().name("jk-kts-host-reader").start(() -> {
             try {
                 String line;
@@ -293,6 +294,7 @@ final class KtsSession {
             throw new IllegalStateException(
                     "[build] logic: the .kts host did not start" + (EOF.equals(ready) ? "" : " (said: " + ready + ")"));
         }
+        // Idle reaper of the shared .kts host; reads no session.
         Thread.ofVirtual().name("jk-kts-host-reaper").start(() -> reap(session));
         return session;
     }
@@ -334,6 +336,7 @@ final class KtsSession {
     private static void registerShutdownHook() {
         if (hookRegistered) return;
         hookRegistered = true;
+        // Shutdown hook; reads no session.
         Runtime.getRuntime().addShutdownHook(new Thread(KtsSession::shutdown, "jk-kts-host-shutdown"));
     }
 

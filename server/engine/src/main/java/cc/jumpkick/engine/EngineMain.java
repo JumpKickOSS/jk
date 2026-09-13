@@ -272,6 +272,7 @@ public final class EngineMain {
      * thing that leaks.
      */
     private static void startTrainerWatchdog(long limitMs) {
+        // The trainer's own halt timer: no request exists in a trainer process.
         Thread watchdog = new Thread(
                 () -> {
                     try {
@@ -325,6 +326,7 @@ public final class EngineMain {
             tmp = Files.createTempDirectory("jk-aot-train-");
             EnginePaths.Paths paths = EnginePaths.resolve(tmp);
             EngineServer server = new EngineServer(paths, JkEngineConfig.resolve(), null, JkVersion.VERSION, Log::info);
+            // The trainer's engine loop: no request exists in a trainer process.
             Thread serving = new Thread(
                     () -> {
                         try {

@@ -88,6 +88,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
      * {@link #FLUSHERS}.
      */
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        // Shared timer across every plan; reads no session.
         Thread t = new Thread(r, "jk-wire-progress");
         t.setDaemon(true);
         return t;
@@ -98,6 +99,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
      * costs no platform thread and isolates plans from each other. Per-listener ordering is
      * still guaranteed by {@link #lock}.
      */
+    // Flushers only hand a coalesced event to the delegate; reads no session.
     private static final ExecutorService FLUSHERS = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
 

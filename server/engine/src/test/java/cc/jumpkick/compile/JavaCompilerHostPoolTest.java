@@ -8,6 +8,7 @@ import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
 import cc.jumpkick.compile.JavaCompilerHost.SpecFile;
 import cc.jumpkick.compile.JavaCompilerHost.Work;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import java.io.IOException;
@@ -53,6 +54,28 @@ class JavaCompilerHostPoolTest {
         assertThat(closer.isAlive()).as("close() returns once the lane is gone").isFalse();
         assertThat(w.compile).isCompletedExceptionally();
         assertThat(w.forecast).isCompletedExceptionally();
+    }
+
+    @Test
+    void a_lane_runs_under_the_session_of_the_request_that_grew_it(@TempDir Path dir) throws Exception {
+        // A lane forks and drives its worker JVM from its own thread; the worker's flags and its
+        // registration for cancel come off the session the submitting request had bound.
+        var marked = SessionContext.current().withRequestedTestWorkers(23);
+        AtomicReference<Integer> seen = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> new Session(owner, 6L, index, self -> {
+                    seen.set(SessionContext.current().requestedTestWorkers());
+                    for (Work w = self.takeNext(); w != Work.POISON; w = self.takeNext()) {
+                        w.compile.complete(ok());
+                    }
+                }),
+                ForkedJavac::writeSpec);
+        Work w = Work.compile(request(dir, "a"));
+        SessionContext.runWhere(marked, () -> pool.enqueue(w));
+        pool.close();
+        assertThat(w.compile).isCompletedWithValueMatching(ForkedJavac.Result::success);
+        assertThat(seen.get()).isEqualTo(23);
     }
 
     @Test

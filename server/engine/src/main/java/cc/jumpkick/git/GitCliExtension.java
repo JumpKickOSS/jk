@@ -395,6 +395,7 @@ public final class GitCliExtension implements GitBackend {
 
     /** Copy the child's merged stdout/stderr into {@code buf} on a daemon thread until EOF. */
     private static Thread drain(Process p, ByteArrayOutputStream buf) {
+        // Byte pump for the git child's output; reads no session.
         Thread reader = new Thread(() -> {
             try {
                 p.getInputStream().transferTo(buf);

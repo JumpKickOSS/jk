@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -457,7 +458,9 @@ public final class JavaCompilerHost {
 
         Session(Lanes owner, long id, int lane, LaneBody body) {
             this.owner = owner;
-            io = Thread.ofVirtual().name("jk-zinc-host-" + id + "-" + lane).start(() -> drive(body));
+            // The pool belongs to one job, and a lane is grown by that job's submitting thread: the
+            // lane forks its worker JVM (JvmOptions, JobWorkers) under the session bound there.
+            io = SessionContext.startVirtual("jk-zinc-host-" + id + "-" + lane, () -> drive(body));
         }
 
         boolean alive() {

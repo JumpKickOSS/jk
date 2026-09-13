@@ -273,6 +273,7 @@ public final class JournalWriter {
                     .start();
             Process proc = p;
             StringBuilder sb = new StringBuilder();
+            // Byte pump for the git probe's output; reads no session.
             Thread drainer = new Thread(
                     () -> {
                         try (var in = proc.getInputStream()) {

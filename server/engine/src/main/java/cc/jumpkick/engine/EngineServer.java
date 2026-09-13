@@ -469,6 +469,7 @@ public final class EngineServer implements AutoCloseable {
                 this::handleShutdown,
                 this::noteIdleDropped));
 
+        // One thread per connection; each verb binds the request's session itself (SessionContext.where).
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
         EngineStartup.Started started =

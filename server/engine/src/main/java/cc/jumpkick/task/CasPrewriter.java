@@ -45,6 +45,7 @@ public final class CasPrewriter implements AutoCloseable {
         this.cas = cas;
         this.outputDir = outputDir;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            // Polls the output directory for finished class files; reads no session.
             Thread t = new Thread(r, "jk-cas-prewriter");
             t.setDaemon(true);
             return t;

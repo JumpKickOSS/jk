@@ -219,6 +219,7 @@ public final class HttpEngineServer implements AutoCloseable {
         InetSocketAddress bind = new InetSocketAddress(InetAddress.getByName(config.host()), config.port());
         server = bindWithRetry(bind);
         server.createContext("/", this::handle);
+        // One thread per HTTP exchange; each handler binds the request's session itself.
         executor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-http-", 0).factory());
         server.setExecutor(executor);

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -123,6 +124,29 @@ class PluginProcessTest {
         } finally {
             PluginSlots.configure(0); // reopen the gate for other tests
         }
+    }
+
+    @Test
+    void the_pump_delivers_events_under_the_session_the_conversation_was_started_in() throws Exception {
+        // The handler runs on the pump thread. A request's tuning and cancel token live on the
+        // session bound to the thread that started the conversation, so the pump must carry it.
+        var marked = SessionContext.current().withRequestedTestWorkers(41);
+        var seen = new ArrayList<Integer>();
+        int exit = SessionContext.where(
+                marked,
+                () -> PluginProcess.converse(
+                        cmd(),
+                        "##T:",
+                        (json, convo) -> {
+                            seen.add(SessionContext.current().requestedTestWorkers());
+                            if ("ready".equals(Jsonl.str(json, "e"))) {
+                                convo.send("DONE");
+                                convo.closeInput();
+                            }
+                        },
+                        null));
+        assertThat(exit).isZero();
+        assertThat(seen).isNotEmpty().allMatch(w -> w == 41);
     }
 
     @Test

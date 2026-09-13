@@ -102,6 +102,7 @@ final class DrainReporter {
 
     void start() {
         if (!started.compareAndSet(false, true)) return;
+        // Engine-lifetime report to the successor while draining; reads no session.
         Thread.ofVirtual().name("jk-engine-drain-report").start(this::report);
     }
 

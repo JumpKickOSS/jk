@@ -398,6 +398,7 @@ public final class PlannerKsp {
         ProcessBuilder pb = new ProcessBuilder(cmd).directory(in.dir().toFile()).redirectErrorStream(true);
         Process proc = JobWorkers.start(pb);
         StringBuilder captured = new StringBuilder();
+        // Byte pump for KSP's output; reads no session.
         Thread drainer = new Thread(() -> {
             try (var in2 = proc.getInputStream()) {
                 byte[] buf = new byte[8192];

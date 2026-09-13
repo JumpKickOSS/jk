@@ -964,6 +964,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G100 | a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `$var` in a `[ ]` test (SC2086) first among them | `scripts/shellcheck.sh`: the binary, else a container runtime; skipped with a notice on a developer machine that has neither, failed under CI; a fixture proves the bite | guard test `shellcheck` |
 | G101 | an `HttpClient.newBuilder()` outside `cc.jumpkick.http.Http` — a client that goes direct behind the proxy every other request honours; `Http.proxiedClientBuilder()` + `proxiedRequest(uri)` is the door for a request shape the verbs do not fit | forbid, owner probed every run | `one-http-client` (forbid) |
 | G102 | an import of `cc.jumpkick.cli.run` or `cc.jumpkick.command` from `cc.jumpkick.cli.engine`, the client half of the wire — it closes a package cycle across the line the wire client depends on nothing behind | ban; self-fail when the package scan shrinks | guard test `cli-engine-package-cycle` |
+| G103 | a bare `Thread.ofVirtual()`, `Thread.ofPlatform()` or `new Thread(` under `server/engine` main code — a thread started bare reads the process-default session, so the worker JVM it forks loses the request's `--jvm-arg`/`JK_JVM_ARGS` and cancel token; request paths start through `SessionContext.startVirtual` | text, `server/engine/src/main/java`; twenty engine-lifetime and housekeeping files are allow entries each stating what the thread does not read | `request-thread-carries-session` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1041,6 +1042,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | published-installer-sh | parity | a published installer that drifts from the repo copy installs jk where the CLI does not look |
 | published-poms | output | a POM with an unspecified coordinate is an artifact nobody can depend on |
 | repository-names | vocabulary | a repository name spelled twice is a store that silently never hits |
+| request-thread-carries-session | text | a bare thread reads the default session, not the request's |
 | retired-wire-keys | text | a retired spelling back in production source is a reader of a shape nobody writes |
 | runnable-owner | forbid | an access check off Windows, an extension test on it: 64x cheaper where it matters |
 | schema-compared-to-its-constant | text | G85 pins the constant and nothing pinned the comparisons against it |

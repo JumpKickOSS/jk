@@ -61,6 +61,7 @@ public final class OwnerWatchdog {
 
     /** The poll loop itself, with liveness abstracted so a test can flip it. */
     static Thread watch(BooleanSupplier ownerAlive, Duration poll, Runnable onGone) {
+        // Engine-lifetime poll of the owner pid; reads no session.
         Thread t = new Thread(
                 () -> {
                     while (ownerAlive.getAsBoolean()) {
