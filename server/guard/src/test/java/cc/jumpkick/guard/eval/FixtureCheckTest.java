@@ -65,6 +65,20 @@ class FixtureCheckTest {
         assertThat(FixtureCheck.render(List.of(), List.of())).startsWith("no fixtures");
     }
 
+    /** A guard whose tool is not on this machine skips its fixture as it skips the tree: a notice, not a failure. */
+    @Test
+    void a_skipped_case_is_a_notice_and_the_summary_counts_it_apart() {
+        FixtureCheck.Verdict skipped =
+                new FixtureCheck.Verdict("shellcheck", FixtureCheck.Verdict.SKIPPED, "Bad-unquoted: not installed");
+        assertThat(skipped.ok()).isTrue();
+        assertThat(skipped.skipped()).isTrue();
+        assertThat(FixtureCheck.verdict("r", 1, 2, 1, 0).skipped()).isFalse();
+        String text = FixtureCheck.render(List.of(FixtureCheck.verdict("aa", 1, 1, 0, 0), skipped), List.of());
+        assertThat(text)
+                .contains("shellcheck  skipped     Bad-unquoted: not installed")
+                .contains("2 fixtures, every rule bites; 1 skipped on this machine");
+    }
+
     @Test
     void a_case_that_is_a_directory_is_a_tree_laid_over_the_files_beside_the_cases(@TempDir Path fx, @TempDir Path work)
             throws Exception {

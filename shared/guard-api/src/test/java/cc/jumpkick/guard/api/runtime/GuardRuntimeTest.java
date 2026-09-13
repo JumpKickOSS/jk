@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -201,5 +202,37 @@ class GuardRuntimeTest {
         Path f = dir.resolve("run.properties");
         Files.writeString(f, c.toProperties());
         assertThat(GuardConfig.read(f)).isEqualTo(c);
+    }
+
+    /** A guard that shells out over the tree runs where Text is rooted: the checkout, or a tree fixture's case. */
+    @Test
+    void the_text_root_is_the_workspace_root_unless_a_tree_case_re_roots_it(@TempDir Path dir) throws Exception {
+        Path tree = Files.createDirectories(dir.resolve("case"));
+        Files.writeString(tree.resolve("marker.txt"), "in the case\n");
+        GuardConfig plain = config(dir, null);
+        GuardRuntime.install(plain);
+        assertThat(requireNonNull(GuardRuntime.current()).textRoot()).isEqualTo(dir);
+        GuardRuntime.install(config(dir, tree));
+        GuardRuntime rooted = requireNonNull(GuardRuntime.current());
+        assertThat(rooted.textRoot()).isEqualTo(tree);
+        assertThat(rooted.root()).as("the workspace root is unchanged").isEqualTo(dir);
+        assertThat(rooted.text().lines("marker.txt")).containsExactly("in the case");
+    }
+
+    private static GuardConfig config(Path dir, @Nullable Path textRoot) {
+        return new GuardConfig(
+                dir.resolve("r.jsonl"),
+                dir,
+                "",
+                List.of(),
+                List.of(),
+                null,
+                List.of(textRoot == null ? dir : textRoot),
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                false,
+                textRoot);
     }
 }

@@ -261,7 +261,9 @@ A guard test that reads several files at once — a workflow, a manifest, a pin 
 one case per check the guard makes, and the files beside the case directories are the tree every
 case starts from (a case's own files are laid over them). jk's `ci-cadence` fixture under
 `server/guard/fixtures/ci-cadence/` is the shape: three workflows and a build script shared, a
-manifest and a bootstrap pin per case.
+manifest and a bootstrap pin per case. A guard that shells out over the tree runs inside the case
+too, and one that skips on a machine without its tool skips its fixture the same way — a notice,
+not a failure.
 
 ## Layers and packs
 

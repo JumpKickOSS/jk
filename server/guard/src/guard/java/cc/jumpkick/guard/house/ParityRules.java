@@ -14,8 +14,6 @@ import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.guard.api.runtime.GuardRuntime;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -1150,17 +1148,18 @@ final class ParityRules {
                     "the installers, scripts/ and the wrapper template are run by users and CI, and an unquoted `$var` in a `[ ]` test (SC2086) is the defect shell scripts ship most",
             instead =
                     "quote the expansion; a finding that is intentional is silenced at its site with `# shellcheck disable=SCnnnn` and a reason")
+    @Fixture("server/guard/fixtures/shellcheck")
     void shippedShellScriptsAreShellcheckClean(Text text, Violations v) throws IOException, InterruptedException {
         if (text.files("scripts/*.sh").isEmpty())
             throw new IllegalStateException("the tree has no scripts/*.sh; the scan is blind");
+        if (!exists(text, SHELLCHECK))
+            throw new IllegalStateException(SHELLCHECK + " is missing; the lint has no owner");
         GuardRuntime runtime = GuardRuntime.current();
         if (runtime == null) throw new IllegalStateException("no guard runtime: jk did not configure this JVM");
-        Path root = runtime.root();
-        if (!Files.isRegularFile(root.resolve(SHELLCHECK)))
-            throw new IllegalStateException(SHELLCHECK + " is missing; the lint has no owner");
-        // The script owns the target list and the runner choice; this guard runs it and reads what it says.
+        // The script owns the target list and the runner choice; this guard runs it where the text
+        // view is rooted — the checkout, or a tree fixture's case — and reads what it says.
         Process process = new ProcessBuilder("bash", SHELLCHECK, "--format=gcc")
-                .directory(root.toFile())
+                .directory(runtime.textRoot().toFile())
                 .redirectErrorStream(true)
                 .start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

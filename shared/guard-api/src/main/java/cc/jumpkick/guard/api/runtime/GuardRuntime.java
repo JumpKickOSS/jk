@@ -24,6 +24,7 @@ public final class GuardRuntime {
     private static boolean tried;
 
     private final GuardConfig config;
+    private final Path textRoot;
     private final Facts facts;
     private final Model model;
     private final Text text;
@@ -33,7 +34,7 @@ public final class GuardRuntime {
         this.config = config;
         this.facts = new FactsView(merge(config.facts()), merge(config.testFacts()), config.classDirs());
         this.model = config.model() == null ? ModelView.empty() : ModelView.read(config.model());
-        Path textRoot = config.textRoot() == null ? config.root() : config.textRoot();
+        this.textRoot = config.textRoot() == null ? config.root() : config.textRoot();
         this.text = new TextView(textRoot, config.sources(), config.fixture(), outputDirOf(config));
         this.output = new OutputView(config.poms(), config.jars(), config.coverage());
         Files.createDirectories(config.report().toAbsolutePath().getParent());
@@ -98,6 +99,15 @@ public final class GuardRuntime {
     /** The workspace root jk configured. */
     public Path root() {
         return config.root();
+    }
+
+    /**
+     * The directory {@link Text} paths resolve against: the workspace root, or a tree fixture's case
+     * when the run judges one as the checkout. A guard that shells out over the tree runs there, so
+     * the fixture reaches it like every read does.
+     */
+    public Path textRoot() {
+        return textRoot;
     }
 
     static FactsIndex merge(List<Path> files) throws IOException {

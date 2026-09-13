@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.guard.eval.Evaluation;
 import cc.jumpkick.guard.eval.FixtureCheck;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.Outcome;
@@ -142,12 +143,18 @@ public final class GuardFixtures {
             Path caseWork = work.resolve(s.file().getFileName().toString());
             Path tree = caseWork.resolve("tree");
             FixtureCheck.caseTree(c.dir(), s, tree);
-            int sites = guardSites(root, c.module(), moduleDir, c, none, tree, true, caseWork, cas);
-            if (sites < 0)
+            Evaluation eval = guardEvaluation(root, c.module(), moduleDir, c, none, tree, true, caseWork, cas);
+            if (eval == null)
                 return new FixtureCheck.Verdict(
                         c.id(),
                         "error",
                         "the guard suite did not run over " + s.file().getFileName() + "; see the lane's diagnostics");
+            // The guard could not run here (its tool is not installed): the case is the notice the
+            // lane reports, not a silence of the guard's.
+            if (eval.outcome() == Outcome.SKIPPED)
+                return new FixtureCheck.Verdict(
+                        c.id(), FixtureCheck.Verdict.SKIPPED, s.file().getFileName() + ": " + eval.note());
+            int sites = eval.observations().size();
             if (s.bad()) {
                 badCases++;
                 badSites += sites;
@@ -292,12 +299,29 @@ public final class GuardFixtures {
         return text;
     }
 
-    /**
-     * Run the guard test's suite over one fixture slice; the number of sites it reported, or -1.
-     * {@code text} is what the guard's text view reads: the slice's files by name, or — {@code tree}
-     * — a case directory the view is rooted at, so the guard reads it as the checkout.
-     */
+    /** As {@link #guardEvaluation}; the number of sites the guard reported, or -1 when the suite did not run. */
     private static int guardSites(
+            Path root,
+            String module,
+            Path moduleDir,
+            FixtureCheck.Case c,
+            FactsIndex slice,
+            Path text,
+            boolean tree,
+            Path work,
+            Cas cas)
+            throws IOException {
+        Evaluation eval = guardEvaluation(root, module, moduleDir, c, slice, text, tree, work, cas);
+        return eval == null ? -1 : eval.observations().size();
+    }
+
+    /**
+     * Run the guard test's suite over one fixture slice; the guard's evaluation over it, or {@code
+     * null} when the suite did not run. {@code text} is what the guard's text view reads: the slice's
+     * files by name, or — {@code tree} — a case directory the view is rooted at, so the guard reads it
+     * as the checkout.
+     */
+    private static @Nullable Evaluation guardEvaluation(
             Path root,
             String module,
             Path moduleDir,
@@ -336,15 +360,14 @@ public final class GuardFixtures {
                 tree ? text : null);
         try {
             List<String> problems = GuardSuiteRunner.run(in, List.of(moduleDir), report);
-            if (!problems.isEmpty()) return -1;
+            if (!problems.isEmpty()) return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return -1;
+            return null;
         }
         Object line = GuardSuites.readReport(report).get(c.id());
-        if (line == null) return -1;
-        var eval = GuardSuites.evaluate(c.rule(), line, module);
-        return eval.observations().size();
+        if (line == null) return null;
+        return GuardSuites.evaluate(c.rule(), line, module);
     }
 
     private static Path javaHome() {

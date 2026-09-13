@@ -60,10 +60,19 @@ public final class FixtureCheck {
         }
     }
 
-    /** What one case came to. */
+    /**
+     * What one case came to. {@code skipped} is the guard's own notice — the tool it shells out to is
+     * not on this machine — carried through as the lane carries it: not proven, not red.
+     */
     public record Verdict(String id, String outcome, String note) {
+        public static final String SKIPPED = "skipped";
+
         public boolean ok() {
-            return outcome.equals("bites");
+            return outcome.equals("bites") || skipped();
+        }
+
+        public boolean skipped() {
+            return outcome.equals(SKIPPED);
         }
     }
 
@@ -258,6 +267,7 @@ public final class FixtureCheck {
                     .append('\n');
         }
         long failing = verdicts.stream().filter(v -> !v.ok()).count();
+        long skipped = verdicts.stream().filter(Verdict::skipped).count();
         if (verdicts.isEmpty() && loadErrors.isEmpty())
             sb.append(
                     "no fixtures: no rule names one (fixture = \"guard-fixtures/<id>\") and no @Guard carries @Fixture\n");
@@ -266,6 +276,7 @@ public final class FixtureCheck {
                     .append(verdicts.size())
                     .append(verdicts.size() == 1 ? " fixture" : " fixtures")
                     .append(failing == 0 ? ", every rule bites" : ", " + failing + " not proven")
+                    .append(skipped == 0 ? "" : "; " + skipped + " skipped on this machine")
                     .append(loadErrors.isEmpty() ? "" : "; " + loadErrors.size() + " load error(s)")
                     .append('\n');
         return sb.toString();
