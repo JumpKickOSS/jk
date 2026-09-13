@@ -11,10 +11,10 @@
 # times (a repeated or parameterized case) is printed for the reader and never fails.
 #
 # Usage:
-#   scripts/test-tier-parity.sh               # run both tiers, then compare
-#   scripts/test-tier-parity.sh run-gradle    # run Gradle's tier only (./gradlew integrationTest --continue)
-#   scripts/test-tier-parity.sh run-jk        # run jk's profile only (jk test --profile integration --redo)
-#   scripts/test-tier-parity.sh compare       # read both runs' XML from disk and compare
+#   scripts/measure-tier-parity.sh               # run both tiers, then compare
+#   scripts/measure-tier-parity.sh run-gradle    # run Gradle's tier only (./gradlew integrationTest --continue)
+#   scripts/measure-tier-parity.sh run-jk        # run jk's profile only (jk test --profile integration --redo)
+#   scripts/measure-tier-parity.sh compare       # read both runs' XML from disk and compare
 #
 # CI runs the Gradle tier as its own visible step and then `run-jk` + `compare`; the script's
 # `compare` reads whatever XML each run left, so the two halves need not run from here.

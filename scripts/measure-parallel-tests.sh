@@ -2,16 +2,16 @@
 # C1 — wall-time monorepo test parallel measure (serial gate vs --parallel-tests).
 #
 # Usage:
-# ./scripts/test-parallel-measure.sh
-# MODULES='shared/*' ./scripts/test-parallel-measure.sh
-# JK_BIN=/path/to/jk ./scripts/test-parallel-measure.sh
+# ./scripts/measure-parallel-tests.sh
+# MODULES='shared/*' ./scripts/measure-parallel-tests.sh
+# JK_BIN=/path/to/jk ./scripts/measure-parallel-tests.sh
 #
 # Env:
 # JK_BIN — jk binary (default: ~/.jk/bin/jk or PATH)
 # MODULES — --modules filter (default: multi-module library set without clients/cli)
 # EXTRA_ARGS — extra args appended to both runs (e.g. --no-progress)
 # WARM — if 1 (default), do one warm-up test before timing
-# OUT_DIR — where to write logs (default: build/test-parallel-measure)
+# OUT_DIR — where to write logs (default: build/measure-parallel-tests)
 #
 # Reports wall seconds for:
 # A) -j0 -w0 (default: auto within-module; serial across modules)
@@ -41,7 +41,7 @@ fi
 MODULES="${MODULES:-shared/*,server/io,server/resolver,server/toolchain,server/engine,plugins/*}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 WARM="${WARM:-1}"
-OUT_DIR="${OUT_DIR:-$ROOT/build/test-parallel-measure}"
+OUT_DIR="${OUT_DIR:-$ROOT/build/measure-parallel-tests}"
 export JK_AOT_TRAIN="${JK_AOT_TRAIN:-off}"
 
 mkdir -p "$OUT_DIR"
