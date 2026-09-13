@@ -5,6 +5,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.eval.OutputArtifacts;
+import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.rules.GuardsPresence;
@@ -79,7 +80,7 @@ final class GuardKeys {
                     FactsIndexing.freshDigest(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
             if (main.isEmpty()) return Optional.of(run("guards · facts index stale"));
             List<String> tokens = new ArrayList<>();
-            tokens.add("module:" + PlannerGuards.relModule(root, dir));
+            tokens.add("module:" + WorkspaceModel.rel(root, dir));
             tokens.add("facts:" + main.get());
             Path testClasses = layout.testClassesDir();
             if (Files.isDirectory(testClasses)) {
@@ -113,7 +114,7 @@ final class GuardKeys {
             String digest = Files.isDirectory(classes)
                     ? FactsIndexing.freshDigest(classes, idx).orElse("stale")
                     : "absent";
-            tokens.add("facts:" + PlannerGuards.relModule(root, m) + ":" + digest);
+            tokens.add("facts:" + WorkspaceModel.rel(root, m) + ":" + digest);
         }
         return tokens;
     }
@@ -155,7 +156,7 @@ final class GuardKeys {
                     BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
                     stamp = FileHashMemo.contentHash(p.toAbsolutePath().normalize(), a);
                 }
-                tokens.add("out:" + PlannerGuards.relModule(root, p) + ":" + stamp);
+                tokens.add("out:" + WorkspaceModel.rel(root, p) + ":" + stamp);
             }
         }
         return tokens;

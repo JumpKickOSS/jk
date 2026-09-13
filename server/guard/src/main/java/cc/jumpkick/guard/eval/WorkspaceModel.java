@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
+import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,13 +91,20 @@ public final class WorkspaceModel {
     }
 
     /**
-     * The workspace-relative spelling of a module directory, the one every model kind keys its
+     * The workspace-relative spelling of a module directory, the one every evaluator keys its
      * sites and baseline entries by: {@code ""} for the root, {@code ../sibling} for a member outside
      * it — never an absolute path, which would make the baseline machine-specific.
      */
-    static String rel(Path root, Path dir) {
+    public static String rel(Path root, Path dir) {
         Path r = root.toAbsolutePath().normalize();
         Path d = dir.toAbsolutePath().normalize();
         return r.equals(d) ? "" : r.relativize(d).toString().replace('\\', '/');
+    }
+
+    /** Every workspace class's module by internal name, spelled by {@link #rel}: the facts of each index, keyed once. */
+    public static Map<String, String> classModules(Path root, List<Path> modules) {
+        Map<String, String> out = new HashMap<>();
+        WorkspaceFacts.classModuleDirs(root, modules).forEach((c, dir) -> out.put(c, rel(root, dir)));
+        return out;
     }
 }

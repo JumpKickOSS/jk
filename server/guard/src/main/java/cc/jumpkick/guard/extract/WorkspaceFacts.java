@@ -90,9 +90,9 @@ public final class WorkspaceFacts {
         return new FactsIndex(classes, Map.of(), "");
     }
 
-    /** Every workspace class's module ({@code shared/host}), from the index names alone. */
-    public static Map<String, String> classModules(Path root, List<Path> modules) {
-        Map<String, String> out = new HashMap<>();
+    /** Every workspace class's module directory, from the index names alone; the first index that holds a class owns it. */
+    public static Map<String, Path> classModuleDirs(Path root, List<Path> modules) {
+        Map<String, Path> out = new HashMap<>();
         synchronized (LOCK) {
             for (Path m : modules) {
                 Path idx = indexOf(root, m);
@@ -106,8 +106,7 @@ public final class WorkspaceFacts {
                                 Set.copyOf(FactsFormat.read(idx).classes().keySet()));
                         NAMES.put(idx, names);
                     }
-                    String rel = relModule(root, m);
-                    for (String c : names.classNames()) out.putIfAbsent(c, rel);
+                    for (String c : names.classNames()) out.putIfAbsent(c, m);
                 } catch (IOException | RuntimeException unreadable) {
                     // A module whose index cannot be read owns no class here.
                     Log.debug("classModules: A module whose index cannot be read owns no class here", unreadable);
@@ -115,12 +114,6 @@ public final class WorkspaceFacts {
             }
         }
         return out;
-    }
-
-    static String relModule(Path root, Path m) {
-        Path r = root.toAbsolutePath().normalize();
-        Path mm = m.toAbsolutePath().normalize();
-        return r.equals(mm) ? "" : r.relativize(mm).toString().replace('\\', '/');
     }
 
     /**

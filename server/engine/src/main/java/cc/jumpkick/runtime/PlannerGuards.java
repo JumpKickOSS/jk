@@ -28,6 +28,7 @@ import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.Outcome;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.guard.eval.RuleReport;
+import cc.jumpkick.guard.eval.WorkspaceModel;
 import cc.jumpkick.guard.eval.WorkspaceModules;
 import cc.jumpkick.guard.explain.BiteEvidence;
 import cc.jumpkick.guard.explain.RuleSummaries;
@@ -280,7 +281,7 @@ final class PlannerGuards {
                 .ticks(1)
                 .execute(ctx -> {
                     Path moduleDir = cx.in().dir();
-                    String module = relModule(g.root(), moduleDir);
+                    String module = WorkspaceModel.rel(g.root(), moduleDir);
                     Path buildDir = ctx.require(LAYOUT).buildDir();
                     FactsIndexing.Ensured main =
                             FactsIndexing.ensure(ctx.require(MAIN_CLASSES), FactsIndexing.indexPath(buildDir, "main"));
@@ -876,12 +877,6 @@ final class PlannerGuards {
     }
 
     // ---- helpers -------------------------------------------------------------------------------
-
-    static String relModule(Path root, Path moduleDir) {
-        Path r = root.toAbsolutePath().normalize();
-        Path m = moduleDir.toAbsolutePath().normalize();
-        return m.startsWith(r) ? r.relativize(m).toString().replace('\\', '/') : m.toString();
-    }
 
     /**
      * The workspace's module directories from inside a member's step, where {@code PROJECT} is the

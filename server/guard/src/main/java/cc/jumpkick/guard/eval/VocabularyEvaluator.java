@@ -108,7 +108,7 @@ final class VocabularyEvaluator implements BatchEvaluator {
         if (live.isEmpty()) return out;
 
         for (Path m : moduleDirs) {
-            String module = moduleDir != null ? ctx.module() : relModule(ctx.root(), m);
+            String module = moduleDir != null ? ctx.module() : WorkspaceModel.rel(ctx.root(), m);
             List<Prepared> here = new ArrayList<>();
             Map<Prepared, @Nullable String> ownerSources = new LinkedHashMap<>();
             for (Prepared p : live) {
@@ -135,12 +135,6 @@ final class VocabularyEvaluator implements BatchEvaluator {
         }
         for (Prepared p : live) out.put(p.rule.id(), finish(p, ctx));
         return out;
-    }
-
-    private static String relModule(Path root, Path m) {
-        Path r = root.toAbsolutePath().normalize();
-        Path mm = m.toAbsolutePath().normalize();
-        return r.equals(mm) ? "" : r.relativize(mm).toString().replace('\\', '/');
     }
 
     private static @Nullable Prepared prepare(Rule rule, EvalContext ctx) {

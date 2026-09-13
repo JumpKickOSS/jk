@@ -3,7 +3,6 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.guard.baseline.Observation;
-import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.facts.FactsIndex;
@@ -148,7 +147,7 @@ final class LayersEvaluator implements Evaluator {
         /** Class edges: a type reference across layers, exports, exact. */
         void classEdges() throws IOException {
             FactsIndex facts = ctx.facts();
-            Map<String, String> classModule = WorkspaceFacts.classModules(ctx.root(), moduleDirs);
+            Map<String, String> classModule = WorkspaceModel.classModules(ctx.root(), moduleDirs);
             Set<String> used = new TreeSet<>();
             for (ClassFacts c : facts.classList()) {
                 if (c.isPackageInfo()) continue;
@@ -239,12 +238,17 @@ final class LayersEvaluator implements Evaluator {
         }
     }
 
+    /** A {@code ..pkg..} pattern, as against a module glob — {@code ../sib} names a member beside the root. */
+    static boolean packagePattern(String value) {
+        return value.contains("..") && !value.contains("/");
+    }
+
     /** The layers a module belongs to: values that are module globs ({@code plugins/*}, {@code shared/host}). */
     static Set<String> moduleLayers(Map<String, List<String>> layers, String module) {
         Set<String> out = new LinkedHashSet<>();
         for (var e : layers.entrySet()) {
             for (String v : e.getValue()) {
-                if (v.contains("..")) continue; // a package pattern
+                if (packagePattern(v)) continue;
                 if (v.equals(module) || Rule.globMatches(v, module)) out.add(e.getKey());
             }
         }
@@ -256,7 +260,7 @@ final class LayersEvaluator implements Evaluator {
         Set<String> out = new LinkedHashSet<>();
         for (var e : layers.entrySet()) {
             for (String v : e.getValue()) {
-                if (v.contains("..")) {
+                if (packagePattern(v)) {
                     if (ClassPredicates.packageMatches(v, c.packageName())) out.add(e.getKey());
                 } else if (!module.isEmpty() && (v.equals(module) || Rule.globMatches(v, module))) {
                     out.add(e.getKey());

@@ -69,7 +69,7 @@ final class ApiEvaluator implements Evaluator {
         // The module compared: the rule's scope names it; a workspace-wide api rule is a mistake.
         List<String> modules = new ArrayList<>();
         for (Path m : ctx.modules()) {
-            String rel = relModule(ctx.root(), m);
+            String rel = WorkspaceModel.rel(ctx.root(), m);
             if (rule.applies(rel) && !rel.isEmpty()) modules.add(rel);
         }
         if (ctx.moduleDir() != null) modules = List.of(ctx.module());
@@ -297,11 +297,5 @@ final class ApiEvaluator implements Evaluator {
             return found[0];
         }
         return null;
-    }
-
-    private static String relModule(Path root, Path m) {
-        Path r = root.toAbsolutePath().normalize();
-        Path mm = m.toAbsolutePath().normalize();
-        return r.equals(mm) ? "" : r.relativize(mm).toString().replace('\\', '/');
     }
 }

@@ -76,13 +76,16 @@ class LayersEvaluatorTest {
     }
 
     private static Evaluation run(Path root, String body, Lane lane) throws Exception {
+        return run(root, body, lane, List.of(root.resolve("web"), root.resolve("service"), root.resolve("repo")));
+    }
+
+    private static Evaluation run(Path root, String body, Lane lane, List<Path> modules) throws Exception {
         Files.writeString(
                 root.resolve(GuardsPresence.RULES_FILE), "[guards.r]\nkind = \"layers\"\nwhy = \"w\"\n" + body);
         LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
         assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
         Rule rule = load.rules().rule("r").orElseThrow();
         assertThat(Evaluators.laneOf(rule)).isEqualTo(lane);
-        List<Path> modules = List.of(root.resolve("web"), root.resolve("service"), root.resolve("repo"));
         EvalContext ctx = new EvalContext(
                 lane,
                 root,
@@ -205,5 +208,36 @@ class LayersEvaluatorTest {
         Evaluation otherEdge =
                 run(root, rule + "[[guards.r.allow]]\nin = \"web -> service\"\nreason = \"legacy\"\n", Lane.MODEL);
         assertThat(otherEdge.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+    }
+
+    @Test
+    void an_out_of_root_member_is_keyed_by_its_workspace_relative_path(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        // a member beside the root: its key is `../sib`, never the absolute path of this machine
+        Path sib = Files.createDirectories(dir.resolve("sib"));
+        Files.writeString(
+                sib.resolve("jk.toml"),
+                "group = \"t\"\nname = \"sib\"\nversion = \"0.0.1\"\njava = 25\n\n[dependencies]\n"
+                        + "repo = { group = \"t\", name = \"repo\", version = \"0.0.1\" }\n");
+        List<Path> modules = List.of(root.resolve("web"), root.resolve("service"), root.resolve("repo"), sib);
+        String rule = "layers = { sib = \"../sib\", repo = \"repo\" }\naccess = { sib = [] }\nscope = [\"../sib\"]\n";
+
+        Evaluation manifest = run(root, rule, Lane.MODEL, modules);
+        assertThat(manifest.outcome()).isEqualTo(Outcome.VIOLATIONS);
+        assertThat(manifest.observations()).singleElement().satisfies(o -> {
+            assertThat(o.key()).isEqualTo("module:../sib -> repo");
+            assertThat(o.file()).isEqualTo("../sib/jk.toml");
+        });
+
+        indexes(
+                root,
+                Map.of(
+                        "../sib", List.of(cls("demo/sib/A", "demo/repo/A")),
+                        "repo", List.of(cls("demo/repo/A"))));
+        Evaluation classes = run(root, rule + "edges = \"classes\"\n", Lane.WORKSPACE, modules);
+        assertThat(classes.observations()).extracting(Observation::key).containsExactly("demo.sib.A -> demo.repo.A");
+        assertThat(classes.observations().get(0).detail())
+                .as("`../sib` is a module glob, not a package pattern")
+                .contains("demo.sib.A (sib) references demo.repo.A (repo)");
     }
 }

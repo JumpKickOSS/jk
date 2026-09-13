@@ -116,4 +116,27 @@ class VocabularyEvaluatorTest {
                 root, "owner = \"" + OWNER + "\"\nallow = [{ in = \"src/main/java/x/**\", reason = \"fixture\" }]\n");
         assertThat(allowed.outcome()).isEqualTo(Outcome.CLEAN);
     }
+
+    @Test
+    void a_tree_context_spells_an_out_of_root_member_by_its_workspace_relative_path(@TempDir Path dir)
+            throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Path m = module(root);
+        Path sib = Files.createDirectories(dir.resolve("sib/src/main/java/x"));
+        Files.writeString(sib.resolve("S.java"), "package x;\nclass S { String a = \"compile-main\"; }\n");
+        Files.writeString(
+                root.resolve(GuardsPresence.RULES_FILE),
+                "[guards.v]\nkind = \"vocabulary\"\nwhy = \"w\"\ninstead = \"Owner.X\"\nowner = \"" + OWNER + "\"\n");
+        LoadResult load = GuardRules.load(root, GuardsConfig.ABSENT);
+        assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
+        Rule rule = load.rules().rule("v").orElseThrow();
+        ClassFacts s = FactsExtractor.extract(FixtureBytes.of(Sample.class));
+        FactsIndex idx = new FactsIndex(Map.of(s.name(), s), Map.of(), "");
+        List<Path> modules = List.of(m, dir.resolve("sib"));
+        EvalContext ctx = new EvalContext(Lane.TREE, root, "", null, modules, () -> idx, () -> null, List::of);
+        Evaluation e = Evaluators.forKind(rule.kind()).evaluate(rule, ctx);
+        assertThat(e.observations())
+                .extracting(Observation::file)
+                .contains("../sib/src/main/java/x/S.java", "mod/src/main/java/x/Uses.java");
+    }
 }

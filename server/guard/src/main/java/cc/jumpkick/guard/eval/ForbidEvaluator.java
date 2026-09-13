@@ -2,7 +2,6 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
-import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -386,7 +385,7 @@ final class ForbidEvaluator implements Evaluator {
         } catch (IOException unreadable) {
             return false;
         }
-        for (var e : WorkspaceFacts.classModules(ctx.root(), modules).entrySet()) {
+        for (var e : WorkspaceModel.classModules(ctx.root(), modules).entrySet()) {
             if (e.getValue().equals(ctx.module())) continue;
             String binary = e.getKey().replace('/', '.');
             int dot = binary.lastIndexOf('.');

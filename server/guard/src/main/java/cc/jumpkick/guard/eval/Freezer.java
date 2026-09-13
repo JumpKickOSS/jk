@@ -127,7 +127,7 @@ public final class Freezer {
         }
         if (lane == Lane.MODULE) {
             for (Path m : modules) {
-                String rel = root.equals(m) ? "" : root.relativize(m).toString().replace('\\', '/');
+                String rel = WorkspaceModel.rel(root, m);
                 if (!rule.applies(rel)) continue;
                 JkBuild build = JkBuildParser.parse(m.resolve(ManifestPaths.MANIFEST));
                 BuildLayout layout = BuildLayout.of(m, build);

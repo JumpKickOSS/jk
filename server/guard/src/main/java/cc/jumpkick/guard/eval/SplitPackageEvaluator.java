@@ -2,7 +2,6 @@
 package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
-import cc.jumpkick.guard.extract.WorkspaceFacts;
 import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
@@ -25,7 +24,7 @@ final class SplitPackageEvaluator implements Evaluator {
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) {
         Map<String, Set<String>> modulesByPackage = new TreeMap<>();
-        for (var e : WorkspaceFacts.classModules(ctx.root(), ctx.modules()).entrySet()) {
+        for (var e : WorkspaceModel.classModules(ctx.root(), ctx.modules()).entrySet()) {
             String pkg = Descriptors.packageOf(e.getKey());
             if (!rule.applies(e.getValue())) continue;
             modulesByPackage.computeIfAbsent(pkg, k -> new TreeSet<>()).add(e.getValue());

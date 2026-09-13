@@ -57,7 +57,7 @@ public final class MutationCheck {
         List<Rule> rules = new ArrayList<>(load.rules().ofKind(Kind.DEPEND));
         rules.addAll(load.rules().ofKind(Kind.TOOLCHAIN));
         if (rules.isEmpty()) return null;
-        String module = root.equals(dir) ? "" : root.relativize(dir).toString().replace('\\', '/');
+        String module = WorkspaceModel.rel(root, dir);
         Lockfile lock = null;
         Baseline baseline = Baseline.EMPTY;
         try {
