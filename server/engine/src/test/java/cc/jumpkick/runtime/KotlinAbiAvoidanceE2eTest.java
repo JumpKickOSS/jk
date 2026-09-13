@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.KotlincSnapshots;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
@@ -64,12 +65,17 @@ class KotlinAbiAvoidanceE2eTest {
         // Body only: twice() computes the same thing another way. Nothing app compiles against moved.
         lib(ws, "fun twice(n: Int): Int = n + n", INLINE_V1, CONST_V1, "");
         Labels bodyOnly = new Labels();
+        int forksBefore = KotlincSnapshots.forks().size();
         assertThat(build(ws, cache, bodyOnly).success()).isTrue();
         assertThat(bodyOnly.label("lib", TaskNames.COMPILE_KOTLIN)).startsWith("compiling");
         assertThat(bodyOnly.label("app", TaskNames.COMPILE_KOTLIN))
                 .as("app's compile-kotlin is answered by its stamp: lib's jar changed, its ABI token did not")
                 .isEqualTo("up to date");
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
+        assertThat(KotlinAbiWarmup.warmed())
+                .as("lib snapshotted its own new jar")
+                .contains(libJar(ws));
+        assertNoConsumerFork(ws, forksBefore);
 
         // An inline function body is ABI for kotlinc: it is copied into every call site.
         lib(ws, "fun twice(n: Int): Int = n + n", "inline fun thrice(n: Int): Int = n + n + n", CONST_V1, "");
@@ -127,12 +133,17 @@ class KotlinAbiAvoidanceE2eTest {
                 }
                 """);
         Labels bodyOnly = new Labels();
+        int forksBefore = KotlincSnapshots.forks().size();
         assertThat(build(ws, cache, bodyOnly).success()).isTrue();
         assertThat(bodyOnly.label("lib", TaskNames.COMPILE_MAIN)).doesNotStartWith("up to date");
         assertThat(bodyOnly.label("app", TaskNames.COMPILE_KOTLIN))
                 .as("a Java-only sibling still gets a Kotlin snapshot, so the Kotlin consumer's stamp holds")
                 .isEqualTo("up to date");
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
+        assertThat(KotlinAbiWarmup.warmed())
+                .as("the Java producer snapshotted its new jar through its consumer's Kotlin toolchain")
+                .contains(libJar(ws));
+        assertNoConsumerFork(ws, forksBefore);
     }
 
     /**
@@ -289,6 +300,23 @@ class KotlinAbiAvoidanceE2eTest {
         ActionCache.ActionRecord record =
                 ac.lastFor(taskId).orElseThrow(() -> new AssertionError("no compile-kotlin record for app"));
         return Objects.requireNonNull(record.actionKey(), "the record names its key");
+    }
+
+    /** No snapshot worker of this build was forked on app's behalf: the producer's warm-up answered its key. */
+    private static void assertNoConsumerFork(Path ws, int forksBefore) throws IOException {
+        Path appOut = appLayout(ws).kotlinClassesDir().toAbsolutePath().normalize();
+        List<KotlincSnapshots.Fork> forks = KotlincSnapshots.forks();
+        List<KotlincSnapshots.Fork> thisBuild = forks.subList(Math.min(forksBefore, forks.size()), forks.size());
+        assertThat(thisBuild)
+                .as("snapshot forks of the body-only build: " + thisBuild)
+                .noneMatch(f -> f.outputDir().equals(appOut));
+    }
+
+    private static Path libJar(Path ws) throws IOException {
+        return BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")))
+                .mainJar()
+                .toAbsolutePath()
+                .normalize();
     }
 
     private static Path appClass(Path ws) throws IOException {

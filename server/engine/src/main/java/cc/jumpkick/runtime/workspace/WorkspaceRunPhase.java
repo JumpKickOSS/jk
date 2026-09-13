@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Dependency;
@@ -13,6 +14,7 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.KotlinAbiWarmup;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceScheduler;
@@ -90,7 +92,14 @@ final class WorkspaceRunPhase {
                                     () -> "admitted a unit with no prepared plan: " + unit.dir()),
                             listener,
                             testClassesConsumed.contains(unit.dir()),
-                            artifactsReady,
+                            // A module with Kotlin consumers has its jar snapshotted for them before
+                            // they are admitted, so their compile keys are memo lookups.
+                            KotlinAbiWarmup.before(
+                                    resources.preflight().graph(),
+                                    unit,
+                                    request.cache(),
+                                    JkStores.storeCas(),
+                                    artifactsReady),
                             clock),
                     (ready, results, _) ->
                             collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
@@ -143,12 +152,23 @@ final class WorkspaceRunPhase {
             ModulePlan module,
             WorkspaceBuildListener listener,
             boolean testClassesConsumed,
-            Runnable artifactsReady,
+            KotlinAbiWarmup.Warmup warmup,
             Clock clock) {
         BuildPlanListener moduleListener = listener.onModuleStart(module);
         if (moduleListener != null) module.plan().addListener(moduleListener);
-        watchArtifactSteps(module.plan(), testClassesConsumed, artifactsReady);
+        watchArtifactSteps(module.plan(), testClassesConsumed, warmup.artifactsReady());
         long started = clock.nanos();
+        try {
+            return runPlan(module, listener, clock, started);
+        } finally {
+            // Completion publishes the artifacts when the signal never fired; the consumers' memo
+            // must be warm by then.
+            warmup.await();
+        }
+    }
+
+    private static ModuleOutcome runPlan(
+            ModulePlan module, WorkspaceBuildListener listener, Clock clock, long started) {
         try {
             BuildPlanResult result = EffortWeights.withOverReserveTails(module.plan()::run);
             long millis = (clock.nanos() - started) / 1_000_000;
