@@ -59,6 +59,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -517,20 +518,18 @@ public final class PlannerTest {
                     // count is decided once the gate is held: a suite parked at the gate is
                     // not running, and the ones running when it starts are what it shares with.
                     boolean gated = !in.session().parallelTests();
-                    // The agent and the report tool come first: a coverage run that cannot fetch
-                    // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
-                    // And before the gate: the fetch can take seconds or fail outright, and the
-                    // gate is process-wide — held here, every other module's suite waits on a
-                    // download, and a failed fetch would leave the gate held for good.
-                    CoverageTools.Jacoco jacoco = null;
                     Path coverageExec = null;
                     if (coverage) {
-                        jacoco = CoverageTools.resolve(projectUnderTest, cas);
                         coverageExec = ctx.require(LAYOUT).reportsDir().resolve("jacoco.exec");
                         Files.deleteIfExists(coverageExec);
                         Files.createDirectories(coverageExec.getParent());
                     }
-                    if (gated) awaitTestGate();
+                    // The agent and the report tool come first: a coverage run that cannot fetch
+                    // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
+                    CoverageTools.Jacoco jacoco = resolveBeforeGate(
+                            coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
+                            gated,
+                            PlannerTest::awaitTestGate);
                     TestSummary result;
                     try {
                         // Module pin ([test] workers / [build] test-workers) wins over CLI for
@@ -771,11 +770,29 @@ public final class PlannerTest {
     }
 
     /**
+     * Coverage tooling resolves before the serial test gate is taken, never inside it. The fetch
+     * can take seconds or fail outright, and the gate is process-wide: a fetch behind it would park
+     * every other module's suite behind a download, and a failed fetch would leave the gate held
+     * for good. So a failing {@code resolve} throws with the gate untouched, and {@code gate} runs
+     * only once {@code resolve} has answered.
+     *
+     * @param resolve the coverage tooling to fetch, or null when the run measures no coverage
+     * @param gated whether the run takes the serial gate at all
+     * @param gate takes the gate; the caller releases it
+     */
+    static <T> @Nullable T resolveBeforeGate(@Nullable Callable<T> resolve, boolean gated, Runnable gate)
+            throws Exception {
+        T tools = resolve == null ? null : resolve.call();
+        if (gated) gate.run();
+        return tools;
+    }
+
+    /**
      * Wait for the serial-test gate without counting as a running unit: a suite parked here is
      * sharing the machine with nobody yet, and counting it would hand every gated suite a fraction
      * of the machine it then uses alone.
      */
-    private static void awaitTestGate() {
+    static void awaitTestGate() {
         try (LiveUnits.Lease parked = LiveUnits.stepOut()) {
             TEST_GATE.acquireUninterruptibly();
         }
