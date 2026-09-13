@@ -579,17 +579,6 @@ public final class RepoArtifactStore {
         }
     }
 
-    private void pruneEmptyParents(Path dir) {
-        Path cur = dir;
-        while (cur != null && root != null && cur.startsWith(root) && !cur.equals(root)) {
-            try {
-                Files.delete(cur);
-            } catch (IOException stop) {
-                return;
-            }
-            cur = cur.getParent();
-        }
-    }
     /**
      * Write a file directly into {@code repos/jk-local/} as a full-store entry (actual JAR on disk) —
      * the local-install write path shared by the engine's install plan and the client's
