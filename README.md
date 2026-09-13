@@ -1,4 +1,4 @@
-<img width="1760" height="576" alt="jumpkick-banner" src="https://github.com/user-attachments/assets/10226663-2e29-420e-b604-654eee16ffa9" />
+<img width="1760" height="576" alt="jumpkick-banner" src="docs/assets/jumpkick-banner.png" />
 
 # JumpKick — the JVM build tool coding agents can drive
 
