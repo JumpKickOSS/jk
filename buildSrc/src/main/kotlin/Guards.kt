@@ -1030,6 +1030,18 @@ object Guards {
                 guardTestId = "shellcheck",
             ),
             spec(
+                101,
+                "one-http-client",
+                "an `HttpClient.newBuilder()` outside `cc.jumpkick.http.Http` — a client that goes direct behind the proxy every other request honours; `Http.proxiedClientBuilder()` + `proxiedRequest(uri)` is the door for a request shape the verbs do not fit",
+                "forbid, owner probed every run",
+                GuardHome.SELF_HOSTED,
+                tableTask = "`one-http-client` (jk-guards.toml, `forbid`)",
+                inFastGate = false,
+                gradleLetter = false,
+                attach = emptySet(),
+                ruleId = "one-http-client",
+            ),
+            spec(
                 91,
                 "coverage-band",
                 "a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything",

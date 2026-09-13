@@ -46,6 +46,9 @@ The guarded exceptions each carry a current product invariant:
 - `publisher → client-io`: repository uploads use the client-safe HTTP/file/object-store
   transports. The transport surface lives there specifically so the worker does not depend on
   server I/O.
+- `auditor → client-io`: OSV queries go through `Http`, the one client jk routes through the
+  configured proxy.
+- `android → client-io`: the SDK license feed is downloaded through `Http`, for the same reason.
 - `image-builder → jk-api`: image configuration and repository credentials are public model
   types.
 - `minified → dynamic-surface`: R8 keep rules and native reachability share one model.

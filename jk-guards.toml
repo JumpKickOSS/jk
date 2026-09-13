@@ -631,6 +631,14 @@ in     = "plugins/publisher -> shared/client-io"
 reason = "repository uploads use the client-safe HTTP/file/object-store transports, which live there so the worker does not depend on server I/O"
 
 [[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/auditor -> shared/client-io"
+reason = "OSV queries go through Http, the one client jk routes through the configured proxy"
+
+[[guards.plugin-sdk-boundary.allow]]
+in     = "plugins/android -> shared/client-io"
+reason = "the SDK license feed is downloaded through Http, the one client jk routes through the configured proxy"
+
+[[guards.plugin-sdk-boundary.allow]]
 in     = "plugins/image-builder -> shared/jk-api"
 reason = "image configuration and repository credentials are public model types"
 
@@ -1029,6 +1037,16 @@ per      = "file"
 cap      = 0
 baseline = true
 why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"
+
+# G101. jk builds one HttpClient: Http's, routed through the proxy ProxyEnvironment decides per
+# request. A second builder is a request that goes direct behind a corporate proxy where every
+# other download succeeds, with nothing to say why.
+[guards.one-http-client]
+kind       = "forbid"
+signatures = ["java.net.http.HttpClient#newBuilder(**)"]
+owner      = "cc.jumpkick.http.Http"
+instead    = "Http's verbs (get / getStream / post / postForm / put), or Http.proxiedClientBuilder() paired with Http.proxiedRequest(uri) for a request shape they do not fit"
+why        = "a client built outside Http goes direct behind the proxy every other request honours"
 
 # G96. A jk process writes its diagnostics through one leveled logger. A print has no level to
 # filter on, misses the size cap the engine log rolls at, and skips the redaction every logged line

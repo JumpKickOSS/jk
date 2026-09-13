@@ -103,6 +103,31 @@ public final class Http {
                 .build();
     }
 
+    /**
+     * A client builder routed through the proxy jk is configured with, for the few callers whose
+     * request shape the verbs here do not fit — a readiness probe that must answer in one attempt,
+     * on HTTP/1.1, and take a 3xx as alive. Pair every request sent through it with
+     * {@link #proxiedRequest}, which carries the proxy's credential. Everything else uses the
+     * verbs, which add the retry ladder, the redirect policy, the offline guard and the Central
+     * failover; this is the only other place jk builds an {@link HttpClient}, and a guard holds
+     * {@code HttpClient.newBuilder()} to this class.
+     */
+    public static HttpClient.Builder proxiedClientBuilder() {
+        return HttpClient.newBuilder().proxy(ProxyEnvironment.ambient());
+    }
+
+    /**
+     * A request builder for {@code uri} carrying the {@code Proxy-Authorization} the proxy it routes
+     * through wants, or none when it goes direct — the pair of {@link #proxiedClientBuilder}.
+     */
+    public static HttpRequest.Builder proxiedRequest(URI uri) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri);
+        ProxyEnvironment.ambient()
+                .proxyAuthorization(uri)
+                .ifPresent(value -> builder.setHeader(PROXY_AUTHORIZATION, value));
+        return builder;
+    }
+
     /** Production's client over {@code proxies}, with the backoff schedule given — a test's proxy stub. */
     Http(ProxyEnvironment proxies, Duration[] backoffs) {
         this(
@@ -247,6 +272,29 @@ public final class Http {
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Accept", "application/json")
                 .timeout(Duration.ofSeconds(60));
+        HttpRequest request = withProxyAuthorization(builder, uri).build();
+        return sendWithRetry("POST", uri, request, gzipAwareByteArray(), null);
+    }
+
+    /**
+     * POST a byte body with caller-supplied headers ({@code Content-Type}, {@code Accept}, …) and
+     * get the response bytes — the primitive for a JSON query API such as OSV's batch endpoint.
+     * Same offline guard and retry policy as {@link #postForm}: a query is safe to repeat, so
+     * connect failures and 5xx are retried, and 4xx comes back to the caller as-is. The generous
+     * timeout is for a body that names every artifact of a lockfile.
+     */
+    public HttpResponse<byte[]> post(URI uri, byte[] body, Map<String, String> headers)
+            throws IOException, InterruptedException {
+        checkOffline(uri);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .timeout(Duration.ofMinutes(2));
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            builder.header(e.getKey(), e.getValue());
+        }
+        if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
+            builder.header("Accept-Encoding", "gzip");
+        }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
         return sendWithRetry("POST", uri, request, gzipAwareByteArray(), null);
     }

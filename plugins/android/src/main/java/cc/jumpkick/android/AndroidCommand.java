@@ -3,16 +3,14 @@ package cc.jumpkick.android;
 
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -50,7 +48,7 @@ final class AndroidCommand {
         if (exec.offline() && !feedUrl.startsWith("file:")) {
             throw new IOException(Errors.offlineRefusal(feedUrl));
         }
-        Map<String, String> licenses = fetchLicenses();
+        Map<String, String> licenses = fetchLicenses(feedUrl);
         if (licenses.isEmpty()) {
             exec.out("no licenses found in the SDK repository feed");
             return 1;
@@ -89,23 +87,21 @@ final class AndroidCommand {
         return 0;
     }
 
-    /** License id → text from the feed — a tolerant regex read of the two license elements. */
-    private static Map<String, String> fetchLicenses() throws IOException, InterruptedException {
-        String url = System.getenv().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL);
+    /**
+     * License id → text from the feed at {@code url} — a tolerant regex read of the two license
+     * elements. A {@code file:} feed is read as-is; anything else goes through {@link Http}, so the
+     * download follows the proxy jk is configured with the way every other download does.
+     */
+    static Map<String, String> fetchLicenses(String url) throws IOException, InterruptedException {
         String xml;
         if (url.startsWith("file:")) {
             xml = Files.readString(Path.of(URI.create(url)), StandardCharsets.UTF_8);
         } else {
-            HttpClient http = HttpClient.newBuilder()
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .connectTimeout(Duration.ofSeconds(30))
-                    .build();
-            HttpResponse<String> response = http.send(
-                    HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<byte[]> response = new Http().get(URI.create(url));
             if (response.statusCode() != 200) {
                 throw new IOException("SDK feed " + url + " returned " + response.statusCode());
             }
-            xml = response.body();
+            xml = new String(response.body(), StandardCharsets.UTF_8);
         }
         Map<String, String> out = new LinkedHashMap<>();
         Matcher m = LICENSE.matcher(xml);

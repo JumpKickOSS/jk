@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.audit;
 
+import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,6 +18,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * Client for the <a href="https://api.osv.dev/v1/querybatch">OSV v1 batch query API</a>. One
  * round trip per lockfile; full vuln details are fetched separately when needed.
+ *
+ * <p>Requests go through {@link Http}, so the proxy jk is configured with — {@code [network]} or
+ * the shell's proxy variables, handed to this worker over the engine's own — carries the audit
+ * exactly as it carries a resolve; {@code --offline} is refused there too.
  */
 public final class OsvClient {
 
@@ -29,7 +31,7 @@ public final class OsvClient {
     /** GHSA-…, CVE-…, GO-… and friends: letters, digits, dot, dash, underscore. Nothing path-like. */
     private static final Pattern VULN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,127}");
 
-    private final HttpClient http;
+    private final Http http;
     private final URI batchUrl;
     private final URI vulnsUrl;
 
@@ -38,12 +40,14 @@ public final class OsvClient {
     }
 
     public OsvClient(URI batchUrl, URI vulnsUrl) {
+        this(batchUrl, vulnsUrl, new Http());
+    }
+
+    /** Every collaborator explicit — a test pairs a stub endpoint with a client it can watch. */
+    public OsvClient(URI batchUrl, URI vulnsUrl, Http http) {
         this.batchUrl = Objects.requireNonNull(batchUrl, "batchUrl");
         this.vulnsUrl = Objects.requireNonNull(vulnsUrl, "vulnsUrl");
-        this.http = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_2)
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
+        this.http = Objects.requireNonNull(http, "http");
     }
 
     public record Query(String ecosystem, String name, String version) {}
@@ -90,16 +94,16 @@ public final class OsvClient {
         }
         String body = MiniJson.write(Map.of("queries", rows));
 
-        HttpRequest request = HttpRequest.newBuilder(batchUrl)
-                .timeout(Duration.ofMinutes(2))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-                .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<byte[]> response =
+                http.post(batchUrl, body.getBytes(StandardCharsets.UTF_8), Map.of("Content-Type", "application/json"));
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + " — " + response.body());
+            throw new IOException("OSV batch query failed: HTTP " + response.statusCode() + " — " + text(response));
         }
-        return parseBatchResponse(response.body(), queries.size());
+        return parseBatchResponse(text(response), queries.size());
+    }
+
+    private static String text(HttpResponse<byte[]> response) {
+        return new String(response.body(), StandardCharsets.UTF_8);
     }
 
     /** Fetch full vulnerability metadata. */
@@ -111,16 +115,12 @@ public final class OsvClient {
             throw new IOException("refusing to fetch a malformed OSV vulnerability id: " + vulnId);
         }
         var url = vulnsUrl.resolve(vulnId);
-        HttpRequest request = HttpRequest.newBuilder(url)
-                .timeout(Duration.ofSeconds(30))
-                .GET()
-                .build();
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<byte[]> response = http.get(url);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("OSV vuln fetch failed for " + vulnId + ": HTTP " + response.statusCode());
         }
         try {
-            Map<?, ?> node = object(MiniJson.parse(response.body()));
+            Map<?, ?> node = object(MiniJson.parse(text(response)));
             return new Vulnerability(
                     vulnId,
                     textOrEmpty(node, "summary"),

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import java.io.BufferedReader;
@@ -250,15 +251,18 @@ public final class Sidecars implements AutoCloseable {
             }
             if (!spec.ready().isEmpty()) {
                 // HTTP/1.1 only: a dev server that ignores the h2c upgrade would otherwise hang the
-                // probe until its timeout, and none of them speak HTTP/2 on plain TCP anyway.
-                try (HttpClient client = HttpClient.newBuilder()
+                // probe until its timeout, and none of them speak HTTP/2 on plain TCP anyway. Not
+                // Http's verbs — a probe must answer in one attempt and take a 3xx as alive — but
+                // Http's client builder, so a front door off loopback is reached through the proxy
+                // the shell names, and bypassed where no_proxy says so.
+                try (HttpClient client = Http.proxiedClientBuilder()
                         .version(HttpClient.Version.HTTP_1_1)
                         .connectTimeout(Duration.ofSeconds(2))
                         .followRedirects(HttpClient.Redirect.NEVER)
                         .build()) {
                     List<HttpRequest> requests = new ArrayList<>();
                     for (URI candidate : readyCandidates(URI.create(spec.ready()))) {
-                        requests.add(HttpRequest.newBuilder(candidate)
+                        requests.add(Http.proxiedRequest(candidate)
                                 .timeout(Duration.ofSeconds(2))
                                 .GET()
                                 .build());

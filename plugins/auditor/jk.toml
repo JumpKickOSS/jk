@@ -4,6 +4,7 @@ description = "JumpKick's OSV audit plugin"
 [dependencies]
 jk-core.workspace = true
 jk-plugin-sdk.workspace = true
+jk-client-io.workspace = true
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "latest" }

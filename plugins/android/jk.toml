@@ -3,6 +3,7 @@ description = "JumpKick's Android packaging plugin"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
+jk-client-io.workspace = true
 apksig = "latest"
 asm = "latest"
 

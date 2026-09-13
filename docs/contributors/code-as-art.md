@@ -977,6 +977,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G98 | `swallowed-broad-catch-ratchet` (jk-guards.toml, `metric`) | a file's count of comment-only broad catches growing past its baseline — zero since every one got a debug line carrying the exception | metric, `matches:swallowed-broad-catch` per file, baselined and tightened on every build | `swallowed-broad-catch-ratchet` (metric) |
 | G99 | — | a workflow `run:` step pipes into `tee` without pipefail — no `shell: bash` on the step or under a `defaults.run`, and no `set -o pipefail` in the script — so the piped command's failure is tee's success | workflow text scan in both builds; a fixture proves the bite | guard test `workflow-tee-pipefail` |
 | G100 | `checkShellcheck` (root project) + guard test `shellcheck` | a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `$var` in a `[ ]` test (SC2086) first among them | `scripts/shellcheck.sh` in both builds: the binary, else a container runtime; skipped with a notice on a developer machine that has neither, failed under CI | guard test `shellcheck` |
+| G101 | `one-http-client` (jk-guards.toml, `forbid`) | an `HttpClient.newBuilder()` outside `cc.jumpkick.http.Http` — a client that goes direct behind the proxy every other request honours; `Http.proxiedClientBuilder()` + `proxiedRequest(uri)` is the door for a request shape the verbs do not fit | forbid, owner probed every run | `one-http-client` (forbid) |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.
@@ -1046,6 +1047,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | one-digest-surface | forbid | one digest surface: buffer size, exception policy and hex spelling decided once |
 | one-hex-spelling | forbid | bytes become hex in one place; a second spelling is a second answer |
 | one-host-surface | forbid | a copy of the host predicate that tests contains("win") calls Darwin a Windows box |
+| one-http-client | forbid | a client built outside Http goes direct behind the proxy every other request honours |
 | one-json-splicer | text | every hand chop got the separator wrong on an empty object |
 | one-module-per-package | split-package | package-private reach across a jar boundary stops working under JPMS; a split package is breakage that grows quietly |
 | one-recursive-delete | text | a hand-rolled tree delete decides the follow-links question again, and one FOLLOW_LINKS is data loss |

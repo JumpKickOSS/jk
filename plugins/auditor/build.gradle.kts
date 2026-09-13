@@ -16,6 +16,9 @@ description = "jk-audit-runner: child-JVM worker that queries the OSV vulnerabil
 dependencies {
     implementation(project(":core"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
+    // Http — the one client jk routes through the configured proxy; OSV is asked the way Central
+    // is. Pure JDK over :core, so the worker's launch classpath grows by one first-party jar.
+    implementation(project(":client-io"))
 }
 
 // PublishedWorkerPomTest reads the worker POM the way a launch does — out of the Maven repo

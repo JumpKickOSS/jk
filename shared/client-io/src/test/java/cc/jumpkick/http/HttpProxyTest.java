@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.NetworkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.testing.LoopbackHttp;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -12,8 +14,11 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -21,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The wire: a request that {@link ProxyEnvironment} routes through a proxy reaches the proxy in
@@ -118,6 +124,81 @@ class HttpProxyTest {
                     "Basic " + Base64.getEncoder().encodeToString("alice:s3cr3t".getBytes(StandardCharsets.UTF_8));
             assertThat(authorizations).containsExactly(expected);
         } finally {
+            authProxy.stop(0);
+        }
+    }
+
+    /** A POSTed body goes through the proxy like a GET does, with the target host on the request. */
+    @Test
+    void a_post_goes_through_the_proxy_with_its_body() throws Exception {
+        List<String> bodies = new CopyOnWriteArrayList<>();
+        List<String> hosts = new CopyOnWriteArrayList<>();
+        proxy.server().createContext("/v1/query", exchange -> {
+            bodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            hosts.add(exchange.getRequestHeaders().getFirst("Host"));
+            byte[] body = "{\"results\":[]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+
+        HttpResponse<byte[]> response = through(
+                        Map.of("http_proxy", proxy.base().toString()))
+                .post(
+                        URI.create("http://api.example.test/v1/query"),
+                        "{\"q\":1}".getBytes(StandardCharsets.UTF_8),
+                        Map.of("Content-Type", "application/json"));
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo("{\"results\":[]}");
+        assertThat(bodies).containsExactly("{\"q\":1}");
+        assertThat(hosts).containsExactly("api.example.test");
+    }
+
+    /**
+     * The door for a request shape the verbs do not fit: a client from {@link
+     * Http#proxiedClientBuilder} sent a request from {@link Http#proxiedRequest} reaches the proxy
+     * the request's shell names, credential included, with the engine's own environment silent.
+     */
+    @Test
+    void the_proxied_client_builder_and_request_route_through_the_shells_proxy_with_its_credential(@TempDir Path home)
+            throws Exception {
+        List<String> authorizations = new CopyOnWriteArrayList<>();
+        HttpServer authProxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        authProxy.createContext("/", exchange -> {
+            authorizations.add(String.valueOf(exchange.getRequestHeaders().getFirst("Proxy-Authorization")));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        authProxy.start();
+        Files.writeString(home.resolve("config.toml"), "");
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            Session request = Session.defaults()
+                    .withVariant(
+                            null,
+                            Map.of(
+                                    "http_proxy",
+                                    "http://alice:s3cr3t@127.0.0.1:"
+                                            + authProxy.getAddress().getPort()));
+
+            int status = SessionContext.where(request, () -> {
+                try (HttpClient client = Http.proxiedClientBuilder()
+                        .version(HttpClient.Version.HTTP_1_1)
+                        .build()) {
+                    return client.send(
+                                    Http.proxiedRequest(BEHIND_PROXY).GET().build(),
+                                    HttpResponse.BodyHandlers.discarding())
+                            .statusCode();
+                }
+            });
+
+            assertThat(status).isEqualTo(204);
+            String expected =
+                    "Basic " + Base64.getEncoder().encodeToString("alice:s3cr3t".getBytes(StandardCharsets.UTF_8));
+            assertThat(authorizations).containsExactly(expected);
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
             authProxy.stop(0);
         }
     }

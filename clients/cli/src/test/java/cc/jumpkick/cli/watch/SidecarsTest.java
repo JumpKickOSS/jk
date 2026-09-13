@@ -3,6 +3,8 @@ package cc.jumpkick.cli.watch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.testing.FakeClock;
@@ -95,6 +97,51 @@ class SidecarsTest {
             }
         } finally {
             server.stop(0);
+        }
+    }
+
+    /**
+     * A front door off loopback is probed through the proxy the request's shell names, like every
+     * other request jk makes. The proxy stub answers for any host, so {@code web.example.test} — a
+     * name that resolves nowhere — is ready only through it.
+     */
+    @Test
+    void the_url_probe_off_loopback_goes_through_the_proxy_the_shell_names(@TempDir Path dir) throws Exception {
+        List<String> hosts = new CopyOnWriteArrayList<>();
+        HttpServer proxy = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        proxy.createContext("/", exchange -> {
+            hosts.add(exchange.getRequestHeaders().getFirst("Host"));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        proxy.start();
+        Path home = Files.createDirectories(dir.resolve("home"));
+        Files.writeString(home.resolve("config.toml"), "");
+        System.setProperty("jk.env.JK_HOME", home.toString());
+        try {
+            Session request = Session.defaults()
+                    .withVariant(
+                            null,
+                            Map.of(
+                                    "http_proxy",
+                                    "http://127.0.0.1:" + proxy.getAddress().getPort()));
+            ExecPlan.Sidecar spec = new ExecPlan.Sidecar(
+                    "web",
+                    List.of("sh", "-c", "sleep 30"),
+                    dir.toString(),
+                    Map.of(),
+                    "http://web.example.test:8080/health",
+                    "",
+                    5_000L,
+                    true,
+                    Sidecar.Restart.NEVER);
+            try (Sidecars sidecars = start(List.of(spec), line -> {})) {
+                assertThat(SessionContext.where(request, sidecars::awaitReady)).isEmpty();
+            }
+            assertThat(hosts).containsExactly("web.example.test:8080");
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+            proxy.stop(0);
         }
     }
 
