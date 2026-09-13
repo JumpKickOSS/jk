@@ -697,7 +697,8 @@ public final class PlannerTest {
         var marker = actionCache.lookup(stampKey);
         if (marker.isEmpty() || !TestStamp.green(marker.get())) return false;
         ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
-        ctx.label("tests up-to-date");
+        // A run that found no test is not up-to-date tests; it is a module with none to run.
+        ctx.label(TestStamp.noTests(marker.get()) ? "no tests" : "tests up-to-date");
         ctx.cached();
         // Replay the green run's counts (stored on the marker) so the summary
         // line reads "Passed N tests", not "No tests" — without this a
@@ -844,7 +845,7 @@ public final class PlannerTest {
      * Rerun only means "do not restore/skip the runner"; the marker still uses the normal content
      * key (not a verify scratch salt), so the next explain must see it (same contract as compile).
      * Skipped only when the key failed open, or when the run is no evidence — see
-     * {@link #greenStampAllowed}.
+     * {@link #stampFor}.
      */
     private static void recordOutcome(
             TaskContext ctx,
@@ -868,24 +869,41 @@ public final class PlannerTest {
             if (SessionCancel.cancelled()) throw new RuntimeException("test run cancelled");
             throw new RuntimeException(result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
         }
-        if (stampKey != null && greenStampAllowed(result, testSourcesExist)) {
-            actionCache.storeWithOutputs(
-                    testTaskId,
-                    stampKey,
-                    Map.of(),
-                    TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0));
+        if (stampKey == null) return;
+        switch (stampFor(result, testSourcesExist)) {
+            case GREEN ->
+                actionCache.storeWithOutputs(
+                        testTaskId,
+                        stampKey,
+                        Map.of(),
+                        TestStamp.outcome(result.total(), result.succeeded(), result.skipped(), 0));
+            case NO_TESTS -> actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.noTestsOutcome());
+            case NONE -> {}
         }
     }
 
+    /** What a finished run leaves for later builds under the same inputs. */
+    enum Stamp {
+        /** Tests ran and passed: the next build replays them as up-to-date. */
+        GREEN,
+        /** Nothing was there to run: the next build skips the fork and reports no tests. */
+        NO_TESTS,
+        /** No evidence either way: the next build runs the suite again. */
+        NONE
+    }
+
     /**
-     * Whether a run may be stored as the green marker later builds skip on. A module with test
-     * sources whose run executed nothing has produced no evidence — a discovery that named no
-     * class, a runner that started nothing — and a marker for it would replay "tests up-to-date"
-     * for tests that never ran; the next build runs the suite again instead. A module without test
+     * A passing run with tests is the green marker later builds skip on. A run that passed by
+     * executing nothing in a module with test sources is not evidence that tests pass — but it is
+     * evidence that there is nothing to run: helpers only, every test behind an excluded tag — and
+     * it gets a stamp of its own, so the module does not fork a discovery JVM on every build
+     * forever. A crashed discovery reports a failure and earns nothing. A module without test
      * sources has nothing to run, and its empty run is the whole truth.
      */
-    static boolean greenStampAllowed(TestSummary result, boolean testSourcesExist) {
-        return result.allPassed() && (result.total() > 0 || !testSourcesExist);
+    static Stamp stampFor(TestSummary result, boolean testSourcesExist) {
+        if (!result.allPassed()) return Stamp.NONE;
+        if (result.total() > 0 || !testSourcesExist) return Stamp.GREEN;
+        return Stamp.NO_TESTS;
     }
 
     /** The green run's counts replayed off a run-tests marker; {@code null} for markers written

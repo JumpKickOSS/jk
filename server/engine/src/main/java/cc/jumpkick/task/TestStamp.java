@@ -34,6 +34,9 @@ public final class TestStamp {
     public static final String SKIPPED = "tests.skipped";
     public static final String FAILED = "tests.failed";
 
+    /** Present on the record of a run that discovered no test at all; its value only says so. */
+    public static final String NO_TESTS = "tests.none";
+
     /** Prefix of the run-tests input that names the javac test compile's action key. */
     public static final String COMPILE_TEST = "compile-test:";
 
@@ -85,8 +88,24 @@ public final class TestStamp {
     }
 
     /**
-     * True when {@code record} is a run-tests marker whose run passed. A record with no failed
-     * count predates red markers and could only have been written by a green run.
+     * The record of a run that discovered zero tests without crashing: a module whose test sources
+     * hold helpers only, or whose every test the selection's tags exclude. Under the same inputs
+     * the next build skips the fork and reports no tests rather than tests up-to-date; a new test
+     * source or a changed selection is a new key, so the test it adds runs.
+     */
+    public static Map<String, String> noTestsOutcome() {
+        return Map.of(TOTAL, "0", SUCCEEDED, "0", SKIPPED, "0", FAILED, "0", NO_TESTS, "none discovered");
+    }
+
+    /** True when {@code record} is the marker of a run that discovered no test. */
+    public static boolean noTests(ActionCache.ActionRecord record) {
+        return record.outputs().containsKey(NO_TESTS);
+    }
+
+    /**
+     * True when {@code record} is a run-tests marker whose run passed — a green run, or a run that
+     * found no test to fail. A record with no failed count predates red markers and could only
+     * have been written by a green run.
      */
     public static boolean green(ActionCache.ActionRecord record) {
         String failed = record.outputs().get(FAILED);
