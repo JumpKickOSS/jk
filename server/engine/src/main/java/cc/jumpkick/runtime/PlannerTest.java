@@ -386,7 +386,7 @@ public final class PlannerTest {
                         javaCp,
                         processorCp,
                         javaTestOut,
-                        ctx.require(RELEASE),
+                        ctx.require(PROJECT).build().javac().testRelease(ctx.require(RELEASE)),
                         javacArgs,
                         ctx.require(PROJECT).build().javac().forTests(),
                         ctx.require(JAVA_HOME),

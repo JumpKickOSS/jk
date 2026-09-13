@@ -67,6 +67,20 @@ plugins a compile step invokes. Unknown keys under `[javac]` fail the parse. Lin
 (`[build] lint`), plugin-contributed and profile `javac` args come first in the argv, then the
 plugins, then `args`.
 
+`[javac.test]` has one key `[javac]` has not: `release`. A module's tests are compiled at the
+module's `java` level; `release = 21` under `[javac.test]` compiles the test sources alone with
+`--release 21`, so a `java = 17` library can be tested with JDK 21 test code while its main
+classes stay at class-file level 61 and its published artifact is unchanged. The value may not be
+below `java` — the key raises the suite's level, never lowers it — and the suite then needs a JDK
+of at least that release to run on.
+
+```toml
+java = 17                      # the library's level; main classes are 61.0
+
+[javac.test]
+release = 21                   # the suite may use a JDK 21 API; test classes are 65.0
+```
+
 **Error Prone's companions.** Error Prone documents two javac flags it needs beside the plugin,
 and jk does not add them silently: `-XDcompilePolicy=simple` (the default by-todo policy is not
 supported) and `--should-stop=ifError=FLOW` (so its checks still run after an ordinary compile

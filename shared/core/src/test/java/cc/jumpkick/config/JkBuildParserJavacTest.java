@@ -29,6 +29,39 @@ class JkBuildParserJavacTest {
     }
 
     @Test
+    void a_test_only_release_rides_on_the_test_table_and_never_on_the_main_one() {
+        JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                [javac.test]
+                release = 21
+                """);
+        JavacConfig javac = b.build().javac();
+        assertThat(javac.release()).isNull();
+        assertThat(javac.forTests().release()).isEqualTo(21);
+        assertThat(javac.testRelease(17)).isEqualTo(21);
+        assertThat(javac.testRelease(21)).isEqualTo(21);
+        assertThatThrownBy(() -> javac.testRelease(25))
+                .hasMessageContaining("[javac.test] release = 21 is below the module's java = 25");
+        assertThat(JavacConfig.EMPTY.testRelease(17))
+                .as("no table: the module's level")
+                .isEqualTo(17);
+
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [javac]
+                        release = 21
+                        """))
+                .hasMessageContaining("[javac] has no `release`")
+                .hasMessageContaining("java = N");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
+
+                        [javac.test]
+                        release = "21"
+                        """))
+                .hasMessageContaining("[javac.test].release must be a Java release number");
+    }
+
+    @Test
     void the_dotted_spelling_is_the_same_table() {
         JkBuild b = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
 
@@ -99,7 +132,7 @@ class JkBuildParserJavacTest {
                         test = {}
                         """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessage("[javac.test] unknown key `test` — expected one of: plugins, args");
+                .hasMessage("[javac.test] unknown key `test` — expected one of: plugins, args, release");
         assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + """
                         [javac.test.plugins.ErrorProne]
                         opts = []

@@ -415,7 +415,7 @@
         "args": { "type": "array", "items": { "type": "string" }, "description": "Verbatim javac arguments, appended after every plugin." },
         "test": {
           "type": "object",
-          "description": "[javac.test]: the same two keys; when present this table replaces [javac] for compile-test (an empty table turns the plugins off for the suite).",
+          "description": "[javac.test]: the same two keys, plus `release`; when present this table replaces [javac] for compile-test (an empty table turns the plugins off for the suite).",
           "properties": {
             "plugins": {
               "type": "object",
@@ -427,7 +427,11 @@
                 "additionalProperties": false
               }
             },
-            "args": { "type": "array", "items": { "type": "string" } }
+            "args": { "type": "array", "items": { "type": "string" } },
+            "release": {
+              "type": "integer",
+              "description": "The `--release` compile-test targets, when the suite is to use a newer API than the module's `java` level: a java = 17 library tested with JDK 21 test code. Not below `java`; compile-main and the published class-file level are untouched. Default: the module's `java`."
+            }
           },
           "additionalProperties": false
         }

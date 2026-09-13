@@ -542,7 +542,7 @@ final class ModuleForecast {
                     baseCp,
                     processorCp,
                     testOut,
-                    release,
+                    project.build().javac().testRelease(release),
                     javacArgs,
                     project.build().javac().forTests(),
                     javaHome,

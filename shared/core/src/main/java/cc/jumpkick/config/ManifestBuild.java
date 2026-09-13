@@ -682,8 +682,12 @@ public final class ManifestBuild {
     /** The keys {@code [javac]} may carry. */
     public static final List<String> JAVAC_KEYS = List.of("plugins", "args", "test");
 
-    /** The keys {@code [javac.test]} may carry: the same shape, one level only. */
-    public static final List<String> JAVAC_TEST_KEYS = List.of("plugins", "args");
+    /**
+     * The keys {@code [javac.test]} may carry: the same shape, one level only, plus {@code release}
+     * — the test compile's {@code --release} when the suite is to use a newer API than the module's
+     * {@code java} level allows. The main table has no {@code release}: that is {@code java = N}.
+     */
+    public static final List<String> JAVAC_TEST_KEYS = List.of("plugins", "args", "release");
 
     /** The keys one {@code [javac.plugins.<Name>]} table may carry. */
     public static final List<String> JAVAC_PLUGIN_KEYS = List.of("options");
@@ -701,7 +705,8 @@ public final class ManifestBuild {
      * jar is a {@code [processor-dependencies]} entry. Unknown keys fail the parse.
      *
      * <p>{@code [javac.test]} carries the same two keys and, when present, replaces the table for
-     * compile-test — an empty one turns the plugins off for the suite.
+     * compile-test — an empty one turns the plugins off for the suite. Its {@code release = N}
+     * targets the test compile alone at N, which must not be below the module's {@code java}.
      */
     static JavacConfig parseJavac(TomlTable root) {
         Object raw = root.get(List.of("javac"));
@@ -725,9 +730,21 @@ public final class ManifestBuild {
             TomlTable javac, String at, List<String> known, @Nullable JavacConfig test) {
         for (String key : javac.keySet()) {
             if (!known.contains(key)) {
+                if ("release".equals(key)) {
+                    throw new JkBuildParseException(at + " has no `release` — the module's level is the top-level"
+                            + " `java = N`; a test-only level is [javac.test] release = N");
+                }
                 throw new JkBuildParseException(
                         at + " unknown key `" + key + "` — expected one of: " + String.join(", ", known));
             }
+        }
+        Integer release = null;
+        if (javac.contains("release")) {
+            Object raw = javac.get(List.of("release"));
+            if (!(raw instanceof Long n) || n < 1 || n > Integer.MAX_VALUE) {
+                throw new JkBuildParseException(at + ".release must be a Java release number: release = 21");
+            }
+            release = n.intValue();
         }
         Map<String, List<String>> plugins = new LinkedHashMap<>();
         Object rawPlugins = javac.get(List.of("plugins"));
@@ -751,7 +768,7 @@ public final class ManifestBuild {
             }
         }
         List<String> args = stringArray(javac.get(List.of("args")), at + ".args");
-        return new JavacConfig(plugins, args, test);
+        return new JavacConfig(plugins, args, test, release);
     }
 
     /** {@code raw} as an array of strings; absent is empty. */
