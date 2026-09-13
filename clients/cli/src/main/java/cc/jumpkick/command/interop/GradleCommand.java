@@ -31,7 +31,7 @@ public final class GradleCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Passthrough to Gradle (jk manages the install)";
+        return "Run Gradle; jk options before the name (jk --help gradle)";
     }
 
     @Override

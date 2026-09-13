@@ -4,6 +4,7 @@ package cc.jumpkick.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.LiveRegion;
 import cc.jumpkick.model.command.CliCommand;
@@ -82,6 +83,21 @@ class CommandDispatchTest {
         // Hidden alias --directory of --dir remains accepted.
         assertThat(CommandDispatch.commandIndex(List.of("--directory", "/tmp", "build")))
                 .isEqualTo(2);
+    }
+
+    @Test
+    void top_level_help_says_where_a_passthrough_tools_own_help_lives() {
+        // `jk mvn --help` is Maven's help — everything after the name is the tool's — so the row on
+        // `jk --help` is the one place a user learns that jk's page for the command is `jk --help mvn`.
+        String help = Capture.stdout(() -> assertThat(Jk.execute("--help")).isZero());
+        List<String> passthrough = CommandDispatch.commands().stream()
+                .filter(c -> c.passthrough() && !c.hidden())
+                .map(CliCommand::name)
+                .toList();
+        assertThat(passthrough).contains("mvn", "gradle");
+        for (String name : passthrough) {
+            assertThat(help).as("the %s row points at jk's own help", name).contains("jk --help " + name);
+        }
     }
 
     @Test

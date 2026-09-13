@@ -38,7 +38,7 @@ public final class MvnCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Passthrough to Maven (jk manages the install)";
+        return "Run Maven; jk options before the name (jk --help mvn)";
     }
 
     @Override
