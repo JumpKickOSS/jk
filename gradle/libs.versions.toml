@@ -17,6 +17,7 @@ graalvm-native = "0.10.4"
 graalvm-sdk = "25.3.4.1"
 jgit = "7.7.1.202607240634-r"
 jib-core = "0.28.2"
+guava = "33.7.1-jre"
 groovy = "5.1.1"
 jspecify = "1.0.1"
 lombok = "1.18.48"
@@ -71,6 +72,7 @@ sigstore-java          = { module = "dev.sigstore:sigstore-java",               
 
 # OCI image
 jib-core               = { module = "com.google.cloud.tools:jib-core",              version.ref = "jib-core" }
+guava                  = { module = "com.google.guava:guava",                       version.ref = "guava" }
 
 # Kotlin compile worker (Build Tools API — compile-time only; impl resolved at runtime)
 kotlin-build-tools-api = { module = "org.jetbrains.kotlin:kotlin-build-tools-api",  version.ref = "kotlin-bta" }

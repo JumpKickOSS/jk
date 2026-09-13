@@ -15,6 +15,9 @@ dependencies {
     implementation(project(":jk-api"))
     implementation(project(":plugin-sdk"))  // SPI + :host codec/primitives (worker runtime classpath via POM)
     implementation(libs.jib.core)
+    // The JRE flavour of Guava, pinned: jib-core needs its stream collectors, and the -android
+    // flavour of the same module lacks them. Same pin as plugins/image-builder/jk.toml.
+    implementation(libs.guava)
     // Unpacking a base image's layers to reach its JRE (BaseJre); jib-core already brings it.
     implementation(libs.commons.compress)
     testImplementation(testFixtures(project(":host")))
