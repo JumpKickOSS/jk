@@ -3,6 +3,7 @@ package cc.jumpkick.guard.eval;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,5 +45,16 @@ class SourcePathsTest {
         assertThat(SourcePaths.resolve("c", c, "a/C.java")).isEqualTo("c/src/a/C.java");
         assertThat(SourcePaths.rootHolding(c, "a/C.java")).isEqualTo("src");
         assertThat(SourcePaths.rootHolding(c, "a/Nope.java")).isNull();
+    }
+
+    /** The user page states the spelling an `allow` path must follow, with a Kotlin-root and a compact example. */
+    @Test
+    void the_guards_page_states_the_spelling_rule_with_both_examples() throws IOException {
+        String page = Files.readString(RepoRoot.file(SourcePathsTest.class, "docs/user/guards.md"));
+        assertThat(page)
+                .contains("`" + SourcePaths.FALLBACK + "` is the spelling only when no")
+                .containsPattern("in\\s*=\\s*\"\\w+/src/main/kotlin/[\\w/]+\\.kt\"")
+                .containsPattern("in\\s*=\\s*\"\\w+/src/[\\w/]+\\.java\"")
+                .contains("@Allow(in = …)");
     }
 }

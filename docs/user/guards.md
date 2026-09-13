@@ -43,6 +43,25 @@ reason = "the CLI entry point writes its usage to the terminal on purpose"
 code is not a mechanism: the engine does not read them, and the pre-commit hook refuses a staged
 line shaped like one.
 
+A file path is the file's real location from the workspace root: the module directory, then
+whichever source root on disk holds the file — `src/main/kotlin` for a Kotlin class, `src/` in a
+compact module, a suite's own root for a test class. `src/main/java` is the spelling only when no
+root on disk holds the file (a class compiled from sources generated elsewhere). Two `allow`
+entries against bytecode sites, one in a Kotlin root and one in a compact module:
+
+```toml
+[[guards.no-system-out.allow]]
+in     = "web/src/main/kotlin/com/example/web/Boot.kt"
+reason = "the bootstrap prints the listening port before the logger exists"
+
+[[guards.no-system-out.allow]]
+in     = "tools/src/com/example/tools/Main.java"
+reason = "a command-line tool; stdout is its result"
+```
+
+A workspace-scoped guard test reports a site under the module that owns the class, and an `allow`
+naming a module exempts that module's sites.
+
 A module-lane rule that reads test classes (`tiers`, `annotate` with `on = "test-class"`) is clean
 in a module that has none — a workspace has modules without tests, and a rule with nothing to
 examine there has nothing to say. It carries no bite evidence from such a module; what proves it can
@@ -220,7 +239,10 @@ A rule the closed vocabulary cannot express is a **guard test**: a `@Guard` meth
 `@GuardSuite` class under `src/guard/java`, given the same facts, model and text the TOML
 rules read, judged in the same lanes and reported the same way. `jk guard explain --schema
 guard-test` prints the skeleton; [Test](test.md#the-guard-suite-is-not-a-test-suite) explains
-how the source set is compiled and why it is not a test suite.
+how the source set is compiled and why it is not a test suite. `@Allow(in = …)` on a guard is
+the `allow` entry above in annotation form — a module, a class glob, a fingerprint, or a file's
+real path from the workspace root through the source root that holds it — and a
+workspace-scoped guard's site is spelled under the member that owns the class.
 
 ## Fixtures
 
