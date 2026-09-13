@@ -21,8 +21,10 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -219,20 +221,25 @@ final class BaseJre {
         try (InputStream raw = Files.newInputStream(archive);
                 InputStream in = isGzip(archive) ? new GZIPInputStream(raw) : raw;
                 TarArchiveInputStream tar = new TarArchiveInputStream(in)) {
+            // What this layer has written so far, with every directory above it: a whiteout
+            // applies to the lower layers only, so an entry the layer lists ahead of one of its
+            // whiteouts stays.
+            Set<Path> own = new HashSet<>();
             TarArchiveEntry entry;
             while ((entry = tar.getNextEntry()) != null) {
                 Path target = dest.resolve(entry.getName()).normalize();
                 if (!target.startsWith(dest)) continue; // path traversal in an untrusted archive
                 String name =
                         target.getFileName() == null ? "" : target.getFileName().toString();
-                // OCI whiteouts: `.wh..wh..opq` clears the directory it sits in; `.wh.<x>`
-                // deletes <x> from lower layers. Ignoring them resurrects files the image
-                // deliberately removed.
+                // OCI whiteouts: `.wh..wh..opq` is the opaque marker — the directory it sits in
+                // starts empty at this layer, and at the layer root that directory is `dest`
+                // itself; `.wh.<x>` deletes <x> from lower layers. Ignoring them resurrects
+                // files the image deliberately removed.
                 if (name.equals(".wh..wh..opq")) {
                     Path dir = target.getParent();
                     if (dir != null && Files.isDirectory(dir) && dir.startsWith(dest)) {
                         try (var children = Files.list(dir)) {
-                            for (Path child : children.toList()) PathUtil.deleteRecursivelyOrThrow(child);
+                            for (Path child : children.toList()) whiteout(child, own);
                         }
                     }
                     continue;
@@ -244,11 +251,12 @@ final class BaseJre {
                     String whited = name.substring(".wh.".length());
                     if (whited.isEmpty() || whited.equals(".") || whited.equals("..")) continue;
                     Path victim = target.resolveSibling(whited).normalize();
-                    if (victim.startsWith(dest) && !victim.equals(dest)) PathUtil.deleteRecursivelyOrThrow(victim);
+                    if (victim.startsWith(dest) && !victim.equals(dest)) whiteout(victim, own);
                     continue;
                 }
                 if (entry.isDirectory()) {
                     Files.createDirectories(target);
+                    claim(own, target, dest);
                     continue;
                 }
                 // A symlink entry carries no content: writing it as a file leaves a 0-byte stub
@@ -258,11 +266,34 @@ final class BaseJre {
                 try {
                     Files.copy(tar, target, StandardCopyOption.REPLACE_EXISTING);
                     if ((entry.getMode() & 0100) != 0) target.toFile().setExecutable(true, false);
+                    claim(own, target, dest);
                 } catch (IOException e) {
                     if (!tolerate) throw e;
                 }
             }
         }
+    }
+
+    /** Record {@code written} and every directory between it and {@code dest} as this layer's. */
+    private static void claim(Set<Path> own, Path written, Path dest) {
+        for (Path p = written; p != null && !p.equals(dest); p = p.getParent()) own.add(p);
+    }
+
+    /**
+     * Remove {@code path} the way a whiteout does: what the lower layers put there goes, what this
+     * layer wrote stays. A directory the layer wrote into is kept and searched, so the lower
+     * layers' files inside it still go while the layer's own do not.
+     */
+    private static void whiteout(Path path, Set<Path> own) throws IOException {
+        if (!own.contains(path)) {
+            PathUtil.deleteRecursivelyOrThrow(path);
+            return;
+        }
+        // A file the layer wrote has no children; a directory it wrote into is searched.
+        PathUtil.forEachChild(path, (child, attrs) -> {
+            whiteout(child, own);
+            return true;
+        });
     }
 
     /**
