@@ -58,7 +58,7 @@ final class EngineResolveAdapter {
             throws IOException {
         return EngineReads.request(
                 paths,
-                new AffectedTestsRequest(dir.toString(), selection, since, modules).encode(),
+                EngineJobs.envelope(new AffectedTestsRequest(dir.toString(), selection, since, modules).encode()),
                 EngineProtocol.AFFECTED_TESTS_ACK,
                 "affected-tests request",
                 AffectedTestsReport::decode);
@@ -72,13 +72,13 @@ final class EngineResolveAdapter {
     static OutdatedReport runOutdated(EnginePaths.Paths paths, EngineRequests.OutdatedRequest req) throws IOException {
         return EngineReads.request(
                 paths,
-                new OutdatedRequest(
+                EngineJobs.envelope(new OutdatedRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
                                 req.repoUrl() != null ? req.repoUrl().toString() : null,
                                 req.offline(),
                                 req.force())
-                        .encode(),
+                        .encode()),
                 EngineProtocol.OUTDATED_ACK,
                 "outdated request",
                 OutdatedReport::decode);
@@ -88,22 +88,27 @@ final class EngineResolveAdapter {
     static EngineRequests.LockOutcome runLock(
             EnginePaths.Paths paths, EngineRequests.LockRequest req, EngineRequests.LockHandler handler)
             throws IOException {
-        return streamCascade(
-                paths,
-                new LockRequest(
-                                req.entryDir().toString(),
-                                req.cache().toString(),
-                                req.features(),
-                                req.noDefaultFeatures(),
-                                req.sources(),
-                                req.repoUrl() != null ? req.repoUrl().toString() : null,
-                                req.offline(),
-                                req.force(),
-                                req.verbose(),
-                                req.freshen())
-                        .encode(),
-                handler,
-                "lock");
+        return streamCascade(paths, lockRequestLine(req), handler, "lock");
+    }
+
+    /**
+     * The lock request line, session envelope attached. The resolve behind {@code jk lock} runs in
+     * a resident engine whose own environment is the shell that started it; the caller's {@code
+     * JK_REPO_*} credentials, variant and toolchain choice reach it only on the request.
+     */
+    static String lockRequestLine(EngineRequests.LockRequest req) {
+        return EngineJobs.envelope(new LockRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.features(),
+                        req.noDefaultFeatures(),
+                        req.sources(),
+                        req.repoUrl() != null ? req.repoUrl().toString() : null,
+                        req.offline(),
+                        req.force(),
+                        req.verbose(),
+                        req.freshen())
+                .encode());
     }
 
     /** Run {@code jk update}'s full re-resolve cascade against the engine, driving {@code handler}. */
@@ -123,9 +128,9 @@ final class EngineResolveAdapter {
         return streamCascade(paths, updateRequestLine(req, true, gitTarget), NOOP_HANDLER, "update");
     }
 
-    private static String updateRequestLine(
-            EngineRequests.UpdateRequest req, boolean gitOnly, @Nullable String gitTarget) {
-        return new UpdateRequest(
+    /** The update request line, session envelope attached — see {@link #lockRequestLine}. */
+    static String updateRequestLine(EngineRequests.UpdateRequest req, boolean gitOnly, @Nullable String gitTarget) {
+        return EngineJobs.envelope(new UpdateRequest(
                         req.entryDir().toString(),
                         req.cache().toString(),
                         req.features(),
@@ -137,7 +142,7 @@ final class EngineResolveAdapter {
                         req.force(),
                         req.verbose(),
                         Objects.requireNonNullElse(req.platform(), ""))
-                .encode();
+                .encode());
     }
 
     /**
@@ -163,7 +168,7 @@ final class EngineResolveAdapter {
 
             send(
                     writer,
-                    new SyncRequest(
+                    EngineJobs.envelope(new SyncRequest(
                                     req.entryDir().toString(),
                                     req.cache().toString(),
                                     req.jdksDir() != null ? req.jdksDir().toString() : null,
@@ -173,7 +178,7 @@ final class EngineResolveAdapter {
                                     req.force(),
                                     req.refresh(),
                                     req.verbose())
-                            .encode());
+                            .encode()));
 
             return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
                 private final List<Task> steps = new ArrayList<>();

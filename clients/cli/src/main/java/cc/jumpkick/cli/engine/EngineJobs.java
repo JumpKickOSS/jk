@@ -363,10 +363,12 @@ final class EngineJobs {
 
     /**
      * The plain session envelope every job-shaped request rides: variant selection, client env,
-     * worker-JVM tuning, rebuild, and the {@code --no-timeline} preference. An empty envelope
-     * attaches nothing, so an unadorned request is byte-identical to the bare body.
+     * worker-JVM tuning, rebuild, the {@code --no-timeline} preference, and the toolchain
+     * selection. An empty envelope attaches nothing, so an unadorned request is byte-identical to
+     * the bare body. Shared with the resolve adapter: a lock's resolve reads the caller's {@code
+     * JK_REPO_*} credentials from the same envelope a build does.
      */
-    private static String envelope(String body) {
+    static String envelope(String body) {
         Session session = SessionContext.current();
         return ProtoSession.withToolchain(
                 ProtoSession.withSession(
