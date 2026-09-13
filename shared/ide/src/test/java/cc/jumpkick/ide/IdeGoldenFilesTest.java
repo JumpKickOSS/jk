@@ -19,8 +19,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The generators produce the same bytes they did when they lived in the CLI: {@code ide-golden/}
  * is that output for {@link IdeGoldenFixture}, captured before the move. A deliberate change to a
- * generated file re-captures the golden ({@code IDE_GOLDEN_CAPTURE=<resources dir> ./gradlew
- * :ide:test --tests IdeGoldenFilesTest}); an accidental one fails here.
+ * generated file re-captures the golden ({@code IDE_GOLDEN_CAPTURE=<resources dir> jk test -m
+ * shared/ide --class cc.jumpkick.ide.IdeGoldenFilesTest}); an accidental one fails here.
  *
  * <p>Goldens are stored with every dot-segment spelled {@code dot-} and a {@code .golden} suffix
  * ({@code dot-idea/compiler.xml.golden}, {@code app/dot-classpath.golden}): the repository ignores

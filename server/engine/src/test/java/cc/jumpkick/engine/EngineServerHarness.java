@@ -40,7 +40,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
  */
 abstract class EngineServerHarness {
 
-    // @TempDir nests deep enough under Gradle's build dir to overrun what the JDK will bind as a
+    // @TempDir nests deep enough under a build directory to overrun what the JDK will bind as a
     // Unix domain socket. ShortTempDirs owns the short root, the creation, and the teardown-safe
     // cleanup (an engine under test may still be deleting its own socket/pid/lock mid-walk).
     @RegisterExtension

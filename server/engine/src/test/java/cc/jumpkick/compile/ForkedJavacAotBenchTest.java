@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
  * javac}). Prints medians; does not fail on deltas (CI noise). Run:
  *
  * <pre>
- *   ./gradlew :engine:test --tests cc.jumpkick.compile.ForkedJavacAotBenchTest
+ *   jk test --profile bench -m server/engine --class cc.jumpkick.compile.ForkedJavacAotBenchTest
  * </pre>
  *
  * Engine host must be HotSpot 25+ ({@code PluginAot.eligible}); Graal never trains/maps.

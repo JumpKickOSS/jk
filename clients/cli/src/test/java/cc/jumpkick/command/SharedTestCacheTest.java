@@ -19,8 +19,8 @@ class SharedTestCacheTest {
     }
 
     @Test
-    void honours_the_gradle_supplied_location() {
-        // The Gradle test task points this at <module>/build/test-shared-cache.
+    void honours_the_configured_location() {
+        // A harness may point this at a shared directory.
         String configured = System.getProperty("jk.test.cache.dir");
         if (configured != null && !configured.isBlank()) {
             assertThat(SharedTestCache.dir().toString()).isEqualTo(configured);

@@ -11,7 +11,7 @@
 # What a package-qualified reference is, for counting: two or more all-lowercase dot-separated
 # segments followed by an UpperCamel identifier, in code — comments, string literals and the file's
 # own `import`/`package` lines do not count. Recount one file by deleting its entry and running
-# `./gradlew :<module>:checkNoFqcn`; the failure prints the number.
+# `jk guard`; the failure prints the number.
 #
 # The three rules `checkNoFqcn` enforces against this list:
 #
@@ -88,7 +88,7 @@
 #
 # The apply run is not optional: a file that is both unformatted AND unparseable reports as
 # `unformatted`, because --check still has to fail on it. Then delete this section's entries, run
-# `./gradlew checkNoFqcn --continue`, and every file it names as "not in fqcn-baseline.txt" that is
+# `jk guard`, and every file it names as "not in fqcn-baseline.txt" that is
 # also in /tmp/unreachable belongs here, with the count the guard printed. The counts come from the
 # guard and never from a second implementation of the counting rule. A file the guard does not name
 # has no reference left and simply drops out — which is how this section shrinks by itself as

@@ -15,9 +15,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * The comment/string blanker has one owner in production code: {@link CodeText}. The gate script
- * and buildSrc keep their own copies until the Gradle-side follow-up retires them; neither is under
- * {@code src/main/java}, so this scan does not see them and does not excuse them. A fourth copy
+ * The comment/string blanker has one owner in production code: {@link CodeText}. A second copy
  * inside a module is what this catches — it is the shape that produced three.
  */
 class CodeTextSingleOwnerTest {

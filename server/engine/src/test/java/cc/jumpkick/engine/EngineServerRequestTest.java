@@ -182,7 +182,7 @@ class EngineServerRequestTest extends EngineServerHarness {
     /**
      * Engine-hosted {@code jk audit} round-trip (Wave 2 of the slim-client migration — the hosted
      * worker commands): a real server over the socket forks a real {@code jk-auditor} worker JVM
-     * (located via {@code -Djk.auditor.plugin.jar}, wired by the Gradle build) against a mock OSV
+     * (located via {@code -Djk.auditor.plugin.jar}, wired by the run-tests step) against a mock OSV
      * API. Asserts the single-plan wire conversation — plan burst → plan events → structured
      * {@code audit-finding} stream → terminal {@code plan-finish} — carrying the mock vulnerability.
      */

@@ -69,9 +69,9 @@ public final class JUnitLauncher {
 
     /**
      * {@code jk.<worker>.plugin.jar} (and {@code jk.engine.jar}) overrides handed to the test JVM so
-     * tests that fork a first-party plugin or materialize the engine locate jars by path. Mirrors
-     * what Gradle's test config provides; under {@code jk build} the {@code run-tests} step resolves
-     * the freshly-built sibling jars and passes them here. Empty when none are built (e.g. a scoped
+     * tests that fork a first-party plugin or materialize the engine locate jars by path. The
+     * {@code run-tests} step resolves the freshly-built sibling jars and passes them here. Empty
+     * when none are built (e.g. a scoped
      * single-module build) — tests then fall back to CAS-by-sha.
      */
     private Map<String, String> workerJarProps = Map.of();
@@ -172,11 +172,11 @@ public final class JUnitLauncher {
         // Suite JVMs: no AOT train-on-miss (nested engines / compiler workers); still map caches.
         flags.add("-Djk.aot.train=off");
         // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
-        // EngineTestExtension — match Gradle's:cli:test jvmArgs / systemProperty setup.
+        // EngineTestExtension.
         if (!testEnv.extras().isEmpty()) {
             flags.add("--enable-native-access=ALL-UNNAMED");
             flags.add("-Djunit.jupiter.extensions.autodetection.enabled=true");
-            // Match Gradle :cli:test — short /tmp factory + soft-fail delete. Nested engines
+            // Short /tmp factory + soft-fail delete. Nested engines
             // hardlink into @TempDir caches; macOS can fail Standard delete. The strategy
             // reports success anyway. Cleanup stays ALWAYS: NEVER left tens of thousands of
             // dirs on tmpfs /tmp until the next @TempDir could not allocate an inode.
@@ -405,8 +405,8 @@ public final class JUnitLauncher {
         var classpathBase = new LinkedHashSet<Path>();
         classpathBase.add(testClassesDir);
         classpathBase.addAll(runtimeClasspath);
-        // Thin workers: jar + Maven runtime closure from the POM. Gradle-vendored runners
-        // already contain PluginMain; extra entries are harmless.
+        // Thin workers: jar + Maven runtime closure from the POM. A runner that vendors
+        // PluginMain already has it; extra entries are harmless.
         classpathBase.addAll(WorkerLaunchClasspath.paths(runnerJar));
         String classpath = Classpaths.join(classpathBase);
         this.cliTempDirSupport = CliTempDirSupport.onClasspath(classpathBase);
@@ -832,12 +832,12 @@ public final class JUnitLauncher {
 
     /**
      * Look up the jk-test-runner jar in the local CAS, keyed by its SHA-256 (the hash this build of
-     * engine was paired against — embedded as a resource at {@link #RUNNER_SHA_RESOURCE} by Gradle's
-     * {@code writeRunnerSha} task).
+     * engine was paired against — embedded as a resource at {@link #RUNNER_SHA_RESOURCE} by the
+     * engine's build).
      *
-     * <p>Until jk-test-runner ships to Maven Central, the user is responsible for side-loading the
-     * jar into the CAS — typically by running {@code ./gradlew :test-runner:installLocalCas} in jk's
-     * own tree. Once the runner is published, {@code jk sync} will populate the CAS automatically.
+     * <p>A runner absent from the CAS is side-loaded by {@code jk install} in jk's own tree or
+     * fetched from the official repository; {@code jk sync} populates the CAS from the local Maven
+     * repository.
      *
      * <p>Throws {@link IOException} with side-load instructions if the jar isn't in the CAS at the
      * expected hash. The error message spells out the exact destination path the user needs to

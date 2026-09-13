@@ -15,13 +15,13 @@ import org.junit.platform.launcher.TestPlan;
 /**
  * Writes the order this JVM ran its test classes in, to {@code build/reports/jk-class-order.txt}.
  *
- * <p>An order-dependent failure is only investigable if the order is known, and neither Gradle nor
- * jk records it: workers pull classes off a shared queue, so the assignment is decided by whichever
+ * <p>An order-dependent failure is only investigable if the order is known, and the runner does
+ * not record it: workers pull classes off a shared queue, so the assignment is decided by whichever
  * worker asks first and is gone the moment the run ends. That is why's flake could only be
  * described statistically and's writer was never identified.
  *
- * <p>One file per test JVM under {@code build/reports/class-order/}, appended. Gradle runs several
- * test plans per JVM, each in its own classloader with a fresh listener, so writing the file whole
+ * <p>One file per test JVM under {@code build/reports/class-order/}, appended. A runner may run
+ * several test plans per JVM, each in its own classloader with a fresh listener, so writing the file whole
  * left only the last batch — 14 of 155 classes, measured — and a static "already truncated" flag
  * did not survive the classloader either.
  *
@@ -51,7 +51,7 @@ public final class ClassOrderRecorder implements TestExecutionListener {
         if (order.isEmpty()) return;
         try {
             // One file per test JVM, always appended. A static "have I truncated yet" flag does
-            // not survive: Gradle runs each test plan in its own classloader, so the flag reset and
+            // not survive: a runner may run each test plan in its own classloader, so the flag reset and
             // every plan truncated, leaving 14 of 155 classes. The pid is stable across those
             // classloaders; the directory goes away with build/.
             Path f = Path.of(

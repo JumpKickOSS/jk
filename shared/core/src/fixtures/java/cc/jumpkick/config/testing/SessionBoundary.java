@@ -124,11 +124,10 @@ public final class SessionBoundary implements TestExecutionListener {
     }
 
     /**
-     * Also write the summary to a file. The listener runs inside the test JVM, whose stdout Gradle
-     * discards unless `showStandardStreams` is on — an attribution report nobody reads is not a
-     * guard. The path is relative to the JVM's working directory, which is the owning module under
-     * Gradle; under a jk run it lands beside wherever the worker was started, which is fine because
-     * the file is looked up, not watched.
+     * Also write the summary to a file. The listener runs inside the test JVM, whose stdout a runner
+     * may discard — an attribution report nobody reads is not a guard. The path is relative to the
+     * JVM's working directory, so it lands beside wherever the worker was started, which is fine
+     * because the file is looked up, not watched.
      */
     private static void report(String text) {
         try {

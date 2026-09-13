@@ -3,6 +3,7 @@ package cc.jumpkick.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -150,14 +151,10 @@ class WireTokenParityTest {
         }
     }
 
-    /** The checkout root above {@code clients/web} — where the engine's SSE writer sources live. */
-    private static Path repoRoot() throws IOException {
-        for (Path d = WebClientJsTest.moduleRoot().toAbsolutePath(); d != null; d = d.getParent()) {
-            if (Files.isRegularFile(d.resolve("settings.gradle.kts"))
-                    && Files.isDirectory(d.resolve("server/engine"))) {
-                return d;
-            }
-        }
-        throw new IOException("cannot locate the jk checkout root above clients/web");
+    /** The checkout root — where the engine's SSE writer sources live. */
+    private static Path repoRoot() {
+        return RepoRoot.dir(WireTokenParityTest.class, "server/engine")
+                .getParent()
+                .getParent();
     }
 }

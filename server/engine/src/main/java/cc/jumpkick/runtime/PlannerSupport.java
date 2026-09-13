@@ -599,13 +599,13 @@ public final class PlannerSupport {
     }
 
     /**
-     * Resolve engine assembly + every first-party worker jar so CLI tests match Gradle's {@code
-     * -Djk.engine.jar} / {@code -Djk.*.plugin.jar} wiring.
+     * Resolve engine assembly + every first-party worker jar so CLI tests find the engine and the
+     * workers this build produced through {@code -Djk.engine.jar} / {@code -Djk.*.plugin.jar}.
      *
      * <p>{@code jk test} (testOnly) does not package the engine assembly, so the workspace
      * {@code *-all.jar} is often missing. Fall back to the host engine jar (the process serving
-     * this build) or the product-lib install under {@code EngineInstall} — same fat jar Gradle
-     * hands CLI tests via {@code :engine:shadowJar}.
+     * this build) or the product-lib install under {@code EngineInstall} — the same fat jar the
+     * CLI's integration tests spawn.
      */
     static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
         Map<String, Path> siblings = siblingMainJars(moduleDir);
@@ -641,8 +641,8 @@ public final class PlannerSupport {
 
     /**
      * Fat engine jar this process was launched from, the same version under {@link
-     * cc.jumpkick.cache.EngineInstall}, or a monorepo product path ({@code build/dist/lib},
-     * Gradle {@code build/libs}, pure-jk {@code target/server/engine}). Null only when none
+     * cc.jumpkick.cache.EngineInstall}, or a monorepo product path ({@code target/dist/lib},
+     * {@code target/server/engine}). Null only when none
      * of those exist (cold checkout with no install and no prior package).
      */
     /**
@@ -663,7 +663,7 @@ public final class PlannerSupport {
                 }
             }
         } catch (Exception e) {
-            // fall through — exploded test classpath is common under Gradle
+            // fall through — an exploded test classpath has no jar to name
             Log.debug("locateHostEngineJar: fall through", e);
         }
         for (Path p : Classpaths.split(System.getProperty("java.class.path", ""))) {
@@ -680,14 +680,13 @@ public final class PlannerSupport {
                 return mat.get().engineJar().toAbsolutePath().normalize();
             }
         } catch (RuntimeException e) {
-            // Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no engine jar.
+            // An isolated test JK_HOME (a module sandbox / nested CLI suite) has no engine jar.
             Log.debug(
-                    "locateHostEngineJar: Isolated JK_HOME (Gradle :engine:test / nested CLI suite) has no engine jar",
+                    "locateHostEngineJar: isolated test JK_HOME (module sandbox / nested CLI suite) has no engine jar",
                     e);
         }
-        // Last resort: monorepo product outputs relative to user.dir (and parents). Pure-jk
-        // nested isolation runs with user.dir = clients/cli; host run-tests has monorepo root
-        // or server/engine as cwd under Gradle.
+        // Last resort: monorepo product outputs relative to user.dir (and parents). Nested
+        // isolation runs with user.dir = clients/cli; a module-rooted run has the module as cwd.
         return findMonorepoEngineJar(
                 Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize());
     }
@@ -741,7 +740,7 @@ public final class PlannerSupport {
         env.put("JK_STREAM_IDLE_MS", "45000");
         env.put("TERM", "xterm-256color");
         env.put("CI", "false");
-        // Clear NO_COLOR so TUI ANSI assertions match Gradle's deterministic setup.
+        // Clear NO_COLOR so TUI ANSI assertions are deterministic.
         env.put("NO_COLOR", "");
         // Nested engines + workers: train-on-miss is pure overhead under the suite.
         env.put("JK_AOT_TRAIN", "off");
@@ -1017,8 +1016,8 @@ public final class PlannerSupport {
     }
 
     /**
-     * Class dirs of workspace MAIN dependencies to vendor into a plugin-worker jar (Gradle
-     * {@code bundledCodec}: plugin-sdk + jsonl). External deps stay on the sidecar POM.
+     * Class dirs of workspace MAIN dependencies to vendor into a plugin-worker jar (plugin-sdk +
+     * host). External deps stay on the sidecar POM.
      *
      * <p>{@link cc.jumpkick.config.JkBuildParser#parse(Path)} rewrites {@code workspace:}
      * placeholders to real {@code group:artifact} coordinates before packaging runs, so sibling

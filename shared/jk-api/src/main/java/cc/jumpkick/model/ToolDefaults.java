@@ -7,7 +7,7 @@ package cc.jumpkick.model;
  * {@code GroovyResolver.DEFAULT_VERSION} and {@code ScalaResolver.DEFAULT_VERSION} own theirs, and
  * a second copy here was a "keep in sync" comment standing in for a compiler. Giter8 bundles
  * ({@code templates/quarkus.g8}, {@code clients/cli/src/main/resources/giter8}) and the quarkus
- * plugin's gradle compileOnly pin carry their own copies by design — they are data files and a
+ * plugin's compile-only pin carry their own copies by design — they are data files and a
  * separate toolchain, neither of which can read a Java constant.
  */
 public final class ToolDefaults {

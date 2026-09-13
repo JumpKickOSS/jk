@@ -31,8 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>The default is the point. A test JVM inherits the engine's environment, so without the sandbox
  * a suite would read the developer's real {@code JK_HOME} and be able to write the real local m2.
- * That is what jk's Gradle build redirects per module, and it should not be something each project
- * has to remember.
+ * The sandbox redirects that per module, so no project has to remember it.
  */
 class TestEnvTest {
 
@@ -89,8 +88,8 @@ class TestEnvTest {
     void the_temp_root_is_sandboxed_under_the_module_by_default(@TempDir Path tmp) throws Exception {
         // Not the host's. A forked test JVM inherits the engine's temp dir otherwise, and then
         // @TempDir writes where jk neither cleans nor controls the shape of the path — which is how
-        // the /var -> /private/var link on macOS got into a comparison in jk-java-compiler that
-        // Gradle's build could not reach, because Gradle has redirected this per module all along.
+        // the /var -> /private/var link on macOS got into a comparison in jk-java-compiler that a
+        // module-owned temp root keeps out of reach.
         JkBuild project = project(tmp, "");
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project)).extras();
 

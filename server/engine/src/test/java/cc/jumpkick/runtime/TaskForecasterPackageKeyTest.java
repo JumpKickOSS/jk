@@ -27,8 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
  * tried asserted two hand-typed {@code List.of(...)} literals in this file against each other,
  * never reading a token out of {@code PlannerPackage}, {@code PlannerTails} or
  * {@link TaskForecaster}, and stayed green through six live drifts. That is the
- * {@code checkForecastKeyParity} guard in {@code server/engine/build.gradle.kts}, which
- * reads the real token bags.
+ * {@code forecast-key-parity} guard test in {@code server/engine/src/guard}, which reads the
+ * real token bags.
  */
 class TaskForecasterPackageKeyTest {
 

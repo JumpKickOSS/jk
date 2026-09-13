@@ -297,13 +297,13 @@ class AndroidSpikeTest {
         List<URL> urls = new ArrayList<>();
         String cp = System.getProperty("jk.android.apksig.classpath", "");
         if (!cp.isBlank()) {
-            // Gradle wires apksig via the testApksig configuration.
+            // A harness may hand apksig over as a classpath property.
             for (String part : cp.split(File.pathSeparator)) {
                 if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
             }
         } else {
-            // Pure-jk fork: no Gradle configuration — apksig is a dependency of the android
-            // worker itself, so rebuild -cp from the worker POM (jk.android.plugin.jar is set
+            // Otherwise apksig is a dependency of the android worker itself, so rebuild -cp from
+            // the worker POM (jk.android.plugin.jar is set
             // by [build] test-plugin-jars).
             String workerJar = System.getProperty("jk.android.plugin.jar", "");
             assertThat(workerJar)

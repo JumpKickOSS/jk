@@ -49,7 +49,9 @@ public final class PluginJarNotFoundException extends RuntimeException {
         if (detail != null && !detail.isBlank()) {
             sb.append(detail).append('\n');
         }
-        sb.append("Run `./gradlew :").append(artifactId.replace("jk-", "")).append(":installLocal`");
+        sb.append("Run `jk install` in jk's own tree (it shelves ")
+                .append(artifactId)
+                .append(")");
         sb.append(" or set -D").append(jarProperty).append(" to override.");
         sb.append("\nOfficial repo: https://jumpkick.build/repo/");
         return sb.toString();

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Proves the listener is registered and ran before this test: the property must already name
- * this JVM, under Gradle and jk alike — a registration slip would otherwise show up only as
+ * this JVM in every test JVM — a registration slip would otherwise show up only as
  * engines left behind after a crashed worker.
  */
 class EngineOwnerListenerTest {

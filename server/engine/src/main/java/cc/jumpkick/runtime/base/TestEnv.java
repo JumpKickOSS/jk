@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
  * <p>The default matters more than the knob. Without sandboxing a test JVM would read the
  * developer's real product layout and write the real local m2. Without the machine-env seed it
  * would search the daemon's {@code PATH} — whichever shell started the engine, possibly days ago —
- * instead of the shell that ran {@code jk}. jk's Gradle build redirects the product layout per
- * module for exactly that reason; the machine seed is the matching answer for tools on {@code PATH}.
+ * instead of the shell that ran {@code jk}. The sandbox redirects the product layout per module
+ * for exactly that reason; the machine seed is the matching answer for tools on {@code PATH}.
  *
  * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR} and {@code JK_M2_LOCAL} point at the module's throwaway
  * sandbox ({@link TestHomes}) and the temp root at the module's build output, unless the module says
@@ -58,9 +58,8 @@ public final class TestEnv {
      * strategy. And the host temp root is not a neutral path: on macOS it sits under the
      * {@code /var} → {@code /private/var} link, so any code that compares a temp path against a
      * path it was configured with is comparing two spellings of one directory. That is a real
-     * defect either way, but jk found it in {@code jk-java-compiler} while Gradle — which has
-     * redirected this per module all along — could not, and a difference that decides whether a
-     * gate can see a bug is not one to leave in place.
+     * defect, found in {@code jk-java-compiler} by a run whose temp root was the host's; a temp
+     * root the module owns is what lets a gate see it.
      *
      * <p>All three names, because a test that forks a process hands it the environment, not this
      * JVM's system properties. {@link cc.jumpkick.test.JUnitLauncher} mirrors the same directory
@@ -136,7 +135,7 @@ public final class TestEnv {
         out.put(TEMP, testTmp);
         // Unique listeners: a nested engine must not steal the host's HTTP port or share its
         // UDS (UDS follows JK_HOME/state). Port 0 is OS-assigned; disable HTTP unless a test
-        // opts in — Gradle does the same.
+        // opts in.
         out.put("JK_HTTP_ENABLED", "false");
         out.put("JK_HTTP_PORT", "0");
         EnvConfig policy = project.build().env();

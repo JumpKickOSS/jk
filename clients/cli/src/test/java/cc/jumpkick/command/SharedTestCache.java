@@ -22,9 +22,8 @@ import java.nio.file.Path;
  * download layer; sharing it across project-local builds is safe because their inputs differ, and
  * where they don't, a restored output is still correct.
  *
- * <p>Location: {@code -Djk.test.cache.dir} (set by the Gradle test task to {@code
- * <module>/build/test-shared-cache}); falls back to {@code build/...} under the working directory
- * when run outside Gradle.
+ * <p>Location: {@code -Djk.test.cache.dir} when the harness sets it; falls back to
+ * {@code build/...} under the working directory otherwise.
  */
 public final class SharedTestCache {
 

@@ -16,8 +16,8 @@ class ShellCommandTest {
 
     @Test
     void shell_errors_instead_of_spawning_a_blocking_subshell(@TempDir Path tempDir) throws IOException {
-        // jk shell only makes sense attached to a terminal. A test runner (Gradle
-        // or jk's own worker JVM) has no console, so the command must error (exit
+        // jk shell only makes sense attached to a terminal. A test runner JVM has no
+        // console, so the command must error (exit
         // 2) rather than spawn an interactive $SHELL that blocks on a stdin which
         // never EOFs. Deterministic regardless of ambient JAVA_HOME/JK_JDK — it
         // does not depend on whether a JDK happens to resolve in the environment.

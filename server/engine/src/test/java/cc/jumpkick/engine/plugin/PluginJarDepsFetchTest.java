@@ -34,7 +34,7 @@ class PluginJarDepsFetchTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
-    /** Restored after each test — self-host / Gradle may pin a real publisher jar. */
+    /** Restored after each test — the run-tests step may pin a real publisher jar. */
     private String savedPublisherJarProp;
 
     @BeforeEach

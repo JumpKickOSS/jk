@@ -120,9 +120,9 @@ class ActionTreeTest {
     private static final Pattern PATH_ARG = Pattern.compile("(?:resolve|Path\\.of|Paths\\.get)\\(\\s*\"([^\"]*)\"");
 
     /**
-     * Two levels of directory, then {@code src/main/java} — the shape {@code settings.gradle.kts}
-     * declares and the one {@code shared/host/build.gradle.kts} registers as this task's input, so
-     * the walk and the up-to-date check cannot disagree. Walking for {@code /src/main/java/}
+     * Two levels of directory, then {@code src/main/java} — the shape the root {@code jk.toml}'s
+     * workspace list declares, so the walk reads exactly the modules the build does. Walking for
+     * {@code /src/main/java/}
      * anywhere instead picks up 100+ files that are nobody's production code: the
      * {@code docs/user/examples} fixtures, jk's self-hosted {@code target/} output, and — worst —
      * the third-party git checkouts an engine suite leaves under

@@ -7,9 +7,8 @@
 // jk this build made, engine included.
 //
 // WHY A SCRIPT AND NOT A FEATURE. Assembling a directory out of two files this repo already
-// produces is packaging, not a build-system capability; `build.gradle.kts`'s `dist` task is the
-// same six lines on the Gradle side. Keeping it here means the two builds can be compared without
-// either one growing a knob for the other's benefit.
+// produces is packaging, not a build-system capability, so jk grows no knob for its own ship
+// layout.
 //
 // WHY THE FAT JAR UNDER A THIN NAME. The engine ships as one self-contained jar. jk names the
 // assembly `jk-engine-<version>-all.jar` (the `-all` is the assembly classifier) while the shipped
@@ -87,7 +86,7 @@ if (!Files.isDirectory(target)) {
             if (Files.isExecutable(client)) tmp.toFile().setExecutable(true, false)
             Files.move(tmp, clientOut, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             Files.copy(engineJar, engineOut, StandardCopyOption.REPLACE_EXISTING)
-            // Gradle's `dist` is a Sync, and the pruning half matters as much as the copying:
+            // The pruning half matters as much as the copying:
             // `install.sh` takes the FIRST `lib/jk-engine-*.jar` it globs, so one jar left behind
             // by an earlier version is an installer that pairs today's client with last month's
             // engine. Exactly one engine jar lives here.

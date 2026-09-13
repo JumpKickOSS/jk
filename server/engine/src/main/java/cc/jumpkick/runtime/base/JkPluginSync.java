@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>These aren't project dependencies — they're jk's tooling, pinned to jk's own version. Until
  * they're published to Maven Central, {@code jk sync} copies them from the local Maven repository
- * ({@code ~/.m2/repository}, populated by {@code ./gradlew publishToMavenLocal} in jk's tree) into
+ * ({@code ~/.m2/repository}, which {@code jk install} fills in jk's tree when {@code [m2] install} is on) into
  * {@code <cache>/repos/jk-local/} in the m2 layout that {@link RepoArtifactStore} understands.
  *
  * <p>Best-effort: a plugin already in {@code repos/jk-local/} or {@code repos/central/} is skipped,
@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JkPluginSync {
 
-    /** Group the plugin artifacts publish under (see the plugin modules' build.gradle.kts). */
+    /** Group the plugin artifacts publish under (see the plugin modules' jk.toml). */
     static final String GROUP = "cc.jumpkick";
 
     /** Per-plugin progress callbacks. */

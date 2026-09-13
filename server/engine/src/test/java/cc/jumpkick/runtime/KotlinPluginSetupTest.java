@@ -58,7 +58,7 @@ class KotlinPluginSetupTest {
 
     /**
      * The engine test JVM sets the worker-jar override so the KSP/Room/Hilt gates can fork real
-     * kotlinc (see kernel/engine/build.gradle.kts); these two tests exercise the repos lookup
+     * kotlinc (server/engine/jk.toml, `[build] test-plugin-jars`); these two tests exercise the repos lookup
      * BELOW the override, so it must be absent for their duration. Official-repo fetch is also
      * disabled (dead loopback URL) so an empty temp cache cannot soft-succeed over the network.
      */

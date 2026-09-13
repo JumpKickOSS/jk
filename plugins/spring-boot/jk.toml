@@ -9,9 +9,8 @@ error_prone_core = { group = "com.google.errorprone", version = "latest" }
 nullaway = { group = "com.uber.nullaway", version = "latest" }
 
 # Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
-# checks it at error severity, the same flags the Gradle convention `jk.nullmarked-conventions`
-# passes, so a regression is red under both builds. The pins are `latest`; the catalog-lock
-# check keeps them equal to gradle/libs.versions.toml.
+# checks it at error severity, with the same flags in every enforced module so the block is one
+# block. The pins are `latest`; the lock is the pin.
 [javac]
 args = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-Xmaxerrs", "10000"]
 

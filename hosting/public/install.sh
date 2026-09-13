@@ -377,7 +377,7 @@ main() {
       # so. Whoever is installing a local build is installing it to run local changes.
       die "no jk-engine-*.jar in $SRC_LIB — a local install needs the engine built beside the" \
           "client (the ship layout: <dir>/jk and <dir>/lib/jk-engine-<version>.jar)." \
-          "Build one with 'jk build' (writes target/dist/) or './gradlew dist', and install from" \
+          "Build one with 'jk build' (it writes target/dist/) and install from" \
           "that directory. Installing the client alone would silently pair it with the released" \
           "engine."
     fi

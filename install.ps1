@@ -594,7 +594,7 @@ try {
     Write-Info "Installing JumpKick into $displayDir"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-    # Destination name: prefer jk.exe for native; keep jk.bat for Gradle installDist.
+    # Destination name: jk.exe for a native client; a JVM launcher keeps its jk.bat name.
     $leaf = Split-Path -Leaf $ArchiveFile
     $srcExt = [IO.Path]::GetExtension($leaf).ToLowerInvariant()
     if ($srcExt -eq ".bat" -or $leaf -eq "jk.bat") {

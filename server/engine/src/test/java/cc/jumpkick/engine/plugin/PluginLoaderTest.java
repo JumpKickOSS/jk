@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 @Tag("integration")
 class PluginLoaderTest {
 
-    /** The java-compiler worker jar, side-loaded by Gradle via this system property. */
+    /** The java-compiler worker jar, handed to the test JVM by the run-tests step through this system property. */
     private static Path javaCompilerJar() {
         String prop = System.getProperty("jk.java.plugin.jar");
         Assumptions.assumeTrue(prop != null, "jk.java.plugin.jar not set — skipping fork test");

@@ -17,7 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>{@code JK_M2_LOCAL} is passed in rather than read from the process environment: the build
  * sets it on every test JVM (so a fixture can never scribble on the developer's real
  * {@code ~/.m2}), which means the four steps below it are unreachable from
- * {@link M2Dirs#localRepository()} under Gradle.
+ * {@link M2Dirs#localRepository()} under the harness.
  */
 class M2DirsTest {
 

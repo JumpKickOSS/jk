@@ -2,6 +2,7 @@
 package cc.jumpkick.scaffold;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.MinimalToml;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,10 +57,11 @@ public final class NewJkBuildRenderer {
         if (inputs.plugin()) {
             // The SDK the plugin compiles against. A `main` dep, NOT `provided`: the worker forks
             // as `java -jar`, so jk-plugin-sdk must be shaded INTO the fat jar, not merely on the
-            // compile classpath. The published version is owned by shared/plugin-sdk/build.gradle.kts;
-            // PluginSdkScaffoldVersionTest fails if this copy drifts from it.
+            // compile classpath. The SDK rides jk's own release train, so the pin is JkVersion.
             sb.append("\n[dependencies]\n");
-            sb.append("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"0.1.0\" }\n");
+            sb.append("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"")
+                    .append(JkVersion.VERSION)
+                    .append("\" }\n");
             return sb.toString();
         }
 

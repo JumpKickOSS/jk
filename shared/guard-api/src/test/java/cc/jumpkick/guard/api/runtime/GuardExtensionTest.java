@@ -65,7 +65,7 @@ class GuardExtensionTest {
     void a_plain_test_s_failure_is_still_a_failure_under_the_extension() {
         TestExecutionSummary summary = run(PlainFailure.class);
         assertThat(summary.getTestsFailedCount()).isEqualTo(1);
-        assertThat(summary.getFailures().getFirst().getException()).hasMessage("the assertion the tier must see");
+        assertThat(summary.getFailures().get(0).getException()).hasMessage("the assertion the tier must see");
     }
 
     /**

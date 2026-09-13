@@ -46,7 +46,7 @@ import org.junit.jupiter.api.Timeout;
  * named cause and compares jk's bytes with {@code jar-size-baseline.toml}.
  *
  * <pre>
- *   ./gradlew :engine:benchTest --tests cc.jumpkick.compile.JarSizeBenchTest
+ *   jk test --profile bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
  * </pre>
  *
  * <p>Needs {@code jk} on {@code PATH} and Maven Central. {@code mvn} is used from {@code PATH} when

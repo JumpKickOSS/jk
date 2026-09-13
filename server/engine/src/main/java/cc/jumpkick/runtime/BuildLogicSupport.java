@@ -456,8 +456,8 @@ public final class BuildLogicSupport {
      *
      * <p>Not "every member's source roots", which was the first shape and was wrong. A root check
      * reads the workspace, and a workspace is more than the union of its modules' {@code src}
-     * trees: a root check reads files such as {@code code-as-art.md}, {@code settings.gradle.kts}
-     * and every module's {@code build.gradle.kts},
+     * trees: a root check reads files such as {@code code-as-art.md}, the root {@code jk.toml}
+     * and every module's {@code jk.toml},
      * none of which belongs to any member's fingerprint. A key that missed them would go on
      * replaying a green verdict after the very file the check reads had changed.
      *

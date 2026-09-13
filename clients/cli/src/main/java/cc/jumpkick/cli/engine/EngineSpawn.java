@@ -867,7 +867,7 @@ public final class EngineSpawn {
 
     /**
      * Which of this JVM's {@code jk.*} system properties travel into the engine JVM as {@code -D}:
-     * plugin-jar location overrides (e.g. {@code -Djk.test.runner.jar=…} from Gradle tests —
+     * plugin-jar location overrides (e.g. {@code -Djk.test.runner.jar=…} from a test JVM —
      * PluginJar.locate reads System.getProperty there), the AOT switches so nested engines honor
      * {@code JK_AOT_TRAIN} / {@code jk.aot.train}, the {@code jk.env.*} layout overlays (JkDirs
      * test seam) so a spawned engine resolves the same store/state the client did, and the owner

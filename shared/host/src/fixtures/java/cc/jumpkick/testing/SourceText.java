@@ -14,12 +14,11 @@ import java.util.List;
  * token named in a javadoc line is documentation, not a defect, so comments have to go first — and
  * blanking them <em>in place</em>, preserving length and newlines, is what keeps a reported line
  * number meaning something. Second, a scan that walks a source tree by hand picks its own root, and
- * a root picked from the working directory differs between {@code ./gradlew test} and {@code jk
- * test} (which is what {@link RepoRoot} exists for).
+ * a root picked from the working directory differs between a module-rooted run and a workspace
+ * {@code jk test} (which is what {@link RepoRoot} exists for).
  *
- * <p>The Gradle guards these tests replaced each carried a private copy of the blanker — four of
- * them, differing in whether they kept string bodies and whether they preserved offsets. One
- * lexer, with the string question as a parameter, is the same fact stated once.
+ * <p>One lexer, with the string question as a parameter, is the same fact stated once: a private
+ * copy per scan differs in whether it keeps string bodies and whether it preserves offsets.
  */
 public final class SourceText {
 

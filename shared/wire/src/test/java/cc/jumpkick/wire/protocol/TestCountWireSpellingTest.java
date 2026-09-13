@@ -19,9 +19,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>These assertions read the <em>wire text</em>, not a round trip through {@link TestSummary}'s own
  * encoder/decoder pair — a round trip is green for a consistently wrong name. The tree-wide ban on
- * the retired spellings is the {@code checkNoRetiredWireSpelling} guard task in this module's
- * {@code build.gradle.kts}: a JUnit scan over other modules' sources goes UP-TO-DATE with them
- * unchanged, a guard task declares them as inputs.
+ * the retired spellings is the {@code retired-wire-keys} rule in {@code jk-guards.toml}: a JUnit
+ * scan over other modules' sources is keyed to this module alone, a rule in the tree lane is keyed
+ * to the text it reads.
  */
 class TestCountWireSpellingTest {
 

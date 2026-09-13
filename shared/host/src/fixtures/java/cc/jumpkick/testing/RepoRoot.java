@@ -9,8 +9,8 @@ import java.nio.file.Path;
  * The jk checkout root, for the tests that read a file out of the source tree — a source
  * tripwire, a doc-parity check, a shipped manifest.
  *
- * <p>Such a test cannot resolve its target against the working directory. Gradle runs a test with
- * CWD at the owning module; a workspace {@code jk build} runs it with CWD at
+ * <p>Such a test cannot resolve its target against the working directory. A module-rooted run has
+ * CWD at the owning module; a workspace {@code jk build} runs the same test with CWD at
  * {@code ~/.jk/state/engine}. Nor can it walk up looking for its own module: jk may place
  * class output at {@code <root>/target/<module>/} rather than {@code <module>/target/}, so the
  * module directory is not always an ancestor of the classes that were loaded. The one thing both
@@ -44,9 +44,9 @@ public final class RepoRoot {
             throw new AssertionError("cannot locate the class output of " + anchor.getName(), e);
         }
         for (Path d = here; d != null; d = d.getParent()) {
-            // Both markers, not either: `jk.toml` alone also matches every module directory, and
-            // `settings.gradle.kts` alone would match an enclosing unrelated Gradle build.
-            if (Files.isRegularFile(d.resolve("settings.gradle.kts")) && Files.isRegularFile(d.resolve("jk.toml"))) {
+            // Both markers, not either: `jk.toml` alone also matches every module directory, and the
+            // lock alone would match an enclosing unrelated jk workspace with no manifest here.
+            if (Files.isRegularFile(d.resolve("jk-lock.toml")) && Files.isRegularFile(d.resolve("jk.toml"))) {
                 return d;
             }
         }

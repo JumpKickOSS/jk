@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * End-to-end of the launcher → worker subprocess round-trip: launches the real {@code
- * jk-java-compiler} jar (path from the {@code jk.java.plugin.jar} property the Gradle test task
+ * jk-java-compiler} jar (path from the {@code jk.java.plugin.jar} property the run-tests step
  * sets), compiles a source with a real annotation processor, and asserts the parsed generated →
  * originating provenance.
  */

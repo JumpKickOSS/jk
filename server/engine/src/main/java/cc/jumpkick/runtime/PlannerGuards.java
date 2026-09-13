@@ -871,9 +871,9 @@ final class PlannerGuards {
     }
 
     /**
-     * The digest of the root rules file this build loaded, under the build output. The Gradle build
-     * compares it with the file it sees, so an edit one build enforced and the other did not is red
-     * there; a project with no rules file records nothing.
+     * The digest of the root rules file this build loaded, under the build output: the record of
+     * which rules this build enforced, for anything that compares it with the file in the tree; a
+     * project with no rules file records nothing.
      */
     private static void recordRulesHash(Path root, Path rulesFile) throws IOException {
         if (!Files.isRegularFile(rulesFile)) return;

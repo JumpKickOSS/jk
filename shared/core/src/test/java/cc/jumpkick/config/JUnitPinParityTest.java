@@ -35,10 +35,7 @@ import org.junit.jupiter.api.Test;
  * {@code jk-lock.toml} resolved, so a deliberate {@code jk lock} bump carries the fixtures with it
  * and a hand-edited pin fails here instead of quietly diverging.
  *
- * <p>Deliberately a test rather than a Gradle guard. The tree's other tripwires are
- * {@code checkAll} tasks, but Gradle is on its way out once jk builds jk; a test runs under either
- * build. It reads {@code jk-lock.toml} for the same reason — that is jk's own artifact, where
- * {@code gradle/libs.versions.toml} is Gradle's and leaves with it.
+ * <p>It reads {@code jk-lock.toml}: that is the one record of what jk resolved.
  *
  * <p>Not in scope: coordinate strings used as arbitrary fixture data — mock-repo seeds
  * ({@code serveLeaf}, {@code seedArtifact}), parser and editor tests, solver fixtures. Those never

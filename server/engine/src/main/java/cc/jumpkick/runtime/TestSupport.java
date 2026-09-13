@@ -63,8 +63,7 @@ public final class TestSupport {
                 // One file, not a root. `clients/cli` needs exactly one source out of the IntelliJ
                 // plugin's package — JkWireModel, the wire parser, which imports only java.util and
                 // org.jetbrains.annotations. Its five neighbours need the platform SDK, so naming
-                // the directory would not compile. Gradle expresses the same thing by Sync-ing that
-                // one file into a generated source dir.
+                // the directory would not compile.
                 out.add(root);
             }
         }

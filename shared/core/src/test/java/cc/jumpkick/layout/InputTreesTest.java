@@ -54,7 +54,7 @@ class InputTreesTest {
     void covering_a_compact_module_lists_each_sibling_suites_src_and_not_the_sibling(@TempDir Path dir)
             throws Exception {
         // Compact layout: no src/main. Discovery asks <suite>/src; a sibling with no src/ (a workspace
-        // root's clients/ or server/, with their Gradle output) must not be listed into the snapshot.
+        // root's clients/ or server/, with their build output) must not be listed into the snapshot.
         Files.writeString(Files.createDirectories(dir.resolve("test/src")).resolve("T.java"), "class T {}");
         Files.writeString(Files.createDirectories(dir.resolve("demo/src")).resolve("D.java"), "class D {}");
         Path big = Files.createDirectories(dir.resolve("clients/cli/build/classes"));

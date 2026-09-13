@@ -70,7 +70,7 @@ class FixtureCheckTest {
             throws Exception {
         Files.createDirectories(fx.resolve(".github/workflows"));
         Files.writeString(fx.resolve(".github/workflows/ci.yml"), "jobs:\n  self-host:\n    run: jk test\n");
-        Files.writeString(fx.resolve("build.gradle.kts"), "tasks.register(\"coverageReport\")\n");
+        Files.writeString(fx.resolve("wall-baseline.toml"), "[noop.jk]\nmedian-s = 1.0\n");
         Files.createDirectories(fx.resolve("Ok-live/.jk"));
         Files.writeString(fx.resolve("Ok-live/jk.toml"), "version = \"1.4.0\"\n");
         Files.writeString(fx.resolve("Ok-live/.jk/ci-bootstrap-version"), "1.3.2\n");
@@ -92,7 +92,7 @@ class FixtureCheckTest {
         assertThat(Files.readString(tree.resolve(".github/workflows/ci.yml")))
                 .as("the file beside the cases is the tree every case starts from")
                 .contains("jk test");
-        assertThat(tree.resolve("build.gradle.kts")).exists();
+        assertThat(tree.resolve("wall-baseline.toml")).exists();
         assertThat(tree.resolve(".jk/ci-bootstrap-version")).exists();
         assertThat(tree.resolve("Ok-live"))
                 .as("case directories are not part of any tree")

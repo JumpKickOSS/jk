@@ -30,9 +30,8 @@ error_prone_core = { group = "com.google.errorprone", version = "latest" }
 nullaway = { group = "com.uber.nullaway", version = "latest" }
 
 # Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
-# checks it at error severity, the same flags the Gradle convention `jk.nullmarked-conventions`
-# passes, so a regression is red under both builds. The pins are `latest`; the catalog-lock
-# check keeps them equal to gradle/libs.versions.toml.
+# checks it at error severity, with the same flags in every enforced module so the block is one
+# block. The pins are `latest`; the lock is the pin.
 [javac]
 args = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-Xmaxerrs", "10000"]
 
@@ -56,8 +55,8 @@ assertj-core = "latest"
 junit-jupiter = "latest"
 bcpg-jdk18on = "latest"
 # JkWireModel (see [test] extra-src below) imports org.jetbrains.annotations because the
-# IntelliJ platform API does. Gradle spells this testCompileOnly; jk has no test-provided
-# scope, and an annotations-only jar on the test runtime classpath costs nothing.
+# IntelliJ platform API does. jk has no test-provided scope, and an annotations-only jar on the
+# test runtime classpath costs nothing.
 annotations = { group = "org.jetbrains", name = "annotations", version = "latest" }
 
 [image]
@@ -79,13 +78,11 @@ args = [
 [build]
 # Each entry is a hard build-order edge AND a -D<worker>.plugin.jar handed to the test JVM, so an
 # integration class that builds a fixture runs the workers THIS build produced rather than
-# whatever a store happens to hold. Gradle's integrationTest does the same thing by hand
-# (`systemProperty("jk.<x>.plugin.jar", ...)` plus a worker-repo copy into the sandbox store);
-# this is that list, declared once, on the jk side.
+# whatever a store happens to hold: the list, declared once.
 #
 # Without it the sandbox JK_HOME has no store and no override, so a fixture whose lock pins a
-# freshly built first-party plugin cannot resolve it at all — green under Gradle, red under jk,
-# and only for the one test that declares a `[spring-boot]` table.
+# freshly built first-party plugin cannot resolve it at all — and only for the one test that
+# declares a `[spring-boot]` table.
 #
 # Keep this to workers the CLI's own test JVM actually locates: an unused name is a build-order
 # edge and a stamp input for nothing, and re-runs this suite on an unrelated plugin edit.
@@ -102,7 +99,7 @@ test-plugin-jars = [
 # wire parser needs no platform SDK (java.util + regex + org.jetbrains.annotations), while its
 # five neighbours do — so this names the file, not the directory. Compiling it here puts the
 # parallel-array alignment and null-vs-empty rules in-gate, which G22 arm 4 can only approximate
-# textually. Gradle does the same thing by Sync-ing the file into a generated source dir.
+# textually.
 extra-src = ["../intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"]
 # Nested engines / shared sockets: integration classes materialize the resident engine and
 # share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
@@ -126,8 +123,8 @@ env = [
   # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
   # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
   { JK_JDK_PROBES = "java-home,jk" },
-  # Loopback TCP for the tier that spawns real engines — the same switch Gradle's integrationTest
-  # sets, for the same two reasons: a TCP port has no `sun_path` budget, so no sandbox path can be
-  # too long to bind; and Windows stops being the only platform that exercises this lane.
+  # Loopback TCP for the tier that spawns real engines, for two reasons: a TCP port has no
+  # `sun_path` budget, so no sandbox path can be too long to bind; and Windows stops being the only
+  # platform that exercises this lane.
   { JK_ENGINE_TRANSPORT = "tcp" },
 ]

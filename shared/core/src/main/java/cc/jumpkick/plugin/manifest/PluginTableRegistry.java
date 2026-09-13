@@ -420,7 +420,7 @@ public final class PluginTableRegistry {
                 throw new UncheckedIOException("failed to load built-in plugin manifest " + resource, e);
             }
         }
-        // A complete classpath catalog is the Gradle test-fixture tree. A partial set is leftover
+        // A complete classpath catalog is a test-fixture tree. A partial set is leftover
         // extra-resources copies in main classes (some still parse, stale [scaffold] files do not).
         // Drop it: production stays empty until putBuiltIn; tests fall through to workspace
         // sources / -Djk.*.plugin.jar. Class init must not die on a poisoned partial tree.
@@ -428,7 +428,7 @@ public final class PluginTableRegistry {
 
         Map<String, PluginDescriptor> byTable = new LinkedHashMap<>(fromClasspath);
         // Test JVMs loading this class from jk-core overlay workspace sources and optional
-        // -Djk.<id>.plugin.jar props (Gradle may wire only a subset of workers). Never apply
+        // -Djk.<id>.plugin.jar props (a suite may wire only a subset of workers). Never apply
         // those overlays inside the engine fat jar. A partial -Djk.*.plugin.jar set is normal
         // (suites name only the workers they fork); BuiltInPluginJars.install fills the rest.
         if (shouldLoadWorkspacePluginSources()) {
@@ -488,7 +488,7 @@ public final class PluginTableRegistry {
      * resolves {@code :core} out of the store. This method excludes the engine fat jar (prefix
      * {@code jk-engine}), the one shipped artifact that both embeds {@code :core} and can run from
      * inside a checkout; that jar seeds via {@link #putBuiltIn} instead. Match on that prefix, not
-     * {@code :core}'s published {@code jk-core-*.jar} name — Gradle consumers see {@code core.jar}.
+     * {@code :core}'s published {@code jk-core-*.jar} name.
      */
     private static boolean shouldLoadWorkspacePluginSources() {
         if (TEST_RUNNER_PLUGIN_CLASS.equals(System.getProperty("jk.plugin.class"))) return true;

@@ -12,8 +12,8 @@ import java.util.function.Predicate;
  * Forked workers run in their own session, with no controlling terminal. A worker inherits the
  * engine's terminal otherwise, and a library that probes it — JLine building a system terminal
  * for a test that never asked for one — can block on a live or dead PTY for as long as the
- * watchdog allows. Under Gradle a worker has no terminal and every such probe fails fast; this
- * makes the self-hosted build behave the same way.
+ * watchdog allows. A worker with no terminal fails every such probe fast; this makes a forked
+ * worker behave the same way.
  *
  * <p>Linux only, through {@code setsid(1)}: a child that is not already a process-group leader
  * (a freshly forked JVM never is) makes {@code setsid} {@code exec} the worker in place rather than

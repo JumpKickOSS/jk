@@ -31,7 +31,7 @@ public final class EngineTestSupport {
 
     /**
      * Idempotent materialize of the engine assembly into EngineInstall under the test {@code
-     * JK_HOME}. Prefers {@code -Djk.engine.jar} (Gradle / pure-jk run-tests); falls back to a
+     * JK_HOME}. Prefers {@code -Djk.engine.jar} (the run-tests step); falls back to a
      * workspace-relative assembly jar so a miswired fork fails with a path hint rather than a bare
      * missing-property error.
      */
@@ -43,7 +43,7 @@ public final class EngineTestSupport {
             if (engineJar == null || !Files.isRegularFile(engineJar)) {
                 throw new IllegalStateException(
                         "jk.engine.jar system property is not set (and no workspace engine assembly found) — "
-                                + "CLI tests need -Djk.engine.jar=… (Gradle :engine:shadowJar / pure-jk nested isolation)");
+                                + "CLI tests need -Djk.engine.jar=… (the engine assembly the run-tests step names)");
             }
             try {
                 // Ensure UDS parent exists (pure-jk isolation creates it once; do not rely on a
@@ -92,9 +92,8 @@ public final class EngineTestSupport {
         }
         Path cwd = Path.of(System.getProperty("user.dir", ".")).toAbsolutePath().normalize();
         String ver = JkVersion.VERSION;
-        // Walk cwd → parent → grandparent so pure-jk (user.dir = clients/cli) and monorepo-root
-        // Gradle runs both find the jar. Layouts: Mill-style target/<rel>/, module-local target/,
-        // Gradle build/libs, dist/.
+        // Walk cwd → parent → grandparent so a nested run (user.dir = clients/cli) and a
+        // checkout-root run both find the jar. Layouts: target/<rel>/, module-local target/, dist/.
         Path walk = cwd;
         for (int up = 0; up < 3 && walk != null; up++, walk = walk.getParent()) {
             for (Path cand : List.of(
@@ -144,7 +143,7 @@ public final class EngineTestSupport {
      * running.
      *
      * <p>Does <strong>not</strong> delete {@code JK_STATE_DIR}: the suite shares one short state
-     * dir for the whole JVM (Gradle and pure-jk). Deleting it after every class left later tests
+     * dir for the whole JVM. Deleting it after every class left later tests
      * with a missing UDS parent and {@code no build engine} / exit 70 under pure-jk. Suite-end
      * cleanup is the test task's job ({@code /tmp/jk-cli-*} is ephemeral).
      */

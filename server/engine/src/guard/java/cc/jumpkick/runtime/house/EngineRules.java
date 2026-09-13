@@ -368,7 +368,7 @@ final class EngineRules {
         if (!found2.equals(REQUEST_SITES))
             fault(
                     v,
-                    "server/engine/build.gradle.kts",
+                    "server/engine/jk.toml",
                     "CompileRequest.builder() sites",
                     "every CompileRequest.builder() chain must be declared as keyed or unkeyed; found "
                             + new TreeSet<>(found2.keySet()) + ", declared " + new TreeSet<>(REQUEST_SITES.keySet()));

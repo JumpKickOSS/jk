@@ -26,8 +26,8 @@ import org.junit.jupiter.api.Test;
 class VerbSessionOriginTest {
 
     /**
-     * Spelled from the checkout root, not from the working directory: Gradle runs a test with CWD at
-     * its module, a workspace {@code jk build} runs it from the engine state dir. {@link RepoRoot}
+     * Spelled from the checkout root, not from the working directory: a module-rooted run has CWD
+     * at its module, a workspace {@code jk build} runs it from the engine state dir. {@link RepoRoot}
      * is the anchor both layouts agree on.
      */
     private static final Path VERBS = RepoRoot.dir(VerbSessionOriginTest.class, "server/engine")

@@ -17,7 +17,7 @@ class BenchBandTest {
                 median-ms = 120
                 [bench.forked-javac-aot-on]
                 median-ms = 845.6
-                [touched.gradle]
+                [touched.jk-guards]
                 median-s = 30.0
                 """;
         assertThat(BenchBand.parse(toml)).isEqualTo(Map.of("fqcn-shorten-16-files", 120L, "forked-javac-aot-on", 846L));

@@ -116,7 +116,7 @@ public final class InputTrees {
                     return true;
                 }
                 // Discovery reads <suite>/src and nothing else of the sibling, so that is what is
-                // covered: a workspace root's children (clients/, server/ — 70k files of Gradle output
+                // covered: a workspace root's children (clients/, server/ — 70k files of build output
                 // and node_modules between them on jk's own tree) are suite names too, and covering
                 // the whole child listed every one of those files into the job's snapshot.
                 of(child.resolve("src"));

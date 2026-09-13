@@ -422,8 +422,8 @@ public final class PlannerTest {
     }
 
     /**
-     * Test resources ride the test classpath next to compiled tests (Gradle's
-     * processTestResources). Without this, getResourceAsStream fixtures NPE under self-host. Every
+     * Test resources ride the test classpath next to compiled tests, so getResourceAsStream
+     * fixtures resolve. Every
      * suite in this run's selection is copied (default test/resources/ + e.g.
      * integration/resources/). Fixtures affect test outcomes but classes/test is not on the
      * runtime cp — run-tests folds these dirs into its TestStamp key.

@@ -352,10 +352,9 @@ public final class InstallPlans {
 
     private static byte[] renderedPom(JkBuild project, BuildLayout layout) {
         Path moduleRoot = layout.moduleRoot();
-        // Worker jars vendor workspace MAIN siblings (plugin-sdk / jsonl) the same way Gradle's
-        // bundledCodec does. Those edges must not appear on the sidecar / install POM — otherwise
-        // PomRuntimeClasspath looks for e.g. jk-plugin-sdk at the workspace version while Gradle
-        // installLocal only published the independent SPI line (0.1.0).
+        // Worker jars vendor workspace MAIN siblings (plugin-sdk / host). Those edges must not
+        // appear on the sidecar / install POM — otherwise PomRuntimeClasspath looks for a
+        // coordinate whose classes are already inside the jar.
         JkBuild forPom = omitVendoredWorkerSiblings(project, moduleRoot);
         String pomXml = PublishablePom.render(
                         forPom, null, WorkspaceResolve.siblingCoordinates(moduleRoot), lockPins(moduleRoot))
@@ -368,10 +367,9 @@ public final class InstallPlans {
      * what those siblings need from <em>outside</em> the workspace. Libraries are untouched — they
      * keep sibling deps so consumers can resolve them.
      *
-     * <p>A worker jar vendors its workspace siblings' classes the way Gradle's {@code bundledCodec}
-     * does, so naming the sibling in the POM would send a consumer looking for a coordinate that is
-     * already inside the jar (and at the workspace version, which is not always the version the
-     * sibling publishes under). Dropping the edge outright is not the answer either: the vendored
+     * <p>A worker jar vendors its workspace siblings' classes, so naming the sibling in the POM
+     * would send a consumer looking for a coordinate that is already inside the jar. Dropping the
+     * edge outright is not the answer either: the vendored
      * classes still have third-party dependencies of their own, and nothing else declares them.
      * That is how {@code jk-auditor} came to ship {@code LockfileReader} — vendored from
      * {@code jk-core} — with no mention of tomlj anywhere, and die on the first lockfile it read.

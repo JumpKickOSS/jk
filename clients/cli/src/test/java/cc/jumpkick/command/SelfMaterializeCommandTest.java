@@ -90,8 +90,8 @@ class SelfMaterializeCommandTest {
      * A client only ever spawns its own version's engine jar, so materializing someone else's is a
      * write nothing will read — worse, the install is keyed by the client's version, so the bytes
      * would land under a name that lies about them. The refusal is loud (non-zero, both versions
-     * named) because its callers are installers: {@code ./gradlew :engine:installLocal} and
-     * install.sh both report success for anything that exits 0.
+     * named) because its callers are installers: {@code jk install} and install.sh both report
+     * success for anything that exits 0.
      */
     @Test
     void engine_jar_of_another_version_is_refused_naming_both(@TempDir Path tmp) throws Exception {

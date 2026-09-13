@@ -76,10 +76,9 @@ public final class GuardSuiteLibrary {
         if (stored != null) return new Located(stored, stored);
         Path staged = stageFromM2(cas);
         if (staged != null) return new Located(staged, staged);
-        throw new IOException(
-                COORDINATE + ":" + JkVersion.VERSION
-                        + " is not in the store (repos/jk-local) or ~/.m2, so the guard suite cannot compile."
-                        + " Reinstall jk (the installer stages it), or in jk's own tree run ./gradlew :guard-api:installLocal.");
+        throw new IOException(COORDINATE + ":" + JkVersion.VERSION
+                + " is not in the store (repos/jk-local) or ~/.m2, so the guard suite cannot compile."
+                + " Reinstall jk (the installer stages it), or in jk's own tree run `jk install`.");
     }
 
     /** Store-only: the jar in any repo store, or {@code null}. */
