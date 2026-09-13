@@ -4,16 +4,14 @@
 
 ## Commands
 
-One tier per tag. The table is `buildSrc/src/main/kotlin/TestTiers.kt`; the `useJUnitPlatform { }`
-filters are generated from it and guard **G23** (`checkNoOrphanTestTags`) re-derives the partition
-from the same object, so the two cannot drift. On the jk side the engine's `tiers` validation
-re-derives it from the root manifest's `[test]` and `[profiles.*]` tables ([self-host](self-host.md#test-tiers)).
+One tier per tag. The table is the root manifest's `[test]` and `[profiles.*]` tables; the
+engine's `tiers` validation (**G23**) re-derives the partition from them and proves, over every
+subset of the tag vocabulary, that each is run by exactly one tier, and **G52** (`test-tier-docs`)
+renders the same tables into the block below, so the two cannot drift
+([self-host](self-host.md#test-tiers)).
 
-`./gradlew checkFast` is the Gradle branch gate: every subproject `check` task (unit tests plus the
-one Gradle-only guard, G64), buildSrc's tests and the two registry tasks. It is network-free.
-`checkAll` adds the integration tier. The house rules run under `jk build` ([self-host](self-host.md#house-rule-gate)).
-`scripts/measure-tier-parity.sh` runs the integration tier under both builds and compares the classes,
-cases and verdicts; the nightly `integration` job is that comparison.
+`jk build` runs every module's fast tier; `jk test --profile integration` is the pre-merge bar. The
+house rules run under `jk build` and `jk guard` ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->
 | Command | Includes | Excludes |
@@ -34,22 +32,23 @@ Tag new heavy tests at class level:
 @Tag("bench")       // microbench only (never PR)
 ```
 
-**Every tag is run by exactly one task.** G23 verifies the executable partition, and G52 verifies
+**Every tag is run by exactly one tier.** G23 verifies the executable partition, and G52 verifies
 that the marked table above matches it.
 
 ## The curated integration lane (every pull request)
 
-`checkFast` runs no integration class, and the full tier is too slow to gate on, so a wire, spawn,
-worker, workspace, install or lock regression could merge with a deterministic integration test —
-sitting in the nightly tier — that would have caught it.
+The fast tier runs no integration class, and the full profile is too slow to gate on, so a wire,
+spawn, worker, workspace, install or lock regression could merge with a deterministic integration
+test — sitting in the nightly profile — that would have caught it.
 
-`./gradlew curatedIntegrationTest` closes that gap. It runs the classes named in
-`curated-integration.txt` at the checkout root, under the same `integrationTest` filters, and runs
-on every pull request as its own CI job.
+`scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
+checkout root and runs one `jk test --profile integration -m <module> --class …` per module the
+registry names, as the last step of the self-host job on every pull request. jk fails a run in
+which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
-`@Tag("integration")` and still runs in the nightly tier; nothing is reclassified to make the
-branch gate cheap, and the lane never replaces `integrationTest`.
+`@Tag("integration")` and still runs in the nightly profile; nothing is reclassified to make the
+branch gate cheap, and the lane never replaces `jk test --profile integration`.
 
 The registry has one line per class:
 
@@ -57,26 +56,22 @@ The registry has one line per class:
 module | class | surface | outcomes | why it is merge-critical
 ```
 
-Each class runs in a fresh JVM (`forkEvery = 1`). A subset puts classes next to each other that
-the full tier never does, and a class that runs an engine in-process leaves process-wide state
-behind; per-class forks cost about a second each and make the lane's verdict independent of who
-else is in the registry.
+One `jk test` per module, so a module's classes run in that module's isolated sandbox under the
+same workers, engine and home the fast tier used, and a red module does not stop the next one; the
+lane is red when any module is.
 
 Six surfaces have to stay covered — `wire`, `spawn`, `workers`, `workspace`, `install`, `lock` —
-each with at least one `success` and one `failure` entry. Guard **G63**
-(`checkCuratedIntegration`, both builds) rejects an entry that is missing, renamed, untagged,
-tagged into a nightly tier, or claims a failure path the class does not show; it also fails when a
-surface loses a path, when `ci.yml` stops running the lane, or when the nightly stops running the
-full tier.
+each with at least one `success` and one `failure` entry. Guard **G63** (`curated-integration`)
+rejects an entry that is missing, renamed, untagged, tagged into a nightly tier, or claims a
+failure path the class does not show; it also fails when a surface loses a path, when the lane
+script or its step in `ci.yml` is gone, or when the nightly stops running the full profile.
 
 ### Budget and escalation
 
 **8 minutes of wall clock**, enforced as `timeout-minutes` on the CI step that runs the lane. The
-step before it compiles the tree (`testClasses`) outside the budget: a cold four-core runner spends
-about six minutes on that compile, and a budget that had to absorb it would say nothing about the
-lane. Measured at 1m28s, 1m31s and 1m54s over three clean runs (`./gradlew clean` then
-`curatedIntegrationTest --no-build-cache`, 20 classes / 122 tests, 24-core Linux box shared with
-other builds), so the budget is headroom for a slower runner, not the current cost.
+steps before it built and installed the tree and ran the fast tier, so the test classes are
+compiled and the budget is the lane alone; the step prints its elapsed seconds into the run summary
+so the budget is checked against a measurement.
 
 Over budget, the answer is to **drop or split an entry**, never to raise the number: the lane
 exists because the full tier is what a branch gate cannot afford, and a lane that grows toward the
@@ -86,15 +81,17 @@ refuse.
 
 ### Why `network` is off the merge gate
 
-`checkAll` must not depend on the network. Sonatype enforces a per-IP quota on Maven Central, so a
-gate that needs a remote fails for reasons the change did not cause. `networkTest` runs nightly in
-`ci-nightly.yml`, where a transient failure costs a re-run instead of a blocked merge.
+The gate must not depend on the network. Sonatype enforces a per-IP quota on Maven Central, so a
+gate that needs a remote fails for reasons the change did not cause. `jk test --profile network`
+runs nightly in `ci-nightly.yml`, where a transient failure costs a re-run instead of a blocked
+merge.
 
 `bench` is off the gate for the opposite reason: a microbench prints medians and asserts nothing
 about deltas, so gating on it would gate on CI noise. The one bench that does assert — the fat-jar
 size comparison (`JarSizeBenchTest`, fixtures in `bench/jar-size/`, banked sizes in
-`jar-size-baseline.toml`) — needs the installed `jk`, Gradle and Maven and Maven Central, which is
-why it lives in this tier rather than the gate; see [docs/perf](../perf/README.md#fat-jar-size).
+`jar-size-baseline.toml`) — needs the installed `jk`, Maven, the fixtures' own Gradle wrappers and
+Maven Central, which is why it lives in this tier rather than the gate; see
+[docs/perf](../perf/README.md#fat-jar-size).
 
 ## Property tests (unit tier)
 
@@ -103,11 +100,11 @@ dependency universes for `PubGrubSolver` (`PubGrubSolverPropertyTest`, checked a
 search), the `VersionSet` algebra (`VersionSetPropertyTest`), the lockfile writer/reader round trip
 and the reader's one typed error on arbitrary text (`LockfilePropertyTest`), and
 `MinimalToml.quote`/`unquote` (`MinimalTomlPropertyTest`). They carry no tag, so they run with the
-unit tier on every `checkFast` and `jk test`; each property is budgeted in tries so the four classes
+fast tier on every `jk build` and `jk test`; each property is budgeted in tries so the four classes
 add a few seconds.
 
 A failing property prints its shrunk sample and `seed = …` in the test report
-(`build/test-results/test/TEST-*.xml`, `system-out`). To replay one sample, put the seed on the
+(`target/<module>/reports/test-results/TEST-*.xml`, `system-out`). To replay one sample, put the seed on the
 property: `@Property(seed = "-3119466389416338755")`. A shrunk sample that exposes a solver defect
 becomes an example test in `PubGrubShrunkCounterexampleTest` so the fix stays pinned when the
 generator moves on.
@@ -128,36 +125,6 @@ floor over `coverage.line` baselined per module in `jk-guards-baseline.toml` wit
 There is no percentage target and no badge. The number only moves without a hand in one direction.
 To re-baseline after an intentional drop (a deleted test tier, a module split), edit the line and
 say why in the commit; the ratchet does not lower a line itself.
-
-## If a test task execs a tool jk does not build, that tool's version is an input
-
-Gradle's up-to-date check sees a task's declared inputs and nothing else. A test that shells out to
-`node`, `git`, `protoc` or `bundletool` therefore has a hole in it: the program that decides the
-outcome is invisible, so upgrading it **replays a cached green produced by a different runtime**
-(same family as missing worker-jar inputs or missing JS sources on a test task).
-
-Declare it once, in `buildSrc/src/main/kotlin/ExternalTestRuntimes.kt`:
-
-```kotlin
-object ExternalTestRuntimes {
-    val table: Map<String, List<Pair<String, String?>>> =
-        mapOf(
-            ":web:test" to listOf("node" to null),
-            ":engine:test" to listOf("git" to "JK_GIT"),   // second element: the product's override var
-            ":engine:integrationTest" to listOf("git" to "JK_GIT"))
-}
-```
-
-Adding `protoc` or `bundletool` is a line there, not a new pattern in a module script. What lands on
-the task is an `inputs.property` holding the tool's resolved path and version line — coarse enough
-that reinstalling the same release does not invalidate a long suite, and precise enough that an
-upgrade, a `PATH` change or the tool **disappearing** does. Absence matters: jk's own probes
-assume-skip when a tool is missing (`GitCliExtension.detect()`), and a silently halved parity matrix
-is exactly the fake-green this rule exists to remove.
-
-The probe forks the tool once and memoises the answer under `build/external-tool-probe/`, keyed on
-the binary's absolute path, size and mtime — steady state is two `stat` calls per tool per build,
-and the fork happens only on the build after the tool actually changes.
 
 ## Redundancy / prune candidates (integration tier)
 
@@ -180,43 +147,32 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 ## CI
 
 - **PR / push (`ci.yml`):** the self-host job (`jk build`, `jk install`, `jk guard`, `jk test`: the
-  fast tier and every house-rule lane, run by the checkout's own jk), the curated integration lane
-  in its own job, the shell fixtures and the commit-authorship scan. `./gradlew checkFast` (unit
-  tier, buildSrc tests, the Gradle-only guard) runs beside them as the advisory `gradle-parity`
-  job. No coverage, no benches.
-- **Nightly (`ci-nightly.yml`):** Linux `integrationTest` (compared with jk's profile), `slowTest`,
-  `networkTest`, `benchTest`, `coverageReport -Pjk.coverage` and the jk coverage ratchet
-  (`jk test --coverage`, `jk guard`). macOS and Windows run `scripts/ci-product-smoke.sh`.
-- Local branch gate: `./gradlew checkFast`, plus `./gradlew curatedIntegrationTest` to run what the
-  pull request's boundary lane will run.
-- Local pre-merge when you touch wire/engine/CLI: `./gradlew checkAll` (`checkFast` plus
-  `integrationTest`). Never `networkTest` or `benchTest` as a merge gate.
-- `./gradlew benchTest` runs nightly; it still gates nothing on deltas.
-- `./gradlew coverageReport -Pjk.coverage` is the coverage inventory and `jk test --coverage` +
-  `jk guard` the ratchet; neither is part of `checkFast` or `checkAll`.
+  fast tier and every house-rule lane, run by the checkout's own jk; then the curated integration
+  lane), the shell fixtures and the commit-authorship scan. No coverage, no benches.
+- **Nightly (`ci-nightly.yml`):** `jk test --profile integration`, `--profile slow`,
+  `--profile network`, `--profile bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
+  the heap guard and the doc examples on Linux; the product smoke on macOS.
+- Local gate: `jk format`, `jk guard`, `jk build`, `jk test --profile integration`;
+  `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
+- Never the `network` or `bench` profile as a merge gate.
 
 ## Measuring integration wall time
 
 ```bash
-./gradlew :cli:integrationTest :engine:integrationTest --profile
-# open build/reports/profile/profile-*.html
-# or parse:
-# find . -path '*/build/test-results/integrationTest/TEST-*.xml' ...
+jk test --profile integration
+# per-step walls: target/jk-profile.json; per-class times: target/**/reports/test-results/TEST-*.xml
 ```
 
-(Default task output dir for the custom `integrationTest` task is `build/test-results/integrationTest/`.)
-
-## Pure-jk product parity
-
-Gradle tiers remain how **this monorepo** is bootstrapped. Once dogfooding with `jk test`:
+## Suites and tags
 
 | Intent | Command |
 |--------|---------|
-| Fast / default | `jk test` (suite `test` only; optional `[test] exclude-tags`) |
+| Fast / default | `jk test` (suite `test` only; `[test] exclude-tags`) |
 | Extra suite | `jk test --suite integration` or put e2e under `integration/` |
 | Everything | `jk test --all` / `jk build --all` (all suites, config tag excludes cleared) |
 | Tag filter | `jk test --exclude-tags slow` / `--include-tags smoke` |
-| CI profile | `[profiles.ci] exclude-tags = []` (overrides `[test]`) + `--profile ci` (auto on CI) |
+| One class | `jk test -m <module> --class <fqcn>` (`--profile integration` for a tagged one) |
+| CI profile | `[profiles.ci] exclude-tags = […]` (overrides `[test]`) + `--profile ci` (auto on CI) |
 
 Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for
 cross-cutting cost filters inside a suite.

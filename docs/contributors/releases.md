@@ -11,9 +11,9 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 | Prior | **`0.13.0`** — previous tagged release; **`0.10.1`** first public |
 | Later | Semver-ish: `0.13.3`, `0.14.0`, … |
 
-Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, workspace `jk.toml`
-coordinates and the installers' pointer floor (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor`
-in `install.ps1`, mirrored under `hosting/public/`) together — search for the old version string.
+Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
+(`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
+`hosting/public/`) together — search for the old version string.
 `InstallerCopyTest` fails when the floor and `JkVersion` disagree.
 
 ## Hosting (GCS + Firebase CDN)
@@ -112,11 +112,10 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 
 1. Push tag `v0.13.3` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
-   under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins
-   where jumpkick.build serves a client for the platform (`bootstrap: hosted` in the matrix), and
-   that commit's Gradle artifacts where it does not. Windows ships from `./gradlew dist` (its
-   self-host lane is not green yet). The linux-x86_64 lane also runs `jk install`, so the
-   first-party plugins it stages for `repo/` are the commit's own.
+   under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
+   so the matrix has a row for every platform jumpkick.build serves a client for at that pin
+   ([below](#platforms-without-a-hosted-client)). The linux-x86_64 lane also runs `jk install`,
+   so the first-party plugins it stages for `repo/` are the commit's own.
 3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs +
    `SHA256SUMS` + `.sig`.
 4. Merge job flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial
@@ -125,8 +124,26 @@ Workflow: [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 5. Sign and upload the pointer (`scripts/sign-latest-pointer.sh`): `LATEST.sig` first, then
    `LATEST`, then `VERSION`, all with no-cache headers. A client reading between the two copies
    gets a signature refusal and retries; it never gets an unverified version.
-6. Bump `.jk/ci-bootstrap-version` to the new release and flip the `bootstrap:` rows of every
-   platform it shipped a client for ([self-host](self-host.md#the-bootstrap-pin)).
+6. Bump `.jk/ci-bootstrap-version` to the new release and add a matrix row for every platform
+   it shipped a client for ([self-host](self-host.md#the-bootstrap-pin)).
+
+### Platforms without a hosted client
+
+jumpkick.build serves clients for **linux-x86_64** and **macos-aarch64**. Linux aarch64, macOS
+x86_64 and Windows x86_64 have no hosted client, so no CI job can bootstrap jk on them: their
+release rows and the Windows product smoke are absent until a first client exists, and
+`scripts/flatten-release.sh` refuses to publish a tree short of the five clients, so releases stay
+manual until then.
+
+The first client for a platform is produced by the owner on a machine of that architecture: a
+JDK 25 with GraalVM, this checkout, and a jk to build it — the client module is a plain JVM
+program (`cc.jumpkick.cli.Jk`, published as `cc.jumpkick:jk-cli:<version>` with its POM on
+`jumpkick.build/repo/` by `jk install` + `scripts/publish-maven-repo.sh`), so on a machine with no
+native client it runs from that closure on a JVM; `jk build --skip-tests` then writes the native
+client for the host under `target/dist`, `DIST_DIR=target/dist scripts/assemble-release-dir.sh`
+assembles it, and it is signed and uploaded beside the other platforms' artifacts. Once
+`releases/<version>/SHA256SUMS` lists the platform, its row joins `release.yml` (and, for
+Windows and macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
 
 ### Required secrets
 

@@ -92,7 +92,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
 | Plugin worker dies with `NoSuchMethodError` / `NoClassDefFoundError` (`jk image`, `jk test`, a compiler) | `jk doctor -v` — the `worker:` line names the jar’s source repo and lists the launch classpath | A `jk-local` worker was installed from a checkout and shadows the published one: `jk storage clean --workers`, then rerun; [Cache](cache.md#plugin-workers) |
 | Format check failed | `jk format --check` | `jk format` (no `--check`); [Format](format.md) |
-| Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Released natives are signed when published. Turning Smart App Control off is optional for contributors who want unsigned `gradlew dist`. |
+| Windows: `jk.exe` blocked by Application Control | toast / “An Application Control policy has blocked this file” | Use the thin client (`jk.bat`); [Install](install.md). Released natives are signed when published. Turning Smart App Control off is optional for contributors who run an unsigned local build. |
 
 ## Cancel a stuck job
 

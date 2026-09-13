@@ -35,17 +35,11 @@ policy change is nothing an uninstall reverts. Group Policy that locks the polic
 with a note — ask an admin. Windows on ARM64 installs the `windows-x86_64` build, which runs
 under x64 emulation; no `windows-aarch64` release exists.
 
-Local dogfood from this repository:
-
-```powershell
-# Thin JVM client (supported on Windows; Smart App Control blocks unsigned jk.exe)
-.\gradlew :cli:installDist installLocal
-.\install.cmd clients\cli\build\install\jk\bin\jk.bat
-
-# Native image — needs unsigned PE runnable (SAC off) or a signed release
-.\gradlew dist
-.\install.cmd build\dist\jk.exe
-```
+Local dogfood from this repository needs a jk to build it, and no Windows client is hosted yet;
+[releases](../contributors/releases.md#platforms-without-a-hosted-client) says how the first one is
+produced. With one installed, `jk build --skip-tests` writes `target\dist\jk.exe` and
+`.\install.cmd target\dist\jk.exe` installs it (Smart App Control blocks an unsigned `jk.exe`;
+released natives are signed).
 
 (`.\install.ps1` alone often fails under the default **Restricted** execution policy;
 `install.cmd` and `irm | iex` do not.) Installing `jk.bat` parks a leftover `jk.exe` so

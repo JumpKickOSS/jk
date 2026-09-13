@@ -2,7 +2,7 @@
 
 First-party artifacts (`cc.jumpkick.*`, and later `build.jumpkick.*`) resolve from a **GCS-backed
 Maven repository**, not Maven Central. This is the path that makes a clean `jk` install able to
-fetch workers (test-runner, kotlin-compiler, …) without a prior `./gradlew installLocal`.
+fetch workers (test-runner, kotlin-compiler, …) without a prior `jk install`.
 
 ## URL layout
 
@@ -62,21 +62,19 @@ gsutil -m rsync -r build/release/0.13.0/ gs://jumpkick/releases/0.13.0/
 scripts/publish-maven-repo.sh
 ```
 
-CI (when Actions billing works) should call `publish-maven-repo.sh` after `installLocal` in the
-same tag job that uploads `releases/`.
+The release workflow's linux-x86_64 lane runs `jk install` and then stages the repository with
+`publish-maven-repo.sh`; the publish job uploads it beside `releases/`.
 
 ### The worker POM
 
-A worker's POM is the one its launch classpath is rebuilt from, and both builds write the same
-shape. `<dependencies>` names what the worker declares — for the Gradle build its direct runtime
-dependencies, first-party rungs included because that jar is thin; for `jk install` the module's
-jk.toml with vendored siblings hoisted — and `<dependencyManagement>` pins every coordinate of
-the resolved runtime closure, so a launch runs on the versions the build tested whatever a
-transitive POM asks for. The engine walks that POM nearest-wins (Maven's rule) and applies the
-pins at every depth. Each first-party rung the Gradle build stages carries a POM declaring its
-own direct dependencies, so the walk reaches a rung's third-party needs without the worker
-listing them; `installLocal` replaces a dependency-free rung POM an earlier staging left and
-keeps one `jk install` wrote.
+A worker's POM is the one its launch classpath is rebuilt from. `jk install` renders it from the
+module's jk.toml: `<dependencies>` names what the worker declares, with vendored workspace
+siblings hoisted, and `<dependencyManagement>` pins every coordinate of the resolved runtime
+closure, so a launch runs on the versions the build tested whatever a transitive POM asks for. The
+engine walks that POM nearest-wins (Maven's rule) and applies the pins at every depth. Each
+first-party rung on the shelf carries its own POM declaring its direct dependencies, so the walk
+reaches a rung's third-party needs without the worker listing them. G19 (`published-poms`) refuses
+a POM naming a coordinate this build does not publish.
 
 `publish-maven-repo.sh` refuses to stage a worker POM (an artifact whose module lives under
 `plugins/`) that declares no dependencies, or that names a `cc.jumpkick` artifact the stage does
@@ -90,9 +88,9 @@ skips snapshots). An artifact the store holds only at other versions keeps the r
 metadata. `scripts/test-publish-maven-repo.sh` runs the merge against a fixture, network-free.
 
 `jk-guards-junit` (the guard-test library a project's `src/guard` suite compiles against) rides the
-same path as the worker jars: `:guard-api:installLocal` stages `cc/jumpkick/jk-guards-junit/<ver>/`
-(jar + POM) into `store/repos/jk-local`, the engine copies it from `~/.m2` when the store lacks it
-(`jk sync`, or the first `compile-guard`), and the lock pins it under `[[plugin]]` at jk's version.
+same path as the worker jars: `jk install` shelves `cc/jumpkick/jk-guards-junit/<ver>/` (jar + POM)
+into `store/repos/jk-local`, the engine copies it from `~/.m2` when the store lacks it (`jk sync`,
+or the first `compile-guard`), and the lock pins it under `[[plugin]]` at jk's version.
 
 ## Why not only `releases/`?
 

@@ -23,7 +23,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Official Maven repo](maven-repo.md) | `jumpkick.build/repo/`, exclusive groups, publish script |
 | [Engine warmup](install-optimize.md) | Worker AOT, host calibration |
 | [Self-host](self-host.md) | Dogfooding this monorepo with `jk` |
-| [Test suite tiers](test-suite-tiers.md) | `./gradlew test` vs `integrationTest` vs `checkAll` |
+| [Test suite tiers](test-suite-tiers.md) | `jk test` vs `--profile integration` vs the nightly profiles |
 | [Progress contract](progress-contract.md) | ETA / bar semantics |
 
 ## Planning and internal design

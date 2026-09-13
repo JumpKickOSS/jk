@@ -241,7 +241,7 @@ proliferate new schema versions. When in doubt, keep `1` and document the field 
 
 ## Repository layout
 
-Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runtime modules:
+Build: **jk** (the root `jk.toml` workspace; `jk-lock.toml`; `.jk/*.kts` build scripts). Runtime modules:
 
 | Area | Modules | Role |
 |---|---|---|
@@ -274,7 +274,7 @@ the dispatcher (selective's re-entry, the completion scripts' command table) tak
 constructor, so no verb imports the dispatcher's package (`cc.jumpkick.cli` itself) and the
 dispatcher is outside every cycle.
 
-Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`.
+Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engine-<version>.jar`.
 
 ## Dependency resolution
 
@@ -455,12 +455,8 @@ root). No scripts in TOML. Anchors: `BEFORE_COMPILE` (codegen), `AFTER_COMPILE`,
 
 ## Status
 
-Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modules plus thin
-workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
-dogfoods after a `curl … install.sh` bootstrap from the hosted release (Gradle
-`dist`/`installLocal` where no client is hosted). The native client is the preferred
-shipped client; Windows also supports the thin JVM client (`jk.bat`) because Smart App Control
-blocks unsigned `jk.exe` (native signing is still open). The bootstrap is
-`curl -fsSL https://jumpkick.build/install.sh | bash`. Full `dist`, remaining
-plugins, and nested engine integration tests remain Gradle-heavy. Breaking changes remain
-acceptable until 1.0.
+Pre-1.0 alpha. **Self-hosted:** the root workspace covers every library, client, worker and rule
+pack; `jk build`, `jk install`, `jk guard` and `jk test` are the gate and the release, after a
+`curl … install.sh` bootstrap from the hosted release. The native client is the shipped client;
+platforms with no hosted client yet are listed in [releases](releases.md#platforms-without-a-hosted-client).
+Breaking changes remain acceptable until 1.0.

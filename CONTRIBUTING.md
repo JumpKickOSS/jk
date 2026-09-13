@@ -23,11 +23,13 @@ git config --global core.eol lf
 
 ## Toolchain
 
-Build with **JDK 25+**. Native `dist` needs a GraalVM-capable JDK (GraalVM CE is fine).
-Gradle comes from the wrapper (`gradle/wrapper/`). SDKMAN is optional; otherwise Gradle can
-provision a JDK via the foojay resolver on first use.
+Build with the released jk: `curl -fsSL https://jumpkick.build/install.sh | bash` installs the
+client, the engine and the JDK the engine runs on. The native client links against a GraalVM-capable
+JDK (`jk build` uses the one `--graal` / `GRAALVM_HOME` names, else an installed one). Java sources
+compile at **JDK 25**; the two JDK-17 libraries (`shared/host`, `shared/plugin-sdk`,
+`shared/guard-api`) say so in their manifests.
 
-Dashboard JS suites (`:web:test`, part of `checkFast`) need **Node** at the version in
+Dashboard JS suites (`clients/web`, part of the fast tier) need **Node** at the version in
 [`.nvmrc`](.nvmrc). `nvm`, `fnm`, and `mise` all read that file:
 
 ```bash
@@ -46,66 +48,43 @@ prepare, schedule). Add a `WorkspaceTarget` + module filter. See
 
 ## Building
 
-The shortest bootstrap is the released jk: `curl -fsSL https://jumpkick.build/install.sh | bash`,
-then `jk build` and `jk install` in this checkout ([self-host](docs/contributors/self-host.md#bootstrap)).
-The Gradle path:
-
 ```bash
-./gradlew classes
-./gradlew dist                                  # native client + engine jar → build/dist/
-./install.sh build/dist/jk                      # local install (Unix)
-# Windows native (needs unsigned PE runnable — SAC off, or a signed release):
-#   .\install.cmd build\dist\jk.exe
-# Windows thin client (supported; SAC-safe):
-#   .\gradlew :cli:installDist installLocal
-#   .\install.cmd clients\cli\build\install\jk\bin\jk.bat
+curl -fsSL https://jumpkick.build/install.sh | bash   # the released jk, once per machine
+export PATH="$HOME/.jk/bin:$PATH"
+jk build --skip-tests        # every module; native client + engine jar → target/dist/
+jk install --skip-tests      # this checkout's client, engine and workers take over ~/.jk
 ```
+
+From then on the engine running your builds is the one you just compiled; the long form is
+[self-host](docs/contributors/self-host.md#bootstrap). `./install.sh target/dist/jk` installs the
+ship layout on a machine with no jk yet. Windows has no hosted client yet, so it has no bootstrap
+for this tree until one is published ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
 ### Dependency locking
 
-Every Gradle configuration is locked: the `gradle.lockfile` beside each build script and
-`gradle/verification-metadata.xml` (a sha256 for every artifact) are the Gradle side of what
-`jk-lock.toml` is for jk. Versions live in `gradle/libs.versions.toml` only — the
-`catalog-is-the-version-source` guard refuses a literal coordinate in a build script. After a
-catalog edit, re-lock and re-record:
+`jk-lock.toml` at the root is the one lock for the whole workspace, and every manifest pins exactly
+(`latest` resolves once, at lock time). After a dependency change:
 
 ```bash
-./gradlew resolveAndLockAll --write-locks
-./gradlew --write-verification-metadata sha256 resolveAndLockAll
+jk lock          # re-resolves and rewrites jk-lock.toml; commit it
 ```
 
-A resolution that disagrees with a lock, or an artifact whose checksum the metadata does not carry,
-fails the build instead of drifting.
+A build that rewrites the committed lock is a drifted pin or a non-deterministic writer, and CI's
+self-host job fails on the diff.
 
-**The native binary is the preferred shipped client** — a slim GraalVM native image, sub-50 ms
-cold start, and the only client that can self-heal a missing engine (`EngineJarFetcher`). Building
-one needs a GraalVM-capable JDK (SDKMAN is the least ceremony):
-
-```bash
-sdk install java 25-graalce && sdk use java 25-graalce
-```
-
-**Windows also supports the thin JVM client** (`:cli:installDist` → `jk.bat`). Smart App Control
-blocks unsigned `jk.exe`. Contributors
-who want unsigned `gradlew dist` / Graal SVM helpers can turn SAC off — it is optional, not
-required. The thin client cannot self-heal a missing engine; materialize from this
-checkout (`./gradlew installLocal` or `jk self materialize`).
-
-Once a release is published, the common install is
-`curl -fsSL https://jumpkick.build/install.sh | bash` (Windows: `irm …/install.ps1 | iex`).
-Signed `jk.exe` is the user-facing Windows path once releases are published; `jk.bat` remains supported.
+**The native binary is the shipped client** — a slim GraalVM native image, sub-50 ms cold start,
+and the client that self-heals a missing engine (`EngineJarFetcher`). Released natives are signed
+when published; Smart App Control blocks an unsigned `jk.exe`.
 
 ### Black-box examples (sibling repo)
 
-End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
+End-to-end scenarios and early-adopter samples live in **[JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `jk test`.
 
-`dist` builds the slim GraalVM native `jk` client and the engine fat jar
-(`lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
-jk-managed JDK — never as a native image. `nativeCompile` needs a GraalVM-capable
-JDK (the pin above qualifies).
+`jk build` produces the slim GraalVM native `jk` client and the engine fat jar
+(`target/dist/lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
+jk-managed JDK — never as a native image.
 
-Full `./gradlew build` hits Maven Central; avoid rate-limited environments for the
-full suite.
+`jk test --profile network` talks to Maven Central; keep it off rate-limited environments.
 
 ### Formatting
 
@@ -120,10 +99,9 @@ How we write Java (size budgets, Typed Envelope, JSpecify, fluent Lombok, pre-1.
 (no ticket ids, no historical essays) — **[AGENTS.md](AGENTS.md#comments-and-javadoc)**.
 Code as Art / Typed Envelope (see [docs/contributors/code-as-art.md](docs/contributors/code-as-art.md)) preempts other work until it closes.
 
-### Self-host (phase 2+) — workspace modules + thin workers with jk
+### Self-host
 
-Long-form dogfood (Gradle + pure-jk in this same repo): **[docs/contributors/self-host.md](docs/contributors/self-host.md)**.
-Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
+Long-form dogfood: **[docs/contributors/self-host.md](docs/contributors/self-host.md)**.
 
 Catalog short names resolve through the **system catalog** (downloaded global registry +
 bundled offline floor); jk's own manifests use registry names only and the tree carries no
@@ -133,99 +111,60 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
-no `[application]` table). Side-load with `jk install`.
-
-#### Client bootstrap
-
-Native (Unix, or Windows with SAC off / a signed `jk.exe`):
-
-```bash
-# 1) Produce a local JumpKick + side-load worker jars into ~/.jk/store
-./gradlew dist installLocal
-./install.sh build/dist/jk
-export PATH="$HOME/.jk/bin:$PATH"   # install.sh default
-
-# 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
-jk lock
-jk build --skip-tests
-jk install
-jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
-```
-
-Windows thin client (SAC-safe, no Graal):
-
-```powershell
-.\gradlew :cli:installDist installLocal
-.\install.cmd clients\cli\build\install\jk\bin\jk.bat
-# PATH: %USERPROFILE%\.jk\bin  (jk.bat; leftover jk.exe is parked)
-```
+no `[application]` table). `jk install` shelves every module and takes the home over.
 
 The client never embeds the engine. Spawning uses
 `~/.jk/lib/jk-engine/` (or `$JK_HOME/lib/jk-engine/`) or `JK_ENGINE_EXE`.
 
-| Still Gradle | Why |
-|---|---|
-| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI: `checkFast` as the advisory `gradle-parity` job on every push/PR (`ci.yml`, where the self-host job is the merge authority); integration/slow/network/bench + coverage inventory + OS smoke on nightly (`ci-nightly.yml`). Local pre-merge bar is still `checkAll` when you touch wire/engine/CLI — see [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md) |
-| `./gradlew dist` / `nativeCompile` | Bootstrap / ship layout (`build/dist/jk`) for the release rows with no hosted client; Windows ships it |
-| `./gradlew installLocal` | Workers + **engine materialize/bounce**; or `jk install` after `jk build` for workers only |
-
-Dogfood ship layout (bootstrap `jk` on PATH):
+### The gate
 
 ```bash
-./gradlew dist installLocal
-./install.sh build/dist/jk
+jk format                                    # before every commit
+jk guard                                     # every house-rule lane, fixtures included
+jk build                                     # every module, fast tier included
+jk test --profile integration                # the pre-merge bar
 ```
-
-Workers after a pure-jk build: `jk install`.
 
 ### CI lanes
 
 | Lane | When | What |
 |---|---|---|
-| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; `./gradlew checkFast` on Linux |
-| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | Linux: `integrationTest`, `slowTest`, `networkTest`, `benchTest`, coverage inventory, heap guard, doc examples. macOS + Windows: product smoke (`scripts/ci-product-smoke.sh`). |
+| **Push / PR** (`ci.yml`) | Every push to `main` and every PR | Commit-authorship scan; the shell fixtures; the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
+| **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test --profile integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
-Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is an
-inventory (`./gradlew coverageReport -Pjk.coverage`) plus a per-module ratchet on the jk side
-(`jk test --coverage`, then `jk guard`; G91); neither has a percentage target. The JaCoCo agent
-stays off unless asked for, so `checkFast` does not pay for it.
+Native multi-OS **images** stay on the **release** matrix (`release.yml`). Coverage is a
+per-module ratchet (`jk test --coverage`, then `jk guard`; G91) with no percentage target, and the
+JaCoCo agent stays off unless asked for, so the fast tier does not pay for it.
 
 **Reproduce locally**
 
 ```bash
-./gradlew checkFast                          # same as push/PR CI
+jk format --check
+jk guard
+jk build
+jk test --profile integration
+scripts/curated-integration.sh               # what the pull request's boundary lane runs
 scripts/shellcheck.sh                        # CI's shell lint: installers, scripts/, the wrapper (skips with a notice when shellcheck is absent)
-for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer, wrapper bootstrap, Maven repo, release version, flatten, example lock drift)
-scripts/measure-tier-parity.sh               # nightly: the integration tier under both builds, compared (minutes, not a fixture)
-./gradlew integrationTest                    # nightly Linux integration
-./gradlew benchTest                          # nightly microbenchmarks
-./gradlew coverageReport -Pjk.coverage       # nightly coverage inventory
+for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer, wrapper bootstrap, Maven repo, release version, flatten, example lock drift, curated lane)
+actionlint .github/workflows/*.yml
+jk test --profile slow                       # nightly framework / language e2e
+jk test --profile network                    # nightly, talks to real remotes
+jk test --profile bench                      # nightly microbenchmarks
 jk test --coverage && jk guard               # nightly coverage ratchet (G91)
-./gradlew checkAll                           # unit + integration before merge when you touch heavy paths
-./scripts/ci-product-smoke.sh                # nightly macOS/Windows smoke (jk on PATH)
+./scripts/ci-product-smoke.sh                # nightly macOS smoke (jk on PATH)
 ```
 
 #### Engine / CLI tests under self-host
 
-`server/engine` declares `[build].test-plugin-jars`. When those names are **workspace
-siblings** (today: `test-runner`, `java-compiler`), the test JVM gets
-`-Djk.<worker>.plugin.jar` pointing at the **built shadow jar** under
-`plugins/<name>/target/`. Other workers still resolve from `installLocal` / CAS.
+`server/engine` and `clients/cli` declare `[build].test-plugin-jars`: each name is a build-order
+edge and a `-Djk.<worker>.plugin.jar` the run-tests step hands the test JVM, so a test that forks a
+worker runs the one this build produced. CLI integration tests spawn a real engine from the
+assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME` — no in-process
+dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
 
-CLI integration tests (`:cli:integrationTest`) spawn a real engine from `:engine:shadowJar`
-(materialized into the test `JK_HOME`) — no in-process dual path. `:cli:test` is
-the pure unit tier (TUI/args/jsonl) with no shadowJar or worker-jar dependency.
-
-**Suite timing (order of magnitude, warm laptop):** default `./gradlew test` (unit tier) ≈
-**3 minutes**; `:cli:integrationTest` ≈ **7 minutes** with warm engine across methods
-(1042/1055). TempDir cleanup uses `JkTempDirDeletionStrategy` (stop engine only when delete
-fails). Use module filters mid-ticket; the pre-merge bar is `./gradlew checkAll` (unit +
-integration) before merge to `main`. Tier model:
-[docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md). Shared dep cache:
-`jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
-
-Prefer `jk build --skip-tests` plus `jk test --modules 'shared/*,server/…,plugins/*'`
-for dogfood; keep `./gradlew :cli:integrationTest` for the CLI integration suite (nested engines).
+Use `-m` and `--class` mid-ticket (`jk test -m clients/cli --class cc.jumpkick.cli.engine.EngineClientTest --profile integration`);
+the pre-merge bar is the whole integration profile. Tier model:
+[docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).
 
@@ -235,19 +174,12 @@ Multi-module sample under
 [`docs/user/examples/workspace-showcase/`](docs/user/examples/workspace-showcase/):
 
 ```bash
-./gradlew dist installLocal --no-daemon
-export PATH="$PWD/build/dist:$PATH"
+jk build --skip-tests && jk install --skip-tests
 
 cd docs/user/examples/workspace-showcase
 jk lock && jk build && jk test --modules app
 # optional: jk build --modules app
 ```
-
-### One build at a time per checkout
-
-`settings.gradle.kts` takes an OS file lock (`.gradle/cross-daemon-build.lock`) so
-two Gradle daemons do not corrupt shared test outputs. A second invocation waits
-with a clear message. Use a separate worktree for true parallel builds.
 
 ## Project layout
 

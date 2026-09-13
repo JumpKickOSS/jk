@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in [kanartist](https://github.com/JumpKickOSS/kanartist) `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew checkFast` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `jk build` and `jk test --profile integration` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -95,7 +95,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Layer | Choice |
 |---|---|
 | Language | Java 25 |
-| Build of jk itself | Gradle (multi-module Kotlin DSL) |
+| Build of jk itself | jk (root `jk.toml` workspace, `jk-lock.toml`, `.jk/*.kts` build scripts) |
 | Native CLI | GraalVM native-image (`clients/cli`) |
 | Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
 | Config / lock | TOML (`jk.toml`), canonical `jk-lock.toml` (workspace root only) |
@@ -105,7 +105,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Wire | JSONL client↔engine protocol (`shared/wire`) |
 | Modules | `shared/` (client-safe), `server/` (engine-only), `clients/`, `plugins/` |
 
-Prefer `./gradlew` for builds (JDK 25+; GraalVM-capable JDK for `dist` — see CONTRIBUTING). One Gradle build at a time per checkout; use a **separate worktree** for parallel builds.
+Build with the installed jk (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace.
 
 ## Reinstall from this checkout
 
@@ -113,24 +113,16 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 (client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
-# Native (Unix, or Windows with SAC off / signed jk.exe):
-./gradlew clean dist installLocal && ./install.sh build/dist/jk
-```
-
-```powershell
-# Windows thin client (supported; Smart App Control blocks unsigned jk.exe):
-.\gradlew :cli:installDist installLocal
-.\install.cmd clients\cli\build\install\jk\bin\jk.bat
+jk build --skip-tests && jk install --skip-tests
 ```
 
 | Step | What it does |
 |---|---|
-| `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
-| `:cli:installDist` | Thin JVM client (`jk` / `jk.bat`) — the Windows SAC-safe path |
-| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`). Runs through a client that reports the engine jar's own version — `:cli:nativeCompile` output, then the thin client, then `build/dist/jk` — and fails, listing what it found, when none does. |
-| `./install.sh` / `.\install.cmd` | Installs that client into `~/.jk/bin` and materializes the engine jar |
+| `jk build --skip-tests` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
+| `jk install --skip-tests` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local`, materializes the engine jar into `~/.jk/lib/jk-engine/` and swaps the native client into `~/.jk/bin/jk`; the next invocation takes over the resident engine |
+| `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
 
-On Windows, `jk` may be `jk.bat`. Do not insist on `jk.exe`. A leftover unsigned `jk.exe` is parked when the thin client is installed so PATHEXT does not keep launching the blocked PE.
+Windows has no hosted client yet, so it has no bootstrap for this tree until one is published ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
 
 Then verify on PATH (or the install dir):
 
@@ -140,7 +132,7 @@ jk engine status          # engine starts / answers; no version-skew crash
 jk new smoke-app --lang java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md)). The Windows thin client does not. Module test filters are fine mid-ticket; the full `./gradlew checkFast` branch gate and reinstall smoke are required **before moving a code-changing ticket to done**.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the full gate (`jk format`, `jk guard`, `jk build`, `jk test --profile integration`) and the reinstall smoke are required **before moving a code-changing ticket to done**.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -173,9 +165,10 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 | Command | What runs | When |
 |---------|-----------|------|
-| `./gradlew checkFast` | **Unit/fast tier + the Gradle-only guard** — network-free; house rules run under `jk build` | Every ticket and PR |
-| `./gradlew integrationTest` | Engine/CLI e2e, Android, workers, network | When the ticket touches wire/engine/plans/CLI spawn paths |
-| `./gradlew checkAll` | Both tiers for the whole repo | Nightly / pre-merge confidence |
+| `jk guard` | Every house-rule lane, the tree lane and the fixture proofs included | Every ticket and PR |
+| `jk build` | Every module compiled and packaged, its fast tier run, the model/module/workspace/output lanes | Every ticket and PR |
+| `jk test --profile integration` | Engine/CLI e2e, workers, install, lock | The pre-merge bar |
+| `jk test --profile slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | When the ticket touches a plugin or a toolchain; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
 
@@ -184,11 +177,11 @@ Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not**
 **Any ticket that changes Java (or other runtime) code** must **not** move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - **Always:** green `./gradlew checkFast` (unit/fast tier) and a clean `jk guard` (every house-rule lane, the tree lane included).
-   - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine plans/workers, plugin forks, lock/resolve/fetch, or install/materialize.
-   - Nightly / main confidence: `./gradlew checkAll` (unit + integration). Do not treat a 20+ minute full e2e as the only mid-ticket loop.
+   - **Always:** `jk format`, a clean `jk guard` (every house-rule lane, the tree lane included) and a green `jk build` (every module's fast tier).
+   - **Also** green `jk test --profile integration` — the pre-merge bar — and `jk test --profile slow` when the ticket touches a framework or language plugin.
+   - Mid-ticket, narrow with `-m <module>` and `--class <fqcn>`; do not treat a 20+ minute full e2e as the only loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
-2. **Reinstall** — native: `./gradlew clean dist installLocal && ./install.sh build/dist/jk`. Windows thin client: `.\gradlew :cli:installDist installLocal` then `.\install.cmd clients\cli\build\install\jk\bin\jk.bat`.
+2. **Reinstall** — `jk build --skip-tests && jk install --skip-tests`.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 

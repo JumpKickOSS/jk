@@ -16,7 +16,7 @@ by side with every byte of difference attributed. Results and the deflate decisi
 banked sizes are in [`jar-size-baseline.toml`](../../jar-size-baseline.toml).
 
 ```bash
-./gradlew :engine:benchTest --tests cc.jumpkick.compile.JarSizeBenchTest
+jk test --profile bench -m server/engine --class cc.jumpkick.compile.JarSizeBenchTest
 ```
 
 Every fixture is version `0.1.0`, pins exact library versions (the committed `jk-lock.toml` is what

@@ -1533,7 +1533,7 @@ delegates to `style.render` + PlainAscii. HelpRenderer.paint uses `style.render`
 | Width | Golden code points + OSC-8 hyperlink fixtures (move `RenderContextWidthTest`, `JkManagerColorOscTest` assertions onto `Width`). |
 | Style | `Style.sgrBody()` is attribute-leading; box-drawing round-trip; gradient stamps bold on every code point. |
 | Size | Existing probe hooks (`TerminalSize.probe` supplier) move with `Size`. |
-| Integration | Optional pty test tagged `@Tag("integration")` on Linux/macOS: open a pty, enter PROMPT, write a byte, `readKey`. Not in the default `./gradlew test` budget. |
+| Integration | Optional pty test tagged `@Tag("integration")` on Linux/macOS: open a pty, enter PROMPT, write a byte, `readKey`. Not in the `jk test` fast tier's budget. |
 | Native-image | Existing CLI image smoke (`jk engine status`, `jk init && jk build`) after reinstall. Wizard on a real TTY is dogfood, not a unit test. |
 
 `MemoryTerminal` must implement ESC peek timeouts in-memory (scheduled bytes) so wizard
@@ -1677,7 +1677,7 @@ This is a local CLI, not a service. No metrics backend.
   `MissingForeignRegistrationError` per descriptor; `PosixTty.ensure()` binds independently so
   one miss does not null `open`/`tcgetattr`. A hole here makes `canPrompt()` false on a live
   TTY and `jk new` skips the wizard.
-- **Alerting:** none. Dogfood + `./gradlew :cli:test` / `:cli:integrationTest` / reinstall smoke.
+- **Alerting:** none. Dogfood + `jk test -m clients/cli` / `jk test --profile integration -m clients/cli` / reinstall smoke.
 
 Latency targets: `controlling()` first open < 5ms (no 200ms grapheme timeout). `readKey(75ms)`
 worst case is the timeout plus a single `read`. Restore < 10ms so the 500ms halt budget is
@@ -1693,7 +1693,7 @@ Pre-1.0, private repo, no user feature flag. The flag *is* the branch.
    JLine is off the `:cli` classpath **and** `docs/contributors/tui.md` matches (commit **6**).
 2. Stacked commits, each independently reviewable (see **PR Plan**). Intermediate
    JLine+`:cli-terminal` on the `:cli` classpath is **branch-only**.
-3. After merge: `./gradlew clean dist installLocal && ./install.sh build/dist/jk`
+3. After merge: `jk install --skip-tests && jk engine stop`
 4. Smoke: `jk engine status`; `jk init smoke-app && cd smoke-app && jk build`; interactive
    `jk init` wizard; `jk build` Ctrl-O; Ctrl-C mid-build (halt backup, cooked restore);
    `jk run` inheritIO echo; `jk foo | less` (no animation, still promptable where applicable).
@@ -1985,7 +1985,7 @@ signature change. Theme/`AttributedStyle` stays 5a. Dual-path remains **branch-o
 
 Done criteria (ticket, when one exists): `:cli:test` green; `:cli-terminal:test` green
 (with native-access jvmArgs); `:cli:integrationTest` if wire-adjacent tests were touched
-(they should not be); `./gradlew clean dist installLocal && ./install.sh build/dist/jk`;
+(they should not be); `jk install --skip-tests && jk engine stop`;
 `jk engine status`; `jk init` + `jk build` smoke; interactive wizard + Ctrl-C + Ctrl-O +
 `jk run` echo on a real TTY; Done greps above; `tui.md` no longer mentions JLine's reader
 before status `done`; record `stat build/dist/jk` before/after (verify, not a design unknown).

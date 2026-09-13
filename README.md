@@ -310,12 +310,17 @@ jk verify
 
 ## Quick start (install)
 
-From a release binary or installer (see releases for your platform), or from this repo:
+From the hosted release:
 
 ```bash
-./gradlew dist
-./install.sh build/dist/jk
+curl -fsSL https://jumpkick.build/install.sh | bash
 jk --help
+```
+
+Or from this repo, with that release building it:
+
+```bash
+jk build --skip-tests && jk install --skip-tests
 ```
 
 Developer setup: [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -363,8 +368,8 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 
 ## Status
 
-**Alpha (pre-1.0).** Core resolve/build/test is real and dogfooded; the shippable
-layout is still assembled with Gradle (`./gradlew dist`) while self-hosting finishes.
+**Alpha (pre-1.0).** Core resolve/build/test is real and dogfooded: jk builds, tests,
+guards, installs and releases jk (`jk build` writes the ship layout under `target/dist/`).
 APIs and lock schema may still change until 1.0. Protocol/schema version numbers stay
 at **1** until 1.0.
 

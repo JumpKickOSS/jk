@@ -267,7 +267,7 @@ one to Node as `JK_<NAME>_MJS` (plus `JK_APP_DIR`). Node is required at the vers
 deliberately with `JK_WEB_JS_SKIP=1`. See [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ```bash
-./gradlew :web:test
+jk test -m clients/web
 ```
 
 Server-side rendering/auth behavior is covered by `HttpStaticContentTest` and `HttpApiAuthTest` in
