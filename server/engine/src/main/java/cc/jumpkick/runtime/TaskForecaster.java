@@ -568,20 +568,6 @@ public final class TaskForecaster {
     // --- the build's test classpaths, mirrored (best-effort; misses fail safe) ---
 
     /**
-     * True when the stamp-language compile ({@code compile-kotlin} / {@code compile-groovy}) has a
-     * surviving action-cache pointer whose payloads are still present — the post-{@code jk clean}
-     * restore path. Never-built modules have no {@code tasks/} pointer.
-     */
-    static boolean stampLangActionPresent(ActionCache ac, String taskId) {
-        try {
-            var rec = ac.lastFor(taskId);
-            return rec.isPresent() && present(ac, rec.get().actionKey());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
      * Record exists AND every <em>payload</em> blob is still in the action cache's CAS. LRU
      * eviction removes payloads while their records live on (records die by TTL), and a record
      * whose blobs are gone cannot restore — forecasting it CACHED would over-promise: wrong

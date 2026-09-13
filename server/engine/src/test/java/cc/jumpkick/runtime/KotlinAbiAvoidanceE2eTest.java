@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -16,6 +17,7 @@ import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -134,6 +136,41 @@ class KotlinAbiAvoidanceE2eTest {
     }
 
     /**
+     * A wiped Kotlin output is priced by the key of the build's own request, as the build prices
+     * it: a source state the cache holds forecasts a restore, a source state never compiled
+     * forecasts a compile — whatever the task's last record happens to be.
+     */
+    @Test
+    void a_wiped_kotlin_output_is_forecast_by_its_current_key_not_the_last_record(@TempDir Path tmp) throws Exception {
+        Path cache = cache();
+        Path ws = kotlinWorkspace(tmp);
+        lock(ws, cache);
+        BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
+
+        assertThat(build(ws, cache, new Labels()).success()).as("first build").isTrue();
+        lib(ws, "fun twice(n: Int): Int = n + n", INLINE_V1, CONST_V1, "");
+        assertThat(build(ws, cache, new Labels()).success()).as("second build").isTrue();
+
+        // A third state the cache has never seen; the task's last record is the second build's.
+        lib(ws, "fun twice(n: Int): Int = n * 2 + 0", INLINE_V1, CONST_V1, "");
+        PathUtil.deleteRecursively(lib.classesDir());
+        TaskForecast.Task unseen = forecast(ws, cache, "lib", TaskNames.COMPILE_KOTLIN);
+        assertThat(unseen.cached())
+                .as("an unbuilt source state is a compile, whatever the tasks/ pointer names: " + unseen)
+                .isFalse();
+
+        // Back to the second build's state: that key's record restores the wiped tree.
+        lib(ws, "fun twice(n: Int): Int = n + n", INLINE_V1, CONST_V1, "");
+        TaskForecast.Task seen = forecast(ws, cache, "lib", TaskNames.COMPILE_KOTLIN);
+        assertThat(seen.cached())
+                .as("a compiled source state restores: " + seen)
+                .isTrue();
+        Labels restored = new Labels();
+        assertThat(build(ws, cache, restored).success()).isTrue();
+        assertThat(restored.label("lib", TaskNames.COMPILE_KOTLIN)).startsWith("cache hit");
+    }
+
+    /**
      * A mixed module's Kotlin compile reads the module's own Java declarations through {@code
      * -Xjava-source-roots}: a Java body-only edit is a cache hit, a Java signature edit misses and
      * the Kotlin output that ships was compiled against the new declaration.
@@ -222,6 +259,23 @@ class KotlinAbiAvoidanceE2eTest {
     private static final String INLINE_V1 = "inline fun thrice(n: Int): Int = n * 3";
     private static final String CONST_V1 = "const val NAME = \"lib-v1\"";
     private static final String CONST_V2 = "const val NAME = \"lib-v2\"";
+
+    /** The forecast's step for {@code module}, priced through the same keys the build uses. */
+    private static TaskForecast.Task forecast(Path ws, Path cache, String module, String step) throws IOException {
+        BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        List<TaskForecast.Module> plan = TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
+        TaskForecast.Module m = plan.stream()
+                .filter(x -> x.dir().getFileName().toString().equals(module))
+                .findFirst()
+                .orElseThrow();
+        return m.steps().stream()
+                .filter(s -> s.name().equals(step))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(module + " forecasts no " + step + ": " + m.steps()));
+    }
 
     private static Path cache() {
         return Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");

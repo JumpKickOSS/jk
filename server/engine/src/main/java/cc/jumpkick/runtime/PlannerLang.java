@@ -201,7 +201,6 @@ public final class PlannerLang {
             // Compiler plugins ride the typed BTA COMPILER_PLUGINS argument — raw -Xplugin/-P
             // strings in extraArgs are silently ignored by the BTA execution path.
             List<String> ktArgs = config.args();
-            Files.createDirectories(outputDir);
             String moduleName = config.moduleName();
             // The incremental state is only valid for the exact compile CONFIG that produced it:
             // BTA's IC sees "no source changes" after an args/plugins/module-name change and would
@@ -252,16 +251,35 @@ public final class PlannerLang {
             Path outputDir,
             @Nullable Path workingDir,
             KotlinConfig config) {
+        return kotlinWorker(
+                ctx.require(PROJECT), in.dir(), in.cache(), cas, sources, classpath, outputDir, workingDir, config);
+    }
+
+    /**
+     * {@link #kotlinWorker(TaskContext, BuildPlanner.Inputs, Cas, List, List, Path, Path, KotlinConfig)}
+     * from resolved facts — the forecast's way to the very request the build keys with. Building
+     * the request creates nothing on disk; only a compile does.
+     */
+    static KotlinWorker kotlinWorker(
+            JkBuild project,
+            Path moduleDir,
+            Path cache,
+            Cas cas,
+            List<Path> sources,
+            List<Path> classpath,
+            Path outputDir,
+            @Nullable Path workingDir,
+            KotlinConfig config) {
         return new KotlinWorker(
-                ctx.require(PROJECT),
-                in.dir(),
+                project,
+                moduleDir,
                 cas,
                 config,
                 sources,
                 classpath,
                 outputDir,
                 workingDir,
-                CacheTree.KOTLIN_CP_SNAPSHOTS.under(in.cache()));
+                CacheTree.KOTLIN_CP_SNAPSHOTS.under(cache));
     }
 
     /** The groovyc free args: the installed plugins' contributions (grails' {@code --parameters}), deduped. */

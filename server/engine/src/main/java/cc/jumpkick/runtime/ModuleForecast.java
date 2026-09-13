@@ -373,26 +373,74 @@ final class ModuleForecast {
             // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
             // Reading the wrong directory never found a stamp, so every Kotlin module
             // forecast a full compile no matter how cached the build actually was.
-            boolean fresh = !compileDepDirty && !force && kotlinStampFresh(prepared);
-            // After jk clean the stamp is gone with target/, but the action-cache pointer
-            // under tasks/ survives. lastFor+present ⇒ live kotlinc will restore — do not
-            // price FULL (never-built modules have no pointer and stay FULL).
-            boolean restoreHit = !compileDepDirty
-                    && !force
-                    && !TaskForecaster.classesDirHasContent(layout.classesDir())
-                    && TaskForecaster.stampLangActionPresent(
-                            actionCache, ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir()));
-            if (fresh || restoreHit) {
+            KotlinArm arm = kotlinArm(prepared);
+            boolean fresh = !compileDepDirty && !force && kotlinStampFresh(prepared, arm);
+            if (fresh) {
                 steps.add(new TaskForecast.Task(TaskNames.COMPILE_KOTLIN, TaskForecast.Status.CACHED, "", null));
             } else {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.COMPILE_KOTLIN,
-                        TaskForecast.Status.FULL,
-                        "full compile · " + TaskForecaster.count(ktSrc.size(), "source"),
-                        null));
-                compileDirty = true;
+                // The stamp is gone (a wiped target/) or stale: price the step by the action key of
+                // the build's own request, as the build will — never by the tasks/ pointer, whose
+                // last record may belong to another edit of the sources.
+                TaskForecast.Task step = kotlinStep(prepared, arm);
+                steps.add(step);
+                if (!step.cached()) compileDirty = true;
             }
         }
+    }
+
+    /** The kotlinc config and compile classpath the build derives for this module. */
+    private record KotlinArm(PlannerLang.KotlinConfig config, List<Path> classpath, boolean mixedWithJava) {}
+
+    private KotlinArm kotlinArm(Prepared prepared) throws Exception {
+        var langs = CompileSupport.resolveLanguages(project.project(), dir);
+        List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
+                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
+        PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
+                project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
+        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+        List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
+        return new KotlinArm(config, cp, langs.java());
+    }
+
+    /**
+     * compile-kotlin priced by the {@code forKotlinc} key of the request {@code
+     * PlannerLang.kotlinWorker} builds for the build — CACHED when that record is present, a full
+     * compile otherwise. Read-only: a classpath token not yet memoized keys on content here and
+     * misses, which is the pessimistic answer; a toolchain that cannot be resolved without a
+     * fetch forecasts a full compile for the same reason.
+     */
+    private TaskForecast.Task kotlinStep(Prepared prepared, KotlinArm arm) {
+        BuildLayout layout = prepared.layout();
+        List<Path> ktSrc = prepared.ktSrc();
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
+        String key;
+        try {
+            Path workingDir = ActionTree.INCREMENTAL_KOTLIN
+                    .under(CacheTree.ACTIONS.under(cache))
+                    .resolve(taskId);
+            PlannerLang.KotlinWorker worker = PlannerLang.kotlinWorker(
+                    project,
+                    dir,
+                    cache,
+                    cas,
+                    ktSrc,
+                    arm.classpath(),
+                    layout.kotlinClassesDir(),
+                    workingDir,
+                    arm.config());
+            key = ActionKey.forKotlinc(
+                    taskId, worker.request(), BuildIdentity.cacheKeyVersion(), KotlinClasspathAbi.MEMOIZED_ONLY);
+        } catch (Exception e) {
+            Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
+            return new TaskForecast.Task(
+                    TaskNames.COMPILE_KOTLIN,
+                    TaskForecast.Status.FULL,
+                    "full compile · " + TaskForecaster.count(ktSrc.size(), "source") + " · toolchain unresolved",
+                    null);
+        }
+        boolean hit = TaskForecaster.present(actionCache, key);
+        return TaskForecaster.langCompileStep(
+                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, "");
     }
 
     /**
@@ -402,23 +450,17 @@ final class ModuleForecast {
      * not yet memoized keys on content here, which can only make the forecast say "not fresh"
      * where the build, after one snapshot, would say fresh.
      */
-    private boolean kotlinStampFresh(Prepared prepared) throws Exception {
-        var langs = CompileSupport.resolveLanguages(project.project(), dir);
-        List<Path> javaRoots = PlannerKsp.kotlinJavaSourceRoots(
-                langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
-        PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
-                project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-        List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
+    private boolean kotlinStampFresh(Prepared prepared, KotlinArm arm) throws Exception {
         List<Path> freshInputs = new ArrayList<>(prepared.ktSrc());
-        if (langs.java()) freshInputs.addAll(prepared.mainSrc());
+        if (arm.mixedWithJava()) freshInputs.addAll(prepared.mainSrc());
         return FreshnessStamp.isFresh(
                 prepared.layout().classesDir(),
                 BuildStamps.KOTLIN,
                 freshInputs,
-                FreshnessStamp.ClasspathTokens.of(PlannerLang.kotlinStampTokens(cp, KotlinClasspathAbi.MEMOIZED_ONLY)),
+                FreshnessStamp.ClasspathTokens.of(
+                        PlannerLang.kotlinStampTokens(arm.classpath(), KotlinClasspathAbi.MEMOIZED_ONLY)),
                 prepared.release(),
-                config.digest());
+                arm.config().digest());
     }
 
     private void compileGroovy(Prepared prepared) throws Exception {
@@ -897,15 +939,15 @@ final class ModuleForecast {
             boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
             Path nativeOut = layout.nativeBinary();
             boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
-            // Missing binary after wipe: action-cache hit ⇒ restore (CACHED), not a FULL
-            // native wall. lastFor tags the binary path (see PlannerNative).
-            boolean nativeRestoreHit = !binaryPresent
-                    && !jarDirty
-                    && !compileDirty
-                    && TaskForecaster.stampLangActionPresent(
-                            actionCache, ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, nativeOut));
-            if (jarDirty || compileDirty || (!binaryPresent && !nativeRestoreHit)) {
-                String why = jarDirty || compileDirty ? "rebuild · compile changed" : TaskNames.NATIVE_IMAGE;
+            // A missing binary is priced as work. Its image key cannot be derived read-only — the
+            // step resolves the main class from the jar, the computed args, the framework sources
+            // and the trained metadata as it runs — and the tasks/ pointer's last record may
+            // belong to another edit, so it is no evidence of what this build restores. The step
+            // itself still restores when its key hits; only the forecast is pessimistic.
+            if (jarDirty || compileDirty || !binaryPresent) {
+                String why = jarDirty || compileDirty
+                        ? "rebuild · compile changed"
+                        : "native-image · binary missing (restores when its key still hits)";
                 steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, why, null));
             } else {
                 steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.CACHED, "", null));
