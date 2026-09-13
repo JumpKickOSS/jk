@@ -123,6 +123,25 @@ class LaneRunTest {
     }
 
     @Test
+    void a_lane_with_a_skipped_rule_is_not_red_and_not_complete(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), RULES);
+        Rule rule = GuardRules.load(dir, GuardsConfig.ABSENT)
+                .rules()
+                .rule("one-owner")
+                .orElseThrow();
+        RuleReport skipped =
+                new RuleReport(rule, Outcome.SKIPPED, Evaluation.skipped("shellcheck: not installed"), null, "");
+        LaneRun.Result result = new LaneRun.Result(Lane.TREE, List.of(skipped), Baseline.EMPTY, 0);
+        assertThat(result.red()).isFalse();
+        assertThat(result.skippedReports()).containsExactly(skipped);
+        assertThat(result.complete())
+                .as("a verdict with a rule that did not run is not one to cache")
+                .isFalse();
+        assertThat(new LaneRun.Result(Lane.TREE, List.of(), Baseline.EMPTY, 0).complete())
+                .isTrue();
+    }
+
+    @Test
     void an_unlanded_kind_is_unsupported_and_red_never_clean(@TempDir Path dir) throws IOException {
         LoadResult r = load(dir);
         Evaluators.register(Kind.FORBID, (rule, ctx) -> Evaluation.unsupported("kind forbid has no evaluator yet"));

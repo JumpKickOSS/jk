@@ -7,9 +7,15 @@ import cc.jumpkick.guard.api.Guard;
 import cc.jumpkick.guard.api.GuardSuite;
 import cc.jumpkick.guard.api.Model;
 import cc.jumpkick.guard.api.Scope;
+import cc.jumpkick.guard.api.Skipped;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
+import cc.jumpkick.guard.api.runtime.GuardRuntime;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -20,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -1186,5 +1193,66 @@ final class ParityRules {
         } catch (NumberFormatException nan) {
             return null;
         }
+    }
+
+    private static final String SHELLCHECK = "scripts/shellcheck.sh";
+
+    /** One finding in shellcheck's gcc format: {@code file:line:col: level: message [SCnnnn]}. */
+    private static final Pattern SHELLCHECK_FINDING =
+            Pattern.compile("^([^\\s:][^:]*):(\\d+):\\d+: (?:note|warning|error|style): (.*) \\[(SC\\d+)\\]$");
+
+    /** The script count every message of the lint script carries. */
+    private static final Pattern SCRIPT_COUNT = Pattern.compile("(\\d+) scripts");
+
+    @Guard(
+            id = "shellcheck",
+            why =
+                    "the installers, scripts/ and the wrapper template are run by users and CI, and an unquoted `$var` in a `[ ]` test (SC2086) is the defect shell scripts ship most",
+            instead =
+                    "quote the expansion; a finding that is intentional is silenced at its site with `# shellcheck disable=SCnnnn` and a reason")
+    void shippedShellScriptsAreShellcheckClean(Text text, Violations v) throws IOException, InterruptedException {
+        if (text.files("scripts/*.sh").isEmpty())
+            throw new IllegalStateException("the tree has no scripts/*.sh; the scan is blind");
+        GuardRuntime runtime = GuardRuntime.current();
+        if (runtime == null) throw new IllegalStateException("no guard runtime: jk did not configure this JVM");
+        Path root = runtime.root();
+        if (!Files.isRegularFile(root.resolve(SHELLCHECK)))
+            throw new IllegalStateException(SHELLCHECK + " is missing; the lint has no owner");
+        // The script owns the target list and the runner choice; this guard runs it and reads what it says.
+        Process process = new ProcessBuilder("bash", SHELLCHECK, "--format=gcc")
+                .directory(root.toFile())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        if (!process.waitFor(10, TimeUnit.MINUTES)) {
+            process.destroyForcibly();
+            throw new IllegalStateException(SHELLCHECK + " did not finish within 10 minutes");
+        }
+        List<String> lines = output.lines().toList();
+        List<String> said =
+                lines.stream().filter(l -> l.startsWith("shellcheck:")).toList();
+        for (String line : said) {
+            Matcher count = SCRIPT_COUNT.matcher(line);
+            if (count.find()) v.population(Integer.parseInt(count.group(1)));
+        }
+        int status = process.exitValue();
+        if (status == 0) {
+            if (said.stream().noneMatch(l -> l.endsWith("scripts clean"))) throw new Skipped(String.join(" ", said));
+            return;
+        }
+        int findings = 0;
+        for (String line : lines) {
+            Matcher m = SHELLCHECK_FINDING.matcher(line);
+            if (!m.matches()) continue;
+            findings++;
+            v.add(
+                    new TextSite(m.group(1), Integer.parseInt(m.group(2)), m.group(4) + " " + m.group(3)),
+                    m.group(4) + ": " + m.group(3));
+        }
+        // a non-zero exit with no finding is the lint refusing to run (CI without the tool): red, at its owner
+        if (findings == 0)
+            v.add(
+                    new TextSite(SHELLCHECK, 1, "exit " + status),
+                    "the lint did not run (exit " + status + "): " + String.join(" ", said.isEmpty() ? lines : said));
     }
 }

@@ -41,6 +41,18 @@ public final class LaneRun {
             return out;
         }
 
+        /** Guard tests that did not run on this machine; each carries the notice to print. */
+        public List<RuleReport> skippedReports() {
+            List<RuleReport> out = new ArrayList<>();
+            for (RuleReport r : reports) if (r.outcome() == Outcome.SKIPPED) out.add(r);
+            return out;
+        }
+
+        /** Whether every rule ran: a lane with a skipped rule has no verdict worth caching. */
+        public boolean complete() {
+            return skippedReports().isEmpty();
+        }
+
         public int freshCount() {
             int n = 0;
             for (RuleReport r : reports) n += r.fresh().size();

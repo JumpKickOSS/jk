@@ -138,6 +138,15 @@ class ReportTest {
     }
 
     @Test
+    void a_skipped_run_is_its_own_outcome_with_the_reason() {
+        Report.Collector c = new Report.Collector();
+        c.skipped("shellcheck: not installed");
+        Object json = MiniJson.parse(line(c).toJson());
+        assertThat(MiniJson.str(json, "outcome")).isEqualTo("skipped");
+        assertThat(MiniJson.str(json, "error")).isEqualTo("shellcheck: not installed");
+    }
+
+    @Test
     void a_fixture_run_names_its_fixture_and_quotes_are_escaped() {
         Report.Collector c = new Report.Collector();
         c.add(new TextSite("a/B.java", 1, "say \"hi\""), "quoted \"detail\"");

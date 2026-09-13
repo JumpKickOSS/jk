@@ -4,7 +4,8 @@ package cc.jumpkick.guard.eval;
 /**
  * Per rule per run. One severity: anything but {@link #CLEAN} (and a fully baselined
  * {@link #VIOLATIONS}) is red, for the report and for the cache alike — a green verdict is stored
- * only for a lane where every rule came back clean.
+ * only for a lane where every rule came back clean. {@link #SKIPPED} is the one outcome that is
+ * neither: a notice, not red, and a lane carrying one stores no verdict.
  */
 public enum Outcome {
     CLEAN("clean"),
@@ -24,7 +25,9 @@ public enum Outcome {
     /** The rule threw, timed out or overflowed; the engine is unaffected, the rule is red. */
     SCANNER_FAILED("scanner-failed"),
     /** Clean, but with no evidence it could ever fire: no owner site, no current site, no matching hit. */
-    NO_BITE("no-bite");
+    NO_BITE("no-bite"),
+    /** A guard test that cannot run on this machine (its tool is not installed): a notice, never a verdict. */
+    SKIPPED("skipped");
 
     private final String id;
 
@@ -39,7 +42,7 @@ public enum Outcome {
     /** Whether this outcome, with {@code freshViolations} new sites, fails the build. */
     public boolean red(boolean freshViolations) {
         return switch (this) {
-            case CLEAN -> false;
+            case CLEAN, SKIPPED -> false;
             case VIOLATIONS -> freshViolations;
             default -> true;
         };

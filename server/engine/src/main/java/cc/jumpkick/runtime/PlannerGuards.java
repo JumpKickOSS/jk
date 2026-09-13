@@ -656,6 +656,9 @@ final class PlannerGuards {
             ctx.warn("guards", "could not write " + SarifWriter.SARIF_FILE + ": " + e.getMessage());
         }
         reportRed(ctx, taskId, result);
+        // A guard that could not run here says so once, as a notice: the developer decides whether
+        // to install the tool, and nothing is red for its absence.
+        for (RuleReport r : result.skippedReports()) ctx.warn(r.id(), GuardMessages.outcome(r));
         // The tree lane runs after every module lane: the one place must-bite can be judged for them.
         int noBite = 0;
         if (lane == Lane.TREE) {
@@ -676,6 +679,9 @@ final class PlannerGuards {
                     + (faults.isEmpty() ? "" : ", " + faults.size() + " engine validation(s) failed"));
         }
         if (ci && result.tightened() > 0) throw new GuardsRed(Baselines.CI_MESSAGE);
+        // A skipped guard is not a verdict: the lane runs again next build, so installing the tool
+        // is enough to have it judged — a cached green would outlive the reason it was green.
+        if (!result.complete()) return;
         String storeKey = GuardKeys.laneKey(taskId, tokens, storedBaselineSha);
         cache.storeVerdict(taskId, storeKey, inputsOf(tokens, storedBaselineSha));
     }

@@ -1019,6 +1019,17 @@ object Guards {
                 guardTestId = "workflow-tee-pipefail",
             ),
             spec(
+                100,
+                "checkShellcheck",
+                "a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `\$var` in a `[ ]` test (SC2086) first among them",
+                "`scripts/shellcheck.sh` in both builds: the binary, else a container runtime; skipped with a notice on a developer machine that has neither, failed under CI",
+                GuardHome.ROOT,
+                tableTask = "`checkShellcheck` (root project) + guard test `shellcheck`",
+                attach = emptySet(),
+                description = "Fail when a shipped shell script has a shellcheck finding",
+                guardTestId = "shellcheck",
+            ),
+            spec(
                 91,
                 "coverage-band",
                 "a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything",

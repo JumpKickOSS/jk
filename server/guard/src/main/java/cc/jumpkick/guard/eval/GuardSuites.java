@@ -322,6 +322,7 @@ public final class GuardSuites {
         String error = reportedError == null ? "" : reportedError;
         if ("threw".equals(outcome)) return Evaluation.failed("the guard threw: " + error);
         if ("owner-missing".equals(outcome)) return Evaluation.ownerMissing(error);
+        if ("skipped".equals(outcome)) return Evaluation.skipped(error);
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
         List<Observation> sites = new ArrayList<>();

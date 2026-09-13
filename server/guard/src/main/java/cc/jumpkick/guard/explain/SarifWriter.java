@@ -173,20 +173,10 @@ public final class SarifWriter {
                 case "clean", "violations" -> {}
                 case "scanner-failed" -> {
                     executionSuccessful = false;
-                    Map<String, Object> n = new LinkedHashMap<>();
-                    n.put("level", "error");
-                    n.put("message", text(s.code() + ": " + (s.note().isEmpty() ? "the scanner failed" : s.note())));
-                    Map<String, Object> ref = new LinkedHashMap<>();
-                    ref.put("id", s.code());
-                    Integer idx = ruleIndex.get(s.code());
-                    if (idx != null) ref.put("index", idx);
-                    n.put("associatedRule", ref);
-                    Map<String, Object> props = new LinkedHashMap<>();
-                    props.put("lane", s.lane());
-                    props.put("outcome", s.outcome());
-                    n.put("properties", props);
-                    notifications.add(n);
+                    notifications.add(notification("error", s, ruleIndex, "the scanner failed"));
                 }
+                // a guard whose tool is not on this machine: a notice, not a result
+                case "skipped" -> notifications.add(notification("note", s, ruleIndex, "skipped"));
                 default -> {
                     Map<String, Object> res = new LinkedHashMap<>();
                     res.put("ruleId", s.code());
@@ -303,6 +293,24 @@ public final class SarifWriter {
             if (key.equals(r.at()) && !e.reason().isEmpty()) return e.reason();
         }
         return "accepted in jk-guards-baseline.toml";
+    }
+
+    /** A tool-execution notification about a rule that produced no sites: its lane, outcome and note. */
+    private static Map<String, Object> notification(
+            String level, RuleSummaries.Summary s, Map<String, Integer> ruleIndex, String fallback) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("level", level);
+        n.put("message", text(s.code() + ": " + (s.note().isEmpty() ? fallback : s.note())));
+        Map<String, Object> ref = new LinkedHashMap<>();
+        ref.put("id", s.code());
+        Integer idx = ruleIndex.get(s.code());
+        if (idx != null) ref.put("index", idx);
+        n.put("associatedRule", ref);
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("lane", s.lane());
+        props.put("outcome", s.outcome());
+        n.put("properties", props);
+        return n;
     }
 
     private static Map<String, Object> text(String s) {

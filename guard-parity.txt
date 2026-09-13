@@ -19,7 +19,8 @@ G64 checkNoDisabledCompile — Gradle task-graph state; the jk build has no comp
 
 # 2026-09-07 — the Gradle twins are gone: every letter with a jk side (Guards.kt `ruleId`,
 # `engineCode` or `guardTestId`) is enforced by the guard engine under `jk build`, and Gradle keeps
-# G64 plus the registry tasks. `checkGuardParity`'s rule-file arm compares jk-guards.toml with the
+# G64, the registry tasks and checkShellcheck (G100, whose jk side is the guard test of the same
+# name: checkFast runs no guard suite, so the script lint has a task on this side too). `checkGuardParity`'s rule-file arm compares jk-guards.toml with the
 # digest the last `jk build` recorded under target/. The owner's follow-up is Gradle running
 # jk-guards.toml itself (a JavaExec over server/guard against the built engine); its scope is that
 # task plus the residual duplication in buildSrc — Trees (the no-follow walk) and the null-marking

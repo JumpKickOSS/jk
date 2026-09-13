@@ -22,12 +22,11 @@ class GuardsTest {
     }
 
     /**
-     * The Gradle side keeps the one task-graph letter, the registry tasks and the coverage ratchet — a question only
-     * Gradle's test task can answer until `jk test` writes a JaCoCo XML (see guard-parity.txt); every other letter is
-     * self-hosted.
+     * The Gradle side keeps the one task-graph letter, the registry tasks and the shell lint — checkFast runs no guard
+     * suite, so the script lint has a task here and a guard test on the jk side; every other letter is self-hosted.
      */
     @Test
-    fun gradle_registers_only_the_task_graph_letter_and_the_registry_tasks() {
+    fun gradle_registers_only_the_task_graph_letter_the_registry_tasks_and_the_shell_lint() {
         val registered = Guards.all.filter { it.registers }.map { it.task }
         assertThat(registered)
             .containsExactlyInAnyOrder(
@@ -35,7 +34,12 @@ class GuardsTest {
                 "checkGuardParity",
                 "checkGuardRegistry",
                 "checkGateCoverage",
+                "checkShellcheck",
             )
+        val g100 = Guards.named("checkShellcheck")
+        assertThat(g100.letter).isEqualTo(100)
+        assertThat(g100.home).isEqualTo(GuardHome.ROOT)
+        assertThat(g100.guardTestId).describedAs("the jk twin").isEqualTo("shellcheck")
         val g91 = Guards.letter(91)
         assertThat(g91.letter).isEqualTo(91)
         assertThat(g91.home).isEqualTo(GuardHome.SELF_HOSTED)
@@ -70,7 +74,7 @@ class GuardsTest {
     }
 
     @Test
-    fun only_the_task_graph_letter_the_registry_tasks_and_the_coverage_ratchet_are_gradle_letters() {
-        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79)
+    fun only_the_task_graph_letter_the_registry_tasks_and_the_shell_lint_are_gradle_letters() {
+        assertThat(Guards.gradleLetters).containsExactlyInAnyOrder(51, 64, 79, 100)
     }
 }

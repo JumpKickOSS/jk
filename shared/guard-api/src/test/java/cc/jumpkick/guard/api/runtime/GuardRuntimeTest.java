@@ -13,6 +13,7 @@ import cc.jumpkick.guard.api.Model;
 import cc.jumpkick.guard.api.Owner;
 import cc.jumpkick.guard.api.Scope;
 import cc.jumpkick.guard.api.Sig;
+import cc.jumpkick.guard.api.Skipped;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.guard.facts.CallSite;
@@ -66,6 +67,11 @@ class GuardRuntimeTest {
         @Guard(id = "needs-owner", why = "w")
         void owner(Facts facts, Violations v) {
             Owner.require(facts, "a.Missing");
+        }
+
+        @Guard(id = "no-tool", why = "w")
+        void skips(Facts facts, Violations v) {
+            throw new Skipped("shellcheck: not installed");
         }
     }
 
@@ -121,10 +127,10 @@ class GuardRuntimeTest {
         assertThat(summary.getSummary().getTestsFailedCount())
                 .as("violations and throws never fail the JUnit run")
                 .isZero();
-        assertThat(summary.getSummary().getTestsSucceededCount()).isEqualTo(4);
+        assertThat(summary.getSummary().getTestsSucceededCount()).isEqualTo(5);
 
         List<String> lines = Files.readAllLines(report);
-        assertThat(lines).hasSize(4);
+        assertThat(lines).hasSize(5);
         Map<String, Object> byId = new LinkedHashMap<>();
         for (String l : lines) byId.put(MiniJson.str(MiniJson.parse(l), "id"), MiniJson.parse(l));
         Object fires = byId.get("no-replace");
@@ -151,6 +157,8 @@ class GuardRuntimeTest {
         assertThat(MiniJson.str(byId.get("boom"), "error")).contains("kaboom");
         assertThat(MiniJson.str(byId.get("needs-owner"), "outcome")).isEqualTo("owner-missing");
         assertThat(MiniJson.str(byId.get("needs-owner"), "error")).contains("a.Missing");
+        assertThat(MiniJson.str(byId.get("no-tool"), "outcome")).isEqualTo("skipped");
+        assertThat(MiniJson.str(byId.get("no-tool"), "error")).isEqualTo("shellcheck: not installed");
     }
 
     @Test

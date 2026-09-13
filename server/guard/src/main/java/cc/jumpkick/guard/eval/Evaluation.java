@@ -67,6 +67,11 @@ public record Evaluation(
         return new Evaluation(Outcome.NOT_EVALUATED, Map.of(), List.of(), note);
     }
 
+    /** A guard test that did not run here, with the notice it left; no population, no bite evidence. */
+    public static Evaluation skipped(String note) {
+        return new Evaluation(Outcome.SKIPPED, Map.of(), List.of(), note, false);
+    }
+
     public static Evaluation ownerMissing(String note) {
         return new Evaluation(Outcome.OWNER_MISSING, Map.of(), List.of(), note);
     }

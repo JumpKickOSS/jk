@@ -172,7 +172,8 @@ class GuardSuitesTest {
                 "boom|w||" + FACTS_V,
                 "owner|w||" + FACTS_V,
                 "quiet|w||" + FACTS_V + "|fixture=guard-fixtures/quiet",
-                "silent|w||" + FACTS_V));
+                "silent|w||" + FACTS_V,
+                "skip|w||" + FACTS_V));
         List<GuardSuites.Declared> declared = GuardSuites.declared(idx);
         Map<String, Rule> rules = new LinkedHashMap<>();
         for (GuardSuites.Declared d : declared) rules.put(d.id(), GuardSuites.rule(d, root, "m"));
@@ -185,9 +186,10 @@ class GuardSuitesTest {
                 {"id":"owner","outcome":"owner-missing","error":"owner a.Missing is not in the facts in scope","violations":[]}
                 {"id":"quiet","outcome":"ok","violations":[]}
                 {"id":"silent","outcome":"ok","violations":[]}
+                {"id":"skip","outcome":"skipped","error":"shellcheck: not installed — skipping 9 scripts","violations":[]}
                 """);
         Map<String, Object> lines = GuardSuites.readReport(report);
-        assertThat(lines).containsKeys("esc", "stale", "boom", "owner", "quiet", "silent");
+        assertThat(lines).containsKeys("esc", "stale", "boom", "owner", "quiet", "silent", "skip");
         assertThat(MiniJson.str(lines.get("esc"), "outcome")).isEqualTo("ok");
 
         Evaluation esc = GuardSuites.evaluate(Objects.requireNonNull(rules.get("esc")), lines.get("esc"), "m");
@@ -221,6 +223,11 @@ class GuardSuitesTest {
         assertThat(GuardSuites.evaluate(Objects.requireNonNull(rules.get("silent")), null, "m")
                         .outcome())
                 .isEqualTo(Outcome.SCANNER_FAILED);
+        // a guard whose tool is not on this machine is skipped: a notice with the reason, never red
+        Evaluation skip = GuardSuites.evaluate(Objects.requireNonNull(rules.get("skip")), lines.get("skip"), "m");
+        assertThat(skip.outcome()).isEqualTo(Outcome.SKIPPED);
+        assertThat(skip.note()).isEqualTo("shellcheck: not installed — skipping 9 scripts");
+        assertThat(skip.outcome().red(false)).isFalse();
 
         // the test kind's evaluator reads the same report through the module lane context
         EvalContext ctx = new EvalContext(

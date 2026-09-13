@@ -721,7 +721,7 @@ homes are not symmetrical.
 
 | | Gradle | jk |
 |---|---|---|
-| Home | `Guards` in buildSrc is the registry; the one Gradle task is G64 (`jk.verification`), plus `checkGuardParity` and `checkGuardRegistry` at the root | `jk-guards.toml` at the workspace root, plus guard tests under a module's `src/guard` |
+| Home | `Guards` in buildSrc is the registry; the one Gradle task is G64 (`jk.verification`), plus `checkGuardParity`, `checkGuardRegistry` and `checkShellcheck` at the root | `jk-guards.toml` at the workspace root, plus guard tests under a module's `src/guard` |
 | Unit | one Gradle task for the letter only Gradle can see (its own task graph) | one `[guards.<id>]` table per rule, or one `@Guard` method |
 | Scope | the module's `JavaCompile` tasks | a lane: model (manifests, lock), module (one module's classes), workspace, tree (the text corpus), output (packaged artifacts) |
 | Re-runs | when the task graph changes | when the lane's input changes |
@@ -771,8 +771,11 @@ its task graph alone can see, G64 (`checkNoDisabledCompile`, on every module's
 table below, and `checkGuardParity` fails a letter that has a Gradle task and no
 jk side, an excuse in `guard-parity.txt` for a letter that has one, and a
 `jk-guards.toml` whose digest differs from the one the last `jk build` recorded
-under `target/` — the two builds must have enforced the same rules. `./gradlew
-checkFast` therefore means the unit tier, buildSrc's tests and those three
+under `target/` — the two builds must have enforced the same rules. One more
+root task has a jk twin on purpose: `checkShellcheck` (G100) runs
+`scripts/shellcheck.sh` because checkFast runs no guard suite, and the
+`shellcheck` guard test runs the same script under `jk guard`. `./gradlew
+checkFast` therefore means the unit tier, buildSrc's tests and those four
 tasks; the house rules are the self-host lane's, under `jk guard`. Gradle
 running `jk-guards.toml` itself (a `JavaExec` over `server/guard`) is the
 follow-up `guard-parity.txt` records.
@@ -973,6 +976,7 @@ letter — is the Gradle-side follow-up recorded in `guard-parity.txt`.
 | G97 | `swallowed-broad-catch` (jk-guards.toml, `text`) | a catch of Exception, Throwable or RuntimeException whose body is only a comment, in main code; measured here, held by G98 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `swallowed-broad-catch` (text) |
 | G98 | `swallowed-broad-catch-ratchet` (jk-guards.toml, `metric`) | a file's count of comment-only broad catches growing past its baseline — zero since every one got a debug line carrying the exception | metric, `matches:swallowed-broad-catch` per file, baselined and tightened on every build | `swallowed-broad-catch-ratchet` (metric) |
 | G99 | — | a workflow `run:` step pipes into `tee` without pipefail — no `shell: bash` on the step or under a `defaults.run`, and no `set -o pipefail` in the script — so the piped command's failure is tee's success | workflow text scan in both builds; a fixture proves the bite | guard test `workflow-tee-pipefail` |
+| G100 | `checkShellcheck` (root project) + guard test `shellcheck` | a shellcheck finding at `info` or above in a shell script this repository ships or runs — the installers, `scripts/`, the wrapper template — the unquoted `$var` in a `[ ]` test (SC2086) first among them | `scripts/shellcheck.sh` in both builds: the binary, else a container runtime; skipped with a notice on a developer machine that has neither, failed under CI | guard test `shellcheck` |
 <!-- guards:end -->
 
 `checkCliRuntimeClasspath` and `checkCliNoParseTypes` predate the letters.

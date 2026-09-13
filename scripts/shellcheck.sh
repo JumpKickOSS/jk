@@ -3,14 +3,16 @@
 # the CDN serves), scripts/, and the POSIX wrapper template `jk wrapper` writes into projects.
 #
 # Usage:
-#   scripts/shellcheck.sh            # the gate's command, locally and in ci.yml
+#   scripts/shellcheck.sh               # the gate's command: checkShellcheck, the shellcheck guard, by hand
+#   scripts/shellcheck.sh --format=gcc  # further arguments go to shellcheck (the guard reads gcc-format findings)
 # Severity is `info`, because the defect class that matters most here — an unquoted `$var` in a
 # `[ ]` test (SC2086) — is an info-level finding. A finding that is intentional is silenced at
 # its site with `# shellcheck disable=SCnnnn` and a reason, never here.
 #
 # The binary is used when PATH has one; a container runtime falls back to the koalaman image.
 # With neither, the lint is skipped with a notice on a developer machine and fails under CI
-# (the CI variable), so a runner missing the tool cannot pass by omission.
+# (the CI variable), so a runner missing the tool cannot pass by omission. Every message names
+# the script count, which the guard reports as its population.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -32,9 +34,10 @@ elif [[ -n "${CI:-}" ]]; then
   exit 1
 else
   echo "shellcheck: not installed — skipping ${#TARGETS[@]} scripts (dnf install ShellCheck, or put the static binary" >&2
-  echo "shellcheck: from https://github.com/koalaman/shellcheck/releases on PATH; ci.yml does not skip)" >&2
+  echo "shellcheck: from https://github.com/koalaman/shellcheck/releases on PATH; CI does not skip)" >&2
   exit 0
 fi
 
-"${RUNNER[@]}" --severity=info --external-sources "${TARGETS[@]}"
+echo "shellcheck: linting ${#TARGETS[@]} scripts with ${RUNNER[0]}" >&2
+"${RUNNER[@]}" --severity=info --external-sources "$@" "${TARGETS[@]}"
 echo "shellcheck: ${#TARGETS[@]} scripts clean"

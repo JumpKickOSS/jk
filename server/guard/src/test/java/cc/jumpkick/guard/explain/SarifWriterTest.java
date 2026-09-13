@@ -59,6 +59,7 @@ class SarifWriterTest {
                 {"code":"file-size","lane":"guard-tree","outcome":"violations","population":"files=9","fresh":0,"baselined":1,"bite":true,"note":"","ts":11}
                 {"code":"no-todo","lane":"guard-tree","outcome":"scanner-failed","population":"","fresh":0,"baselined":0,"bite":false,"note":"regex deadline of 2000 ms exceeded on mod/src/main/java/a/Huge.java","ts":11}
                 {"code":"gt-empty","lane":"guard-tree","outcome":"blind","population":"files=0","fresh":0,"baselined":0,"bite":false,"note":"the rule examined nothing","ts":11}
+                {"code":"shellcheck","lane":"guard-tree","outcome":"skipped","population":"","fresh":0,"baselined":0,"bite":false,"note":"shellcheck: not installed","ts":11}
                 """);
     }
 
@@ -97,10 +98,15 @@ class SarifWriterTest {
                 .as("a scanner-failed rule")
                 .isEqualTo(Boolean.FALSE);
         List<?> notifications = MiniJson.list(invocation, "toolExecutionNotifications");
-        assertThat(notifications).hasSize(1);
-        assertThat(MiniJson.str(MiniJson.get(notifications.get(0), "message"), "text"))
+        assertThat(notifications).hasSize(2); // the scanner failure, and the skipped rule as a note
+        Object failure = pick(notifications, n -> "error".equals(MiniJson.str(n, "level")));
+        assertThat(MiniJson.str(MiniJson.get(failure, "message"), "text"))
                 .contains("no-todo")
                 .contains("regex deadline");
+        Object skipped = pick(notifications, n -> "note".equals(MiniJson.str(n, "level")));
+        assertThat(MiniJson.str(MiniJson.get(skipped, "message"), "text"))
+                .contains("shellcheck")
+                .contains("not installed");
 
         List<?> results = MiniJson.list(run, "results");
         assertThat(results).hasSize(4); // new site, baselined site, baselined metric, blind rule
@@ -129,7 +135,7 @@ class SarifWriterTest {
         List<?> rules = MiniJson.list(MiniJson.get(MiniJson.get(run, "tool"), "driver"), "rules");
         assertThat(rules)
                 .extracting(r -> MiniJson.str(r, "id"))
-                .containsExactly("file-size", "no-todo", "one-digest-surface", "gt-empty");
+                .containsExactly("file-size", "no-todo", "one-digest-surface", "gt-empty", "shellcheck");
         assertThat(MiniJson.str(
                         MiniJson.get(pick(rules, r -> "one-digest-surface".equals(MiniJson.str(r, "id"))), "help"),
                         "text"))

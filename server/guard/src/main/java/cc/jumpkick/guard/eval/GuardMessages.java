@@ -113,7 +113,7 @@ public final class GuardMessages {
         return sb.toString();
     }
 
-    /** A red outcome that is not a site — blind, owner-missing, scanner-failed, … — as one diagnostic. */
+    /** An outcome that is not a site — blind, owner-missing, scanner-failed, skipped, … — as one diagnostic. */
     public static String outcome(RuleReport r) {
         Rule rule = r.rule();
         StringBuilder sb = new StringBuilder();
@@ -176,6 +176,8 @@ public final class GuardMessages {
             sb.append(" (").append(result.freshCount()).append(" new)");
         }
         if (result.tightened() > 0) sb.append(" · ").append(result.tightened()).append(" baseline entries tightened");
+        int skipped = result.skippedReports().size();
+        if (skipped > 0) sb.append(" · ").append(skipped).append(" skipped");
         return sb.toString();
     }
 

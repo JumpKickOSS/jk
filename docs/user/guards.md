@@ -242,7 +242,10 @@ guard-test` prints the skeleton; [Test](test.md#the-guard-suite-is-not-a-test-su
 how the source set is compiled and why it is not a test suite. `@Allow(in = …)` on a guard is
 the `allow` entry above in annotation form — a module, a class glob, a fingerprint, or a file's
 real path from the workspace root through the source root that holds it — and a
-workspace-scoped guard's site is spelled under the member that owns the class.
+workspace-scoped guard's site is spelled under the member that owns the class. A guard that shells
+out to a tool this machine does not have throws `Skipped` with the reason: the engine reports it
+`skipped` — a notice, not red — and stores no verdict for the lane, so the guard is judged as soon
+as the tool is installed.
 
 ## Fixtures
 

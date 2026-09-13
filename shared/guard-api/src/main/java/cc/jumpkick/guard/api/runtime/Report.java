@@ -85,6 +85,12 @@ public final class Report {
             outcome = "owner-missing";
             error = message;
         }
+
+        /** The guard did not run here; {@code reason} is the notice the engine prints. */
+        public void skipped(String reason) {
+            outcome = "skipped";
+            error = reason;
+        }
     }
 
     /** One guard's line. */

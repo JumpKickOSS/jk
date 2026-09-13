@@ -326,6 +326,49 @@ tasks.register("checkGuardRegistry") {
     }
 }
 
+// G100: every shell script this repository ships or runs is shellcheck-clean. `scripts/shellcheck.sh`
+// owns the target list and the runner choice — the binary, else a container runtime; on a developer
+// machine with neither it skips with a notice and exits 0, and under CI it fails — so this task only
+// runs it and reads its exit status. The jk side is the `shellcheck` guard test, which runs the same
+// script; checkFast runs no guard suite, so a finding must fail this gate too. A skipped run writes no
+// stamp: the task runs again until the lint has actually run.
+tasks.register("checkShellcheck") {
+    group = "verification"
+    description = "Fail when a shipped shell script has a shellcheck finding"
+    val script = layout.projectDirectory.file("scripts/shellcheck.sh")
+    inputs.file(script).withPropertyName("script")
+    inputs.files(fileTree(layout.projectDirectory.dir("scripts")) { include("*.sh") }).withPropertyName("scripts")
+    inputs.files(layout.projectDirectory.files(
+        "install.sh",
+        "hosting/public/install.sh",
+        "clients/cli/src/main/resources/cc/jumpkick/command/toolchain/wrapper/jk.sh",
+    )).withPropertyName("installers")
+    val stamp = layout.buildDirectory.file("guards/shellcheck.ok")
+    outputs.file(stamp)
+    doLast {
+        val output: String
+        val status: Int
+        try {
+            val process = ProcessBuilder("bash", script.asFile.path)
+                .directory(layout.projectDirectory.asFile)
+                .redirectErrorStream(true)
+                .start()
+            output = process.inputStream.bufferedReader().readText().trim()
+            status = process.waitFor()
+        } catch (e: java.io.IOException) {
+            logger.warn("shellcheck: no bash on PATH — skipping ({})", e.message)
+            return@doLast
+        }
+        if (status != 0) throw GradleException("shellcheck found problems —\n$output")
+        if (!output.contains("scripts clean")) {
+            logger.warn(output)
+            return@doLast
+        }
+        logger.lifecycle(output)
+        stamp.get().asFile.apply { parentFile.mkdirs() }.writeText("ok\n")
+    }
+}
+
 tasks.register("checkGateCoverage") {
     group = "verification"
     description = "Fail when a structural guard is not reachable from checkFast"

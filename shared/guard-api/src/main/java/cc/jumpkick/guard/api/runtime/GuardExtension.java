@@ -10,6 +10,7 @@ import cc.jumpkick.guard.api.Model;
 import cc.jumpkick.guard.api.Output;
 import cc.jumpkick.guard.api.OwnerMissing;
 import cc.jumpkick.guard.api.Scope;
+import cc.jumpkick.guard.api.Skipped;
 import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.host.Log;
@@ -108,6 +109,7 @@ public final class GuardExtension
     public void handleTestExecutionException(ExtensionContext ctx, Throwable t) {
         Report.Collector c = collector(ctx);
         if (t instanceof OwnerMissing) c.ownerMissing(t.getMessage() == null ? "owner missing" : t.getMessage());
+        else if (t instanceof Skipped) c.skipped(t.getMessage() == null ? "skipped" : t.getMessage());
         else c.threw(t);
         // swallowed on purpose: the engine reports scanner-failed under the guard's id
     }
