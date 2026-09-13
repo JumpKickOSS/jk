@@ -114,8 +114,9 @@ results with the baseline's reason, so the code-scanning view shows what the tea
 Pin every action to a full commit SHA with its release tag in a trailing comment
 (`uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0`) and open every
 workflow with `permissions: contents: read`, elevating one scope at a time under the job that
-writes; jk's own repository holds its workflows to both with `scripts/check-workflows.sh` on every
-pull request and lets Dependabot move the pins.
+writes; jk's own repository holds its workflows to both with the `workflow-pins-permissions`
+guard under `jk guard` and with `scripts/check-workflows.sh` in CI's workflow-lint job, judged
+over one fixture, and lets Dependabot move the pins.
 
 ## Related
 

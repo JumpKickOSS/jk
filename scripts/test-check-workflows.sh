@@ -2,7 +2,10 @@
 # Fixtures for scripts/check-workflows.sh: a workflow with every action pinned to a commit and a
 # read-only token passes; a floating tag, a sha without its tag comment, a docker image without a
 # digest, a missing or writing top-level permissions block and a write-all job are each refused by
-# name. Then the repository's own workflows must pass.
+# name. The `workflow-pins-permissions` guard (jk guard, G104) holds the tree to the same three
+# rules from the same fixture cases, so the two readers are judged over one set: every Bad case
+# there is refused here, every Ok case and the shared tree accepted. Then the repository's own
+# workflows must pass.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -96,6 +99,19 @@ refuses "$WORK/job-write-all.yml" "write-all"
 # Two findings in one file are both reported, and the count is theirs.
 workflow "$WORK/two.yml" "" "      - uses: actions/checkout@v4"
 refuses "$WORK/two.yml" "2 finding(s)"
+
+# The guard's fixture, judged by the script: the same cases refused and accepted by both readers.
+GUARD_FIXTURE="$ROOT/server/guard/fixtures/workflow-pins-permissions"
+[[ -d "$GUARD_FIXTURE" ]] || { echo "test-check-workflows: $GUARD_FIXTURE is missing — the guard's fixture is this script's too" >&2; exit 1; }
+for bad in "$GUARD_FIXTURE"/Bad-*/.github/workflows/*.yml; do
+  if "$CHECK" "$bad" >"$WORK/last.log" 2>&1; then
+    echo "test-check-workflows: guard fixture case $(basename "$(dirname "$(dirname "$(dirname "$bad")")")") was accepted; the guard and the script disagree" >&2
+    exit 1
+  fi
+done
+for ok in "$GUARD_FIXTURE"/.github/workflows/*.yml "$GUARD_FIXTURE"/Ok-*/.github/workflows/*.yml; do
+  passes "$ok"
+done
 
 # The repository's own workflows hold to the rules the fixtures describe.
 "$CHECK" >"$WORK/tree.log" 2>&1 || { cat "$WORK/tree.log" >&2; echo "test-check-workflows: the tree's workflows were refused" >&2; exit 1; }

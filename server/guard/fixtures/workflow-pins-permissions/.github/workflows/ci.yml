@@ -1,0 +1,17 @@
+# The tree every case starts from: a workflow that holds to all three rules.
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: 'actions/setup-node@11d5960a326750d5838078e36cf38b85af677262' # 4.4.0
+      - uses: docker://ghcr.io/owner/image@sha256:0000000000000000000000000000000000000000000000000000000000000000
+      - run: echo gate
