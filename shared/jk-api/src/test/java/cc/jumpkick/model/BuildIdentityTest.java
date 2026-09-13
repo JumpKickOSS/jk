@@ -36,4 +36,15 @@ class BuildIdentityTest {
         assertThat(BuildIdentity.buildId()).isEmpty();
         assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(JkVersion.VERSION + SALTED);
     }
+
+    @Test
+    void the_override_stands_in_for_the_derived_id_until_cleared() {
+        try {
+            BuildIdentity.overrideBuildIdForTests("feedfacecafe");
+            assertThat(BuildIdentity.buildId()).isEqualTo("feedfacecafe");
+        } finally {
+            BuildIdentity.overrideBuildIdForTests(null);
+        }
+        assertThat(BuildIdentity.buildId()).isEmpty();
+    }
 }

@@ -8,6 +8,7 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.model.BuildIdentity;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -178,6 +179,27 @@ class ActionKeyTest {
                 .outputDir(tempDir.resolve("out"))
                 .release(25)
                 .build();
+    }
+
+    /** The engine that packages an artifact is one of its inputs: another engine, another key. */
+    @Test
+    void an_artifact_key_moves_with_the_producing_engines_identity() {
+        List<String> tokens = List.of("classes:dir:abc", "manifest:Main");
+        String derived = ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens);
+        try {
+            BuildIdentity.overrideBuildIdForTests("000000000001");
+            String first = ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens);
+            assertThat(first).isNotEqualTo(derived);
+            assertThat(ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens))
+                    .as("the same engine keys the same artifact")
+                    .isEqualTo(first);
+            BuildIdentity.overrideBuildIdForTests("000000000002");
+            assertThat(ActionKey.forArtifact("package-jar@1234", "0.1.0#3", tokens))
+                    .as("a rebuilt engine under the same version is a different producer")
+                    .isNotEqualTo(first);
+        } finally {
+            BuildIdentity.overrideBuildIdForTests(null);
+        }
     }
 
     @Test

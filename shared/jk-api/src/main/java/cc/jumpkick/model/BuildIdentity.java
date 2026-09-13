@@ -24,16 +24,35 @@ public final class BuildIdentity {
 
     private static volatile @Nullable String cachedBuildId;
 
+    /** A stand-in for the derived id; null means derive. */
+    private static volatile @Nullable String overrideBuildId;
+
     private BuildIdentity() {}
 
-    /** Content identity of the running code archive, or {@code ""} when none is derivable. */
+    /**
+     * Content identity of the running code archive, or {@code ""} when none is derivable. Every
+     * artifact-shaped action key ({@code ActionKey.forArtifact}) folds this in as the identity of
+     * the code that produced the artifact, so an engine rebuilt from other sources under the same
+     * version never restores what the previous engine packaged.
+     */
     public static String buildId() {
+        String override = overrideBuildId;
+        if (override != null) return override;
         String local = cachedBuildId;
         if (local != null) return local;
         synchronized (BuildIdentity.class) {
             if (cachedBuildId == null) cachedBuildId = computeBuildId();
             return cachedBuildId;
         }
+    }
+
+    /**
+     * Pretend the running code is the archive {@code id} names; {@code null} returns to the
+     * derived identity. A test uses it to be "another engine" for one build and watch a packaging
+     * key miss; unit tests otherwise run from a classes dir and have no identity to move.
+     */
+    public static void overrideBuildIdForTests(@Nullable String id) {
+        overrideBuildId = id;
     }
 
     /**
