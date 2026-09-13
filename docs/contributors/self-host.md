@@ -82,9 +82,10 @@ After a release ships to jumpkick.build:
 ### The bootstrap chain
 
 The pinned release is the only jk that can build this tree from nothing, so the tree must stay
-within what that release reads. Two facts keep it there, and `BootstrapPinTest` (fast tier,
-`clients/cli`) holds both: the lock's `version` is the frozen schema every hosted release reads,
-and the lock's `jk-min` floor never exceeds the pin. A branch that changes a manifest key or the
+within what that release reads. Two facts keep it there, each held by a guard on every
+`jk guard`: **G86** (`lock-version-is-one`) holds that the lock's `version` is the frozen schema
+every hosted release reads, and **G105** (`bootstrap-pin-reads-tree`) that the lock's `jk-min`
+floor never exceeds the pin, with a tree fixture that proves it bites. A branch that changes a manifest key or the
 lock format so that the pinned release cannot read the tree has no bootstrap at all — there is no
 second build to fall back on — so a format change ships as two releases, in this order:
 

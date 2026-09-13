@@ -421,6 +421,44 @@ final class ParityRules {
         return false;
     }
 
+    // ---- G105 --------------------------------------------------------------------------------
+
+    private static final String LOCK = "jk-lock.toml";
+    private static final Pattern LOCK_FLOOR_LINE = Pattern.compile("(?m)^jk-min\\s*=\\s*\"([^\"]*)\"");
+
+    @Guard(
+            id = "bootstrap-pin-reads-tree",
+            why =
+                    "the release " + BOOTSTRAP_PIN
+                            + " pins is the only jk that builds this tree from nothing, so the lock's jk-min floor never exceeds the pin: a tree requiring a newer jk than the one bootstrapping it has no bootstrap (the lock schema itself is G86's)",
+            instead =
+                    "reader first, writer second (docs/contributors/self-host.md, \"The bootstrap chain\"): host a release that satisfies the floor, move the pin to it, and only then let the tree require it")
+    @Fixture("server/guard/fixtures/bootstrap-pin-reads-tree")
+    void bootstrapPinReadsTree(Text text, Violations v) {
+        String pin = textOrNull(text, BOOTSTRAP_PIN);
+        String lock = textOrNull(text, LOCK);
+        // A missing or malformed pin is G57's finding; a tree with no lock states no floor.
+        if (pin == null || !RELEASE_VERSION.matcher(pin.strip()).matches() || lock == null) {
+            v.population(0);
+            return;
+        }
+        String release = pin.strip();
+        Matcher floor = LOCK_FLOOR_LINE.matcher(lock);
+        if (floor.find() && RELEASE_VERSION.matcher(floor.group(1)).matches() && newer(floor.group(1), release))
+            v.add(
+                    new TextSite(LOCK, lineOf(lock, floor.start()), floor.group()),
+                    LOCK + " requires jk " + floor.group(1) + " (jk-min) and the bootstrap pin " + release
+                            + " is older, so the one release meant to build this tree refuses it");
+        v.population(2);
+    }
+
+    /** The 1-based line holding {@code offset} in {@code text}. */
+    private static int lineOf(String text, int offset) {
+        int line = 1;
+        for (int i = 0; i < offset; i++) if (text.charAt(i) == '\n') line++;
+        return line;
+    }
+
     // ---- G99 ---------------------------------------------------------------------------------
 
     private static final Pattern PIPE_TO_TEE = Pattern.compile("\\|\\s*tee\\b");

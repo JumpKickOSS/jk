@@ -1,0 +1,4 @@
+version = 1
+generated-by = "jk 1.4.0"
+resolution-algorithm = "pubgrub-v1"
+jk-min = "1.2.0"
