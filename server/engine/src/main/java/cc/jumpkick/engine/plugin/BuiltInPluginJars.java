@@ -7,6 +7,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.JkDirs;
@@ -37,14 +38,12 @@ public final class BuiltInPluginJars {
     public static void install() {
         for (Located located : locatedTablePlugins()) {
             try {
-                PluginTableRegistry.putBuiltIn(
-                        PluginDescriptors.parse(
-                                located.manifestToml(), located.path() + "!" + ManifestPaths.PLUGIN_MANIFEST),
-                        located.path());
+                PluginTableRegistry.putBuiltIn(describe(located, true), located.path());
             } catch (RuntimeException e) {
-                // Store jars are managed artifacts: one garbled or version-incompatible manifest
-                // must not kill the engine machine-wide. Skip it loudly — a build referencing
-                // its table retries through the lazy fetcher and surfaces this cause there.
+                // Store jars are managed artifacts: one garbled, version-incompatible or
+                // mis-described manifest must not kill the engine machine-wide. Skip it loudly —
+                // a build referencing its table retries through the lazy fetcher and surfaces
+                // this cause there.
                 Log.warn("jk engine: skipping plugin jar " + located.path() + ": " + e.getMessage());
             }
         }
@@ -64,11 +63,47 @@ public final class BuiltInPluginJars {
         if (plugin.isEmpty()) return null; // not a first-party table — the plain error stands
         try {
             Path jar = plugin.get().locate(JkStores.storeCas());
-            PluginTableRegistry.installFromJar(jar);
+            String toml = manifestToml(jar);
+            if (toml == null || toml.isBlank()) return null; // not a table plugin — the plain error stands
+            PluginTableRegistry.putBuiltIn(describe(new Located(plugin.get(), jar, toml), true), jar);
             return null;
-        } catch (RuntimeException e) {
+        } catch (IOException | RuntimeException e) {
             return e.getMessage();
         }
+    }
+
+    /**
+     * The descriptor {@code located} carries, checked to be the jar's own: the worker it names
+     * ({@code [code] worker}, or {@code jk-<id>} when the code table names none) must be the
+     * artifact the jar is shelved as. A worker vendors sibling plugins' class trees, and a merge
+     * that lets a sibling's root descriptor through would otherwise register this jar as the
+     * owner of the sibling's table and pin it in every project configuring that table — so a
+     * jar whose descriptor is another plugin's is refused, never registered.
+     *
+     * @param enforceJkCompat as {@link PluginDescriptors#parse(String, String, boolean)}
+     * @throws IllegalStateException when the descriptor belongs to another plugin
+     */
+    public static PluginDescriptor describe(Located located, boolean enforceJkCompat) {
+        PluginDescriptor descriptor = PluginDescriptors.parse(
+                located.manifestToml(), located.path() + "!" + ManifestPaths.PLUGIN_MANIFEST, enforceJkCompat);
+        String artifact = located.plugin().artifactId();
+        String owner = describedWorker(descriptor);
+        if (!owner.equals(artifact)) {
+            throw new IllegalStateException(located.path() + " is the " + artifact + " worker but its root "
+                    + ManifestPaths.PLUGIN_MANIFEST + " describes plugin `" + descriptor.id() + "` (table ["
+                    + descriptor.table() + "], worker " + owner
+                    + ") — a vendored sibling's descriptor took the jar root; the jar is not registered."
+                    + " Reinstall it so its own descriptor sits at the root: `jk install` from the jk checkout,"
+                    + " or `jk storage clean --workers` and let the next build fetch the published jar.");
+        }
+        return descriptor;
+    }
+
+    /** The worker artifact a descriptor says carries its code: {@code [code] worker}, else {@code jk-<id>}. */
+    static String describedWorker(PluginDescriptor descriptor) {
+        PluginDescriptor.Code code = descriptor.code();
+        String worker = code == null ? null : code.worker();
+        return worker == null || worker.isBlank() ? "jk-" + descriptor.id() : worker;
     }
 
     /**

@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -22,5 +23,20 @@ class BuiltInManifestClasspathTest {
         assertThat(PluginTableRegistry.manifests().stream().map(m -> m.id()).toList())
                 .as("BuiltInPluginJars.install must register located table plugins")
                 .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified");
+    }
+
+    /**
+     * Every shelved worker jar that carries a descriptor carries its own: a jar whose root
+     * {@code jk-plugin.toml} names another plugin's worker is a mis-assembled jar, and a build
+     * that shelved one is red here whichever build produced it.
+     */
+    @Test
+    void every_located_worker_jar_carries_its_own_descriptor() {
+        for (BuiltInPluginJars.Located located : BuiltInPluginJars.locatedTablePlugins()) {
+            PluginDescriptor descriptor = BuiltInPluginJars.describe(located, false);
+            assertThat("jk-" + descriptor.id())
+                    .as(located.path() + " describes plugin " + descriptor.id())
+                    .isEqualTo(located.plugin().artifactId());
+        }
     }
 }

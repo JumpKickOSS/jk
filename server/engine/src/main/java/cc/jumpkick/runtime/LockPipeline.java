@@ -454,10 +454,9 @@ public final class LockPipeline {
         for (BuiltInPluginJars.Located located : BuiltInPluginJars.locatedTablePlugins()) {
             PluginDescriptor d;
             try {
-                d = PluginDescriptors.parse(
-                        located.manifestToml(), located.path().toString(), false);
-            } catch (Exception unparseable) {
-                continue; // engine install already skipped this jar loudly
+                d = BuiltInPluginJars.describe(located, false);
+            } catch (RuntimeException unusable) {
+                continue; // garbled, or another plugin's descriptor: engine install skipped it loudly
             }
             // Pin only plugins this project configures. Pinning every located plugin churned each
             // project's lock on every jk version bump and ping-ponged between developers on

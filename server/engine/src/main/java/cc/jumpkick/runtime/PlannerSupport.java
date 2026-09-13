@@ -1147,7 +1147,7 @@ public final class PlannerSupport {
         PathUtil.deleteRecursivelyOrThrow(stage);
         Files.createDirectories(stage);
         copyTreeInto(classes, stage);
-        for (Path contrib : extra) copyTreeInto(contrib, stage);
+        for (Path contrib : extra) copyContributionInto(classes, contrib, stage);
         mergeServiceRegistrations(stage, classes, extra);
         if (ctx != null) ctx.put(STAGED_CLASSES_INPUTS, inputs);
         return stage;
@@ -1190,6 +1190,38 @@ public final class PlannerSupport {
     static void copyTreeInto(Path from, Path to) throws IOException {
         PathUtil.copyTree(from, to);
     }
+
+    /**
+     * Copy a contributed tree into the stage without the entries a plugin module owns at its
+     * root (its descriptor and {@code templates/}). A worker vendors its workspace siblings' class trees,
+     * and a sibling that is itself a plugin has its own {@code jk-plugin.toml} and {@code
+     * templates/} at that root: copied over, the sibling's descriptor replaces the module's, so
+     * the jar describes the wrong plugin, the registry makes it the owner of the sibling's table,
+     * and every project configuring that table locks this jar too. The {@code templates/} tree is
+     * left out of the copy; the descriptor the copy carries is put back to the module's own
+     * ({@code classes}), or removed when the module has none. Everything else a contribution
+     * carries keeps the plain-copy semantics it has always had.
+     */
+    static void copyContributionInto(Path classes, Path from, Path to) throws IOException {
+        if (!Files.isDirectory(from)) return;
+        PathUtil.copyTree(from, to, dir -> isPluginTemplatesRoot(from, dir));
+        if (!Files.isRegularFile(from.resolve(ManifestPaths.PLUGIN_MANIFEST))) return;
+        Path own = classes.resolve(ManifestPaths.PLUGIN_MANIFEST);
+        Path staged = to.resolve(ManifestPaths.PLUGIN_MANIFEST);
+        if (Files.isRegularFile(own)) {
+            Files.copy(own, staged, StandardCopyOption.REPLACE_EXISTING);
+        } else {
+            Files.deleteIfExists(staged);
+        }
+    }
+
+    /** True when {@code dir} is {@code <root>/templates}: the Giter8 trees the registry reads from the owning plugin's jar. */
+    static boolean isPluginTemplatesRoot(Path root, Path dir) {
+        return root.equals(dir.getParent()) && PLUGIN_TEMPLATES_ROOT.equals(String.valueOf(dir.getFileName()));
+    }
+
+    /** Root directory of a plugin jar's Giter8 templates ({@code templates/<lang>/<framework>/<name>.g8/}). */
+    static final String PLUGIN_TEMPLATES_ROOT = "templates";
     /**
      * Mirror the javac diagnostic loop for worker compilers: one {@code ctx.error}/{@code warn}
      * per diagnostic so each keeps its own {@code path:line[:col]:} header for journal locus

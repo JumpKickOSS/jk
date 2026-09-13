@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -10,12 +11,15 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -99,6 +103,63 @@ class BuildPlannerStagedClassesTest {
                 .as("a file one source owns is copied as is")
                 .hasContent("x.OnlyMine\n");
         assertThat(staged.resolve("Sibling.class")).hasContent("sib");
+    }
+
+    /**
+     * A worker vendors a workspace sibling's class tree, and a sibling that is itself a plugin
+     * carries its own {@code jk-plugin.toml} and {@code templates/} at that root. The module's
+     * descriptor is the one the jar ships; the sibling's root resources do not reach it at all.
+     */
+    @Test
+    void a_vendored_sibling_s_descriptor_and_templates_do_not_reach_the_stage_or_the_jar(@TempDir Path tmp)
+            throws Exception {
+        Fixture f = fixture(tmp);
+        Files.writeString(f.classes.resolve("jk-plugin.toml"), "[plugin]\nid = \"grails\"\ntable = \"grails\"\n");
+        Files.createDirectories(f.classes.resolve("templates/java/grails"));
+        Files.writeString(f.classes.resolve("templates/java/grails/hello.g8"), "own");
+        Files.writeString(
+                f.contributed.resolve("jk-plugin.toml"), "[plugin]\nid = \"spring-boot\"\ntable = \"spring-boot\"\n");
+        Files.createDirectories(f.contributed.resolve("templates/java/spring-boot"));
+        Files.writeString(f.contributed.resolve("templates/java/spring-boot/hello.g8"), "sibling");
+        Files.createDirectories(f.contributed.resolve("cc/jumpkick/boot"));
+        Files.writeString(f.contributed.resolve("cc/jumpkick/boot/BootJarPackager.class"), "vendored");
+
+        Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+
+        assertThat(staged.resolve("jk-plugin.toml")).content().contains("id = \"grails\"");
+        assertThat(staged.resolve("templates/java/grails/hello.g8")).hasContent("own");
+        assertThat(staged.resolve("templates/java/spring-boot")).doesNotExist();
+        assertThat(staged.resolve("cc/jumpkick/boot/BootJarPackager.class"))
+                .as("the sibling's classes are still vendored")
+                .hasContent("vendored");
+
+        Path jar = tmp.resolve("jk-grails.jar");
+        new JarPackager().packageJar(JarPackager.JarRequest.of(staged, jar));
+        try (JarFile jf = new JarFile(jar.toFile())) {
+            JarEntry descriptor = jf.getJarEntry("jk-plugin.toml");
+            assertThat(descriptor).isNotNull();
+            assertThat(new String(jf.getInputStream(descriptor).readAllBytes(), StandardCharsets.UTF_8))
+                    .contains("table = \"grails\"");
+            assertThat(jf.stream()
+                            .map(JarEntry::getName)
+                            .filter(n -> n.startsWith("templates/spring-boot")
+                                    || n.startsWith("templates/java/spring-boot")))
+                    .isEmpty();
+            assertThat(jf.getJarEntry("cc/jumpkick/boot/BootJarPackager.class")).isNotNull();
+        }
+    }
+
+    @Test
+    void a_contribution_that_is_not_a_plugin_tree_is_copied_whole(@TempDir Path tmp) throws Exception {
+        Fixture f = fixture(tmp);
+        Files.createDirectories(f.contributed.resolve("META-INF/native-image"));
+        Files.writeString(f.contributed.resolve("META-INF/native-image/reflect.json"), "[]");
+        Files.writeString(f.contributed.resolve("application.yml"), "aot: true");
+
+        Path staged = PlannerSupport.stageClassesWithContributions(ctx, f.classes, contributed(f), f.layout);
+
+        assertThat(staged.resolve("META-INF/native-image/reflect.json")).hasContent("[]");
+        assertThat(staged.resolve("application.yml")).hasContent("aot: true");
     }
 
     @Test

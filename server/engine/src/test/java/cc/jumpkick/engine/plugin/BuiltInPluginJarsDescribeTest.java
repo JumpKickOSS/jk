@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.plugin;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
+import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.Test;
+
+/**
+ * A shelved worker jar's root descriptor must be its own. The loader checks the worker the
+ * descriptor names against the artifact the jar is shelved as and refuses a mismatch, so a
+ * vendored sibling's descriptor can neither claim the jar nor take the sibling's table.
+ */
+class BuiltInPluginJarsDescribeTest {
+
+    private static final Path JAR = Path.of("/store/repos/jk-local/cc/jumpkick/jk-grails/1.0/jk-grails-1.0.jar");
+
+    private static String descriptor(String id, @Nullable String worker) {
+        String code = worker == null ? "" : "[code]\nworker = \"" + worker + "\"\nprotocol-prefix = \"##X:\"\n";
+        return "[plugin]\nid = \"" + id + "\"\ntable = \"" + id + "\"\njk-compat = \">=0.10\"\n\n" + code;
+    }
+
+    @Test
+    void a_descriptor_naming_the_jar_s_own_worker_is_accepted() {
+        var located = new BuiltInPluginJars.Located(PluginJar.GRAILS, JAR, descriptor("grails", "jk-grails"));
+
+        PluginDescriptor d = BuiltInPluginJars.describe(located, false);
+
+        assertThat(d.id()).isEqualTo("grails");
+        assertThat(d.table()).isEqualTo("grails");
+    }
+
+    @Test
+    void a_descriptor_of_another_plugin_at_the_jar_root_is_refused_naming_both() {
+        var located = new BuiltInPluginJars.Located(PluginJar.GRAILS, JAR, descriptor("spring-boot", "jk-spring-boot"));
+
+        assertThatThrownBy(() -> BuiltInPluginJars.describe(located, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jk-grails")
+                .hasMessageContaining("spring-boot")
+                .hasMessageContaining("not registered");
+    }
+
+    @Test
+    void a_descriptor_without_a_code_table_is_matched_by_its_id() {
+        var own = new BuiltInPluginJars.Located(PluginJar.GRAILS, JAR, descriptor("grails", null));
+        var foreign = new BuiltInPluginJars.Located(PluginJar.GRAILS, JAR, descriptor("quarkus", null));
+
+        assertThat(BuiltInPluginJars.describe(own, false).id()).isEqualTo("grails");
+        assertThatThrownBy(() -> BuiltInPluginJars.describe(foreign, false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jk-quarkus");
+    }
+}
