@@ -167,9 +167,12 @@ ARCH="$(uname -m)"
 case "$ARCH" in amd64) ARCH=x86_64 ;; arm64) ARCH=aarch64 ;; esac
 FILE="jk-$OS-$ARCH-$VERSION.xz"
 echo "jk wrapper: fetching jk $VERSION ..." >&2
-curl -fsSL -o "$TMP/$FILE" "$RELEASES/$VERSION/$FILE"
-curl -fsSL -o "$TMP/SHA256SUMS" "$RELEASES/$VERSION/SHA256SUMS"
-curl -fsSL -o "$TMP/SHA256SUMS.sig" "$RELEASES/$VERSION/SHA256SUMS.sig"
+for NAME in "$FILE" SHA256SUMS SHA256SUMS.sig; do
+  curl -fsSL -o "$TMP/$NAME" "$RELEASES/$VERSION/$NAME" || {
+    echo "jk wrapper: could not read $RELEASES/$VERSION/$NAME — the release host does not serve jk $VERSION, or JK_RELEASES_URL is wrong." >&2
+    exit 1
+  }
+done
 verify_release_signature "$TMP/SHA256SUMS" "$TMP/SHA256SUMS.sig" "release"
 WANT="$(awk -v wanted="$FILE" '
   {

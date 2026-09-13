@@ -200,7 +200,7 @@ write_pointer "$VERSION" "$WORK/other-key.pem"
 assert_refused_unchanged "foreign-pointer" "latest-release pointer signature verification failed"
 grep -q "fetching jk" "$WORK/last-stderr" && fail "a foreign-signed pointer named a download"
 write_pointer "1.0.1"
-assert_refused_unchanged "missing-release" ""
+assert_refused_unchanged "missing-release" "could not read $RELEASES_URL/1.0.1/"
 write_pointer "$VERSION"
 
 # The artifact changes after the manifest is signed.
@@ -234,7 +234,7 @@ mv "$RELEASE/short.sig" "$RELEASE/SHA256SUMS.sig"
 assert_refused_unchanged "short-signature" "release signature has the wrong RSA-3072 length"
 write_evidence
 rm -f "$RELEASE/SHA256SUMS.sig"
-assert_refused_unchanged "missing-signature" ""
+assert_refused_unchanged "missing-signature" "could not read $RELEASES_URL/$VERSION/SHA256SUMS.sig"
 
 # A valid release again: the refusals left nothing behind that stops the next bootstrap.
 write_evidence

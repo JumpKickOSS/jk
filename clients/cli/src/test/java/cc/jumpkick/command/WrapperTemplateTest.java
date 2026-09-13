@@ -70,6 +70,8 @@ class WrapperTemplateTest {
         assertThat(sh).contains("real_path \"$PATH_JK\"").contains("is_wrapper \"$PATH_JK\"");
         // A failed or empty VERSION fetch is an error that names the URL, never a bare download.
         assertThat(sh).contains("could not read $RELEASES/latest/LATEST").contains("is not a release pointer");
+        // A release file the host does not serve is refused by name, not with curl's bare status.
+        assertThat(sh).contains("could not read $RELEASES/$VERSION/$NAME");
         assertThat(sh).doesNotContain(".zip");
         // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness.
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
