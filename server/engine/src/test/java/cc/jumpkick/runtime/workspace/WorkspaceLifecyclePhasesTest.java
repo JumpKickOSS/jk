@@ -68,32 +68,23 @@ class WorkspaceLifecyclePhasesTest {
     }
 
     @Test
-    void partial_restore_hands_only_misses_to_resource_planning() {
-        Path first = tmp.resolve("first");
-        Path second = tmp.resolve("second");
-
-        WorkspacePreflightPhase.Restore restore = WorkspacePreflightPhase.afterRestore(List.of(first, second, first));
-
-        assertThat(restore.result()).isEmpty();
-        assertThat(restore.dirty()).containsExactlyInAnyOrder(first, second);
-    }
-
-    @Test
-    void restore_needed_modules_beside_dirty_work_are_built_in_graph_order_not_dropped() {
+    void restore_needed_modules_are_scheduled_beside_dirty_work_in_graph_order() {
         Path core = Path.of("ws", "core").toAbsolutePath();
         Path app = Path.of("ws", "app").toAbsolutePath();
         List<BuildGraph.BuildUnit> units = List.of(unit(core), unit(app));
 
         // The post-failure memo shape once target/ is gone: app still dirty, core clean but
-        // with no outputs on disk. The restore pass only runs for an all-clean graph.
-        WorkspacePreflightPhase.Restore restore =
-                WorkspacePreflightPhase.withoutRestorePass(units, Set.of(app), Set.of(core));
-        assertThat(restore.result()).isEmpty();
-        assertThat(restore.dirty()).containsExactly(core, app);
+        // with no outputs on disk.
+        assertThat(WorkspacePreflightPhase.scheduled(units, Set.of(app), Set.of(core)))
+                .containsExactly(core, app);
+
+        // An all-clean graph with missing outputs schedules exactly those modules: their plans
+        // restore by key, there is no pointer-driven restore beside the build.
+        assertThat(WorkspacePreflightPhase.scheduled(units, Set.of(), Set.of(core, app)))
+                .containsExactly(core, app);
 
         // Nothing to restore: the dirty set passes through untouched.
-        assertThat(WorkspacePreflightPhase.withoutRestorePass(units, Set.of(app), Set.of())
-                        .dirty())
+        assertThat(WorkspacePreflightPhase.scheduled(units, Set.of(app), Set.of()))
                 .containsExactly(app);
     }
 

@@ -266,7 +266,7 @@ public final class PreflightMemo {
                 fps.put(dir, row.fp());
                 if (row.dirty()) {
                     dirty.add(dir);
-                } else if (ModuleOutputRestore.packageOutputsMissing(root, dir, u.manifest())) {
+                } else if (ModuleOutputs.packageOutputsMissing(root, dir, u.manifest())) {
                     // Inputs still match — missing jars/classes need action-cache restore, not
                     // a memo miss that forces a full TaskForecaster rebuild wall.
                     restoreNeeded.add(dir);

@@ -3,7 +3,6 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
@@ -12,11 +11,9 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
-import cc.jumpkick.runtime.ModuleOutputRestore;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
-import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -117,25 +114,13 @@ public final class WorkspacePreflightPhase {
                         + ")",
                 forecastStart);
 
-        Restore restore = restore(
-                request,
-                listener,
-                graph,
-                units,
-                moduleDirs,
-                forecast.dirty(),
-                forecast.restoreNeeded(),
-                forecast.preflight());
-        if (restore.result().isPresent()) {
-            return new Completed(restore.result().orElseThrow());
-        }
         return new Ready(new Context(
                 request,
                 graph,
                 List.copyOf(units),
                 immutableOrderedSet(moduleDirs),
                 immutableOrderedSet(jarConsumed),
-                immutableOrderedSet(restore.dirty()),
+                scheduled(units, forecast.dirty(), forecast.restoreNeeded()),
                 forecast.preflight()));
     }
 
@@ -202,63 +187,20 @@ public final class WorkspacePreflightPhase {
         return new Forecast(immutableOrderedSet(dirty), immutableOrderedSet(restoreNeeded), preflight);
     }
 
-    private static Restore restore(
-            WorkspaceRequest request,
-            WorkspaceBuildListener listener,
-            BuildGraph.Result graph,
-            List<BuildGraph.BuildUnit> units,
-            Set<Path> moduleDirs,
-            Set<Path> dirty,
-            Set<Path> restoreNeeded,
-            Optional<BuildForecasting.Preflight> preflight) {
-        if (!restoreEligible(request, dirty, restoreNeeded)) {
-            return withoutRestorePass(units, dirty, restoreNeeded);
-        }
-        listener.onPreflight("restore", 0, restoreNeeded.size(), "Restoring outputs…");
-        long eta = (long) EffortWeights.RESTORE * EffortWeights.MS_PER_WEIGHT * restoreNeeded.size();
-        listener.onEtaEstimate(eta);
-        List<Path> failed;
-        try {
-            failed = ModuleOutputRestore.restoreAll(request.entryDir(), List.copyOf(restoreNeeded), request.cache());
-        } catch (IOException e) {
-            return new Restore(Set.of(), Optional.of(failure(2, List.of(Errors.text(e)))));
-        }
-        listener.onPreflight("restore", restoreNeeded.size(), restoreNeeded.size(), "Restoring outputs…");
-        if (!failed.isEmpty()) {
-            return afterRestore(failed);
-        }
-
-        Map<Path, Path> workspaceLinks = WorkspaceArtifacts.computeLinks(moduleDirs, request.entryDir());
-        for (BuildGraph.BuildUnit unit : units) {
-            WorkspaceArtifacts.linkModule(request.entryDir(), unit.dir(), workspaceLinks);
-        }
-        if (request.dirtyHint() == null && !request.testOnly()) {
-            Map<Path, String> fingerprints = preflight
-                    .filter(value -> !value.fingerprints().isEmpty())
-                    .map(BuildForecasting.Preflight::fingerprints)
-                    .orElseGet(() -> PreflightMemo.snapshotFingerprints(graph, request.skipTests())
-                            .fingerprints());
-            if (!fingerprints.isEmpty()) {
-                PreflightMemo.storeDirty(
-                        request.entryDir(), graph, request.skipTests(), request.profile(), Set.of(), fingerprints);
-            }
-        }
-        listener.onEtaEstimate(0);
-        return new Restore(Set.of(), Optional.of(success()));
-    }
-
-    static Restore afterRestore(List<Path> failed) {
-        return new Restore(immutableOrderedSet(failed), Optional.empty());
-    }
-
     /**
-     * No restore pass: the modules whose inputs are clean but whose outputs are missing are built
-     * beside the dirty set, in graph order. Their steps are action-cache hits, so this costs
-     * milliseconds; dropping them left every dependent failing in resolve classpath with "sibling
-     * not built" — the shape a memo takes after any failed build, once {@code target/} is gone.
+     * The modules this build runs: the dirty set plus every module whose inputs are clean but
+     * whose outputs are missing, in graph order. A restore-needed module runs its own plan, and
+     * each step restores by the action key it computes from its current inputs — the compile by
+     * {@code JavaCompile}'s key, the jar by the package key — so what comes back is what this
+     * build would produce. Nothing restores by "the last record for this task": after an edit, a
+     * build, a revert and a wipe, that pointer names the edited build's outputs, and an empty tree
+     * refilled from it ships the wrong bytecode under a hitting key. Every step of such a plan is a
+     * cache hit, so this costs milliseconds; dropping these modules instead left every dependent
+     * failing in resolve classpath with "sibling not built" — the shape a memo takes after any
+     * failed build, once {@code target/} is gone.
      */
-    static Restore withoutRestorePass(List<BuildGraph.BuildUnit> units, Set<Path> dirty, Set<Path> restoreNeeded) {
-        if (restoreNeeded.isEmpty()) return new Restore(immutableOrderedSet(dirty), Optional.empty());
+    static Set<Path> scheduled(List<BuildGraph.BuildUnit> units, Set<Path> dirty, Set<Path> restoreNeeded) {
+        if (restoreNeeded.isEmpty()) return immutableOrderedSet(dirty);
         LinkedHashSet<Path> toBuild = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit unit : units) {
             if (dirty.contains(unit.dir()) || restoreNeeded.contains(unit.dir())) toBuild.add(unit.dir());
@@ -266,15 +208,7 @@ public final class WorkspacePreflightPhase {
         // Paths the graph does not spell exactly as the sets do still get built.
         toBuild.addAll(dirty);
         toBuild.addAll(restoreNeeded);
-        return new Restore(Collections.unmodifiableSet(toBuild), Optional.empty());
-    }
-
-    private static boolean restoreEligible(WorkspaceRequest request, Set<Path> dirty, Set<Path> restoreNeeded) {
-        return dirty.isEmpty()
-                && !restoreNeeded.isEmpty()
-                && request.target() == WorkspaceTarget.PACKAGE
-                && !SessionContext.current().config().rebuildOr(false)
-                && !SessionContext.current().config().forceOr(false);
+        return Collections.unmodifiableSet(toBuild);
     }
 
     private static Set<Path> jarConsumed(BuildGraph.Result graph) {
@@ -326,14 +260,6 @@ public final class WorkspacePreflightPhase {
         return new Completed(new WorkspaceResult(success, exitCode, List.of(), errors));
     }
 
-    private static WorkspaceResult success() {
-        return new WorkspaceResult(true, 0, List.of(), List.of());
-    }
-
-    private static WorkspaceResult failure(int exitCode, List<String> errors) {
-        return new WorkspaceResult(false, exitCode, List.of(), errors);
-    }
-
     private static Set<Path> immutableOrderedSet(Iterable<Path> paths) {
         LinkedHashSet<Path> ordered = new LinkedHashSet<>();
         for (Path path : paths) ordered.add(path);
@@ -341,6 +267,4 @@ public final class WorkspacePreflightPhase {
     }
 
     private record Forecast(Set<Path> dirty, Set<Path> restoreNeeded, Optional<BuildForecasting.Preflight> preflight) {}
-
-    record Restore(Set<Path> dirty, Optional<WorkspaceResult> result) {}
 }

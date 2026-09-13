@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Preflight asks two separate questions: "are this module's inputs unchanged?", answered by the
  * fingerprint memo, and "are its outputs current?". The second cannot be answered by
- * {@link ModuleOutputRestore#packageOutputsMissing} alone, which tests only that the files
+ * {@link ModuleOutputs#packageOutputsMissing} alone, which tests only that the files
  * <em>exist</em> — a jar built from other sources exists, and a module skipped on that basis keeps
  * a stale artifact behind a build that reports {@code all modules up to date}.
  *
