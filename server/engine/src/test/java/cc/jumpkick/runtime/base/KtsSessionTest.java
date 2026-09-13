@@ -6,14 +6,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskKind;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -97,6 +103,55 @@ class KtsSessionTest {
         long after = jarCount(cache);
         BuildLogicKtsHost.evaluate(script, project, out);
         assertEquals(after, jarCount(cache));
+    }
+
+    /**
+     * The cache tier is rebuildable by contract: {@code jk cache nuke} removes {@code cache/kts/}
+     * whole while a host is resident. The next script recompiles into a directory the host
+     * recreates — the same host, no restart — rather than failing on the write into one that is
+     * gone.
+     */
+    @Test
+    void a_script_whose_compiled_jar_was_nuked_with_its_cache_directory_is_recompiled(@TempDir Path dir)
+            throws Exception {
+        Path script = dir.resolve("nuked.kts");
+        Files.writeString(script, "Files.writeString(outDir.resolve(\"a.txt\"), \"1\")\n");
+        Path project = Files.createDirectories(dir.resolve("p"));
+        Path out = Files.createDirectories(dir.resolve("o"));
+        Path cache = KtsSession.compiledScriptCache();
+
+        BuildLogicKtsHost.evaluate(script, project, out);
+        long pid = KtsSession.hostPid();
+        PathUtil.deleteRecursivelyOrThrow(cache);
+        Files.delete(out.resolve("a.txt"));
+
+        BuildLogicKtsHost.evaluate(script, project, out);
+        assertEquals("1", Files.readString(out.resolve("a.txt")).trim());
+        assertThat(KtsSession.hostPid())
+                .as("the resident host served it; no restart")
+                .isEqualTo(pid);
+        assertEquals(1, jarCount(cache), "the compiled script is back in a recreated cache directory");
+    }
+
+    /**
+     * Two JVMs sharing a home can both find the host jar missing at once — two engines, a sharded
+     * test run. Each compiles from its own staging, so the first to finish cannot delete a source
+     * the second's compiler is still reading; both come out holding the jar and leave nothing else.
+     */
+    @Test
+    void two_compilations_of_the_host_at_once_both_produce_the_jar(@TempDir Path dir) throws Exception {
+        Path kotlinHome = CompileToolchain.resolveKotlinHome(JkDirs.cache());
+        Path jar = dir.resolve("kts-host").resolve("jk-kts-host.jar");
+        Callable<Path> compile = () -> KtsHostJar.ensure(kotlinHome, jar);
+        List<Future<Path>> results;
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            results = pool.invokeAll(List.of(compile, compile));
+        }
+        for (Future<Path> r : results) assertEquals(jar, r.get());
+        assertThat(jar).isRegularFile();
+        try (var entries = Files.list(jar.getParent())) {
+            assertThat(entries).as("no staging left beside the jar").containsExactly(jar);
+        }
     }
 
     /**

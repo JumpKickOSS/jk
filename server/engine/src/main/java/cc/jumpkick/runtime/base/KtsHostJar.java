@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.JkDirs;
@@ -86,49 +87,61 @@ final class KtsHostJar {
                 .resolve(JAR_NAME);
     }
 
-    /**
-     * The host jar, compiling it if this (source, Kotlin version) pair has not been built yet.
-     *
-     * <p>Compiled to a temporary name and moved into place, so two builds racing here cannot leave a
-     * half-written jar that later runs report as a corrupt classpath entry.
-     */
+    /** The host jar, compiling it if this (source, Kotlin version) pair has not been built yet. */
     static Path ensure(Path kotlinHome, String kotlinVersion) throws IOException, InterruptedException {
-        Path jar = jarPath(kotlinVersion);
-        if (Files.isRegularFile(jar) && Files.size(jar) > 0) return jar;
+        return ensure(kotlinHome, jarPath(kotlinVersion));
+    }
 
-        Path dir = Objects.requireNonNull(jar.getParent(), "kts host jar dir");
-        Files.createDirectories(dir);
-        Path src = dir.resolve("JkKtsHost.kt");
-        Files.writeString(src, source(), StandardCharsets.UTF_8);
+    /**
+     * The host jar at {@code jar}, compiling it there if it is absent.
+     *
+     * <p>Each call compiles inside its own staging directory beside the jar — the source it writes
+     * and the jar it produces — and moves only the finished jar into place. Two JVMs sharing a home
+     * can both find the jar missing at once (two engines, a sharded test run), and a source both
+     * wrote to one path was the first finisher's to delete while the second's compiler was still
+     * reading it. Staging per call, nothing is shared until the move, and a half-written jar never
+     * sits where a later run would load it as a corrupt classpath entry.
+     */
+    static Path ensure(Path kotlinHome, Path jar) throws IOException, InterruptedException {
+        if (Files.isRegularFile(jar) && Files.size(jar) > 0) return jar;
 
         Path compilerJar = kotlinHome.resolve("lib").resolve("kotlin-compiler.jar");
         if (!Files.isRegularFile(compilerJar)) {
             throw new IllegalStateException("[build] logic: kotlin-compiler.jar not found at " + compilerJar);
         }
-        Path staging = Files.createTempFile(dir, "host-", ".jar");
-        Files.deleteIfExists(staging);
+        Path dir = Objects.requireNonNull(jar.getParent(), "kts host jar dir");
+        Files.createDirectories(dir);
+        Path work = Files.createTempDirectory(dir, "compile-");
+        try {
+            Path src = work.resolve("JkKtsHost.kt");
+            Files.writeString(src, source(), StandardCharsets.UTF_8);
+            Path staging = work.resolve(JAR_NAME);
 
-        List<String> cmd = new ArrayList<>();
-        cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
-        cmd.add("-cp");
-        cmd.add(compilerJar.toAbsolutePath().toString());
-        cmd.add("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler");
-        cmd.add("-nowarn");
-        cmd.add("-cp");
-        cmd.add(Classpaths.join(kotlinClasspath(kotlinHome)));
-        cmd.add("-d");
-        cmd.add(staging.toString());
-        cmd.add(src.toString());
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectErrorStream(true);
-        Process p = JobWorkers.start(pb);
-        String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (p.waitFor() != 0) {
-            Files.deleteIfExists(staging);
-            throw new IllegalStateException("[build] logic: compiling the .kts host failed:\n" + log.strip());
+            List<String> cmd = new ArrayList<>();
+            cmd.add(JdkFingerprint.java(JavaHomes.runningJavaHome()).toString());
+            cmd.add("-cp");
+            cmd.add(compilerJar.toAbsolutePath().toString());
+            cmd.add("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler");
+            cmd.add("-nowarn");
+            cmd.add("-cp");
+            cmd.add(Classpaths.join(kotlinClasspath(kotlinHome)));
+            cmd.add("-d");
+            cmd.add(staging.toString());
+            cmd.add(src.toString());
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.redirectErrorStream(true);
+            Process p = JobWorkers.start(pb);
+            String log = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (p.waitFor() != 0) {
+                throw new IllegalStateException("[build] logic: compiling the .kts host failed:\n" + log.strip());
+            }
+            // A racing call that finished first left the same bytes; its jar is as good as this one.
+            if (!(Files.isRegularFile(jar) && Files.size(jar) > 0)) {
+                Files.move(staging, jar, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return jar;
+        } finally {
+            PathUtil.deleteRecursively(work);
         }
-        Files.move(staging, jar, StandardCopyOption.REPLACE_EXISTING);
-        Files.deleteIfExists(src);
-        return jar;
     }
 }

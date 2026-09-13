@@ -133,8 +133,16 @@ fun main() {
         ScriptingHostConfiguration(defaultJvmScriptingHostConfiguration) {
             jvm {
                 baseClassLoader(JkScript::class.java.classLoader)
+                // The directory is recreated on every lookup, not once at startup: the cache tier is
+                // rebuildable by contract, and `jk cache nuke` removes cache/kts/ whole while this host is
+                // resident. The lookup finds no jar and compiles; the store that follows must find a
+                // directory to write into, or a nuked cache turns into a failed script instead of one
+                // recompile.
                 compilationCache(
-                    CompiledScriptJarsCache { source, cfg -> File(cacheDir, cacheKey(source, cfg) + ".jar") }
+                    CompiledScriptJarsCache { source, cfg ->
+                        cacheDir.mkdirs()
+                        File(cacheDir, cacheKey(source, cfg) + ".jar")
+                    }
                 )
             }
         }
