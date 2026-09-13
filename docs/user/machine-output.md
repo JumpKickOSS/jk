@@ -76,6 +76,34 @@ Illustrative lines:
 {"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
+### `jk dev`
+
+`jk dev --output json` (and `jk watch run`) keeps the workspace envelope for every build the loop
+runs — the first one and each recompile after a change — and between builds the stream carries
+the session's processes, every line with its source. The app is piped under this mode, so stdout
+is one JSONL stream from the first byte to the last; on a terminal the app owns stdout itself.
+
+| `type` | Fields | When |
+|---|---|---|
+| `sidecar-started` | `name`, `pid` | A `[dev.sidecars]` entry was spawned — once per session, and again after each `restart = "on-exit"` relaunch |
+| `sidecar-output` | `name`, `stream` (`stdout` / `stderr`), `line` | One line of the sidecar's output; carriage-return repaints are collapsed to the row's final state |
+| `sidecar-ready` | `name`, `url` (its `ready` URL, when it has one), `frontDoor` (only when `true`) | Its probe passed |
+| `sidecar-exited` | `name`, `pid`, `exit`, `restartInMs` (only when a relaunch is scheduled), `gaveUp` (only when the five-restart budget is spent) | The sidecar exited on its own |
+| `app-started` | `pid` | The app JVM was started or restarted |
+| `app-output` | `stream`, `line` | One line of the app's stdout or stderr |
+| `app-exited` | `pid`, `exit` | The app exited or was stopped for a restart |
+
+```json
+{"schema":1,"ts":1721664002000,"type":"sidecar-started","name":"web","pid":48213}
+{"schema":1,"ts":1721664002410,"type":"sidecar-output","name":"web","stream":"stdout","line":"  VITE v8.3.0  ready in 212 ms"}
+{"schema":1,"ts":1721664002655,"type":"sidecar-ready","name":"web","url":"http://localhost:5173","frontDoor":true}
+{"schema":1,"ts":1721664031002,"type":"sidecar-exited","name":"web","pid":48213,"exit":1,"restartInMs":500}
+```
+
+Ordering is arrival order across processes; nothing is buffered beyond line assembly. Session
+teardown — Ctrl-C, or the app ending the loop — does not emit `sidecar-exited` for the processes it
+stops itself. `jk dev --no-sidecars` emits no `sidecar-*` events at all. [Run](run.md#sidecars-devsidecars).
+
 ## `details.jsonl`
 
 ```text
@@ -109,6 +137,7 @@ differs; field **names** match.
 | Plan / ETA | `plan`, `eta` (web; CLI via explain) |
 | Module | `module-start` / `module-finish` (paired) |
 | Workspace end | `workspace-finish` (exactly one, on every outcome) |
+| Dev session | `sidecar-started` / `sidecar-output` / `sidecar-ready` / `sidecar-exited`, `app-started` / `app-output` / `app-exited` — [`jk dev`](#jk-dev) |
 | Guard violation | `guard` — one per violation row of the last `jk guard` run, after the build's events: `code`, `kind`, `baseline` (`new`/`baselined`), `file`, `line`, `at` (fingerprint), `message`, `instead`, `why`, `source` |
 | Audit finding | `audit-finding` — one per `jk audit` finding, after the run's plan events: `id`, `package`, `version`, `severity`, `summary`, `fixedIn`, `ignored` (+ `reason`, `until`, `ignoreExpired`) — [Publish](publish.md#json) |
 

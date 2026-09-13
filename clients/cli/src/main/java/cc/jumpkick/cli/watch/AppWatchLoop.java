@@ -11,7 +11,12 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +30,11 @@ import org.jspecify.annotations.Nullable;
  * {@code jk watch run} / {@code jk dev}: build, start the app from classes, recompile on change.
  * Boot DevTools hot-restart when present; otherwise process restart. Android device deploy path
  * when the engine returns a deploy command.
+ *
+ * <p>On a terminal the app owns stdout and stderr and every sidecar line is prefixed with its
+ * name. Under {@code --output json} the app is piped too, so stdout stays one JSONL stream: its
+ * lines become {@code app-output} events beside the sidecars' {@code sidecar-output}, and its
+ * starts and exits {@code app-started} / {@code app-exited}.
  */
 @RequiredArgsConstructor
 public final class AppWatchLoop {
@@ -65,8 +75,10 @@ public final class AppWatchLoop {
 
         // Sidecars start once and outlive every app restart below; they go down with the session.
         List<ExecPlan.Sidecar> sidecarSpecs = plan.sidecars();
-        Sidecars sidecars = Sidecars.start(
-                noSidecars ? List.of() : sidecarSpecs, CliOutput::err, Clock.SYSTEM, Sidecars.Sleeper.REAL);
+        Sidecars.Listener listener =
+                json() ? SidecarOutput.jsonl(CliOutput::out) : SidecarOutput.terminal(CliOutput::err);
+        Sidecars sidecars =
+                Sidecars.start(noSidecars ? List.of() : sidecarSpecs, listener, Clock.SYSTEM, Sidecars.Sleeper.REAL);
         Process app;
         try {
             app = startApp(plan, appArgs);
@@ -95,6 +107,7 @@ public final class AppWatchLoop {
                 if (maybe.isEmpty()) {
                     if (!app.isAlive()) {
                         int exit = app.exitValue();
+                        appExited(app);
                         CliOutput.err(logPrefix + ": app exited with code " + exit + " — stopping.");
                         return exit;
                     }
@@ -214,18 +227,47 @@ public final class AppWatchLoop {
         return EngineClient.execPlan(EnginePaths.current(), projectDir, cache, "dev", null, null);
     }
 
+    private boolean json() {
+        return global.outputIsJson();
+    }
+
     private Process startApp(ExecPlan plan, List<String> appArgs) throws IOException {
         List<String> command = new ArrayList<>(plan.argv());
         command.addAll(appArgs);
-        // No skipTrailingBlank: watch keeps printing after the app starts, so the envelope's
-        // closing blank is still jk's to emit.
-        return CliOutput.handOffTerminal(
-                new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile()));
+        ProcessBuilder pb =
+                new ProcessBuilder(command).directory(Path.of(plan.workingDir()).toFile());
+        if (!json()) {
+            // No skipTrailingBlank: watch keeps printing after the app starts, so the envelope's
+            // closing blank is still jk's to emit.
+            return CliOutput.handOffTerminal(pb);
+        }
+        // stdout is a JSONL stream, so the app's lines ride it as events; stdin is still the user's.
+        Process app = pb.redirectInput(ProcessBuilder.Redirect.INHERIT).start();
+        CliOutput.out(SidecarOutput.appStarted(app.pid()));
+        pumpApp("stdout", app.getInputStream());
+        pumpApp("stderr", app.getErrorStream());
+        return app;
+    }
+
+    private static void pumpApp(String stream, InputStream in) {
+        Thread.ofVirtual().name("app-" + stream).start(() -> {
+            try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                OutputLines.read(reader, line -> CliOutput.out(SidecarOutput.appOutput(stream, line)));
+            } catch (IOException ignored) {
+                // the pipe closes with the app; its exit is reported by the loop
+            }
+        });
+    }
+
+    /** Under {@code --output json}, the app's exit is an event; on a terminal the loop's own line says it. */
+    private void appExited(Process app) {
+        if (json()) CliOutput.out(SidecarOutput.appExited(app.pid(), app.exitValue()));
     }
 
     private Process restartApp(Process app, ExecPlan plan, List<String> appArgs)
             throws IOException, InterruptedException {
         stop(app);
+        appExited(app);
         CliOutput.err(logPrefix + ": restarting app");
         return startApp(plan, appArgs);
     }

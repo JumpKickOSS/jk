@@ -49,8 +49,43 @@ class SidecarsTest {
                 restart);
     }
 
+    /** The terminal listener with colour off, so a line reads {@code web │ text} and nothing else. */
+    private static Sidecars.Listener plain(Consumer<String> sink) {
+        return SidecarOutput.terminal(sink, false);
+    }
+
     private static Sidecars start(List<ExecPlan.Sidecar> specs, Consumer<String> report) throws Exception {
-        return Sidecars.start(specs, report, Clock.SYSTEM, NO_WAIT);
+        return Sidecars.start(specs, plain(report), Clock.SYSTEM, NO_WAIT);
+    }
+
+    /** Every listener call, flattened, so a test can assert on order and on fields at once. */
+    private static Sidecars.Listener recording(List<String> into) {
+        return new Sidecars.Listener() {
+            @Override
+            public void started(String name, long pid) {
+                into.add("started " + name + " pid>0=" + (pid > 0));
+            }
+
+            @Override
+            public void output(String name, String stream, String line) {
+                into.add(stream + " " + name + " " + line);
+            }
+
+            @Override
+            public void ready(String name, String url, boolean frontDoor) {
+                into.add("ready " + name);
+            }
+
+            @Override
+            public void exited(String name, long pid, int exit, long restartInMs, boolean gaveUp) {
+                into.add("exited " + name + " " + exit + " restartInMs=" + restartInMs + " gaveUp=" + gaveUp);
+            }
+
+            @Override
+            public void failed(String message) {
+                into.add("failed " + message);
+            }
+        };
     }
 
     private static void awaitLine(List<String> lines, Predicate<String> match) throws InterruptedException {
@@ -68,6 +103,36 @@ class SidecarsTest {
             assertThat(sidecars.awaitReady()).isEmpty();
             String expected = "web" + Sidecars.PREFIX_SEPARATOR + "hi ready";
             assertThat(lines).contains(expected);
+        }
+    }
+
+    @Test
+    void stdout_and_stderr_are_told_apart_and_both_feed_the_pattern_probe(@TempDir Path dir) throws Exception {
+        List<String> events = new CopyOnWriteArrayList<>();
+        ExecPlan.Sidecar spec =
+                sh("web", "echo out-line; echo err-line >&2; sleep 30", "err-line", Sidecar.Restart.NEVER, dir);
+        try (Sidecars sidecars = Sidecars.start(List.of(spec), recording(events), Clock.SYSTEM, NO_WAIT)) {
+            assertThat(sidecars.awaitReady()).isEmpty();
+            assertThat(events)
+                    .contains("started web pid>0=true", "stdout web out-line", "stderr web err-line", "ready web");
+            assertThat(events.getFirst()).startsWith("started web");
+        }
+    }
+
+    @Test
+    void carriage_return_progress_reaches_the_listener_collapsed_and_the_exit_carries_the_pid(@TempDir Path dir)
+            throws Exception {
+        List<String> events = new CopyOnWriteArrayList<>();
+        ExecPlan.Sidecar spec =
+                sh("web", "printf 'bundling 10%%\\rbundling 100%%\\n'; exit 0", "", Sidecar.Restart.NEVER, dir);
+        try (Sidecars sidecars = Sidecars.start(List.of(spec), recording(events), Clock.SYSTEM, NO_WAIT)) {
+            awaitLine(events, l -> l.startsWith("exited web"));
+            assertThat(events)
+                    .contains("stdout web bundling 100%", "exited web 0 restartInMs=-1 gaveUp=false")
+                    .doesNotContain("stdout web bundling 10%");
+            assertThat(events.indexOf("stdout web bundling 100%"))
+                    .as("every line lands before the exit does")
+                    .isLessThan(events.indexOf("exited web 0 restartInMs=-1 gaveUp=false"));
         }
     }
 
@@ -240,7 +305,7 @@ class SidecarsTest {
         String script = "if [ -e '" + first + "' ]; then echo waiting; while [ ! -e '" + go
                 + "' ]; do sleep 0.02; done; exit 1; fi; touch '" + first + "'; exit 1";
         try (Sidecars sidecars = Sidecars.start(
-                List.of(sh("flaky", script, "", Sidecar.Restart.ON_EXIT, dir)), lines::add, clock, NO_WAIT)) {
+                List.of(sh("flaky", script, "", Sidecar.Restart.ON_EXIT, dir)), plain(lines::add), clock, NO_WAIT)) {
             awaitLine(lines, l -> l.endsWith("waiting"));
             clock.advance(Duration.ofMillis(Sidecars.STABLE_RUN_MILLIS + 1_000));
             Files.createFile(go);
@@ -262,7 +327,7 @@ class SidecarsTest {
         List<String> lines = new CopyOnWriteArrayList<>();
         Sidecars sidecars = Sidecars.start(
                 List.of(sh("flaky", "echo started; exit 1", "", Sidecar.Restart.ON_EXIT, dir)),
-                lines::add,
+                plain(lines::add),
                 Clock.SYSTEM,
                 heldBack);
         assertThat(sleeping.await(10, TimeUnit.SECONDS)).isTrue();

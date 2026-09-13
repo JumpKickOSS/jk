@@ -74,10 +74,35 @@ docs = { command = ["mkdocs", "serve"], env = { PORT = "8001" }, ready-pattern =
 | `front-door` | Print this sidecar's `ready` URL once everything is up: `jk watch run: ready · http://localhost:5173 (java -cp … com.example.App)` |
 | `restart` | `never` (default: the exit is reported once, the session continues) or `on-exit` (restart with backoff, up to five failures in a row; a run that passed its probe or stayed up 30 s starts the count over) |
 
-Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Their
-output is interleaved with the app's, each line prefixed `web │ `. Ctrl-C stops the app and every
-sidecar together, along with everything they spawned. Editing `[dev.sidecars]` mid-session is
-reported, not applied — restart `jk dev`. `jk dev --no-sidecars` runs the app alone.
+Sidecars start once per session and survive the app's restarts — Vite watches its own tree. Ctrl-C
+stops the app and every sidecar together, along with everything they spawned. Editing
+`[dev.sidecars]` mid-session is reported, not applied — restart `jk dev`. `jk dev --no-sidecars`
+runs the app alone for one invocation.
+
+### Output
+
+The app's lines are its own — it is the module being developed — and every sidecar line is
+prefixed `web │ ` with the name in a colour chosen from the name, so `web` is the same colour in
+every session and two sidecars never share one. Lines arrive in the order the processes write
+them, stdout and stderr alike; a carriage-return progress line (a bundler's percentage, a spinner)
+shows as the row's final state rather than as every repaint. `--no-ansi`, `JK_NO_ANSI=1`, and
+`NO_COLOR` turn the colour off and leave the prefix.
+
+```text
+jk watch run: watching src — process restart on change. Ctrl-C stops.
+web │
+web │   VITE v8.3.0  ready in 212 ms
+web │
+web │   ➜  Local:   http://localhost:5173/
+jk watch run: ready · http://localhost:5173 (java -cp … demo.Api)
+listening on http://localhost:8080
+web exited with 1
+```
+
+Under `--output json` every line is an event with its source — `sidecar-output` with `name`,
+`stream`, and `line`; `sidecar-started`, `sidecar-ready`, `sidecar-exited` for the lifecycle — and
+the app is piped too, as `app-output`, so stdout stays one JSONL stream. Field by field:
+[Machine output](machine-output.md#jk-dev).
 
 The workspace root may declare `[dev.sidecars]` too; `jk dev` in a module unions root and module
 entries, the module winning a name clash. `jk run`, `jk build`, and `jk test` never read the table,
