@@ -55,6 +55,9 @@ jobs:
       - name: Shell installer verification fixtures
         run: bash scripts/test-installer-verification.sh
 
+      - name: Wrapper bootstrap fixtures
+        run: bash scripts/test-wrapper-bootstrap.sh
+
       - name: Maven-repository publish fixtures
         run: bash scripts/test-publish-maven-repo.sh
 

@@ -99,7 +99,9 @@ if command -v jk >/dev/null 2>&1; then
   fi
 fi
 
-# Verify the release key's signature in $2 over the exact bytes of $1, or exit naming $3.
+# Verify the release key's RSA/SHA-256 signature in $2 over the exact bytes of $1, or exit
+# naming $3. Every remote input that steers the bootstrap — the latest-release pointer and the
+# version directory's SHA256SUMS — passes through here before anything it names is trusted.
 verify_release_signature() {
   if ! command -v openssl >/dev/null 2>&1; then
     echo "jk wrapper: OpenSSL is required to authenticate the release." >&2
@@ -121,6 +123,10 @@ verify_release_signature() {
   fi
   printf '%s' "$VS_TEXT" | openssl base64 -d -A >"$2.bin" 2>/dev/null || {
     echo "jk wrapper: $3 signature is not valid base64 — refusing." >&2
+    exit 1
+  }
+  [ "$(wc -c <"$2.bin" | tr -d '[:space:]')" = "384" ] || {
+    echo "jk wrapper: $3 signature has the wrong RSA-3072 length — refusing." >&2
     exit 1
   }
   openssl dgst -sha256 -verify "$TMP/release-public.pem" -signature "$2.bin" "$1" >/dev/null 2>&1 || {
@@ -164,33 +170,7 @@ echo "jk wrapper: fetching jk $VERSION ..." >&2
 curl -fsSL -o "$TMP/$FILE" "$RELEASES/$VERSION/$FILE"
 curl -fsSL -o "$TMP/SHA256SUMS" "$RELEASES/$VERSION/SHA256SUMS"
 curl -fsSL -o "$TMP/SHA256SUMS.sig" "$RELEASES/$VERSION/SHA256SUMS.sig"
-if ! command -v openssl >/dev/null 2>&1; then
-  echo "jk wrapper: OpenSSL is required to authenticate the release." >&2
-  exit 1
-fi
-{
-  printf '%s\n' "-----BEGIN PUBLIC KEY-----"
-  printf '%s' "$RELEASE_RSA_SPKI" | fold -w 64
-  printf '\n'
-  printf '%s\n' "-----END PUBLIC KEY-----"
-} >"$TMP/release-public.pem"
-SIG_TEXT="$(tr -d '\r' <"$TMP/SHA256SUMS.sig")"
-SIG_LINES="$(wc -l <"$TMP/SHA256SUMS.sig" | tr -d '[:space:]')"
-if { [ "$SIG_LINES" != "0" ] && [ "$SIG_LINES" != "1" ]; } ||
-  [ "${#SIG_TEXT}" -ne 512 ] ||
-  ! printf '%s' "$SIG_TEXT" | LC_ALL=C grep -Eq '^[A-Za-z0-9+/]+={0,2}$'; then
-  echo "jk wrapper: release signature is malformed — refusing." >&2
-  exit 1
-fi
-printf '%s' "$SIG_TEXT" | openssl base64 -d -A >"$TMP/SHA256SUMS.sig.bin" 2>/dev/null || {
-  echo "jk wrapper: release signature is not valid base64 — refusing." >&2
-  exit 1
-}
-openssl dgst -sha256 -verify "$TMP/release-public.pem" -signature "$TMP/SHA256SUMS.sig.bin" \
-  "$TMP/SHA256SUMS" >/dev/null 2>&1 || {
-  echo "jk wrapper: release signature verification failed — refusing." >&2
-  exit 1
-}
+verify_release_signature "$TMP/SHA256SUMS" "$TMP/SHA256SUMS.sig" "release"
 WANT="$(awk -v wanted="$FILE" '
   {
     hash = substr($0, 1, 64)
@@ -227,4 +207,6 @@ cp "$TMP/jk" "$BIN.part" && chmod +x "$BIN.part" && mv "$BIN.part" "$BIN"
 printf '%s\n' "$VERSION" > "$BIN_DIR/VERSION"
 rm -f "$BIN.old" 2>/dev/null || true
 
+# exec replaces this shell, so the EXIT trap never runs: the scratch directory goes first.
+rm -rf "$TMP"
 exec "$BIN" "$@"

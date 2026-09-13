@@ -54,8 +54,11 @@ class WrapperTemplateTest {
         // Bin resolution mirrors install.sh/JkDirs: one home, one bin, no cascade to drift from.
         assertThat(sh).contains("$BIN_DIR/jk").contains("${JK_HOME:-$HOME/.jk}/bin");
         assertThat(sh).doesNotContain("XDG_").doesNotContain("JK_BIN_DIR").doesNotContain("JK_INSTALL_DIR");
-        // Downloads authenticate the manifest, then verify its exact artifact entry.
-        assertThat(sh).contains("openssl dgst -sha256 -verify").contains("matches != 1");
+        // Downloads authenticate the manifest, then verify its exact artifact entry. The pointer and
+        // the manifest go through the one signature helper: a single openssl verify in the file.
+        assertThat(sh).contains("verify_release_signature \"$TMP/SHA256SUMS\" \"$TMP/SHA256SUMS.sig\"");
+        assertThat(occurrences(sh, "openssl dgst -sha256 -verify")).isEqualTo(1);
+        assertThat(sh).contains("matches != 1");
         assertThat(sh).doesNotContain("\"jk = \"*").doesNotContain("sha256 = ");
         // Newest installed wins when it satisfies the floor; a stale channel is a hard error.
         assertThat(sh).contains("ver_ge").contains("requires jk >=");
@@ -79,6 +82,14 @@ class WrapperTemplateTest {
         assertThat(bat).contains("^version ([0-9]+").contains("if not defined VERSION");
         assertThat(bat).doesNotContain("latest/VERSION");
         assertThat(bat).contains("RSASignaturePadding]::Pkcs1").contains("$count -ne 1");
+        // One :verify_signature subroutine checks both remote inputs, each before it is read.
+        assertThat(occurrences(bat, "VerifyData(")).isEqualTo(1);
+        assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_PTMP LATEST"))
+                .isGreaterThan(0)
+                .isLessThan(bat.indexOf("^version ([0-9]+"));
+        assertThat(bat.indexOf("call :verify_signature JK_WRAPPER_TMP SHA256SUMS"))
+                .isGreaterThan(0)
+                .isLessThan(bat.indexOf("Get-FileHash"));
         assertThat(bat).contains(ReleaseVerifier.BUILT_IN_RSA_MODULUS).contains(ReleaseVerifier.BUILT_IN_RSA_EXPONENT);
         assertThat(bat).contains("jk-min");
         assertThat(bat).doesNotContain("\"jk = \"").doesNotContain("sha256 = ");
@@ -216,6 +227,10 @@ class WrapperTemplateTest {
         assertThat(named.stderr())
                 .as("a verified pointer names the version to fetch")
                 .contains("fetching jk 1.0.0");
+    }
+
+    private static int occurrences(String text, String needle) {
+        return text.split(Pattern.quote(needle), -1).length - 1;
     }
 
     private static KeyPair rsa3072() throws Exception {

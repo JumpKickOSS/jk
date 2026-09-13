@@ -103,7 +103,8 @@ Remote installers, wrappers, self-update, and engine materialization all require
 They verify the pointer signature and its floor first, then the manifest signature, require one
 strict exact artifact entry, then verify the artifact hash before extracting, parking an existing
 binary, writing, or executing downloaded bytes. Local file installs remain an explicit unsigned
-development path.
+development path. `scripts/test-wrapper-bootstrap.sh` drives the POSIX wrapper through that whole
+path, network-free, against a fixture release signed with a throwaway key.
 
 ## CI release (tag-triggered)
 
