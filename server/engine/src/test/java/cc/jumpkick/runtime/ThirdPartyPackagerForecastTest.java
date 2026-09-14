@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -21,7 +20,6 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.tool.TrustedPlugins;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
@@ -180,8 +178,7 @@ class ThirdPartyPackagerForecastTest {
 
         JkBuild project = JkBuildParser.reparse(proj.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(proj, project);
-        FreshnessStamp.write(
-                layout.classesDir(), BuildStamps.GROOVY, "compile-groovy", "", List.of(hello), List.of(), 21, "");
+        GroovyForecastStamps.writeBuildStamp(proj, proj, List.of(hello), cas);
 
         // The plugin declares a packager and keeps the main artifact, so the build packs with it.
         var owner = requireNonNull(PackagingKeys.pluginFor(project, layout, cache));
