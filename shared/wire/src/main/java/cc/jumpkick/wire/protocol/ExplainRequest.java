@@ -3,6 +3,7 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -25,10 +26,17 @@ public record ExplainRequest(
         boolean verbose,
         boolean rebuild,
         int maxModuleConcurrency,
+        /**
+         * The {@code -m}/{@code --affected-since} selector tokens {@code jk build} would carry:
+         * the forecast prices the selection's cone, as the build schedules it. Empty: the whole
+         * workspace.
+         */
+        List<String> modules,
         TestSelection selection) {
 
     public ExplainRequest {
         selection = selection == null ? TestSelection.DEFAULT : selection;
+        modules = modules == null ? List.of() : List.copyOf(modules);
     }
 
     public String encode() {
@@ -44,6 +52,7 @@ public record ExplainRequest(
                 .bool("verbose", verbose)
                 .bool("rebuild", rebuild)
                 .number("maxModuleConcurrency", maxModuleConcurrency)
+                .optionalArray("modules", modules)
                 .testSelection(selection, true)
                 .finish();
     }
@@ -61,6 +70,7 @@ public record ExplainRequest(
                 Jsonl.bool(json, "verbose", false),
                 Jsonl.bool(json, "rebuild", false),
                 Jsonl.intValue(json, "maxModuleConcurrency", 0),
+                Jsonl.strArray(json, "modules"),
                 ProtoJobs.testSelectionOf(json));
     }
 }

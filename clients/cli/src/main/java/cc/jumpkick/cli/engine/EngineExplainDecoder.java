@@ -69,6 +69,7 @@ final class EngineExplainDecoder {
                         req.verbose(),
                         req.rebuild(),
                         req.maxModuleConcurrency(),
+                        req.modules(),
                         // The session's resolved selection, same as jk build sends: it feeds every
                         // module's run-tests stamp key, and an explain that omits it forecasts a suite
                         // re-run for every module in the tree.

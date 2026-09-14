@@ -357,6 +357,34 @@ public final class BuildForecasting {
     }
 
     /**
+     * As {@link #explain(Path, JkBuild, Path, boolean)} confined to the cone of {@code selection}
+     * — the selected module dirs and every prerequisite the graph reaches from them, which is the
+     * set {@code jk build -m} with the same selection schedules. An empty selection prices the
+     * whole workspace.
+     */
+    public static ExplainPlan explain(
+            Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests, Set<Path> selection) throws IOException {
+        if (selection.isEmpty()) return explain(entryDir, entryBuild, cache, skipTests);
+        BuildGraph.Result graph = BuildGraph.resolve(entryDir, entryBuild);
+        return explainSelection(graph, cache, skipTests, selection);
+    }
+
+    /**
+     * The plan a selected build seeds its countdown from. A build carrying a selection takes the
+     * selection plus its prerequisites as its dirty set without consulting the dirty memo, then
+     * prices that set off the whole graph's forecast — see {@code WorkspaceResourcePhase.etaPlan}.
+     * Explain does the same: forecast the graph the way that build does (no memo shortcut), then
+     * keep the cone, so the modules listed, the edges drawn and the ETA totals are that build's.
+     */
+    static ExplainPlan explainSelection(BuildGraph.Result graph, Path cache, boolean skipTests, Set<Path> selection) {
+        if (graph.hasErrors()) {
+            return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
+        }
+        Set<Path> cone = ModuleHints.withPrereqs(graph, selection);
+        return restrictToSelection(explainFromGraph(graph, cache, skipTests, null), cone);
+    }
+
+    /**
      * Forecast from an already-resolved graph — the same {@link TaskForecaster} walk {@code jk
      * build} uses for its countdown seed so explain and build never price different step sets.
      */
@@ -483,15 +511,21 @@ public final class BuildForecasting {
      * its cache-check cost — matching what scheduling will actually do.
      */
     static ExplainPlan restrictToSelection(ExplainPlan plan, Set<Path> selection) {
+        // Membership by canonical path: a selection resolved from selector tokens is canonical
+        // while the graph carries the dirs as the manifest named them.
+        Set<Path> canon = new HashSet<>();
+        for (Path p : selection) canon.add(BuildGraph.canonicalPath(p));
         List<TaskForecast.Module> kept = new ArrayList<>();
         for (TaskForecast.Module m : plan.modules()) {
-            if (selection.contains(m.dir())) kept.add(m);
+            if (canon.contains(BuildGraph.canonicalPath(m.dir()))) kept.add(m);
         }
         Map<Path, Set<Path>> edges = new LinkedHashMap<>();
         plan.edges().forEach((from, tos) -> {
-            if (!selection.contains(from)) return;
-            Set<Path> t = new LinkedHashSet<>(tos);
-            t.retainAll(selection);
+            if (!canon.contains(BuildGraph.canonicalPath(from))) return;
+            Set<Path> t = new LinkedHashSet<>();
+            for (Path to : tos) {
+                if (canon.contains(BuildGraph.canonicalPath(to))) t.add(to);
+            }
             edges.put(from, t);
         });
         return new ExplainPlan(kept, edges, plan.maxReadyWidth(), plan.errors());

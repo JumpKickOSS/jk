@@ -2,11 +2,14 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.jobs.JobSelect;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -18,6 +21,8 @@ import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 public final class ExplainVerb implements HostedVerb {
@@ -63,6 +68,37 @@ public final class ExplainVerb implements HostedVerb {
                     maxModuleConcurrency = 1;
                 }
                 Path etaJdksDir = etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null;
+                // The selector tokens resolve the way the build verb resolves them; the plan is
+                // then that build's cone. A selector that matches nothing is the build's error too.
+                Set<Path> selection = Set.of();
+                if (!req.modules().isEmpty()) {
+                    ModuleSelection.Result hit = JobSelect.resolveTokens(entryDir, entryBuild, req.modules());
+                    if (hit != null && !hit.ok()) {
+                        String why = hit.errorMessage();
+                        host.sendQuiet(
+                                writer,
+                                host.requestFailedLine(
+                                        entryDir.toString(),
+                                        why == null ? "module selection failed: " + req.modules() : why));
+                        host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
+                        return JobOutcome.declined();
+                    }
+                    if (hit != null) {
+                        if (hit.moduleDirs().isEmpty()) {
+                            host.sendQuiet(
+                                    writer,
+                                    host.requestFailedLine(
+                                            entryDir.toString(),
+                                            "selection matched no workspace module: "
+                                                    + String.join(", ", req.modules())));
+                            host.sendQuiet(writer, ProtoReads.explainDone(1, 0));
+                            return JobOutcome.declined();
+                        }
+                        selection = hit.moduleDirs().stream()
+                                .map(BuildGraph::canonicalPath)
+                                .collect(Collectors.toUnmodifiableSet());
+                    }
+                }
                 // Announce the bootstrap probe the same way the workspace build does, from the
                 // same decision — the client renders "Calibrating host…", it never predicts it.
                 Calibration.ensureAnnounced(
@@ -74,7 +110,7 @@ public final class ExplainVerb implements HostedVerb {
                         entryBuild,
                         cache,
                         session,
-                        new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests()));
+                        new ExplainReport.Knobs(req.profile(), maxModuleConcurrency, req.skipTests(), selection));
                 ExplainPlan plan = report.plan();
                 if (plan.hasErrors()) {
                     for (String err : plan.errors()) {

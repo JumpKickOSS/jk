@@ -197,8 +197,10 @@ public final class EngineRequests {
             boolean parallelTests,
             boolean verbose,
             boolean rebuild,
-            int maxModuleConcurrency) {
-        /** No rebuild; {@code maxModuleConcurrency} follows {@code serial}. */
+            int maxModuleConcurrency,
+            /** {@code -m}/{@code --affected-since} selector tokens, as {@code jk build} sends them. */
+            List<String> modules) {
+        /** No rebuild; {@code maxModuleConcurrency} follows {@code serial}; the whole workspace. */
         public ExplainRequest(
                 Path entryDir,
                 Path cache,
@@ -220,10 +222,11 @@ public final class EngineRequests {
                     parallelTests,
                     verbose,
                     false,
-                    serial ? 1 : 0);
+                    serial ? 1 : 0,
+                    List.of());
         }
 
-        /** Rebuild allowed; no jobs clamp beyond {@code serial}. */
+        /** Rebuild allowed; no jobs clamp beyond {@code serial}; the whole workspace. */
         public ExplainRequest(
                 Path entryDir,
                 Path cache,
@@ -246,7 +249,8 @@ public final class EngineRequests {
                     parallelTests,
                     verbose,
                     rebuild,
-                    serial ? 1 : 0);
+                    serial ? 1 : 0,
+                    List.of());
         }
     }
 

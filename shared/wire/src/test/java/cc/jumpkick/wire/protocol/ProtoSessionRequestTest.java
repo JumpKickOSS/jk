@@ -61,7 +61,8 @@ class ProtoSessionRequestTest {
 
     private static String explainLine() {
         return enveloped(
-                new ExplainRequest(DIR, CACHE, 3, false, "ci", JDKS, false, false, true, true, 4, SELECTION).encode(),
+                new ExplainRequest(DIR, CACHE, 3, false, "ci", JDKS, false, false, true, true, 4, List.of(), SELECTION)
+                        .encode(),
                 false);
     }
 

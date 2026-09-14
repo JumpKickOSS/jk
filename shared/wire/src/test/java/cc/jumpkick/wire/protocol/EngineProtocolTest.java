@@ -662,7 +662,19 @@ class EngineProtocolTest {
     @Test
     void explain_request_carries_the_eta_inputs() {
         String json = new ExplainRequest(
-                        "/work", "/cache", 4, true, "ci", "/jdks", true, true, false, false, 1, TestSelection.DEFAULT)
+                        "/work",
+                        "/cache",
+                        4,
+                        true,
+                        "ci",
+                        "/jdks",
+                        true,
+                        true,
+                        false,
+                        false,
+                        1,
+                        List.of("api", "affected:main"),
+                        TestSelection.DEFAULT)
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.EXPLAIN_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
@@ -672,12 +684,27 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(json, "jdksDir")).isEqualTo("/jdks");
         assertThat(Jsonl.bool(json, "serial", false)).isTrue();
         assertThat(Jsonl.bool(json, "parallelTests", false)).isTrue();
+        assertThat(Jsonl.strArray(json, "modules")).containsExactly("api", "affected:main");
+        assertThat(ExplainRequest.decode(json).modules()).containsExactly("api", "affected:main");
 
         String defaults = new ExplainRequest(
-                        "/w", "/c", 1, false, null, null, false, false, false, false, 0, TestSelection.DEFAULT)
+                        "/w",
+                        "/c",
+                        1,
+                        false,
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        false,
+                        0,
+                        List.of(),
+                        TestSelection.DEFAULT)
                 .encode();
         assertThat(Jsonl.str(defaults, "profile")).isNull();
         assertThat(Jsonl.str(defaults, "jdksDir")).isNull();
+        assertThat(ExplainRequest.decode(defaults).modules()).isEmpty();
     }
 
     @Test

@@ -246,7 +246,8 @@ class ExplainCommandEstimateTest {
 
         // 8s remaining against 16s full rebuild → 50% effort (time-weighted, not counts).
         List<String> lines =
-                ExplainCommand.renderSummaryTable(List.of(dirty, clean), 8_000, 16_000, false, Theme.active(), false)
+                ExplainCommand.renderSummaryTable(
+                                List.of(dirty, clean), 8_000, 16_000, false, null, Theme.active(), false)
                         .stream()
                         .map(TestAnsi::strip)
                         .toList();
@@ -263,6 +264,37 @@ class ExplainCommandEstimateTest {
         assertThat(joined).contains("50%");
         // One of two modules dirty → Modules rebuild 1; native only on dirty module.
         assertThat(joined).containsPattern("Modules.*1");
+    }
+
+    @Test
+    void summary_header_names_the_cone_when_a_selector_confined_the_plan() {
+        var m = TaskForecast.Module.fromWire(
+                Path.of("/tmp/engine"),
+                "com.example:engine",
+                List.of(new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "x")),
+                3,
+                0,
+                true,
+                false);
+        String whole = String.join(
+                "\n",
+                ExplainCommand.renderSummaryTable(List.of(m), 0, 1_000, true, null, Theme.active(), false).stream()
+                        .map(TestAnsi::strip)
+                        .toList());
+        String cone = String.join(
+                "\n",
+                ExplainCommand.renderSummaryTable(List.of(m), 0, 1_000, true, "server/engine", Theme.active(), false)
+                        .stream()
+                        .map(TestAnsi::strip)
+                        .toList());
+        assertThat(whole).contains("1 in workspace");
+        assertThat(cone).contains("1 in the cone of server/engine").doesNotContain("in workspace");
+
+        assertThat(ExplainCommand.scopeLabel(null, null, false)).isNull();
+        assertThat(ExplainCommand.scopeLabel(" api,cli ", null, false)).isEqualTo("api,cli");
+        assertThat(ExplainCommand.scopeLabel(null, "main", false)).isEqualTo("modules affected since main");
+        assertThat(ExplainCommand.scopeLabel(null, null, true)).isEqualTo("affected modules");
+        assertThat(ExplainCommand.scopeLabel("api", "main", false)).isEqualTo("api ∩ modules affected since main");
     }
 
     @Test
@@ -289,7 +321,7 @@ class ExplainCommandEstimateTest {
 
         // Force ANSI path so box-drawing junctions are present (plain mode uses +).
         List<String> lines =
-                ExplainCommand.renderSummaryTable(List.of(m), 1_000, 2_000, false, Theme.active(), true).stream()
+                ExplainCommand.renderSummaryTable(List.of(m), 1_000, 2_000, false, null, Theme.active(), true).stream()
                         .map(TestAnsi::strip)
                         .toList();
 

@@ -169,6 +169,7 @@ public final class ExplainCommand implements CliCommand {
         String affectedSince = affectedSinceEarly;
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
+        List<String> selectors = ModuleSelectors.tokens(modulesSpec, affectedSince, affectedWip);
         if (ModuleSelectors.anySelector(modulesSpec, affectedSince, affectedWip)) {
             Integer listed = printSelectedModules(graphDir, modulesSpec, affectedSince, affectedWip);
             if (listed != null) return listed;
@@ -196,11 +197,14 @@ public final class ExplainCommand implements CliCommand {
                 if (lockCode != 0) return lockCode;
             }
             if (prep != null) prep.update("Calculating build plan…");
-            // Forecast via engine: graph + per-step plan + schedule-aware ETA.
+            // Forecast via engine: graph + per-step plan + schedule-aware ETA. The selector tokens
+            // and the entry dir are the ones `jk build` sends from this cwd — the workspace root
+            // with the member as the selection when the cwd is a member — so the plan prices the
+            // cone that build schedules and nothing beside it.
             plan = EngineClient.explain(
                     EnginePaths.current(),
                     new EngineRequests.ExplainRequest(
-                            startDir,
+                            graphDir,
                             cache,
                             planOpts.workers(),
                             planOpts.skipTests(),
@@ -210,7 +214,8 @@ public final class ExplainCommand implements CliCommand {
                             planOpts.parallelTests(),
                             planOpts.verbose(),
                             planOpts.rebuild(),
-                            planOpts.jobs()),
+                            planOpts.jobs(),
+                            selectors),
                     etaOut,
                     prep == null ? null : prep::update);
         }
@@ -222,8 +227,28 @@ public final class ExplainCommand implements CliCommand {
             return Exit.CONFIG;
         }
 
-        renderPlan(plan, in.isSet("verbose"), ProjectInfos.buildTarget(buildFile, startDir), etaMillis, fullEtaMillis);
+        renderPlan(
+                plan,
+                in.isSet("verbose"),
+                ProjectInfos.buildTarget(buildFile, startDir),
+                etaMillis,
+                fullEtaMillis,
+                scopeLabel(modulesSpec, affectedSince, affectedWip));
         return 0;
+    }
+
+    /**
+     * What the plan is the cone of, for the summary header, or null for the whole workspace: the
+     * {@code -m} spec as typed, or the affected-selector's description.
+     */
+    static @Nullable String scopeLabel(
+            @Nullable String modulesSpec, @Nullable String affectedSince, boolean affectedWip) {
+        List<String> parts = new ArrayList<>();
+        if (modulesSpec != null && !modulesSpec.isBlank()) parts.add(modulesSpec.trim());
+        if (affectedWip) parts.add("affected modules");
+        else if (affectedSince != null && !affectedSince.isBlank())
+            parts.add("modules affected since " + affectedSince);
+        return parts.isEmpty() ? null : String.join(" ∩ ", parts);
     }
 
     /**
@@ -259,7 +284,12 @@ public final class ExplainCommand implements CliCommand {
 
     /** The settled Build Plan tree, then the summary table: totals vs rebuild effort + countdown seed. */
     private static void renderPlan(
-            ExplainPlan plan, boolean verbose, String coord, long etaMillis, long fullEtaMillis) {
+            ExplainPlan plan,
+            boolean verbose,
+            String coord,
+            long etaMillis,
+            long fullEtaMillis,
+            @Nullable String scope) {
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
 
@@ -271,7 +301,7 @@ public final class ExplainCommand implements CliCommand {
         buildGraph(coord, modules, verbose, t, ansi).print();
 
         CliOutput.out("");
-        for (String line : renderSummaryTable(modules, etaMillis, fullEtaMillis, fullyCached, t, ansi)) {
+        for (String line : renderSummaryTable(modules, etaMillis, fullEtaMillis, fullyCached, scope, t, ansi)) {
             CliOutput.out(line);
         }
     }
@@ -488,13 +518,15 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Summary table under the build graph: Plan Item / Total / Rebuild / Delta, plus rebuild-effort
-     * (time-weighted) and ETA footer rows.
+     * (time-weighted) and ETA footer rows. {@code scope} names what the modules are the cone of
+     * when a selector confined the plan; null says the whole workspace.
      */
     static List<String> renderSummaryTable(
             List<TaskForecast.Module> modules,
             long etaMillis,
             long fullEtaMillis,
             boolean fullyCached,
+            @Nullable String scope,
             Theme t,
             boolean ansi) {
         int totalModules = modules.size();
@@ -529,8 +561,8 @@ public final class ExplainCommand implements CliCommand {
         // Rows: label, total cell text, rebuild count, total count (for per-item delta only).
         record PlanRow(String item, String totalCell, int rebuild, int total) {}
         List<PlanRow> planRows = new ArrayList<>();
-        planRows.add(
-                new PlanRow("Modules", boldNum(totalModules, t, ansi) + " in workspace", dirtyModules, totalModules));
+        String where = scope == null ? " in workspace" : " in the cone of " + scope;
+        planRows.add(new PlanRow("Modules", boldNum(totalModules, t, ansi) + where, dirtyModules, totalModules));
         planRows.add(new PlanRow("Sources", boldNum(totalSources, t, ansi) + " files", dirtySources, totalSources));
         planRows.add(new PlanRow("Tests", boldNum(totalTests, t, ansi) + " methods", dirtyTests, totalTests));
         if (totalJars > 0) {

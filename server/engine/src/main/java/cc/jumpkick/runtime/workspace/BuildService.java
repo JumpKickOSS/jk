@@ -146,6 +146,16 @@ public final class BuildService {
     }
 
     /**
+     * As {@link #explain(Path, JkBuild, Path, boolean)} confined to {@code selection}'s cone —
+     * the modules {@code jk build -m} with the same selection schedules, priced the way its
+     * countdown seed prices them. An empty selection is the whole workspace.
+     */
+    public static ExplainPlan explain(
+            Path entryDir, JkBuild entryBuild, Path cache, boolean skipTests, Set<Path> selection) throws IOException {
+        return BuildForecasting.explain(entryDir, entryBuild, cache, skipTests, selection);
+    }
+
+    /**
      * Forecast from an already-resolved graph — the same {@link TaskForecaster} walk {@code jk
      * build} uses for its countdown seed so explain and build never price different step sets.
      */

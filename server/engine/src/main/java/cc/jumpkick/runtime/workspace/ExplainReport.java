@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.nio.file.Path;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,7 +22,24 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
      * shape. Everything else the estimate needs (workers, JDK root, verbosity, test parallelism)
      * is read off the session so it cannot differ from the build's.
      */
-    public record Knobs(@Nullable String profile, int maxModuleConcurrency, boolean skipTests) {
+    public record Knobs(
+            @Nullable String profile,
+            int maxModuleConcurrency,
+            boolean skipTests,
+            /**
+             * The module dirs a {@code -m}/{@code --affected-since} selector resolved to; the plan
+             * prices their cone — selection plus prerequisites — as {@code jk build} with the same
+             * selector schedules it. Empty: the whole workspace.
+             */
+            Set<Path> selection) {
+
+        public Knobs {
+            selection = selection == null ? Set.of() : Set.copyOf(selection);
+        }
+
+        public Knobs(@Nullable String profile, int maxModuleConcurrency, boolean skipTests) {
+            this(profile, maxModuleConcurrency, skipTests, Set.of());
+        }
 
         public static Knobs defaults() {
             return new Knobs(null, 0, false);
@@ -34,8 +52,8 @@ public record ExplainReport(ExplainPlan plan, long etaMillis, long fullMillis) {
      */
     public static ExplainReport compute(Path entryDir, JkBuild build, Path cache, Session session, Knobs k)
             throws Exception {
-        ExplainPlan plan =
-                SessionContext.where(session, () -> BuildService.explain(entryDir, build, cache, k.skipTests()));
+        ExplainPlan plan = SessionContext.where(
+                session, () -> BuildService.explain(entryDir, build, cache, k.skipTests(), k.selection()));
         if (plan.hasErrors()) {
             return new ExplainReport(plan, 0L, 0L);
         }
