@@ -32,8 +32,10 @@ import org.jspecify.annotations.Nullable;
  * <p>Walks the <em>effective</em> POM ({@link EffectivePomBuilder}: parent-chain properties, BOM
  * imports, {@code dependencyManagement} version/scope defaults) and follows compile/runtime
  * dependencies (transitives included; {@code provided} / {@code test} / {@code optional}
- * transitives skipped). Artifacts are taken from {@code repos/jk-local}, {@code repos/jumpkick}, then
- * {@code repos/central}, fetching a miss from the HTTP remotes when the session is online.
+ * transitives skipped). Artifacts are taken from {@code repos/jk-local}, {@code repos/jumpkick},
+ * {@code repos/central} and {@code repos/google}, fetching a miss from the HTTP remotes — the
+ * built-in repository set a lock resolves against, Google's Android Maven included, so a worker
+ * whose closure lives only there (the Android worker's apksig) resolves from an empty store.
  */
 public final class PomRuntimeClasspath {
 
@@ -198,8 +200,9 @@ public final class PomRuntimeClasspath {
     private static final int STORE_REPOS_MAX = 32;
 
     /**
-     * {@code repos/jk-local} plus JumpKick and Central HTTP remotes, CAS-rooted at {@code storeRoot}.
-     * Local is a priority repo so {@code installLocal} artifacts outrank exclusive remote bindings.
+     * {@code repos/jk-local} plus the {@linkplain #workerRemotes built-in remotes}, CAS-rooted at
+     * {@code storeRoot}. Local is a priority repo so {@code installLocal} artifacts outrank
+     * exclusive remote bindings.
      */
     static RepoGroup storeRepos(Path storeRoot) {
         return storeRepos(storeRoot, null);
@@ -235,10 +238,7 @@ public final class PomRuntimeClasspath {
         // network leg. Prepending it as a priority store keeps warm forks off the network
         // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
         MavenRepo jumpkickStore = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, storeUri(firstParty.get(1)), http, cas);
-        MavenRepo jumpkick = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, RepositorySpec.officialUrl(), http, cas);
-        MavenRepo central = storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
-        RepoGroup remotes =
-                new RepoGroup(List.of(jumpkick, central), List.of(RepositorySpec.JUMPKICK.groups(), List.of()));
+        RepoGroup remotes = workerRemotes(RepositorySpec.officialUrl(), http, cas);
         List<MavenRepo> leading = new ArrayList<>();
         leading.add(local);
         leading.add(jumpkickStore);
@@ -248,17 +248,45 @@ public final class PomRuntimeClasspath {
         return remotes.withReposPrepended(leading);
     }
 
-    /** File-only {@code local} / {@code jumpkick} / {@code central} under {@code storeRoot}. */
+    /**
+     * The HTTP remotes a worker's closure is fetched from, in order: the official JumpKick
+     * repository at {@code officialBase} (exclusive for the first-party groups), Maven Central,
+     * then Google's Android Maven (exclusive for the Android groups, so an {@code androidx} or
+     * {@code com.android} request never probes Central). It is the set a lock resolves against by
+     * default, which is why a dependency the plugin's lock pins with a Google source is fetchable
+     * for the worker too. Reads and writes stay under {@code cas}'s store.
+     */
+    public static RepoGroup workerRemotes(URI officialBase, Http http, Cas cas) {
+        MavenRepo jumpkick = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, officialBase, http, cas);
+        MavenRepo central = storeOnlyRepo(RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+        MavenRepo google = storeOnlyRepo(RepositorySpec.GOOGLE, RepositorySpec.GOOGLE_MAVEN.url(), http, cas);
+        return new RepoGroup(
+                List.of(jumpkick, central, google),
+                List.of(RepositorySpec.JUMPKICK.groups(), List.of(), RepositorySpec.GOOGLE_MAVEN.groups()));
+    }
+
+    /** File-only {@code local} / {@code jumpkick} / {@code central} / {@code google} under {@code storeRoot}. */
     static RepoGroup localRepos(Path storeRoot) {
         return new RepoGroup(fileRepos(storeRoot));
+    }
+
+    /** The stores a worker closure is read from: the first-party three, then Google's. */
+    private static List<RepoArtifactStore> workerStores(Path storeRoot) {
+        List<RepoArtifactStore> stores = new ArrayList<>(RepoArtifactStore.firstParty(storeRoot));
+        stores.add(
+                RepoArtifactStore.forRepository(storeRoot, RepositorySpec.GOOGLE, RepositorySpec.GOOGLE_MAVEN.url()));
+        return stores;
     }
 
     private static List<MavenRepo> fileRepos(Path storeRoot) {
         Cas cas = new Cas(storeRoot);
         Http http = new Http();
-        List<String> names =
-                List.of(RepoArtifactResolver.JK_LOCAL, RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL);
-        List<RepoArtifactStore> stores = RepoArtifactStore.firstParty(storeRoot);
+        List<String> names = List.of(
+                RepoArtifactResolver.JK_LOCAL,
+                RepositorySpec.JUMPKICK_NAME,
+                RepositorySpec.CENTRAL,
+                RepositorySpec.GOOGLE);
+        List<RepoArtifactStore> stores = workerStores(storeRoot);
         List<MavenRepo> repos = new ArrayList<>(stores.size());
         for (int i = 0; i < stores.size(); i++) {
             repos.add(storeOnlyRepo(names.get(i), storeUri(stores.get(i)), http, cas));

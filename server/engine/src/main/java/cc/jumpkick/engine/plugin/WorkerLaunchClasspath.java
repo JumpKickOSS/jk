@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Classpath used to fork a thin plugin worker: the worker jar plus the Maven runtime closure from
- * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central}). A workspace {@code target/}
+ * its POM ({@code repos/jk-local} / {@code jumpkick} / {@code central} / {@code google}). A workspace {@code target/}
  * worker also gets plugin-sdk and host from {@code target/shared/} (the codec a shipped worker jar
  * vendors).
  */

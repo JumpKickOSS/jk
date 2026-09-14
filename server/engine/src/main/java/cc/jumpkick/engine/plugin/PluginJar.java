@@ -3,16 +3,13 @@ package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.wire.PluginJarNotFoundException;
 import java.io.IOException;
 import java.net.URI;
@@ -213,7 +210,8 @@ public enum PluginJar {
 
     /**
      * Fetch the worker POM's Maven runtime closure (effective POM: parent properties, BOM
-     * imports, {@code dependencyManagement}) from the official repo, then Maven Central.
+     * imports, {@code dependencyManagement}) from the {@linkplain PomRuntimeClasspath#workerRemotes
+     * built-in remotes}: the official repo, Maven Central, Google's Android Maven.
      */
     private static void fetchOfficialClosure(Cas cas, Http http, URI base, Path workerJar)
             throws IOException, InterruptedException {
@@ -221,13 +219,8 @@ public enum PluginJar {
         if (coord == null) {
             throw new IOException("cannot parse Maven coordinate of official worker jar " + workerJar);
         }
-        // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central) — not ~/.m2.
-        MavenRepo official =
-                new MavenRepo(RepositorySpec.JUMPKICK_NAME, base, http, cas, RepoCredential.ANONYMOUS, false);
-        MavenRepo central = new MavenRepo(
-                RepositorySpec.CENTRAL, RepositorySpec.MAVEN_CENTRAL.url(), http, cas, RepoCredential.ANONYMOUS, false);
-        RepoGroup repos = RepoGroup.of(central).withReposPrepended(List.of(official));
-        PomRuntimeClasspath.fetchRuntimeClosure(coord, repos);
+        // Worker closures stay under JK_STORE_DIR (repos/jumpkick, repos/central, repos/google) — not ~/.m2.
+        PomRuntimeClasspath.fetchRuntimeClosure(coord, PomRuntimeClasspath.workerRemotes(base, http, cas));
     }
 
     /**
