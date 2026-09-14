@@ -18,6 +18,7 @@ import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
+import cc.jumpkick.testing.HostProcessors;
 import cc.jumpkick.testing.SysProps;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -38,6 +40,21 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *
  * <p>Point {@value #OVERLAY_ENV} at a {@code nowinandroid} overlay directory (the one holding
  * {@code jk.toml}) to run it. Unset, it skips and says what to set.
+ *
+ * <p>The wall-clock budgets are judged only on a JVM that sees the whole host and a host that is
+ * idle. {@code jk test} pins every test JVM to its share of the cores ({@code
+ * -XX:ActiveProcessorCount}), which serialises the resolver's parallel prefetch and {@code .module}
+ * parse into a machine no user has; a run under that pin prints its phase timings and says why the
+ * budget was not applied. To measure plainly, lift the pin for this one class:
+ *
+ * <pre>{@code
+ * JK_NIA_OVERLAY=/path/to/nowinandroid/overlay \
+ *   jk test --profile network -m server/resolver -w 1 \
+ *     --class cc.jumpkick.resolver.NiaWarmLockTimingTest \
+ *     --jvm-arg -XX:ActiveProcessorCount=$(nproc)
+ * }</pre>
+ *
+ * <p>The lock cost's gate is the wall-band harness, not this assert.
  */
 @Tag("network")
 @ExtendWith(SysProps.class)
@@ -60,10 +77,13 @@ class NiaWarmLockTimingTest {
 
         // Wall-clock budgets are only meaningful on an uncontended machine; a full parallel
         // suite run (~16 workers sharing CPU, disk, and network) blows them by 5x+ without any
-        // resolver regression. Sample the load before the passes start.
+        // resolver regression. Sample the load before the passes start, against the host's
+        // processors: the JVM's own count is the launcher's pin, not the machine.
         double startLoad = ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
-        boolean quietMachine =
-                startLoad >= 0 && startLoad < Runtime.getRuntime().availableProcessors() * 0.5;
+        int jvmCpus = Runtime.getRuntime().availableProcessors();
+        int hostCpus = HostProcessors.count();
+        System.out.println("JVM_CPUS=" + jvmCpus + " HOST_CPUS=" + hostCpus + " LOADAVG=" + startLoad);
+        String budgetSkipReason = budgetSkipReason(startLoad, jvmCpus, hostCpus);
 
         // The overlay lives in jk-examples, not this repo — when its jk.toml lags a manifest
         // format change, that is fixture bit-rot, not a resolver regression: skip, don't fail.
@@ -125,16 +145,32 @@ class NiaWarmLockTimingTest {
 
         assertThat(cold.artifacts().size()).isGreaterThan(200);
         assertThat(hot.artifacts().size()).isGreaterThan(200);
-        if (quietMachine) {
+        if (budgetSkipReason == null) {
             // Hot re-lock must stay well under the 10s UX bar.
             assertThat(hotMs).as("hot re-lock").isLessThan(10_000L);
             // First-in-process (warm disk, cold process caches) targets ~8s; allow headroom for
             // shared-machine noise. Fail hard only if we regress toward the old ~25–40s path.
             assertThat(coldMs).as("first-in-process cold lock").isLessThan(15_000L);
         } else {
-            System.out.println("TIMING_ASSERTS_SKIPPED loadavg=" + startLoad + " cores="
-                    + Runtime.getRuntime().availableProcessors());
+            System.out.println("TIMING_ASSERTS_SKIPPED " + budgetSkipReason);
         }
+    }
+
+    /**
+     * Why the budget does not apply to this run, or {@code null} when it does: the JVM must see
+     * every processor of the host (a pinned JVM measures a machine no user has) and the host must
+     * be idle (a load average past half its processors is a shared box, not a regression).
+     */
+    static @Nullable String budgetSkipReason(double loadAvg, int jvmCpus, int hostCpus) {
+        if (jvmCpus < hostCpus) {
+            return "jvm-cpus=" + jvmCpus + " host-cpus=" + hostCpus
+                    + " — the test JVM is pinned below the host; run with --jvm-arg -XX:ActiveProcessorCount="
+                    + hostCpus;
+        }
+        if (loadAvg < 0 || loadAvg >= hostCpus * 0.5) {
+            return "loadavg=" + loadAvg + " host-cpus=" + hostCpus + " — not a quiet machine";
+        }
+        return null;
     }
 
     private static final class TimingObserver implements ResolveObserver {
