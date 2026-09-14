@@ -58,6 +58,48 @@ class ExplainCommandEstimateTest {
     }
 
     @Test
+    void a_module_the_build_only_restores_is_listed_as_a_restore_not_a_rebuild() {
+        var restore = TaskForecast.Module.fromWire(
+                Path.of("/tmp/a"),
+                "com.example:app",
+                List.of(
+                        new TaskForecast.Task("compile-main", TaskForecast.Status.CACHED, "", "x"),
+                        new TaskForecast.Task("package-jar", TaskForecast.Status.CACHED, "", "y"),
+                        new TaskForecast.Task("restore-outputs", TaskForecast.Status.RUN, "restore from cache", null)),
+                10,
+                4,
+                true,
+                false);
+        var dirty = TaskForecast.Module.fromWire(
+                Path.of("/tmp/b"),
+                "com.example:lib",
+                List.of(new TaskForecast.Task("compile-main", TaskForecast.Status.RUN, "full compile", null)),
+                5,
+                2,
+                true,
+                false);
+        assertThat(restore.restoreOnly()).isTrue();
+        assertThat(dirty.restoreOnly()).isFalse();
+
+        String graph = String.join(
+                "\n",
+                ExplainCommand.buildGraph("com.example:root", List.of(restore, dirty), false, Theme.active(), false)
+                        .render(RenderContext.current().withAnsi(false)));
+        assertThat(graph).contains("[Restore]").contains("1 module restores from cache");
+        assertThat(graph).contains("[Rebuild]").contains("1 module is dirty");
+
+        String table = TestAnsi.strip(String.join(
+                "\n",
+                ExplainCommand.renderSummaryTable(
+                        List.of(restore, dirty), 3_000, 60_000, false, null, Theme.active(), false)));
+        // The Rebuild column counts the module that compiles, not the one copied out of the CAS.
+        assertThat(table).contains("Restored from cache").contains("1 module");
+        assertThat(table).containsPattern("Modules\\s*\\|\\s*2 in workspace\\s*\\|\\s*1\\s*\\|");
+        assertThat(table).containsPattern("Sources\\s*\\|\\s*15 files\\s*\\|\\s*5\\s*\\|");
+        assertThat(table).contains("~3s");
+    }
+
+    @Test
     void buildGraph_uses_bright_cyan_rebuild_names_and_skips_index() {
         var dirty = TaskForecast.Module.fromWire(
                 Path.of("/tmp/a"),

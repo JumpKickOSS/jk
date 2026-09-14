@@ -118,6 +118,26 @@ public final class TaskForecast {
         }
 
         /**
+         * True when the build schedules this module only to bring its outputs back from the
+         * caches: every step is a hit and the one non-cached material step is the restore gate.
+         * Nothing compiles, packages or runs — the work is a copy out of the CAS, priced in
+         * seconds where a rebuild of the same module is priced in its full wall.
+         */
+        public boolean restoreOnly() {
+            if (reason != null) return false;
+            boolean sawRestore = false;
+            for (Task s : steps) {
+                if (s.cached() || isBookkeepingStep(s.name())) continue;
+                if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) {
+                    sawRestore = true;
+                    continue;
+                }
+                return false;
+            }
+            return sawRestore;
+        }
+
+        /**
          * Steps whose cache miss means real wall work for ETA / dirty-set (not stamp-check
          * bookkeeping). Anything not on the bookkeeping denylist is material (plugin source-gen,
          * native-image, run-tests, compile-*, package-*, …).

@@ -8,7 +8,6 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TaskForecaster;
@@ -321,17 +320,7 @@ public final class BuildForecasting {
 
     /** True when the only material non-cached step is the synthetic restore gate. */
     static boolean isRestoreOnly(TaskForecast.Module m) {
-        boolean sawRestore = false;
-        for (TaskForecast.Task s : m.steps()) {
-            if (s.cached() || TaskForecast.Module.isBookkeepingStep(s.name())) continue;
-            if (!TaskForecast.Module.isMaterialWork(s.name())) continue;
-            if (TaskNames.RESTORE_OUTPUTS.equals(s.name())) {
-                sawRestore = true;
-                continue;
-            }
-            return false;
-        }
-        return sawRestore;
+        return m.restoreOnly();
     }
 
     /**

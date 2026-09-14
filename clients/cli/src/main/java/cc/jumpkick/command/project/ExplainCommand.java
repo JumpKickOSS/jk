@@ -316,9 +316,12 @@ public final class ExplainCommand implements CliCommand {
         Tree.Node root = Tree.node(Icon.pulse(), Coord.module(rootCoord).text());
 
         List<TaskForecast.Module> cached = new ArrayList<>();
+        List<TaskForecast.Module> restore = new ArrayList<>();
         List<TaskForecast.Module> dirty = new ArrayList<>();
         for (TaskForecast.Module m : modules) {
-            (m.dirty() ? dirty : cached).add(m);
+            if (!m.dirty()) cached.add(m);
+            else if (m.restoreOnly()) restore.add(m);
+            else dirty.add(m);
         }
 
         if (!cached.isEmpty()) {
@@ -338,6 +341,18 @@ public final class ExplainCommand implements CliCommand {
                     lines.add(RichText.ansi(renderCachedNameLine(chunks.get(i), i < chunks.size() - 1, t, ansi)));
                 }
                 section.body(lines);
+            }
+            root.child(section);
+        }
+        if (!restore.isEmpty()) {
+            // After jk clean every key still hits and the build's work is a copy out of the CAS:
+            // these modules are scheduled, but listing them as rebuilds would promise compiles
+            // and suites the build never runs.
+            int n = restore.size();
+            String note = n + (n == 1 ? " module restores from cache" : " modules restore from cache");
+            Tree.Node section = Tree.node(Pill.of("Restore"), note);
+            for (TaskForecast.Module m : restore) {
+                section.child(moduleNode(m, verbose, t, ansi));
             }
             root.child(section);
         }
@@ -541,22 +556,27 @@ public final class ExplainCommand implements CliCommand {
         int totalImages = (int)
                 modules.stream().filter(TaskForecast.Module::producesImage).count();
 
+        // The Rebuild column counts work: a module the build only restores from its caches
+        // compiles nothing, tests nothing and packages nothing, so it is not a rebuild of any of
+        // its sources, tests or artifacts. It is reported on its own row below.
+        int restoreModules =
+                (int) modules.stream().filter(TaskForecast.Module::restoreOnly).count();
         int dirtyModules =
-                (int) modules.stream().filter(TaskForecast.Module::dirty).count();
+                (int) modules.stream().filter(ExplainCommand::rebuilds).count();
         int dirtySources = modules.stream()
-                .filter(TaskForecast.Module::dirty)
+                .filter(ExplainCommand::rebuilds)
                 .mapToInt(TaskForecast.Module::sourceCount)
                 .sum();
         int dirtyTests = modules.stream()
-                .filter(TaskForecast.Module::dirty)
+                .filter(ExplainCommand::rebuilds)
                 .mapToInt(TaskForecast.Module::testCount)
                 .sum();
-        int dirtyJars =
-                (int) modules.stream().filter(m -> m.dirty() && m.producesJar()).count();
+        int dirtyJars = (int)
+                modules.stream().filter(m -> rebuilds(m) && m.producesJar()).count();
         int dirtyNatives = (int)
-                modules.stream().filter(m -> m.dirty() && producesNative(m)).count();
+                modules.stream().filter(m -> rebuilds(m) && producesNative(m)).count();
         int dirtyImages = (int)
-                modules.stream().filter(m -> m.dirty() && m.producesImage()).count();
+                modules.stream().filter(m -> rebuilds(m) && m.producesImage()).count();
 
         // Rows: label, total cell text, rebuild count, total count (for per-item delta only).
         record PlanRow(String item, String totalCell, int rebuild, int total) {}
@@ -596,16 +616,23 @@ public final class ExplainCommand implements CliCommand {
                     RichText.ansi(colorDelta(pctValue(r.rebuild(), r.total()), t, ansi)));
         }
         int effortPct = rebuildEffortPct(etaMillis, fullEtaMillis);
-        table.append(
-                new Table("")
-                        .columns("Label", "Value")
-                        .row(RichText.plain("Total rebuild effort"), RichText.ansi(colorDelta(effortPct, t, ansi)))
-                        .row(
-                                RichText.plain("Build time estimate"),
-                                RichText.ansi(
-                                        Theme.paint(buildTimeEstimateValue(etaMillis, fullyCached), t.warning()))),
-                Table.Append.SECTION);
+        Table footer = new Table("").columns("Label", "Value");
+        if (restoreModules > 0) {
+            footer.row(
+                    RichText.plain("Restored from cache"),
+                    RichText.ansi(boldNum(restoreModules, t, ansi) + (restoreModules == 1 ? " module" : " modules")));
+        }
+        footer.row(RichText.plain("Total rebuild effort"), RichText.ansi(colorDelta(effortPct, t, ansi)))
+                .row(
+                        RichText.plain("Build time estimate"),
+                        RichText.ansi(Theme.paint(buildTimeEstimateValue(etaMillis, fullyCached), t.warning())));
+        table.append(footer, Table.Append.SECTION);
         return table.render(RenderContext.current().withAnsi(ansi));
+    }
+
+    /** A dirty module that is not merely restored: the build compiles, tests or packages something of it. */
+    private static boolean rebuilds(TaskForecast.Module m) {
+        return m.dirty() && !m.restoreOnly();
     }
 
     private static String boldNum(int n, Theme t, boolean ansi) {
