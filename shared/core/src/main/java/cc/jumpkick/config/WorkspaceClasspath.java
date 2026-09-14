@@ -77,6 +77,23 @@ public final class WorkspaceClasspath {
     }
 
     /**
+     * Whether this manifest puts a sibling's test output on its own test classpath: a {@code kind =
+     * "tests"} edge selects the sibling's test classes, {@code fixtures = true} its fixtures. Both
+     * are outputs of the sibling's test stage rather than of its main compile, so a plan that
+     * selects either waits for the sibling's artifacts before compiling its tests; one that selects
+     * neither has nothing of a sibling's to wait for there. An external test-jar declared with a
+     * tests kind answers true as well — a wait too many, never one too few.
+     */
+    public static boolean selectsTestOutputs(JkBuild project) {
+        for (List<Dependency> deps : project.dependencies().byScope().values()) {
+            for (Dependency dep : deps) {
+                if (dep.kind() == DependencyKind.TESTS || dep.fixtures()) return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * @param projectDir the module being built
      * @param project the parsed manifest of {@code projectDir}
      * @param scopes the scopes whose deps should contribute (typically {@code MAIN} for compile,

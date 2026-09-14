@@ -203,6 +203,47 @@ class WorkspaceClasspathTest {
         assertThatThrownBy(() -> JkBuildParser.parse(appToml)).isInstanceOf(JkBuildParseException.class);
     }
 
+    /** Only a tests kind or fixtures = true reads a sibling's test stage; a plain edge reads its classes tree. */
+    @Test
+    void a_manifest_selects_sibling_test_outputs_only_through_a_tests_kind_or_fixtures(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "plain", "tests", "fixtures"]
+                """);
+        module(root, "lib", """
+                [test]
+                fixtures = true
+                """);
+        module(root, "plain", """
+                [dependencies]
+                lib = { workspace = true }
+                """);
+        module(root, "tests", """
+                [test-dependencies]
+                lib = { workspace = true, kind = "tests" }
+                """);
+        module(root, "fixtures", """
+                [test-dependencies]
+                lib = { workspace = true, fixtures = true }
+                """);
+
+        assertThat(WorkspaceClasspath.selectsTestOutputs(JkBuildParser.parse(root.resolve("plain/jk.toml"))))
+                .as("a main edge compiles against lib's classes tree")
+                .isFalse();
+        assertThat(WorkspaceClasspath.selectsTestOutputs(JkBuildParser.parse(root.resolve("tests/jk.toml"))))
+                .as("a tests kind reads lib's classes/test")
+                .isTrue();
+        assertThat(WorkspaceClasspath.selectsTestOutputs(JkBuildParser.parse(root.resolve("fixtures/jk.toml"))))
+                .as("fixtures = true reads lib's fixtures")
+                .isTrue();
+    }
+
     @Test
     void fixtures_puts_sibling_fixtures_dir_on_the_test_classpath(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), """

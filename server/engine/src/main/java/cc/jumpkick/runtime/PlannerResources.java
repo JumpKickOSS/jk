@@ -126,11 +126,9 @@ public final class PlannerResources {
                         throw new IOException("build-logic interrupted", e);
                     }
                     if (!copied && !logicRan && !stripped) ctx.cached(); // SKIPPED — nothing to copy, no logic
-                    // Every step that reads a sibling's jar — the test compile and run, the
-                    // guard suite, packaging and its tails — is behind this one, and the compile
-                    // stage in front of it reads only sibling classes trees. So this is where the
-                    // plan waits for the siblings it was admitted ahead of to finish packaging.
-                    PlannerSetup.awaitSiblingArtifacts(ctx, in);
+                    // This step reads no sibling's jar, and it is the last writer of the classes
+                    // tree the dependents compile against: they are admitted on its success, so
+                    // it waits for nothing of the siblings.
                     ctx.progress(1);
                 })
                 .build();

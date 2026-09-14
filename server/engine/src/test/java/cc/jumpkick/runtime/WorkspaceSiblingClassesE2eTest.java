@@ -127,6 +127,36 @@ class WorkspaceSiblingClassesE2eTest {
     }
 
     /**
+     * A chain lib → mid → app: mid's classes publish is the signal app is admitted on, and it
+     * fires once mid has compiled and copied its resources — not once lib has packaged. mid's own
+     * package step is what waits for lib's jar. So app's compile starts while lib's jar is still
+     * held back, and app's assembly still nests lib's classes from the jar that arrives later.
+     */
+    @Test
+    void a_transitive_consumer_is_admitted_before_the_root_producer_packages(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("sibling-classes-cache");
+        Path ws = chainWorkspace(tmp);
+        lock(ws, cache, "lib", "mid", "app");
+        BuildLayout app = BuildLayout.of(ws, ws.resolve("app"), JkBuildParser.parse(ws.resolve("app/jk.toml")));
+
+        // lib's package-jar is held until app's compile has started. Were mid's publish behind lib's
+        // jar, app would never be admitted and the hold would expire with the flag still down.
+        Probe probe = new Probe(true);
+        WorkspaceResult result = build(ws, cache, probe, 3);
+        assertThat(result.errors()).isEmpty();
+        assertThat(result.success())
+                .as("chain build; failed steps " + probe.failed())
+                .isTrue();
+        assertThat(probe.appCompiledBeforeLibPackaged())
+                .as("app is admitted on mid's classes tree while lib's jar is still held")
+                .isTrue();
+        assertThat(probe.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiling");
+        assertThat(nestedLibClass(app.assemblyJar()))
+                .as("app's package step waited for lib's jar and nested it")
+                .contains("lib-v1");
+    }
+
+    /**
      * After the whole {@code target/} is gone, the forecast prices app's compile as the build
      * keys it: lib's tree comes back from its compile record before app's compile keys on it, so
      * the forecast reads that record's token rather than the tree's absence, and both modules
@@ -191,8 +221,13 @@ class WorkspaceSiblingClassesE2eTest {
     }
 
     private static WorkspaceResult build(Path ws, Path cache, Probe probe) {
+        return build(ws, cache, probe, 2);
+    }
+
+    /** {@code modulesAtOnce} slots: a held producer and a waiting middle module must leave one for the consumer. */
+    private static WorkspaceResult build(Path ws, Path cache, Probe probe, int modulesAtOnce) {
         return WorkspaceExecute.buildWorkspace(
-                new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, null, false, false), probe);
+                new WorkspaceRequest(ws, cache, null, 0, null, true, false, modulesAtOnce, null, false, false), probe);
     }
 
     /** The text of lib's class as nested in {@code jar}, for the string constants its bodies carry. */
@@ -208,13 +243,18 @@ class WorkspaceSiblingClassesE2eTest {
     }
 
     private static void lock(Path ws, Path cache) throws Exception {
+        lock(ws, cache, "lib", "app");
+    }
+
+    private static void lock(Path ws, Path cache, String... members) throws Exception {
         JkBuild root = JkBuildParser.parse(ws.resolve("jk.toml"));
         BuildPlan lock =
                 LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         // Members redirect to the root lock.
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
+        for (String member : members) {
+            Files.copy(ws.resolve("jk-lock.toml"), ws.resolve(member).resolve("jk-lock.toml"));
+        }
     }
 
     /**
@@ -322,6 +362,85 @@ class WorkspaceSiblingClassesE2eTest {
 
                     public static void main(String[] args) {
                         System.out.println(Lib.version() + " " + Lib.twice(2));
+                    }
+                }
+                """);
+        return ws;
+    }
+
+    /** lib → mid → app: mid wraps lib, and app is an assembled application over mid. */
+    private static Path chainWorkspace(Path tmp) throws IOException {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "ws"
+                version = "1.0.0"
+                java    = 25
+
+                [workspace]
+                modules = ["lib", "mid", "app"]
+                """);
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+                java    = 25
+                """);
+        Files.createDirectories(lib.resolve("src/com/example"));
+        Files.writeString(lib.resolve("src/com/example/Lib.java"), LIB_SOURCE);
+        Path mid = Files.createDirectories(ws.resolve("mid"));
+        Files.writeString(mid.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "mid"
+                version = "1.0.0"
+                java    = 25
+
+                [dependencies]
+                lib = { workspace = true }
+                """);
+        Files.createDirectories(mid.resolve("src/com/example/mid"));
+        Files.writeString(mid.resolve("src/com/example/mid/Mid.java"), """
+                package com.example.mid;
+
+                import com.example.Lib;
+
+                public final class Mid {
+                    private Mid() {}
+
+                    public static String describe() {
+                        return Lib.version() + ":" + Lib.twice(21);
+                    }
+                }
+                """);
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+                java    = 25
+
+                [dependencies]
+                mid = { workspace = true }
+
+                [application]
+                main     = "com.example.app.Main"
+                assembly = true
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        Path src = Files.createDirectories(app.resolve("src/com/example/app"));
+        Files.writeString(src.resolve("Main.java"), """
+                package com.example.app;
+
+                import com.example.mid.Mid;
+
+                public final class Main {
+                    private Main() {}
+
+                    public static void main(String[] args) {
+                        System.out.println(Mid.describe());
                     }
                 }
                 """);

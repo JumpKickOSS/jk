@@ -410,6 +410,17 @@ public final class PlannerSetup {
         }
     }
 
+    /**
+     * The test compile's side of the wait. Its classpath is the siblings' classes trees, which the
+     * schedule already admitted this module on, plus what a {@code kind = "tests"} edge or {@code
+     * fixtures = true} selects: the siblings' test classes and fixtures, outputs of their test
+     * stage that publish with their artifacts. A plan that selects neither compiles its tests
+     * without waiting for any sibling to package.
+     */
+    static void awaitSiblingTestOutputs(TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
+        if (WorkspaceClasspath.selectsTestOutputs(ctx.require(PROJECT))) awaitSiblingArtifacts(ctx, in);
+    }
+
     /** The runtime-view guard: {@code missingSiblingJars} names each jar, test output or fixtures dir absent. */
     private static void requireSiblingsBuilt(TaskContext ctx, WorkspaceClasspath.Result siblings, String prefix) {
         if (siblings.missingSiblingJars().isEmpty()) return;

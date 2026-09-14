@@ -117,6 +117,7 @@ public final class PlannerTest {
                     }
                     // Store combined test sources for the TestStamp in run-tests.
                     ctx.put(TEST_SOURCES, src.all());
+                    PlannerSetup.awaitSiblingTestOutputs(ctx, in);
                     List<Path> baseCp = testCompileClasspath(ctx, cx, cas, src);
                     Path testClasses = ctx.require(TEST_CLASSES);
                     String selectionKey = String.join(",", suiteNames);
@@ -471,6 +472,8 @@ public final class PlannerTest {
                         ctx.label("no tests to run");
                         return;
                     }
+                    // The test runtime classpath is the siblings' jars: wait for them to be written.
+                    PlannerSetup.awaitSiblingArtifacts(ctx, in);
                     List<Path> testRtCp = testRuntimeClasspath(ctx, pluginDecls);
                     Path testClassesForStamp = ctx.require(TEST_CLASSES);
                     List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(List.of());
