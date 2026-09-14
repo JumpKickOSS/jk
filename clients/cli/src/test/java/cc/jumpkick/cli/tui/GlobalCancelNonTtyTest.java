@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
@@ -25,6 +26,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -183,13 +185,12 @@ class GlobalCancelNonTtyTest {
                 group = "com.example"
                 version = "0.1.0"
                 """);
-        ProcessBuilder pb = new ProcessBuilder(
-                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                "-cp",
-                System.getProperty("java.class.path"),
-                "cc.jumpkick.cli.Jk",
-                "lock",
-                "--offline");
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.addAll(EngineSpawn.forwardedJvmArgs()); // the worker-jar overrides, for the engine this client spawns
+        command.addAll(
+                List.of("-cp", System.getProperty("java.class.path"), "cc.jumpkick.cli.Jk", "lock", "--offline"));
+        ProcessBuilder pb = new ProcessBuilder(command);
         pb.directory(project.toFile());
         pb.environment().put("JK_HOME", home.toString());
         // The integrationTest task exports JK_STATE_DIR/JK_STORE_DIR for the whole tier, and a

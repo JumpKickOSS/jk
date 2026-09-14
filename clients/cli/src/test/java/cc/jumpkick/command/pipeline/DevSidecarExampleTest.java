@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testing.RepoRoot;
@@ -221,14 +222,14 @@ class DevSidecarExampleTest {
         static Session spawn(Path project, Path dir, int apiPort, String... options) throws IOException {
             Path out = dir.resolve("stdout.jsonl");
             Path err = dir.resolve("stderr.log");
-            List<String> command = new ArrayList<>(List.of(
-                    Path.of(System.getProperty("java.home"), "bin", "java").toString(),
-                    "-cp",
-                    System.getProperty("java.class.path"),
-                    "cc.jumpkick.cli.Jk",
-                    "dev",
-                    "--output",
-                    "json"));
+            // The worker-jar overrides this test JVM was handed ride into the forked client, so an
+            // engine it spawns finds the workers this build produced rather than a sandbox store
+            // that holds none.
+            List<String> command = new ArrayList<>();
+            command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+            command.addAll(EngineSpawn.forwardedJvmArgs());
+            command.addAll(List.of(
+                    "-cp", System.getProperty("java.class.path"), "cc.jumpkick.cli.Jk", "dev", "--output", "json"));
             command.addAll(List.of(options));
             command.add("--");
             command.add(Integer.toString(apiPort));

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.EngineSpawn;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -126,6 +127,7 @@ class InstallFixedPointE2eTest {
     private static Run jk(Path home, Path cwd, String... args) throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        cmd.addAll(EngineSpawn.forwardedJvmArgs()); // the worker-jar overrides, for the engine this client spawns
         cmd.add("-cp");
         cmd.add(System.getProperty("java.class.path"));
         cmd.add(Jk.class.getName());

@@ -685,13 +685,7 @@ public final class EngineSpawn {
             command.add("-Xms" + config.minHeapMb() + "m");
             command.add("-Xmx" + config.maxHeapMb() + "m");
         }
-        for (var e : System.getProperties().entrySet()) {
-            String key = String.valueOf(e.getKey());
-            if (!forwarded(key)) continue;
-            String val = String.valueOf(e.getValue());
-            if (val == null || val.isBlank()) continue;
-            command.add("-D" + key + "=" + val);
-        }
+        command.addAll(forwardedJvmArgs());
         command.add("-cp");
         command.add(target.engine().path());
         command.add("cc.jumpkick.engine.EngineMain");
@@ -911,6 +905,25 @@ public final class EngineSpawn {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * The {@code -D} arguments that carry this JVM's forwarded properties ({@link #forwarded}) into
+     * another JVM — the engine this client spawns, and any client a test forks as {@code java -cp …
+     * cc.jumpkick.cli.Jk}: a forked client that does not carry them spawns an engine without the
+     * worker-jar overrides the test run was handed, and that engine can only find workers in a
+     * sandbox store that holds none.
+     */
+    public static List<String> forwardedJvmArgs() {
+        List<String> args = new ArrayList<>();
+        for (var e : System.getProperties().entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if (!forwarded(key)) continue;
+            String val = String.valueOf(e.getValue());
+            if (val == null || val.isBlank()) continue;
+            args.add("-D" + key + "=" + val);
+        }
+        return args;
     }
 
     /**
