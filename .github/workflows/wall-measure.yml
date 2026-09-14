@@ -42,7 +42,7 @@ jobs:
     env:
       JK_HOME: ${{ github.workspace }}/.ci-jk-home
       JK_AOT_TRAIN: 'off'
-      OUT_DIR: ${{ github.workspace }}/build/dogfood-wall
+      OUT_DIR: ${{ github.workspace }}/target/dogfood-wall
       # One timed run per row. A hosted runner is too noisy for a median to mean anything, and
       # the rebuild row builds a native image.
       RUNS: '1'
@@ -108,9 +108,9 @@ jobs:
         with:
           name: dogfood-wall
           path: |
-            build/dogfood-wall/row.md
-            build/dogfood-wall/row.jsonl
-            build/dogfood-wall/*.log
+            target/dogfood-wall/row.md
+            target/dogfood-wall/row.jsonl
+            target/dogfood-wall/*.log
             wall-baseline.toml
           if-no-files-found: error
           retention-days: 90

@@ -523,7 +523,7 @@ main() {
   # `jk new` / `jk lock` / `jk jdk install` doesn't pay cold-start latency.
   # Best-effort: never fail the install. Replaces existing cache entries
   # (shallow clone depth 1, conditional GET with ETag). Works for both
-  # `curl|bash` and `bash install.sh build/dist/jk` (local) flows.
+  # `curl|bash` and `bash install.sh target/dist/jk` (local) flows.
   # The store root, exactly as JkDirs.storeDir() resolves it. Prefetch dests must
   # match JkDirs.templates() (<store>/templates) and JkDirs.libraryRegistry()
   # (<store>/libs.global.toml) — do not write a second copy under cache/.

@@ -10,7 +10,7 @@ PROJECT="${1:-}"
 RUNS="${RUNS:-3}"
 
 if [[ -z "$PROJECT" ]]; then
-  FIX="$ROOT/build/microbench-fixture"
+  FIX="$ROOT/target/microbench-fixture"
   mkdir -p "$FIX"
   if [[ ! -f "$FIX/jk.toml" ]]; then
     rm -rf "$FIX"

@@ -74,10 +74,10 @@ has nothing to say. This section is the one home for release highlights; there i
 |-------|------|
 | **GCS** | Object storage for release blobs (`gs://jumpkick/releases/<ver>/…`) |
 | **Firebase CDN** | Public edge for `https://jumpkick.build` (wire later on Blaze) |
-| **install.sh** | Fetches `https://jumpkick.build/releases/…` (Linux / macOS) |
+| **install.sh** | Fetches `https://jumpkick.target/releases/…` (Linux / macOS) |
 | **install.ps1** | Fetches the Windows `.zip` from the same tree (`irm … \| iex`) |
 
-The product only knows `https://jumpkick.build/releases/`. Hosting 302s that prefix to
+The product only knows `https://jumpkick.target/releases/`. Hosting 302s that prefix to
 the current object store (GCS today). Override with `JK_RELEASES_URL` for a mirror
 or an air-gapped origin — never bake a bucket hostname into the client.
 
@@ -146,7 +146,7 @@ committed wrappers refuse one below the lock's `jk-min` floor. `JK_VERSION` and
 `jk self update <version>` never read the pointer and remain the deliberate way to a specific
 release, down included.
 
-Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
+Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.target/releases/*` is
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
 to Cloud Storage — either is fine as long as the URL layout above is public HTTPS).
 
@@ -268,25 +268,25 @@ the new engine and client into the home, and re-shelves under the new engine (th
 only then can the new engine compile anything, because it looks for workers of its own version
 and the repository does not serve them yet. Installing the new engine first (`install.sh
 target/dist/jk` before `jk install`) leaves a home whose engine has no workers and whose
-`jk install` cannot run. Assemble `build/release/<version>/` from the `target/dist` that pass
+`jk install` cannot run. Assemble `target/release/<version>/` from the `target/dist` that pass
 leaves, so the released bytes are the installed ones; stage the first-party repository from the
-shelf afterwards (`JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=build/release/repo
+shelf afterwards (`JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=target/release/repo
 scripts/publish-maven-repo.sh`) and upload it beside the version tree.
 
 ```bash
 # 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
-gsutil -m rsync -r -d build/release/0.13.5/ gs://$BUCKET/releases/0.13.5/
+gsutil -m rsync -r -d target/release/0.13.5/ gs://$BUCKET/releases/0.13.5/
 
 # 2. The signed pointer: LATEST.sig, then LATEST, then the VERSION convenience.
-scripts/sign-latest-pointer.sh 0.13.5 build/release/latest /owner-only/path/release-key.pem
+scripts/sign-latest-pointer.sh 0.13.5 target/release/latest /owner-only/path/release-key.pem
 for object in LATEST.sig LATEST VERSION; do
-  gsutil -h "Cache-Control:no-cache,max-age=0" cp "build/release/latest/$object" \
+  gsutil -h "Cache-Control:no-cache,max-age=0" cp "target/release/latest/$object" \
     "gs://$BUCKET/releases/latest/$object"
 done
 
 # 3. Verify through the public edge the installers use, with the baked-in public key:
-curl -fsSL https://jumpkick.build/releases/latest/LATEST -o LATEST
-curl -fsSL https://jumpkick.build/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
+curl -fsSL https://jumpkick.target/releases/latest/LATEST -o LATEST
+curl -fsSL https://jumpkick.target/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
 openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST   # "Verified OK"
 cat LATEST                                                                        # version 0.13.5 / issued …
 
@@ -297,7 +297,7 @@ cat LATEST                                                                      
 scripts/release-notes.sh 0.13.5 > RELEASE_NOTES.md
 (cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
 cp target/server/engine/sbom/jk-engine-0.13.5.cdx.json jk-0.13.5.cdx.json
-scripts/publish-github-release.sh draft 0.13.5 RELEASE_NOTES.md build/release/0.13.5/* jk-0.13.5.cdx.json
+scripts/publish-github-release.sh draft 0.13.5 RELEASE_NOTES.md target/release/0.13.5/* jk-0.13.5.cdx.json
 scripts/publish-github-release.sh publish 0.13.5
 ```
 
@@ -310,7 +310,7 @@ scripts/publish-github-release.sh publish 0.13.5
 jk build --skip-tests                      # target/dist/jk + target/dist/lib/jk-engine-<ver>.jar
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 DIST_DIR=target/dist scripts/assemble-release-dir.sh
-# inspect build/release/0.13.3/
+# inspect target/release/0.13.3/
 ```
 
 ## Rotation

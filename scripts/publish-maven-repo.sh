@@ -14,7 +14,7 @@
 # # After jk install:
 # scripts/publish-maven-repo.sh
 # # Stage only (release.yml does this on the build runner, uploads on the publish runner):
-# JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=out/repo scripts/publish-maven-repo.sh
+# JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh
 #
 # Env:
 # JK_VERSION default: from JkVersion.java

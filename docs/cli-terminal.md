@@ -1714,7 +1714,7 @@ required before merge. User docs do not become a terminal tutorial.
 | SIGINT vs `halt(2)`: restore too slow or skipped → raw shell | High | Never block in `read()` (`O_NONBLOCK`); do not hold the session lock across poll/wait. `shutdown()` is tcsetattr + close, no helper-thread join. Keep 500ms bounded join then halt. Manual Ctrl-C dogfood on macOS (the hang we are deleting). |
 | `PROMPT` ISIG-off: JVM default Ctrl-C during wizard if we fail to read 0x03 | Medium | Key parser already maps 0x03; wizard cancel path unchanged. If the console still delivers a control event on Windows, keep processed-input off and verify in a console. |
 | wcwidth drift vs JLine tables → truncation desync (JkManager live region) | Medium | Golden glyph fixture of every chrome code point; OSC-8 tests move with `Width`. |
-| Native-image size / build-time init of FFM | Low | Lazy holders; expect size **down** after dropping terminfo + jline-native. Measure `ls -l build/dist/jk` before/after. |
+| Native-image size / build-time init of FFM | Low | Lazy holders; expect size **down** after dropping terminfo + jline-native. Measure `ls -l target/dist/jk` before/after. |
 | Nested mode stack vs inheritIO | Medium | inheritIO uses `restoreForChild()` (apply original snapshot, clear stack) not a nested PROMPT. Tests for "plan then `jk run` in one process" exist as InteractivityTest — rewrite them. |
 | `sun.misc.Signal` in native-image | Low | Already used via JLine. If Graal 25 flags it, switch WINCH/INT to FFM then, still `Arena.global()`. |
 | Half-migrated `main` | High | Branch until JLine is gone **and** `tui.md` matches. |
@@ -1828,7 +1828,7 @@ None remaining.
    noisy — not in this campaign. (Decision 6.)
 
 3. **Image-size measurement** is a verify step, not a design unknown. Record
-   `stat build/dist/jk` (or `ls -l`) before/after on the branch. Expected delta: **down**.
+   `stat target/dist/jk` (or `ls -l`) before/after on the branch. Expected delta: **down**.
 
 ---
 
@@ -1988,4 +1988,4 @@ Done criteria (ticket, when one exists): `:cli:test` green; `:cli-terminal:test`
 (they should not be); `jk install --skip-tests && jk engine stop`;
 `jk engine status`; `jk init` + `jk build` smoke; interactive wizard + Ctrl-C + Ctrl-O +
 `jk run` echo on a real TTY; Done greps above; `tui.md` no longer mentions JLine's reader
-before status `done`; record `stat build/dist/jk` before/after (verify, not a design unknown).
+before status `done`; record `stat target/dist/jk` before/after (verify, not a design unknown).

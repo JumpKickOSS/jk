@@ -103,8 +103,7 @@ public final class EngineTestSupport {
                     walk.resolve("target/server/engine/jk-engine-" + ver + ".jar"),
                     walk.resolve("server/engine/target/jk-engine-" + ver + "-all.jar"),
                     walk.resolve("server/engine/target/jk-engine-" + ver + ".jar"),
-                    walk.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar"),
-                    walk.resolve("build/dist/lib/jk-engine-" + ver + ".jar"))) {
+                    walk.resolve("target/dist/lib/jk-engine-" + ver + ".jar"))) {
                 if (Files.isRegularFile(cand)) return cand.normalize();
             }
         }

@@ -11,7 +11,7 @@
 # MODULES — --modules filter (default: multi-module library set without clients/cli)
 # EXTRA_ARGS — extra args appended to both runs (e.g. --no-progress)
 # WARM — if 1 (default), do one warm-up test before timing
-# OUT_DIR — where to write logs (default: build/measure-parallel-tests)
+# OUT_DIR — where to write logs (default: target/measure-parallel-tests)
 #
 # Reports wall seconds for:
 # A) -j0 -w0 (default: auto within-module; serial across modules)
@@ -30,7 +30,7 @@ else
   JK="$(command -v jk || true)"
 fi
 if [[ -z "${JK}" ]]; then
-  echo "jk not found (set JK_BIN or install via ./install.sh build/dist/jk)" >&2
+  echo "jk not found (set JK_BIN or install via ./install.sh target/dist/jk)" >&2
   exit 1
 fi
 if [[ ! -x "$JK" ]] && ! command -v "$JK" >/dev/null 2>&1; then
@@ -41,7 +41,7 @@ fi
 MODULES="${MODULES:-shared/*,server/io,server/resolver,server/toolchain,server/engine,plugins/*}"
 EXTRA_ARGS="${EXTRA_ARGS:-}"
 WARM="${WARM:-1}"
-OUT_DIR="${OUT_DIR:-$ROOT/build/measure-parallel-tests}"
+OUT_DIR="${OUT_DIR:-$ROOT/target/measure-parallel-tests}"
 export JK_AOT_TRAIN="${JK_AOT_TRAIN:-off}"
 
 mkdir -p "$OUT_DIR"

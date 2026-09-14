@@ -328,7 +328,7 @@ public final class EngineSpawn {
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
         EngineArtifact engine = resolved.orElseThrow(() -> new IOException("no build engine for jk " + clientVersion
-                + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
+                + " — materialize it (`./install.sh target/dist/jk` or `jk self materialize …`),"
                 + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
             return new EngineTarget(engine, null, false, null);

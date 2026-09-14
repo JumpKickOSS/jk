@@ -53,7 +53,7 @@ public final class CleanCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Delete only build/ intermediates; keep artifacts.", "--keep-artifacts"),
+                Opt.flag("Delete only target/ intermediates; keep artifacts.", "--keep-artifacts"),
                 CommonOpts.cacheDir());
     }
 

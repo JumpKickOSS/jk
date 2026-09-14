@@ -172,13 +172,13 @@ class TestStampWorkerJarsParityTest {
                 """);
 
         // Seed a monorepo-shaped host jar INSIDE @TempDir and confine discovery to it. Never
-        // write into the real checkout: a planted near-empty jar under
-        // server/engine/build/libs is a production discovery path — a dogfooded build would
-        // hand it to nested engine workers. The override also makes this
-        // deterministic on warm developer trees, where the process/EngineInstall probes would
-        // otherwise satisfy the assertion even if monorepo fallback broke.
+        // write into the real checkout: a planted near-empty jar under target/dist/lib is a
+        // production discovery path — a dogfooded build would hand it to nested engine workers.
+        // The override also makes this deterministic on warm developer trees, where the
+        // process/EngineInstall probes would otherwise satisfy the assertion even if monorepo
+        // fallback broke.
         String ver = JkVersion.VERSION;
-        Path seed = tmp.resolve("server/engine/build/libs/jk-engine-" + ver + ".jar");
+        Path seed = tmp.resolve("target/dist/lib/jk-engine-" + ver + ".jar");
         Files.createDirectories(seed.getParent());
         writeMinimalJar(seed);
         BuildPlanner.hostEngineSearchOverride = tmp;

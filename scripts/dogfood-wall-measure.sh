@@ -13,7 +13,7 @@
 # Env:
 #   JK_BIN   — jk binary (default: ~/.jk/bin/jk, else PATH)
 #   RUNS     — timed runs per row (default 2; the first warms the engine)
-#   OUT_DIR  — where logs and the row land (default: build/dogfood-wall)
+#   OUT_DIR  — where logs and the row land (default: target/dogfood-wall)
 #   TOUCH    — file to edit for the `touched` row. Default is a shared/core production file,
 #              deliberately: it sits in the default build cone of every dependent module, so the
 #              row measures an incremental build that reaches the engine and the client.
@@ -38,7 +38,7 @@ elif [[ -x "$HOME/.jk/bin/jk" ]]; then JK="$HOME/.jk/bin/jk"
 else JK="$(command -v jk || true)"; fi
 
 RUNS="${RUNS:-2}"
-OUT_DIR="${OUT_DIR:-$ROOT/build/dogfood-wall}"
+OUT_DIR="${OUT_DIR:-$ROOT/target/dogfood-wall}"
 TOUCH="${TOUCH:-shared/core/src/main/java/cc/jumpkick/config/WorkspaceClasspath.java}"
 ROWS=("$@")
 [[ ${#ROWS[@]} -eq 0 ]] && ROWS=(rebuild noop touched)

@@ -21,7 +21,7 @@ and ETA follow ([../contributors/progress-contract.md](../contributors/progress-
 | `jk` | `jk build` raw — `[guards] on-build = false`, the published number |
 | `jk-guards` | `jk build` as contributors run it, house-rule guards on (the opt-in number, its own series) |
 
-The rows land in `build/dogfood-wall/row.jsonl` (an `env` object, then one `measurement` per side and
+The rows land in `target/dogfood-wall/row.jsonl` (an `env` object, then one `measurement` per side and
 row with its timed walls). `scripts/wall-band.py` compares each row's median with
 [`wall-baseline.toml`](../../wall-baseline.toml):
 

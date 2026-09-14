@@ -339,7 +339,7 @@ Test forks set `-Djk.aot.train=off` automatically. For host engines in CI, expor
 ## Wall-clock series
 
 `scripts/dogfood-wall-measure.sh` builds this tree with jk on one machine and writes three rows —
-rebuild, warm no-op, and one file really edited — to `build/dogfood-wall/`, each measured raw
+rebuild, warm no-op, and one file really edited — to `target/dogfood-wall/`, each measured raw
 (`[guards] on-build = false`) and with the house-rule guards on:
 
 | File | For |

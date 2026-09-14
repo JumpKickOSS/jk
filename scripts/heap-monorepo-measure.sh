@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JK_BIN="${JK_BIN:-$HOME/.jk/bin/jk}"
 MODULES="${1:-${MODULES:-200}}"
-FIXTURE_DIR="${FIXTURE_DIR:-$ROOT/build/heap-monorepo-fixture}"
+FIXTURE_DIR="${FIXTURE_DIR:-$ROOT/target/heap-monorepo-fixture}"
 POLL_MS="${POLL_MS:-200}"
 
 if [[ ! -x "$JK_BIN" ]] && ! command -v "$JK_BIN" >/dev/null 2>&1; then

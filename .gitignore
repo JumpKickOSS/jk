@@ -2,7 +2,7 @@
 target/
 .jk/selective-plan.json
 
-# --- script outputs (build/release, build/dogfood-wall, build/dist of a bench fixture) ---
+# --- the IntelliJ plugin is still a Gradle build (clients/intellij/build/); every jk script writes under target/ ---
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/

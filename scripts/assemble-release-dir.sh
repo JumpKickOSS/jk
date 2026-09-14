@@ -7,7 +7,7 @@
 # scripts/assemble-release-dir.sh [out-dir]
 # Env:
 # JK_VERSION override version (default: JkVersion / project version via git describe or file)
-# Layout written to out-dir (default: build/release/<version>/):
+# Layout written to out-dir (default: target/release/<version>/):
 # jk-<os>-<arch>-<version>.xz (every platform, including Windows — self-update)
 # jk-windows-x86_64-<version>.zip (Windows only — install.ps1 / jk.bat; no system xz)
 # The version is part of every artifact name, so a signed manifest copied from another
@@ -26,7 +26,7 @@ VERSION="${JK_VERSION:-}"
 if [[ -z "$VERSION" ]]; then
   VERSION="$(grep -E 'VERSION = "' shared/jk-api/src/main/java/cc/jumpkick/model/JkVersion.java | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
 fi
-OUT="${1:-build/release/$VERSION}"
+OUT="${1:-target/release/$VERSION}"
 DIST="${DIST_DIR:-target/dist}"
 
 if [[ ! -d "$DIST" ]]; then

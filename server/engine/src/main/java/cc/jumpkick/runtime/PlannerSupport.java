@@ -669,10 +669,9 @@ public final class PlannerSupport {
         Path walk = start;
         for (int up = 0; up < 5 && walk != null; up++, walk = walk.getParent()) {
             for (String rel : List.of(
+                    "target/jk-engine-" + ver + "-all.jar",
+                    "target/dist/lib/jk-engine-" + ver + ".jar",
                     "target/server/engine/jk-engine-" + ver + "-all.jar",
-                    "build/dist/lib/jk-engine-" + ver + ".jar",
-                    "server/engine/build/libs/jk-engine-" + ver + ".jar",
-                    "build/libs/jk-engine-" + ver + ".jar",
                     "target/server/engine/jk-engine-" + ver + ".jar",
                     "server/engine/target/jk-engine-" + ver + "-all.jar",
                     "server/engine/target/jk-engine-" + ver + ".jar")) {
