@@ -57,7 +57,7 @@ final class ForecastLangArms {
             boolean compileDepDirty,
             boolean force,
             TaskForecaster.DepHint depHint,
-            ActionKey.EntryToken classpathToken) {
+            RestoredOutputs restored) {
         this.project = project;
         this.dir = dir;
         this.cache = cache;
@@ -67,7 +67,7 @@ final class ForecastLangArms {
         this.compileDepDirty = compileDepDirty;
         this.force = force;
         this.depHint = depHint;
-        this.classpathToken = classpathToken;
+        this.classpathToken = restored.abiToken();
     }
 
     /** The kotlinc config and compile classpath the build derives for this module. */

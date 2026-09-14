@@ -31,10 +31,28 @@ public final class ClasspathFingerprint {
 
     private ClasspathFingerprint() {}
 
+    /**
+     * How one classpath entry's content identity is read. {@link #ON_DISK} reads what is there;
+     * a forecast supplies one that answers for a wiped tree or jar with the identity of the output
+     * the build restores before it keys on it, so the two compute the same key.
+     */
+    @FunctionalInterface
+    public interface EntryIdentity {
+        String of(Path entry) throws IOException;
+    }
+
+    /** The identity of what is on disk: {@link #entry(Path)}. */
+    public static final EntryIdentity ON_DISK = ClasspathFingerprint::entry;
+
     /** Order-independent content fingerprint of a list of classpath entries. */
     public static String of(List<Path> entries) throws IOException {
+        return of(entries, ON_DISK);
+    }
+
+    /** As {@link #of(List)} with each entry's identity read through {@code identity}. */
+    public static String of(List<Path> entries, EntryIdentity identity) throws IOException {
         List<String> parts = new ArrayList<>(entries.size());
-        for (Path p : entries) parts.add(entry(p));
+        for (Path p : entries) parts.add(identity.of(p));
         parts.sort(Comparator.naturalOrder());
         return Hashing.sha256Hex(String.join("\n", parts));
     }
@@ -71,6 +89,16 @@ public final class ClasspathFingerprint {
      */
     public static String entryFromCompileAndResources(Map<String, String> compileOutputs, List<Path> resourceRoots)
             throws IOException {
+        return entryFromCompileAndResources(compileOutputs, resourceRoots, Map.of());
+    }
+
+    /**
+     * As above with {@code copiedFiles} — tree-relative path to content sha — laid over the result
+     * last, as {@code copy-resources} places a module-root plugin manifest after the resource roots.
+     */
+    public static String entryFromCompileAndResources(
+            Map<String, String> compileOutputs, List<Path> resourceRoots, Map<String, String> copiedFiles)
+            throws IOException {
         Map<String, String> digests = new TreeMap<>();
         if (compileOutputs != null) {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
@@ -88,6 +116,7 @@ public final class ClasspathFingerprint {
                 hashInto(root, digests, false);
             }
         }
+        digests.putAll(copiedFiles);
         return entryFromOutputDigests(digests);
     }
 

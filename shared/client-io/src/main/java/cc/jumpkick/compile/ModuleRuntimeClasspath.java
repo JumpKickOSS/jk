@@ -25,6 +25,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Runtime jars for one module: lockfile transitive closure of declared external deps (and of
@@ -52,12 +53,25 @@ public final class ModuleRuntimeClasspath {
      */
     public static List<Path> jars(Path moduleDir, JkBuild project, Path lockFile, ClasspathResolver resolver)
             throws IOException {
+        return jars(moduleDir, project, lockFile, resolver, Files::exists);
+    }
+
+    /**
+     * As above with {@code present} deciding which sibling jars of the declared closure are
+     * listed. The build lists the jars on disk when it packages; a forecast after {@code jk clean}
+     * lists those plus the wiped jars it knows the build restores first, so both hash the same set.
+     */
+    public static List<Path> jars(
+            Path moduleDir, JkBuild project, Path lockFile, ClasspathResolver resolver, Predicate<Path> present)
+            throws IOException {
         List<Path> depJars = new ArrayList<>();
         if (lockFile == null || !Files.exists(lockFile)) {
             try {
                 WorkspaceClasspath.Result siblings =
                         WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-                depJars.addAll(siblings.jars());
+                for (Path j : siblings.siblingClosureJars()) {
+                    if (present.test(j) && !depJars.contains(j)) depJars.add(j);
+                }
             } catch (Exception e) {
                 /* best-effort */
                 Log.debug("jars: best-effort", e);
@@ -78,8 +92,8 @@ public final class ModuleRuntimeClasspath {
                     ClasspathResolver.declaredExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
         }
         depJars.addAll(resolver.classpathClosure(lock, roots, ClasspathResolver.RUNTIME));
-        for (Path j : siblings.jars()) {
-            if (!depJars.contains(j)) depJars.add(j);
+        for (Path j : siblings.siblingClosureJars()) {
+            if (present.test(j) && !depJars.contains(j)) depJars.add(j);
         }
         return depJars;
     }

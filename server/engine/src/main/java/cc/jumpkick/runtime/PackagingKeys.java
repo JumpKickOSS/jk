@@ -9,6 +9,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.build.ProjectFacts;
@@ -17,10 +18,12 @@ import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.wire.runtime.TaskForecast;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -120,18 +123,24 @@ public final class PackagingKeys {
             Path cache,
             @Nullable String compileMainKey,
             Map<Path, String> restoredJarShas,
-            @Nullable Boolean knownResourceDrift)
+            @Nullable Boolean knownResourceDrift,
+            @Nullable String projectedClassesTok)
             throws IOException {
-        String classesTok = classesTokenForPackage(
-                dir,
-                CompileSupport.isSimpleLayout(project.project(), dir),
-                layout,
-                project,
-                actionCache,
-                compileMainKey,
-                knownResourceDrift);
-        // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath).
-        List<Path> depJars = PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache);
+        // The walk's own projection of a wiped tree wins: it merges every compiler's record, where
+        // the reconstruction below reads only javac's.
+        String classesTok = projectedClassesTok != null
+                ? projectedClassesTok
+                : classesTokenForPackage(
+                        dir,
+                        CompileSupport.isSimpleLayout(project.project(), dir),
+                        layout,
+                        project,
+                        actionCache,
+                        compileMainKey,
+                        knownResourceDrift);
+        // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath), the wiped sibling
+        // jars the walk pinned included.
+        List<Path> depJars = PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);
         PluginBuild.Declarations pkgDecls;
         try {
             pkgDecls = PlannerSupport.pluginDeclarationsFor(project, layout, cache);
@@ -146,7 +155,16 @@ public final class PackagingKeys {
                 classesTok,
                 PlannerSupport.contributionsToken(PlannerSupport.existingContributedDirs(pkgDecls, layout)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas));
-        return TaskForecaster.present(actionCache, keyed.key());
+        boolean hit = TaskForecaster.present(actionCache, keyed.key());
+        if (Perf.enabled() && !hit) {
+            // The tokens beside the record's own INPUT line are what tell a wiped jar nobody
+            // pinned from a token whose recipe drifted; the per-jar parts name the entry.
+            List<String> parts = new ArrayList<>(depJars.size());
+            for (Path jar : depJars)
+                parts.add(jar.getFileName() + "=" + fingerprintJarOrCached(jar, actionCache, restoredJarShas));
+            Perf.note("forecast-assembly " + dir, "key", keyed.key(), "tokens", keyed.tokens(), "deps", parts);
+        }
+        return hit;
     }
 
     /**
@@ -248,7 +266,7 @@ public final class PackagingKeys {
 
         List<Path> classpath = new ArrayList<>();
         classpath.add(layout.mainJar());
-        for (Path jar : PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache)) {
+        for (Path jar : PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas)) {
             if (!classpath.contains(jar)) classpath.add(jar);
         }
         Path trainReach = PlannerNative.trainReachabilityDir(layout);
@@ -449,10 +467,22 @@ public final class PackagingKeys {
                         .map(ActionCache.ActionRecord::outputs)
                         .orElse(Map.of());
         List<Path> resRoots = packageResourceRoots(dir, compact);
-        if (compileOut.isEmpty() && resRoots.isEmpty()) {
+        Map<String, String> copied = copiedPluginManifest(dir);
+        if (compileOut.isEmpty() && resRoots.isEmpty() && copied.isEmpty()) {
             return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
         }
-        return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots);
+        return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots, copied);
+    }
+
+    /**
+     * The one file {@code copy-resources} places in the classes tree from outside the resource
+     * roots: a plugin worker's module-root {@code jk-plugin.toml}, copied to the tree's root after
+     * the roots are mirrored. Tree-relative path to content sha; empty for every other module.
+     */
+    static Map<String, String> copiedPluginManifest(Path dir) throws IOException {
+        Path manifest = dir.resolve(ManifestPaths.PLUGIN_MANIFEST);
+        if (!Files.isRegularFile(manifest)) return Map.of();
+        return Map.of(ManifestPaths.PLUGIN_MANIFEST, FileHashMemo.contentHash(manifest));
     }
 
     /**

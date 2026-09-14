@@ -74,7 +74,18 @@ public final class ClasspathAbi {
      */
     public static String tokenFromOutputs(Map<String, String> outputs, List<Path> resourceRoots, Cas cas)
             throws IOException {
-        String identity = ClasspathFingerprint.entryFromCompileAndResources(outputs, resourceRoots);
+        return tokenFromOutputs(outputs, resourceRoots, Map.of(), cas);
+    }
+
+    /**
+     * As above for a tree that also carries {@code copiedFiles} (a module-root plugin manifest
+     * {@code copy-resources} places at its root): they shape the identity the token is memoized
+     * under, never the token itself, which reads {@code .class} outputs alone.
+     */
+    public static String tokenFromOutputs(
+            Map<String, String> outputs, List<Path> resourceRoots, Map<String, String> copiedFiles, Cas cas)
+            throws IOException {
+        String identity = ClasspathFingerprint.entryFromCompileAndResources(outputs, resourceRoots, copiedFiles);
         String hit = AbiMemo.get(identity);
         if (hit != null) return hit;
         EXTRACTS.incrementAndGet();

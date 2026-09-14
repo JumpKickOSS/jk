@@ -126,7 +126,8 @@ public final class PlannerFixtures {
             Path cache,
             ActionCache actionCache,
             @Nullable Path workerJar,
-            List<Path> testCompileCp)
+            List<Path> testCompileCp,
+            RestoredOutputs restored)
             throws IOException {
         if (!declared(project) || skipTests) return false;
         if (compileDirty) {
@@ -163,9 +164,22 @@ public final class PlannerFixtures {
                 fxState,
                 workerJar,
                 layout.generatedSourcesDir("annotations", "fixtures"),
-                WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
+                WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
+                restored.abiToken());
         TaskForecast.Task fxStep = TaskForecaster.compileStep(TaskNames.COMPILE_TEST_FIXTURES, fxPred, false, fxReq);
         steps.add(fxStep);
+        if (fxStep.cached()) {
+            // The fixtures tree is on own tests' and fixtures-consumers' classpaths and on the
+            // run-tests stamp; when it is gone the build restores it from this record before any
+            // of them keys on it, so they read the tree that comes back.
+            Path fxDir = layout.testFixturesClassesDir();
+            if (!TaskForecaster.classesDirHasContent(fxDir)
+                    || !ModuleOutputs.compileOutputsOnDisk(actionCache, fxPred.actionKey(), fxDir)) {
+                actionCache
+                        .lookup(fxPred.actionKey())
+                        .ifPresent(record -> restored.projectTree(fxDir, record.outputs(), List.of()));
+            }
+        }
         return !fxStep.cached();
     }
 

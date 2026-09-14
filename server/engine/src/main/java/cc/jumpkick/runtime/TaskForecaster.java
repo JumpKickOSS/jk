@@ -175,14 +175,12 @@ public final class TaskForecaster {
         // Dirs whose *main output* will change this build — seeds downstream and
         // cross-module dirtiness. Filled as we walk in dependency order.
         Set<Path> dirty = new HashSet<>();
-        // Jar CAS shas recovered from each walked module's CURRENT package-jar record —
-        // consumers fingerprint wiped sibling jars from here, never from an unvalidated
-        // last-record pointer (which may name a different edit of the sibling).
-        Map<Path, String> restoredJarShas = new HashMap<>();
-        // ABI tokens of the classes trees that are not on disk but that a build restores from each
-        // walked module's compile record before its consumers key on them — consumers read those
-        // trees through this map, so a wiped workspace forecasts the keys the build will compute.
-        Map<Path, String> projectedClassesAbi = new HashMap<>();
+        // What each walked module's CURRENT records say the build restores before its consumers
+        // key on it — wiped trees by the token and identity of the tree that comes back, wiped
+        // jars by their payload sha — never an unvalidated last-record pointer (which may name a
+        // different edit of the sibling). Consumers read every sibling through this ledger, so a
+        // wiped workspace forecasts the keys the build will compute.
+        RestoredOutputs restored = new RestoredOutputs(actionCache);
         // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
         Map<String, Path> dirByCoord = new HashMap<>();
         Map<String, Path> dirByName = new HashMap<>();
@@ -209,8 +207,7 @@ public final class TaskForecaster {
                     resolver,
                     actionCache,
                     cache,
-                    restoredJarShas,
-                    projectedClassesAbi,
+                    restored,
                     hints,
                     target,
                     terminalDirs,
@@ -444,8 +441,7 @@ public final class TaskForecaster {
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
-            Map<Path, String> restoredJarShas,
-            Map<Path, String> projectedClassesAbi,
+            RestoredOutputs restored,
             Map<Path, ModuleHint> hints,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
@@ -461,8 +457,7 @@ public final class TaskForecaster {
                         resolver,
                         actionCache,
                         cache,
-                        restoredJarShas,
-                        projectedClassesAbi,
+                        restored,
                         hints,
                         target,
                         terminalDirs,

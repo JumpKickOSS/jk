@@ -70,6 +70,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -213,6 +214,22 @@ public final class PlannerSupport {
     static List<Path> assemblyDependencyJars(Path moduleDir, JkBuild project, Path lockFile, Path cache)
             throws IOException {
         return ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.storeCas());
+    }
+
+    /**
+     * As above for the forecast: a sibling jar {@code jk clean} took counts as present when the
+     * walk pinned the content the build restores, so the set is the one the live step lists.
+     */
+    static List<Path> assemblyDependencyJars(
+            Path moduleDir, JkBuild project, Path lockFile, Path cache, Map<Path, String> restoredJarShas)
+            throws IOException {
+        return ModuleRuntimeClasspath.jars(
+                moduleDir,
+                project,
+                lockFile,
+                new ClasspathResolver(JkStores.storeCas()),
+                jar -> Files.exists(jar)
+                        || restoredJarShas.containsKey(jar.toAbsolutePath().normalize()));
     }
 
     /**
@@ -748,6 +765,12 @@ public final class PlannerSupport {
      * predicts test-skip without drifting.
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
+        return testStampExtras(dir, project, ClasspathFingerprint.ON_DISK);
+    }
+
+    /** As above with the plugin jars read through {@code identity} — see {@link #runTestsStampKey}. */
+    public static List<String> testStampExtras(Path dir, JkBuild project, ClasspathFingerprint.EntryIdentity identity)
+            throws IOException {
         // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
@@ -756,7 +779,8 @@ public final class PlannerSupport {
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
                 project.build(),
-                dir);
+                dir,
+                identity);
     }
 
     /** Lock + workspace sibling classpath the forecast uses for compile-test. */
@@ -830,13 +854,16 @@ public final class PlannerSupport {
                 mainClassesFingerprint,
                 lockFile,
                 testRuntimeCp,
-                TestStamp.CompileTestKeys.NONE);
+                TestStamp.CompileTestKeys.NONE,
+                ClasspathFingerprint.ON_DISK);
     }
 
     /**
      * {@code compileTestKeys} are the test compiles' action keys, one per language the module
      * compiles tests in — the same inputs the live run-tests folds through {@link
-     * TestStamp#withCompileTest}.
+     * TestStamp#withCompileTest}. The runtime classpath is read through {@code identity}: after
+     * {@code jk clean} the sibling jars and the fixtures tree the stamp hashes are gone until the
+     * build restores them, and the forecast reads each as the bytes that come back.
      */
     public static @Nullable String runTestsStampKey(
             Path dir,
@@ -846,7 +873,8 @@ public final class PlannerSupport {
             @Nullable String mainClassesFingerprint,
             Path lockFile,
             List<Path> testRuntimeCp,
-            TestStamp.CompileTestKeys compileTestKeys)
+            TestStamp.CompileTestKeys compileTestKeys,
+            ClasspathFingerprint.EntryIdentity identity)
             throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
@@ -860,10 +888,10 @@ public final class PlannerSupport {
                 PlannerTest.TestSources.collect(project, dir, compact, suites).all();
         BuildLayout layout = BuildLayout.of(dir, project);
         List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
-        List<String> stampExtras = TestStamp.withCompileTest(testStampExtras(dir, project), compileTestKeys);
+        List<String> stampExtras = TestStamp.withCompileTest(testStampExtras(dir, project, identity), compileTestKeys);
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
         String key = TestStamp.computeKey(
-                stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras);
+                stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
         if (Perf.enabled()) {
             // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
             // the same module, the forecast is predicting a suite re-run the build will skip. That
@@ -886,7 +914,7 @@ public final class PlannerSupport {
                     "suites",
                     suites,
                     "cpFp",
-                    ClasspathFingerprint.of(stampRt),
+                    ClasspathFingerprint.of(stampRt, identity),
                     "mainFp",
                     mainClassesFingerprint != null ? mainClassesFingerprint : ClasspathFingerprint.entry(mainClasses));
         }
@@ -899,9 +927,13 @@ public final class PlannerSupport {
      * produce a key that disagrees with this one.
      */
     static List<String> testStampExtras(
-            Map<String, String> workerJars, TestSelection selection, JkBuild.Build build, Path moduleDir) {
+            Map<String, String> workerJars,
+            TestSelection selection,
+            JkBuild.Build build,
+            Path moduleDir,
+            ClasspathFingerprint.EntryIdentity identity) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        return testStampExtras(workerJars, selection, build, SecretRedactor.from(lookup), lookup);
+        return testStampExtras(workerJars, selection, build, SecretRedactor.from(lookup), lookup, identity);
     }
 
     /**
@@ -913,7 +945,8 @@ public final class PlannerSupport {
             TestSelection selection,
             JkBuild.Build build,
             SecretRedactor redactor,
-            EnvLookup lookup) {
+            EnvLookup lookup,
+            ClasspathFingerprint.EntryIdentity identity) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome.
@@ -937,11 +970,12 @@ public final class PlannerSupport {
         for (String tool : build.testTools()) {
             extras.add("tool:" + tool + "=" + ToolIdentity.of(tool, path));
         }
-        // Plugin jars by content — a plugin change retests the module that forks it.
+        // Plugin jars by content — a plugin change retests the module that forks it. A wiped
+        // plugin jar the forecast knows the build restores reads as the bytes that come back.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {
             String fp;
             try {
-                fp = ClasspathFingerprint.entry(Path.of(e.getValue()));
+                fp = identity.of(Path.of(e.getValue()));
             } catch (IOException ex) {
                 fp = "err";
             }
@@ -985,6 +1019,15 @@ public final class PlannerSupport {
      * lookup must accept both forms.
      */
     static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project) {
+        return workerCodecClassDirs(moduleDir, project, Files::isDirectory);
+    }
+
+    /**
+     * As above with {@code present} deciding which sibling trees are listed: the build lists the
+     * trees on disk when it packages, and the forecast lists those plus the wiped trees it knows
+     * the build restores first, so both hash the same set.
+     */
+    static List<Path> workerCodecClassDirs(Path moduleDir, JkBuild project, Predicate<Path> present) {
         if (moduleDir == null || project == null || !PluginModule.isWorker(moduleDir)) {
             return List.of();
         }
@@ -1032,7 +1075,7 @@ public final class PlannerSupport {
                 JkBuild sib = byDir.get(dir);
                 if (sib == null) continue;
                 Path classes = BuildLayout.of(dir, sib).classesDir();
-                if (Files.isDirectory(classes)) out.add(classes);
+                if (present.test(classes)) out.add(classes);
                 q.addLast(sib);
             }
         }
@@ -1074,10 +1117,20 @@ public final class PlannerSupport {
      */
     /** Package-private for {@link TaskForecaster} package-jar key parity. */
     static String contributionsToken(List<Path> contributed) throws IOException {
+        return contributionsToken(contributed, ClasspathFingerprint.ON_DISK);
+    }
+
+    /**
+     * As above with each contributed dir's identity read through {@code identity}: the forecast
+     * reads a sibling classes dir {@code jk clean} took as the tree the build restores before it
+     * packages, so the token is the one the live step computes.
+     */
+    static String contributionsToken(List<Path> contributed, ClasspathFingerprint.EntryIdentity identity)
+            throws IOException {
         if (contributed == null || contributed.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         for (Path dir : contributed) {
-            sb.append(ClasspathFingerprint.entry(dir)).append('\n');
+            sb.append(identity.of(dir)).append('\n');
         }
         return Hashing.sha256Hex(sb.toString());
     }

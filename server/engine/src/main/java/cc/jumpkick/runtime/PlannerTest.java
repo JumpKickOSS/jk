@@ -493,7 +493,12 @@ public final class PlannerTest {
                         return; // nothing affected — no stamp store
                     }
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
-                            testStampExtras(workerJars, effectiveSel, projectUnderTest.build(), in.dir()),
+                            testStampExtras(
+                                    workerJars,
+                                    effectiveSel,
+                                    projectUnderTest.build(),
+                                    in.dir(),
+                                    ClasspathFingerprint.ON_DISK),
                             compileTestKeys(ctx)));
                     if (affected != null && !affected.stampToken().isBlank()) {
                         extras.add("affected:" + affected.stampToken());

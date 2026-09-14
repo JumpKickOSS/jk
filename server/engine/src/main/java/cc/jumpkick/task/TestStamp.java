@@ -141,6 +141,32 @@ public final class TestStamp {
             Path lockFile,
             List<Path> runtimeCp,
             List<String> extraInputs) {
+        return computeKey(
+                testSources,
+                mainClasses,
+                mainClassesFingerprint,
+                resourceRoots,
+                lockFile,
+                runtimeCp,
+                extraInputs,
+                ClasspathFingerprint.ON_DISK);
+    }
+
+    /**
+     * As above with the runtime classpath's entries read through {@code identity}: the forecast
+     * hands one that answers for a sibling jar or fixtures tree {@code jk clean} took with the
+     * identity of the bytes the build restores, so the key is the one the live run computes once
+     * its prerequisites are back.
+     */
+    public static @Nullable String computeKey(
+            List<Path> testSources,
+            Path mainClasses,
+            @Nullable String mainClassesFingerprint,
+            List<Path> resourceRoots,
+            Path lockFile,
+            List<Path> runtimeCp,
+            List<String> extraInputs,
+            ClasspathFingerprint.EntryIdentity identity) {
         try {
             MessageDigest md = Hashing.newSha256();
             feed(md, FORMAT_VERSION);
@@ -179,7 +205,7 @@ public final class TestStamp {
 
             // Runtime classpath by CONTENT: a sibling module's change ripples in,
             // and a byte-identical rebuild (new mtime, same bytes) does not.
-            feed(md, "cp:" + ClasspathFingerprint.of(runtimeCp));
+            feed(md, "cp:" + ClasspathFingerprint.of(runtimeCp, identity));
 
             // Toolchain / runner / forked-worker identity, sorted for stability.
             if (extraInputs != null) {

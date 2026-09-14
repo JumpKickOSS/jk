@@ -30,7 +30,6 @@ import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
-import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
@@ -61,15 +60,14 @@ final class ModuleForecast {
     private final ClasspathResolver resolver;
     private final ActionCache actionCache;
     private final Path cache;
-    private final Map<Path, String> restoredJarShas;
 
     /**
-     * ABI tokens of sibling classes trees that are not on disk, keyed by their absolute path, as the
-     * build will read them once restored. Consumers key their compiles through {@link
-     * #classpathToken}; this module adds its own tree here when it is missing or incomplete and its
-     * compile record is known.
+     * What the walk knows the build restores before a consumer keys on it: wiped sibling trees by
+     * the token and identity of the tree that comes back, wiped jars by their payload sha. Every
+     * arm that keys on a sibling reads through it; this module publishes its own trees and jar
+     * here once their records are known.
      */
-    private final Map<Path, String> projectedClassesAbi;
+    private final RestoredOutputs restored;
 
     private final Map<Path, TaskForecaster.ModuleHint> hints;
     private final WorkspaceTarget target;
@@ -93,6 +91,7 @@ final class ModuleForecast {
     private SourceApiIndex.Hint ownHint = SourceApiIndex.Hint.UNKNOWN;
 
     private @Nullable String compileMainKey;
+
     private @Nullable String compileTestKey;
     private @Nullable String compileTestKotlinKey;
     private @Nullable String compileTestGroovyKey;
@@ -131,8 +130,7 @@ final class ModuleForecast {
             ClasspathResolver resolver,
             ActionCache actionCache,
             Path cache,
-            Map<Path, String> restoredJarShas,
-            Map<Path, String> projectedClassesAbi,
+            RestoredOutputs restored,
             Map<Path, TaskForecaster.ModuleHint> hints,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
@@ -147,8 +145,7 @@ final class ModuleForecast {
         this.resolver = resolver;
         this.actionCache = actionCache;
         this.cache = cache;
-        this.restoredJarShas = restoredJarShas;
-        this.projectedClassesAbi = projectedClassesAbi;
+        this.restored = restored;
         this.hints = hints;
         this.target = target;
         this.terminalDirs = terminalDirs;
@@ -201,6 +198,7 @@ final class ModuleForecast {
             compileMain(prepared);
             compileKotlin(prepared);
             compileGroovy(prepared);
+            projectOwnOutputs(prepared);
             compileTest(prepared);
             guard(prepared);
             resource(prepared);
@@ -366,7 +364,7 @@ final class ModuleForecast {
                             out,
                             BuildStamps.JAVA,
                             mainSrc,
-                            FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(req, classpathToken())),
+                            FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(req, restored.abiToken())),
                             release,
                             ActionKey.javacOptionsDigest(req));
                 } catch (IOException ignored) {
@@ -394,7 +392,7 @@ final class ModuleForecast {
                         workerJar,
                         layout.generatedSourcesDir("annotations"),
                         WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
-                        classpathToken());
+                        restored.abiToken());
                 Perf.end("  predict-compile-main", tc);
                 compileMainKey = pred.actionKey();
                 steps.add(TaskForecaster.compileStep(
@@ -402,55 +400,38 @@ final class ModuleForecast {
                 if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 // The key hit against the dependency's current output: nothing of this module's
                 // own moved, and its package and tests are dirty only for the sibling's jar bytes.
-                depOnlyDirty = compileDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !force;
+                depOnlyDirty = compileDepDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !force;
                 ownHint = ownApiHint(prepared, pred);
             }
-            projectOwnClasses(prepared);
         }
     }
 
     /**
-     * A compile classpath entry as the build will read it: a sibling tree this walk knows the
-     * build restores answers with the token of the tree that comes back; everything else with
-     * the token of what is on disk.
-     */
-    private ActionKey.EntryToken classpathToken() {
-        return entry -> {
-            String projected = projectedClassesAbi.get(entry.toAbsolutePath().normalize());
-            return projected != null ? projected : ClasspathAbi.token(entry);
-        };
-    }
-
-    /**
      * Publish this module's own classes tree for the consumers that follow it in the walk when
-     * the tree is not whole on disk but the compile that produced it is: the build restores the
-     * tree from that record before any consumer keys on it, so the consumer must key on the
-     * restored tree's token, not on {@code missing:}. Only a Java-only module can be projected —
-     * a mixed module's tree also holds what its Kotlin or Groovy compile produced, which the Java
-     * record does not describe — and a compile that will run projects nothing: its consumers are
-     * dirty on its account already.
+     * the tree is not whole on disk but every compile that writes into it is answered by a
+     * record: the build restores the tree from those records before any consumer keys on it, so
+     * the consumer must key on the restored tree, not on {@code missing:}. The tree is the merge
+     * the build assembles — javac's outputs, then the resource roots and a plugin worker's
+     * module-root manifest over them. A module with no sources still owns a tree (its copied
+     * resources) and projects that. A mixed module projects nothing: its tree also holds what its
+     * Kotlin or Groovy compile produced, which the Java record does not describe. A compile that
+     * will run projects nothing: its consumers are dirty on its account already.
      */
-    private void projectOwnClasses(Prepared prepared) {
-        String key = compileMainKey;
-        if (key == null
-                || compileDirty
-                || !prepared.ktSrc().isEmpty()
-                || !prepared.gvSrc().isEmpty()) return;
-        Path classes = prepared.layout().classesDir();
+    private void projectOwnOutputs(Prepared prepared) {
+        if (compileDirty || !prepared.ktSrc().isEmpty() || !prepared.gvSrc().isEmpty()) return;
         try {
-            boolean whole = TaskForecaster.classesDirHasContent(classes)
-                    && ModuleOutputs.compileOutputsOnDisk(actionCache, key, classes);
-            if (whole) return;
-            Optional<ActionCache.ActionRecord> record = actionCache.lookup(key);
-            if (record.isEmpty()) return;
-            List<Path> resourceRoots = PackagingKeys.packageResourceRoots(dir, prepared.compact());
-            projectedClassesAbi.put(
-                    classes.toAbsolutePath().normalize(),
-                    ClasspathAbi.tokenFromOutputs(record.get().outputs(), resourceRoots, actionCache.cas()));
+            if (classesTreeWhole(prepared.layout())) return;
+            List<@Nullable String> keys = new ArrayList<>();
+            if (!prepared.mainSrc().isEmpty()) keys.add(compileMainKey);
+            restored.projectFromRecords(
+                    prepared.layout().classesDir(),
+                    keys,
+                    PackagingKeys.packageResourceRoots(dir, prepared.compact()),
+                    PackagingKeys.copiedPluginManifest(dir));
         } catch (IOException e) {
             // Without the projection a consumer keys on the tree's absence: the pessimistic
             // answer, never a false hit.
-            Log.debug("projectOwnClasses: consumers key on the tree as it is", e);
+            Log.debug("projectOwnOutputs: consumers key on the tree as it is", e);
         }
     }
 
@@ -548,7 +529,7 @@ final class ModuleForecast {
     /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */
     private ForecastLangArms arms() {
         return new ForecastLangArms(
-                project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint, classpathToken());
+                project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint, restored);
     }
 
     private void compileTest(Prepared prepared) throws Exception {
@@ -602,7 +583,8 @@ final class ModuleForecast {
                 actionCache,
                 workerJar,
                 testCompileCp,
-                cas);
+                cas,
+                restored);
     }
 
     private void guard(Prepared prepared) throws Exception {
@@ -665,7 +647,7 @@ final class ModuleForecast {
                     workerJar,
                     layout.generatedSourcesDir("annotations", "test"),
                     WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
-                    classpathToken());
+                    restored.abiToken());
             Perf.end("  predict-compile-test", tt);
             Perf.note(
                     "forecast-compile-test " + dir,
@@ -750,11 +732,16 @@ final class ModuleForecast {
             String mainFp = null;
             if (!classesTreeWhole(layout)) {
                 // Resource-drift flag is computed later; an empty or incomplete tree uses compile
-                // outputs + resource roots (same merge as package post-clean).
-                mainFp = PackagingKeys.classesTokenForPackage(
-                        dir, compact, layout, project, actionCache, compileMainKey, null);
+                // outputs + resource roots (same merge as package post-clean) — the walk's own
+                // projection when it made one, which also covers a mixed module's merged tree.
+                mainFp = restored.projectedIdentity(layout.classesDir());
+                if (mainFp == null)
+                    mainFp = PackagingKeys.classesTokenForPackage(
+                            dir, compact, layout, project, actionCache, compileMainKey, null);
                 if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
             }
+            // The runtime classpath as the run will hash it: a sibling jar or fixtures tree that
+            // jk clean took is read as the bytes the build restores before the suite runs.
             String stampKey = PlannerSupport.runTestsStampKey(
                     dir,
                     project,
@@ -763,7 +750,8 @@ final class ModuleForecast {
                     mainFp,
                     lockFile,
                     testRt,
-                    new TestStamp.CompileTestKeys(compileTestKey, compileTestKotlinKey, compileTestGroovyKey));
+                    new TestStamp.CompileTestKeys(compileTestKey, compileTestKotlinKey, compileTestGroovyKey),
+                    restored.identity());
             Perf.end("  test-stamp-key", ts);
             Optional<ActionCache.ActionRecord> marker =
                     stampKey == null ? Optional.empty() : TaskForecaster.presentRecord(actionCache, stampKey);
@@ -827,16 +815,14 @@ final class ModuleForecast {
         // After jk clean the classes tree is gone: reconstruct the classes: token from the
         // compile action record + resource roots (same merge the live build produces) so we
         // still hit the packaging action cache instead of forecasting perpetual "repackage".
-        if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
-            // Source-less registered module: the live build still runs compile and package-jar
-            // and produces the (empty) classes tree and jar that sibling classpaths demand.
-            // Forecasting "nothing to package" leaves the module unscheduled forever while its
-            // consumers fail on the missing sibling — schedule it until its jar exists.
-            if (!Files.isRegularFile(layout.mainJar())) {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "package · module has no sources", null));
-            }
-        } else if (compileDirty) {
+        boolean noSources = mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty();
+        if (noSources && (Files.isRegularFile(layout.mainJar()) || project.isWorkspaceRoot())) {
+            // A source-less member packages an empty jar (its copied resources) that sibling
+            // classpaths demand; with the jar in place there is nothing to forecast. A source-less
+            // workspace root runs its scripts and packages nothing.
+            return;
+        }
+        if (compileDirty) {
             // Dependency-only dirtiness: the jar is re-packaged only if the compile really runs.
             steps.add(new TaskForecast.Task(
                     TaskNames.PACKAGE_JAR,
@@ -866,15 +852,20 @@ final class ModuleForecast {
                 }
             }
             // classesTokenForPackage projects post-copy content when resources drifted so
-            // package CACHED/RUN matches the live step after copy-resources.
-            String classesTok = PackagingKeys.classesTokenForPackage(
-                    dir, compact, layout, project, actionCache, compileMainKey, knownResourceDrift);
+            // package CACHED/RUN matches the live step after copy-resources. A wiped tree takes
+            // the walk's own projection, which merges every compiler's record.
+            String classesTok = restored.projectedIdentity(layout.classesDir());
+            if (classesTok == null) {
+                classesTok = PackagingKeys.classesTokenForPackage(
+                        dir, compact, layout, project, actionCache, compileMainKey, knownResourceDrift);
+            }
             // Must match BuildPlanner.packageJarStep tokens exactly — omitting contrib: made
             // every module forecast permanent "repackage", cascade depDirty, and price a full
-            // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED.
+            // monorepo rebuild (~3.5m) while live builds hit the package cache and SKIPPED. A
+            // worker's vendored sibling class dirs are read as the trees the build restores.
             List<Path> contributed = new ArrayList<>(PlannerSupport.existingContributedDirs(pkgDecls, layout));
-            contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project));
-            String contribTok = PlannerSupport.contributionsToken(contributed);
+            contributed.addAll(PlannerSupport.workerCodecClassDirs(dir, project, restored::willBePresent));
+            String contribTok = PlannerSupport.contributionsToken(contributed, restored.identity());
             List<String> tokens = List.of(
                     "classes:" + classesTok,
                     "contrib:" + contribTok,
@@ -885,25 +876,27 @@ final class ModuleForecast {
             String pkgKey = ActionKey.forArtifact(
                     ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jar), BuildIdentity.cacheKeyVersion(), tokens);
             boolean hit = TaskForecaster.present(actionCache, pkgKey);
+            // A source-less module's jar (its copied resources) is one sibling classpaths demand:
+            // forecasting nothing would leave it unscheduled while its consumers fail on it, so a
+            // missing jar with no record is scheduled until it exists.
+            String miss = noSources
+                    ? "package · module has no sources"
+                    : mainResourceDrift ? "repackage · resources changed" : "repackage";
             steps.add(
                     hit
                             ? new TaskForecast.Task(
                                     TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", TaskForecaster.key8(pkgKey))
-                            : new TaskForecast.Task(
-                                    TaskNames.PACKAGE_JAR,
-                                    TaskForecast.Status.RUN,
-                                    mainResourceDrift ? "repackage · resources changed" : "repackage",
-                                    null));
+                            : new TaskForecast.Task(TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, miss, null));
             if (hit && !Files.isRegularFile(jar)) {
                 // Publish the wiped jar's content sha from THIS key's record so downstream
-                // assembly forecasts fingerprint the same bytes the live restore produces.
+                // assembly, native and test-stamp forecasts fingerprint the same bytes the live
+                // restore produces.
                 actionCache.lookup(pkgKey).ifPresent(rec -> rec.outputs().entrySet().stream()
                         .filter(e -> e.getKey().endsWith(jar.getFileName().toString()))
                         .map(Map.Entry::getValue)
                         .findFirst()
                         .or(() -> rec.outputs().values().stream().findFirst())
-                        .ifPresent(
-                                sha -> restoredJarShas.put(jar.toAbsolutePath().normalize(), sha)));
+                        .ifPresent(sha -> restored.pinJar(jar, sha)));
             }
         }
     }
@@ -928,8 +921,9 @@ final class ModuleForecast {
                         actionCache,
                         cache,
                         compileMainKey,
-                        restoredJarShas,
-                        knownResourceDrift);
+                        restored.jarShas(),
+                        knownResourceDrift,
+                        restored.projectedIdentity(layout.classesDir()));
                 steps.add(
                         hit
                                 ? new TaskForecast.Task(
@@ -957,8 +951,8 @@ final class ModuleForecast {
         nativeOnNativeCmd = target == WorkspaceTarget.NATIVE && terminalDirs.contains(dir);
         if ((nativeOnBuild || nativeOnNativeCmd) && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
             boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
-            Path nativeOut = layout.nativeBinary();
-            boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
+            boolean binaryPresent =
+                    Files.isRegularFile(layout.nativeBinary()) || Files.isRegularFile(layout.nativeLibrary());
             if (jarDirty || compileDirty) {
                 steps.add(new TaskForecast.Task(
                         TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, "rebuild · compile changed", null));
@@ -991,7 +985,7 @@ final class ModuleForecast {
     private boolean nativeRestores(BuildLayout layout) {
         try {
             return PackagingKeys.nativeActionCached(
-                    dir, project, layout, lockFile, actionCache, cache, restoredJarShas);
+                    dir, project, layout, lockFile, actionCache, cache, restored.jarShas());
         } catch (Exception e) {
             Log.debug("nativeImage: the last record could not be replayed read-only", e);
             return false;
@@ -1074,10 +1068,13 @@ final class ModuleForecast {
                         || incomplete
                         || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
                         || nativeBinaryToRestore;
-            } else if (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()) {
-                // Resources-only module: its classes tree (copied resources) is consumed
-                // straight off sibling classpaths, so an empty tree is a missing output too.
-                outputsAbsent = !TaskForecaster.classesDirHasContent(layout.classesDir());
+            } else if (!project.isWorkspaceRoot()) {
+                // Source-less member: the build still packages its jar, and a resources-only
+                // module's classes tree (copied resources) is consumed straight off sibling
+                // classpaths, so either missing is a missing output too.
+                outputsAbsent = !Files.isRegularFile(layout.mainJar())
+                        || (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()
+                                && !TaskForecaster.classesDirHasContent(layout.classesDir()));
             }
             if (outputsAbsent) {
                 steps.add(new TaskForecast.Task(

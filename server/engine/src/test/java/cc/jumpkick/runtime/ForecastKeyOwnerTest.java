@@ -357,7 +357,8 @@ class ForecastKeyOwnerTest {
                         cache,
                         null,
                         Map.of(),
-                        false))
+                        false,
+                        null))
                 .as("the forecast recomputes the key the build stored")
                 .isTrue();
     }

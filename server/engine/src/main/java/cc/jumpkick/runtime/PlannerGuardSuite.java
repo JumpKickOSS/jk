@@ -121,7 +121,8 @@ public final class PlannerGuardSuite {
             ActionCache actionCache,
             @Nullable Path workerJar,
             List<Path> testCompileCp,
-            Cas cas)
+            Cas cas,
+            RestoredOutputs restored)
             throws IOException {
         boolean fixturesDirty = PlannerFixtures.addForecast(
                 steps,
@@ -137,7 +138,8 @@ public final class PlannerGuardSuite {
                 cache,
                 actionCache,
                 workerJar,
-                testCompileCp);
+                testCompileCp,
+                restored);
         addForecast(
                 steps,
                 compileDirty,
@@ -153,7 +155,8 @@ public final class PlannerGuardSuite {
                 actionCache,
                 workerJar,
                 testCompileCp,
-                cas);
+                cas,
+                restored);
         return fixturesDirty;
     }
 
@@ -173,7 +176,8 @@ public final class PlannerGuardSuite {
             ActionCache actionCache,
             @Nullable Path workerJar,
             List<Path> testCompileCp,
-            Cas cas)
+            Cas cas,
+            RestoredOutputs restored)
             throws IOException {
         if (!declared(dir, compact)) return false;
         if (compileDirty) {
@@ -184,7 +188,9 @@ public final class PlannerGuardSuite {
         List<Path> src = forecastSources(dir, compact);
         Path library;
         try {
-            library = GuardSuiteLibrary.locate(WorkspaceScan.findRoot(dir).orElse(dir), cas)
+            // On jk's own tree the library is a sibling's classes tree; after jk clean the build
+            // restores it before this compile and keys on it, so the forecast resolves it too.
+            library = GuardSuiteLibrary.locate(WorkspaceScan.findRoot(dir).orElse(dir), cas, restored::willBePresent)
                     .path();
         } catch (IOException missing) {
             steps.add(new TaskForecast.Task(
@@ -211,7 +217,8 @@ public final class PlannerGuardSuite {
                 state,
                 workerJar,
                 layout.generatedSourcesDir("annotations", "guard"),
-                WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
+                WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
+                restored.abiToken());
         TaskForecast.Task step = TaskForecaster.compileStep(TaskNames.COMPILE_GUARD, pred, false, req);
         steps.add(step);
         return !step.cached();

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -70,7 +71,17 @@ public final class GuardSuiteLibrary {
 
     /** The library for a suite under {@code root}, or a message saying what to do when there is none. */
     public static Located locate(Path root, Cas cas) throws IOException {
-        Path own = workspaceClasses(root);
+        return locate(root, cas, Files::isDirectory);
+    }
+
+    /**
+     * As above with {@code compiled} deciding whether the workspace module's own classes tree
+     * counts as present: the build asks whether it is on disk, the forecast whether the build it
+     * prices restores it before the suite compiles, so both resolve the same entry after {@code jk
+     * clean} has taken the tree.
+     */
+    public static Located locate(Path root, Cas cas, Predicate<Path> compiled) throws IOException {
+        Path own = workspaceClasses(root, compiled);
         if (own != null) return new Located(own, null);
         Path stored = stored(cas);
         if (stored != null) return new Located(stored, stored);
@@ -104,11 +115,15 @@ public final class GuardSuiteLibrary {
      * {@code null} elsewhere or when it has not been compiled yet.
      */
     static @Nullable Path workspaceClasses(Path root) {
+        return workspaceClasses(root, Files::isDirectory);
+    }
+
+    static @Nullable Path workspaceClasses(Path root, Predicate<Path> compiled) {
         Module own = workspaceModule(root);
         if (own == null) return null;
         Path classes =
                 BuildLayout.moduleTargetDir(root, own.dir()).resolve("classes").resolve("main");
-        return Files.isDirectory(classes) ? classes : null;
+        return compiled.test(classes) ? classes : null;
     }
 
     /** The workspace module named like the library, compiled or not; {@code null} when {@code root} has none. */
