@@ -183,7 +183,37 @@ public final class LaneRun {
     }
 
     private static Evaluation failed(Throwable t) {
-        return Evaluation.failed(t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()));
+        return Evaluation.failed(failureNote(t));
+    }
+
+    /**
+     * What a scanner failure says: the exception and its message, then the frame that threw it —
+     * the innermost frame of the exception's own code and, when that is a JDK frame, the innermost
+     * jk frame under it — so a one-off can be placed from the report alone.
+     */
+    static String failureNote(Throwable t) {
+        StringBuilder sb =
+                new StringBuilder(t.getClass().getSimpleName()).append(": ").append(t.getMessage());
+        StackTraceElement[] frames = t.getStackTrace();
+        if (frames.length > 0) {
+            sb.append(" at ").append(frame(frames[0]));
+            if (!frames[0].getClassName().startsWith("cc.jumpkick.")) {
+                for (StackTraceElement f : frames) {
+                    if (f.getClassName().startsWith("cc.jumpkick.")) {
+                        sb.append(" from ").append(frame(f));
+                        break;
+                    }
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String frame(StackTraceElement f) {
+        String cls = f.getClassName();
+        String file = f.getFileName() == null ? "?" : f.getFileName();
+        return cls.substring(cls.lastIndexOf('.') + 1) + "." + f.getMethodName() + "(" + file + ":" + f.getLineNumber()
+                + ")";
     }
 
     /** Entries carried over unchanged, so the tightened count is drops plus lowered lines. */
