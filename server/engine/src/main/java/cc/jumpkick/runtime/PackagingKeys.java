@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.runtime.BuildPlanner.*;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -12,6 +13,7 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -183,6 +185,127 @@ public final class PackagingKeys {
             }
         }
         return ClasspathFingerprint.entry(jar); // missing:…
+    }
+
+    // ---- native-image (executable) ------------------------------------------------------------
+
+    /** The token prefixes {@code PlannerNative.imageKey} spells, in the order it lists them. */
+    private static final List<String> NATIVE_TOKEN_PREFIXES =
+            List.of("cp:", "args:", "main:", "shared:", "out:", "graal:", "framework:", "train:");
+
+    /**
+     * Whether the native-image action cache holds the executable this build would restore, judged
+     * read-only after {@code jk clean} has taken the binary and the jar. The step derives its key
+     * while it runs — the main class from the jar, the args from the plugins and the metadata
+     * repository, the framework sources from a packager's augment — so the forecast replays the
+     * step's last record instead: every input it can see is recomputed and every input it cannot
+     * see is taken from the record, and the key those tokens make is looked up as the step would
+     * look up its own.
+     *
+     * <p>Recomputed: the classpath token from the jar the package forecast pinned and the runtime
+     * closure the lock resolves ({@link #fingerprintJarOrCached}), the output name and the trained
+     * reachability tree. Checked against the record: the {@code [native]} args and plugin args the
+     * manifest names (the metadata-repository prefix the step prepends is the lock's and rides
+     * along), and a configured main class. Taken from the record: the GraalVM release token, which
+     * no read-only path resolves, and a scanned main class, which an unchanged classes tree scans
+     * the same. Anything the replay cannot vouch for — a shared library, a packager that builds
+     * its own image, a framework-sources tree, a classes-run packager's exploded classpath, a jar
+     * with no pinned content — answers false: a full wall, never a false restore.
+     */
+    static boolean nativeActionCached(
+            Path dir,
+            JkBuild project,
+            BuildLayout layout,
+            Path lockFile,
+            ActionCache actionCache,
+            Path cache,
+            Map<Path, String> restoredJarShas)
+            throws IOException {
+        if (PluginBuild.shape(project, dir)
+                .map(PluginDescriptor.Packaging::classesRun)
+                .orElse(false)) return false;
+        if (PlannerNative.packagerDeclaresNativeSources(project, dir)) return false;
+        Path out = layout.nativeBinary();
+        String task = ActionKey.qualifiedTaskId(TaskNames.NATIVE_IMAGE, out);
+        var record = actionCache.lastFor(task);
+        if (record.isEmpty()) return false;
+        Map<String, String> stored = nativeTokens(record.get().inputs().get("inputs"));
+        if (stored.size() != NATIVE_TOKEN_PREFIXES.size()) return false;
+        // An executable only: a shared library's record names no binary this replay can restore.
+        if (EnvValues.parseBool(stored.get("shared:")).orElse(true)) return false;
+        if (!"".equals(stored.get("framework:"))) return false;
+        if (!Objects.equals(stored.get("out:"), out.getFileName().toString())) return false;
+
+        JkBuild.NativeConfig nativeCfg = project.nativeConfigOpt().orElse(null);
+        String configuredMain =
+                nativeCfg != null && nativeCfg.mainClass() != null ? nativeCfg.mainClass() : project.mainClass();
+        if (configuredMain != null && !configuredMain.isBlank() && !configuredMain.equals(stored.get("main:"))) {
+            return false;
+        }
+        List<String> declaredArgs = new ArrayList<>(PluginContributions.nativeArgs(project, dir));
+        if (nativeCfg != null) declaredArgs.addAll(nativeCfg.args());
+        if (!declaredArgsMatch(Objects.requireNonNull(stored.get("args:")), declaredArgs)) return false;
+
+        List<Path> classpath = new ArrayList<>();
+        classpath.add(layout.mainJar());
+        for (Path jar : PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache)) {
+            if (!classpath.contains(jar)) classpath.add(jar);
+        }
+        Path trainReach = PlannerNative.trainReachabilityDir(layout);
+        List<String> tokens = List.of(
+                "cp:" + fingerprintDepJars(classpath, actionCache, restoredJarShas),
+                "args:" + stored.get("args:"),
+                "main:" + stored.get("main:"),
+                "shared:false",
+                "out:" + out.getFileName(),
+                "graal:" + stored.get("graal:"),
+                "framework:",
+                "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach)));
+        return TaskForecaster.present(
+                actionCache, ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
+    }
+
+    /**
+     * The record's {@code inputs} line as the tokens it was joined from, keyed by prefix. A token's
+     * value may itself hold the joiner (an arg with a {@code ;}), so a fragment that opens with no
+     * known prefix continues the token before it.
+     */
+    static Map<String, String> nativeTokens(@Nullable String joined) {
+        Map<String, String> tokens = new LinkedHashMap<>();
+        if (joined == null || joined.isBlank()) return tokens;
+        String current = null;
+        for (String fragment : joined.split(";", -1)) {
+            String prefix = null;
+            for (String p : NATIVE_TOKEN_PREFIXES) {
+                if (fragment.startsWith(p)) {
+                    prefix = p;
+                    break;
+                }
+            }
+            if (prefix != null) {
+                current = prefix;
+                tokens.put(prefix, fragment.substring(prefix.length()));
+            } else if (current != null) {
+                tokens.put(current, tokens.get(current) + ";" + fragment);
+            }
+        }
+        return tokens;
+    }
+
+    /**
+     * True when the recorded {@code args:} line is the manifest's declared args, allowing for the
+     * reachability-metadata prefix the step prepends when the lock pins a metadata repository:
+     * {@code -H:+UnlockExperimentalVMOptions -H:ConfigurationFileDirectories=… -H:-UnlockExperimentalVMOptions}.
+     */
+    static boolean declaredArgsMatch(String storedArgs, List<String> declared) {
+        String tail = String.join(" ", declared);
+        if (storedArgs.equals(tail)) return true;
+        String unlock = "-H:+UnlockExperimentalVMOptions -H:ConfigurationFileDirectories=";
+        if (!storedArgs.startsWith(unlock)) return false;
+        int relock = storedArgs.indexOf(" -H:-UnlockExperimentalVMOptions", unlock.length());
+        if (relock < 0) return false;
+        String rest = storedArgs.substring(relock + " -H:-UnlockExperimentalVMOptions".length());
+        return rest.equals(tail.isEmpty() ? "" : " " + tail);
     }
 
     // ---- plugin packager (spring-boot / grails / quarkus / minified / android) ---------------

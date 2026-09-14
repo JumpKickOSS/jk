@@ -103,6 +103,10 @@ final class ModuleForecast {
     private boolean mainResourceDrift;
     private boolean nativeOnBuild;
     private boolean nativeOnNativeCmd;
+
+    /** The native binary this build must bring back: absent on disk while its step forecasts a restore. */
+    private boolean nativeBinaryToRestore;
+
     private boolean producesImage;
     private boolean producesJar;
     private final JkBuild project;
@@ -955,19 +959,42 @@ final class ModuleForecast {
             boolean jarDirty = steps.stream().anyMatch(s -> TaskNames.PACKAGE_JAR.equals(s.name()) && !s.cached());
             Path nativeOut = layout.nativeBinary();
             boolean binaryPresent = Files.isRegularFile(nativeOut) || Files.isRegularFile(layout.nativeLibrary());
-            // A missing binary is priced as work. Its image key cannot be derived read-only — the
-            // step resolves the main class from the jar, the computed args, the framework sources
-            // and the trained metadata as it runs — and the tasks/ pointer's last record may
-            // belong to another edit, so it is no evidence of what this build restores. The step
-            // itself still restores when its key hits; only the forecast is pessimistic.
-            if (jarDirty || compileDirty || !binaryPresent) {
-                String why = jarDirty || compileDirty
-                        ? "rebuild · compile changed"
-                        : "native-image · binary missing (restores when its key still hits)";
-                steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, why, null));
-            } else {
+            if (jarDirty || compileDirty) {
+                steps.add(new TaskForecast.Task(
+                        TaskNames.NATIVE_IMAGE, TaskForecast.Status.RUN, "rebuild · compile changed", null));
+            } else if (binaryPresent) {
                 steps.add(new TaskForecast.Task(TaskNames.NATIVE_IMAGE, TaskForecast.Status.CACHED, "", null));
+            } else if (nativeRestores(layout)) {
+                // After jk clean the binary is gone but the step's key still hits: the executable
+                // comes back from the cache in seconds, and the restore gate below schedules the
+                // module for it. The key is replayed from the step's last record — see
+                // PackagingKeys.nativeActionCached for what is recomputed and what is trusted.
+                nativeBinaryToRestore = true;
+                steps.add(new TaskForecast.Task(
+                        TaskNames.NATIVE_IMAGE,
+                        TaskForecast.Status.CACHED,
+                        "binary missing · restores from cache",
+                        null));
+            } else {
+                // A missing binary whose key the replay cannot vouch for is priced as work: the
+                // step itself still restores when its key hits; only the forecast is pessimistic.
+                steps.add(new TaskForecast.Task(
+                        TaskNames.NATIVE_IMAGE,
+                        TaskForecast.Status.RUN,
+                        "native-image · binary missing (restores when its key still hits)",
+                        null));
             }
+        }
+    }
+
+    /** The replayed native key hits — a read-only answer that fails safe to "no". */
+    private boolean nativeRestores(BuildLayout layout) {
+        try {
+            return PackagingKeys.nativeActionCached(
+                    dir, project, layout, lockFile, actionCache, cache, restoredJarShas);
+        } catch (Exception e) {
+            Log.debug("nativeImage: the last record could not be replayed read-only", e);
+            return false;
         }
     }
 
@@ -1045,7 +1072,8 @@ final class ModuleForecast {
                 outputsAbsent = !Files.isRegularFile(layout.mainJar())
                         || !TaskForecaster.classesDirHasContent(layout.classesDir())
                         || incomplete
-                        || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()));
+                        || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()))
+                        || nativeBinaryToRestore;
             } else if (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()) {
                 // Resources-only module: its classes tree (copied resources) is consumed
                 // straight off sibling classpaths, so an empty tree is a missing output too.
