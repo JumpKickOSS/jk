@@ -20,14 +20,23 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 
 /**
- * Resolves workspace-sibling dependency jars (and tests kinds / fixtures) for one module's build.
- * Workspace coords are not in the lockfile; matching siblings contribute their main jar under the
- * shared {@link BuildLayout} {@code target/}, their test classes when an edge selects
- * {@link DependencyKind#TESTS}, and their fixtures directory when {@code fixtures = true}.
+ * Resolves workspace-sibling dependencies (and tests kinds / fixtures) for one module's build.
+ * Workspace coords are not in the lockfile; matching siblings contribute under the shared {@link
+ * BuildLayout} {@code target/}: their {@code classes/main} tree to a compile classpath and their
+ * main jar to a runtime one, their test classes when an edge selects {@link DependencyKind#TESTS},
+ * and their fixtures directory when {@code fixtures = true}.
+ *
+ * <p>The two views exist because they are ready at different moments. A sibling's classes tree is
+ * whole once its compile (and the classes assembler of a mixed module) has run; its jar only once
+ * it has packaged. A consumer's compile reads the tree, so it can be admitted before the sibling
+ * packages, tests or builds its native tail; everything that runs the sibling — packaging,
+ * tests, a native image — reads the jar, which carries the resources and the plugin-contributed
+ * classes the tree alone does not.
  */
 public final class WorkspaceClasspath {
 
@@ -96,6 +105,7 @@ public final class WorkspaceClasspath {
                 indexSiblings(root, rootManifest, projectDir.toAbsolutePath().normalize());
         Map<String, Path> siblingDirByModule = sib.dirByModule();
         Map<String, Path> siblingJarByModule = sib.jarByModule();
+        Map<String, Path> siblingClassesByModule = sib.classesByModule();
         Map<String, Path> siblingTestClassesByModule = sib.testClassesByModule();
         Map<String, Path> siblingTestResourcesByModule = sib.testResourcesByModule();
         Map<String, Path> siblingFixturesByModule = sib.fixturesByModule();
@@ -106,33 +116,46 @@ public final class WorkspaceClasspath {
 
         List<Path> jars = new ArrayList<>();
         List<Path> closureJars = new ArrayList<>();
+        List<Path> closureClasses = new ArrayList<>();
         List<String> missing = new ArrayList<>();
+        List<String> missingClasses = new ArrayList<>();
         List<Path> siblingLockfiles = new ArrayList<>();
         LinkedHashSet<Path> seenPaths = new LinkedHashSet<>();
         for (String module : visited) {
             Path siblingJar = siblingJarByModule.get(module);
             if (siblingJar == null) continue;
-            // The full declared closure, whether or not the jar is built yet —
+            Path siblingClasses = Objects.requireNonNull(siblingClassesByModule.get(module), "sibling classes");
+            // The full declared closure, whether or not the sibling is built yet —
             // an IDE module graph depends on declared edges, not on compiled
-            // artifacts (IntelliJ compiles the modules itself).
+            // artifacts (IntelliJ compiles the modules itself), and an action key on
+            // deterministic paths reads the same after `jk clean`.
             closureJars.add(siblingJar);
-            String missingLabel = module + " (expected at " + siblingJar + ")";
+            closureClasses.add(siblingClasses);
             Path missingSibDir = siblingDirByModule.get(module);
-            if (missingSibDir != null && !hasAnySource(missingSibDir.resolve("src"))) {
-                // Name the real cause: the sibling was never going to compile anything — its jar
-                // only appears once the module is scheduled and packages empty.
+            boolean sourceless = missingSibDir != null
+                    && (!Files.exists(siblingJar) || !Files.isDirectory(siblingClasses))
+                    && !hasAnySource(missingSibDir.resolve("src"));
+            String missingLabel = module + " (expected at " + siblingJar + ")";
+            String missingClassesLabel = module + " (expected classes at " + siblingClasses + ")";
+            if (sourceless) {
+                // Name the real cause: the sibling was never going to compile anything — its
+                // outputs only appear once the module is scheduled and packages empty.
                 missingLabel = module + " has no sources — jk packages an empty jar for it once the"
                         + " module is scheduled; expected at " + siblingJar;
+                missingClassesLabel = module + " has no sources — jk creates an empty classes tree for"
+                        + " it once the module is scheduled; expected at " + siblingClasses;
             }
             addIfPresent(jars, seenPaths, siblingJar, missing, missingLabel);
+            if (!Files.isDirectory(siblingClasses)) missingClasses.add(missingClassesLabel);
 
             if (testsKinds.contains(module)) {
-                // Main jar is always required for a tests kind (test classes
+                // Main output is always required for a tests kind (test classes
                 // reference main). Test classes dir is the monorepo stand-in for
                 // a Maven test-jar; test resources ride along when present.
                 Path testClasses = siblingTestClassesByModule.get(module);
                 if (testClasses != null) {
                     closureJars.add(testClasses);
+                    closureClasses.add(testClasses);
                     addIfPresent(
                             jars,
                             seenPaths,
@@ -145,6 +168,7 @@ public final class WorkspaceClasspath {
                     if (seenPaths.add(testResources)) {
                         jars.add(testResources);
                         closureJars.add(testResources);
+                        closureClasses.add(testResources);
                     }
                 }
             }
@@ -152,6 +176,7 @@ public final class WorkspaceClasspath {
                 Path fixtures = siblingFixturesByModule.get(module);
                 if (fixtures != null) {
                     closureJars.add(fixtures);
+                    closureClasses.add(fixtures);
                     addIfPresent(
                             jars, seenPaths, fixtures, missing, module + " fixtures (expected at " + fixtures + ")");
                 }
@@ -166,13 +191,15 @@ public final class WorkspaceClasspath {
                 if (Files.exists(lockFile)) siblingLockfiles.add(lockFile);
             }
         }
-        return new Result(jars, missing, siblingLockfiles, closureJars, List.copyOf(visited));
+        return new Result(
+                jars, missing, siblingLockfiles, closureJars, List.copyOf(visited), closureClasses, missingClasses);
     }
 
     /** Every other build unit in the workspace, by {@code group:name} coord, with its layout paths. */
     private record Siblings(
             Map<String, Path> dirByModule,
             Map<String, Path> jarByModule,
+            Map<String, Path> classesByModule,
             Map<String, Path> testClassesByModule,
             Map<String, Path> testResourcesByModule,
             Map<String, Path> fixturesByModule,
@@ -189,6 +216,7 @@ public final class WorkspaceClasspath {
     private static Siblings indexSiblings(Path root, JkBuild rootManifest, Path self) throws IOException {
         Map<String, Path> siblingDirByModule = new HashMap<>();
         Map<String, Path> siblingJarByModule = new HashMap<>();
+        Map<String, Path> siblingClassesByModule = new HashMap<>();
         Map<String, Path> siblingTestClassesByModule = new HashMap<>();
         Map<String, Path> siblingTestResourcesByModule = new HashMap<>();
         Map<String, Path> siblingFixturesByModule = new HashMap<>();
@@ -210,6 +238,7 @@ public final class WorkspaceClasspath {
             BuildLayout layout = BuildLayout.of(unitDir, unit);
             siblingDirByModule.put(coord, unitDir);
             siblingJarByModule.put(coord, layout.mainJar());
+            siblingClassesByModule.put(coord, layout.classesDir());
             siblingTestClassesByModule.put(coord, layout.testClassesDir());
             siblingTestResourcesByModule.put(coord, layout.testResourcesDir());
             siblingFixturesByModule.put(coord, layout.testFixturesClassesDir());
@@ -219,6 +248,7 @@ public final class WorkspaceClasspath {
         return new Siblings(
                 siblingDirByModule,
                 siblingJarByModule,
+                siblingClassesByModule,
                 siblingTestClassesByModule,
                 siblingTestResourcesByModule,
                 siblingFixturesByModule,
@@ -298,32 +328,50 @@ public final class WorkspaceClasspath {
         return coord != null ? coord : module;
     }
 
+    /**
+     * @param jars the runtime view as built so far: every sibling main jar, tests-kind test
+     *     classes, test resources and fixtures directory that is on disk
+     * @param missingSiblingJars the runtime-view entries that are not on disk, each named with its
+     *     cause — a package, test or native step's concern
+     * @param siblingLockfiles the siblings' lockfiles, for their external transitive deps
+     * @param siblingClosureJars the declared runtime view, built or not: main jars, then the test
+     *     classes, test resources and fixtures of the direct edges that select them
+     * @param siblingCoords full {@code group:name} coords of workspace siblings in this resolve
+     * @param siblingClosureClasses the declared compile view: {@link BuildLayout#classesDir} per
+     *     sibling in place of its jar, then the same test classes, test resources and fixtures.
+     *     A compile classpath, and the key that fingerprints it, read this list
+     * @param missingSiblingClasses the siblings whose classes tree is not on disk, each named with
+     *     its cause — the compile's concern, and the only sibling absence a compile has to fail on
+     */
     public record Result(
             List<Path> jars,
             List<String> missingSiblingJars,
             List<Path> siblingLockfiles,
             List<Path> siblingClosureJars,
-            /** Full {@code group:name} coords of workspace siblings in this resolve (built or not). */
-            List<String> siblingCoords) {
+            List<String> siblingCoords,
+            List<Path> siblingClosureClasses,
+            List<String> missingSiblingClasses) {
         public Result {
             jars = List.copyOf(jars);
             missingSiblingJars = List.copyOf(missingSiblingJars);
             siblingLockfiles = List.copyOf(siblingLockfiles);
             siblingClosureJars = List.copyOf(siblingClosureJars);
             siblingCoords = List.copyOf(siblingCoords);
+            siblingClosureClasses = List.copyOf(siblingClosureClasses);
+            missingSiblingClasses = List.copyOf(missingSiblingClasses);
         }
 
         /**
          * Callers that do not distinguish the declared closure from the built jars (build/run):
-         * the closure defaults to {@code jars}.
+         * the closure, in both views, defaults to {@code jars}.
          */
         public Result(List<Path> jars, List<String> missingSiblingJars, List<Path> siblingLockfiles) {
-            this(jars, missingSiblingJars, siblingLockfiles, jars, List.of());
+            this(jars, missingSiblingJars, siblingLockfiles, jars, List.of(), jars, List.of());
         }
 
-        /** No sibling lockfiles; the closure defaults to {@code jars}. */
+        /** No sibling lockfiles; the closure defaults to {@code jars} in both views. */
         public Result(List<Path> jars, List<String> missingSiblingJars) {
-            this(jars, missingSiblingJars, List.of(), jars, List.of());
+            this(jars, missingSiblingJars, List.of(), jars, List.of(), jars, List.of());
         }
 
         public Result(
@@ -331,7 +379,30 @@ public final class WorkspaceClasspath {
                 List<String> missingSiblingJars,
                 List<Path> siblingLockfiles,
                 List<Path> siblingClosureJars) {
-            this(jars, missingSiblingJars, siblingLockfiles, siblingClosureJars, List.of());
+            this(
+                    jars,
+                    missingSiblingJars,
+                    siblingLockfiles,
+                    siblingClosureJars,
+                    List.of(),
+                    siblingClosureJars,
+                    List.of());
+        }
+
+        public Result(
+                List<Path> jars,
+                List<String> missingSiblingJars,
+                List<Path> siblingLockfiles,
+                List<Path> siblingClosureJars,
+                List<String> siblingCoords) {
+            this(
+                    jars,
+                    missingSiblingJars,
+                    siblingLockfiles,
+                    siblingClosureJars,
+                    siblingCoords,
+                    siblingClosureJars,
+                    List.of());
         }
     }
 

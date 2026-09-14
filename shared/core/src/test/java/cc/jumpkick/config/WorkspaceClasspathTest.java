@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
@@ -265,6 +266,66 @@ class WorkspaceClasspathTest {
                 lib = { workspace = true, fixtures = true }
                 """);
         assertThatThrownBy(() -> JkBuildParser.parse(appToml)).isInstanceOf(JkBuildParseException.class);
+    }
+
+    /**
+     * The compile view is the runtime view with every sibling's jar replaced by its classes tree:
+     * same siblings, same order, and the tests-kind / fixtures directories shared between them.
+     */
+    @Test
+    void the_compile_view_names_sibling_classes_trees_where_the_runtime_view_names_jars(@TempDir Path root)
+            throws Exception {
+        scaffold(root);
+        JkBuild top = JkBuildParser.parse(root.resolve("top/jk.toml"));
+        var result = WorkspaceClasspath.resolve(root.resolve("top"), top, Set.of(Scope.EXPORT, Scope.MAIN));
+
+        assertThat(result.siblingClosureClasses()).hasSameSizeAs(result.siblingClosureJars());
+        assertThat(result.siblingClosureClasses())
+                .allMatch(p -> p.endsWith(Path.of("classes", "main")))
+                .anyMatch(p -> p.toString().contains("app"))
+                .anyMatch(p -> p.toString().contains("lib"));
+        assertThat(result.siblingClosureJars())
+                .allMatch(p -> p.getFileName().toString().endsWith(".jar"));
+        // Nothing is built: both views are declared, and each names every sibling's own absence.
+        assertThat(result.missingSiblingClasses()).hasSize(2).allMatch(m -> m.endsWith("classes/main"));
+        assertThat(result.missingSiblingJars()).hasSize(2).allMatch(m -> m.endsWith(".jar"));
+    }
+
+    /**
+     * A sibling that has compiled but not yet packaged is whole for a consumer's compile and
+     * still missing for anything that runs it — the two absences are reported apart so a compile
+     * can start on the tree while the jar is still being written.
+     */
+    @Test
+    void a_compiled_but_unpackaged_sibling_is_missing_only_in_the_runtime_view(@TempDir Path root) throws Exception {
+        scaffold(root);
+        Files.createDirectories(root.resolve("lib/src/com/ex"));
+        Files.writeString(root.resolve("lib/src/com/ex/Lib.java"), "package com.ex; public class Lib {}");
+        Path libClasses = BuildLayout.of(root.resolve("lib"), JkBuildParser.parse(root.resolve("lib/jk.toml")))
+                .classesDir();
+        Files.createDirectories(libClasses.resolve("com/ex"));
+        Files.writeString(libClasses.resolve("com/ex/Lib.class"), "bytes");
+
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var result = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
+
+        assertThat(result.missingSiblingClasses()).isEmpty();
+        assertThat(result.missingSiblingJars()).singleElement().asString().startsWith("com.ex:lib (expected at");
+        assertThat(result.jars())
+                .as("the runtime view lists only what is on disk")
+                .isEmpty();
+        assertThat(result.siblingClosureClasses()).containsExactly(libClasses);
+    }
+
+    /** A sibling with nothing to compile names that cause in both views rather than a bare path. */
+    @Test
+    void a_sourceless_sibling_names_its_cause_in_both_views(@TempDir Path root) throws Exception {
+        scaffold(root);
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        var result = WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.EXPORT, Scope.MAIN));
+
+        assertThat(result.missingSiblingClasses()).singleElement().asString().contains("has no sources");
+        assertThat(result.missingSiblingJars()).singleElement().asString().contains("has no sources");
     }
 
     private static List<String> jarNames(WorkspaceClasspath.Result result) {
