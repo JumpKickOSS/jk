@@ -10,6 +10,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.run.BuildPlanConsole;
@@ -26,6 +27,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.repo.MavenLayout;
@@ -541,8 +543,11 @@ public final class InstallCommand {
                                 + " with the freshly built engine");
             }
             // The pointer names another jar now; the next request probes again and takes the
-            // resident engine over, so the second pass runs on the engine this tree built.
-            EngineClient.forgetEnsuredEngine();
+            // resident engine over, so the second pass runs on the engine this tree built. That
+            // handoff is asserted, not assumed: the pass re-shelves under whichever engine serves
+            // it, and a shelf packaged by the displaced engine would need yet another install.
+            int refused = handoffRefusal(engineAfter);
+            if (refused != Exit.SUCCESS) return refused;
             return runWorkspaceInstall(wsRoot, cwdScope, planName);
         }
         String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
@@ -563,6 +568,39 @@ public final class InstallCommand {
         if (!lastPass || !engineReplaced(before, after)) return null;
         return "the re-shelving pass ended on engine " + shortSha(after) + " while its shelf was packaged by engine "
                 + shortSha(before) + " — run `jk install` once more so the shelf is the live engine's";
+    }
+
+    /**
+     * Forget the engine this process ensured, bring up the one the next request will be served
+     * by, and check it is the one {@code pointer} names. {@link Exit#SUCCESS} when the re-shelving
+     * pass may run; otherwise the failure is printed and its exit code returned.
+     */
+    private static int handoffRefusal(Optional<String> pointer) {
+        EngineClient.forgetEnsuredEngine();
+        String refused;
+        try {
+            EngineProbe.Handshake live = EngineClient.ensureRunning(EnginePaths.current(), JkVersion.VERSION);
+            refused = handoffMismatch(live.buildId(), pointer);
+        } catch (IOException e) {
+            refused = "re-shelving pass: " + e.getMessage();
+        }
+        if (refused == null) return Exit.SUCCESS;
+        CommandWedge.printFail("Install", refused);
+        return Exit.SOFTWARE;
+    }
+
+    /**
+     * Why the re-shelving pass must not run: the engine answering the endpoint ({@code
+     * liveBuildId}, a prefix of its jar's digest) is not the one the home's pointer names. Null
+     * when they agree, or when either side has no identity to compare (an engine run from a
+     * classes directory, a home with no pointer).
+     */
+    public static @Nullable String handoffMismatch(String liveBuildId, Optional<String> pointerSha) {
+        if (liveBuildId.isEmpty() || pointerSha.isEmpty()) return null;
+        if (pointerSha.get().toLowerCase(Locale.ROOT).startsWith(liveBuildId.toLowerCase(Locale.ROOT))) return null;
+        return "the re-shelving pass would run on engine " + liveBuildId + " while the home names engine "
+                + shortSha(pointerSha) + " — the shelf would be packaged by an engine the home no longer names;"
+                + " run `jk engine stop` and then `jk install` again";
     }
 
     private static String shortSha(Optional<String> sha) {

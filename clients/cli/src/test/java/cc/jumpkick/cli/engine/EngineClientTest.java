@@ -89,9 +89,14 @@ class EngineClientTest {
                 .isEmpty();
     }
 
-    /** Start an engine on {@code p} and register it for teardown. */
+    /**
+     * Start an engine on {@code p} and register it for teardown. An in-process engine states no
+     * build identity: its code source is whichever jar holds {@code BuildIdentity} on this test
+     * classpath, not an engine jar the home's pointer could name, so a client applies the version
+     * rule alone — as it does for an engine run from a classes directory.
+     */
     private Engine startEngine(EnginePaths.Paths p, String version) {
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, version, null);
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, null, version, "", null);
         Engine e = new Engine(server, startInBackground(server));
         engines.add(e);
         return e;

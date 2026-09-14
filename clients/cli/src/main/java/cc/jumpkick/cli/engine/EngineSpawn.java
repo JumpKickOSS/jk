@@ -61,11 +61,22 @@ public final class EngineSpawn {
 
     private EngineSpawn() {}
 
-    private static boolean buildIdCurrent(EngineProbe.Handshake hs, String clientVersion) {
+    /**
+     * Whether the engine behind {@code hs} is the one this client must be served by: the client's
+     * version, running the jar the home's engine pointer names ({@code pointerSha}). The
+     * handshake's build id is a prefix of that jar's digest. Either side without an opinion — an
+     * engine run from a classes directory, a home with no pointer — leaves the version rule alone.
+     */
+    static boolean serves(EngineProbe.Handshake hs, String clientVersion, Optional<String> pointerSha) {
+        if (!clientVersion.equals(hs.version())) return false;
         if (hs.buildId().isEmpty()) return true;
-        String expected = EngineInstall.current().engineSha(clientVersion).orElse("");
+        String expected = pointerSha.orElse("");
         if (expected.isEmpty()) return true;
         return expected.startsWith(hs.buildId());
+    }
+
+    private static Optional<String> pointerSha(String clientVersion) {
+        return EngineInstall.current().engineSha(clientVersion);
     }
 
     static EngineProbe.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
@@ -79,7 +90,7 @@ public final class EngineSpawn {
                 throw new IOException(
                         "the build engine is shutting down — wait for it to stop, or run `jk engine stop --force`");
             }
-            if (clientVersion.equals(hs.version()) && buildIdCurrent(hs, clientVersion)) {
+            if (serves(hs, clientVersion, pointerSha(clientVersion))) {
                 // Already primary — do not wipe AOT (would thrash the live train). Wipe only on
                 // materialize / new endpoint claim.
                 return hs;
@@ -788,23 +799,37 @@ public final class EngineSpawn {
         }
     }
 
+    /**
+     * Wait until the endpoint answers with the engine this client needs. During a takeover the
+     * displaced engine keeps answering on the endpoint until the successor claims it, so a
+     * handshake alone is not "up": only one that {@link #serves} this client is — the displaced
+     * engine's answer is waited through. Without that, the request that follows a takeover
+     * (the install's re-shelving pass) would stream to the engine the home no longer names.
+     */
     private static StartResult awaitStartup(
             EnginePaths.Paths paths, String clientVersion, Duration timeout, Process spawned) {
         long deadline = System.nanoTime() + timeout.toNanos();
+        Optional<String> pointer = pointerSha(clientVersion);
         while (System.nanoTime() < deadline) {
-            Optional<EngineProbe.Handshake> h = EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion);
+            Optional<EngineProbe.Handshake> h = serving(paths, clientVersion, pointer);
             if (h.isPresent()) return StartResult.up(h.get());
             if (spawned != null && !spawned.isAlive()) {
                 // The child died (setsid keeps the pid, so liveness is authoritative). One last
                 // handshake: a concurrent spawn may have won the election and be serving already
                 // our child exiting is then the healthy loser, not a failure.
-                return EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion)
+                return serving(paths, clientVersion, pointer)
                         .map(StartResult::up)
                         .orElseGet(StartResult::exited);
             }
             sleepQuietly(50);
         }
         return StartResult.timedOut();
+    }
+
+    private static Optional<EngineProbe.Handshake> serving(
+            EnginePaths.Paths paths, String clientVersion, Optional<String> pointer) {
+        return EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion)
+                .filter(hs -> !hs.draining() && serves(hs, clientVersion, pointer));
     }
 
     /**
