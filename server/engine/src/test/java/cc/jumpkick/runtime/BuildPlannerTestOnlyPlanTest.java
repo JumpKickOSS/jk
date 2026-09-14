@@ -14,6 +14,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
 import java.io.OutputStream;
@@ -121,8 +122,8 @@ class BuildPlannerTestOnlyPlanTest {
         Set<String> compileNames =
                 cb.build().steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(compileNames)
-                .as("compile plan terminates at write-stamp; no assembly tail")
-                .contains(TaskNames.WRITE_STAMP)
+                .as("compile plan stops at the stamps and the resource copy; no assembly tail")
+                .contains(TaskNames.WRITE_STAMP, TaskNames.COPY_RESOURCES)
                 .doesNotContain(TaskNames.PACKAGE_ASSEMBLY, TaskNames.PACKAGE_JAR);
     }
 
@@ -172,8 +173,12 @@ class BuildPlannerTestOnlyPlanTest {
                 .doesNotContain(TaskNames.PACKAGE_JAR, TaskNames.RUN_TESTS);
     }
 
+    /**
+     * The resource copy is part of the classes tree a dependent compiles against, so a compile-only
+     * plan carries it beside the stamp; the two are independent leaves the join keeps.
+     */
     @Test
-    void single_language_compile_only_keeps_single_stamp_terminal(@TempDir Path dir) throws Exception {
+    void single_language_compile_only_joins_the_stamp_and_the_resource_copy(@TempDir Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src/main/java"));
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "ex"
@@ -181,13 +186,17 @@ class BuildPlannerTestOnlyPlanTest {
                 version = "1.0"
                 java = 25
                 """);
-        Set<String> names = BuildPlanner.coreBuilder(inputs(dir, false, true)).build().steps().stream()
-                .map(s -> s.name())
-                .collect(Collectors.toSet());
+        BuildPlan plan = BuildPlanner.coreBuilder(inputs(dir, false, true)).build();
+        Set<String> names = plan.steps().stream().map(s -> s.name()).collect(Collectors.toSet());
         assertThat(names)
-                .as("single-language jk compile: no join task, stamp is the terminal")
-                .contains(TaskNames.WRITE_STAMP)
-                .doesNotContain(BuildPlanner.COMPILE_JOIN, TaskNames.PACKAGE_JAR);
+                .as("single-language jk compile: stamp and resource copy, nothing that reads a jar")
+                .contains(TaskNames.WRITE_STAMP, TaskNames.COPY_RESOURCES, BuildPlanner.COMPILE_JOIN)
+                .doesNotContain(TaskNames.PACKAGE_JAR, TaskNames.COMPILE_TEST, TaskNames.RUN_TESTS);
+        Task join = plan.steps().stream()
+                .filter(s -> s.name().equals(BuildPlanner.COMPILE_JOIN))
+                .findFirst()
+                .orElseThrow();
+        assertThat(join.requires()).containsExactlyInAnyOrder(TaskNames.WRITE_STAMP, TaskNames.COPY_RESOURCES);
     }
 
     /**

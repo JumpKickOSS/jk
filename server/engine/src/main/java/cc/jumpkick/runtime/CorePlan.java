@@ -450,35 +450,38 @@ final class CorePlan {
     }
 
     /**
-     * `jk compile` stops here: lock → sync → compile (+ freshness stamps), no
-     * resources/test/package. Everything later depends on these steps.
+     * `jk compile` stops here: lock → sync → compile (+ freshness stamps) and the resource copy,
+     * no test or package. The resources are part of the tree, not of packaging: a dependent
+     * compiles against this module's {@code classes/main}, a processor sibling is found through
+     * the service registration the copy lands there, and a tree published without them is one
+     * the next build rewrites under its consumers' keys. Everything later depends on these steps.
      */
     private BuildPlan.Builder compileOnlyPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
-        List<String> stamps = new ArrayList<>();
+        b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
+        b.addTask(s.copyResources());
+        List<String> leaves = new ArrayList<>();
         if (useJava) {
             b.addTask(s.writeStamp());
-            stamps.add(TaskNames.WRITE_STAMP);
+            leaves.add(TaskNames.WRITE_STAMP);
         }
         if (useKotlin) {
             b.addTask(s.writeStampKotlin());
-            stamps.add(TaskNames.WRITE_STAMP_KOTLIN);
+            leaves.add(TaskNames.WRITE_STAMP_KOTLIN);
         }
         if (useGroovy) {
             b.addTask(s.writeStampGroovy());
-            stamps.add(TaskNames.WRITE_STAMP_GROOVY);
+            leaves.add(TaskNames.WRITE_STAMP_GROOVY);
         }
-        if (stamps.isEmpty()) return b.terminal(cx.mainCompile());
-        if (stamps.size() == 1) return b.terminal(stamps.get(0));
-        // Mixed module: every language's stamp (and the classes assembler) is an
-        // independent leaf — a single-stamp terminal would prune the others and the
-        // pruned language recompiles every run. Join them so the closure keeps each
-        // one (same idiom as the deliver join).
+        // Every stamp, the resource copy and (mixed) the classes assembler is an independent
+        // leaf — a single-leaf terminal would prune the others, and a pruned language recompiles
+        // every run. Join them so the closure keeps each one (same idiom as the deliver join).
         if (cx.mixed() || cx.mixedGroovy()) {
-            stamps.add(TaskNames.ASSEMBLE_CLASSES);
+            leaves.add(TaskNames.ASSEMBLE_CLASSES);
         }
+        leaves.add(TaskNames.COPY_RESOURCES);
         b.addTask(Task.builder(BuildPlanner.COMPILE_JOIN)
                 .stage(BuildStage.COMPILE)
-                .requires(stamps.toArray(String[]::new))
+                .requires(leaves.toArray(String[]::new))
                 .weight(0)
                 .ticks(0)
                 .execute(ctx -> {

@@ -102,7 +102,7 @@ class WorkspacePublishGateTest {
                         TaskNames.COPY_RESOURCES);
     }
 
-    /** A compile-only plan publishes at its compiler; a plan that compiles nothing publishes on completion. */
+    /** A plan whose only tree writer is its compiler publishes there; one that compiles nothing publishes on completion. */
     @Test
     void the_classes_publish_takes_what_the_plan_has() {
         assertThat(WorkspaceRunPhase.classesWaitSet(planWith(TaskNames.COMPILE_GROOVY, TaskNames.WRITE_STAMP_GROOVY)))

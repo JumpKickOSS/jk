@@ -294,13 +294,13 @@ final class WorkspacePreparePhase {
                     spec.imageDocker(),
                     decorate);
         }
-        boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
-        // Compile-only is the tail of the cone. A module another module in this run compiles
-        // against is resolved through its jar, so it packages even when it is in the selection —
-        // the same rule test-only plans follow below, and packaging has already compiled it.
-        if (target == WorkspaceTarget.COMPILE && selected && !consumed) {
+        // Every module in a compile-only cone compiles and none packages: a consumer compiles
+        // against its siblings' classes trees, so no step of a compile-only plan reads a jar and
+        // the modules whose jars a sibling consumes matter only to the plans below, which do.
+        if (target == WorkspaceTarget.COMPILE) {
             return CompilePlans.compileBuildPlan(dir, request.cache(), request.profile(), request.verbose(), decorate);
         }
+        boolean consumed = jarConsumed.contains(BuildGraph.canonicalPath(dir));
         if (target == WorkspaceTarget.INSTALL) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, false, siblings);

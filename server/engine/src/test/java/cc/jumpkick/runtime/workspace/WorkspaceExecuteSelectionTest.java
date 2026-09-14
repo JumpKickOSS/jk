@@ -123,6 +123,52 @@ class WorkspaceExecuteSelectionTest {
                 .doesNotContain(TaskNames.PACKAGE_JAR);
     }
 
+    /**
+     * A consumer compiles against its sibling's classes tree, so under {@code jk compile} the
+     * sibling's jar is read by nothing; the test and build verbs still package it, because their
+     * run and package steps do.
+     */
+    @Test
+    void compile_plans_package_nothing_while_test_plans_still_package_a_consumed_prereq() throws Exception {
+        Path lib = module("lib", "lib", "");
+        Path app = module("app", "app", """
+                [dependencies]
+                lib = { workspace = true }
+                """);
+        JkBuild libB = JkBuildParser.parse(lib.resolve("jk.toml"));
+        JkBuild appB = JkBuildParser.parse(app.resolve("jk.toml"));
+        var libUnit = new BuildGraph.BuildUnit(lib, libB, "ex:lib", BuildGraph.Origin.MODULE);
+        var appUnit = new BuildGraph.BuildUnit(app, appB, "ex:app", BuildGraph.Origin.MODULE);
+        Set<Path> jarConsumed = Set.of(BuildGraph.canonicalPath(lib));
+
+        WorkspaceRequest compile = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, true, false, 0, null, true, true)
+                .withSpec(WorkspaceSpec.compile(Set.of()));
+        for (var unit : List.of(libUnit, appUnit)) {
+            Set<String> names =
+                    WorkspacePreparePhase.assemblePlan(unit, compile, Set.of(lib, app), false, jarConsumed)
+                            .steps()
+                            .stream()
+                            .map(s -> s.name())
+                            .collect(Collectors.toSet());
+            assertThat(names)
+                    .as(unit.coord() + " under jk compile")
+                    .contains(TaskNames.COMPILE_JAVA, TaskNames.COPY_RESOURCES)
+                    .doesNotContain(TaskNames.PACKAGE_JAR, TaskNames.RUN_TESTS, TaskNames.COMPILE_TEST);
+        }
+
+        WorkspaceRequest test = new WorkspaceRequest(
+                        tmp, tmp.resolve("cache"), null, 0, null, false, false, 0, null, true, true)
+                .withTestOnly(true);
+        Set<String> libUnderTest =
+                WorkspacePreparePhase.assemblePlan(libUnit, test, Set.of(lib, app), false, jarConsumed).steps().stream()
+                        .map(s -> s.name())
+                        .collect(Collectors.toSet());
+        assertThat(libUnderTest)
+                .as("jk test runs app's tests against lib's jar")
+                .contains(TaskNames.PACKAGE_JAR);
+    }
+
     @Test
     void symlinked_seed_still_expands_prereqs() throws Exception {
         // : cone identity is the canonical path — a seed reached through a symlink must
