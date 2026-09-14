@@ -32,9 +32,13 @@ final class EngineJarFetcher {
         return URI.create(override == null || override.isBlank() ? DEFAULT_RELEASES_URL : override);
     }
 
-    /** Fetch only for native client, online, and non-{@code -SNAPSHOT} versions. */
-    static boolean applicable(String version, boolean nativeImage, boolean offline) {
-        return nativeImage && !offline && !version.endsWith("-SNAPSHOT");
+    /**
+     * Fetch only for a released client — the native image, or the JVM client an installer laid
+     * out ({@link cc.jumpkick.cli.engine.JvmClient}) — online, and never for a {@code -SNAPSHOT}. A JVM
+     * started from a checkout or a test is not a release and does not reach for one.
+     */
+    static boolean applicable(String version, boolean releasedClient, boolean offline) {
+        return releasedClient && !offline && !version.endsWith("-SNAPSHOT");
     }
 
     /**

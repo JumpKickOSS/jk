@@ -3,13 +3,17 @@
 # Usage:
 #   irm https://jumpkick.build/install.ps1 | iex
 #   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://jumpkick.build/install.ps1 | iex"
-#   .\install.cmd [path\to\jk.exe|.zip]          # recommended locally (bypasses Restricted policy)
-#   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 [path\to\jk.exe|.zip]
+#   .\install.cmd [path\to\jk.exe|.zip|lib\jk-<version>.jar]   # recommended locally (bypasses Restricted policy)
+#   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 [path\to\jk.exe|.zip|.jar]
 #   pwsh -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 path\to\jk.exe
 #
 # Environment variables:
 #   JK_ARCHIVE_URL   Override the archive URL. JK_VERSION is required; signed evidence
-#                    still comes from JK_RELEASES_URL\<version>\.
+#                    still comes from JK_RELEASES_URL\<version>\. Supports .zip and .jar.
+#   JK_CLIENT        `native` or `jvm`. Unset: the native jk.exe (x64; ARM64 runs it under
+#                    emulation). `jvm` installs the JVM client instead — jk-<version>.jar on a
+#                    JDK 25+ you provide, as bin\jk.bat — native speed on Windows on ARM.
+#   JK_JAVA_HOME     The JDK the JVM client runs on (else JAVA_HOME, else java on the PATH).
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_HOME          jk's home directory. Default %USERPROFILE%\.jk; everything jk owns lives
@@ -34,6 +38,10 @@ param(
 
     # Skip engine warm-up (CI / PATH-only install).
     [switch] $SkipEngineWarm,
+
+    # Install the JVM client (jk-<version>.jar as bin\jk.bat) instead of the native jk.exe. Same as
+    # JK_CLIENT=jvm for irm|iex callers.
+    [switch] $Jvm,
 
     # Persist a CurrentUser RemoteSigned execution policy when the effective one would block
     # profile hooks. Off by default: the installer prints the command instead of changing a
@@ -133,11 +141,53 @@ function Get-JkTarget {
         ($ArchName -notmatch "^(X64|Amd64)$" -and $ProcessorArchitecture -match "(?i)ARM64")
     $x64 = ($ArchName -match "^(X64|Amd64)$") -or ($ProcessorArchitecture -match "(?i)AMD64|X86")
     if ($arm64) {
-        Write-Note "Windows on ARM64: no windows-aarch64 release exists yet; installing the windows-x86_64 build (runs under x64 emulation)."
+        Write-Note "Windows on ARM64: no windows-aarch64 release exists yet; installing the windows-x86_64 build (runs under x64 emulation). JK_CLIENT=jvm installs the JVM client on an ARM64 JDK instead."
     } elseif (-not $x64) {
-        Die "unsupported architecture: $ArchName (supported: x86_64; ARM64 installs the x86_64 build)"
+        Die "unsupported architecture: $ArchName (supported: x86_64; ARM64 installs the x86_64 build; JK_CLIENT=jvm installs the JVM client on any JDK 25+)"
     }
     return "windows-x86_64"
+}
+
+# The feature version a `java -version` first line reports: `openjdk version "25.0.1" 2025-10-21`
+# is 25, `java version "1.8.0_392"` is 8; $null when the line says nothing usable.
+function Get-JavaMajor([string] $VersionLine) {
+    if ($VersionLine -match 'version "(\d+)(?:\.(\d+))?') {
+        if ($Matches[1] -eq "1" -and $Matches[2]) { return [int]$Matches[2] }
+        return [int]$Matches[1]
+    }
+    return $null
+}
+
+# The JDK the JVM client runs on: JK_JAVA_HOME, else JAVA_HOME, else java on the PATH — a full JDK
+# (the build engine forks javac from it) of at least 25, the release the client is compiled for.
+# jk installs JDKs itself only for hosts the JDK feed covers; this path exists for the others, so
+# the JDK is the user's to provide. Returns the java.exe path.
+function Find-Java {
+    $java = $null
+    if ($env:JK_JAVA_HOME) {
+        $java = Join-Path $env:JK_JAVA_HOME "bin\java.exe"
+    } elseif ($env:JAVA_HOME) {
+        $java = Join-Path $env:JAVA_HOME "bin\java.exe"
+    } else {
+        $cmd = Get-Command java -ErrorAction SilentlyContinue
+        if (-not $cmd) { Die "the JVM client needs a JDK 25 or newer: set JAVA_HOME (or JK_JAVA_HOME) to one and re-run." }
+        $java = $cmd.Source
+    }
+    if (-not (Test-Path -LiteralPath $java -PathType Leaf)) {
+        Die "no java.exe at $java - set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run."
+    }
+    $firstLine = [string](& $java -version 2>&1 | Select-Object -First 1)
+    $major = Get-JavaMajor $firstLine
+    if (-not $major) { Die "could not read a Java version from '$java -version'; set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run." }
+    if ($major -lt 25) { Die "$java is Java $major; the JVM client needs a JDK 25 or newer - set JAVA_HOME (or JK_JAVA_HOME) to one and re-run." }
+    $homeLine = & $java -XshowSettings:properties -version 2>&1 | Where-Object { $_ -match '^\s*java\.home = (.+)$' } | Select-Object -First 1
+    if ($homeLine -and ([string]$homeLine -match '^\s*java\.home = (.+)$')) {
+        $javaHome = $Matches[1].Trim()
+        if (-not (Test-Path -LiteralPath (Join-Path $javaHome "bin\javac.exe") -PathType Leaf)) {
+            Die "$javaHome is a JRE (no bin\javac.exe); jk's build engine needs a full JDK 25 or newer - set JAVA_HOME (or JK_JAVA_HOME) to one and re-run."
+        }
+    }
+    return $java
 }
 
 # Windows PowerShell 5.1 repaints its progress bar on every received chunk, which makes a
@@ -489,11 +539,19 @@ $ArchiveUrl = $null
 $ArchiveFile = $null
 $IsRemote = $false
 
+# Which client: the native jk.exe, or the JVM client (jk-<version>.jar as bin\jk.bat). -Jvm and
+# JK_CLIENT=jvm ask for the JVM client; a local file or an explicit URL names its kind by extension.
+if ($env:JK_CLIENT -and $env:JK_CLIENT -notin @("native", "jvm")) {
+    Die "JK_CLIENT must be 'native' or 'jvm' (got '$($env:JK_CLIENT)')"
+}
+$UseJvm = [bool]$Jvm -or ($env:JK_CLIENT -eq "jvm")
+
 if ($LocalPath) {
     if (-not (Test-Path -LiteralPath $LocalPath -PathType Leaf)) {
         Die "local file not found: $LocalPath"
     }
     $ArchiveFile = (Resolve-Path -LiteralPath $LocalPath).Path
+    $UseJvm = [IO.Path]::GetExtension($ArchiveFile).ToLowerInvariant() -eq ".jar"
 } elseif ($env:JK_ARCHIVE_URL) {
     if (-not $env:JK_VERSION) {
         Die "JK_VERSION is required when JK_ARCHIVE_URL is set."
@@ -501,8 +559,9 @@ if ($LocalPath) {
     $version = $env:JK_VERSION
     $ArchiveUrl = $env:JK_ARCHIVE_URL
     $IsRemote = $true
+    $UseJvm = ($ArchiveUrl -split '\?')[0].ToLowerInvariant().EndsWith(".jar")
 } else {
-    $target = Get-JkTarget
+    $target = if ($UseJvm) { "jvm" } else { Get-JkTarget }
     $version = $env:JK_VERSION
     if (-not $version) {
         # The pointer is signed data and the only mutable input: verified against the release key,
@@ -529,10 +588,13 @@ if ($LocalPath) {
     if (-not $version) {
         Die "could not resolve the latest jk version from $ReleasesUrl/latest/LATEST"
     }
-    # Windows installer prefers .zip (no system xz). Self-update uses .xz via the engine.
-    $ArchiveUrl = "$ReleasesUrl/$version/jk-$target-$version.zip"
+    # Windows installer prefers .zip (no system xz). Self-update uses .xz via the engine. The JVM
+    # client is one platform-neutral jar.
+    $clientArtifact = if ($UseJvm) { "jk-$version.jar" } else { "jk-$target-$version.zip" }
+    $ArchiveUrl = "$ReleasesUrl/$version/$clientArtifact"
     $IsRemote = $true
 }
+if ($UseJvm) { $script:Java = Find-Java }
 
 if ($IsRemote) {
     if ($version -notmatch '^[A-Za-z0-9._-]+$') {
@@ -582,6 +644,28 @@ try {
         } catch {
             Die $_.Exception.Message
         }
+        # The JVM client's engine jar: fetched here from the same frozen version directory and
+        # verified against the same signed sums, then materialized below like a local dist's.
+        if ($UseJvm) {
+            $engineName = "jk-engine-$version.jar"
+            $remoteEngineJar = Join-Path $tmpRoot $engineName
+            try {
+                Save-Url "$ReleaseVersionUrl/$engineName" $remoteEngineJar
+            } catch {
+                Die "failed to download $ReleaseVersionUrl/$engineName ($($_.Exception.Message))"
+            }
+            try {
+                Test-ReleaseEvidence `
+                    -Artifact $remoteEngineJar `
+                    -ArtifactName $engineName `
+                    -Manifest $manifestFile `
+                    -Signature $signatureFile `
+                    -Modulus $ReleaseRsaModulus `
+                    -Exponent $ReleaseRsaExponent
+            } catch {
+                Die $_.Exception.Message
+            }
+        }
     }
 
     $displayDir = $InstallDir
@@ -594,55 +678,95 @@ try {
     Write-Info "Installing JumpKick into $displayDir"
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-    # Destination name: jk.exe for a native client; a JVM launcher keeps its jk.bat name.
-    $leaf = Split-Path -Leaf $ArchiveFile
-    $srcExt = [IO.Path]::GetExtension($leaf).ToLowerInvariant()
-    if ($srcExt -eq ".bat" -or $leaf -eq "jk.bat") {
-        $destName = "jk.bat"
-    } elseif ($srcExt -eq ".cmd" -or $leaf -eq "jk.cmd") {
-        $destName = "jk.cmd"
-    } else {
-        $destName = "jk.exe"
-    }
-
-    $script:JkBin = Join-Path $InstallDir $destName
-    Park-IfPresent $script:JkBin
-    # PATHEXT prefers .exe over .bat. Installing the thin client must park a leftover
-    # unsigned jk.exe or `jk` still launches the blocked PE.
-    if ($destName -eq "jk.bat") {
-        Park-IfPresent (Join-Path $InstallDir "jk.exe")
-    } elseif ($destName -eq "jk.exe") {
-        Park-IfPresent (Join-Path $InstallDir "jk.bat")
-    }
-    try {
-        Expand-JkArchive -Archive $ArchiveFile -Destination $script:JkBin
-    } catch {
-        Die "failed to install jk: $($_.Exception.Message)"
-    }
-
-    # jkx - hardlink to jk.exe (argv[0] dispatch; .exe stripped) when possible.
-    # Fallback: jkx.cmd shim (same shape JkxLink writes on Windows).
     $jkxExe = Join-Path $InstallDir "jkx.exe"
     $jkxCmd = Join-Path $InstallDir "jkx.cmd"
-    Park-IfPresent $jkxExe
-    Park-IfPresent $jkxCmd
-    $linked = $false
-    if ($destName -eq "jk.exe") {
-        try {
-            New-Item -ItemType HardLink -Path $jkxExe -Target $script:JkBin -Force | Out-Null
-            $linked = $true
-        } catch {
-            $linked = $false
+    if ($UseJvm) {
+        # The JVM client: the jar under <home>\lib\jk\jk-<version>.jar, and the launcher it runs
+        # through (bin\jk.bat, plus jkx.cmd) - written by the client itself (`jk self
+        # write-launcher`), so the launcher text has one author and the JDK that passed the
+        # version check above is the one it bakes in. It parks a leftover jk.exe, which PATHEXT
+        # would otherwise keep preferring. A local jar names no version, so the jar is asked.
+        $script:JkBin = Join-Path $InstallDir "jk.bat"
+        $jarVersion = $version
+        if (-not $jarVersion) {
+            $answer = [string](& $script:Java -jar $ArchiveFile --version 2>&1 | Select-Object -First 1)
+            if ($answer -match '^jk (\S+)') { $jarVersion = $Matches[1] }
+            if (-not $jarVersion) { Die "$ArchiveFile does not answer --version like a jk client jar." }
         }
-    }
-    if (-not $linked) {
-        $jkLeaf = Split-Path -Leaf $script:JkBin
-        $shim = @"
+        $jkLib = Join-Path $JkHome "lib\jk"
+        New-Item -ItemType Directory -Force -Path $jkLib | Out-Null
+        $jkJar = Join-Path $jkLib "jk-$jarVersion.jar"
+        try {
+            Copy-Item -LiteralPath $ArchiveFile -Destination "$jkJar.tmp" -Force
+            Move-Item -LiteralPath "$jkJar.tmp" -Destination $jkJar -Force
+        } catch {
+            Die "failed to install ${jkJar}: $($_.Exception.Message)"
+        }
+        # One client jar: a launcher names exactly one. A jar a running client still maps cannot
+        # be deleted; it is parked and swept by the next install.
+        Get-ChildItem -Path $jkLib -Filter "jk-*.jar" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $jkJar } |
+            ForEach-Object {
+                try { Remove-Item -LiteralPath $_.FullName -Force } catch { Park-IfPresent $_.FullName }
+            }
+        try {
+            & $script:Java --enable-native-access=ALL-UNNAMED -jar $jkJar self write-launcher 2>&1 | Out-Null
+            $wrote = ($LASTEXITCODE -eq 0)
+        } catch {
+            $wrote = $false
+        }
+        if (-not $wrote -or -not (Test-Path -LiteralPath $script:JkBin -PathType Leaf)) {
+            Die "could not write $($script:JkBin) (jk self write-launcher failed)"
+        }
+    } else {
+        # Destination name: jk.exe for a native client; a JVM launcher keeps its jk.bat name.
+        $leaf = Split-Path -Leaf $ArchiveFile
+        $srcExt = [IO.Path]::GetExtension($leaf).ToLowerInvariant()
+        if ($srcExt -eq ".bat" -or $leaf -eq "jk.bat") {
+            $destName = "jk.bat"
+        } elseif ($srcExt -eq ".cmd" -or $leaf -eq "jk.cmd") {
+            $destName = "jk.cmd"
+        } else {
+            $destName = "jk.exe"
+        }
+
+        $script:JkBin = Join-Path $InstallDir $destName
+        Park-IfPresent $script:JkBin
+        # PATHEXT prefers .exe over .bat. Installing the thin client must park a leftover
+        # unsigned jk.exe or `jk` still launches the blocked PE.
+        if ($destName -eq "jk.bat") {
+            Park-IfPresent (Join-Path $InstallDir "jk.exe")
+        } elseif ($destName -eq "jk.exe") {
+            Park-IfPresent (Join-Path $InstallDir "jk.bat")
+        }
+        try {
+            Expand-JkArchive -Archive $ArchiveFile -Destination $script:JkBin
+        } catch {
+            Die "failed to install jk: $($_.Exception.Message)"
+        }
+
+        # jkx - hardlink to jk.exe (argv[0] dispatch; .exe stripped) when possible.
+        # Fallback: jkx.cmd shim (same shape JkxLink writes on Windows).
+        Park-IfPresent $jkxExe
+        Park-IfPresent $jkxCmd
+        $linked = $false
+        if ($destName -eq "jk.exe") {
+            try {
+                New-Item -ItemType HardLink -Path $jkxExe -Target $script:JkBin -Force | Out-Null
+                $linked = $true
+            } catch {
+                $linked = $false
+            }
+        }
+        if (-not $linked) {
+            $jkLeaf = Split-Path -Leaf $script:JkBin
+            $shim = @"
 @echo off
 REM jkx - jk tool run launcher (generated by jk; do not edit)
 "%~dp0$jkLeaf" tool run %*
 "@
-        Set-Content -LiteralPath $jkxCmd -Value $shim -Encoding Ascii -Force
+            Set-Content -LiteralPath $jkxCmd -Value $shim -Encoding Ascii -Force
+        }
     }
 
     # Clear only resident engines positively identified in the superseded platform default.
@@ -655,27 +779,32 @@ REM jkx - jk tool run launcher (generated by jk; do not edit)
         Write-Note "an engine from the superseded install location could not be stopped"
     }
 
-    # ---- product-lib engine (local dist only) ------------------------------
+    # ---- product-lib engine (local dist and JVM installs) --------------------
     #
-    # Local dist installs (binary + engine jar together) materialize the engine
-    # jar via `jk self materialize`. Download installs self-fetch on first spawn.
+    # Local dist installs (binary + engine jar together) and JVM installs (the engine jar
+    # downloaded and verified above) materialize the engine jar via `jk self materialize`.
+    # Native download installs self-fetch on first spawn.
 
     $engineJar = $null
+    if ($IsRemote -and $UseJvm) {
+        $engineJar = $remoteEngineJar
+    }
     if ($LocalPath) {
         $srcDir = Split-Path -Parent $ArchiveFile
-        $libDir = Join-Path $srcDir "lib"
-        if (-not (Test-Path -LiteralPath $libDir)) {
-            # build/dist/jk.exe -> build/dist/lib; also try parent\lib for nested layouts.
-            $libDir = Join-Path (Split-Path -Parent $srcDir) "lib"
-        }
-        if (Test-Path -LiteralPath $libDir) {
-            $engineJar = Get-ChildItem -Path $libDir -Filter "jk-engine-*.jar" -ErrorAction SilentlyContinue |
+        # build\dist\jk.exe -> build\dist\lib; a JVM client jar sits inside lib\ itself; also
+        # try parent\lib for nested layouts.
+        foreach ($candidate in @($srcDir, (Join-Path $srcDir "lib"), (Join-Path (Split-Path -Parent $srcDir) "lib"))) {
+            if (-not (Test-Path -LiteralPath $candidate)) { continue }
+            $engineJar = Get-ChildItem -Path $candidate -Filter "jk-engine-*.jar" -ErrorAction SilentlyContinue |
                 Select-Object -First 1 -ExpandProperty FullName
+            if ($engineJar) { break }
         }
         if (-not $engineJar -and $env:JK_ENGINE_JAR -and (Test-Path -LiteralPath $env:JK_ENGINE_JAR)) {
             $engineJar = $env:JK_ENGINE_JAR
         }
-        if ($engineJar) {
+    }
+    if ($engineJar) {
+        if ($LocalPath -or $UseJvm) {
             try {
                 Invoke-Jk @("self", "materialize", $script:JkBin, $engineJar) 2>&1 | Out-Null
                 if ($LASTEXITCODE -ne 0) {

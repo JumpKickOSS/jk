@@ -320,7 +320,9 @@ public final class EngineSpawn {
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
         if (resolved.isEmpty()
                 && EngineJarFetcher.applicable(
-                        clientVersion, isNativeImage(), SessionContext.current().offline())) {
+                        clientVersion,
+                        isNativeImage() || JvmClient.installed(),
+                        SessionContext.current().offline())) {
             CliOutput.err("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
@@ -374,7 +376,17 @@ public final class EngineSpawn {
 
     private static EngineJdk resolveEngineJdk() throws IOException {
         int floor = Runtime.version().feature();
-        String pin = GlobalConfig.engineJdkPin().orElse("temurin-" + floor);
+        Optional<String> pinned = GlobalConfig.engineJdkPin();
+        if (pinned.isEmpty() && JvmClient.installed()) {
+            // The installed JVM client runs on a JDK the user chose — on a host the JDK feed does
+            // not cover, the only JDK there is, and by construction one that meets the floor. The
+            // engine runs on it too, unless [toolchain] jdk names another; asking the feed for a
+            // Temurin first would end in "not covered by the JetBrains JDK feed" on exactly the
+            // hosts this client exists for.
+            Optional<EngineJdk> own = ownJdk(floor);
+            if (own.isPresent()) return own.get();
+        }
+        String pin = pinned.orElse("temurin-" + floor);
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
         CliOutput.err("jk: installing the build engine's JDK (" + pin + ") ...");
@@ -386,6 +398,17 @@ public final class EngineSpawn {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted installing the engine JDK " + pin, e);
         }
+    }
+
+    /** The JDK this JVM runs on, when it is a full JDK of at least {@code floor}. */
+    private static Optional<EngineJdk> ownJdk(int floor) {
+        Path home;
+        try {
+            home = JavaHomes.runningJavaHome();
+        } catch (RuntimeException noHome) {
+            return Optional.empty();
+        }
+        return probeEngineJdk(home).filter(jdk -> majorOf(jdk.version()) >= floor);
     }
 
     /** First already-installed JDK matching the pin's vendor+major, checked without any network. */

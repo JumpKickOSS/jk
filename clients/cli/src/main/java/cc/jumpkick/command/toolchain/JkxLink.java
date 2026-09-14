@@ -20,12 +20,12 @@ import org.jspecify.annotations.Nullable;
  * read the first kilobyte looking for a generated-by header and refused anything over 4 KiB,
  * because in a directory everything installs into, a name is not a claim.
  */
-final class JkxLink {
+public final class JkxLink {
 
     /** Attribution line in every shim jk generates. Read by humans, not by this class. */
     private static final String MARKER = JkOwnership.GENERATED_BY;
 
-    enum Status {
+    public enum Status {
         /** Link or shim written (fresh, repaired, or re-pointed). */
         CREATED,
         /** Already present and pointing at this jk. */
@@ -34,12 +34,12 @@ final class JkxLink {
         SKIPPED_NO_EXE
     }
 
-    record Result(Status status, @Nullable Path path) {}
+    public record Result(Status status, @Nullable Path path) {}
 
     private JkxLink() {}
 
     /** Ensure {@code binDir/jkx} launches {@code jkExe}'s {@code tool run}. Never throws. */
-    static Result ensure(Path binDir, @Nullable Path jkExe) {
+    public static Result ensure(Path binDir, @Nullable Path jkExe) {
         try {
             if (jkExe == null || !jkExe.isAbsolute() || !Files.isRegularFile(jkExe)) {
                 return new Result(Status.SKIPPED_NO_EXE, null);

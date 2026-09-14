@@ -20,6 +20,7 @@ stage() {
     printf 'client %s\n' "$platform" >"$dir/jk-$platform-$VER.xz"
     [[ "$platform" == "windows-x86_64" ]] && printf 'client zip\n' >"$dir/jk-$platform-$VER.zip"
     printf 'engine bytes\n' >"$dir/jk-engine-$VER.jar"
+    printf 'client jar bytes\n' >"$dir/jk-$VER.jar"
     printf 'per-platform manifest\n' >"$dir/SHA256SUMS"
     printf 'per-platform signature\n' >"$dir/SHA256SUMS.sig"
   done
@@ -49,6 +50,7 @@ assert_refused() {
 stage "$WORK/staging"
 run_flatten "$WORK/staging" "$WORK/out" || { cat "$WORK/last.log" >&2; echo "test-flatten-release: complete matrix was refused" >&2; exit 1; }
 expected_listing="SHA256SUMS
+jk-$VER.jar
 jk-engine-$VER.jar
 jk-linux-aarch64-$VER.xz
 jk-linux-x86_64-$VER.xz
@@ -58,14 +60,14 @@ jk-windows-x86_64-$VER.xz
 jk-windows-x86_64-$VER.zip"
 [[ "$(cd "$WORK/out" && printf '%s\n' * | LC_ALL=C sort)" == "$expected_listing" ]] || {
   (cd "$WORK/out" && printf '%s\n' *) >&2
-  echo "test-flatten-release: the flattened tree does not hold exactly the seven artifacts plus SHA256SUMS" >&2
+  echo "test-flatten-release: the flattened tree does not hold exactly the eight artifacts plus SHA256SUMS" >&2
   exit 1
 }
 [[ ! -e "$WORK/out/SHA256SUMS.sig" ]] || { echo "test-flatten-release: a per-platform signature leaked into the tree" >&2; exit 1; }
 # The manifest names every artifact once, in coreutils form, and nothing else.
-[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "7" ]] || {
+[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "8" ]] || {
   cat "$WORK/out/SHA256SUMS" >&2
-  echo "test-flatten-release: SHA256SUMS does not hold seven entries" >&2
+  echo "test-flatten-release: SHA256SUMS does not hold eight entries" >&2
   exit 1
 }
 grep -vqE '^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$' "$WORK/out/SHA256SUMS" && {
@@ -77,6 +79,10 @@ grep -q "  SHA256SUMS$" "$WORK/out/SHA256SUMS" && { echo "test-flatten-release: 
 (cd "$WORK/out" && sha256sum -c --quiet SHA256SUMS) || { echo "test-flatten-release: SHA256SUMS does not verify" >&2; exit 1; }
 cmp -s "$WORK/staging/release-$VER-linux-x86_64/jk-engine-$VER.jar" "$WORK/out/jk-engine-$VER.jar" || {
   echo "test-flatten-release: the engine jar is not the linux-x86_64 one" >&2
+  exit 1
+}
+cmp -s "$WORK/staging/release-$VER-linux-x86_64/jk-$VER.jar" "$WORK/out/jk-$VER.jar" || {
+  echo "test-flatten-release: the JVM client jar is not the linux-x86_64 one" >&2
   exit 1
 }
 
@@ -107,6 +113,15 @@ grep -q "release-$VER-macos-x86_64/jk-engine-$VER.jar differs from" "$WORK/last.
   echo "test-flatten-release: the differing engine jar was not named" >&2
   exit 1
 }
+
+# ---- a JVM client jar whose bytes differ, or that linux-x86_64 never built -------------------
+stage "$WORK/staging"
+printf 'different client bytes\n' >"$WORK/staging/release-$VER-macos-aarch64/jk-$VER.jar"
+assert_refused "$WORK/staging" "the platforms built different JVM clients"
+
+stage "$WORK/staging"
+rm -f "$WORK/staging/release-$VER-linux-x86_64/jk-$VER.jar"
+assert_refused "$WORK/staging" "the linux-x86_64 build did not produce the JVM client jar"
 
 # ---- two trees carrying one name ------------------------------------------------------------
 stage "$WORK/staging"

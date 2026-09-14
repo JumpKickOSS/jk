@@ -13,6 +13,7 @@
 # The version is part of every artifact name, so a signed manifest copied from another
 # release directory cannot name what an installer asks for.
 # jk-engine-<version>.jar
+# jk-<version>.jar (the JVM client: every host a JDK 25 runs on and no native client is hosted for)
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
 # The ../latest/ pointer (LATEST, LATEST.sig, VERSION) is the caller's job: scripts/sign-latest-pointer.sh.
@@ -88,6 +89,14 @@ if [[ -z "$engine" ]]; then
   exit 2
 fi
 cp "$engine" "$OUT/jk-engine-${VERSION}.jar"
+
+# The JVM client jar, under its shipped name already (the dist script drops the assembly classifier).
+client_jar="$DIST/lib/jk-${VERSION}.jar"
+if [[ ! -f "$client_jar" ]]; then
+  echo "assemble-release-dir: no JVM client jar at $client_jar (jk build writes it from the CLI assembly)" >&2
+  exit 2
+fi
+cp "$client_jar" "$OUT/jk-${VERSION}.jar"
 
 # SHA256SUMS (coreutils format: hash two spaces name). The file list is fixed before the manifest
 # exists, so the manifest never names itself.

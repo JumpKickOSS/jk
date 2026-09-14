@@ -11,7 +11,11 @@ import org.jspecify.annotations.Nullable;
  */
 final class Argv0 {
 
-    /** Test seam: overrides the detected program name. Hidden, never documented. */
+    /**
+     * Overrides the detected program name. A test seam, and what the JVM client's launcher
+     * passes ({@code -Djk.argv0=$0}): on a JVM the process command is {@code java}, so a
+     * {@code jkx} link to the launcher would otherwise never dispatch.
+     */
     static final String OVERRIDE_PROPERTY = "jk.argv0";
 
     private Argv0() {}

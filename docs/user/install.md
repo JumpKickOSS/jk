@@ -16,6 +16,11 @@ The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
 
+Native clients are hosted for Linux and macOS on x86_64 and aarch64, and for Windows on
+x86_64. Every other host — macOS on Intel, Windows on ARM, Linux on ARM or a Raspberry Pi,
+Solaris, FreeBSD, anything else a JDK 25 runs on — gets the [JVM client](#the-jvm-client) from
+the same installers.
+
 Remote installs authenticate the exact `SHA256SUMS` bytes with the built-in RSA-3072 key,
 require one exact checksum entry, and hash the archive before replacing or executing anything.
 Unix needs stock-compatible OpenSSL; Windows uses .NET RSA in PowerShell 5.1. Positional local
@@ -33,7 +38,8 @@ uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and Powe
 itself only with `-SetExecutionPolicy` or `JK_SET_EXECUTION_POLICY=1`, because a persistent
 policy change is nothing an uninstall reverts. Group Policy that locks the policy is reported
 with a note — ask an admin. Windows on ARM64 installs the `windows-x86_64` build, which runs
-under x64 emulation; no `windows-aarch64` release exists.
+under x64 emulation; no `windows-aarch64` release exists. `JK_CLIENT=jvm` installs the [JVM
+client](#the-jvm-client) on an ARM64 JDK instead.
 
 Local dogfood from this repository needs a jk to build it, and no Windows client is hosted yet;
 [releases](../contributors/releases.md#platforms-without-a-hosted-client) says how the first one is
@@ -48,6 +54,44 @@ released natives are signed).
 Self-update of an installed binary: `jk self update` (verifies the release). Release
 layout and signing: [contributor releases](../contributors/releases.md). Reporting a
 signature or install defect: [Security](security.md).
+
+## The JVM client
+
+jk's client is a plain JVM program; the native binary is that program compiled ahead of time
+for the hosts a release builds it for. On any other host the installers install the program
+itself: `jk-<version>.jar`, one platform-neutral jar published beside the native clients and
+verified against the same signed `SHA256SUMS`, plus the engine jar. `install.sh` picks it
+whenever `uname` names a host no native client is hosted for; `install.ps1` picks it on
+`JK_CLIENT=jvm` (or `-Jvm`). `JK_CLIENT=jvm` asks for it on a hosted platform too;
+`JK_CLIENT=native` refuses to fall back.
+
+```bash
+# Linux on ARM, macOS on Intel, FreeBSD, Solaris, … — the same command
+curl -fsSL https://jumpkick.build/install.sh | bash
+```
+
+```powershell
+# Windows on ARM64, on an ARM64 JDK
+$env:JK_CLIENT = "jvm"; irm https://jumpkick.build/install.ps1 | iex
+```
+
+What lands is the jar under `~/.jk/lib/jk/jk-<version>.jar`, the engine under
+`~/.jk/lib/jk-engine/` as always, and a launcher on the PATH in place of the binary: `~/.jk/bin/jk`
+(POSIX `sh`) or `%USERPROFILE%\.jk\bin\jk.bat`. `jkx` comes with it. Everything else — `jk
+activate`, the engine, `jk self update` — is the same; the update replaces the jar and rewrites
+the launcher instead of swapping a binary.
+
+**You bring the JDK.** jk downloads JDKs only for hosts the JDK feed covers, and a host on this
+path is by definition one it does not. The installer needs a full JDK (not a JRE) of **25 or
+newer**, found as `JK_JAVA_HOME`, else `JAVA_HOME`, else `java` on the PATH; it refuses anything
+older before it downloads or writes anything. The launcher looks in the same order, except that
+the JDK the installer verified ranks above `JAVA_HOME`: jk's own shell hook points `JAVA_HOME` at
+the current project's JDK, which may be older than the release the client is compiled for. The
+build engine runs on that same JDK unless `[toolchain] jdk` in `~/.jk/config.toml` (or
+`JK_ENGINE_JDK`) names another. `JK_CLIENT_OPTS` adds JVM flags to the client's launch.
+
+A JVM starts slower than a native binary — expect a few hundred milliseconds per command rather
+than tens — and everything after that is the same engine doing the same work.
 
 ## On-disk layout
 
@@ -109,6 +153,9 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for forked workers (default **500** ms, max 5000) |
 | `JK_M2_INTEGRATION` | `false` skips the Maven local repo for third-party jars (same as `[m2] integration = false`) |
 | `JK_M2_INSTALL` | `false` keeps `jk install` under `JK_STORE_DIR/repos/jk-local` instead of the Maven local repo (same as `[m2] install = false`) |
+| `JK_CLIENT` | Installer only: `native` or `jvm`. Unset picks the native client where one is hosted and the [JVM client](#the-jvm-client) elsewhere |
+| `JK_JAVA_HOME` | The JDK the JVM client (and, by default, its engine) runs on; the launcher checks it before the JDK it was installed with, `JAVA_HOME`, and the PATH |
+| `JK_CLIENT_OPTS` | Extra JVM flags for the JVM client's own launch (the engine's are `JK_JVM_ARGS`) |
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; passed to the resident engine |
 
 Every root override must be an absolute path; shell `~` expansion does not occur inside an
@@ -186,7 +233,7 @@ them — run `jk activate` to hook a newly installed shell.
 |-----|------|
 | `https://jumpkick.build/install.sh` | Installer (Linux / macOS) |
 | `https://jumpkick.build/install.ps1` | Installer (Windows / PowerShell) |
-| `https://jumpkick.build/releases/` | Native client + engine jar |
+| `https://jumpkick.build/releases/` | Native clients, the JVM client jar, and the engine jar |
 | `https://jumpkick.build/repo/` | First-party Maven repo (workers, `cc.jumpkick.*`) |
 
 First-party coordinates never resolve from Central — [Repositories](repositories.md).

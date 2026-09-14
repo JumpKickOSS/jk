@@ -8,12 +8,14 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontDetect;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.JkVersion;
@@ -31,6 +33,7 @@ import cc.jumpkick.wire.EnginePaths;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -65,9 +68,73 @@ public final class SelfCommand extends GroupCommand {
         return List.of(
                 new UpdateSub(),
                 new MaterializeSub(),
+                new WriteLauncherSub(),
                 new RetireOldEnginesSub(),
                 new SetupTerminalSub(),
                 new SelfNukeCommand());
+    }
+
+    /**
+     * {@code jk self write-launcher [--jar <path>]} — hidden install-time seam for the JVM client:
+     * write {@code bin/jk} ({@code bin/jk.bat}) starting this JVM on the fat jar, and point
+     * {@code jkx} at it. The installers run it as {@code java -jar <jar> self write-launcher} right
+     * after placing the jar, so the JVM that ran the installer's version check is the one the
+     * launcher bakes in, and the launcher text has one author ({@link JvmClientInstall}). With no
+     * {@code --jar}, the jar is the one this process runs from.
+     */
+    public static final class WriteLauncherSub implements CliCommand {
+
+        @Override
+        public String name() {
+            return "write-launcher";
+        }
+
+        @Override
+        public String description() {
+            return "Write the JVM client's launcher under <home>/bin";
+        }
+
+        @Override
+        public boolean hidden() {
+            return true;
+        }
+
+        @Override
+        public List<Opt> options() {
+            return List.of(Opt.value("<JAR>", "The client jar the launcher runs (default: this one).", "--jar"));
+        }
+
+        @Override
+        public int run(Invocation in) throws Exception {
+            Optional<Path> jar =
+                    in.value("jar").map(Path::of).or(JvmClient::jar).or(WriteLauncherSub::ownJar);
+            if (jar.isEmpty() || !Files.isRegularFile(jar.get())) {
+                CommandWedge.printFail(
+                        "Self",
+                        "no client jar to write a launcher for — run `java -jar jk-" + JkVersion.VERSION
+                                + ".jar self write-launcher`, or pass --jar");
+                return Exit.USAGE;
+            }
+            Path launcher = JvmClientInstall.writeLauncher(
+                    JkDirs.binDir(), jar.get().toAbsolutePath(), JvmClientInstall.runningJava(), Os.isWindows());
+            CommandWedge.printOk(
+                    "Self",
+                    "wrote " + launcher + " — jk " + JkVersion.VERSION + " on " + JvmClientInstall.runningJava()
+                            + " over " + jar.get().toAbsolutePath());
+            return 0;
+        }
+
+        /** The jar this class was loaded from, when it was a jar. */
+        static Optional<Path> ownJar() {
+            try {
+                var source = JvmClientInstall.class.getProtectionDomain().getCodeSource();
+                if (source == null) return Optional.empty();
+                Path p = Path.of(source.getLocation().toURI());
+                return p.getFileName().toString().endsWith(".jar") ? Optional.of(p) : Optional.empty();
+            } catch (RuntimeException | URISyntaxException e) {
+                return Optional.empty();
+            }
+        }
     }
 
     /** Hidden installer seam that removes only engines from the superseded platform default. */
@@ -301,10 +368,18 @@ public final class SelfCommand extends GroupCommand {
                 return 0;
             }
 
-            Fetched fetched = fetchAndMaterialize(http, base, target, install, cas);
-            EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
-            CommandWedge.printOk(
-                    "Self", target + " installed (" + fetched.engine().engineJar() + ")");
+            if (JvmClient.installed()) {
+                // The install the launcher describes: a new jar under <home>/lib/jk and a launcher
+                // rewritten over it, on the JVM this update runs on. Never a native binary — the
+                // host may have none, and a PATH client the launcher does not name is a second jk.
+                EngineInstall.Materialized engine = fetchAndMaterializeJvm(http, base, target, install, cas);
+                CommandWedge.printOk("Self", target + " installed (" + engine.engineJar() + ")");
+            } else {
+                Fetched fetched = fetchAndMaterialize(http, base, target, install, cas);
+                EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
+                CommandWedge.printOk(
+                        "Self", target + " installed (" + fetched.engine().engineJar() + ")");
+            }
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.
@@ -346,7 +421,44 @@ public final class SelfCommand extends GroupCommand {
         static Path pathClient(Path binDir) {
             Path exe = binDir.resolve("jk.exe");
             if (Files.isRegularFile(exe)) return exe;
+            Path bat = binDir.resolve("jk.bat");
+            if (Files.isRegularFile(bat)) return bat;
             return binDir.resolve("jk");
+        }
+
+        /**
+         * The JVM client's update: the engine jar and {@code jk-<version>.jar}, both verified
+         * against the signed sums, the engine materialized, the client jar placed under {@code
+         * <home>/lib/jk} and the launcher rewritten over it.
+         */
+        static EngineInstall.Materialized fetchAndMaterializeJvm(
+                Http http, URI base, String version, EngineInstall install, Cas cas)
+                throws IOException, InterruptedException {
+            URI dir = URI.create(base + "/" + version + "/");
+            byte[] sums = get(http, dir.resolve("SHA256SUMS"), "release checksums");
+            var verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
+            byte[] sig = get(http, dir.resolve("SHA256SUMS.sig"), "release signature");
+            verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
+
+            String jarName = "jk-engine-" + version + ".jar";
+            byte[] jar = verified(get(http, dir.resolve(jarName), "engine jar"), sums, jarName);
+            String clientName = jvmClientArtifact(new String(sums, StandardCharsets.UTF_8), version);
+            byte[] client = verified(get(http, dir.resolve(clientName), "client jar"), sums, clientName);
+
+            String jarSha = Hashing.sha256Hex(jar);
+            cas.put(jar, jarSha);
+            EngineInstall.Materialized engine = install.materialize(version, cas, jarSha);
+            Path placed = JvmClientInstall.installJar(client, JvmClientInstall.libDir(), version);
+            JvmClientInstall.writeLauncher(JkDirs.binDir(), placed, JvmClientInstall.runningJava(), Os.isWindows());
+            return engine;
+        }
+
+        /** {@code jk-<version>.jar} when the sums list it — the platform-neutral client. */
+        static String jvmClientArtifact(String sumsText, String version) throws IOException {
+            String jar = JvmClientInstall.jarName(version);
+            if (sumHas(sumsText, jar)) return jar;
+            throw new IOException("release SHA256SUMS has no " + jar
+                    + " — this release ships no JVM client; refusing to install an unverifiable one");
         }
 
         static Fetched fetchAndMaterialize(Http http, URI base, String version, EngineInstall install, Cas cas)

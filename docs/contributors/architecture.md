@@ -274,7 +274,7 @@ the dispatcher (selective's re-entry, the completion scripts' command table) tak
 constructor, so no verb imports the dispatcher's package (`cc.jumpkick.cli` itself) and the
 dispatcher is outside every cycle.
 
-Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engine-<version>.jar`.
+Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engine-<version>.jar` + `lib/jk-<version>.jar` (the JVM client, for hosts with no native `jk`).
 
 ## Dependency resolution
 

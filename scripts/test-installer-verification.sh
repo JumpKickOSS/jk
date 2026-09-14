@@ -262,6 +262,101 @@ grep -q "could not resolve the latest jk version from https://fixture/releases-m
   exit 1
 }
 
+# ---- the JVM client ---------------------------------------------------------------------------
+#
+# A host with no native client installs jk-<version>.jar on the user's JDK: the jar and the engine
+# jar are both verified against the signed sums, the jar lands under lib/jk, and the launcher is
+# written by the jar itself (`java -jar … self write-launcher`). The fixture `java` stands in for a
+# JDK 25: it answers -version, java.home, --version, and writes bin/jk when asked to.
+cat >"$WORK/bin/java" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${FIXTURE_JAVA_LOG:-}" ]]; then printf '%s\n' "$*" >>"$FIXTURE_JAVA_LOG"; fi
+case " $* " in
+  *" -XshowSettings:properties "*) printf '    java.home = %s\n' "$FIXTURE_JAVA_HOME" >&2; printf 'openjdk version "%s" 2025-09-16\n' "${FIXTURE_JAVA_VERSION:-25.0.1}" >&2 ;;
+  *" -version "*) printf 'openjdk version "%s" 2025-09-16\n' "${FIXTURE_JAVA_VERSION:-25.0.1}" >&2 ;;
+  *" --version "*) printf 'jk 1.0.0\n' ;;
+  *" self write-launcher "*) mkdir -p "$JK_HOME/bin"; printf '#!/bin/sh\nexit 0\n' >"$JK_HOME/bin/jk"; chmod +x "$JK_HOME/bin/jk" ;;
+esac
+exit 0
+SH
+chmod +x "$WORK/bin/java"
+mkdir -p "$WORK/jdk/bin"
+touch "$WORK/jdk/bin/javac" && chmod +x "$WORK/jdk/bin/javac"
+# A fixture uname: a host neither installer table knows, so the installer must choose the JVM client.
+cat >"$WORK/bin/uname" <<'SH'
+#!/usr/bin/env sh
+case "${1:-}" in -s) echo SunOS ;; -m) echo sun4v ;; *) echo SunOS ;; esac
+SH
+chmod +x "$WORK/bin/uname"
+
+JVM_JAR="jk-1.0.0.jar"
+ENGINE_JAR="jk-engine-1.0.0.jar"
+printf 'PK fixture client jar\n' >"$RELEASE/$JVM_JAR"
+printf 'PK fixture engine jar\n' >"$RELEASE/$ENGINE_JAR"
+jvm_hash="$(openssl dgst -sha256 "$RELEASE/$JVM_JAR" | awk '{print tolower($NF)}')"
+engine_hash="$(openssl dgst -sha256 "$RELEASE/$ENGINE_JAR" | awk '{print tolower($NF)}')"
+write_pointer 1.0.0
+write_evidence "$jvm_hash  $JVM_JAR"$'\n'"$engine_hash  $ENGINE_JAR"$'\n'
+
+# JAVA_HOME / JK_JAVA_HOME are blanked so the fixture `java` on the PATH is the JDK the installer finds.
+run_jvm_installer() {
+  run_installer "$1" JAVA_HOME= JK_JAVA_HOME= FIXTURE_JAVA_HOME="$WORK/jdk" FIXTURE_JAVA_LOG="$WORK/java-calls" "${@:2}"
+}
+
+# An unhosted host, nothing asked for: the JVM client, the jar under lib/jk, the engine jar
+# materialized through the client, and the launcher written by the jar.
+rm -f "$WORK/java-calls"
+run_jvm_installer "$WORK/home-jvm" || { cat "$WORK/last-install.log" >&2; echo "JVM install on an unhosted host failed" >&2; exit 1; }
+cmp -s "$RELEASE/$JVM_JAR" "$WORK/home-jvm/lib/jk/$JVM_JAR" || { echo "the client jar did not land under lib/jk" >&2; exit 1; }
+[[ -x "$WORK/home-jvm/bin/jk" ]] || { echo "no launcher was written" >&2; exit 1; }
+grep -q -- "-jar $WORK/home-jvm/lib/jk/$JVM_JAR self write-launcher" "$WORK/java-calls" || {
+  cat "$WORK/java-calls" >&2; echo "the launcher was not written through the installed jar" >&2; exit 1; }
+grep -q "installing the JVM client" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the fallback was not announced" >&2; exit 1; }
+
+# JK_CLIENT=native on the same host refuses instead of falling back.
+if run_jvm_installer "$WORK/home-jvm-refused" JK_CLIENT=native; then
+  cat "$WORK/last-install.log" >&2; echo "JK_CLIENT=native unexpectedly installed on an unhosted host" >&2; exit 1
+fi
+grep -q "no native jk client for SunOS/sun4v" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the native refusal did not name the host" >&2; exit 1; }
+[[ ! -e "$WORK/home-jvm-refused/bin/jk" ]] || { echo "the refusal installed something" >&2; exit 1; }
+
+# A JDK too old, and a JRE: refused before anything is downloaded or written.
+if run_jvm_installer "$WORK/home-jvm-old" FIXTURE_JAVA_VERSION=21.0.4; then
+  cat "$WORK/last-install.log" >&2; echo "a Java 21 unexpectedly installed the JVM client" >&2; exit 1
+fi
+grep -q "is Java 21; the JVM client needs a JDK 25 or newer" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the old JDK was not refused by version" >&2; exit 1; }
+[[ ! -e "$WORK/home-jvm-old" ]] || { echo "an old JDK still wrote the home" >&2; exit 1; }
+mkdir -p "$WORK/jre/bin"
+if run_jvm_installer "$WORK/home-jvm-jre" FIXTURE_JAVA_HOME="$WORK/jre"; then
+  cat "$WORK/last-install.log" >&2; echo "a JRE unexpectedly installed the JVM client" >&2; exit 1
+fi
+grep -q "is a JRE (no bin/javac)" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the JRE was not refused" >&2; exit 1; }
+
+# The engine jar is evidence-checked like the client jar: a tampered engine jar is refused whole.
+printf 'tampered' >>"$RELEASE/$ENGINE_JAR"
+if run_jvm_installer "$WORK/home-jvm-tampered-engine"; then
+  cat "$WORK/last-install.log" >&2; echo "a tampered engine jar unexpectedly installed" >&2; exit 1
+fi
+grep -q "checksum mismatch for $ENGINE_JAR" "$WORK/last-install.log" || { cat "$WORK/last-install.log" >&2; echo "the tampered engine jar was not named" >&2; exit 1; }
+[[ ! -e "$WORK/home-jvm-tampered-engine/bin/jk" ]] || { echo "a tampered engine jar still installed the launcher" >&2; exit 1; }
+printf 'PK fixture engine jar\n' >"$RELEASE/$ENGINE_JAR"
+
+# A local jar beside its engine jar installs the JVM client from the dist layout, no network.
+mkdir -p "$WORK/dist/lib"
+cp "$RELEASE/$JVM_JAR" "$WORK/dist/lib/$JVM_JAR"
+cp "$RELEASE/$ENGINE_JAR" "$WORK/dist/lib/$ENGINE_JAR"
+rm -f "$WORK/java-calls"
+if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" JAVA_HOME= JK_JAVA_HOME= FIXTURE_JAVA_HOME="$WORK/jdk" FIXTURE_JAVA_LOG="$WORK/java-calls" \
+    JK_HOME="$WORK/home-jvm-local" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    bash "$WORK/install.sh" "$WORK/dist/lib/$JVM_JAR" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2; echo "a local JVM client install failed" >&2; exit 1
+fi
+cmp -s "$RELEASE/$JVM_JAR" "$WORK/home-jvm-local/lib/jk/$JVM_JAR" || { echo "the local jar did not land under lib/jk" >&2; exit 1; }
+grep -q -- "--version" "$WORK/java-calls" || { echo "a local jar was not asked its version" >&2; exit 1; }
+rm -f "$WORK/bin/uname" "$WORK/bin/java" "$RELEASE/$JVM_JAR" "$RELEASE/$ENGINE_JAR"
+write_evidence
+
 # `curl | bash` executes whatever has arrived, so a download cut short must run nothing. Every
 # strict prefix of the installer (the full file minus its final newline is the complete script)
 # runs against its own seeded prior install: none may print, park or replace the prior client,

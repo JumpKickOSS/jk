@@ -5,17 +5,24 @@
 # Usage:
 #   curl -fsSL https://jumpkick.build/install.sh | bash
 #   wget -qO- https://jumpkick.build/install.sh | bash
-#   bash install.sh [/path/to/jk[.xz|.zip]]
+#   bash install.sh [/path/to/jk[.xz|.zip] | /path/to/lib/jk-<version>.jar]
 #
 # Environment variables:
 #   JK_ARCHIVE_URL   Override the archive URL to download. JK_VERSION is required
 #                    with this override; verification evidence still comes from
-#                    JK_RELEASES_URL/<version>/. Supports .xz and .zip.
+#                    JK_RELEASES_URL/<version>/. Supports .xz, .zip and .jar.
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
 #   JK_HOME          jk's home directory. Default $HOME/.jk; everything jk
 #                    owns lives under it, on every platform. The client is
 #                    installed to $JK_HOME/bin.
+#   JK_CLIENT        `native` or `jvm`. Unset: the native client where one is
+#                    hosted (Linux and macOS on x86_64/aarch64), else the JVM
+#                    client — jk-<version>.jar on a JDK 25+ you provide — for
+#                    every other OS and architecture. `jvm` asks for the JVM
+#                    client on a hosted platform too.
+#   JK_JAVA_HOME     The JDK the JVM client runs on (else JAVA_HOME, else `java`
+#                    on the PATH). A JDK, 25 or newer.
 #
 # Everything executable lives in main(), invoked by the last line of the file. `curl | bash`
 # runs a script as it streams, so a download cut short must parse as an unfinished function
@@ -157,22 +164,71 @@ main() {
     fi
   fi
 
-  # Release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself
-  # uses (HostPlatform): linux|macos × x86_64|aarch64. Windows uses
-  # install.ps1 (irm|iex); this script never runs there.
-  detect_target() {
+  # Native release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself uses
+  # (HostPlatform): linux|macos × x86_64|aarch64. Windows uses install.ps1 (irm|iex); this script
+  # never runs there. Prints nothing for a host with no native client, which installs the JVM
+  # client instead.
+  native_target() {
     local os arch
     case "$(uname -s)" in
       Linux)  os="linux" ;;
       Darwin) os="macos" ;;
-      *) die "unsupported OS: $(uname -s) (this script supports Linux and macOS)" ;;
+      *) return 1 ;;
     esac
     case "$(uname -m)" in
       x86_64|amd64) arch="x86_64" ;;
       aarch64|arm64) arch="aarch64" ;;
-      *) die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)" ;;
+      *) return 1 ;;
     esac
     printf '%s-%s' "$os" "$arch"
+  }
+
+  # Which client to install: `native` or `jvm`. JK_CLIENT decides; unset, the host decides — the
+  # native client where one is hosted, the JVM client everywhere else (any OS and architecture a
+  # JDK 25 runs on: macOS on Intel, Windows on ARM, Linux on ARM or a Raspberry Pi, Solaris,
+  # FreeBSD, …). A local file or an explicit URL names its own kind by extension.
+  CLIENT="${JK_CLIENT:-}"
+  case "$CLIENT" in
+    ""|native|jvm) ;;
+    *) die "JK_CLIENT must be 'native' or 'jvm' (got '$CLIENT')" ;;
+  esac
+
+  # The feature version `java -version` reports: `"25.0.1"` is 25, `"1.8.0_392"` is 8.
+  java_major() {
+    "$1" -version 2>&1 | awk -F'"' '/ version "/ { split($2, v, /[._]/); if (v[1] == "1") print v[2]; else print v[1]; exit }'
+  }
+
+  # The `java.home` of a java executable, however it was reached (a PATH symlink, a shim).
+  java_home_of() {
+    "$1" -XshowSettings:properties -version 2>&1 | awk -F' = ' '/^ *java\.home = / { print $2; exit }'
+  }
+
+  # The JDK the JVM client runs on: JK_JAVA_HOME, else JAVA_HOME, else `java` on the PATH — a
+  # full JDK (the build engine forks javac from it) of at least 25, the release this client is
+  # compiled for. jk installs JDKs itself only on the hosts the JDK feed covers, and a host on this
+  # path is by definition one it does not, so the JDK is the user's to provide.
+  find_java() {
+    local home
+    if [ -n "${JK_JAVA_HOME:-}" ]; then
+      JAVA="$JK_JAVA_HOME/bin/java"
+    elif [ -n "${JAVA_HOME:-}" ]; then
+      JAVA="$JAVA_HOME/bin/java"
+    elif have java; then
+      JAVA="$(command -v java)"
+    else
+      die "the JVM client needs a JDK 25 or newer: set JAVA_HOME (or JK_JAVA_HOME) to one and re-run."
+    fi
+    [ -x "$JAVA" ] || die "no java executable at $JAVA — set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run."
+    JAVA_MAJOR="$(java_major "$JAVA")"
+    case "$JAVA_MAJOR" in
+      ''|*[!0-9]*) die "could not read a Java version from '$JAVA -version'; set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run." ;;
+    esac
+    [ "$JAVA_MAJOR" -ge 25 ] \
+      || die "$JAVA is Java $JAVA_MAJOR; the JVM client needs a JDK 25 or newer — set JAVA_HOME (or JK_JAVA_HOME) to one and re-run."
+    home="$(java_home_of "$JAVA")"
+    [ -n "$home" ] && [ ! -x "$home/bin/javac" ] \
+      && die "$home is a JRE (no bin/javac); jk's build engine needs a full JDK 25 or newer — set JAVA_HOME (or JK_JAVA_HOME) to one and re-run."
+    return 0
   }
 
   # Archive format for auto URL resolution: Linux/macOS releases are .xz
@@ -207,8 +263,8 @@ main() {
   cleanup() { rm -rf "$TMPDIR_JK"; }
   trap cleanup EXIT
 
-  # Sets decompress() based on the file/URL extension.
-  # Plain binary (no .xz/.zip — the local dist flow) is installed with cp.
+  # Sets decompress() based on the file/URL extension, and CLIENT for a .jar: the JVM client is
+  # a jar and nothing else is. Plain binary (no .xz/.zip — the local dist flow) is installed with cp.
   infer_decompress() {
     case "$1" in
       *.xz)
@@ -218,7 +274,11 @@ main() {
         have unzip || die "'$1' is a .zip file but unzip is not installed."
         # Single-entry archive: -p streams the binary to stdout.
         decompress() { unzip -p "$1" > "$2"; } ;;
+      *.jar)
+        CLIENT="jvm"
+        decompress() { cp "$1" "$2"; } ;;
       *)
+        CLIENT="native"
         decompress() { cp "$1" "$2"; } ;;
     esac
   }
@@ -232,8 +292,20 @@ main() {
     ARCHIVE_URL="$JK_ARCHIVE_URL"
     infer_decompress "${ARCHIVE_URL%%\?*}"
   else
-    TARGET="$(detect_target)"
-    EXT="$(detect_ext)"
+    if [ "$CLIENT" != "jvm" ]; then
+      if TARGET="$(native_target)"; then
+        CLIENT="native"
+      elif [ "$CLIENT" = "native" ]; then
+        die "no native jk client for $(uname -s)/$(uname -m) (hosted: Linux and macOS on x86_64 and aarch64);" \
+            "unset JK_CLIENT to install the JVM client instead."
+      else
+        CLIENT="jvm"
+        note "no native jk client for $(uname -s)/$(uname -m); installing the JVM client (jk-<version>.jar on your JDK)"
+      fi
+    fi
+    if [ "$CLIENT" = "native" ]; then
+      EXT="$(detect_ext)"
+    fi
     if [ -n "${JK_VERSION:-}" ]; then
       VERSION="$JK_VERSION"
     else
@@ -251,9 +323,14 @@ main() {
                "refusing a rolled-back pointer (set JK_VERSION to install a specific release)."
     fi
     [ -n "$VERSION" ] || die "could not resolve the latest jk version from $RELEASES_URL/latest/LATEST"
-    ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET-$VERSION.$EXT"
+    if [ "$CLIENT" = "jvm" ]; then
+      ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$VERSION.jar"
+    else
+      ARCHIVE_URL="$RELEASES_URL/$VERSION/jk-$TARGET-$VERSION.$EXT"
+    fi
     infer_decompress "$ARCHIVE_URL"
   fi
+  [ "$CLIENT" = "jvm" ] && find_java
 
   if [ -z "$LOCAL_FILE" ]; then
     case "$VERSION" in
@@ -282,28 +359,44 @@ main() {
 
     verify_signature "$TMPDIR_JK/SHA256SUMS" "$TMPDIR_JK/SHA256SUMS.sig" "release"
 
-    if ! EXPECTED_SHA="$(awk -v wanted="$ARTIFACT_NAME" '
-      {
-        hash = substr($0, 1, 64)
-        sep = substr($0, 65, 2)
-        name = substr($0, 67)
-        if (length(hash) != 64 || hash !~ /^[0-9A-Fa-f]+$/ || sep != "  " ||
-            name !~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ || seen[name]++) bad = 1
-        if (name == wanted) {
-          matches++
-          found = tolower(hash)
+    # verify_artifact <file> <name> — <file> hashes to the one exact SHA256SUMS entry for <name>, or die.
+    verify_artifact() {
+      local file="$1" name="$2" expected actual
+      if ! expected="$(awk -v wanted="$name" '
+        {
+          hash = substr($0, 1, 64)
+          sep = substr($0, 65, 2)
+          entry = substr($0, 67)
+          if (length(hash) != 64 || hash !~ /^[0-9A-Fa-f]+$/ || sep != "  " ||
+              entry !~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ || seen[entry]++) bad = 1
+          if (entry == wanted) {
+            matches++
+            found = tolower(hash)
+          }
         }
-      }
-      END {
-        if (bad || matches != 1) exit 1
-        print found
-      }
-    ' "$TMPDIR_JK/SHA256SUMS")"; then
-      die "release SHA256SUMS is malformed, duplicated, or has no exact entry for $ARTIFACT_NAME."
+        END {
+          if (bad || matches != 1) exit 1
+          print found
+        }
+      ' "$TMPDIR_JK/SHA256SUMS")"; then
+        die "release SHA256SUMS is malformed, duplicated, or has no exact entry for $name."
+      fi
+      actual="$(openssl dgst -sha256 "$file" | awk '{print tolower($NF)}')"
+      [ "$actual" = "$expected" ] \
+        || die "release archive checksum mismatch for $name; refusing the download."
+    }
+    verify_artifact "$ARCHIVE_FILE" "$ARTIFACT_NAME"
+
+    # The JVM client cannot fall back to the native client's self-fetch semantics being taken
+    # for granted: the engine jar is fetched here, from the same frozen version directory and
+    # verified against the same signed sums, and materialized below like a local dist's.
+    if [ "$CLIENT" = "jvm" ]; then
+      ENGINE_NAME="jk-engine-$VERSION.jar"
+      ENGINE_JAR="$TMPDIR_JK/$ENGINE_NAME"
+      download "$RELEASE_VERSION_URL/$ENGINE_NAME" "$ENGINE_JAR" \
+        || die "failed to download $RELEASE_VERSION_URL/$ENGINE_NAME"
+      verify_artifact "$ENGINE_JAR" "$ENGINE_NAME"
     fi
-    ACTUAL_SHA="$(openssl dgst -sha256 "$ARCHIVE_FILE" | awk '{print tolower($NF)}')"
-    [ "$ACTUAL_SHA" = "$EXPECTED_SHA" ] \
-      || die "release archive checksum mismatch for $ARTIFACT_NAME; refusing the download."
   fi
 
   # Prefer a ~ display when the install dir lives under $HOME (uv-style).
@@ -323,24 +416,48 @@ main() {
   }
 
   JK_BIN="$INSTALL_DIR/jk"
-  # Park a previous client so a still-running `jk` keeps its inode; GC removes .old later.
-  park_if_present "$JK_BIN"
-  decompress "$ARCHIVE_FILE" "$JK_BIN" \
-    || die "failed to install jk"
-  chmod +x "$JK_BIN"
-
-  # `jkx` — uvx-style alias for `jk tool run`, shipped as a real executable so
-  # `#!/usr/bin/env jkx` shebangs and CI steps work without shell integration.
-  # A hardlink to the jk binary (argv[0] dispatch; zero extra disk); `ln -f`
-  # also refreshes a stale jkx left by a previous install. Falls back to an
-  # exec shim when the filesystem refuses hardlinks.
   JKX_BIN="$INSTALL_DIR/jkx"
-  park_if_present "$JKX_BIN"
-  if ! ln -f "$JK_BIN" "$JKX_BIN" 2>/dev/null; then
-    # shellcheck disable=SC2016 # the `"$@"` is the shim's own text, expanded when the shim runs
-    printf '#!/bin/sh\n# jkx — `jk tool run` launcher (generated by jk; do not edit)\nexec "%s" tool run "$@"\n' "$JK_BIN" > "$JKX_BIN" \
-      || die "failed to install jkx"
-    chmod +x "$JKX_BIN"
+  if [ "$CLIENT" = "jvm" ]; then
+    # The JVM client: the jar under <home>/lib/jk/jk-<version>.jar, and the launcher it runs
+    # through — written by the client itself (`jk self write-launcher`), so the launcher text
+    # has one author and the JDK that passed the version check above is the one it bakes in.
+    # The launcher writes jkx too. A local jar names no version, so the jar is asked.
+    JAR_VERSION="${VERSION:-}"
+    if [ -z "$JAR_VERSION" ]; then
+      JAR_VERSION="$("$JAVA" -jar "$ARCHIVE_FILE" --version 2>/dev/null | awk '$1 == "jk" { print $2; exit }')"
+      [ -n "$JAR_VERSION" ] || die "$LOCAL_FILE does not answer --version like a jk client jar."
+    fi
+    JK_LIB="$JK_HOME_DIR/lib/jk"
+    JK_JAR="$JK_LIB/jk-$JAR_VERSION.jar"
+    mkdir -p "$JK_LIB"
+    { decompress "$ARCHIVE_FILE" "$JK_JAR.tmp" && mv -f "$JK_JAR.tmp" "$JK_JAR"; } \
+      || die "failed to install $JK_JAR"
+    # One client jar: a launcher names exactly one, and an older one left beside it is dead weight.
+    for f in "$JK_LIB"/jk-*.jar; do
+      [ "$f" = "$JK_JAR" ] || rm -f "$f"
+    done
+    "$JAVA" --enable-native-access=ALL-UNNAMED -jar "$JK_JAR" self write-launcher 0<"$TTY_IN" >/dev/null \
+      || die "could not write $JK_BIN (jk self write-launcher failed)"
+    [ -x "$JK_BIN" ] || die "jk self write-launcher wrote no launcher at $JK_BIN"
+  else
+    # Park a previous client so a still-running `jk` keeps its inode; GC removes .old later.
+    park_if_present "$JK_BIN"
+    decompress "$ARCHIVE_FILE" "$JK_BIN" \
+      || die "failed to install jk"
+    chmod +x "$JK_BIN"
+
+    # `jkx` — uvx-style alias for `jk tool run`, shipped as a real executable so
+    # `#!/usr/bin/env jkx` shebangs and CI steps work without shell integration.
+    # A hardlink to the jk binary (argv[0] dispatch; zero extra disk); `ln -f`
+    # also refreshes a stale jkx left by a previous install. Falls back to an
+    # exec shim when the filesystem refuses hardlinks.
+    park_if_present "$JKX_BIN"
+    if ! ln -f "$JK_BIN" "$JKX_BIN" 2>/dev/null; then
+      # shellcheck disable=SC2016 # the `"$@"` is the shim's own text, expanded when the shim runs
+      printf '#!/bin/sh\n# jkx — `jk tool run` launcher (generated by jk; do not edit)\nexec "%s" tool run "$@"\n' "$JK_BIN" > "$JKX_BIN" \
+        || die "failed to install jkx"
+      chmod +x "$JKX_BIN"
+    fi
   fi
 
   # Clear only resident engines positively identified in the superseded platform default.
@@ -349,10 +466,12 @@ main() {
 
   # The engine ships as a single fat jar, jk-engine-<version>.jar (see
   # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
-  # not a second native binary). The live copy is <home>/lib/jk-engine/ — materialized below for local dists;
-  # download installs self-fetch it on first engine spawn.
+  # not a second native binary). The live copy is <home>/lib/jk-engine/ — materialized below for
+  # local dists and JVM installs; native download installs self-fetch it on first engine spawn.
   if [ -n "$LOCAL_FILE" ]; then
     SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
+    # The JVM client jar sits inside lib/ itself, beside the engine jar.
+    [ "$CLIENT" = "jvm" ] && SRC_LIB="$(dirname "$SRC_LIB")"
   fi
 
   # ---- product-lib engine (docs/architecture.md "Versioning") ----------------
@@ -360,17 +479,14 @@ main() {
   # Local dist installs (binary + engine jar together) also install
   # the engine jar under the product lib — through the client itself
   # (`jk self materialize`), which ingests the jar into the CAS first.
-  # Download installs skip this: the client self-fetches its engine jar on first
+  # Native download installs skip this: the client self-fetches its engine jar on first
   # spawn and materializes then. Best-effort by design.
   if [ -n "$LOCAL_FILE" ]; then
     ENGINE_JAR=""
     for f in "$SRC_LIB"/jk-engine-*.jar; do
       [ -f "$f" ] && ENGINE_JAR="$f" && break
     done
-    if [ -n "$ENGINE_JAR" ]; then
-      run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
-        || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
-    else
+    if [ -z "$ENGINE_JAR" ]; then
       # Loud, because the quiet version of this is worse than a failure. A local install with no
       # engine jar beside it leaves the client to self-fetch the RELEASED engine on first spawn:
       # the binary you just built, paired with an engine you did not, and nothing on screen saying
@@ -381,6 +497,12 @@ main() {
           "that directory. Installing the client alone would silently pair it with the released" \
           "engine."
     fi
+  fi
+  if [ -n "${ENGINE_JAR:-}" ]; then
+    run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
+      || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
+  fi
+  if [ -n "$LOCAL_FILE" ]; then
     # Seed root-level nerd-font = "auto"; detection then runs per launch. Never fail install.
     run_jk self setup-terminal >/dev/null 2>&1 \
       || note "terminal setup skipped (run 'jk self setup-terminal' later)"

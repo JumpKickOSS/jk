@@ -165,6 +165,11 @@ The client module is a plain JVM program, and two things run it without a native
   produce a JVM client for the machine it runs on. The tree's own build still links the native
   client, so on a machine with no GraalVM it provisions one (`--yes` answers the offer) rather
   than needing one preinstalled.
+- **The release's JVM client**, `jk-<version>.jar` under `releases/<version>/`, is the CLI
+  module's assembly under its shipped name; `install.sh` / `install.ps1` install it on a host with
+  no native client, and the jar writes its own launcher (`jk self write-launcher`) over the JDK the
+  installer found — see [releases](releases.md#platforms-without-a-hosted-client) and the [user
+  install page](../user/install.md#the-jvm-client).
 - **The published closure**, `cc.jumpkick:jk-cli:<version>` on `jumpkick.build/repo/`, runs from
   any project that names the repository and depends on it: `jk run . -- --version` executes
   `cc.jumpkick.cli.Jk` from the resolved jars, and `jk install` of that project writes a launcher
@@ -297,13 +302,14 @@ keep their keys and stay cached, so the one-time re-run is packaging and verdict
 
 ## Ship layout
 
-JumpKick's ship shape is **native CLI** + **JVM engine** jar + PluginMain workers. `jk build`
-writes it under `target/dist/` (`.jk/after-build-dist.kts`), and `install.sh` installs it on a
-machine with no jk yet:
+JumpKick's ship shape is **native CLI** + **JVM engine** jar + PluginMain workers, plus the
+**JVM client** jar for hosts with no native CLI. `jk build` writes it under `target/dist/`
+(`.jk/after-build-dist.kts`), and `install.sh` installs it on a machine with no jk yet:
 
 ```bash
 jk build --skip-tests
-./install.sh target/dist/jk
+./install.sh target/dist/jk                     # the native client
+./install.sh target/dist/lib/jk-<version>.jar   # the JVM client, on a host with no native one
 ```
 
 ```text
@@ -311,6 +317,7 @@ target/dist/
   jk                         # native CLI
   lib/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
+    jk-<version>.jar         # JVM client assembly (cc.jumpkick.cli.Jk and its closure)
 ```
 
 The release workflow assembles `target/dist` per platform (`scripts/assemble-release-dir.sh`);

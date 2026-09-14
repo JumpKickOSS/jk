@@ -81,12 +81,18 @@ releases/
     jk-windows-x86_64-0.13.3.xz    # self-update (engine inflates; no system xz needed)
     jk-windows-x86_64-0.13.3.zip   # install.ps1 / jk.bat only
     jk-engine-0.13.3.jar
+    jk-0.13.3.jar                  # the JVM client: every host with no native client (install.sh
+                                   # falls back to it; install.ps1 on JK_CLIENT=jvm)
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
 ```
 
 `install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>-<version>.xz`. `jk.bat` /
-`install.ps1` fetch the Windows `.zip`. Every artifact name carries the version: the
+`install.ps1` fetch the Windows `.zip`. On a host with no native client, `install.sh` fetches
+`jk-<version>.jar` and `jk-engine-<version>.jar` instead (so does `install.ps1` on
+`JK_CLIENT=jvm`, and `jk self update` from a JVM install); both are platform-neutral, built by
+every platform job, and `scripts/flatten-release.sh` takes linux-x86_64's copy after checking the
+others are byte-identical. Every artifact name carries the version: the
 manifest is signed but not bound to its directory, so a valid manifest copied from an older
 release into a newer version's directory names only the older artifacts and satisfies no
 request for the newer one. `jk self update` prefers `.xz` on every OS
@@ -173,11 +179,20 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 ### Platforms without a hosted client
 
-jumpkick.build serves clients for **linux-x86_64** and **macos-aarch64**. Linux aarch64, macOS
-x86_64 and Windows x86_64 have no hosted client, so no CI job can bootstrap jk on them: their
-release rows and the Windows product smoke are absent until a first client exists, and
+jumpkick.build serves native clients for **linux-x86_64** and **macos-aarch64**. Linux aarch64,
+macOS x86_64 and Windows x86_64 have no hosted native client, so no CI job can bootstrap jk on
+them: their release rows and the Windows product smoke are absent until a first client exists, and
 `scripts/flatten-release.sh` refuses to publish a tree short of the five clients, so releases stay
 manual until then.
+
+Users on those hosts — and on every host no native client will ever be built for — install the
+**JVM client** instead: `jk-<version>.jar` is the CLI module's assembly (`[application] assembly =
+true` in `clients/cli/jk.toml`), shipped under that name by `.jk/after-build-dist.kts` and
+`scripts/assemble-release-dir.sh`, installed by both installers as `~/.jk/lib/jk/jk-<version>.jar`
+with a launcher (`bin/jk`, `bin/jk.bat`) that `jk self write-launcher` writes over the JDK the
+installer verified ([user install](../user/install.md#the-jvm-client)). It pairs with the engine
+jar of its own version from the same release directory, so the pairing gap the closure on
+`repo/` has does not apply to it.
 
 The first client for a platform is produced by the owner on a machine of that architecture: a
 JDK 25 with GraalVM, this checkout, and a jk to build it — the client module is a plain JVM

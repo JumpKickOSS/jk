@@ -167,6 +167,23 @@ try {
     Remove-Item -LiteralPath $signature -Force
     Assert-Fails "missing signature"
 
+    # ---- the JVM client's JDK check --------------------------------------------------------
+    # The version line `java -version` prints, read the way the POSIX installer reads it: the
+    # feature release, with the 1.x form of Java 8 and older mapped to its minor.
+    Import-InstallerFunction "Get-JavaMajor"
+    $majors = @{
+        'openjdk version "25.0.1" 2025-10-21 LTS' = 25
+        'java version "25" 2025-09-16 LTS' = 25
+        'openjdk version "21.0.4" 2024-07-16' = 21
+        'java version "1.8.0_392"' = 8
+        'openjdk version "17-ea" 2021-09-14' = 17
+    }
+    foreach ($line in $majors.Keys) {
+        $got = Get-JavaMajor $line
+        if ($got -ne $majors[$line]) { throw "Get-JavaMajor '$line' returned '$got', expected $($majors[$line])" }
+    }
+    if ($null -ne (Get-JavaMajor "Picked up JAVA_TOOL_OPTIONS: -Xmx1g")) { throw "Get-JavaMajor read a version from a line that has none" }
+
     # ---- the signed latest-release pointer -------------------------------------------------
     Import-InstallerFunction "Test-ReleaseSignature"
     Import-InstallerFunction "Get-ReleasePointerVersion"

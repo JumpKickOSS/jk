@@ -3,6 +3,9 @@ description = "The CLI (and primary) client for interacting with the JumpKick bu
 
 [application]
 main = "cc.jumpkick.cli.Jk"
+# The fat jar is the client for every host without a native binary: shipped as jk-<version>.jar
+# beside the engine jar, run by the launcher `jk self write-launcher` writes (JvmClientInstall).
+assembly = true
 
 # jk installing jk: this module's native binary is the PATH client. `jk install` on the product
 # tree replaces <home>/bin/jk (parking the previous one, re-linking jkx), the way a release

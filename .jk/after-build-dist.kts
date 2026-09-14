@@ -2,9 +2,11 @@
 // jk: always
 //
 // The ship layout, assembled from what this build just produced: `target/dist/jk` beside
-// `target/dist/lib/jk-engine-<version>.jar`. That is the shape `install.sh <binary>` reads — it
-// takes the engine from `<dir-of-binary>/lib/` — so `bash install.sh target/dist/jk` installs the
-// jk this build made, engine included.
+// `target/dist/lib/jk-engine-<version>.jar` and `target/dist/lib/jk-<version>.jar`. That is the
+// shape `install.sh <binary>` reads — it takes the engine from `<dir-of-binary>/lib/` — so
+// `bash install.sh target/dist/jk` installs the jk this build made, engine included; and
+// `bash install.sh target/dist/lib/jk-<version>.jar` installs the JVM client, for a host with no
+// native binary.
 //
 // WHY A SCRIPT AND NOT A FEATURE. Assembling a directory out of two files this repo already
 // produces is packaging, not a build-system capability, so jk grows no knob for its own ship
@@ -57,6 +59,16 @@ if (!Files.isDirectory(target)) {
         return if (Files.isRegularFile(jar)) jar to version else null
     }
 
+    /**
+     * The CLI module's assembly — the JVM client — for [version], or null when this build produced
+     * none. Shipped as `jk-<version>.jar`, the classifier dropped for the same reason as the
+     * engine's: a launcher and an installer name one jar.
+     */
+    fun clientAssembly(version: String): Path? {
+        val jar = target.resolve("jk-cli-$version-all.jar")
+        return if (Files.isRegularFile(jar)) jar else null
+    }
+
     // The native client is named by [native].name, and carries .exe on Windows.
     val client: Path? = listOf("jk", "jk.exe")
         .map { target.resolve(it) }
@@ -86,20 +98,25 @@ if (!Files.isDirectory(target)) {
             if (Files.isExecutable(client)) tmp.toFile().setExecutable(true, false)
             Files.move(tmp, clientOut, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
             Files.copy(engineJar, engineOut, StandardCopyOption.REPLACE_EXISTING)
+            val clientJar = clientAssembly(version)
+            val clientJarOut = lib.resolve("jk-$version.jar")
+            if (clientJar != null) Files.copy(clientJar, clientJarOut, StandardCopyOption.REPLACE_EXISTING)
             // The pruning half matters as much as the copying:
             // `install.sh` takes the FIRST `lib/jk-engine-*.jar` it globs, so one jar left behind
             // by an earlier version is an installer that pairs today's client with last month's
-            // engine. Exactly one engine jar lives here.
+            // engine. Exactly one engine jar and one client jar live here.
             Files.list(lib).use { entries ->
                 entries.filter { p ->
                     val n = p.fileName.toString()
-                    n.startsWith("jk-engine-") && n.endsWith(".jar") && p != engineOut
+                    n.startsWith("jk-") && n.endsWith(".jar") && p != engineOut && p != clientJarOut
                 }.forEach { stale ->
                     Files.deleteIfExists(stale)
                     println("jk dist: removed stale ${projectDir.relativize(stale)}")
                 }
             }
-            println("jk dist: ${projectDir.relativize(clientOut)} + ${projectDir.relativize(engineOut)}")
+            val shipped = listOf(clientOut, engineOut) + listOfNotNull(clientJar?.let { clientJarOut })
+            println("jk dist: " + shipped.joinToString(" + ") { projectDir.relativize(it).toString() })
+            if (clientJar == null) println("jk dist: no jk-cli-$version-all.jar in target/ — no JVM client shipped")
         }
     }
 }

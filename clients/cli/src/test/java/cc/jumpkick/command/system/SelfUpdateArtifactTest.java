@@ -60,6 +60,26 @@ class SelfUpdateArtifactTest {
     }
 
     @Test
+    void the_jvm_client_is_the_platform_neutral_jar_and_only_when_the_release_ships_one() throws Exception {
+        String sums = HASH + "  jk-engine-0.12.0.jar\n" + HASH + "  jk-0.12.0.jar\n";
+        assertThat(SelfCommand.UpdateSub.jvmClientArtifact(sums, V)).isEqualTo("jk-0.12.0.jar");
+        String without = HASH + "  jk-engine-0.12.0.jar\n" + HASH + "  jk-linux-x86_64-0.12.0.xz\n";
+        assertThatThrownBy(() -> SelfCommand.UpdateSub.jvmClientArtifact(without, V))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("jk-0.12.0.jar")
+                .hasMessageContaining("no JVM client");
+    }
+
+    @Test
+    void the_path_client_is_the_exe_then_the_bat_launcher_then_the_binary(@TempDir Path tmp) throws Exception {
+        assertThat(SelfCommand.UpdateSub.pathClient(tmp)).isEqualTo(tmp.resolve("jk"));
+        Files.writeString(tmp.resolve("jk.bat"), "@echo off\r\n");
+        assertThat(SelfCommand.UpdateSub.pathClient(tmp)).isEqualTo(tmp.resolve("jk.bat"));
+        Files.writeString(tmp.resolve("jk.exe"), "MZ");
+        assertThat(SelfCommand.UpdateSub.pathClient(tmp)).isEqualTo(tmp.resolve("jk.exe"));
+    }
+
+    @Test
     void ingest_client_reclaims_the_inflated_temp_binary(@TempDir Path tmp) throws Exception {
         // Cas.putFile copies (temp + atomic move) — without the delete, every successful
         // jk self update strands one native-binary-sized jk-self-*.bin in the system temp dir.
