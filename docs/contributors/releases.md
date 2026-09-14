@@ -31,7 +31,7 @@ has nothing to say. This section is the one home for release highlights; there i
   Zinc's class-file analysis never saw the edge and a class that inlined the constant kept the old
   value across rebuilds — a version bump left a test asserting the previous `JkVersion.VERSION`.
   The Java worker now recovers those edges from javac's attributed AST and files them in the
-  analysis (JK-3246).
+  analysis.
 - **The JVM client.** `jk-<version>.jar` ships beside the engine jar, and the installers install
   it on every host with no native client — macOS on Intel, Windows on ARM (`JK_CLIENT=jvm`),
   Linux on ARM, FreeBSD, Solaris, anything a JDK 25 runs on — as `bin/jk` (`bin/jk.bat`) over the

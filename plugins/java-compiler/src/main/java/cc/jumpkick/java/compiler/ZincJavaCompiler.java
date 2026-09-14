@@ -257,7 +257,7 @@ public final class ZincJavaCompiler {
             // The edges javac erased (inlined constants) go into the analysis before it is written:
             // Zinc's own Java analysis never saw them, and without them the next compile cannot
             // know which classes to recompile when a constant's value changes.
-            xsbti.compile.CompileAnalysis analysis = compiled.analysis();
+            CompileAnalysis analysis = compiled.analysis();
             if (analysis instanceof Analysis full) {
                 analysis = ConstantDeps.addTo(
                         full, constants.edges(), producers, List.of(cpFiles), classOutput, stamper, converter);
