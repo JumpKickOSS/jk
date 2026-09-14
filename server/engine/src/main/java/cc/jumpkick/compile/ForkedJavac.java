@@ -110,7 +110,16 @@ public final class ForkedJavac {
             @Nullable Path scalaCompilerJar,
             @Nullable Path scalaBridgeJar,
             /** What the worker JVM starts with; the pool keys lanes on it. */
-            WorkerEnv env) {
+            WorkerEnv env,
+            /**
+             * Classpath entries other jk compiles produced, each with its producer's Zinc analysis
+             * file — a hint for Zinc's per-entry lookup, never part of the compile's key.
+             */
+            Map<Path, Path> classpathAnalyses) {
+
+        public Request {
+            classpathAnalyses = classpathAnalyses == null ? Map.of() : Map.copyOf(classpathAnalyses);
+        }
 
         /** The same request for a worker started under {@code env}. */
         public Request withEnv(WorkerEnv env) {
@@ -130,7 +139,67 @@ public final class ForkedJavac {
                     scalaLibraryJar,
                     scalaCompilerJar,
                     scalaBridgeJar,
-                    env);
+                    env,
+                    classpathAnalyses);
+        }
+
+        /** The same request handing the worker {@code classpathAnalyses}. */
+        public Request withClasspathAnalyses(Map<Path, Path> classpathAnalyses) {
+            return new Request(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    workdir,
+                    scalaVersion,
+                    compilerClasspath,
+                    scalaLibraryJar,
+                    scalaCompilerJar,
+                    scalaBridgeJar,
+                    env,
+                    classpathAnalyses);
+        }
+
+        public Request(
+                @Nullable Path javaHome,
+                Path workerJar,
+                List<Path> sources,
+                List<Path> classpath,
+                List<Path> processorPath,
+                Path classOutput,
+                Path sourceOutput,
+                int release,
+                List<String> extraArgs,
+                @Nullable Path workdir,
+                @Nullable String scalaVersion,
+                List<Path> compilerClasspath,
+                @Nullable Path scalaLibraryJar,
+                @Nullable Path scalaCompilerJar,
+                @Nullable Path scalaBridgeJar,
+                WorkerEnv env) {
+            this(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    workdir,
+                    scalaVersion,
+                    compilerClasspath,
+                    scalaLibraryJar,
+                    scalaCompilerJar,
+                    scalaBridgeJar,
+                    env,
+                    Map.of());
         }
 
         public Request(
@@ -298,6 +367,7 @@ public final class ForkedJavac {
         if (req.scalaLibraryJar() != null) sw.extra("scala-library", req.scalaLibraryJar());
         if (req.scalaCompilerJar() != null) sw.extra("scala-compiler", req.scalaCompilerJar());
         if (req.scalaBridgeJar() != null) sw.extra("scala-bridge", req.scalaBridgeJar());
+        for (Map.Entry<Path, Path> e : req.classpathAnalyses().entrySet()) sw.cpAnalysis(e.getKey(), e.getValue());
         for (String a : req.extraArgs()) sw.arg(a);
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);

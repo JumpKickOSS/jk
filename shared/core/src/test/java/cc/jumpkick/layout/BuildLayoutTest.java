@@ -33,6 +33,51 @@ class BuildLayoutTest {
     }
 
     @Test
+    void a_library_jar_was_compiled_into_the_module_s_main_classes(@TempDir Path dir) throws IOException {
+        BuildLayout layout = BuildLayout.of(dir, project("widget", "0.1.0"));
+        Files.createDirectories(layout.classesDir());
+        Files.createDirectories(layout.mainJar().getParent());
+        Files.createFile(layout.mainJar());
+
+        assertThat(BuildLayout.compiledClassesOf(layout.mainJar())).contains(layout.classesDir());
+    }
+
+    @Test
+    void an_application_jar_was_compiled_into_the_classes_beside_it(@TempDir Path dir) throws IOException {
+        BuildLayout layout = BuildLayout.of(dir, appProject("app", "0.1.0"));
+        Files.createDirectories(layout.classesDir());
+        Files.createFile(layout.mainJar());
+
+        assertThat(layout.mainJar().getParent()).isEqualTo(layout.targetDir());
+        assertThat(BuildLayout.compiledClassesOf(layout.mainJar())).contains(layout.classesDir());
+    }
+
+    @Test
+    void a_classes_tree_is_its_own_compile_output(@TempDir Path dir) throws IOException {
+        BuildLayout layout = BuildLayout.of(dir, project("widget", "0.1.0"));
+        Files.createDirectories(layout.classesDir());
+        Files.createDirectories(layout.testClassesDir());
+        Files.createDirectories(layout.kotlinClassesDir());
+
+        assertThat(BuildLayout.compiledClassesOf(layout.classesDir())).contains(layout.classesDir());
+        assertThat(BuildLayout.compiledClassesOf(layout.testClassesDir())).contains(layout.testClassesDir());
+        // Another compiler's tree is not a javac output.
+        assertThat(BuildLayout.compiledClassesOf(layout.kotlinClassesDir())).isEmpty();
+    }
+
+    @Test
+    void a_jar_with_no_classes_tree_beside_it_was_not_compiled_by_jk(@TempDir Path dir) throws IOException {
+        Path m2 = dir.resolve("m2/lib/guava.jar");
+        Files.createDirectories(m2.getParent());
+        Files.createFile(m2);
+        Path missing = dir.resolve("target/lib/gone.jar");
+
+        assertThat(BuildLayout.compiledClassesOf(m2)).isEmpty();
+        assertThat(BuildLayout.compiledClassesOf(missing)).isEmpty();
+        assertThat(BuildLayout.compiledClassesOf(dir)).isEmpty();
+    }
+
+    @Test
     void single_project_roots_resolve_to_project_dir(@TempDir Path dir) {
         BuildLayout layout = BuildLayout.of(dir, project("widget", "0.1.0"));
 

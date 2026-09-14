@@ -322,7 +322,12 @@ and exclusions stay GA-scoped.
    whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
    (`BuildIdentity.buildId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
    build-logic and packaging once and never restores what the previous engine produced.
-3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store.
+3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A javac
+   miss hands the worker the Zinc analyses of the jk-built entries on its classpath
+   (`ProducerAnalyses`, found from the entry alone because a compile's state is keyed by its
+   output directory), so the consumer's dependencies on a sibling are per-class external
+   dependencies rather than one library stamp per jar; a producer analysis that is unreadable or
+   no longer describes its classes falls back to the library stamp.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
 **Two storage tiers** (separate roots, separate budgets):

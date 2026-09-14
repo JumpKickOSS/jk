@@ -132,22 +132,23 @@ public final class JavaCompile {
         ForkedJavac.Result wr;
         try {
             wr = ForkedJavac.compile(new ForkedJavac.Request(
-                    request.javaHome(),
-                    Objects.requireNonNull(workerJar, "workerJar"),
-                    request.sources(),
-                    request.classpath(),
-                    request.processorPath(),
-                    out,
-                    gen,
-                    request.release(),
-                    request.extraOptions(),
-                    stateDir,
-                    request.scalaVersion(),
-                    request.compilerClasspath(),
-                    request.scalaLibraryJar(),
-                    request.scalaCompilerJar(),
-                    request.scalaBridgeJar(),
-                    env));
+                            request.javaHome(),
+                            Objects.requireNonNull(workerJar, "workerJar"),
+                            request.sources(),
+                            request.classpath(),
+                            request.processorPath(),
+                            out,
+                            gen,
+                            request.release(),
+                            request.extraOptions(),
+                            stateDir,
+                            request.scalaVersion(),
+                            request.compilerClasspath(),
+                            request.scalaLibraryJar(),
+                            request.scalaCompilerJar(),
+                            request.scalaBridgeJar(),
+                            env)
+                    .withClasspathAnalyses(producerAnalyses(request, stateDir)));
         } catch (RuntimeException | Error compileFailure) {
             // The failure is the result. finish() walks and hashes the output tree, and a walk
             // over what a dying compiler left behind can throw too — from a finally block that
@@ -205,29 +206,30 @@ public final class JavaCompile {
         if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {
             return new Prediction(Outcome.CACHE_HIT, key, request.sources().size(), "");
         }
-        if (!Files.isRegularFile(stateDir.resolve("zinc"))) {
+        if (!Files.isRegularFile(stateDir.resolve(ProducerAnalyses.ANALYSIS_FILE))) {
             return new Prediction(Outcome.FULL, key, request.sources().size(), "no zinc analysis");
         }
         if (workerJar != null && Files.isRegularFile(workerJar)) {
             Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
             Files.createDirectories(gen);
             ForkedJavac.Plan plan = ForkedJavac.plan(new ForkedJavac.Request(
-                    request.javaHome(),
-                    workerJar,
-                    request.sources(),
-                    request.classpath(),
-                    request.processorPath(),
-                    Objects.requireNonNull(request.outputDir(), "outputDir"),
-                    gen,
-                    request.release(),
-                    request.extraOptions(),
-                    stateDir,
-                    request.scalaVersion(),
-                    request.compilerClasspath(),
-                    request.scalaLibraryJar(),
-                    request.scalaCompilerJar(),
-                    request.scalaBridgeJar(),
-                    env));
+                            request.javaHome(),
+                            workerJar,
+                            request.sources(),
+                            request.classpath(),
+                            request.processorPath(),
+                            Objects.requireNonNull(request.outputDir(), "outputDir"),
+                            gen,
+                            request.release(),
+                            request.extraOptions(),
+                            stateDir,
+                            request.scalaVersion(),
+                            request.compilerClasspath(),
+                            request.scalaLibraryJar(),
+                            request.scalaCompilerJar(),
+                            request.scalaBridgeJar(),
+                            env)
+                    .withClasspathAnalyses(producerAnalyses(request, stateDir)));
             List<Path> files = plan.sources();
             if (plan.full()) {
                 return new Prediction(
@@ -267,6 +269,18 @@ public final class JavaCompile {
         int n = changed.size();
         String reason = n == 1 ? "1 source changed" : n + " sources changed";
         return new Prediction(Outcome.INCREMENTAL, key, n, reason, changed);
+    }
+
+    /**
+     * The producer analyses the worker is handed for {@code request}'s classpath. Every Java
+     * compile's state dir sits beside this one under the same incremental root, so the root is
+     * {@code stateDir}'s parent; a state dir with no parent (a test's bare directory) has no
+     * producers to find.
+     */
+    private static Map<Path, Path> producerAnalyses(CompileRequest request, Path stateDir) {
+        Path incrementalRoot = stateDir.toAbsolutePath().normalize().getParent();
+        if (incrementalRoot == null) return Map.of();
+        return ProducerAnalyses.forClasspath(request.classpath(), incrementalRoot);
     }
 
     /**

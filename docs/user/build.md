@@ -41,6 +41,11 @@ inlined constant or an inline function recompiles the consumers, and `jk explain
 the dependency whose API moved. Annotation processors are keyed on their full content, so a
 processor jar change always recompiles the modules that run it.
 
+When a Java consumer does recompile, its Zinc session is handed the analyses of the workspace
+siblings on its classpath, so a changed sibling invalidates only the consumer classes that
+referenced the changed producer class — not every class that touched the sibling's jar. A
+sibling whose analysis is missing or does not match its classes is treated like any other jar.
+
 The first build after `jk install` of a new engine runs every plugin step, guard lane,
 build-logic run and packaging step once more: their keys carry the identity of the engine that
 produced them, so nothing an older engine produced is restored under the new one. Compile steps

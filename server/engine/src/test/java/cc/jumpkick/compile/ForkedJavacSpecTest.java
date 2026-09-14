@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.PluginSpec;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,6 +31,20 @@ class ForkedJavacSpecTest {
 
         Path plain = SessionContext.where(Session.defaults(), () -> ForkedJavac.writeSpec(req));
         assertThat(Files.readString(plain)).doesNotContain(PluginProtocol.CONFIG_PHASES_LOG);
+    }
+
+    @Test
+    void producer_analyses_ride_the_spec_as_cp_analysis_lines(@TempDir Path dir) throws Exception {
+        Path lib = dir.resolve("lib.jar");
+        Path analysis = dir.resolve("state").resolve("zinc");
+        ForkedJavac.Request informed = request(dir).withClasspathAnalyses(Map.of(lib, analysis));
+
+        Path spec = SessionContext.where(Session.defaults(), () -> ForkedJavac.writeSpec(informed));
+        assertThat(PluginSpec.read(spec).classpathAnalyses())
+                .containsExactly(Map.entry(lib.toAbsolutePath(), analysis.toAbsolutePath()));
+
+        Path plain = SessionContext.where(Session.defaults(), () -> ForkedJavac.writeSpec(request(dir)));
+        assertThat(Files.readString(plain)).doesNotContain(PluginProtocol.CP_ANALYSIS);
     }
 
     private static ForkedJavac.Request request(Path dir) {

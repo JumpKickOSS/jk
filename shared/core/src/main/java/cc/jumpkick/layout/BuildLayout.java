@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -281,12 +282,50 @@ public final class BuildLayout {
      * then jk merges the result here.
      */
     public Path classesDir() {
-        return buildDir().resolve("classes").resolve("main");
+        return buildDir().resolve(CLASSES).resolve(MAIN);
     }
 
     /** {@code target/classes/test/} — final assembled test classes. */
     public Path testClassesDir() {
-        return buildDir().resolve("classes").resolve("test");
+        return buildDir().resolve(CLASSES).resolve(TEST);
+    }
+
+    private static final String CLASSES = "classes";
+    private static final String MAIN = "main";
+    private static final String TEST = "test";
+
+    /**
+     * The classes directory a compile-classpath entry was compiled into, when the entry is one jk
+     * built: a {@link #classesDir} or {@link #testClassesDir} is its own answer, and a jar under a
+     * module's {@link #artifactDir} was packaged from that module's {@link #classesDir}. Empty for
+     * everything else — a Maven jar, the JDK, another build tool's output.
+     *
+     * <p>Anchored on the tree's shape like {@link #isBuildOutput}: the jar's directory is the
+     * module's target dir or its {@code lib/}, and the classes tree has to exist beside it. The
+     * answer names the directory a compile's incremental state is keyed by, which is how a
+     * consumer finds its producer's state from the entry alone — the same way whether the
+     * classpath carries the producer's jar or its classes directory.
+     */
+    public static Optional<Path> compiledClassesOf(Path entry) {
+        Path abs = entry.toAbsolutePath().normalize();
+        Path parent = abs.getParent();
+        if (parent == null) return Optional.empty();
+        String name = String.valueOf(abs.getFileName());
+        if (Files.isDirectory(abs)) {
+            boolean classesTree =
+                    (MAIN.equals(name) || TEST.equals(name)) && CLASSES.equals(String.valueOf(parent.getFileName()));
+            return classesTree ? Optional.of(abs) : Optional.empty();
+        }
+        if (!name.endsWith(".jar")) return Optional.empty();
+        Path target = parent;
+        Path grandparent = parent.getParent();
+        if ("lib".equals(String.valueOf(parent.getFileName()))
+                && grandparent != null
+                && !Files.isDirectory(parent.resolve(CLASSES))) {
+            target = grandparent;
+        }
+        Path classes = target.resolve(CLASSES).resolve(MAIN);
+        return Files.isDirectory(classes) ? Optional.of(classes) : Optional.empty();
     }
 
     /**
