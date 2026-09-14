@@ -71,14 +71,19 @@ public final class AppWatchLoop {
     public int run(Path projectDir, Path cache, List<String> appArgs) throws IOException, InterruptedException {
         CliSessionTranscript session = CliSessionTranscript.openAcrossJobs(projectDir, "dev", devArgv(appArgs));
         if (session != null) session.announceIf(global.verbose);
+        // Ctrl-C stops the children from the signal handler, and the loop on this thread sees them
+        // die — an app gone before its probe passed, a poll that returns nothing — and returns a
+        // failure of its own. Two threads then finish the one transcript, and the first writer
+        // wins; so the code this thread records is the interrupt's whenever one has landed, the
+        // same rule the entry point applies to the process exit.
         int code;
         try {
             code = session(projectDir, cache, appArgs, session);
         } catch (IOException | InterruptedException | RuntimeException e) {
-            CliSessionTranscript.finish(session, Exit.SOFTWARE, false);
+            CliSessionTranscript.finish(session, GlobalCancel.exitCodeFor(Exit.SOFTWARE), false);
             throw e;
         }
-        return CliSessionTranscript.finish(session, code, global.verbose);
+        return CliSessionTranscript.finish(session, GlobalCancel.exitCodeFor(code), global.verbose);
     }
 
     /** What {@code session-start} records: the verb as {@code jk dev} spells it, its options, the app's arguments. */
