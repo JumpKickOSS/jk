@@ -33,20 +33,33 @@ import xsbti.compile.analysis.ReadStamps;
 import xsbti.compile.analysis.Stamp;
 
 /**
- * The parts of Zinc's {@code Setup}/{@code Inputs} jk supplies as constants: no per-entry analysis,
- * a silent logger, no extra key/value pairs, and the path-to-{@link VirtualFile} lift. Each is a
- * Zinc SPI obligation with no jk decision in it — grouped because the alternative is four files
+ * The parts of Zinc's {@code Setup}/{@code Inputs} jk supplies: the per-entry analysis lookup, a
+ * silent logger, no extra key/value pairs, and the path-to-{@link VirtualFile} lift. Each is a Zinc
+ * SPI obligation with little jk decision in it — grouped because the alternative is four files
  * whose whole content is "we have nothing to say here".
  */
 final class ZincSetup {
 
     private ZincSetup() {}
 
-    /** No cross-entry analysis: jk compiles one module per Zinc session. */
+    /**
+     * Per-entry analysis: the producer's, for an entry another jk compile wrote ({@link
+     * ClasspathAnalyses}); none for a Maven jar or the JDK. jk compiles one module per Zinc
+     * session, so this is how a session sees what the sessions before it learned.
+     */
     static final class ClasspathLookup implements PerClasspathEntryLookup {
+        private final ClasspathAnalyses producers;
+        private final FileConverter converter;
+
+        ClasspathLookup(ClasspathAnalyses producers, FileConverter converter) {
+            this.producers = producers;
+            this.converter = converter;
+        }
+
         @Override
         public Optional<CompileAnalysis> analysis(VirtualFile classpathEntry) {
-            return Optional.empty();
+            if (producers.isEmpty()) return Optional.empty();
+            return producers.analysis(converter.toPath(classpathEntry)).map(a -> a);
         }
 
         @Override
@@ -72,16 +85,19 @@ final class ZincSetup {
      * bare stamp comparison of the recorded files would miss. Jars hash exactly as Zinc hashes
      * them, so recorded jar hashes stay comparable across this change.
      */
-    static IncOptions incOptions(ReadStamps current, FileConverter converter, Path classOutput) {
+    static IncOptions incOptions(
+            ReadStamps current, FileConverter converter, Path classOutput, ClasspathAnalyses producers) {
         ExternalHooks hooks = new DefaultExternalHooks(
-                Optional.of(new DirectoryAwareClasspathHash(current, converter, classOutput)), Optional.empty());
+                Optional.of(new DirectoryAwareClasspathHash(current, converter, classOutput, producers)),
+                Optional.empty());
         return IncOptions.create().withExternalHooks(hooks);
     }
 
     /**
      * Implements Zinc's Scala {@link ExternalLookup} rather than the Java {@code
      * ExternalHooks.Lookup} it extends: {@code LookupImpl} only honours hooks of the Scala type and
-     * silently ignores the rest. Everything but {@link #hashClasspath} defers to Zinc.
+     * silently ignores the rest. Everything but {@link #hashClasspath} and {@link
+     * #lookupAnalyzedClass} defers to Zinc.
      */
     static final class DirectoryAwareClasspathHash implements ExternalLookup {
         /** Zinc's own hash for an entry that does not exist ({@code ClasspathCache.emptyFileHash}). */
@@ -90,11 +106,14 @@ final class ZincSetup {
         private final ReadStamps current;
         private final FileConverter converter;
         private final Path classOutput;
+        private final ClasspathAnalyses producers;
 
-        DirectoryAwareClasspathHash(ReadStamps current, FileConverter converter, Path classOutput) {
+        DirectoryAwareClasspathHash(
+                ReadStamps current, FileConverter converter, Path classOutput, ClasspathAnalyses producers) {
             this.current = current;
             this.converter = converter;
             this.classOutput = classOutput.toAbsolutePath().normalize();
+            this.producers = producers;
         }
 
         @Override
@@ -142,10 +161,16 @@ final class ZincSetup {
             return Option.empty();
         }
 
-        /** No cross-project analysis, so no class is ever "analyzed" elsewhere. */
+        /**
+         * The producer's view of a class another jk compile produced. Asked here, not left to the
+         * per-entry analyses alone: Zinc's {@code LookupImpl} takes an empty answer from the
+         * external hook as final and never falls through to {@link ClasspathLookup}, so an
+         * external hook that stays silent would hide every producer analysis.
+         */
         @Override
         public Option<AnalyzedClass> lookupAnalyzedClass(String binaryClassName, Option<VirtualFileRef> file) {
-            return Option.empty();
+            if (producers.isEmpty()) return Option.empty();
+            return producers.analyzedClass(binaryClassName);
         }
 
         @Override

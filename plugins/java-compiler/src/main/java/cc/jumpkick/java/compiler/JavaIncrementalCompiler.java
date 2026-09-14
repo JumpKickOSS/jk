@@ -142,7 +142,8 @@ public final class JavaIncrementalCompiler implements Plugin {
                 spec.config()
                         .stringOpt(PluginProtocol.CONFIG_PHASES_LOG)
                         .map(Path::of)
-                        .orElse(null));
+                        .orElse(null),
+                spec.classpathAnalyses());
     }
 
     static int planSpec(Path specFile, ProtocolWriter out) throws Exception {

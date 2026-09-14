@@ -51,6 +51,15 @@ public final class PluginProtocol {
     public static final String JAVA_HOME = "java-home";
     public static final String ARTIFACT = "artifact";
     public static final String CP = "cp"; // classpath entry, with a `role`
+    /**
+     * The Zinc analysis another jk compile wrote for a compile-classpath entry: {@code path} is the
+     * entry (a sibling's jar or classes dir, or the module's own main classes under a test
+     * compile), {@code analysis} the producer's analysis file. The Java worker answers Zinc's
+     * per-entry lookup from it, so a real API change in that entry invalidates the consumer's
+     * classes one producer class at a time instead of every class that touched the entry.
+     */
+    public static final String CP_ANALYSIS = "cp-analysis";
+
     public static final String ENTRY = "entry"; // runtime-closure entry
     public static final String SOURCE = "source"; // a source file (compile)
     public static final String STEP_OUTPUT = "step-output";
@@ -116,6 +125,9 @@ public final class PluginProtocol {
     public static final String SEVERITY = "sev";
     public static final String COL = "col";
     public static final String STATUS = "status";
+    /** The producer analysis file on a {@link #CP_ANALYSIS} line. */
+    public static final String ANALYSIS = "analysis";
+
     public static final String SHA256 = "sha256";
 
     /**

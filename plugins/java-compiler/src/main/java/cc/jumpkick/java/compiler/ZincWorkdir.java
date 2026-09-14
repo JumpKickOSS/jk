@@ -96,7 +96,7 @@ final class ZincWorkdir {
         if (!Files.isRegularFile(analysisFile)) {
             return Optional.empty();
         }
-        if (!gzipHeaderReadable()) {
+        if (!gzipHeaderReadable(analysisFile)) {
             tryDeleteAnalysis();
             return Optional.empty();
         }
@@ -114,9 +114,10 @@ final class ZincWorkdir {
 
     /**
      * Zinc's binary store is gzip. Opens and closes the file ourselves so a bad header cannot leak
-     * a handle the way {@code store.get()} does.
+     * a handle the way {@code store.get()} does. Shared with {@link ClasspathAnalyses}, which reads
+     * other modules' analysis files under the same store.
      */
-    private boolean gzipHeaderReadable() {
+    static boolean gzipHeaderReadable(Path analysisFile) {
         try (InputStream raw = Files.newInputStream(analysisFile)) {
             new GZIPInputStream(raw).close();
             return true;

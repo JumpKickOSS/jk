@@ -29,6 +29,7 @@ import java.util.Set;
 import javax.annotation.processing.Processor;
 import javax.tools.ToolProvider;
 import org.jspecify.annotations.Nullable;
+import sbt.internal.inc.APIs;
 import sbt.internal.inc.Analysis;
 import sbt.internal.inc.CompileFailed;
 import sbt.internal.inc.FreshCompilerCache;
@@ -204,12 +205,14 @@ public final class ZincJavaCompiler {
             // One stamper for the compile and for the classpath hash: both must see the same
             // (mtime-cached) hash of a jar or the two could disagree mid-compile.
             ReadStamps stamper = Stamps.timeWrapBinaryStamps(converter);
+            // The same stamper judges a producer's analysis against its classes on disk.
+            ClasspathAnalyses producers = ClasspathAnalyses.of(job.classpathAnalyses(), stamper);
             Setup setup = Setup.of(
-                    new ClasspathLookup(),
+                    new ClasspathLookup(producers, converter),
                     false,
                     zinced.analysisFile(),
                     new FreshCompilerCache(),
-                    ZincSetup.incOptions(stamper, converter, classOutput),
+                    ZincSetup.incOptions(stamper, converter, classOutput, producers),
                     reporter,
                     ZincSetup.noExtra());
 
@@ -399,6 +402,8 @@ public final class ZincJavaCompiler {
             }
         }
 
+        forecastExternals(analysis, ClasspathAnalyses.of(job.classpathAnalyses(), current), converter, invalid);
+
         if (invalid.isEmpty()) {
             return new Plan(false, "zinc analysis current", List.of());
         }
@@ -407,6 +412,33 @@ public final class ZincJavaCompiler {
             items.add(new Invalidation(e.getKey(), e.getValue()));
         }
         return new Plan(false, summarize(items), items);
+    }
+
+    /**
+     * Classes a producer's analysis answered for when {@code analysis} was written are external
+     * dependencies, tracked by the producer's per-class hashes rather than by a library stamp.
+     * They are forecast the way Zinc invalidates them: changed hashes in the producer's current
+     * analysis, or no producer analysis answering for the class any more, invalidate every source
+     * whose classes use it.
+     */
+    private static void forecastExternals(
+            Analysis analysis, ClasspathAnalyses producers, FileConverter converter, Map<Path, String> invalid) {
+        APIs apis = analysis.apis();
+        Relations rel = analysis.relations();
+        var externals = apis.allExternals().iterator();
+        while (externals.hasNext()) {
+            String external = externals.next();
+            if (producers.sameApi(external, apis.externalAPI(external))) continue;
+            String why = "dependency " + external + " changed";
+            var users = rel.usesExternal(external).iterator();
+            while (users.hasNext()) {
+                var defs = rel.definesClass(users.next()).iterator();
+                while (defs.hasNext()) {
+                    Path userSrc = pathOf(defs.next(), converter);
+                    if (userSrc != null) invalid.putIfAbsent(userSrc, why);
+                }
+            }
+        }
     }
 
     private static List<Invalidation> allSources(List<Path> sources, String why) {

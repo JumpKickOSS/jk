@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ProjectFacts;
@@ -147,6 +148,16 @@ public final class SpecWriter {
     public SpecWriter cp(Path path, String role) {
         lines.add("{\"t\":\"cp\",\"path\":" + Jsonl.quote(path.toAbsolutePath().toString()) + ",\"role\":"
                 + Jsonl.quote(role) + "}");
+        return this;
+    }
+
+    /** A compile-classpath entry's producer analysis — see {@link PluginProtocol#CP_ANALYSIS}. */
+    public SpecWriter cpAnalysis(Path entry, Path analysis) {
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, PluginProtocol.CP_ANALYSIS)
+                .string(PluginProtocol.PATH, entry.toAbsolutePath().toString())
+                .string(PluginProtocol.ANALYSIS, analysis.toAbsolutePath().toString())
+                .finish());
         return this;
     }
 

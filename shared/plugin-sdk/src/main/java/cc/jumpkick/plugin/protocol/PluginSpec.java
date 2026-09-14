@@ -44,6 +44,7 @@ public final class PluginSpec {
     private final List<CompilerPlugin> compilerPlugins = new ArrayList<>();
     private final Map<String, Path> stepOutputs = new LinkedHashMap<>();
     private final Map<String, Path> extras = new LinkedHashMap<>();
+    private final Map<Path, Path> classpathAnalyses = new LinkedHashMap<>();
     private final Map<String, String> secrets = new LinkedHashMap<>();
     private final List<String> commandArgs = new ArrayList<>();
     private boolean offline = true;
@@ -114,6 +115,9 @@ public final class PluginSpec {
                         default -> s.compileClasspath.add(p); // compile is the default role
                     }
                 }
+                case PluginProtocol.CP_ANALYSIS ->
+                    s.classpathAnalyses.put(
+                            requiredPath(line, PluginProtocol.PATH), requiredPath(line, PluginProtocol.ANALYSIS));
                 case PluginProtocol.ENTRY -> {
                     @Nullable String jar = Jsonl.str(line, PluginProtocol.PATH);
                     @Nullable String container = Jsonl.str(line, PluginProtocol.CONTAINER);
@@ -236,6 +240,14 @@ public final class PluginSpec {
 
     public List<Path> compileClasspath() {
         return compileClasspath;
+    }
+
+    /**
+     * Compile-classpath entries another jk compile produced, each with its producer's Zinc analysis
+     * file ({@link PluginProtocol#CP_ANALYSIS}); empty when no entry has one.
+     */
+    public Map<Path, Path> classpathAnalyses() {
+        return classpathAnalyses;
     }
 
     /** Scala compiler + bridge jars for mixed compile; empty on Java-only. */
