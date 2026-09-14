@@ -1,11 +1,13 @@
 # Self-hosting JumpKick
 
-jk builds jk. The root **`jk.toml`** is a workspace (members under `shared/`, `server/`,
-`clients/`, `plugins/*` and the rule packs under `server/guard/packs/`), `jk-lock.toml` at the root
-is the one lock, and every output lands under `target/`. There is no second build definition in
-the tree: the IntelliJ plugin under `clients/intellij` and the VS Code extension under
-`clients/vscode` keep their own build tools because that is how those platforms ship plugins, and
-the Gradle projects under `bench/jar-size/` are fixtures the fat-jar bench compares jk against.
+jk builds jk once a client exists. The root **`jk.toml`** is a workspace (members under `shared/`,
+`server/`, `clients/`, `plugins/*` and the rule packs under `server/guard/packs/`), `jk-lock.toml`
+at the root is the one lock, and jk's outputs land under `target/`. Gradle (`./gradlew`) is the
+bootstrap that produces the first native client and engine jar when this OS has no hosted
+release — jumpkick.build serves Linux amd64 today; macOS and Windows still need this path.
+The IntelliJ plugin under `clients/intellij` and the VS Code extension under `clients/vscode`
+keep their own build tools because that is how those platforms ship plugins. The Gradle projects
+under `bench/jar-size/` are fixtures the fat-jar bench compares jk against.
 
 ## The gate
 
@@ -134,7 +136,23 @@ point a scratch run at your real `~/.jk`, and stop the scratch engine when you a
 
 ## Bootstrap
 
-Install the released jk and let it build the tree; the tree's own jk then takes over:
+On a machine with no hosted client (macOS, Windows, Linux aarch64), Gradle produces the first
+binary:
+
+```bash
+./gradlew dist installLocal
+./install.sh build/dist/jk          # Windows: .\install.cmd build\dist\jk.exe
+export PATH="$HOME/.jk/bin:$PATH"
+```
+
+`./scripts/bootstrap-from-gradle.sh` is that sequence. The native client is preferred (self-heal,
+sub-50 ms). **Windows also supports the thin JVM client** (`:cli:installDist` → `jk.bat`): Smart
+App Control blocks unsigned `jk.exe`. `:engine:installLocal` runs the materialize through a client
+that reports the engine jar's own version — the `:cli:nativeCompile` binary first, then the thin
+launcher, then `build/dist/jk` — and fails, listing what it found, when none does.
+
+Where jumpkick.build already serves a client (Linux amd64), install the released jk and let it
+build the tree; the tree's own jk then takes over:
 
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash   # or JK_VERSION="$(cat .jk/ci-bootstrap-version)" bash
