@@ -405,6 +405,16 @@ final class CorePlan {
         if (useKotlin) {
             b.addTask(s.compileKotlin());
         }
+        // `jk compile` runs no lane: it has neither the guard suite's compile nor the test classes the
+        // module lane indexes, so a guard step here would require steps the plan does not carry.
+        if (!in.compileOnly()) addGuardLanes(b, cx, s);
+        if (cx.mixed() || cx.mixedGroovy()) {
+            b.addTask(s.assembleClasses());
+        }
+    }
+
+    /** The module lane after the compiles it indexes, and the root lanes; or, off-build, the model lane alone. */
+    private void addGuardLanes(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         if (PlannerGuards.moduleLanesOnThisBuild(cx.guards(), PlannerResources.runGuardScripts(in))) {
             List<String> after = new ArrayList<>();
             if (useJava) after.add(TaskNames.COMPILE_JAVA);
@@ -418,8 +428,7 @@ final class CorePlan {
             if (afterTests) after.add(TaskNames.COMPILE_TEST);
             BuildStage guardStage = afterTests ? BuildStage.TEST : BuildStage.COMPILE;
             b.addTask(PlannerGuards.moduleStep(cx, guardStage, afterTests, after.toArray(String[]::new)));
-            boolean packagesHere = !in.testOnly() && !in.compileOnly();
-            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, packagesHere, guardStage);
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.GUARD, !in.testOnly(), guardStage);
             // Nothing downstream consumes a lane; keep them through the terminal prune.
             b.alsoKeep(
                     TaskNames.GUARD,
@@ -430,17 +439,13 @@ final class CorePlan {
                     TaskNames.GUARD_OUTPUT);
         } else if (cx.guards().enabled()) {
             // on-build = false: the module lanes wait for the gate; the model lane still runs.
-            PlannerGuards.appendRootLanes(
-                    b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly() && !in.compileOnly(), BuildStage.COMPILE);
+            PlannerGuards.appendRootLanes(b, cx, TaskNames.RESOLVE_DEPS, !in.testOnly(), BuildStage.COMPILE);
             b.alsoKeep(
                     TaskNames.GUARD_MODEL,
                     TaskNames.GUARD_WORKSPACE,
                     TaskNames.GUARD_TREE,
                     TaskNames.GUARD_FIXTURES,
                     TaskNames.GUARD_OUTPUT);
-        }
-        if (cx.mixed() || cx.mixedGroovy()) {
-            b.addTask(s.assembleClasses());
         }
     }
 

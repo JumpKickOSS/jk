@@ -182,7 +182,12 @@ final class PlannerGuards {
      */
     static @Nullable String appendRootLanes(
             BuildPlan.Builder b, BuildPlanner.Ctx cx, String after, boolean packagesHere, BuildStage laneStage) {
-        if (!cx.guards().enabled() || !PlannerResources.invocationRoot(cx.in().dir())) return null;
+        // `jk compile` runs no lane, the root's included.
+        if (!cx.guards().enabled()
+                || cx.in().compileOnly()
+                || !PlannerResources.invocationRoot(cx.in().dir())) {
+            return null;
+        }
         b.addTask(modelStep(cx));
         String last = TaskNames.GUARD_MODEL;
         boolean guard = PlannerResources.runGuardScripts(cx.in());

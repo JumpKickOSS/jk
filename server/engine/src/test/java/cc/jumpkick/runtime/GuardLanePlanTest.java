@@ -92,6 +92,47 @@ class GuardLanePlanTest {
         assertThat(off).containsKey(TaskNames.GUARD_MODEL).doesNotContainKey(TaskNames.GUARD_WORKSPACE);
     }
 
+    /**
+     * A module with a guard suite compiles it as {@code compile-guard}, and the module lane requires
+     * that compile. {@code jk compile} plans neither: it runs no lane, so its plan carries no guard
+     * step to name a compile it does not have.
+     */
+    @Test
+    void the_compile_verb_plans_no_lane_for_a_module_with_a_guard_suite(@TempDir Path dir) throws Exception {
+        Path project = scaffold(dir, true);
+        Files.createDirectories(project.resolve("src/guard/java/demo"));
+        Files.writeString(project.resolve("src/guard/java/demo/Shape.java"), "package demo; class Shape {}\n");
+        Map<String, Task> full = index(plan(project, dir.resolve("cache"), TestSelection.DEFAULT));
+        assertThat(task(full, TaskNames.GUARD).requires())
+                .as("a build's module lane follows the guard suite's compile")
+                .contains(TaskNames.COMPILE_GUARD);
+
+        BuildPlanner.Inputs in = inputs(project, dir.resolve("cache"), TestSelection.DEFAULT);
+        Map<String, Task> compile = index(BuildPlanner.coreBuilder(new BuildPlanner.Inputs(
+                        in.dir(),
+                        in.cache(),
+                        in.buildFile(),
+                        in.lockFile(),
+                        in.lockDir(),
+                        1,
+                        0,
+                        null,
+                        null,
+                        true,
+                        false,
+                        false,
+                        true,
+                        Set.of(),
+                        in.session()))
+                .build());
+        assertThat(compile).containsKey(TaskNames.COMPILE_JAVA);
+        assertThat(compile.keySet()).noneMatch(n -> n.startsWith(TaskNames.GUARD));
+        assertThat(compile).doesNotContainKey(TaskNames.COMPILE_GUARD);
+        for (Task t : compile.values()) {
+            assertThat(t.requires()).noneMatch(n -> n.startsWith(TaskNames.GUARD) || n.equals(TaskNames.COMPILE_GUARD));
+        }
+    }
+
     private static Path workspace(Path dir) throws Exception {
         Path root = Files.createDirectories(dir.resolve("ws"));
         Files.writeString(root.resolve("jk.toml"), """

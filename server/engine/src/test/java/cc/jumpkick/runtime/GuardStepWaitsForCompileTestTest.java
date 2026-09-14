@@ -24,16 +24,26 @@ class GuardStepWaitsForCompileTestTest {
     @Test
     void guard_step_requires_compile_test_when_the_plan_compiles_tests(@TempDir Path dir) throws Exception {
         scaffold(dir);
-        Task guard = step(plan(dir, false), TaskNames.GUARD);
+        Task guard = step(plan(dir, false, false), TaskNames.GUARD);
         assertThat(guard.requires()).contains(TaskNames.COMPILE_JAVA, TaskNames.COMPILE_TEST);
     }
 
     @Test
     void guard_step_does_not_name_a_compile_test_the_plan_lacks(@TempDir Path dir) throws Exception {
         scaffold(dir);
-        BuildPlan compileOnly = plan(dir, true);
-        assertThat(compileOnly.steps().stream().map(Task::name)).doesNotContain(TaskNames.COMPILE_TEST);
-        assertThat(step(compileOnly, TaskNames.GUARD).requires()).doesNotContain(TaskNames.COMPILE_TEST);
+        BuildPlan skipTests = plan(dir, true, false);
+        assertThat(skipTests.steps().stream().map(Task::name)).doesNotContain(TaskNames.COMPILE_TEST);
+        assertThat(step(skipTests, TaskNames.GUARD).requires()).doesNotContain(TaskNames.COMPILE_TEST);
+    }
+
+    /** {@code jk compile} runs no lane, so its plan has no guard step to hang an edge on. */
+    @Test
+    void a_compile_only_plan_has_no_guard_step(@TempDir Path dir) throws Exception {
+        scaffold(dir);
+        BuildPlan compileOnly = plan(dir, false, true);
+        assertThat(compileOnly.steps().stream().map(Task::name))
+                .contains(TaskNames.COMPILE_JAVA)
+                .doesNotContain(TaskNames.GUARD, TaskNames.GUARD_MODEL, TaskNames.COMPILE_TEST);
     }
 
     /**
@@ -94,23 +104,7 @@ class GuardStepWaitsForCompileTestTest {
                 .orElseThrow();
     }
 
-    private static BuildPlan plan(Path dir, boolean compileOnly) {
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                dir,
-                dir.resolve("cache"),
-                dir.resolve("jk.toml"),
-                dir.resolve("jk-lock.toml"),
-                dir,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                compileOnly,
-                Set.of(),
-                SessionContext.current());
-        return BuildPlanner.fullPlan(in);
+    private static BuildPlan plan(Path dir, boolean skipTests, boolean compileOnly) {
+        return BuildPlanner.fullPlan(inputs(dir, skipTests, false, compileOnly));
     }
 }
