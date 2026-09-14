@@ -104,6 +104,12 @@ class SidecarsTest {
         }
     }
 
+    /**
+     * The two streams ride two pumps, so the probe passing on the stderr line says nothing about
+     * whether the stdout line has been delivered yet: each line is awaited under its own stream,
+     * and the one order the product promises — a line lands before it can count as ready — is
+     * asserted between the matched line and the ready event.
+     */
     @Test
     void stdout_and_stderr_are_told_apart_and_both_feed_the_pattern_probe(@TempDir Path dir) throws Exception {
         List<String> events = new CopyOnWriteArrayList<>();
@@ -111,9 +117,15 @@ class SidecarsTest {
                 sh("web", "echo out-line; echo err-line >&2; sleep 30", "err-line", Sidecar.Restart.NEVER, dir);
         try (Sidecars sidecars = Sidecars.start(List.of(spec), recording(events), Clock.SYSTEM, NO_WAIT)) {
             assertThat(sidecars.awaitReady()).isEmpty();
-            assertThat(events)
-                    .contains("started web pid>0=true", "stdout web out-line", "stderr web err-line", "ready web");
+            awaitLine(events, "stdout web out-line"::equals);
+            awaitLine(events, "stderr web err-line"::equals);
+            assertThat(events).contains("started web pid>0=true", "ready web");
             assertThat(events.getFirst()).startsWith("started web");
+            assertThat(events.indexOf("stderr web err-line"))
+                    .as("the line the probe matched is reported before the sidecar is ready")
+                    .isLessThan(events.indexOf("ready web"));
+            assertThat(events)
+                    .noneMatch(e -> e.startsWith("stdout web err-line") || e.startsWith("stderr web out-line"));
         }
     }
 
