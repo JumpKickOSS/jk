@@ -221,7 +221,7 @@ final class PullWorkerPool {
                     JUnitLauncher.PROTOCOL_PREFIX,
                     args,
                     env,
-                    launcher.inferredModuleDir(),
+                    launcher.workDir(),
                     handler,
                     passthrough,
                     TestWorkerEnv.idleTimeoutMs());

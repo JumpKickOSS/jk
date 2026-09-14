@@ -18,6 +18,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -211,16 +212,36 @@ public final class JUnitLauncher {
             }
         }
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));
-        // Quarkus BuildToolHelper / path resolution walk from user.dir; point at the module root
-        // when we can infer it from the standard jk layout (.../target/classes/test).
-        if (inferredModuleDir != null) {
-            flags.add("-Duser.dir=" + inferredModuleDir.toAbsolutePath().normalize());
-        }
+        // Quarkus BuildToolHelper / path resolution walk from user.dir; the same directory the
+        // fork starts in, so Paths.get("") and user.dir agree.
+        Path cwd = workDir();
+        if (cwd != null) flags.add("-Duser.dir=" + cwd.toAbsolutePath().normalize());
         return flags;
+    }
+
+    /**
+     * The test JVM's working directory: the module root when the classes dir follows a jk layout,
+     * else the sandboxed temp root, else the classes dir itself. Never the engine daemon's own cwd
+     * — that is the product home's state directory, and a test that roots anything at {@code
+     * user.dir} would write into it. Null only before {@link #run} has bound a classes dir.
+     */
+    @Nullable
+    Path workDir() {
+        return workDir(inferredModuleDir, testTmpDir, testClassesDir);
+    }
+
+    /** {@link #workDir()} as a function of the three candidates, first known wins. */
+    static @Nullable Path workDir(@Nullable Path moduleDir, @Nullable Path tmpDir, @Nullable Path testClassesDir) {
+        if (moduleDir != null) return moduleDir;
+        if (tmpDir != null) return tmpDir;
+        return testClassesDir;
     }
 
     /** Set when {@link #run} starts — module root inferred from testClassesDir layout. */
     private @Nullable Path inferredModuleDir;
+
+    /** Set when {@link #run} starts — the classes dir under test, the work dir of last resort. */
+    private @Nullable Path testClassesDir;
 
     /** Set when {@link #run} starts — the sandboxed temp root; see {@link TestTmpDir}. */
     private @Nullable Path testTmpDir;
@@ -234,18 +255,33 @@ public final class JUnitLauncher {
     private boolean cliTempDirSupport;
 
     /**
-     * {@code .../target/classes/test} → module root ({@code .../}). Null when layout is nonstandard.
+     * The module root a test classes dir belongs to, under either jk layout: {@code
+     * <module>/target/classes/test} for a standalone module, {@code
+     * <workspace>/target/<module-rel>/classes/test} for a workspace member — the central out tree
+     * {@link BuildLayout#moduleTargetDir} lays down, inverted. A member whose {@code module-rel}
+     * names no directory under the workspace is not a module, and a layout with no {@code target}
+     * ancestor is not jk's; both are null.
      */
     static @Nullable Path inferModuleDir(@Nullable Path testClassesDir) {
         if (testClassesDir == null) return null;
         Path p = testClassesDir.toAbsolutePath().normalize();
-        // .../target/classes/test
         if (!"test".equals(name(p))) return null;
-        p = p.getParent(); // classes
-        if (p == null || !"classes".equals(name(p))) return null;
-        p = p.getParent(); // target
-        if (p == null || !BuildLayout.TARGET.equals(name(p))) return null;
-        return p.getParent();
+        Path classes = p.getParent();
+        if (classes == null || !"classes".equals(name(classes))) return null;
+        // Everything between `target` and `classes` is the member's path relative to the root.
+        List<String> rel = new ArrayList<>();
+        Path cursor = classes.getParent();
+        while (cursor != null && !BuildLayout.TARGET.equals(name(cursor))) {
+            rel.add(0, name(cursor));
+            cursor = cursor.getParent();
+        }
+        if (cursor == null) return null;
+        Path root = cursor.getParent();
+        if (root == null) return null;
+        if (rel.isEmpty()) return root;
+        Path module = root;
+        for (String segment : rel) module = module.resolve(segment);
+        return Files.isDirectory(module) ? module : null;
     }
 
     /** The XML report exists exactly when there is a directory to write it into. */
@@ -406,6 +442,7 @@ public final class JUnitLauncher {
         // system terminal) or hang waiting for a keystroke during `jk build` / `jk test`.
         defaults.put("JK_NONINTERACTIVE", "1");
         this.testEnv = Objects.requireNonNull(testEnv, "testEnv").withDefaults(defaults);
+        this.testClassesDir = testClassesDir.toAbsolutePath().normalize();
         this.inferredModuleDir = inferModuleDir(testClassesDir);
         this.testTmpDir = TestTmpDir.ensure(this.testEnv.extras().get("TMPDIR"));
         QuarkusToolingPom.ensure(this.inferredModuleDir);
@@ -483,7 +520,7 @@ public final class JUnitLauncher {
                     PROTOCOL_PREFIX,
                     withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames)),
                     testEnv,
-                    inferredModuleDir,
+                    workDir(),
                     aggregator::accept,
                     line -> {
                         crash.add(line);
@@ -618,7 +655,7 @@ public final class JUnitLauncher {
                     PROTOCOL_PREFIX,
                     withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
                     testEnv,
-                    inferredModuleDir,
+                    workDir(),
                     Discovery.handler(classes, listener),
                     crash::add);
         } catch (PluginProcess.HandlerFailure e) {
