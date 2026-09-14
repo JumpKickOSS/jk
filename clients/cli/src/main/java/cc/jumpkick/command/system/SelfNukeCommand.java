@@ -259,6 +259,12 @@ public final class SelfNukeCommand implements CliCommand {
         // assumption, and the STATE rows are about to delete the sockets and AOT cache that
         // engine holds open, which it would then write straight back. Take it down again.
         if (enginesStopped && wantStore) stopFleet();
+        List<String> failures = new ArrayList<>();
+        // The engine that wiped the store stayed up until the stop above, and its on-demand store
+        // writers — a worker closure, a template clone, a CAS put — recreate the subtree they
+        // need. With every engine of this home down, whatever came back is this process's to
+        // remove; the table said "gone" and the tree must agree before anything is reported.
+        if (wantStore && !dryRun) sweepStore(dirs.storeDir(), failures);
         if (wantCacheWipe) {
             // Engines were stopped above for STATE/STORE — the hosted purge would boot a fresh
             // one only for the STATE rows below to delete its state dir out from under it.
@@ -273,7 +279,6 @@ public final class SelfNukeCommand implements CliCommand {
             }
         }
 
-        List<String> failures = new ArrayList<>();
         Removal gone = remove(existing, dryRun, failures);
         long removed = gone.paths();
 
@@ -367,6 +372,20 @@ public final class SelfNukeCommand implements CliCommand {
             }
         }
         return new Removal(paths, launcherCount, envCount);
+    }
+
+    /**
+     * Delete the store root once more after the fleet is down. {@code jk storage nuke} deletes it
+     * engine-side while that engine is still running, so a write landing between the wipe and the
+     * stop stands the store back up; the row cleared the guards, and nothing is left to write.
+     */
+    private static void sweepStore(Path store, List<String> failures) {
+        if (!Files.exists(store, LinkOption.NOFOLLOW_LINKS)) return;
+        try {
+            PathUtil.deleteRecursivelyOrThrow(store);
+        } catch (IOException e) {
+            failures.add(pathStyled(store) + " (" + e.getMessage() + ")");
+        }
     }
 
     /** Blank line before a settle when this command prints wedges back-to-back. */

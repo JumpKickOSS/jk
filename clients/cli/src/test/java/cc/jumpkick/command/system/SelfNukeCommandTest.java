@@ -140,6 +140,41 @@ class SelfNukeCommandTest {
         assertThat(perApp).as("per-app config needs no engine to delete").doesNotExist();
     }
 
+    /** A store nuke whose engine writes a subtree back before the fleet is stopped. */
+    private static final class WritesBackAfterWipe implements SelfNukeCommand.Hosted {
+        private final Path store;
+
+        WritesBackAfterWipe(Path store) {
+            this.store = store;
+        }
+
+        @Override
+        public int storage() throws IOException {
+            PathUtil.deleteRecursivelyOrThrow(store);
+            Path shard = Files.createDirectories(store.resolve("sha256/zz"));
+            Files.writeString(shard.resolve("blob"), "an on-demand writer's put");
+            return 0;
+        }
+
+        @Override
+        public int cache(Path cacheDir, boolean dryRun, GlobalOptions global, boolean enginesStopped) {
+            return 0;
+        }
+    }
+
+    @Test
+    void a_store_the_engine_wrote_back_between_its_wipe_and_its_stop_is_gone_when_the_command_returns()
+            throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cas = Files.createDirectories(dirs.storeDir().resolve("sha256/ab"));
+        Files.writeString(cas.resolve("blob"), "cas");
+
+        int exit = capture(() -> runNuke(new WritesBackAfterWipe(dirs.storeDir()), EnumSet.of(Target.STORE), true));
+
+        assertThat(exit).isZero();
+        assertThat(dirs.storeDir()).as("the row the table promised gone").doesNotExist();
+    }
+
     @Test
     void an_unreachable_engine_names_what_it_could_not_remove() throws Exception {
         // Silence here is the actual harm: the paths that survive are exactly the ones the user
