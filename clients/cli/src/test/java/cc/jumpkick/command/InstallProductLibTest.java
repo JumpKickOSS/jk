@@ -108,6 +108,22 @@ class InstallProductLibTest {
     }
 
     @Test
+    void a_re_shelving_pass_that_replaced_the_engine_again_names_the_command_to_finish_the_shelf() {
+        String notice =
+                InstallCommand.shelfBehindEngineNotice(true, Optional.of("bbb111222333444"), Optional.of("ccc"));
+        assertThat(notice)
+                .contains("run `jk install` once more")
+                .contains("engine ccc")
+                .contains("engine bbb111222333");
+        assertThat(InstallCommand.shelfBehindEngineNotice(true, Optional.of("ccc"), Optional.of("ccc")))
+                .as("the home names the engine that packaged the shelf")
+                .isNull();
+        assertThat(InstallCommand.shelfBehindEngineNotice(false, Optional.of("aaa"), Optional.of("bbb")))
+                .as("a first pass runs the second itself instead of announcing it")
+                .isNull();
+    }
+
+    @Test
     void an_install_that_kept_the_engine_stops_after_one_pass() {
         assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.of("AAA")))
                 .as("the digest, not its spelling")

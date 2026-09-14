@@ -15,7 +15,9 @@ import cc.jumpkick.cli.engine.JobCancelledException;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.config.SessionContext;
@@ -529,7 +531,8 @@ public final class InstallCommand {
             else if (productBin) announceProductBinInstall(coord, launcher);
             else announceProjectInstall(coord, launcher, binDir);
         }
-        if (!reshelving && engineReplaced(engineBefore, liveEngineSha())) {
+        Optional<String> engineAfter = liveEngineSha();
+        if (!reshelving && engineReplaced(engineBefore, engineAfter)) {
             reshelving = true;
             if (!json) {
                 CommandWedge.printOk(
@@ -542,7 +545,28 @@ public final class InstallCommand {
             EngineClient.forgetEnsuredEngine();
             return runWorkspaceInstall(wsRoot, cwdScope, planName);
         }
+        String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
+        if (notice != null && !json) {
+            Theme t = Theme.active();
+            CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning()) + " " + notice);
+        }
         return 0;
+    }
+
+    /**
+     * What the last pass leaves unsaid when it too replaced the engine: the passes are bounded at
+     * two, so a shelf packaged by an engine the home no longer names is the user's to finish. Null
+     * when the home names the engine that ran the final pass — the shelf is that engine's.
+     */
+    public static @Nullable String shelfBehindEngineNotice(
+            boolean lastPass, Optional<String> before, Optional<String> after) {
+        if (!lastPass || !engineReplaced(before, after)) return null;
+        return "the re-shelving pass ended on engine " + shortSha(after) + " while its shelf was packaged by engine "
+                + shortSha(before) + " — run `jk install` once more so the shelf is the live engine's";
+    }
+
+    private static String shortSha(Optional<String> sha) {
+        return sha.map(s -> s.length() > 12 ? s.substring(0, 12) : s).orElse("(none)");
     }
 
     /** The engine jar the product library's pointer names, by digest; empty when the home has none. */
