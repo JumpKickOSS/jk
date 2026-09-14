@@ -54,6 +54,16 @@ public final class ActionKey {
     private ActionKey() {}
 
     public static String forJavac(String taskId, CompileRequest request, String jkVersion) throws IOException {
+        return forJavac(taskId, request, jkVersion, ClasspathAbi::token);
+    }
+
+    /**
+     * As {@link #forJavac(String, CompileRequest, String)} with the compile classpath read through
+     * {@code cp} — the forecast's view, which answers a sibling tree the build will restore before
+     * this compile keys on it with the token that tree will have.
+     */
+    public static String forJavac(String taskId, CompileRequest request, String jkVersion, EntryToken cp)
+            throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
@@ -61,7 +71,7 @@ public final class ActionKey {
 
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
-        for (String line : javacClasspathTokens(request)) sb.append(line).append('\n');
+        for (String line : javacClasspathTokens(request, cp)) sb.append(line).append('\n');
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -81,8 +91,13 @@ public final class ActionKey {
      * exactly when the key would and on nothing else.
      */
     public static List<String> javacClasspathTokens(CompileRequest request) throws IOException {
+        return javacClasspathTokens(request, ClasspathAbi::token);
+    }
+
+    /** As {@link #javacClasspathTokens(CompileRequest)} with the compile classpath read through {@code cp}. */
+    public static List<String> javacClasspathTokens(CompileRequest request, EntryToken cp) throws IOException {
         List<String> lines = new ArrayList<>();
-        appendCpTokens(lines, "cp:", request.classpath(), ClasspathAbi::token);
+        appendCpTokens(lines, "cp:", request.classpath(), cp);
         appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         return lines;
     }
@@ -266,6 +281,12 @@ public final class ActionKey {
      * invalidates the key).
      */
     public static String forGroovyc(String taskId, GroovycRequest request, String jkVersion) throws IOException {
+        return forGroovyc(taskId, request, jkVersion, ClasspathAbi::token);
+    }
+
+    /** As {@link #forGroovyc(String, GroovycRequest, String)} with the compile classpath read through {@code cp}. */
+    public static String forGroovyc(String taskId, GroovycRequest request, String jkVersion, EntryToken cp)
+            throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
@@ -276,7 +297,7 @@ public final class ActionKey {
         // .java the roots feed joint resolution — an edit to a swept file invalidates the key
         // just like an explicit source, and the worker compiles exactly what was hashed.
         appendSources(sb, GroovycInputs.compileSet(request));
-        for (String line : groovycClasspathTokens(request)) sb.append(line).append('\n');
+        for (String line : groovycClasspathTokens(request, cp)) sb.append(line).append('\n');
         return Hashing.sha256Hex(sb.toString());
     }
 
@@ -290,8 +311,13 @@ public final class ActionKey {
      * content, as for javac.
      */
     public static List<String> groovycClasspathTokens(GroovycRequest request) throws IOException {
+        return groovycClasspathTokens(request, ClasspathAbi::token);
+    }
+
+    /** As {@link #groovycClasspathTokens(GroovycRequest)} with the compile classpath read through {@code cp}. */
+    public static List<String> groovycClasspathTokens(GroovycRequest request, EntryToken cp) throws IOException {
         List<String> lines = new ArrayList<>();
-        appendCpTokens(lines, "cp:", request.classpath(), ClasspathAbi::token);
+        appendCpTokens(lines, "cp:", request.classpath(), cp);
         appendCpTokens(lines, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         return lines;
@@ -397,7 +423,13 @@ public final class ActionKey {
     }
 
     /** How one classpath entry is spelled in a key: by ABI, or by content. */
-    private interface EntryToken {
+    /**
+     * How a classpath entry is spelled in a key. {@link ClasspathAbi#token} for a compile
+     * classpath; the forecast substitutes a view that answers a tree not yet on disk with the
+     * token the build will read once it has restored it.
+     */
+    @FunctionalInterface
+    public interface EntryToken {
         String of(Path entry) throws IOException;
     }
 

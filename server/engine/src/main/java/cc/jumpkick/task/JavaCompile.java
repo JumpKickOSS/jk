@@ -202,7 +202,34 @@ public final class JavaCompile {
             @Nullable Path generatedSourceDir,
             WorkerEnv env)
             throws IOException {
-        String key = ActionKey.forJavac(taskId, request, jkVersion);
+        return predict(
+                taskId,
+                request,
+                jkVersion,
+                actionCache,
+                stateDir,
+                workerJar,
+                generatedSourceDir,
+                env,
+                ClasspathAbi::token);
+    }
+
+    /**
+     * As above, with the compile classpath keyed through {@code cp}: the forecast's view of a
+     * sibling tree the build restores before this compile runs.
+     */
+    public static Prediction predict(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            ActionCache actionCache,
+            Path stateDir,
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir,
+            WorkerEnv env,
+            ActionKey.EntryToken cp)
+            throws IOException {
+        String key = ActionKey.forJavac(taskId, request, jkVersion, cp);
         if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {
             return new Prediction(Outcome.CACHE_HIT, key, request.sources().size(), "");
         }

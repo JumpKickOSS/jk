@@ -3,11 +3,17 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.Test;
@@ -123,6 +129,35 @@ class ClasspathAbiTest {
                 String before = ClasspathAbi.token(classes);
                 Files.writeString(classes.resolve("res.txt"), "two");
                 assertThat(ClasspathAbi.token(classes)).isEqualTo(before);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
+     * A tree that is not on disk is projected from its compile record's outputs and reads as the
+     * live tree would: the forecast keys a consumer on this before the build restores the tree.
+     */
+    @Test
+    void a_tree_projected_from_its_compile_record_shares_the_live_trees_token(@TempDir Path dir) throws Exception {
+        byte[] cls = classWithReturn(1);
+        byte[] nested = classWithPrivate("x");
+        Path classes = dir.resolve("classes");
+        writeClass(classes, "p/C.class", cls);
+        writeClass(classes, "p/D.class", nested);
+        Files.writeString(Files.createDirectories(classes.resolve("META-INF")).resolve("x"), "resource");
+        Cas cas = new Cas(dir.resolve("cas"));
+        Map<String, String> outputs = new LinkedHashMap<>();
+        outputs.put("p/D.class", Hashing.sha256Hex(nested));
+        outputs.put("p/C.class", Hashing.sha256Hex(cls));
+        outputs.put("META-INF/x", Hashing.sha256Hex("resource".getBytes(StandardCharsets.UTF_8)));
+        cas.put(cls);
+        cas.put(nested);
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                String projected = ClasspathAbi.tokenFromOutputs(outputs, List.of(), cas);
+                assertThat(projected).startsWith("abi:").isEqualTo(ClasspathAbi.token(classes));
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

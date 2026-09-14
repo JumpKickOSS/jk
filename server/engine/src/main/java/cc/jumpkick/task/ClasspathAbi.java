@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
@@ -14,6 +15,8 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
@@ -53,6 +56,42 @@ public final class ClasspathAbi {
         // have produced — each line, "\n" between lines — so the token is the same word.
         Lines digest = new Lines();
         extract(abs, attrs, digest);
+        String abi = "abi:" + digest.hex();
+        AbiMemo.put(identity, abi);
+        return abi;
+    }
+
+    /**
+     * The token of a classes tree that is not on disk, from the compile record that produced it:
+     * {@code outputs} maps tree-relative paths to the content shas the CAS holds. The forecast
+     * uses it for a sibling whose tree a build will restore before the consumer's compile keys
+     * on it, so the two agree on the key instead of the forecast reading {@code missing:}.
+     *
+     * <p>Memoized under the identity the restored tree will have once its resources are copied
+     * beside the classes ({@link ClasspathFingerprint#entryFromCompileAndResources}): the build's
+     * later sighting of the live tree is then a lookup, as is the next forecast's projection.
+     * The token itself reads only the {@code .class} outputs, the same way a live tree is read.
+     */
+    public static String tokenFromOutputs(Map<String, String> outputs, List<Path> resourceRoots, Cas cas)
+            throws IOException {
+        String identity = ClasspathFingerprint.entryFromCompileAndResources(outputs, resourceRoots);
+        String hit = AbiMemo.get(identity);
+        if (hit != null) return hit;
+        EXTRACTS.incrementAndGet();
+        // Sorted by tree-relative path, as extractDir sorts a live tree.
+        Map<String, String> classes = new TreeMap<>();
+        for (Map.Entry<String, String> output : outputs.entrySet()) {
+            String slashed = output.getKey().replace('\\', '/');
+            if (!slashed.endsWith(".class")) continue;
+            if (BuildStamps.isStampFile(slashed)) continue;
+            if (ActionCache.hasJkScratchSegment(Path.of(slashed))) continue;
+            classes.put(slashed, output.getValue());
+        }
+        Lines digest = new Lines();
+        for (Map.Entry<String, String> cls : classes.entrySet()) {
+            digest.accept(cls.getKey());
+            for (String line : ClassAbi.apiLines(cas.read(cls.getValue()))) digest.accept(line);
+        }
         String abi = "abi:" + digest.hex();
         AbiMemo.put(identity, abi);
         return abi;

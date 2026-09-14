@@ -3,7 +3,10 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -12,8 +15,10 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
+import cc.jumpkick.wire.runtime.TaskForecast;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -119,6 +124,70 @@ class WorkspaceSiblingClassesE2eTest {
                 .isTrue();
         assertThat(probe.label("app", TaskNames.COMPILE_JAVA)).startsWith("compiling");
         assertThat(app.classesDir().resolve("com/example/app/Main.class")).isRegularFile();
+    }
+
+    /**
+     * After the whole {@code target/} is gone, the forecast prices app's compile as the build
+     * keys it: lib's tree comes back from its compile record before app's compile keys on it, so
+     * the forecast reads that record's token rather than the tree's absence, and both modules
+     * restore instead of recompiling — {@code jk explain} and {@code jk build} agree.
+     */
+    @Test
+    void a_wiped_workspace_forecasts_the_consumers_compile_as_the_build_keys_it(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("sibling-classes-cache");
+        Path ws = javaWorkspace(tmp);
+        lock(ws, cache);
+        Probe first = new Probe(false);
+        assertThat(build(ws, cache, first).success())
+                .as("initial build; failed steps " + first.failed())
+                .isTrue();
+
+        PathUtil.deleteRecursively(ws.resolve("target"));
+
+        List<TaskForecast.Module> plan = forecast(ws, cache);
+        TaskForecast.Task libCompile = step(plan, "lib", TaskNames.COMPILE_MAIN);
+        TaskForecast.Task appCompile = step(plan, "app", TaskNames.COMPILE_MAIN);
+        assertThat(libCompile.cached())
+                .as("lib's compile restores: " + libCompile)
+                .isTrue();
+        assertThat(appCompile.cached())
+                .as("app's compile keys on lib's restored tree, not on its absence: " + appCompile)
+                .isTrue();
+        assertThat(step(plan, "app", TaskNames.PACKAGE_JAR).cached())
+                .as("app's jar is keyed on the tree that comes back, too")
+                .isTrue();
+
+        Probe restored = new Probe(false);
+        assertThat(build(ws, cache, restored).success())
+                .as("restore build; failed steps " + restored.failed())
+                .isTrue();
+        assertThat(restored.label("lib", TaskNames.COMPILE_JAVA)).startsWith("cache hit");
+        assertThat(restored.label("app", TaskNames.COMPILE_JAVA))
+                .as("the build's key is the forecast's: a restore, not a compile")
+                .startsWith("cache hit");
+    }
+
+    private static List<TaskForecast.Module> forecast(Path ws, Path cache) throws IOException {
+        BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        return TaskForecaster.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
+    }
+
+    private static TaskForecast.Module module(List<TaskForecast.Module> plan, String module) {
+        return plan.stream()
+                .filter(m -> m.dir().getFileName().toString().equals(module))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no forecast for " + module));
+    }
+
+    private static TaskForecast.Task step(List<TaskForecast.Module> plan, String module, String step) {
+        TaskForecast.Module m = module(plan, module);
+        return m.steps().stream()
+                .filter(s -> s.name().equals(step))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(module + " forecasts no " + step + ": " + m.steps()));
     }
 
     private static WorkspaceResult build(Path ws, Path cache, Probe probe) {

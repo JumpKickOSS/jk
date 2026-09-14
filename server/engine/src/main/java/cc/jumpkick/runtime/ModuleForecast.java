@@ -30,6 +30,7 @@ import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaCompile;
 import cc.jumpkick.task.SourceApiIndex;
@@ -61,6 +62,15 @@ final class ModuleForecast {
     private final ActionCache actionCache;
     private final Path cache;
     private final Map<Path, String> restoredJarShas;
+
+    /**
+     * ABI tokens of sibling classes trees that are not on disk, keyed by their absolute path, as the
+     * build will read them once restored. Consumers key their compiles through {@link
+     * #classpathToken}; this module adds its own tree here when it is missing or incomplete and its
+     * compile record is known.
+     */
+    private final Map<Path, String> projectedClassesAbi;
+
     private final Map<Path, TaskForecaster.ModuleHint> hints;
     private final WorkspaceTarget target;
     private final Set<Path> terminalDirs;
@@ -118,6 +128,7 @@ final class ModuleForecast {
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas,
+            Map<Path, String> projectedClassesAbi,
             Map<Path, TaskForecaster.ModuleHint> hints,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
@@ -133,6 +144,7 @@ final class ModuleForecast {
         this.actionCache = actionCache;
         this.cache = cache;
         this.restoredJarShas = restoredJarShas;
+        this.projectedClassesAbi = projectedClassesAbi;
         this.hints = hints;
         this.target = target;
         this.terminalDirs = terminalDirs;
@@ -350,7 +362,7 @@ final class ModuleForecast {
                             out,
                             BuildStamps.JAVA,
                             mainSrc,
-                            FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(req)),
+                            FreshnessStamp.ClasspathTokens.of(ActionKey.javacClasspathTokens(req, classpathToken())),
                             release,
                             ActionKey.javacOptionsDigest(req));
                 } catch (IOException ignored) {
@@ -377,7 +389,8 @@ final class ModuleForecast {
                         stateDir,
                         workerJar,
                         layout.generatedSourcesDir("annotations"),
-                        WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
+                        WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
+                        classpathToken());
                 Perf.end("  predict-compile-main", tc);
                 compileMainKey = pred.actionKey();
                 steps.add(TaskForecaster.compileStep(
@@ -388,6 +401,52 @@ final class ModuleForecast {
                 depOnlyDirty = compileDirty && pred.outcome() == JavaCompile.Outcome.CACHE_HIT && !force;
                 ownHint = ownApiHint(prepared, pred);
             }
+            projectOwnClasses(prepared);
+        }
+    }
+
+    /**
+     * A compile classpath entry as the build will read it: a sibling tree this walk knows the
+     * build restores answers with the token of the tree that comes back; everything else with
+     * the token of what is on disk.
+     */
+    private ActionKey.EntryToken classpathToken() {
+        return entry -> {
+            String projected = projectedClassesAbi.get(entry.toAbsolutePath().normalize());
+            return projected != null ? projected : ClasspathAbi.token(entry);
+        };
+    }
+
+    /**
+     * Publish this module's own classes tree for the consumers that follow it in the walk when
+     * the tree is not whole on disk but the compile that produced it is: the build restores the
+     * tree from that record before any consumer keys on it, so the consumer must key on the
+     * restored tree's token, not on {@code missing:}. Only a Java-only module can be projected —
+     * a mixed module's tree also holds what its Kotlin or Groovy compile produced, which the Java
+     * record does not describe — and a compile that will run projects nothing: its consumers are
+     * dirty on its account already.
+     */
+    private void projectOwnClasses(Prepared prepared) {
+        String key = compileMainKey;
+        if (key == null
+                || compileDirty
+                || !prepared.ktSrc().isEmpty()
+                || !prepared.gvSrc().isEmpty()) return;
+        Path classes = prepared.layout().classesDir();
+        try {
+            boolean whole = TaskForecaster.classesDirHasContent(classes)
+                    && ModuleOutputs.compileOutputsOnDisk(actionCache, key, classes);
+            if (whole) return;
+            Optional<ActionCache.ActionRecord> record = actionCache.lookup(key);
+            if (record.isEmpty()) return;
+            List<Path> resourceRoots = PackagingKeys.packageResourceRoots(dir, prepared.compact());
+            projectedClassesAbi.put(
+                    classes.toAbsolutePath().normalize(),
+                    ClasspathAbi.tokenFromOutputs(record.get().outputs(), resourceRoots, actionCache.cas()));
+        } catch (IOException e) {
+            // Without the projection a consumer keys on the tree's absence: the pessimistic
+            // answer, never a false hit.
+            Log.debug("projectOwnClasses: consumers key on the tree as it is", e);
         }
     }
 
@@ -484,7 +543,8 @@ final class ModuleForecast {
 
     /** The Kotlin and Groovy arms, over this module's dirtiness and its dependencies' hint. */
     private ForecastLangArms arms() {
-        return new ForecastLangArms(project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint);
+        return new ForecastLangArms(
+                project, dir, cache, cas, resolver, actionCache, compileDepDirty, force, depHint, classpathToken());
     }
 
     private void compileTest(Prepared prepared) throws Exception {
@@ -600,7 +660,8 @@ final class ModuleForecast {
                     stateDir,
                     workerJar,
                     layout.generatedSourcesDir("annotations", "test"),
-                    WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()));
+                    WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
+                    classpathToken());
             Perf.end("  predict-compile-test", tt);
             Perf.note(
                     "forecast-compile-test " + dir,

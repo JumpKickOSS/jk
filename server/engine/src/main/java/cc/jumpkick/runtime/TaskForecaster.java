@@ -179,6 +179,10 @@ public final class TaskForecaster {
         // consumers fingerprint wiped sibling jars from here, never from an unvalidated
         // last-record pointer (which may name a different edit of the sibling).
         Map<Path, String> restoredJarShas = new HashMap<>();
+        // ABI tokens of the classes trees that are not on disk but that a build restores from each
+        // walked module's compile record before its consumers key on them — consumers read those
+        // trees through this map, so a wiped workspace forecasts the keys the build will compute.
+        Map<Path, String> projectedClassesAbi = new HashMap<>();
         // Sibling lookup for scope-aware dirtiness (coord + bare name → dir).
         Map<String, Path> dirByCoord = new HashMap<>();
         Map<String, Path> dirByName = new HashMap<>();
@@ -206,6 +210,7 @@ public final class TaskForecaster {
                     actionCache,
                     cache,
                     restoredJarShas,
+                    projectedClassesAbi,
                     hints,
                     target,
                     terminalDirs,
@@ -440,6 +445,7 @@ public final class TaskForecaster {
             ActionCache actionCache,
             Path cache,
             Map<Path, String> restoredJarShas,
+            Map<Path, String> projectedClassesAbi,
             Map<Path, ModuleHint> hints,
             WorkspaceTarget target,
             Set<Path> terminalDirs,
@@ -456,6 +462,7 @@ public final class TaskForecaster {
                         actionCache,
                         cache,
                         restoredJarShas,
+                        projectedClassesAbi,
                         hints,
                         target,
                         terminalDirs,
