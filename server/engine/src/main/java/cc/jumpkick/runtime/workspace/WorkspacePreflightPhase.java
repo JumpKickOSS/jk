@@ -195,8 +195,8 @@ public final class WorkspacePreflightPhase {
      * build would produce. Nothing restores by "the last record for this task": after an edit, a
      * build, a revert and a wipe, that pointer names the edited build's outputs, and an empty tree
      * refilled from it ships the wrong bytecode under a hitting key. Every step of such a plan is a
-     * cache hit, so this costs milliseconds; dropping these modules instead left every dependent
-     * failing in resolve classpath with "sibling not built" — the shape a memo takes after any
+     * cache hit, so this costs milliseconds; dropping these modules instead leaves every dependent
+     * failing in resolve classpath with "sibling not compiled" — the shape a memo takes after any
      * failed build, once {@code target/} is gone.
      */
     static Set<Path> scheduled(List<BuildGraph.BuildUnit> units, Set<Path> dirty, Set<Path> restoreNeeded) {
