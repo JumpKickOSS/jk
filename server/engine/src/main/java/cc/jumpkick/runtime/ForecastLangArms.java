@@ -26,6 +26,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The stamp-language arms of one module's forecast: compile-kotlin and compile-groovy priced the
@@ -46,6 +47,9 @@ final class ForecastLangArms {
 
     /** The compile classpath as the build will read it — a wiped sibling tree by its restored token. */
     private final ActionKey.EntryToken classpathToken;
+
+    /** The Kotlin reading of the same classpath: memo only, a wiped sibling under its restored identity. */
+    private final KotlinClasspathAbi.Snapshotter snapshotter;
 
     ForecastLangArms(
             JkBuild project,
@@ -68,7 +72,15 @@ final class ForecastLangArms {
         this.force = force;
         this.depHint = depHint;
         this.classpathToken = restored.abiToken();
+        this.snapshotter = restored.kotlinSnapshotter();
     }
+
+    /**
+     * A stamp-language compile step with the action key it was priced by — the key of the record
+     * a wiped output tree is projected from. Null when the step was answered without a key (a
+     * fresh stamp, an unresolvable toolchain).
+     */
+    record LangStep(TaskForecast.Task task, @Nullable String key) {}
 
     /** The kotlinc config and compile classpath the build derives for this module. */
     record KotlinArm(PlannerLang.KotlinConfig config, List<Path> classpath, boolean mixedWithJava) {}
@@ -91,7 +103,7 @@ final class ForecastLangArms {
      * misses, which is the pessimistic answer; a toolchain that cannot be resolved without a
      * fetch forecasts a full compile for the same reason.
      */
-    TaskForecast.Task kotlinStep(ModuleForecast.Prepared prepared, KotlinArm arm) {
+    LangStep kotlinStep(ModuleForecast.Prepared prepared, KotlinArm arm) {
         BuildLayout layout = prepared.layout();
         List<Path> ktSrc = prepared.ktSrc();
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_KOTLIN, layout.classesDir());
@@ -112,28 +124,31 @@ final class ForecastLangArms {
                     workingDir,
                     arm.config());
             request = worker.request();
-            key = ActionKey.forKotlinc(
-                    taskId, request, BuildIdentity.cacheKeyVersion(), KotlinClasspathAbi.MEMOIZED_ONLY);
+            key = ActionKey.forKotlinc(taskId, request, BuildIdentity.cacheKeyVersion(), snapshotter);
         } catch (Exception e) {
             Log.debug("kotlinStep: the Kotlin toolchain could not be resolved read-only", e);
-            return new TaskForecast.Task(
-                    TaskNames.COMPILE_KOTLIN,
-                    TaskForecast.Status.FULL,
-                    "full compile · " + TaskForecaster.count(ktSrc.size(), "source") + " · toolchain unresolved",
+            return new LangStep(
+                    new TaskForecast.Task(
+                            TaskNames.COMPILE_KOTLIN,
+                            TaskForecast.Status.FULL,
+                            "full compile · " + TaskForecaster.count(ktSrc.size(), "source")
+                                    + " · toolchain unresolved",
+                            null),
                     null);
         }
         boolean hit = TaskForecaster.present(actionCache, key);
         String why = "";
         if (!hit) {
             try {
-                why = TaskForecaster.langMissReason(
-                        actionCache, taskId, ActionKey.kotlincInputs(request, KotlinClasspathAbi.MEMOIZED_ONLY));
+                why = TaskForecaster.langMissReason(actionCache, taskId, ActionKey.kotlincInputs(request, snapshotter));
             } catch (IOException e) {
                 Log.debug("kotlinStep: no miss reason", e);
             }
         }
-        return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why, depHint);
+        return new LangStep(
+                TaskForecaster.langCompileStep(
+                        TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why, depHint),
+                key);
     }
 
     /**
@@ -150,8 +165,7 @@ final class ForecastLangArms {
                 prepared.layout().compileStampDir(),
                 BuildStamps.KOTLIN,
                 freshInputs,
-                FreshnessStamp.ClasspathTokens.of(
-                        PlannerLang.kotlinStampTokens(arm.classpath(), KotlinClasspathAbi.MEMOIZED_ONLY)),
+                FreshnessStamp.ClasspathTokens.of(PlannerLang.kotlinStampTokens(arm.classpath(), snapshotter)),
                 prepared.release(),
                 arm.config().digest());
     }
@@ -165,7 +179,7 @@ final class ForecastLangArms {
      * known, as the build answers it. A toolchain that cannot be resolved read-only forecasts a
      * full compile: the pessimistic answer, never a false hit.
      */
-    TaskForecast.Task groovyStep(ModuleForecast.Prepared prepared) throws Exception {
+    LangStep groovyStep(ModuleForecast.Prepared prepared) throws Exception {
         BuildLayout layout = prepared.layout();
         List<Path> gvSrc = prepared.gvSrc();
         boolean mixed = prepared.mixedGroovy();
@@ -200,10 +214,15 @@ final class ForecastLangArms {
             boolean fresh = !compileDepDirty
                     && !force
                     && FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, inputs);
-            return fresh
-                    ? new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null)
-                    : new TaskForecast.Task(
-                            TaskNames.COMPILE_GROOVY, TaskForecast.Status.FULL, full + " · toolchain unresolved", null);
+            return new LangStep(
+                    fresh
+                            ? new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null)
+                            : new TaskForecast.Task(
+                                    TaskNames.COMPILE_GROOVY,
+                                    TaskForecast.Status.FULL,
+                                    full + " · toolchain unresolved",
+                                    null),
+                    null);
         }
         List<Path> freshInputs = new ArrayList<>(gvSrc);
         if (mixed) freshInputs.addAll(prepared.mainSrc());
@@ -217,13 +236,16 @@ final class ForecastLangArms {
                         prepared.release(),
                         PlannerLang.groovyStampDigest(
                                 project, prepared.lock(), dir, prepared.release(), prepared.javaHome()))) {
-            return new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null);
+            return new LangStep(
+                    new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null), null);
         }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
         String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
         boolean hit = TaskForecaster.present(actionCache, key);
         String why = hit ? "" : TaskForecaster.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
-        return TaskForecaster.langCompileStep(
-                TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint);
+        return new LangStep(
+                TaskForecaster.langCompileStep(
+                        TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint),
+                key);
     }
 }

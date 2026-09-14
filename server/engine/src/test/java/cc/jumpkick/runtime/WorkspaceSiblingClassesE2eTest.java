@@ -197,6 +197,87 @@ class WorkspaceSiblingClassesE2eTest {
                 .startsWith("cache hit");
     }
 
+    /**
+     * A mixed producer's tree holds what javac and kotlinc each produced; the forecast projects
+     * the merged tree from both compile records, so a Java consumer keys on the tree the build
+     * assembles and restores, and the producer's own javac keys on kotlinc's restored output.
+     */
+    @Test
+    void a_wiped_workspace_forecasts_a_java_consumer_of_a_mixed_sibling_as_the_build_keys_it(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("sibling-classes-cache");
+        Path ws = mixedWorkspace(tmp);
+        lock(ws, cache);
+        Probe first = new Probe(false);
+        assertThat(build(ws, cache, first).success())
+                .as("initial build; failed steps " + first.failed())
+                .isTrue();
+
+        PathUtil.deleteRecursively(ws.resolve("target"));
+
+        List<TaskForecast.Module> plan = forecast(ws, cache);
+        assertThat(step(plan, "lib", TaskNames.COMPILE_KOTLIN).cached())
+                .as("lib's Kotlin compile restores: " + step(plan, "lib", TaskNames.COMPILE_KOTLIN))
+                .isTrue();
+        assertThat(step(plan, "lib", TaskNames.COMPILE_MAIN).cached())
+                .as("lib's javac keys on kotlinc's restored tree: " + step(plan, "lib", TaskNames.COMPILE_MAIN))
+                .isTrue();
+        assertThat(step(plan, "lib", TaskNames.PACKAGE_JAR).cached())
+                .as("lib's jar is keyed on the merged tree that comes back")
+                .isTrue();
+        assertThat(step(plan, "app", TaskNames.COMPILE_MAIN).cached())
+                .as("app keys on lib's merged tree, not on its absence: " + step(plan, "app", TaskNames.COMPILE_MAIN))
+                .isTrue();
+
+        Probe restored = new Probe(false);
+        assertThat(build(ws, cache, restored).success())
+                .as("restore build; failed steps " + restored.failed())
+                .isTrue();
+        assertThat(restored.label("lib", TaskNames.COMPILE_KOTLIN)).startsWith("cache hit");
+        assertThat(restored.label("lib", TaskNames.COMPILE_JAVA)).startsWith("cache hit");
+        assertThat(restored.label("app", TaskNames.COMPILE_JAVA))
+                .as("the build's key is the forecast's: a restore, not a compile")
+                .startsWith("cache hit");
+    }
+
+    /**
+     * A Kotlin consumer keys its compile through the snapshot digest of each classpath entry; the
+     * forecast reads a wiped sibling tree under the identity of the tree that comes back, so the
+     * digest the build memoized against that tree answers, and the forecast agrees with the build.
+     */
+    @Test
+    void a_wiped_workspace_forecasts_a_kotlin_consumers_compile_as_the_build_keys_it(@TempDir Path tmp)
+            throws Exception {
+        Path cache = TestCaches.dir("sibling-classes-cache");
+        Path ws = kotlinConsumerWorkspace(tmp);
+        lock(ws, cache);
+        Probe first = new Probe(false);
+        assertThat(build(ws, cache, first).success())
+                .as("initial build; failed steps " + first.failed())
+                .isTrue();
+        assertThat(first.label("app", TaskNames.COMPILE_KOTLIN)).startsWith("compiling");
+
+        PathUtil.deleteRecursively(ws.resolve("target"));
+
+        List<TaskForecast.Module> plan = forecast(ws, cache);
+        assertThat(step(plan, "lib", TaskNames.COMPILE_MAIN).cached()).isTrue();
+        assertThat(step(plan, "app", TaskNames.COMPILE_KOTLIN).cached())
+                .as("app's kotlinc keys on lib's restored tree, not on its absence: "
+                        + step(plan, "app", TaskNames.COMPILE_KOTLIN))
+                .isTrue();
+        assertThat(step(plan, "app", TaskNames.PACKAGE_JAR).cached())
+                .as("app's jar is keyed on its own restored Kotlin output")
+                .isTrue();
+
+        Probe restored = new Probe(false);
+        assertThat(build(ws, cache, restored).success())
+                .as("restore build; failed steps " + restored.failed())
+                .isTrue();
+        assertThat(restored.label("app", TaskNames.COMPILE_KOTLIN))
+                .as("the build's key is the forecast's: a restore, not a compile")
+                .startsWith("cache hit");
+    }
+
     private static List<TaskForecast.Module> forecast(Path ws, Path cache) throws IOException {
         BuildGraph.Result graph = BuildGraph.resolve(ws, JkBuildParser.parse(ws.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();
@@ -483,6 +564,50 @@ class WorkspaceSiblingClassesE2eTest {
                     public static void main(String[] args) {
                         System.out.println(Lib.twice(2) + KLib.INSTANCE.thrice(2));
                     }
+                }
+                """);
+        return ws;
+    }
+
+    /** lib is one Java class; app is a Kotlin application that uses it. */
+    private static Path kotlinConsumerWorkspace(Path tmp) throws IOException {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        root(ws);
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+                java    = 25
+                """);
+        Files.createDirectories(lib.resolve("src/com/example"));
+        Files.writeString(lib.resolve("src/com/example/Lib.java"), LIB_SOURCE);
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+                java    = 25
+                kotlin  = "^2.4.10"
+
+                [dependencies]
+                lib = { workspace = true }
+
+                [application]
+                main     = "com.example.app.MainKt"
+                assembly = true
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        Path src = Files.createDirectories(app.resolve("src/com/example/app"));
+        Files.writeString(src.resolve("Main.kt"), """
+                package com.example.app
+
+                import com.example.Lib
+
+                fun main() {
+                    println(Lib.version() + " " + Lib.twice(2))
                 }
                 """);
         return ws;

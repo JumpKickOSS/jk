@@ -7,6 +7,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.KotlinClasspathAbi;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -165,6 +166,15 @@ final class RestoredOutputs {
             if (sha != null && Files.isRegularFile(actionCache.cas().pathFor(sha))) return "file:" + sha;
             return ClasspathFingerprint.entry(abs);
         };
+    }
+
+    /**
+     * The Kotlin classpath reading of the forecast: never forks the worker, and reads a wiped
+     * entry under the identity of the bytes that come back, so the snapshot digest the build
+     * memoized against those bytes answers here.
+     */
+    KotlinClasspathAbi.Snapshotter kotlinSnapshotter() {
+        return KotlinClasspathAbi.memoizedOnly(identity());
     }
 
     /** The CAS payload of a pinned jar that is not on disk, when the blob is still there. */

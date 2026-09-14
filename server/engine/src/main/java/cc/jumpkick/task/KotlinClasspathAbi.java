@@ -44,6 +44,15 @@ public final class KotlinClasspathAbi {
     @FunctionalInterface
     public interface Snapshotter {
         Map<Path, String> snapshot(List<Path> entries) throws IOException;
+
+        /**
+         * The content identity an entry's token is memoized under. On disk by default; a forecast
+         * answers for a wiped sibling tree with the identity of the tree the build restores, so
+         * the snapshot digest the build memoized against that tree is the token here too.
+         */
+        default String identity(Path entry) throws IOException {
+            return ClasspathFingerprint.entry(entry);
+        }
     }
 
     /**
@@ -51,6 +60,25 @@ public final class KotlinClasspathAbi {
      * For read-only callers (the forecast) that must not fork a worker.
      */
     public static final Snapshotter MEMOIZED_ONLY = entries -> Map.of();
+
+    /**
+     * {@link #MEMOIZED_ONLY} reading each entry's identity through {@code identity}: a wiped
+     * entry the forecast knows the build restores keys as the restored bytes, and hits the memo
+     * when the build has snapshotted those bytes before.
+     */
+    public static Snapshotter memoizedOnly(ClasspathFingerprint.EntryIdentity identity) {
+        return new Snapshotter() {
+            @Override
+            public Map<Path, String> snapshot(List<Path> entries) {
+                return Map.of();
+            }
+
+            @Override
+            public String identity(Path entry) throws IOException {
+                return identity.of(entry);
+            }
+        };
+    }
 
     /** The token of one entry; see {@link #tokens}. */
     public static String token(Path entry, Snapshotter snapshotter) throws IOException {
@@ -73,7 +101,7 @@ public final class KotlinClasspathAbi {
         Map<String, Path> toSnapshot = new LinkedHashMap<>();
         for (int i = 0; i < n; i++) {
             abs[i] = entries.get(i).toAbsolutePath().normalize();
-            String identity = ClasspathFingerprint.entry(abs[i]);
+            String identity = snapshotter.identity(abs[i]);
             identities[i] = identity;
             if (identity.startsWith("missing:")) {
                 tokens[i] = identity;

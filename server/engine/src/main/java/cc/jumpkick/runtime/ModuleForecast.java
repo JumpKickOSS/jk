@@ -92,6 +92,9 @@ final class ModuleForecast {
 
     private @Nullable String compileMainKey;
 
+    /** The keys the stamp-language arms priced by, when they priced by key; they project the merged tree. */
+    private @Nullable String compileKotlinKey, compileGroovyKey;
+
     private @Nullable String compileTestKey;
     private @Nullable String compileTestKotlinKey;
     private @Nullable String compileTestGroovyKey;
@@ -195,8 +198,11 @@ final class ModuleForecast {
         }
         try {
             Prepared prepared = prepare();
+            // kotlinc runs ahead of javac in a mixed module and javac reads its output: the
+            // Kotlin arm goes first so that tree is published before compile-main keys on it.
+            if (prepared.mixedKotlin()) compileKotlin(prepared);
             compileMain(prepared);
-            compileKotlin(prepared);
+            if (!prepared.mixedKotlin()) compileKotlin(prepared);
             compileGroovy(prepared);
             projectOwnOutputs(prepared);
             compileTest(prepared);
@@ -411,18 +417,20 @@ final class ModuleForecast {
      * the tree is not whole on disk but every compile that writes into it is answered by a
      * record: the build restores the tree from those records before any consumer keys on it, so
      * the consumer must key on the restored tree, not on {@code missing:}. The tree is the merge
-     * the build assembles — javac's outputs, then the resource roots and a plugin worker's
-     * module-root manifest over them. A module with no sources still owns a tree (its copied
-     * resources) and projects that. A mixed module projects nothing: its tree also holds what its
-     * Kotlin or Groovy compile produced, which the Java record does not describe. A compile that
-     * will run projects nothing: its consumers are dirty on its account already.
+     * the build assembles — javac's outputs, then each other compiler's copied over them, then the
+     * resource roots and a plugin worker's module-root manifest — so a mixed module projects the
+     * same tree a Java-only one does. A module with no sources still owns a tree (its copied
+     * resources) and projects that. A compile that will run projects nothing: its consumers are
+     * dirty on its account already.
      */
     private void projectOwnOutputs(Prepared prepared) {
-        if (compileDirty || !prepared.ktSrc().isEmpty() || !prepared.gvSrc().isEmpty()) return;
+        if (compileDirty) return;
         try {
             if (classesTreeWhole(prepared.layout())) return;
             List<@Nullable String> keys = new ArrayList<>();
             if (!prepared.mainSrc().isEmpty()) keys.add(compileMainKey);
+            if (!prepared.ktSrc().isEmpty()) keys.add(compileKotlinKey);
+            if (!prepared.gvSrc().isEmpty()) keys.add(compileGroovyKey);
             restored.projectFromRecords(
                     prepared.layout().classesDir(),
                     keys,
@@ -492,9 +500,11 @@ final class ModuleForecast {
                 // The stamp is gone (a wiped target/) or stale: price the step by the action key of
                 // the build's own request, as the build will — never by the tasks/ pointer, whose
                 // last record may belong to another edit of the sources.
-                TaskForecast.Task step = arms.kotlinStep(prepared, arm);
-                steps.add(step);
-                if (!step.cached()) {
+                ForecastLangArms.LangStep step = arms.kotlinStep(prepared, arm);
+                steps.add(step.task());
+                if (step.task().cached()) {
+                    restored.projectFromRecord(layout.kotlinClassesDir(), compileKotlinKey = step.key());
+                } else {
                     compileDirty = true;
                     ownHint = SourceApiIndex.Hint.UNKNOWN;
                 }
@@ -509,9 +519,11 @@ final class ModuleForecast {
         List<Path> gvSrc = prepared.gvSrc();
         // ---- compile-groovy (stamp, then the action key of the build's own request) ----
         if (!gvSrc.isEmpty()) {
-            TaskForecast.Task step = arms().groovyStep(prepared);
-            steps.add(step);
-            if (!step.cached()) {
+            ForecastLangArms.LangStep step = arms().groovyStep(prepared);
+            steps.add(step.task());
+            if (step.task().cached()) {
+                restored.projectFromRecord(layout.groovyClassesDir(), compileGroovyKey = step.key());
+            } else {
                 compileDirty = true;
                 ownHint = SourceApiIndex.Hint.UNKNOWN;
             }
