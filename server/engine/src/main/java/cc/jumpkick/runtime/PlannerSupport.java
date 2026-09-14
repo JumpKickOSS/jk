@@ -116,8 +116,10 @@ public final class PlannerSupport {
      *
      * <p>A processor runs as a program, so it needs its own dependencies (a KSP processor needs
      * {@code symbol-processing-api}, an emitter library, …) — hence the sibling-lockfile loop,
-     * mirroring {@link #mainCompileClasspath}. Sibling jars come from the declared closure rather
-     * than the built set so {@code jk explain} reproduces the same action key after a clean.
+     * mirroring {@link #mainCompileClasspath}. A sibling processor enters through its classes tree,
+     * like every compile-time sibling: the tree carries the service registration once the sibling's
+     * resources are copied, and is whole before the sibling packages. The declared closure rather
+     * than the built set, so {@code jk explain} reproduces the same action key after a clean.
      */
     public static List<Path> processorClasspath(
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
@@ -128,8 +130,8 @@ public final class PlannerSupport {
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
             throws IOException {
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR), requirePresent));
-        for (Path jar : siblings.siblingClosureJars()) {
-            if (!cp.contains(jar)) cp.add(jar);
+        for (Path classes : siblings.siblingClosureClasses()) {
+            if (!cp.contains(classes)) cp.add(classes);
         }
         for (Path sibLock : siblings.siblingLockfiles()) {
             try {
@@ -184,12 +186,12 @@ public final class PlannerSupport {
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
             throws IOException {
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent));
-        // The declared closure (deterministic jar paths) — not just the built ones
-        // so the action key is stable whether or not target/ is currently populated.
-        // In a valid build the siblings are all built (the missing-sibling check
-        // upstream guarantees it), so these are the same paths javac compiles against;
-        // after `jk clean` they still let `jk explain` reproduce the build's key.
-        cp.addAll(siblings.siblingClosureJars());
+        // The siblings' classes trees, as the declared closure (deterministic paths) — not the
+        // built set — so the action key is stable whether or not target/ is currently populated.
+        // A tree is whole once its module has compiled, which is what admits this module to the
+        // schedule: javac compiles against these paths while the sibling may still be packaging.
+        // After `jk clean` they still let `jk explain` reproduce the build's key.
+        cp.addAll(siblings.siblingClosureClasses());
         for (Path sibLock : siblings.siblingLockfiles()) {
             try {
                 Lockfile sl = LockfileReader.read(sibLock);
@@ -763,7 +765,7 @@ public final class PlannerSupport {
         WorkspaceClasspath.Result sib =
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
-        cp.addAll(sib.jars());
+        cp.addAll(sib.siblingClosureClasses());
         for (Path sl : sib.siblingLockfiles()) {
             try {
                 Lockfile s = LockfileReader.read(sl);
@@ -782,7 +784,7 @@ public final class PlannerSupport {
         WorkspaceClasspath.Result sib =
                 WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
-        cp.addAll(sib.jars());
+        cp.addAll(sib.siblingClosureJars());
         for (Path sl : sib.siblingLockfiles()) {
             try {
                 Lockfile s = LockfileReader.read(sl);

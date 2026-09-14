@@ -69,12 +69,12 @@ class KotlinAbiAvoidanceE2eTest {
         assertThat(build(ws, cache, bodyOnly).success()).isTrue();
         assertThat(bodyOnly.label("lib", TaskNames.COMPILE_KOTLIN)).startsWith("compiling");
         assertThat(bodyOnly.label("app", TaskNames.COMPILE_KOTLIN))
-                .as("app's compile-kotlin is answered by its stamp: lib's jar changed, its ABI token did not")
+                .as("app's compile-kotlin is answered by its stamp: lib's classes changed, their ABI token did not")
                 .isEqualTo("up to date");
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
         assertThat(KotlinAbiWarmup.warmed())
-                .as("lib snapshotted its own new jar")
-                .contains(libJar(ws));
+                .as("lib snapshotted its own new classes tree")
+                .contains(libClasses(ws));
         assertNoConsumerFork(ws, forksBefore);
 
         // An inline function body is ABI for kotlinc: it is copied into every call site.
@@ -141,8 +141,8 @@ class KotlinAbiAvoidanceE2eTest {
                 .isEqualTo("up to date");
         assertThat(appCompileKey(ws, cache)).isEqualTo(initial);
         assertThat(KotlinAbiWarmup.warmed())
-                .as("the Java producer snapshotted its new jar through its consumer's Kotlin toolchain")
-                .contains(libJar(ws));
+                .as("the Java producer snapshotted its new classes tree through its consumer's Kotlin toolchain")
+                .contains(libClasses(ws));
         assertNoConsumerFork(ws, forksBefore);
     }
 
@@ -312,9 +312,9 @@ class KotlinAbiAvoidanceE2eTest {
                 .noneMatch(f -> f.outputDir().equals(appOut));
     }
 
-    private static Path libJar(Path ws) throws IOException {
+    private static Path libClasses(Path ws) throws IOException {
         return BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")))
-                .mainJar()
+                .classesDir()
                 .toAbsolutePath()
                 .normalize();
     }

@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -34,27 +35,30 @@ class ProcessorClasspathTest {
         JkBuild build = JkBuildParser.parse(consumer.resolve("jk.toml"));
 
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
-        assertThat(siblings.missingSiblingJars()).isEmpty();
+        assertThat(siblings.missingSiblingClasses()).isEmpty();
 
         List<Path> cp = PlannerSupport.processorClasspath(
                 Lockfile.empty("test"), new ClasspathResolver(new Cas(tmp.resolve("cas"))), siblings);
 
-        // Workspace layout: <ws>/target/<module-rel>/lib/… (not module/target/).
-        assertThat(cp).contains(root.resolve("target/proc/lib/proc-1.0.0.jar"));
+        // Workspace layout: <ws>/target/<module-rel>/classes/main (not module/target/). The tree,
+        // not the jar: javac loads the processor and its service registration from it, and it is
+        // whole before the sibling packages.
+        assertThat(cp).contains(root.resolve("target/proc/classes/main"));
+        assertThat(cp).noneMatch(p -> p.getFileName().toString().endsWith(".jar"));
     }
 
     @Test
-    void an_unbuilt_sibling_processor_is_reported_missing(@TempDir Path tmp) throws Exception {
+    void an_uncompiled_sibling_processor_is_reported_missing(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
-        Files.delete(root.resolve("target/proc/lib/proc-1.0.0.jar"));
+        PathUtil.deleteRecursively(root.resolve("target/proc/classes"));
         Path consumer = root.resolve("consumer");
 
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(
                 consumer, JkBuildParser.parse(consumer.resolve("jk.toml")), Set.of(Scope.PROCESSOR));
 
         // The build turns this into a hard error rather than silently generating nothing.
-        assertThat(siblings.missingSiblingJars()).hasSize(1);
-        assertThat(siblings.missingSiblingJars().get(0)).contains("proc");
+        assertThat(siblings.missingSiblingClasses()).hasSize(1);
+        assertThat(siblings.missingSiblingClasses().get(0)).contains("proc");
     }
 
     @Test
@@ -85,7 +89,7 @@ class ProcessorClasspathTest {
                 .isEmpty();
     }
 
-    /** A two-module workspace: {@code consumer} takes {@code proc} as a processor, and proc is built. */
+    /** A two-module workspace: {@code consumer} takes {@code proc} as a processor, and proc has compiled. */
     private static Path workspace(Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(root.resolve("jk.toml"), """
@@ -103,9 +107,8 @@ class ProcessorClasspathTest {
                 name    = "proc"
                 version = "1.0.0"
                 """);
-        Path procJar = root.resolve("target/proc/lib/proc-1.0.0.jar");
-        Files.createDirectories(procJar.getParent());
-        Files.writeString(procJar, "not-really-a-jar");
+        Path procClasses = Files.createDirectories(root.resolve("target/proc/classes/main/META-INF/services"));
+        Files.writeString(procClasses.resolve("javax.annotation.processing.Processor"), "com.example.Proc\n");
 
         Path consumer = Files.createDirectories(root.resolve("consumer"));
         Files.writeString(consumer.resolve("jk.toml"), """

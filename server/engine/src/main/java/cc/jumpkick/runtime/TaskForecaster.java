@@ -214,10 +214,10 @@ public final class TaskForecaster {
                     m2Dir);
             Perf.end("forecast " + u.coord(), t0);
             // Seed main-output dirtiness for *compile* consumers only when this module's
-            // consumed jar/classes will change — not when only test-scope work is dirty.
-            // Package matters on its own: a consumer's compile classpath hashes sibling JAR
-            // *content*, so an upstream whose compile is cached but whose jar is stale
-            // repackages and invalidates the consumer.
+            // consumed classes/jar will change — not when only test-scope work is dirty.
+            // Package matters on its own: a consumer's tests and packaging read the sibling
+            // JAR, so an upstream whose compile is cached but whose jar is stale repackages
+            // and the consumer's test and package steps re-run against the new bytes.
 
             // Also seed when a compile-scope dep is dirty even if predictors still look cached
             // against pre-rebuild sibling jars (pessimistic; avoids under-reserve).

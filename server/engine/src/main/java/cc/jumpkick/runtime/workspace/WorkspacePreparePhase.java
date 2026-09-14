@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.TaskForecaster;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
@@ -51,16 +52,24 @@ final class WorkspacePreparePhase {
 
     record Ready(Prepared prepared) implements Outcome {}
 
-    /** Typed state handed from preparation to scheduling. */
-    record Prepared(WorkspaceResourcePhase.Resources resources, Map<Path, ModulePlan> plans) {}
+    /**
+     * Typed state handed from preparation to scheduling. {@code siblings} is the schedule's
+     * artifact wait: each plan carries its own gate into it, and the run phase publishes into it.
+     */
+    record Prepared(
+            WorkspaceResourcePhase.Resources resources, Map<Path, ModulePlan> plans, SiblingArtifacts siblings) {}
 
     static Outcome prepare(WorkspaceResourcePhase.Resources resources, WorkspaceBuildListener listener) {
         long started = Perf.start();
         int count = resources.dirtyUnits().size();
         listener.onPreflight("plan", 0, Math.max(count, 1), count == 0 ? "Nothing to prepare" : "Preparing modules…");
+        List<Path> scheduled = new ArrayList<>();
+        for (BuildGraph.BuildUnit unit : resources.dirtyUnits()) scheduled.add(unit.dir());
+        SiblingArtifacts siblings =
+                new SiblingArtifacts(resources.preflight().graph().edges(), scheduled);
         Map<Path, ModulePlan> plans;
         try {
-            plans = prepareModules(resources, listener, count);
+            plans = prepareModules(resources, listener, count, siblings);
         } catch (PrepareFailed failure) {
             ModuleOutcome outcome = new ModuleOutcome(failure.coord(), failure.dir(), false, 2, 0);
             listener.onModuleFinish(outcome);
@@ -84,20 +93,26 @@ final class WorkspacePreparePhase {
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(resources.preflight().graph().edges());
         listener.onEtaEstimate(resources.etaMs());
-        return new Ready(new Prepared(resources, Collections.unmodifiableMap(new LinkedHashMap<>(plans))));
+        return new Ready(new Prepared(resources, Collections.unmodifiableMap(new LinkedHashMap<>(plans)), siblings));
     }
 
     private static Map<Path, ModulePlan> prepareModules(
-            WorkspaceResourcePhase.Resources resources, WorkspaceBuildListener listener, int count) {
+            WorkspaceResourcePhase.Resources resources,
+            WorkspaceBuildListener listener,
+            int count,
+            SiblingArtifacts siblings) {
         if (resources.dirtyUnits().isEmpty()) return Map.of();
         if (count <= 1 || !prepareParallelEnabled()) {
-            return prepareSerial(resources, listener, count);
+            return prepareSerial(resources, listener, count, siblings);
         }
-        return prepareParallel(resources, listener, count);
+        return prepareParallel(resources, listener, count, siblings);
     }
 
     private static Map<Path, ModulePlan> prepareSerial(
-            WorkspaceResourcePhase.Resources resources, WorkspaceBuildListener listener, int count) {
+            WorkspaceResourcePhase.Resources resources,
+            WorkspaceBuildListener listener,
+            int count,
+            SiblingArtifacts siblings) {
         Map<Path, ModulePlan> plans = new LinkedHashMap<>();
         int prepared = 0;
         for (BuildGraph.BuildUnit unit : resources.dirtyUnits()) {
@@ -107,7 +122,8 @@ final class WorkspacePreparePhase {
                     resources.request(),
                     resources.preflight().moduleDirs(),
                     resources.preflight().jarConsumed(),
-                    true);
+                    true,
+                    siblings.gateFor(unit.dir()));
             prepared++;
             listener.onPreflight(
                     "plan", prepared, count, "Preparing " + unit.coord() + " (" + prepared + "/" + count + ")");
@@ -119,7 +135,10 @@ final class WorkspacePreparePhase {
     }
 
     private static Map<Path, ModulePlan> prepareParallel(
-            WorkspaceResourcePhase.Resources resources, WorkspaceBuildListener listener, int count) {
+            WorkspaceResourcePhase.Resources resources,
+            WorkspaceBuildListener listener,
+            int count,
+            SiblingArtifacts siblings) {
         AtomicInteger prepared = new AtomicInteger();
         Object preflightLock = new Object();
         Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
@@ -135,7 +154,8 @@ final class WorkspacePreparePhase {
                                 resources.request(),
                                 resources.preflight().moduleDirs(),
                                 resources.preflight().jarConsumed(),
-                                true);
+                                true,
+                                siblings.gateFor(unit.dir()));
                         if (plan == null) throw new PrepareFailed(unit.coord(), unit.dir());
                         attachTimings(plan, resources);
                         plans.put(unit.dir(), plan);
@@ -189,10 +209,11 @@ final class WorkspacePreparePhase {
             WorkspaceRequest request,
             Set<Path> moduleDirs,
             Set<Path> jarConsumed,
-            boolean forceRebuild) {
+            boolean forceRebuild,
+            SiblingArtifacts.Gate siblings) {
         Path dir = unit.dir();
         if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return null;
-        BuildPlan plan = assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed);
+        BuildPlan plan = assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, siblings);
         // One evaluation serves prepare and run: each step keeps its estimate and the run sizes
         // the bar from it. The run evaluates under over-reserve, so the estimate is taken under
         // over-reserve too — every module prepared here is dirty, and a jar-derived tail priced
@@ -226,13 +247,24 @@ final class WorkspacePreparePhase {
             Set<Path> moduleDirs,
             boolean forceRebuild,
             Set<Path> jarConsumed) {
+        return assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, SiblingArtifacts.NONE);
+    }
+
+    /** {@code siblings} is this module's side of the schedule's artifact wait; {@link SiblingArtifacts#NONE} outside one. */
+    static BuildPlan assemblePlan(
+            BuildGraph.BuildUnit unit,
+            WorkspaceRequest request,
+            Set<Path> moduleDirs,
+            boolean forceRebuild,
+            Set<Path> jarConsumed,
+            SiblingArtifacts.Gate siblings) {
         Path dir = unit.dir();
         WorkspaceTarget target = request.target();
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
         boolean selected = !spec.hasSelection()
                 || spec.selectedModules().stream()
                         .anyMatch(path -> BuildGraph.canonicalPath(path).equals(BuildGraph.canonicalPath(dir)));
-        UnaryOperator<BuildPlanner.Inputs> decorate = requestKnobs(request, moduleDirs);
+        UnaryOperator<BuildPlanner.Inputs> decorate = requestKnobs(request, moduleDirs, siblings);
         if (target == WorkspaceTarget.NATIVE) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
             return NativePlans.moduleBuildPlan(
@@ -271,7 +303,7 @@ final class WorkspacePreparePhase {
         }
         if (target == WorkspaceTarget.INSTALL) {
             Path graal = GraalHomes.lookup(dir, spec.graalByDir());
-            BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, false);
+            BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, false, siblings);
             BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
             PlannerTails.appendDeclaredTails(builder, inputs, graal, true);
             if (!CompileSupport.coordinatorOnly(unit.manifest(), dir)) {
@@ -281,7 +313,7 @@ final class WorkspacePreparePhase {
             return builder.build();
         }
         boolean testOnly = (target.testOnly() || request.testOnly()) && !consumed;
-        BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testOnly);
+        BuildPlanner.Inputs inputs = moduleInputs(dir, request, moduleDirs, testOnly, siblings);
         BuildPlan.Builder builder = BuildPlanner.coreBuilder(inputs, forceRebuild);
         if (!testOnly) {
             PlannerTails.appendDeclaredTails(builder, inputs, GraalHomes.lookup(dir, spec.graalByDir()), true);
@@ -291,16 +323,32 @@ final class WorkspacePreparePhase {
 
     /** Apply request-wide planning knobs to every module input. */
     static UnaryOperator<BuildPlanner.Inputs> requestKnobs(WorkspaceRequest request, Set<Path> moduleDirs) {
+        return requestKnobs(request, moduleDirs, SiblingArtifacts.NONE);
+    }
+
+    /** As above, and the module's side of the schedule's artifact wait. */
+    static UnaryOperator<BuildPlanner.Inputs> requestKnobs(
+            WorkspaceRequest request, Set<Path> moduleDirs, SiblingArtifacts.Gate siblings) {
         return inputs -> inputs.withWorkerCount(Math.max(0, request.workers()))
                 .withProfileName(request.profile())
                 .withProjectModules(moduleDirs)
                 .withVariant(request.variant(), request.clientEnv())
-                .withEphemeralActions(request.ephemeralActions());
+                .withEphemeralActions(request.ephemeralActions())
+                .withSiblings(siblings);
     }
 
     static BuildPlanner.Inputs moduleInputs(
             Path dir, WorkspaceRequest request, Set<Path> moduleDirs, boolean testOnly) {
-        return requestKnobs(request, moduleDirs)
+        return moduleInputs(dir, request, moduleDirs, testOnly, SiblingArtifacts.NONE);
+    }
+
+    static BuildPlanner.Inputs moduleInputs(
+            Path dir,
+            WorkspaceRequest request,
+            Set<Path> moduleDirs,
+            boolean testOnly,
+            SiblingArtifacts.Gate siblings) {
+        return requestKnobs(request, moduleDirs, siblings)
                 .apply(TaskForecaster.inputsFor(
                         dir,
                         request.cache(),

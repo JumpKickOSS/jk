@@ -344,6 +344,10 @@ public final class PlannerPlugin {
                     String startClass =
                             beforeCompile(step) ? project.mainClass() : resolvedMain(project, in.dir(), classes);
 
+                    // The production classpath below is the siblings' jars. A source generator
+                    // runs ahead of the compile and reads it only for shape; every other step
+                    // packages or tests with it and waits for the siblings to have written it.
+                    if (!beforeCompile(step)) PlannerSetup.awaitSiblingArtifacts(ctx, in);
                     List<Path> classpath =
                             PluginBuild.productionClasspath(in.dir(), in.cache(), in.lockFile(), project);
                     List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")

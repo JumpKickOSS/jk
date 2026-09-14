@@ -21,7 +21,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * When a module may publish its artifacts to its dependents.
+ * When a module may publish to its dependents: its classes tree for their compiles, its artifacts
+ * for their package and test steps.
  *
  * <p>{@code compile-test} is readable across modules only through a {@code kind = "tests"} edge, so
  * it gates the publish for the modules some sibling selects that way and for no others. Getting
@@ -79,6 +80,67 @@ class WorkspacePublishGateTest {
                                 .withKind(DependencyKind.TESTS)))));
 
         assertThat(WorkspaceRunPhase.testClassesConsumed(List.of(lib, app))).isEmpty();
+    }
+
+    /** Dependents compile against the classes tree, so the admission publish lands on its last writer. */
+    @Test
+    void the_classes_publish_waits_for_every_compile_the_assembler_and_the_resource_copy() {
+        BuildPlan plan = planWith(
+                TaskNames.COMPILE_JAVA,
+                TaskNames.COMPILE_KOTLIN,
+                TaskNames.ASSEMBLE_CLASSES,
+                TaskNames.COPY_RESOURCES,
+                TaskNames.PACKAGE_JAR,
+                TaskNames.COMPILE_TEST,
+                TaskNames.RUN_TESTS);
+
+        assertThat(WorkspaceRunPhase.classesWaitSet(plan))
+                .containsExactlyInAnyOrder(
+                        TaskNames.COMPILE_JAVA,
+                        TaskNames.COMPILE_KOTLIN,
+                        TaskNames.ASSEMBLE_CLASSES,
+                        TaskNames.COPY_RESOURCES);
+    }
+
+    /** A compile-only plan publishes at its compiler; a plan that compiles nothing publishes on completion. */
+    @Test
+    void the_classes_publish_takes_what_the_plan_has() {
+        assertThat(WorkspaceRunPhase.classesWaitSet(planWith(TaskNames.COMPILE_GROOVY, TaskNames.WRITE_STAMP_GROOVY)))
+                .containsExactly(TaskNames.COMPILE_GROOVY);
+        assertThat(WorkspaceRunPhase.classesWaitSet(
+                        planWith(TaskNames.RESOLVE_DEPS, TaskNames.BUILD_LOGIC_AFTER_BUILD)))
+                .isEmpty();
+    }
+
+    /** Observed as the scheduler observes it: dependents are admitted before this module packages. */
+    @Test
+    void the_classes_publish_lands_after_the_resource_copy_and_before_the_jar() {
+        List<String> log = new ArrayList<>();
+        BuildPlan.Builder b = BuildPlan.builder("module");
+        b.addTask(Task.builder(TaskNames.COMPILE_JAVA)
+                .stage(BuildStage.COMPILE)
+                .ticks(1)
+                .execute(ctx -> log.add(TaskNames.COMPILE_JAVA))
+                .build());
+        b.addTask(Task.builder(TaskNames.COPY_RESOURCES)
+                .stage(BuildStage.COMPILE)
+                .requires(TaskNames.COMPILE_JAVA)
+                .ticks(1)
+                .execute(ctx -> log.add(TaskNames.COPY_RESOURCES))
+                .build());
+        b.addTask(Task.builder(TaskNames.PACKAGE_JAR)
+                .stage(BuildStage.PACKAGE)
+                .requires(TaskNames.COPY_RESOURCES)
+                .ticks(1)
+                .execute(ctx -> log.add(TaskNames.PACKAGE_JAR))
+                .build());
+        BuildPlan plan = b.build();
+
+        WorkspaceRunPhase.watchClassesSteps(plan, () -> log.add("PUBLISH"));
+        assertThat(plan.run().success()).isTrue();
+
+        assertThat(log)
+                .containsExactly(TaskNames.COMPILE_JAVA, TaskNames.COPY_RESOURCES, "PUBLISH", TaskNames.PACKAGE_JAR);
     }
 
     @Test

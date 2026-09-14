@@ -135,7 +135,7 @@ class PlannerFixturesTest {
 
     private static String consumerCompileTestKey(Path appDir, JkBuild app, Path suite) throws Exception {
         var sib = WorkspaceClasspath.resolve(appDir, app, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
-        List<Path> cp = new ArrayList<>(sib.jars());
+        List<Path> cp = new ArrayList<>(sib.siblingClosureClasses());
         CompileRequest req = CompileRequest.builder()
                 .sources(List.of(suite))
                 .classpath(cp)

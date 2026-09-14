@@ -37,7 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
  * End-to-end: a Kotlin test module recompiles when a dependency's API moves.
  *
  * <p>The incremental Kotlin compile decides what to recompile from two things: which of its own
- * sources changed, and ABI snapshots of its classpath entries. A sibling module's jar is
+ * sources changed, and ABI snapshots of its classpath entries. A sibling module's classes tree is
  * rewritten at the same path by every build that touches it, so a snapshot that was reused
  * whenever one existed for that path would still describe the previous API; the
  * compile would see no source change and no classpath change, recompile nothing, and a test that
@@ -65,13 +65,13 @@ class KotlinDependencyApiChangeE2eTest {
                 .as("lib and app build and app's test passes")
                 .isTrue();
 
-        // The compile classpath entry app's test compile snapshots: lib's jar, at the path every
-        // build rewrites.
-        Path libJar = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")))
-                .mainJar();
-        assertThat(libJar).isRegularFile();
-        List<Path> before = snapshotsOf(libJar, cache);
-        assertThat(before).as("one current snapshot of lib's jar").hasSize(1);
+        // The compile classpath entry app's test compile snapshots: lib's classes tree, at the path
+        // every build rewrites.
+        Path libClasses = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")))
+                .classesDir();
+        assertThat(libClasses).isDirectory();
+        List<Path> before = snapshotsOf(libClasses, cache);
+        assertThat(before).as("one current snapshot of lib's classes tree").hasSize(1);
 
         // The API moves: the test's call no longer resolves. Nothing under app changes.
         Files.writeString(ws.resolve("lib/src/com/example/Lib.kt"), """
@@ -99,8 +99,8 @@ class KotlinDependencyApiChangeE2eTest {
         assertThat(steps.errors("app", TaskNames.COMPILE_TEST))
                 .as("kotlinc names the test source that makes the call")
                 .anyMatch(message -> message.contains("AppTest.kt"));
-        List<Path> after = snapshotsOf(libJar, cache);
-        assertThat(after).as("still one current snapshot of lib's jar").hasSize(1);
+        List<Path> after = snapshotsOf(libClasses, cache);
+        assertThat(after).as("still one current snapshot of lib's classes tree").hasSize(1);
         assertThat(after.getFirst())
                 .as("the snapshot describes the rewritten classes, not the previous API")
                 .isNotEqualTo(before.getFirst());

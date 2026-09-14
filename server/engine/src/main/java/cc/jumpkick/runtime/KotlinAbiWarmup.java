@@ -32,12 +32,13 @@ import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Warms the Kotlin ABI memo for a module's consumers the moment its jar is packaged. A Kotlin
- * consumer's compile key needs each classpath entry's snapshot digest; on a cold memo the first
- * consumer to meet a freshly packaged sibling forks the Kotlin worker's {@code snapshot} op
- * before its own compile can start. The producer knows the jar as soon as {@code package-jar}
- * writes it, so the workspace snapshots it then — after the artifact steps finish, before the
- * consumers are admitted — and every consumer's key computation is a memo lookup.
+ * Warms the Kotlin ABI memo for a module's consumers the moment its classes tree is whole. A
+ * Kotlin consumer compiles against the sibling's {@code classes/main} and its compile key needs
+ * each classpath entry's snapshot digest; on a cold memo the first consumer to meet a freshly
+ * compiled sibling forks the Kotlin worker's {@code snapshot} op before its own compile can start.
+ * The producer knows the tree as soon as its compile and resource copy have run, so the workspace
+ * snapshots it then — after the classes steps finish, before the consumers are admitted — and every
+ * consumer's key computation is a memo lookup.
  *
  * <p>Only a module with a Kotlin consumer is snapshotted, through that consumer's compiler
  * version: the snapshot belongs to the consumer's toolchain, and a module nobody compiles Kotlin
@@ -46,28 +47,28 @@ import org.jspecify.annotations.Nullable;
  */
 public final class KotlinAbiWarmup {
 
-    /** The entries this process warmed, in order — for tests that prove who snapshotted a jar. */
+    /** The entries this process warmed, in order — for tests that prove who snapshotted a tree. */
     private static final List<Path> WARMED = Collections.synchronizedList(new ArrayList<>());
 
     private KotlinAbiWarmup() {}
 
     /**
-     * A producer's warm-up: {@link #artifactsReady} is what the run phase hands the scheduler in
-     * place of the bare signal, and {@link #await} is what module completion waits for — the
-     * scheduler publishes a module's artifacts on completion when the signal never fired, so a
+     * A producer's warm-up: {@link #publish} is what the run phase hands the scheduler in place
+     * of the bare admission signal, and {@link #await} is what module completion waits for — the
+     * scheduler admits a module's dependents on completion when the signal never fired, so a
      * warm-up still in flight at that moment would let a consumer in ahead of it.
      */
     public static final class Warmup {
-        private final Runnable artifactsReady;
+        private final Runnable publish;
         private final CompletableFuture<Void> done = new CompletableFuture<>();
 
-        private Warmup(Runnable artifactsReady) {
-            this.artifactsReady = artifactsReady;
+        private Warmup(Runnable publish) {
+            this.publish = publish;
         }
 
         /** The signal to hand the scheduler. */
-        public Runnable artifactsReady() {
-            return artifactsReady;
+        public Runnable publish() {
+            return publish;
         }
 
         /** Blocks until the warm-up has finished, if one was started. */
@@ -83,16 +84,16 @@ public final class KotlinAbiWarmup {
     }
 
     /**
-     * The warm-up for {@code producer}: its signal snapshots the producer's jar for its Kotlin
-     * consumers first — on the I/O pool, so the producer's own remaining steps (its tests) are
-     * not held — then publishes; a module with no Kotlin consumer gets a signal that publishes
-     * at once and nothing to await.
+     * The warm-up for {@code producer}: its signal snapshots the producer's classes tree for its
+     * Kotlin consumers first — on the I/O pool, so the producer's own remaining steps (its
+     * packaging and tests) are not held — then publishes; a module with no Kotlin consumer gets a
+     * signal that publishes at once and nothing to await.
      */
     public static Warmup before(
-            BuildGraph.Result graph, BuildGraph.BuildUnit producer, Path cache, Cas cas, Runnable artifactsReady) {
+            BuildGraph.Result graph, BuildGraph.BuildUnit producer, Path cache, Cas cas, Runnable publish) {
         BuildGraph.BuildUnit consumer = kotlinConsumer(graph, producer);
         if (consumer == null) {
-            Warmup none = new Warmup(artifactsReady);
+            Warmup none = new Warmup(publish);
             none.done.complete(null);
             return none;
         }
@@ -105,7 +106,7 @@ public final class KotlinAbiWarmup {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
-                artifactsReady.run();
+                publish.run();
                 holder[0].done.complete(null);
             }
         }));
@@ -134,8 +135,8 @@ public final class KotlinAbiWarmup {
 
     private static void warm(BuildGraph.BuildUnit producer, BuildGraph.BuildUnit consumer, Path cache, Cas cas)
             throws IOException, InterruptedException {
-        Path jar = BuildLayout.of(producer.dir(), producer.manifest()).mainJar();
-        if (!Files.isRegularFile(jar)) return;
+        Path classes = BuildLayout.of(producer.dir(), producer.manifest()).classesDir();
+        if (!Files.isDirectory(classes)) return;
         JkBuild project = consumer.manifest();
         String kotlinVersion =
                 CompileToolchain.kotlinVersionFor(LockfileReader.read(LockPaths.lockFile(consumer.dir())), project);
@@ -145,7 +146,7 @@ public final class KotlinAbiWarmup {
         // The trainer behind an AOT miss compiles a hello-world against this classpath, so the
         // stdlib rides along; the snapshot itself only reads the entries asked for.
         KotlincRequest request = KotlincRequest.builder()
-                .classpath(List.of(jar, kt.stdlib()))
+                .classpath(List.of(classes, kt.stdlib()))
                 .outputDir(snapshotDir)
                 .workerClasspath(kt.workerClasspath())
                 .javaHome(JavaHomes.resolveJavaHome(consumer.dir()))
@@ -153,11 +154,11 @@ public final class KotlinAbiWarmup {
                 .extraArgs(List.of("-no-stdlib"))
                 .build();
         WorkerEnv env = WorkerEnv.forModule(project.build().env(), consumer.dir(), null);
-        KotlinClasspathAbi.tokens(List.of(jar), KotlincSnapshots.snapshotter(request, env));
-        WARMED.add(jar.toAbsolutePath().normalize());
+        KotlinClasspathAbi.tokens(List.of(classes), KotlincSnapshots.snapshotter(request, env));
+        WARMED.add(classes.toAbsolutePath().normalize());
     }
 
-    /** The jars this process warmed so far. */
+    /** The classes trees this process warmed so far. */
     public static List<Path> warmed() {
         synchronized (WARMED) {
             return List.copyOf(WARMED);

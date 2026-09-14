@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClassAbi;
 import cc.jumpkick.test.AffectedTests;
@@ -206,7 +207,8 @@ public final class BuildPlanner {
             Session session,
             String variant,
             @Nullable Map<String, String> clientEnv,
-            boolean ephemeralActions) {
+            boolean ephemeralActions,
+            SiblingArtifacts.Gate siblings) {
 
         /**
          * Variant and client env from the session; durable action cache. Commands that install a
@@ -247,7 +249,8 @@ public final class BuildPlanner {
                     session,
                     session.variant(),
                     session.clientEnv(),
-                    false);
+                    false,
+                    SiblingArtifacts.NONE);
         }
 
         /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
@@ -270,7 +273,8 @@ public final class BuildPlanner {
                     session,
                     variant,
                     clientEnv,
-                    ephemeralActions);
+                    ephemeralActions,
+                    siblings);
         }
 
         /**
@@ -307,7 +311,8 @@ public final class BuildPlanner {
                     session,
                     variant == null ? "" : variant,
                     clientEnv == null ? Map.of() : clientEnv,
-                    ephemeralActions);
+                    ephemeralActions,
+                    siblings);
         }
 
         /** Copy with {@link #workerCount()} set (request-level {@code --workers}). */
@@ -330,7 +335,8 @@ public final class BuildPlanner {
                     session,
                     variant,
                     clientEnv,
-                    ephemeralActions);
+                    ephemeralActions,
+                    siblings);
         }
 
         /** Copy with {@link #profileName()} set (request-level {@code --profile}). */
@@ -353,7 +359,8 @@ public final class BuildPlanner {
                     session,
                     variant,
                     clientEnv,
-                    ephemeralActions);
+                    ephemeralActions,
+                    siblings);
         }
 
         /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
@@ -376,7 +383,36 @@ public final class BuildPlanner {
                     session,
                     variant,
                     clientEnv,
-                    ephemeralActions);
+                    ephemeralActions,
+                    siblings);
+        }
+
+        /**
+         * Copy carrying this module's side of the workspace schedule's artifact wait: what its
+         * package and test steps call before reading a sibling's jar. Set by the workspace prepare
+         * phase; a single-module plan keeps {@link SiblingArtifacts#NONE}.
+         */
+        public Inputs withSiblings(SiblingArtifacts.Gate siblings) {
+            return new Inputs(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions,
+                    siblings);
         }
     }
 

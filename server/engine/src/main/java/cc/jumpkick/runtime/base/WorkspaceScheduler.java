@@ -42,18 +42,19 @@ public final class WorkspaceScheduler {
     }
 
     /**
-     * Build one unit, calling {@code artifactsReady} the moment its cross-module artifacts
-     * (package-jar / package-assembly) are terminal — usually well before the unit's tests and
-     * terminal tails finish. Admission of dependents keys on that signal, not on completion:
-     * Mill/Gradle-shaped edges, where a dependent's compile waits on the upstream
-     * artifact and never on the upstream suite. Calling it more than once is harmless; a task
-     * that never calls it (compile/package failed, or no package steps) implicitly publishes on
-     * completion so admission can never wedge — the failed case is then handled by the sink's
-     * fail-fast, or by the dependent's own accurate "sibling not built" failure.
+     * Build one unit, calling {@code publish} the moment what its dependents compile against —
+     * its classes tree — is whole: after its compiles and resource copy, well before it packages,
+     * tests or builds its terminal tails. Admission of dependents keys on that signal, not on
+     * completion: Gradle-shaped edges, where a dependent's compile waits on the upstream compile
+     * and never on the upstream jar or suite; the dependent's own package and test steps wait for
+     * the jar separately ({@link SiblingArtifacts}). Calling it more than once is harmless; a task
+     * that never calls it (the compile failed, or the plan has no compile steps) implicitly
+     * publishes on completion so admission can never wedge — the failed case is then handled by
+     * the sink's fail-fast, or by the dependent's own accurate "sibling not compiled" failure.
      */
     @FunctionalInterface
     public interface PhasedUnitTask<U, R> {
-        R run(U unit, Runnable artifactsReady);
+        R run(U unit, Runnable publish);
     }
 
     /** Handles completed units. */
@@ -131,7 +132,7 @@ public final class WorkspaceScheduler {
 
     /**
      * As above, where a unit {@code awaitsCompletion} accepts is admitted only once every prereq
-     * has <em>finished</em>, tests and terminal tails included — not when its artifacts are ready.
+     * has <em>finished</em>, tests and terminal tails included — not when it has published.
      * That is the workspace root running its after-build scripts over what the members produced:
      * a client's native binary is a terminal tail, and a dist assembled at artifact-ready time
      * shipped the previous build's client beside this build's engine.
@@ -160,11 +161,11 @@ public final class WorkspaceScheduler {
         List<U> notStarted = new ArrayList<>(units);
         Map<Path, Integer> height = dependentChainHeight(units, dirOf, edges, unitDirs);
         notStarted.sort(Comparator.comparingInt((U u) -> -height.getOrDefault(dirOf.apply(u), 0)));
-        // Events: a Done per completed unit, or a Path per artifact-publish. Admission keys on
-        // artifactsReady, so a dependent starts while its prereq's tests still run;
+        // Events: a Done per completed unit, or a Path per publish. Admission keys on the
+        // publish, so a dependent starts while its prereq still packages and tests;
         // completion accounting (sink, fail-fast, the concurrency cap) stays on Done.
         BlockingQueue<Object> events = new LinkedBlockingQueue<>();
-        Set<Path> artifactsReady = ConcurrentHashMap.newKeySet();
+        Set<Path> published = ConcurrentHashMap.newKeySet();
         Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
         int inFlight = 0;
         while (true) {
@@ -175,7 +176,7 @@ public final class WorkspaceScheduler {
             while (inFlight < maxConcurrency && !stop.getAsBoolean()) {
                 U next = null;
                 for (U u : notStarted) {
-                    Set<Path> gate = awaitsCompletion.test(u) ? done : artifactsReady;
+                    Set<Path> gate = awaitsCompletion.test(u) ? done : published;
                     boolean ready = edges.getOrDefault(dirOf.apply(u), Set.of()).stream()
                             .filter(unitDirs::contains)
                             .allMatch(gate::contains);
@@ -189,7 +190,7 @@ public final class WorkspaceScheduler {
                 U unit = next;
                 Path unitDir = dirOf.apply(unit);
                 Runnable publish = () -> {
-                    if (artifactsReady.add(unitDir)) events.add(unitDir);
+                    if (published.add(unitDir)) events.add(unitDir);
                 };
                 CompletableFuture<R> f =
                         CompletableFuture.supplyAsync(() -> gated(stop, task, unit, publish), JkThreads.io());
@@ -206,7 +207,7 @@ public final class WorkspaceScheduler {
             }
             if (inFlight == 0) {
                 if (!notStarted.isEmpty()) {
-                    throw unsatisfiable(notStarted, dirOf, edges, unitDirs, artifactsReady);
+                    throw unsatisfiable(notStarted, dirOf, edges, unitDirs, published);
                 }
                 return null;
             }
@@ -220,7 +221,7 @@ public final class WorkspaceScheduler {
                 throw new CompletionException(e);
             }
             if (!(event instanceof Done)) {
-                continue; // artifact publish — loop back to admit newly-unblocked units
+                continue; // a publish — loop back to admit newly-unblocked units
             }
             @SuppressWarnings("unchecked")
             Done<U, R> d = (Done<U, R>) event;
@@ -235,9 +236,9 @@ public final class WorkspaceScheduler {
                 return null;
             }
             done.add(dirOf.apply(d.unit()));
-            // Completion always publishes: a unit that failed before its package steps (or has
+            // Completion always publishes: a unit that failed before its compile steps (or has
             // none) must still unblock — or accurately fail — its dependents, never wedge them.
-            artifactsReady.add(dirOf.apply(d.unit()));
+            published.add(dirOf.apply(d.unit()));
             R sinkStop = sink.after(List.of(d.unit()), Collections.singletonList(d.result()), List.copyOf(notStarted));
             if (sinkStop != null) {
                 cancelAll(inflight);

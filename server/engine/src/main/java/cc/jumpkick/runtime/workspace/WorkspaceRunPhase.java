@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.KotlinAbiWarmup;
 import cc.jumpkick.runtime.base.Perf;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceArtifacts;
 import cc.jumpkick.runtime.base.WorkspaceScheduler;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -78,6 +79,7 @@ final class WorkspaceRunPhase {
 
         List<ModuleOutcome> outcomes = Collections.synchronizedList(new ArrayList<>());
         List<Double> observedRates = Collections.synchronizedList(new ArrayList<>());
+        SiblingArtifacts siblings = prepared.siblings();
         long scheduleStart = Perf.start();
         long executeStartMs = clock.millis();
         ModuleOutcome failure = null;
@@ -85,21 +87,20 @@ final class WorkspaceRunPhase {
             failure = WorkspaceScheduler.run(
                     resources.dirtyUnits(),
                     BuildGraph.BuildUnit::dir,
-                    resources.preflight().graph().edges(),
-                    (unit, artifactsReady) -> runModule(
+                    // The transitive closure, so a dependent is admitted only once every module on
+                    // its compile classpath — not only the ones it names — has published.
+                    siblings.edges(),
+                    (unit, publish) -> runModule(
                             Objects.requireNonNull(
                                     prepared.plans().get(unit.dir()),
                                     () -> "admitted a unit with no prepared plan: " + unit.dir()),
                             listener,
                             testClassesConsumed.contains(unit.dir()),
-                            // A module with Kotlin consumers has its jar snapshotted for them before
-                            // they are admitted, so their compile keys are memo lookups.
+                            // A module with Kotlin consumers has its classes tree snapshotted for
+                            // them before they are admitted, so their compile keys are memo lookups.
                             KotlinAbiWarmup.before(
-                                    resources.preflight().graph(),
-                                    unit,
-                                    request.cache(),
-                                    JkStores.storeCas(),
-                                    artifactsReady),
+                                    resources.preflight().graph(), unit, request.cache(), JkStores.storeCas(), publish),
+                            siblings,
                             clock),
                     (ready, results, _) ->
                             collect(request, prepared.plans(), workspaceLinks, ready, results, outcomes, observedRates),
@@ -147,21 +148,29 @@ final class WorkspaceRunPhase {
         return !outcome.success() && !keepGoing ? outcome : null;
     }
 
-    /** Run one module and emit its module start/finish lifecycle. */
+    /**
+     * Run one module and emit its module start/finish lifecycle. Two signals leave the plan: the
+     * classes publish admits dependents to the schedule (they compile against this module's
+     * classes tree), and the artifact publish releases the dependents' package and test steps
+     * (they read its jar). Completion fires both, so a module that failed early wedges nothing.
+     */
     private static ModuleOutcome runModule(
             ModulePlan module,
             WorkspaceBuildListener listener,
             boolean testClassesConsumed,
             KotlinAbiWarmup.Warmup warmup,
+            SiblingArtifacts siblings,
             Clock clock) {
         BuildPlanListener moduleListener = listener.onModuleStart(module);
         if (moduleListener != null) module.plan().addListener(moduleListener);
-        watchArtifactSteps(module.plan(), testClassesConsumed, warmup.artifactsReady());
+        watchClassesSteps(module.plan(), warmup.publish());
+        watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
         long started = clock.nanos();
         try {
             return runPlan(module, listener, clock, started);
         } finally {
-            // Completion publishes the artifacts when the signal never fired; the consumers' memo
+            siblings.completed(module.dir());
+            // Completion admits the dependents when the signal never fired; the consumers' memo
             // must be warm by then.
             warmup.await();
         }
@@ -223,17 +232,46 @@ final class WorkspaceRunPhase {
     }
 
     /**
-     * The steps whose success publishes this module's artifacts to its dependents.
+     * The steps whose success makes this module's classes tree whole for its dependents' compiles:
+     * every language compile in the plan, the classes assembler of a mixed module, and the
+     * resource copy — resources are not compiled against, but they land in the same tree, and a
+     * dependent that fingerprints the tree while they are being written would memoize a token
+     * under an identity no later build will see. A plan with none of these (a sourceless root)
+     * publishes on completion.
+     */
+    static Set<String> classesWaitSet(BuildPlan plan) {
+        Set<String> present = new HashSet<>();
+        for (Task step : plan.steps()) present.add(step.name());
+        Set<String> wait = new HashSet<>();
+        for (String step : List.of(
+                TaskNames.COMPILE_JAVA,
+                TaskNames.COMPILE_KOTLIN,
+                TaskNames.COMPILE_GROOVY,
+                TaskNames.ASSEMBLE_CLASSES,
+                TaskNames.COPY_RESOURCES)) {
+            if (present.contains(step)) wait.add(step);
+        }
+        return wait;
+    }
+
+    /** Admit dependents once every step that writes this module's classes tree is terminal-successful. */
+    static void watchClassesSteps(BuildPlan plan, Runnable publish) {
+        watchSteps(plan, classesWaitSet(plan), publish);
+    }
+
+    /**
+     * The steps whose success publishes this module's artifacts to its dependents' package and
+     * test steps.
      *
-     * <p>{@code package-jar} and {@code package-assembly} are the main artifacts a dependent
-     * compiles against, and {@code compile-test-fixtures} is sibling-visible unconditionally.
+     * <p>{@code package-jar} and {@code package-assembly} are the main artifacts a dependent runs
+     * against, and {@code compile-test-fixtures} is sibling-visible unconditionally.
      * {@code compile-test} joins the set only for a module whose test classes a sibling selects
-     * with {@code kind = "tests"}. Gating on it anywhere else holds a downstream module's
-     * {@code compile-java} behind an upstream test compile nothing can read.
+     * with {@code kind = "tests"}. Gating on it anywhere else holds a downstream module's test
+     * compile behind an upstream test compile nothing can read.
      *
      * <p>The {@code isEmpty} arm keeps a module with no packaging steps publishing at its test
-     * compile rather than falling through to the scheduler's publish-on-completion, which is behind
-     * {@code run-tests} and so strictly later than what it does today.
+     * compile rather than falling through to publish-on-completion, which is behind
+     * {@code run-tests} and so strictly later.
      */
     static Set<String> artifactWaitSet(BuildPlan plan, boolean testClassesConsumed) {
         Set<String> present = new HashSet<>();
@@ -251,16 +289,20 @@ final class WorkspaceRunPhase {
 
     /** Publish artifacts once every cross-module artifact step is terminal-successful. */
     static void watchArtifactSteps(BuildPlan plan, boolean testClassesConsumed, Runnable artifactsReady) {
-        Set<String> artifactSteps = artifactWaitSet(plan, testClassesConsumed);
-        if (artifactSteps.isEmpty()) return;
-        AtomicInteger remaining = new AtomicInteger(artifactSteps.size());
+        watchSteps(plan, artifactWaitSet(plan, testClassesConsumed), artifactsReady);
+    }
+
+    /** Run {@code publish} once every step of {@code steps} is terminal-successful; never for an empty set. */
+    private static void watchSteps(BuildPlan plan, Set<String> steps, Runnable publish) {
+        if (steps.isEmpty()) return;
+        AtomicInteger remaining = new AtomicInteger(steps.size());
         plan.addListener(new BuildPlanListener() {
             @Override
             public void stepFinish(
                     String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
-                if (!artifactSteps.contains(step)) return;
+                if (!steps.contains(step)) return;
                 if (status != TaskStatus.SUCCESS && status != TaskStatus.SKIPPED) return;
-                if (remaining.decrementAndGet() == 0) artifactsReady.run();
+                if (remaining.decrementAndGet() == 0) publish.run();
             }
         });
     }

@@ -445,6 +445,7 @@ Two fixed taxonomies (do not collapse them):
 | **Module plan** | `BuildStage` | Inside a module `BuildPlan` (usually during `InvocationPhase.BUILD`): `resolve → generate → compile → test → package → train → native → image → publish → other` |
 
 - **Task DAG** (`TaskNames` + `requires`) is the scheduler; stages are product buckets for UI fold, ETA, and future pre/post hooks — not a second scheduler.
+- **Workspace edges are compile-to-compile.** A module's compile classpath names its siblings' `classes/main` trees (`WorkspaceClasspath.siblingClosureClasses`), never their jars, and the workspace scheduler admits a dependent once every module on that classpath has compiled, assembled its classes and copied its resources — while those modules still package, test and build their tails. The jars remain what the dependent's package, test, native and plugin steps read; `copy-resources` is the first step behind which all of them sit, so it waits there (`SiblingArtifacts`) for the siblings to have published their artifacts and then names any jar, test output or fixtures directory that is missing. `resolve-deps` requires only the trees.
 - In-plan stage **`resolve`** (parse / lock classpath / ensure JDK) ≠ request phase **`RESOLVE`** (lock/graph for the command).
 - Prefer `Task.builder(…).stage(BuildStage.COMPILE)`; free-form `group("…")` maps unknown strings to `OTHER`.
 - `TaskPhases` remains a string facade over `BuildStage` for metrics call sites.

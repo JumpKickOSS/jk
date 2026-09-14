@@ -60,9 +60,124 @@ class ClasspathAfterSyncTest {
                 .contains(f.libJar.toAbsolutePath().normalize());
     }
 
+    /**
+     * A sibling that has compiled but not yet packaged is whole for this module's compile: its
+     * classes tree is the compile classpath entry, and the jar it has not written yet is not
+     * required until a package or test step reads it.
+     */
     @Test
-    void tests_kind_sibling_without_test_output_fails_in_setup_not_compile_test(@TempDir Path tmp) throws Exception {
+    void publishClasspaths_compiles_against_a_siblings_classes_tree_before_its_jar_exists(@TempDir Path tmp)
+            throws Exception {
         Path store = Files.createDirectories(tmp.resolve("store"));
+        Workspace ws = twoModules(tmp, "");
+        Files.createDirectories(ws.libLayout.classesDir());
+
+        StashContext ctx = ws.context();
+        PlannerSetup.publishClasspaths(ctx, ws.inputs(store, false), new Cas(store), new PluginBuild.StepTools());
+
+        assertThat(ctx.errors).isEmpty();
+        assertThat(ctx.require(BuildPlanner.CLASSPATH))
+                .contains(ws.libLayout.classesDir())
+                .doesNotContain(ws.libLayout.mainJar());
+        assertThat(ctx.require(BuildPlanner.COMPILE_TEST_CP))
+                .as("the test compile reads the same tree")
+                .contains(ws.libLayout.classesDir())
+                .doesNotContain(ws.libLayout.mainJar());
+        assertThat(ctx.require(BuildPlanner.TEST_RUNTIME_CP))
+                .as("the tests run against the jar, named whether or not it exists yet")
+                .contains(ws.libLayout.mainJar())
+                .doesNotContain(ws.libLayout.classesDir());
+    }
+
+    /** A jar with no tree beside it is a sibling that has not compiled this build; the compile cannot start on it. */
+    @Test
+    void publishClasspaths_requires_a_siblings_classes_tree_even_when_its_jar_exists(@TempDir Path tmp)
+            throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Workspace ws = twoModules(tmp, "");
+        Files.createDirectories(ws.libLayout.mainJar().getParent());
+        Files.writeString(ws.libLayout.mainJar(), "jar-bytes");
+
+        StashContext ctx = ws.context();
+        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(
+                        ctx, ws.inputs(store, false), new Cas(store), new PluginBuild.StepTools()))
+                .hasMessageContaining("missing workspace siblings");
+        assertThat(ctx.errors).anyMatch(e -> e.contains("sibling not compiled") && e.contains("expected classes at"));
+    }
+
+    /**
+     * A tests-kind sibling whose test classes are not on disk is named at the point the plan first
+     * reads sibling artifacts, with the written cause — not by compile-test's {@code cannot find
+     * symbol} at the wrong file.
+     */
+    @Test
+    void tests_kind_sibling_without_test_output_fails_at_the_artifact_wait_not_compile_test(@TempDir Path tmp)
+            throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Workspace ws = twoModules(tmp, """
+
+                [test-dependencies]
+                lib = { workspace = true, kind = "tests" }
+                """);
+        // lib has compiled and packaged; its test classes do not exist — the --skip-tests shape.
+        Files.createDirectories(ws.libLayout.classesDir());
+        Files.createDirectories(ws.libLayout.mainJar().getParent());
+        Files.writeString(ws.libLayout.mainJar(), "jar-bytes");
+
+        StashContext ctx = ws.context();
+        BuildPlanner.Inputs in = ws.inputs(store, false);
+        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
+        assertThat(ctx.errors).as("the compile classpaths need only the trees").isEmpty();
+
+        assertThatThrownBy(() -> PlannerSetup.awaitSiblingArtifacts(ctx, in))
+                .hasMessageContaining("missing workspace siblings");
+        assertThat(ctx.errors)
+                .as("the written diagnostic reaches the failure report")
+                .anyMatch(e -> e.contains("test sibling not built")
+                        && e.contains("tests kind")
+                        && e.contains("expected test classes at"));
+    }
+
+    @Test
+    void skip_tests_tolerates_unbuilt_test_scope_siblings(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Workspace ws = twoModules(tmp, """
+
+                [test-dependencies]
+                lib = { workspace = true, fixtures = true }
+                """);
+        Files.writeString(ws.root.resolve("lib/jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+
+                [test]
+                fixtures = true
+                """);
+        // The production build produced lib's tree and jar; a --skip-tests plan never compiles its
+        // fixtures, and nothing in that plan consumes the test classpath.
+        Files.createDirectories(ws.libLayout.classesDir());
+        Files.createDirectories(ws.libLayout.mainJar().getParent());
+        Files.writeString(ws.libLayout.mainJar(), "jar-bytes");
+
+        StashContext ctx = ws.context();
+        BuildPlanner.Inputs skipping = ws.inputs(store, true);
+        PlannerSetup.publishClasspaths(ctx, skipping, new Cas(store), new PluginBuild.StepTools());
+        PlannerSetup.awaitSiblingArtifacts(ctx, skipping);
+        assertThat(ctx.errors).isEmpty();
+        assertThat(ctx.values).containsKey(BuildPlanner.CLASSPATH);
+        assertThat(ctx.values).containsKey(BuildPlanner.COMPILE_TEST_CP);
+
+        // The same tree with tests planned is still a failure that names the sibling's fixtures.
+        BuildPlanner.Inputs withTests = ws.inputs(store, false);
+        PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store), new PluginBuild.StepTools());
+        assertThatThrownBy(() -> PlannerSetup.awaitSiblingArtifacts(ctx, withTests))
+                .hasMessageContaining("missing workspace siblings");
+        assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not built") && e.contains("fixtures"));
+    }
+
+    /** {@code lib} with one Java source and {@code app} depending on it, plus {@code appExtra} manifest text. */
+    private static Workspace twoModules(Path tmp, String appExtra) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
         Files.writeString(ws.resolve("jk.toml"), """
                 group   = "com.example"
@@ -86,136 +201,39 @@ class ClasspathAfterSyncTest {
                 name    = "app"
                 version = "1.0.0"
 
-                [test-dependencies]
-                lib = { workspace = true, kind = "tests" }
-                """);
-
-        JkBuild project = JkBuildParser.parse(app.resolve("jk.toml"));
-        JkBuild libManifest = JkBuildParser.parse(lib.resolve("jk.toml"));
-        // lib's main jar exists but its test classes do not — the --skip-tests shape. The resolve
-        // writes the precise cause; the setup guard must surface it instead of letting
-        // compile-test fail with `cannot find symbol` at the wrong file.
-        Path libJar = BuildLayout.of(lib, libManifest).mainJar();
-        Files.createDirectories(libJar.getParent());
-        Files.writeString(libJar, "jar-bytes");
-
-        StashContext ctx = new StashContext();
-        ctx.put(BuildPlanner.LOCKFILE, emptyLock());
-        ctx.put(BuildPlanner.PROJECT, project);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                app,
-                store,
-                app.resolve("jk.toml"),
-                app.resolve("jk-lock.toml"),
-                app,
-                1,
-                0,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-
-        assertThatThrownBy(() -> PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools()))
-                .hasMessageContaining("missing workspace siblings");
-        assertThat(ctx.errors)
-                .as("the written diagnostic reaches the failure report")
-                .anyMatch(e -> e.contains("test sibling not built")
-                        && e.contains("tests kind")
-                        && e.contains("expected test classes at"));
-    }
-
-    @Test
-    void skip_tests_tolerates_unbuilt_test_scope_siblings(@TempDir Path tmp) throws Exception {
-        Path store = Files.createDirectories(tmp.resolve("store"));
-        Path ws = Files.createDirectories(tmp.resolve("ws"));
-        Files.writeString(ws.resolve("jk.toml"), """
-                group   = "com.example"
-                name    = "ws"
-                version = "1.0.0"
-
-                [workspace]
-                modules = ["lib", "app"]
-                """);
-        Path lib = Files.createDirectories(ws.resolve("lib"));
-        Files.writeString(lib.resolve("jk.toml"), """
-                group   = "com.example"
-                name    = "lib"
-                version = "1.0.0"
-
-                [test]
-                fixtures = true
-                """);
-        Path app = Files.createDirectories(ws.resolve("app"));
-        Files.writeString(app.resolve("jk.toml"), """
-                group   = "com.example"
-                name    = "app"
-                version = "1.0.0"
-
                 [dependencies]
                 lib.workspace = true
-
-                [test-dependencies]
-                lib = { workspace = true, fixtures = true }
-                """);
-
-        JkBuild project = JkBuildParser.parse(app.resolve("jk.toml"));
+                """ + appExtra);
         JkBuild libManifest = JkBuildParser.parse(lib.resolve("jk.toml"));
-        // The production build produced lib's main jar; a --skip-tests plan never compiles its
-        // fixtures, and nothing in that plan consumes the test classpath.
-        Path libJar = BuildLayout.of(lib, libManifest).mainJar();
-        Files.createDirectories(libJar.getParent());
-        Files.writeString(libJar, "jar-bytes");
+        return new Workspace(ws, app, BuildLayout.of(lib, libManifest));
+    }
 
-        StashContext ctx = new StashContext();
-        ctx.put(BuildPlanner.LOCKFILE, emptyLock());
-        ctx.put(BuildPlanner.PROJECT, project);
-        BuildPlanner.Inputs in = new BuildPlanner.Inputs(
-                app,
-                store,
-                app.resolve("jk.toml"),
-                app.resolve("jk-lock.toml"),
-                app,
-                1,
-                0,
-                null,
-                null,
-                /* skipTests */ true,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
+    private record Workspace(Path root, Path app, BuildLayout libLayout) {
+        StashContext context() throws Exception {
+            StashContext ctx = new StashContext();
+            ctx.put(BuildPlanner.LOCKFILE, emptyLock());
+            ctx.put(BuildPlanner.PROJECT, JkBuildParser.parse(app.resolve("jk.toml")));
+            return ctx;
+        }
 
-        PlannerSetup.publishClasspaths(ctx, in, new Cas(store), new PluginBuild.StepTools());
-        assertThat(ctx.errors).isEmpty();
-        assertThat(ctx.values).containsKey(BuildPlanner.CLASSPATH);
-        assertThat(ctx.values).containsKey(BuildPlanner.COMPILE_TEST_CP);
-
-        // The same tree with tests planned is still a setup failure that names the sibling.
-        BuildPlanner.Inputs withTests = new BuildPlanner.Inputs(
-                app,
-                store,
-                app.resolve("jk.toml"),
-                app.resolve("jk-lock.toml"),
-                app,
-                1,
-                0,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                Set.of(),
-                SessionContext.current());
-        assertThatThrownBy(() ->
-                        PlannerSetup.publishClasspaths(ctx, withTests, new Cas(store), new PluginBuild.StepTools()))
-                .hasMessageContaining("missing workspace siblings");
-        assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not built") && e.contains("fixtures"));
+        BuildPlanner.Inputs inputs(Path store, boolean skipTests) {
+            return new BuildPlanner.Inputs(
+                    app,
+                    store,
+                    app.resolve("jk.toml"),
+                    app.resolve("jk-lock.toml"),
+                    app,
+                    1,
+                    0,
+                    null,
+                    null,
+                    skipTests,
+                    false,
+                    false,
+                    false,
+                    Set.of(),
+                    SessionContext.current());
+        }
     }
 
     private static Lockfile emptyLock() {

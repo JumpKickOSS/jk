@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
@@ -31,11 +32,15 @@ class BuildPlannerInputsWitherTest {
                 false,
                 Set.of(),
                 SessionContext.current());
+        SiblingArtifacts.Gate gate = cancelled -> {};
         BuildPlanner.Inputs decorated = base.withWorkerCount(6)
                 .withProfileName("ci")
                 .withProjectModules(Set.of(dir))
                 .withVariant("blue", Map.of("K", "v"))
-                .withEphemeralActions(true);
+                .withEphemeralActions(true)
+                .withSiblings(gate);
+        assertThat(base.siblings()).isSameAs(SiblingArtifacts.NONE);
+        assertThat(decorated.siblings()).isSameAs(gate);
         assertThat(decorated.workerCount()).isEqualTo(6);
         assertThat(decorated.profileName()).isEqualTo("ci");
         assertThat(decorated.projectModules()).containsExactly(dir);
