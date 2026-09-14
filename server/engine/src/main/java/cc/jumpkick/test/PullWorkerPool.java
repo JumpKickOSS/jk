@@ -205,7 +205,7 @@ final class PullWorkerPool {
         BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, lastClass);
         Consumer<String> passthrough = line -> {
             crash.add(line);
-            listener.onUserOutput(workerId, line);
+            aggregator.userOutput(line);
         };
 
         try {

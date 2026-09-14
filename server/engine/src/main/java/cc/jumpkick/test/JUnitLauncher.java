@@ -524,7 +524,7 @@ public final class JUnitLauncher {
                     aggregator::accept,
                     line -> {
                         crash.add(line);
-                        listener.onUserOutput(0, line);
+                        aggregator.userOutput(line);
                     });
             result = aggregator.toResult(exit, crash.text());
         } catch (PluginProcess.HandlerFailure e) {

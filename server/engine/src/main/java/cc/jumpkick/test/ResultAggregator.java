@@ -9,6 +9,7 @@ import static cc.jumpkick.test.TestEventFields.progressLabel;
 import static cc.jumpkick.test.TestEventFields.xmlName;
 
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.ArrayList;
@@ -55,6 +56,12 @@ final class ResultAggregator {
     private final Set<String> executedClasses = new HashSet<>();
     /** FQCN → wall-ms for CONTAINER finished events (class-level timing for ETA). */
     private final Map<String, Long> classWallMs = new LinkedHashMap<>();
+    /**
+     * The class this worker is running, named the way the XML report names its files, so what the
+     * JVM prints between the class's start and its finish lands in that class's {@code system-out}.
+     * Null between classes.
+     */
+    private @Nullable String runningClass;
 
     /** Test-friendly ctor: no listener, no worker id, no reports. */
     ResultAggregator() {
@@ -96,10 +103,20 @@ final class ResultAggregator {
         // directly. In production the caller already stripped the prefix, so
         // any line that doesn't look like a JSON object is user output.
         if (json == null || !json.startsWith("{")) {
-            listener.onUserOutput(workerId, json);
+            userOutput(json == null ? "" : json);
             return;
         }
         acceptJson(json);
+    }
+
+    /**
+     * A line the test JVM printed outside the protocol: shown to the listener as this worker's
+     * output and, when a class is running, kept for that class's {@code system-out} in the XML
+     * report — so a failing test's diagnostic dump survives the temp dir it was printed from.
+     */
+    synchronized void userOutput(String line) {
+        listener.onUserOutput(workerId, line);
+        if (xmlReport != null && runningClass != null) xmlReport.recordOutput(runningClass, line);
     }
 
     private void acceptJson(String json) {
@@ -131,6 +148,9 @@ final class ResultAggregator {
         boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
         String id = identityKey(json);
         String label = progressLabel(json);
+        // Only a class-like node names a suite; the engine root's fallback name is not a class.
+        String cls = XmlTestReport.classNameFrom(id);
+        if (!cls.isEmpty() && !cls.equals(id) && !cls.equals(JUnitUniqueIds.engineOf(id))) runningClass = cls;
         listener.onTestStarted(id, label, isTest, eventWorker(json));
     }
 
@@ -162,6 +182,8 @@ final class ResultAggregator {
                 // surface only as a bare "runner exited N". Record it with its stack.
                 captureFailure(json, label.isEmpty() ? "container" : label + " (container)", true);
             }
+            // The class is done: what the JVM prints next belongs to no class until one starts.
+            if (runningClass != null && runningClass.equals(XmlTestReport.classNameFrom(id))) runningClass = null;
         }
         listener.onTestFinished(id, label, status, isTest, wasStatic, duration, w);
         if (isTest) {

@@ -38,6 +38,20 @@ public final class XmlTestReport {
             @Nullable String skipReason) {}
 
     private final List<Entry> entries = new ArrayList<>();
+
+    /**
+     * What each class's JVM printed while the class ran, by class name — the {@code system-out}
+     * of its {@code testsuite}. The fork merges stderr into stdout, so there is one stream and
+     * {@code system-err} stays empty.
+     */
+    private final Map<String, StringBuilder> output = new LinkedHashMap<>();
+
+    /**
+     * Bound on one class's captured output. A suite that logs at debug for an hour must not turn
+     * its report into the log; what fits is the head, and the tail says how much was cut.
+     */
+    static final int MAX_OUTPUT_CHARS = 256 * 1024;
+
     private final String timestamp;
     private final String hostname;
 
@@ -75,6 +89,37 @@ public final class XmlTestReport {
     public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
         String className = classNameFrom(uniqueId);
         entries.add(new Entry(className, display, 0, null, null, null, reason != null ? reason : ""));
+    }
+
+    /**
+     * Record one line the test JVM printed while {@code className} was running. Lines past
+     * {@link #MAX_OUTPUT_CHARS} are counted, not kept.
+     */
+    public synchronized void recordOutput(String className, String line) {
+        StringBuilder sb = output.computeIfAbsent(className, k -> new StringBuilder());
+        if (sb.length() >= MAX_OUTPUT_CHARS) {
+            truncatedLines.merge(className, 1, Integer::sum);
+            return;
+        }
+        int room = MAX_OUTPUT_CHARS - sb.length();
+        if (line.length() + 1 > room) {
+            sb.append(line, 0, Math.max(0, room - 1)).append('\n');
+            truncatedLines.merge(className, 1, Integer::sum);
+            return;
+        }
+        sb.append(line).append('\n');
+    }
+
+    /** Lines {@link #recordOutput} could not keep, by class. */
+    private final Map<String, Integer> truncatedLines = new LinkedHashMap<>();
+
+    /** The captured output of {@code className} as {@code system-out} carries it; empty when none. */
+    String outputOf(String className) {
+        StringBuilder sb = output.get(className);
+        if (sb == null) return "";
+        Integer cut = truncatedLines.get(className);
+        if (cut == null) return sb.toString();
+        return sb + "... output truncated (" + cut + " more line(s))\n";
     }
 
     /**
@@ -169,7 +214,7 @@ public final class XmlTestReport {
             }
         }
 
-        sb.append("  <system-out><![CDATA[]]></system-out>\n");
+        sb.append("  <system-out>").append(cdata(outputOf(className))).append("</system-out>\n");
         sb.append("  <system-err><![CDATA[]]></system-err>\n");
         sb.append("</testsuite>\n");
         return sb.toString();

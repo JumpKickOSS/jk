@@ -63,6 +63,36 @@ class XmlTestReportTest {
     }
 
     @Test
+    void what_a_class_printed_while_it_ran_is_its_suite_s_system_out() throws Exception {
+        var xml = new XmlTestReport();
+        xml.recordOutput("com.example.Noisy", "jk dev stderr: app exited with 143");
+        xml.recordOutput("com.example.Noisy", "event: session-finish exit=70");
+        xml.recordFinished("[engine:junit-jupiter]/[class:com.example.Noisy]/[method:m()]", "m()", 1, null);
+        xml.recordFinished("[engine:junit-jupiter]/[class:com.example.Quiet]/[method:q()]", "q()", 1, null);
+
+        xml.writeAll(dir);
+
+        assertThat(Files.readString(dir.resolve("TEST-com.example.Noisy.xml")))
+                .contains("<system-out><![CDATA[jk dev stderr: app exited with 143\nevent: session-finish exit=70\n]]>"
+                        + "</system-out>");
+        assertThat(Files.readString(dir.resolve("TEST-com.example.Quiet.xml")))
+                .contains("<system-out><![CDATA[]]></system-out>");
+    }
+
+    @Test
+    void a_class_s_output_is_capped_and_the_cut_is_counted() {
+        var xml = new XmlTestReport();
+        String line = "x".repeat(1024);
+        for (int i = 0; i < XmlTestReport.MAX_OUTPUT_CHARS / 1000; i++) xml.recordOutput("C", line);
+        xml.recordOutput("C", "late");
+        xml.recordOutput("C", "later");
+
+        String out = xml.outputOf("C");
+        assertThat(out.length()).isLessThanOrEqualTo(XmlTestReport.MAX_OUTPUT_CHARS + 64);
+        assertThat(out).endsWith("more line(s))\n").doesNotContain("later");
+    }
+
+    @Test
     void class_names_come_from_the_segment_the_engine_uses() {
         assertThat(XmlTestReport.classNameFrom("[engine:junit-jupiter]/[class:a.B]/[nested-class:C]/[method:m()]"))
                 .isEqualTo("a.B$C");

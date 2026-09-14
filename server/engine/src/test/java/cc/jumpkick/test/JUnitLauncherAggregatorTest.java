@@ -42,6 +42,35 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
+    void output_printed_while_a_class_runs_lands_in_that_class_s_system_out(@TempDir Path dir) throws Exception {
+        var xml = new XmlTestReport();
+        var agg = new ResultAggregator(xml);
+        agg.userOutput("JVM banner before any class");
+        agg.accept("{\"event\":\"started\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\"}");
+        agg.userOutput("A says hello");
+        agg.accept("{\"event\":\"started\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:a()]\","
+                + "\"testClass\":\"A\",\"testMethod\":\"a()\",\"type\":\"TEST\"}");
+        agg.userOutput("a() dumps its diagnostics");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]/[method:a()]\","
+                + "\"testClass\":\"A\",\"testMethod\":\"a()\",\"type\":\"TEST\",\"status\":\"FAILED\","
+                + "\"throwable\":{\"class\":\"AssertionError\",\"message\":\"70 != 130\",\"stack\":\"\"}}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:A]\",\"type\":\"CONTAINER\","
+                + "\"status\":\"SUCCESSFUL\"}");
+        agg.userOutput("between classes");
+        agg.accept("{\"event\":\"started\",\"uniqueId\":\"[engine:junit-jupiter]/[class:B]\",\"type\":\"CONTAINER\"}");
+        agg.accept("{\"event\":\"finished\",\"uniqueId\":\"[engine:junit-jupiter]/[class:B]/[method:b()]\","
+                + "\"testClass\":\"B\",\"testMethod\":\"b()\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
+        xml.writeAll(dir);
+
+        String a = Files.readString(dir.resolve("TEST-A.xml"));
+        assertThat(a)
+                .contains("A says hello\na() dumps its diagnostics\n")
+                .doesNotContain("JVM banner")
+                .doesNotContain("between classes");
+        assertThat(Files.readString(dir.resolve("TEST-B.xml"))).contains("<system-out><![CDATA[]]></system-out>");
+    }
+
+    @Test
     void counts_successful_failed_and_skipped_tests() {
         var agg = new ResultAggregator();
         agg.accept("{\"event\":\"finished\",\"id\":\"a\",\"type\":\"TEST\",\"status\":\"SUCCESSFUL\"}");
