@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
@@ -141,5 +142,38 @@ class DoctorWorkersTest {
 
     private static List<String> strip(List<String> lines) {
         return lines.stream().map(TestAnsi::strip).toList();
+    }
+
+    @Test
+    void with_no_engine_running_the_row_says_so_and_how_to_get_the_rows() {
+        DoctorCommand.Workers down = DoctorCommand.workers(() -> {
+            throw new EngineClient.EngineNotRunningException();
+        });
+
+        assertThat(down.rows()).isEmpty();
+        String row =
+                strip(DoctorCommand.renderWorkers(down, false, Theme.active())).get(0);
+        assertThat(row)
+                .startsWith("warn:")
+                .contains("workers")
+                .contains("engine not running")
+                .contains("`jk engine start`")
+                .contains("`jk doctor --engine`");
+        assertThat(DoctorCommand.workersJson(down)).contains("\"error\":\"engine not running");
+
+        RepoStores.Stores repos = DoctorCommand.queryRepos(() -> {
+            throw new EngineClient.EngineNotRunningException();
+        });
+        assertThat(repos.rows()).isEmpty();
+        assertThat(repos.error()).isEqualTo(DoctorCommand.ENGINE_NOT_RUNNING);
+    }
+
+    @Test
+    void no_engine_flag_skips_the_engine_answered_rows_by_name() {
+        DoctorCommand.Workers skipped = new DoctorCommand.Workers(List.of(), DoctorCommand.ROWS_SKIPPED);
+        assertThat(strip(DoctorCommand.renderWorkers(skipped, false, Theme.active()))
+                        .get(0))
+                .contains("workers")
+                .contains("skipped (--no-engine)");
     }
 }

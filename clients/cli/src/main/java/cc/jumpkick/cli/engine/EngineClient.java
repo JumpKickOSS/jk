@@ -149,6 +149,30 @@ public final class EngineClient {
         return EngineReads.cacheInventory(paths, query, cache, store, terms, coords, dryRun);
     }
 
+    /**
+     * As {@link #cacheInventory} but answered only by an engine that is already running: nothing
+     * is spawned, and {@link EngineNotRunningException} says so when none serves. For a health
+     * check that must leave the host as it found it.
+     */
+    public static CacheInventoryAck cacheInventoryIfRunning(
+            EnginePaths.Paths paths,
+            String query,
+            Path cache,
+            @Nullable Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun)
+            throws IOException {
+        return EngineReads.cacheInventory(paths, query, cache, store, terms, coords, dryRun, EngineWire.RUNNING_ONLY);
+    }
+
+    /** No engine serving this client is running, and the caller asked that none be started. */
+    public static final class EngineNotRunningException extends IOException {
+        public EngineNotRunningException() {
+            super("engine not running");
+        }
+    }
+
     /** Engine-hosted {@code jk new} / init scaffold. */
     public static NewProjectAck newProject(EnginePaths.Paths paths, EngineRequests.NewProjectRequest req)
             throws IOException {

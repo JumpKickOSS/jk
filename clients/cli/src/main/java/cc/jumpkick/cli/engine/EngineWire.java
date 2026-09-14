@@ -22,6 +22,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -65,6 +66,16 @@ public final class EngineWire {
     interface Ensure {
         void run(EnginePaths.Paths paths, String clientVersion) throws IOException;
     }
+
+    /**
+     * An {@link Ensure} that never spawns: the request is served by an engine that is already
+     * running and serves this client, or it fails with {@link EngineClient.EngineNotRunningException}.
+     * For a diagnostic ({@code jk doctor}) that must not change the state it inspects.
+     */
+    static final Ensure RUNNING_ONLY = (paths, clientVersion) -> {
+        Optional<EngineProbe.Handshake> live = EngineProbe.handshake(EnginePaths.activeSocket(paths), clientVersion);
+        if (live.isEmpty() || live.get().draining()) throw new EngineClient.EngineNotRunningException();
+    };
 
     static <T> T stream(EnginePaths.Paths paths, String requestLine, Reply<T> reply, Ensure ensure) throws IOException {
         // Ensuring is not retried: it already spawns twice with backoff behind a 30 s ceiling per

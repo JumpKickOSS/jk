@@ -43,7 +43,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
- * (engine, dirs, state, jdk, lock, shell, tools, workers) and a summary. {@code --output json}
+ * (engine, dirs, state, jdk, lock, shell, tools, workers) and a summary. The worker and repository
+ * rows are answered by a running engine only — a health check never starts one unless
+ * {@code --engine} asks it to, and {@code --no-engine} skips those rows. {@code --output json}
  * emits machine output.
  */
 public final class DoctorCommand implements CliCommand {
@@ -65,7 +67,9 @@ public final class DoctorCommand implements CliCommand {
                         .hide(),
                 // Kept under HelpWidthTest's 78-column budget: 20 columns go to the indent and the
                 // flag itself, so this string has 58 to spend.
-                Opt.flag("Fingerprint each linked install and report drift", "--verify-linked"));
+                Opt.flag("Fingerprint each linked install and report drift", "--verify-linked"),
+                Opt.flag("Start the engine if needed for worker/repo rows", "--engine"),
+                Opt.flag("Skip the engine-answered worker/repo rows", "--no-engine"));
     }
 
     @Override
@@ -95,8 +99,21 @@ public final class DoctorCommand implements CliCommand {
         Tally tally = Tally.of(toolRows);
         int healthy = tally.healthy(), pruned = tally.pruned(), verified = tally.verified();
         int drifted = tally.drifted(), firstSeen = tally.firstSeen(), empty = tally.empty();
-        Workers workers = workers(DoctorCommand::queryWorkers);
-        RepoStores.Stores repos = queryRepos();
+        // The worker and repository rows are the engine's answers. A diagnostic must not change
+        // the state it inspects, so by default only an engine that is already running answers;
+        // --engine starts one for this check, --no-engine asks nothing.
+        Workers workers;
+        RepoStores.Stores repos;
+        if (in.isSet("no-engine")) {
+            workers = new Workers(List.of(), ROWS_SKIPPED);
+            repos = new RepoStores.Stores(List.of(), ROWS_SKIPPED);
+        } else if (in.isSet("engine")) {
+            workers = workers(DoctorCommand::queryWorkers);
+            repos = queryRepos(DoctorCommand::queryReposStarting);
+        } else {
+            workers = workers(DoctorCommand::queryWorkersIfRunning);
+            repos = queryRepos(DoctorCommand::queryReposIfRunning);
+        }
 
         boolean hasFail = engine.status == Status.FAIL
                 || cache.status == Status.FAIL
@@ -213,21 +230,44 @@ public final class DoctorCommand implements CliCommand {
     /** The worker rows, or the reason there are none (engine unreachable, query refused). */
     public record Workers(List<Worker> rows, @Nullable String error) {}
 
-    /** The engine query behind the worker rows; a seam so the rendering is testable without an engine. */
+    /** An engine inventory query behind the worker or repo rows; a seam so the rendering is testable without an engine. */
     interface WorkerProbe {
         CacheInventoryAck workers() throws IOException;
     }
+
+    /** What the engine-answered rows say when {@code --no-engine} asked for none. */
+    static final String ROWS_SKIPPED = "skipped (--no-engine)";
+
+    /** What the engine-answered rows say when no engine is running and none was to be started. */
+    static final String ENGINE_NOT_RUNNING = "engine not running — start it with `jk engine start`, or run"
+            + " `jk doctor --engine` to start one for this check";
 
     private static CacheInventoryAck queryWorkers() throws IOException {
         return EngineClient.cacheInventory(
                 EnginePaths.current(), "workers", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
     }
 
+    private static CacheInventoryAck queryWorkersIfRunning() throws IOException {
+        return EngineClient.cacheInventoryIfRunning(
+                EnginePaths.current(), "workers", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+    }
+
+    private static CacheInventoryAck queryReposStarting() throws IOException {
+        return EngineClient.cacheInventory(
+                EnginePaths.current(), "repos", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+    }
+
+    private static CacheInventoryAck queryReposIfRunning() throws IOException {
+        return EngineClient.cacheInventoryIfRunning(
+                EnginePaths.current(), "repos", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+    }
+
     /** The repository stores and their origins, so a wrong-origin cache is one line apart from the symptom. */
-    private static RepoStores.Stores queryRepos() {
+    static RepoStores.Stores queryRepos(WorkerProbe probe) {
         try {
-            return RepoStores.decode(EngineClient.cacheInventory(
-                    EnginePaths.current(), "repos", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false));
+            return RepoStores.decode(probe.workers());
+        } catch (EngineClient.EngineNotRunningException e) {
+            return new RepoStores.Stores(List.of(), ENGINE_NOT_RUNNING);
         } catch (IOException | RuntimeException e) {
             return new RepoStores.Stores(List.of(), "engine query failed: " + e.getMessage());
         }
@@ -244,6 +284,8 @@ public final class DoctorCommand implements CliCommand {
         CacheInventoryAck ack;
         try {
             ack = probe.workers();
+        } catch (EngineClient.EngineNotRunningException e) {
+            return new Workers(List.of(), ENGINE_NOT_RUNNING);
         } catch (IOException | RuntimeException e) {
             return new Workers(List.of(), "engine query failed: " + e.getMessage());
         }

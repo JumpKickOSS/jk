@@ -82,21 +82,37 @@ final class EngineReads {
     static <T extends @Nullable Object> T request(
             EnginePaths.Paths paths, String requestLine, String ackType, String what, AckDecoder<T> decoder)
             throws IOException {
-        return EngineWire.stream(paths, requestLine, (reader, ch) -> {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.ERROR.equals(type)) {
-                    // A verb that failed before producing its ack answers with an error line;
-                    // surface the engine's message instead of reading to EOF and reporting a
-                    // generic disconnect.
-                    throw EngineWireException.fromJsonLine(line);
-                }
-                if (!ackType.equals(type)) continue;
-                return decoder.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the " + what);
-        });
+        return request(paths, requestLine, ackType, what, decoder, EngineSpawn::ensure);
+    }
+
+    /** As {@link #request(EnginePaths.Paths, String, String, String, AckDecoder)} with how the engine is brought up. */
+    static <T extends @Nullable Object> T request(
+            EnginePaths.Paths paths,
+            String requestLine,
+            String ackType,
+            String what,
+            AckDecoder<T> decoder,
+            EngineWire.Ensure ensure)
+            throws IOException {
+        return EngineWire.stream(
+                paths,
+                requestLine,
+                (reader, ch) -> {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String type = EngineProtocol.typeOf(line);
+                        if (EngineProtocol.ERROR.equals(type)) {
+                            // A verb that failed before producing its ack answers with an error line;
+                            // surface the engine's message instead of reading to EOF and reporting a
+                            // generic disconnect.
+                            throw EngineWireException.fromJsonLine(line);
+                        }
+                        if (!ackType.equals(type)) continue;
+                        return decoder.decode(line);
+                    }
+                    throw new IOException("jk engine: disconnected before answering the " + what);
+                },
+                ensure);
     }
 
     /** One engine-hosted jk.toml edit: returns changed; throws with the engine's message. */
@@ -155,6 +171,19 @@ final class EngineReads {
             List<String> coords,
             boolean dryRun)
             throws IOException {
+        return cacheInventory(paths, query, cache, store, terms, coords, dryRun, EngineSpawn::ensure);
+    }
+
+    static CacheInventoryAck cacheInventory(
+            EnginePaths.Paths paths,
+            String query,
+            Path cache,
+            @Nullable Path store,
+            List<String> terms,
+            List<String> coords,
+            boolean dryRun,
+            EngineWire.Ensure ensure)
+            throws IOException {
         return request(
                 paths,
                 new CacheInventoryRequest(
@@ -167,7 +196,8 @@ final class EngineReads {
                         .encode(),
                 EngineProtocol.CACHE_INVENTORY_ACK,
                 "cache-inventory request",
-                CacheInventoryAck::decode);
+                CacheInventoryAck::decode,
+                ensure);
     }
 
     static CatalogReadAck catalogRead(
