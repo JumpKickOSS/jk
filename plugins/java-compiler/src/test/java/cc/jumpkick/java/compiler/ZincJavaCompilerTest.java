@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -93,6 +94,71 @@ class ZincJavaCompilerTest {
         ZincJavaCompiler.Result third = test.compile(List.of(main.classes));
         assertThat(third.success()).isTrue();
         assertThat(third.compiledSources()).isEmpty();
+    }
+
+    /**
+     * The same rewrite seen through the producer's <em>analysis</em> (the path a sibling module or
+     * a test compile's own main classes take in the engine), for the one use shape javac erases
+     * completely: a constant folded into a non-constant string concatenation. javac compiles
+     * {@code "v=" + K.TAG + n} to an {@code invokedynamic} whose recipe carries the constant's
+     * value, and the class file names neither the field nor {@code K} (a plain {@code K.TAG} load
+     * keeps a {@code Class} entry, which Zinc's class-file analysis does see). The edge has to come
+     * from javac's AST, or a class that inlined the constant keeps the old value forever — which
+     * is how a version bump left {@code BspJsonFrozenBytesTest} compiled against the previous
+     * {@code JkVersion.VERSION}.
+     */
+    @Test
+    void an_inlined_constant_from_a_producer_with_an_analysis_recompiles_its_users(@TempDir Path dir) throws Exception {
+        Project main = new Project(dir.resolve("main"));
+        main.write("k/K.java", "package k; public class K { public static final String TAG = \"one\"; }");
+        assertThat(main.compile().success()).isTrue();
+
+        Project test = new Project(dir.resolve("test"));
+        test.write(
+                "k/KTest.java",
+                "package k; public class KTest { public static String tag(long n) { return \"v=\" + K.TAG + n; } }");
+        test.write("k/Other.java", "package k; public class Other { public int n() { return 1; } }");
+        ZincJavaCompiler.Result first = test.compileAgainst(main);
+        assertThat(first.success()).as(first.diagnostics().toString()).isTrue();
+        String bytes = new String(Files.readAllBytes(test.classFile("k/KTest.class")), StandardCharsets.ISO_8859_1);
+        assertThat(bytes).contains("one");
+
+        main.write("k/K.java", "package k; public class K { public static final String TAG = \"two\"; }");
+        assertThat(names(main.compile().compiledSources())).containsExactly("K.java");
+
+        ZincJavaCompiler.Plan plan = test.planAgainst(main);
+        assertThat(names(plan.sources())).as(plan.reason()).containsExactly("KTest.java");
+
+        ZincJavaCompiler.Result second = test.compileAgainst(main);
+        assertThat(second.success()).as(second.diagnostics().toString()).isTrue();
+        assertThat(names(second.compiledSources()))
+                .as("only the user of the constant")
+                .containsExactly("KTest.java");
+        assertThat(new String(Files.readAllBytes(test.classFile("k/KTest.class")), StandardCharsets.ISO_8859_1))
+                .contains("two")
+                .doesNotContain("one");
+
+        ZincJavaCompiler.Result third = test.compileAgainst(main);
+        assertThat(third.success()).isTrue();
+        assertThat(third.compiledSources()).isEmpty();
+    }
+
+    /** Within one compile, too: a class that inlined a sibling's constant recompiles with it. */
+    @Test
+    void an_inlined_constant_within_one_compile_recompiles_its_users(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/K.java", "package a; public class K { public static final String TAG = \"one\"; }");
+        p.write("a/U.java", "package a; public class U { public String tag(long n) { return \"v=\" + K.TAG + n; } }");
+        p.write("a/V.java", "package a; public class V { public int v() { return 3; } }");
+        assertThat(p.compile().success()).isTrue();
+
+        p.write("a/K.java", "package a; public class K { public static final String TAG = \"two\"; }");
+        ZincJavaCompiler.Result r = p.compile();
+        assertThat(r.success()).as(r.diagnostics().toString()).isTrue();
+        assertThat(names(r.compiledSources())).containsExactlyInAnyOrder("K.java", "U.java");
+        assertThat(new String(Files.readAllBytes(p.classFile("a/U.class")), StandardCharsets.ISO_8859_1))
+                .contains("two")
+                .doesNotContain("one");
     }
 
     /** The same dependency at a new path (a version bump): Zinc's origin lookup must still run. */
@@ -222,7 +288,12 @@ class ZincJavaCompilerTest {
         }
 
         ZincJavaCompiler.Result compile(List<Path> classpath) throws IOException {
-            return ZincJavaCompiler.compileJava(job(classpath));
+            return ZincJavaCompiler.compileJava(job(classpath, Map.of()));
+        }
+
+        /** Compile against {@code producer}'s classes with its analysis wired — the fine-grained path. */
+        ZincJavaCompiler.Result compileAgainst(Project producer) throws IOException {
+            return ZincJavaCompiler.compileJava(job(List.of(producer.classes), producer.analyses()));
         }
 
         ZincJavaCompiler.Plan plan() throws IOException {
@@ -230,15 +301,25 @@ class ZincJavaCompilerTest {
         }
 
         ZincJavaCompiler.Plan plan(List<Path> classpath) throws IOException {
-            return ZincJavaCompiler.planJava(job(classpath));
+            return ZincJavaCompiler.planJava(job(classpath, Map.of()));
         }
 
-        private JavaCompileJob job(List<Path> classpath) throws IOException {
+        ZincJavaCompiler.Plan planAgainst(Project producer) throws IOException {
+            return ZincJavaCompiler.planJava(job(List.of(producer.classes), producer.analyses()));
+        }
+
+        /** This project's classes dir paired with its analysis, as the engine hands a sibling's. */
+        Map<Path, Path> analyses() {
+            return Map.of(classes, workdir.resolve("zinc"));
+        }
+
+        private JavaCompileJob job(List<Path> classpath, Map<Path, Path> analyses) throws IOException {
             List<Path> sources;
             try (var walk = Files.walk(src)) {
                 sources = walk.filter(f -> f.toString().endsWith(".java")).toList();
             }
-            return new JavaCompileJob(sources, classpath, classes, workdir, null, 25, List.of(), List.of());
+            return new JavaCompileJob(
+                    sources, classpath, classes, workdir, null, 25, List.of(), List.of(), null, analyses);
         }
     }
 }

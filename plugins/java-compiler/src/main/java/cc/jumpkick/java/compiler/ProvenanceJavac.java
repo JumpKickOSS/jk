@@ -50,10 +50,18 @@ final class ProvenanceJavac implements JavaCompiler {
     private final ApProvenance provenance;
     private final Charset encoding;
 
-    ProvenanceJavac(@Nullable URLClassLoader loader, ApProvenance provenance, Charset encoding) {
+    /** Collects the inlined-constant edges javac's bytecode erases; see {@link ConstantDeps}. */
+    private final @Nullable ConstantDeps constants;
+
+    ProvenanceJavac(
+            @Nullable URLClassLoader loader,
+            ApProvenance provenance,
+            Charset encoding,
+            @Nullable ConstantDeps constants) {
         this.loader = loader;
         this.provenance = provenance;
         this.encoding = encoding;
+        this.constants = constants;
     }
 
     @Override
@@ -106,6 +114,7 @@ final class ProvenanceJavac implements JavaCompiler {
             if (loader != null) {
                 task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
             }
+            if (constants != null) constants.listen(task);
             boolean ok = task.call();
             fileOps.write(classOut);
             DiagnosticsReporter bridge = new DiagnosticsReporter(reporter);

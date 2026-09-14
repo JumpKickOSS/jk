@@ -185,7 +185,8 @@ public final class ZincJavaCompiler {
             ApProvenance provenance = new ApProvenance();
             processors = processorsFor(processorPath);
             phases.mark("processors");
-            javac = recordingJavac(converter, processors, provenance);
+            ConstantDeps constants = new ConstantDeps();
+            javac = recordingJavac(converter, processors, provenance, constants);
             Compilers compilers = ScalaBridge.compilersFor(javac, mixed);
 
             VirtualFile[] sourceFiles = ZincSetup.virtual(sources, converter);
@@ -253,7 +254,15 @@ public final class ZincJavaCompiler {
                     .reconcile(sourceOutput, classOutput, javac.compiledSources(), provenance.generated);
             zinced.markAggregating(provenance.aggregating());
             phases.mark("reconcile");
-            zinced.persistAnalysis(store, AnalysisContents.create(compiled.analysis(), compiled.setup()));
+            // The edges javac erased (inlined constants) go into the analysis before it is written:
+            // Zinc's own Java analysis never saw them, and without them the next compile cannot
+            // know which classes to recompile when a constant's value changes.
+            xsbti.compile.CompileAnalysis analysis = compiled.analysis();
+            if (analysis instanceof Analysis full) {
+                analysis = ConstantDeps.addTo(
+                        full, constants.edges(), producers, List.of(cpFiles), classOutput, stamper, converter);
+            }
+            zinced.persistAnalysis(store, AnalysisContents.create(analysis, compiled.setup()));
             phases.mark("persist-analysis");
             phases.write(classOutput, sources.size());
             return new Result(true, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
@@ -518,9 +527,12 @@ public final class ZincJavaCompiler {
      * JDK — which is the one case {@link ProvenanceJavac} cannot serve.
      */
     private static RecordingJavaCompiler recordingJavac(
-            FileConverter converter, ProcessorLoad processors, ApProvenance provenance) {
+            FileConverter converter, ProcessorLoad processors, ApProvenance provenance, ConstantDeps constants) {
+        // A forked javac cannot be listened to, so its compiles record no inlined-constant edges —
+        // the same limit Zinc's own forked mode has.
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler() != null
-                ? new ProvenanceJavac(processors.any() ? processors.loader() : null, provenance, SOURCE_ENCODING)
+                ? new ProvenanceJavac(
+                        processors.any() ? processors.loader() : null, provenance, SOURCE_ENCODING, constants)
                 : sbt.internal.inc.javac.JavaCompiler.fork(Option.empty());
         return new RecordingJavaCompiler(javac, converter);
     }
