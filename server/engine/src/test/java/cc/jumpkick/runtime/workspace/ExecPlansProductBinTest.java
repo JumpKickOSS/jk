@@ -13,6 +13,7 @@ import cc.jumpkick.wire.protocol.ExecPlan;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -130,11 +131,84 @@ class ExecPlansProductBinTest {
         }
     }
 
+    /**
+     * A workspace sibling the client runs on is listed from the shelf once the install has put it
+     * there; the checkout's {@code target/} jar is what the launcher reads only until then.
+     */
+    @Test
+    void the_jvm_launcher_lists_a_shelved_sibling_from_the_shelf_not_the_checkout_s_target(@TempDir Path tmp)
+            throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "jk"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = ["cli", "core"]
+                """);
+        Path dir = client(root);
+        Files.writeString(dir.resolve("jk.toml"), Files.readString(dir.resolve("jk.toml")) + """
+
+                [dependencies]
+                core = { workspace = true }
+                """);
+        Path core = Files.createDirectories(root.resolve("core"));
+        Files.writeString(core.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "core"
+                version = "0.1.0"
+                java = 25
+                """);
+        Path builtCore = root.resolve("target/core/lib/core-0.1.0.jar");
+        Files.createDirectories(builtCore.getParent());
+        Files.writeString(builtCore, "core built");
+        Path unshelvedOnly = root.resolve("target/cli/lib/jk-cli-0.1.0.jar");
+        Files.createDirectories(unshelvedOnly.getParent());
+        Files.writeString(unshelvedOnly, "cli built");
+        LockfileWriter.write(
+                new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of()),
+                root.resolve("jk-lock.toml"));
+
+        String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        try {
+            ExecPlan before =
+                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+            assertThat(before.launcherScript())
+                    .as("until the shelf has the sibling, its target/ jar is the entry")
+                    .contains(builtCore.toAbsolutePath().normalize().toString());
+
+            Path shelvedCore = putJar(store, "jk-local", "cc/jumpkick/core/0.1.0/core-0.1.0.jar");
+            ExecPlan after =
+                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+            assertThat(after.launcherScript())
+                    .contains(shelvedCore.toString())
+                    .doesNotContain(root.resolve("target/core").toString());
+        } finally {
+            restore("jk.env.JK_STORE_DIR", prevStore);
+        }
+    }
+
+    private static void restore(String property, @Nullable String previous) {
+        if (previous != null) System.setProperty(property, previous);
+        else System.clearProperty(property);
+    }
+
     private static Path putJar(Path store, String relative) throws Exception {
+        return putJar(store, "central", relative);
+    }
+
+    private static Path putJar(Path store, String storeId, String relative) throws Exception {
         Path src = Files.writeString(store.resolve("src.bin"), relative);
-        RepoArtifactStore.forStoreId(store, "central").materialize(relative, src, Hashing.sha256Hex(src));
+        RepoArtifactStore.forStoreId(store, storeId).materialize(relative, src, Hashing.sha256Hex(src));
         Files.deleteIfExists(src);
-        return store.resolve("repos/central").resolve(relative).toAbsolutePath().normalize();
+        return store.resolve("repos/" + storeId)
+                .resolve(relative)
+                .toAbsolutePath()
+                .normalize();
     }
 
     private static Lockfile.Artifact artifact(String name, String version, Path jar, List<String> deps)

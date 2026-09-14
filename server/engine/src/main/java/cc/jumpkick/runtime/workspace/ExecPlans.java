@@ -722,23 +722,68 @@ public final class ExecPlans {
      * over it carries every jar in the monorepo and changes when a member the program never
      * loads moves a dependency. What {@code java -cp} launchers are rendered over, jk's own JVM
      * client included.
+     *
+     * <p>A sibling's jar is the shelf's copy once {@code jk install} has shelved it; its {@code
+     * target/} jar serves only until then, since a launcher over the checkout's build output breaks
+     * on {@code jk clean} and changes under a running client on every rebuild.
      */
     private static List<Path> thinClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
+        Path store = JkStores.store();
         var p = project.project();
-        Coordinate coord = Coordinate.of(p.group(), p.name(), p.version());
-        Path repoJar = JkStores.store()
-                .resolve("repos")
-                .resolve(RepoArtifactResolver.JK_LOCAL)
-                .resolve(MavenLayout.artifactPath(coord));
+        Path repoJar = shelfJar(store, Coordinate.of(p.group(), p.name(), p.version()));
         if (!Files.isRegularFile(repoJar)) {
             repoJar = layout.mainJar();
         }
         List<Path> classpath = new ArrayList<>();
         classpath.add(repoJar);
+        Map<Path, Path> shelved = shelvedSiblingJars(dir, project, store);
         for (Path jar : ModuleRuntimeClasspath.jars(dir, project, resolveLockFile(dir), JkStores.storeCas())) {
-            if (Files.exists(jar) && !classpath.contains(jar)) classpath.add(jar);
+            Path entry = shelved.getOrDefault(jar.toAbsolutePath().normalize(), jar);
+            if (Files.exists(entry) && !classpath.contains(entry)) classpath.add(entry);
         }
         return classpath;
+    }
+
+    /** {@code coord}'s jar on the first-party shelf, whether or not it is there. */
+    private static Path shelfJar(Path store, Coordinate coord) {
+        return store.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL).resolve(MavenLayout.artifactPath(coord));
+    }
+
+    /**
+     * Each workspace sibling's built jar, keyed by its {@code target/} path, mapped to the shelf's
+     * copy — for the siblings the shelf has. Empty for a standalone module, a module outside any
+     * workspace, or a workspace whose members cannot be loaded.
+     */
+    private static Map<Path, Path> shelvedSiblingJars(Path dir, JkBuild project, Path store) {
+        try {
+            Path root;
+            JkBuild rootManifest;
+            if (project.isWorkspaceRoot()) {
+                root = dir;
+                rootManifest = project;
+            } else {
+                Optional<Path> found = WorkspaceLocator.findRoot(dir);
+                if (found.isEmpty()) return Map.of();
+                root = found.get();
+                rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+                if (!rootManifest.isWorkspaceRoot()) return Map.of();
+            }
+            Map<Path, Path> out = new LinkedHashMap<>();
+            for (var member : WorkspaceLoader.loadModules(root, rootManifest).entrySet()) {
+                JkBuild unit = member.getValue();
+                var up = unit.project();
+                Path shelf = shelfJar(store, Coordinate.of(up.group(), up.name(), up.version()));
+                if (!Files.isRegularFile(shelf)) continue;
+                Path built = BuildLayout.of(member.getKey(), unit)
+                        .mainJar()
+                        .toAbsolutePath()
+                        .normalize();
+                out.put(built, shelf.toAbsolutePath().normalize());
+            }
+            return out;
+        } catch (IOException | RuntimeException e) {
+            return Map.of();
+        }
     }
 
     private static ExecPlan fatJarPlan(Path src, Path libDir, Path launcherPath, Path javaHome) {
