@@ -39,7 +39,10 @@ import org.jspecify.annotations.Nullable;
  * request: build outputs under {@code target/}, live compiler output, CAS blob presence (another
  * process's prune can unlink one mid-build), and any negative result near a store — the rules
  * {@code ActionCache} and {@code ClasspathResolver} already document. This scope is for facts about
- * the <em>inputs</em> a request was launched against, which are fixed at launch by definition.
+ * the <em>inputs</em> a request was launched against, which are fixed at launch by definition. The
+ * one output-side fact kept here is a classes tree found whole against its compile record
+ * ({@code ModuleOutputs.compileOutputsOnDisk}): a build never removes an output a hitting record
+ * owns, so a yes holds for the request, and only the yes is kept.
  */
 public final class RequestScope {
 

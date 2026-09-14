@@ -4,9 +4,11 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.IoLedger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -74,6 +76,60 @@ class ModuleOutputsTest {
         assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes)).isFalse();
         Files.writeString(classes.resolve("p/q/B.class"), "bytes");
         assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes)).isTrue();
+    }
+
+    @Test
+    void a_whole_verdict_holds_for_the_request_and_a_missing_one_never_does(@TempDir Path dir) throws Exception {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, dir.resolve("actions"));
+        String sha = cas.hashFromPath(cas.put("bytes".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        ac.storeWithOutputs("compile-main@x", "key-a", Map.of(), Map.of("p/A.class", sha, "p/q/B.class", sha));
+        Path classes = Files.createDirectories(dir.resolve("classes/main"));
+        Files.createDirectories(classes.resolve("p/q"));
+        Files.writeString(classes.resolve("p/A.class"), "bytes");
+        Files.writeString(classes.resolve("p/q/B.class"), "bytes");
+
+        // Inside one request the first yes is the request's answer: the five arms that ask about
+        // the same (key, tree) pair share it, so the record is read and the tree walked once.
+        inRequest(() -> {
+            assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes)).isTrue();
+            Files.delete(classes.resolve("p/q/B.class"));
+            assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes))
+                    .as("a later arm of the same request gets the remembered yes, not a re-walk")
+                    .isTrue();
+        });
+
+        // The next request probes afresh, and a no is never remembered: once the module's plan
+        // restores the tree its later arms see the restored tree.
+        inRequest(() -> {
+            assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes))
+                    .as("a new request re-reads the tree")
+                    .isFalse();
+            Files.writeString(classes.resolve("p/q/B.class"), "bytes");
+            assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes))
+                    .as("the restored tree is whole again within the same request")
+                    .isTrue();
+        });
+
+        // Off a request every probe is live.
+        Files.delete(classes.resolve("p/q/B.class"));
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, "key-a", classes)).isFalse();
+    }
+
+    private interface Body {
+        void run() throws Exception;
+    }
+
+    /** Run {@code body} the way a real request runs: with an {@link IoLedger} opened around it. */
+    private static void inRequest(Body body) throws Exception {
+        IoLedger.open(new IoLedger());
+        try {
+            body.run();
+        } finally {
+            RequestScope.release();
+            IoLedger.close();
+        }
     }
 
     @Test

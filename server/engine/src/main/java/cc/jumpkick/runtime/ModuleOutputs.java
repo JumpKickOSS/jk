@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -11,6 +12,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -75,9 +78,31 @@ public final class ModuleOutputs {
      * record that is gone (pruned) leaves nothing to compare and answers true; the stamp's or the
      * key's own evidence then stands. Extra files the record does not own are the restore's prune,
      * not this probe's concern.
+     *
+     * <p>A whole tree is remembered for the rest of the request. Five arms ask this of the same
+     * (key, tree) pair in one build — the restore gate, the package-key reconstruction, the
+     * run-tests fingerprint, the preflight memo and compile-main's stamp arm — and nothing in a
+     * build removes an output a hitting record owns, so the first yes holds until the request
+     * ends. A no is never remembered: the module it schedules restores the tree before its later
+     * arms ask again, and they must see the restored tree.
      */
     public static boolean compileOutputsOnDisk(ActionCache actionCache, @Nullable String key, Path dir) {
         if (key == null || key.isBlank()) return true;
+        Probe probe = new Probe(key, dir.toAbsolutePath().normalize());
+        Set<Probe> whole = RequestScope.current().get(WHOLE_TREES, k -> ConcurrentHashMap.newKeySet());
+        if (whole.contains(probe)) return true;
+        boolean result = outputsPresent(actionCache, key, probe.dir());
+        if (result) whole.add(probe);
+        return result;
+    }
+
+    /** The request-scope key of the set of (record key, tree) pairs already found whole. */
+    private static final Object WHOLE_TREES = new Object();
+
+    /** One wholeness question: a compile record's key and the tree held against it. */
+    private record Probe(String key, Path dir) {}
+
+    private static boolean outputsPresent(ActionCache actionCache, String key, Path dir) {
         Optional<ActionCache.ActionRecord> record;
         try {
             record = actionCache.lookup(key);
