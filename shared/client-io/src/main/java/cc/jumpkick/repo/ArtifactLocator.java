@@ -22,15 +22,36 @@ public final class ArtifactLocator {
     private final @Nullable Path m2Root;
     private final boolean m2integration;
 
+    /**
+     * Whether the store is the only address this locator answers with: a row the store lacks and
+     * the Maven local repository has is copied into the store and answered from there.
+     */
+    private final boolean placeInStore;
+
     public ArtifactLocator(Path storeRoot, @Nullable Path m2Root, boolean m2integration) {
+        this(storeRoot, m2Root, m2integration, false);
+    }
+
+    private ArtifactLocator(Path storeRoot, @Nullable Path m2Root, boolean m2integration, boolean placeInStore) {
         this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
         this.m2Root = m2Root;
         this.m2integration = m2integration && m2Root != null;
+        this.placeInStore = placeInStore;
     }
 
     /** Store-only locator (no Maven local repo). */
     public ArtifactLocator(Path storeRoot) {
         this(storeRoot, null, false);
+    }
+
+    /**
+     * A locator for paths jk writes down — a rendered launcher, an install's classpath. It answers
+     * only from the store: {@code ~/.m2} stays a read-through source, and a row only the mirror
+     * has is materialized into the store first, so the address jk records is one it owns and the
+     * bytes are the ones the store verified. {@code m2Root} null means no mirror at all.
+     */
+    public static ArtifactLocator placingInStore(Path storeRoot, @Nullable Path m2Root) {
+        return new ArtifactLocator(storeRoot, m2Root, m2Root != null, true);
     }
 
     public Optional<Path> locate(Lockfile.Artifact pkg) {
@@ -54,16 +75,29 @@ public final class ArtifactLocator {
                 ? RepoArtifactStore.forStoreId(storeRoot, RepoArtifactResolver.JK_LOCAL)
                 : RepoArtifactStore.forSource(storeRoot, source);
         Path m2 = m2Root;
-        if (m2integration && m2 != null && !storeOnly) {
-            // The lock row names the path; ~/.m2 is a root the row must not climb out of.
-            Path m2File = MavenLayout.safeResolve(m2, relativePath);
+        // The lock row names the path; ~/.m2 is a root the row must not climb out of.
+        Path m2File = m2integration && m2 != null && !storeOnly ? MavenLayout.safeResolve(m2, relativePath) : null;
+        if (m2File != null && !placeInStore) {
             if (Files.isRegularFile(m2File) && verified(m2File, m2MemoPath(store, relativePath), gav, expectedSha256)) {
                 return Optional.of(m2File.toAbsolutePath().normalize());
             }
         }
+        Optional<Path> found = fromStore(store, relativePath, expectedSha256);
+        if (found.isPresent()) return found;
+        if (m2File != null
+                && placeInStore
+                && Files.isRegularFile(m2File)
+                && verified(m2File, m2MemoPath(store, relativePath), gav, expectedSha256)) {
+            store.materialize(relativePath, m2File, expectedSha256);
+            return fromStore(store, relativePath, expectedSha256);
+        }
+        return Optional.empty();
+    }
+
+    /** The row in {@code store}, else on the first-party shelf, where every first-party install lands. */
+    private Optional<Path> fromStore(RepoArtifactStore store, String relativePath, String expectedSha256) {
         Optional<Path> found = store.locate(relativePath, expectedSha256);
         if (found.isPresent()) return found.map(p -> p.toAbsolutePath().normalize());
-        // First-party installs always land in jk-local.
         Path storeDir = store.root();
         if (storeDir == null || !RepoArtifactResolver.JK_LOCAL.equals(String.valueOf(storeDir.getFileName()))) {
             found = RepoArtifactStore.forStoreId(storeRoot, RepoArtifactResolver.JK_LOCAL)

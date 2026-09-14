@@ -51,6 +51,61 @@ class ArtifactLocatorTest {
     }
 
     /**
+     * A locator for paths jk writes down never answers with {@code ~/.m2}: a row only the mirror
+     * has is copied into the store and the store's path is the answer, so a launcher rendered over
+     * it stands when the mirror is purged and loads the bytes the store verified.
+     */
+    @Test
+    void a_store_placing_locator_materializes_a_mirror_hit_into_the_store_and_answers_from_there(@TempDir Path dir)
+            throws Exception {
+        Path store = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        Lockfile.Artifact pkg = new Lockfile.Artifact(
+                "org.tomlj:tomlj",
+                "1.1.1",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:pending",
+                null,
+                List.of(Scope.MAIN),
+                List.of());
+        String rel = MavenLayout.artifactPath(pkg.coordinate());
+        Path m2Jar = m2.resolve(rel);
+        Files.createDirectories(m2Jar.getParent());
+        Files.writeString(m2Jar, "tomlj-bytes");
+        String hex = Hashing.sha256Hex(m2Jar);
+        pkg = new Lockfile.Artifact(
+                pkg.name(), pkg.version(), pkg.source(), "sha256:" + hex, pkg.path(), pkg.scopes(), pkg.deps());
+
+        ArtifactLocator placing = ArtifactLocator.placingInStore(store, m2);
+        Path expected =
+                store.resolve("repos/central").resolve(rel).toAbsolutePath().normalize();
+        assertThat(placing.locate(pkg)).contains(expected);
+        assertThat(expected).hasSameBinaryContentAs(m2Jar);
+        // The same locator with the mirror gone still answers: the store has the row now.
+        Files.delete(m2Jar);
+        assertThat(placing.locate(pkg)).contains(expected);
+        // The ordinary locator keeps preferring the mirror when it is there.
+        Files.createDirectories(m2Jar.getParent());
+        Files.writeString(m2Jar, "tomlj-bytes");
+        assertThat(new ArtifactLocator(store, m2, true).locate(pkg))
+                .contains(m2Jar.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_store_placing_locator_with_no_mirror_answers_from_the_store_alone(@TempDir Path dir) {
+        Lockfile.Artifact pkg = new Lockfile.Artifact(
+                "org.tomlj:tomlj",
+                "1.1.1",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + "0".repeat(64),
+                null,
+                List.of(Scope.MAIN),
+                List.of());
+        assertThat(ArtifactLocator.placingInStore(dir.resolve("store"), null).locate(pkg))
+                .isEmpty();
+    }
+
+    /**
      * Two locks name a repository {@code private} for two different origins. The locator reads
      * each row's URL, not its name, so each project gets the bytes its own origin served.
      */

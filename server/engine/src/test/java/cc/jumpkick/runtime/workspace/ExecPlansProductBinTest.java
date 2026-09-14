@@ -132,6 +132,57 @@ class ExecPlansProductBinTest {
     }
 
     /**
+     * The launcher names only paths under the home. A row the Maven local repository has and the
+     * store lacks is copied into the store and named from there; the mirror stays a source, never
+     * an address the launcher depends on.
+     */
+    @Test
+    void the_jvm_launcher_names_store_paths_even_when_the_maven_local_repo_has_the_row(@TempDir Path tmp)
+            throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path m2 = Files.createDirectories(tmp.resolve("m2"));
+        String rel = "org/tomlj/tomlj/1.1.1/tomlj-1.1.1.jar";
+        Path mirrored = m2.resolve(rel);
+        Files.createDirectories(mirrored.getParent());
+        Files.writeString(mirrored, "tomlj");
+        Path dir = client(tmp);
+        Files.writeString(dir.resolve("jk.toml"), Files.readString(dir.resolve("jk.toml")) + """
+
+                [dependencies]
+                tomlj = { group = "org.tomlj", version = "1.1.1" }
+                """);
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "jk test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        List.of(artifact("org.tomlj:tomlj:jar:", "1.1.1", mirrored, List.of()))),
+                dir.resolve("jk-lock.toml"));
+
+        String prevStore = System.getProperty("jk.env.JK_STORE_DIR");
+        String prevM2 = System.getProperty("jk.m2.local");
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        System.setProperty("jk.m2.local", m2.toString());
+        try {
+            ExecPlan plan =
+                    ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, tmp.resolve("bin"), null);
+
+            assertThat(plan.error()).isNull();
+            Path placed = store.resolve("repos/central").resolve(rel);
+            assertThat(placed)
+                    .as("the mirror's row is materialized into the store")
+                    .exists();
+            assertThat(plan.launcherScript())
+                    .contains(placed.toAbsolutePath().normalize().toString())
+                    .doesNotContain(m2.toString())
+                    .contains(AppLauncher.NATIVE_ACCESS_FLAG);
+        } finally {
+            restore("jk.env.JK_STORE_DIR", prevStore);
+            restore("jk.m2.local", prevM2);
+        }
+    }
+
+    /**
      * A workspace sibling the client runs on is listed from the shelf once the install has put it
      * there; the checkout's {@code target/} jar is what the launcher reads only until then.
      */

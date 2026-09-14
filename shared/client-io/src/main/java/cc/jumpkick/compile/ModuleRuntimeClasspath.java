@@ -42,6 +42,16 @@ public final class ModuleRuntimeClasspath {
      * @param cas content-addressed store used to resolve lock checksums to jar paths
      */
     public static List<Path> jars(Path moduleDir, JkBuild project, Path lockFile, Cas cas) throws IOException {
+        return jars(moduleDir, project, lockFile, new ClasspathResolver(cas));
+    }
+
+    /**
+     * As {@link #jars(Path, JkBuild, Path, Cas)} with the resolver — and so the artifact locator —
+     * the caller chose: an install renders its launcher over a store-placing one, a build resolves
+     * with the default.
+     */
+    public static List<Path> jars(Path moduleDir, JkBuild project, Path lockFile, ClasspathResolver resolver)
+            throws IOException {
         List<Path> depJars = new ArrayList<>();
         if (lockFile == null || !Files.exists(lockFile)) {
             try {
@@ -54,7 +64,6 @@ public final class ModuleRuntimeClasspath {
             }
             return depJars;
         }
-        ClasspathResolver resolver = new ClasspathResolver(cas);
         Lockfile lock = LockfileReader.read(lockFile);
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));

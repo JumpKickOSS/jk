@@ -7,6 +7,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -33,6 +34,8 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.VariantApply;
+import cc.jumpkick.repo.ArtifactLocator;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.runtime.InstallPlans;
@@ -723,9 +726,12 @@ public final class ExecPlans {
      * loads moves a dependency. What {@code java -cp} launchers are rendered over, jk's own JVM
      * client included.
      *
-     * <p>A sibling's jar is the shelf's copy once {@code jk install} has shelved it; its {@code
-     * target/} jar serves only until then, since a launcher over the checkout's build output breaks
-     * on {@code jk clean} and changes under a running client on every rebuild.
+     * <p>Every entry is a path under the home. Lock rows come from a store-placing locator, so a
+     * row the Maven local repository has and the store lacks is copied in and named from the
+     * store — a launcher that read {@code ~/.m2} broke on a purge and loaded bytes the lock never
+     * verified. A sibling's jar is the shelf's copy once {@code jk install} has shelved it; its
+     * {@code target/} jar serves only until then, since a launcher over the checkout's build output
+     * breaks on {@code jk clean} and changes under a running client on every rebuild.
      */
     private static List<Path> thinClasspath(Path dir, JkBuild project, BuildLayout layout) throws IOException {
         Path store = JkStores.store();
@@ -736,8 +742,11 @@ public final class ExecPlans {
         }
         List<Path> classpath = new ArrayList<>();
         classpath.add(repoJar);
+        boolean mirror = JkM2Config.resolve().integration();
+        var resolver = new ClasspathResolver(
+                store, ArtifactLocator.placingInStore(store, mirror ? M2Dirs.localRepository() : null));
         Map<Path, Path> shelved = shelvedSiblingJars(dir, project, store);
-        for (Path jar : ModuleRuntimeClasspath.jars(dir, project, resolveLockFile(dir), JkStores.storeCas())) {
+        for (Path jar : ModuleRuntimeClasspath.jars(dir, project, resolveLockFile(dir), resolver)) {
             Path entry = shelved.getOrDefault(jar.toAbsolutePath().normalize(), jar);
             if (Files.exists(entry) && !classpath.contains(entry)) classpath.add(entry);
         }
