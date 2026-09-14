@@ -1058,18 +1058,8 @@ class SelfNukeCommandTest {
         return buf.toString(StandardCharsets.UTF_8);
     }
 
+    /** Both streams captured and the exit code handed back; a non-zero exit echoes the console into the report. */
     private static int capture(IntSupplier body) {
-        PrintStream out = System.out;
-        PrintStream err = System.err;
-        ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        PrintStream cap = new PrintStream(buf, true, StandardCharsets.UTF_8);
-        System.setOut(cap);
-        System.setErr(cap);
-        try {
-            return body.getAsInt();
-        } finally {
-            System.setOut(out);
-            System.setErr(err);
-        }
+        return Capture.exitEchoingFailure(body);
     }
 }
