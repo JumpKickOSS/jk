@@ -6,6 +6,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 
 /**
@@ -98,10 +100,56 @@ public final class AppLauncher {
                         + " \"$@\"\n";
     }
 
+    /**
+     * Every classpath launcher grants its program native access. A {@code -cp} program is one
+     * unnamed module, and a restricted FFM call from it — jk's own terminal layer makes one on the
+     * first TTY touch — otherwise opens every run with a four-line JDK warning naming a jar path,
+     * which reads as a broken install and pollutes every captured log. The flag exists from JDK 17;
+     * an older launcher JDK gets none.
+     */
+    public static final String NATIVE_ACCESS_FLAG = "--enable-native-access=ALL-UNNAMED";
+
+    /** The first JDK whose {@code java} accepts {@link #NATIVE_ACCESS_FLAG}. */
+    private static final int NATIVE_ACCESS_SINCE = 17;
+
+    /** {@link #NATIVE_ACCESS_FLAG} plus a trailing space when {@code javaHome}'s JDK accepts it, else empty. */
+    static String jvmFlags(Path javaHome) {
+        int feature = featureVersion(javaHome);
+        return feature == 0 || feature >= NATIVE_ACCESS_SINCE ? NATIVE_ACCESS_FLAG + " " : "";
+    }
+
+    /**
+     * The JDK's feature release from its {@code release} file ({@code JAVA_VERSION="21.0.2"} is 21,
+     * {@code "1.8.0_392"} is 8); 0 when the file is absent or says nothing usable, which is read as
+     * a current JDK.
+     */
+    static int featureVersion(Path javaHome) {
+        Path release = javaHome.resolve("release");
+        if (!Files.isRegularFile(release)) return 0;
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(release)) {
+            props.load(in);
+        } catch (IOException e) {
+            return 0;
+        }
+        String version = props.getProperty("JAVA_VERSION", "").replace("\"", "").trim();
+        if (version.startsWith("1.")) version = version.substring(2);
+        int end = 0;
+        while (end < version.length() && Character.isDigit(version.charAt(end))) end++;
+        if (end == 0) return 0;
+        try {
+            return Integer.parseInt(version.substring(0, end));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
     private static String renderPosix(Path javaHome, String mainClass, List<Path> cp) {
         return POSIX_PREAMBLE + "exec "
                 + shellQuote(JdkFingerprint.java(javaHome).toString())
-                + " -cp "
+                + " "
+                + jvmFlags(javaHome)
+                + "-cp "
                 + shellQuote(Classpaths.join(cp))
                 + " "
                 + mainClass
@@ -111,7 +159,9 @@ public final class AppLauncher {
     private static String renderWindows(Path javaHome, String mainClass, List<Path> cp) {
         return WINDOWS_PREAMBLE + "\""
                 + JdkFingerprint.java(javaHome)
-                + "\" -cp \""
+                + "\" "
+                + jvmFlags(javaHome)
+                + "-cp \""
                 + Classpaths.join(cp)
                 + "\" "
                 + mainClass
