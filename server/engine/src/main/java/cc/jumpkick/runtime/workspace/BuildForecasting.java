@@ -410,6 +410,10 @@ public final class BuildForecasting {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
         // Same fully-cached shortcut as buildWorkspace: empty dirty memo ⇒ no TaskForecaster.
+        // The memo vouches for inputs, not outputs: it survives `jk clean` by design and comes back
+        // with the modules whose jars, trees or binaries are gone in `restoreNeeded`. Those the
+        // build schedules and restores, so the shortcut holds only when that set is empty too —
+        // otherwise a wiped target/ read as "0 rebuild, <1s" on the one command that prices it.
         if (entryDir != null
                 && !SessionContext.current().config().rebuildOr(false)
                 && !SessionContext.current().config().forceOr(false)) {
@@ -419,7 +423,9 @@ public final class BuildForecasting {
                     skipTests,
                     profile,
                     new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache)));
-            if (memo.isPresent() && memo.get().dirty().isEmpty()) {
+            if (memo.isPresent()
+                    && memo.get().dirty().isEmpty()
+                    && memo.get().restoreNeeded().isEmpty()) {
                 Perf.note(
                         "explain preflight-memo hit fully-cached",
                         "units",
