@@ -119,5 +119,21 @@ public final class InMemoryPackageSource implements PackageSource {
             declaredByPackage.computeIfAbsent(pkg, k -> new LinkedHashSet<>()).add(version);
             return require(pkg, VersionSet.atLeast(version, true));
         }
+
+        /**
+         * A Gradle-style constraint: when some edge brings {@code pkg} in it sits within {@code
+         * versions}; the constraint alone never adds it. The negative term the solver reads as
+         * "absent or within".
+         */
+        public Deps constrain(String pkg, VersionSet versions) {
+            entries.add(Term.negative(pkg, versions.complement()));
+            return this;
+        }
+
+        /** A constraint with a plain version: a floor, and a declared version the solver steers to. */
+        public Deps constrainPlain(String pkg, String version) {
+            declaredByPackage.computeIfAbsent(pkg, k -> new LinkedHashSet<>()).add(version);
+            return constrain(pkg, VersionSet.atLeast(version, true));
+        }
     }
 }

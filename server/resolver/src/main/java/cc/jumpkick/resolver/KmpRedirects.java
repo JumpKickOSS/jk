@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -21,9 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * KMP root-module redirects via Gradle {@code .module} metadata for this build's {@code
- * org.gradle.jvm.environment}. Root becomes a POM-only alias; platform target is the classpath
- * artifact. Missing/unparseable metadata → no redirect (plain Maven).
+ * What a module's Gradle {@code .module} metadata says for this build's {@code
+ * org.gradle.jvm.environment}: a KMP root's redirect — the root becomes a POM-only alias and the
+ * platform target is the classpath artifact — and the version constraints its variants publish.
+ * Missing/unparseable metadata → no redirect, no constraints (plain Maven).
  */
 public final class KmpRedirects {
 
@@ -33,9 +35,14 @@ public final class KmpRedirects {
     /** A resolved root: the runtime target plus every platform sibling the POM must not follow. */
     public record Selection(GradleModuleMetadata.Redirect target, Set<String> allTargets) {}
 
+    /** One module's metadata facts: its runtime redirect, if any, and its version constraints. */
+    public record ModuleFacts(Optional<Selection> redirect, List<GradleModuleMetadata.Constraint> constraints) {
+        static final ModuleFacts NONE = new ModuleFacts(Optional.empty(), List.of());
+    }
+
     private final @Nullable RepoGroup repos;
     private final String jvmEnvironment;
-    private final Map<String, Optional<Selection>> cache = new ConcurrentHashMap<>();
+    private final Map<String, ModuleFacts> cache = new ConcurrentHashMap<>();
 
     /**
      * Process-wide selection memo: Gradle module metadata is immutable per GAV on disk, and the
@@ -51,7 +58,7 @@ public final class KmpRedirects {
      * Completed futures stay as the memo. Bounded like the sibling process memos; past the cap
      * lookups run uncached.
      */
-    private static final Map<String, CompletableFuture<Optional<Selection>>> PROCESS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, CompletableFuture<ModuleFacts>> PROCESS_CACHE = new ConcurrentHashMap<>();
 
     private static final int PROCESS_CACHE_MAX = 8_192;
 
@@ -85,7 +92,20 @@ public final class KmpRedirects {
 
     /** The redirect selection for {@code module}:{@code version}, or empty when none applies. */
     public Optional<Selection> selectionFor(String module, String version) {
-        if (repos == null) return Optional.empty();
+        return facts(module, version).redirect();
+    }
+
+    /**
+     * The version constraints {@code module}:{@code version} publishes in its Gradle metadata, or
+     * none without metadata. A constraint bounds a module something else brings into the graph;
+     * it never adds one.
+     */
+    public List<GradleModuleMetadata.Constraint> constraintsFor(String module, String version) {
+        return facts(module, version).constraints();
+    }
+
+    private ModuleFacts facts(String module, String version) {
+        if (repos == null) return ModuleFacts.NONE;
         // Authoritative gate is the POM Gradle-metadata marker (see lookup) — not a group
         // allowlist. Missing a KMP redirect is a classpath bug; process memo makes plain-Maven
         // GAs cheap after the first head-scan miss.
@@ -93,17 +113,17 @@ public final class KmpRedirects {
         // default jar: keys; AndroidX solver packages are often aar: — separate keys forced a
         // full cold re-parse of every KMP root on first-in-process locks.
         String gaKey = gaAt(module, version);
-        Optional<Selection> local = cache.get(gaKey);
+        ModuleFacts local = cache.get(gaKey);
         if (local != null) {
-            local.ifPresent(this::rememberDropped);
+            local.redirect().ifPresent(this::rememberDropped);
             return local;
         }
         String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
         long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
-        Optional<Selection> found = processMemoized(processKey, module, version);
+        ModuleFacts found = processMemoized(processKey, module, version);
         cache.put(gaKey, found);
-        found.ifPresent(this::rememberDropped);
+        found.redirect().ifPresent(this::rememberDropped);
         if (ResolveProfile.on() && t0 != 0L) {
             // Count wall only when we may have done work (process miss is still inside computeIfAbsent).
             ResolveProfile.kmp(System.nanoTime() - t0);
@@ -140,11 +160,11 @@ public final class KmpRedirects {
      * {@code lookup} is fail-soft, so the future always completes normally; the finally guard
      * only fires on an {@link Error}, unparking joiners without memoizing a guess.
      */
-    private Optional<Selection> processMemoized(String processKey, String module, String version) {
-        CompletableFuture<Optional<Selection>> flight = PROCESS_CACHE.get(processKey);
+    private ModuleFacts processMemoized(String processKey, String module, String version) {
+        CompletableFuture<ModuleFacts> flight = PROCESS_CACHE.get(processKey);
         if (flight == null && PROCESS_CACHE.size() < PROCESS_CACHE_MAX) {
-            CompletableFuture<Optional<Selection>> mine = new CompletableFuture<>();
-            CompletableFuture<Optional<Selection>> raced = PROCESS_CACHE.putIfAbsent(processKey, mine);
+            CompletableFuture<ModuleFacts> mine = new CompletableFuture<>();
+            CompletableFuture<ModuleFacts> raced = PROCESS_CACHE.putIfAbsent(processKey, mine);
             if (raced != null) {
                 flight = raced;
             } else {
@@ -152,7 +172,7 @@ public final class KmpRedirects {
                     mine.complete(lookup(module, version));
                 } finally {
                     if (!mine.isDone()) {
-                        mine.complete(Optional.empty());
+                        mine.complete(ModuleFacts.NONE);
                         PROCESS_CACHE.remove(processKey, mine);
                     }
                 }
@@ -162,7 +182,7 @@ public final class KmpRedirects {
         return flight != null ? flight.join() : lookup(module, version);
     }
 
-    private Optional<Selection> lookup(String module, String version) {
+    private ModuleFacts lookup(String module, String version) {
         try {
             PackageId id = PackageId.parse(module);
             Coordinate coord = id.withVersion(version);
@@ -172,20 +192,21 @@ public final class KmpRedirects {
             // full strings dominated warm Android locks (hundreds of KMP roots).
             var pomHit = Objects.requireNonNull(repos, "NONE never reaches the POM scan")
                     .tryFetchPom(coord);
-            if (pomHit.isEmpty()) return Optional.empty();
-            if (!pomHasGradleMetadataMarker(pomHit.get().fetched().cachePath())) return Optional.empty();
+            if (pomHit.isEmpty()) return ModuleFacts.NONE;
+            if (!pomHasGradleMetadataMarker(pomHit.get().fetched().cachePath())) return ModuleFacts.NONE;
 
             Coordinate moduleCoord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "module");
             var moduleHit = repos.tryFetchArtifact(moduleCoord);
-            if (moduleHit.isEmpty()) return Optional.empty();
+            if (moduleHit.isEmpty()) return ModuleFacts.NONE;
 
             GradleModuleMetadata gmm =
                     GradleModuleMetadata.parse(moduleHit.get().fetched().cachePath());
-            return gmm.runtimeRedirect(jvmEnvironment)
+            Optional<Selection> redirect = gmm.runtimeRedirect(jvmEnvironment)
                     .map(target -> new Selection(target, gmm.redirectTargetModules()));
+            return new ModuleFacts(redirect, gmm.dependencyConstraints(jvmEnvironment));
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return Optional.empty(); // fail-soft: plain-Maven view
+            return ModuleFacts.NONE; // fail-soft: plain-Maven view
         }
     }
 

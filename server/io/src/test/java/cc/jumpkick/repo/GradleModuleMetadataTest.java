@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -129,5 +130,96 @@ class GradleModuleMetadataTest {
 
         assertThat(gmm.runtimeRedirect("standard-jvm")).isEmpty();
         assertThat(gmm.redirectTargetModules()).isEmpty();
+    }
+    /** androidx's plain-Android shape: no jvm.environment attribute, api + runtime variants. */
+    private static final String ALIGNED_FAMILY = """
+            {
+              "formatVersion": "1.1",
+              "component": { "group": "androidx.core", "module": "core-ktx", "version": "1.19.0" },
+              "variants": [
+                {
+                  "name": "releaseVariantReleaseApiPublication",
+                  "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-api" },
+                  "dependencies": [ { "group": "androidx.core", "module": "core", "version": { "requires": "1.19.0" } } ],
+                  "dependencyConstraints": [
+                    { "group": "androidx.core", "module": "core", "version": { "requires": "1.19.0" } },
+                    { "group": "androidx.core", "module": "core-soft", "version": { "prefers": "1.19.0" } }
+                  ]
+                },
+                {
+                  "name": "releaseVariantReleaseRuntimePublication",
+                  "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" },
+                  "dependencyConstraints": [
+                    { "group": "androidx.core", "module": "core", "version": { "requires": "1.18.0" } },
+                    { "group": "androidx.core", "module": "core-strict", "version": { "strictly": "[1.0,2.0)" } }
+                  ]
+                },
+                {
+                  "name": "sourcesElements",
+                  "attributes": { "org.gradle.category": "documentation", "org.gradle.usage": "java-runtime" },
+                  "dependencyConstraints": [
+                    { "group": "androidx.core", "module": "docs-only", "version": { "requires": "9" } }
+                  ]
+                }
+              ]
+            }
+            """;
+
+    @Test
+    void dependency_constraints_come_from_the_library_jvm_variants_one_per_module(@TempDir Path dir) throws Exception {
+        Path module = Files.writeString(dir.resolve("m.module"), ALIGNED_FAMILY);
+        var gmm = GradleModuleMetadata.parse(module);
+
+        // No environment attribute reads as standard-jvm; an android build falls back to it.
+        for (String env : List.of("standard-jvm", "android")) {
+            assertThat(gmm.dependencyConstraints(env))
+                    .as(env)
+                    .containsExactly(
+                            new GradleModuleMetadata.Constraint("androidx.core", "core", "1.19.0", false),
+                            new GradleModuleMetadata.Constraint("androidx.core", "core-strict", "[1.0,2.0)", true));
+        }
+        assertThat(gmm.runtimeRedirect("android")).isEmpty();
+    }
+
+    @Test
+    void constraints_follow_the_environment_of_the_variant(@TempDir Path dir) throws Exception {
+        String perEnvironment = """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "androidApiElements-published",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.jvm.environment": "android",
+                                    "org.gradle.usage": "java-api" },
+                    "dependencyConstraints": [ { "group": "g", "module": "x", "version": { "requires": "1" } } ]
+                  }, {
+                    "name": "jvmApiElements-published",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.jvm.environment": "standard-jvm",
+                                    "org.gradle.usage": "java-api" },
+                    "dependencyConstraints": [ { "group": "g", "module": "x", "version": { "requires": "2" } } ]
+                } ] }
+                """;
+        Path module = Files.writeString(dir.resolve("m.module"), perEnvironment);
+        var gmm = GradleModuleMetadata.parse(module);
+
+        assertThat(gmm.dependencyConstraints("android"))
+                .extracting(GradleModuleMetadata.Constraint::version)
+                .containsExactly("1");
+        assertThat(gmm.dependencyConstraints("standard-jvm"))
+                .extracting(GradleModuleMetadata.Constraint::version)
+                .containsExactly("2");
+    }
+
+    @Test
+    void a_module_without_constraints_publishes_none(@TempDir Path dir) throws Exception {
+        String inPlace = """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "runtimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" },
+                    "dependencies": [ { "group": "g", "module": "y", "version": { "requires": "1" } } ],
+                    "files": [ { "name": "lib-1.0.jar" } ]
+                } ] }
+                """;
+        Path module = Files.writeString(dir.resolve("m.module"), inPlace);
+
+        assertThat(GradleModuleMetadata.parse(module).dependencyConstraints("standard-jvm"))
+                .isEmpty();
     }
 }

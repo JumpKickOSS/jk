@@ -64,8 +64,10 @@ public interface PackageSource {
     default void quiesce() {}
 
     /**
-     * @return dependency edges of {@code (pkg, version)} as {@link Term}s. Each Term gives a
-     * downstream package and the version range the parent requires of it.
+     * @return dependency edges of {@code (pkg, version)} as {@link Term}s. A positive Term gives a
+     * downstream package and the version range the parent requires of it. A negative Term is a
+     * constraint: the package is absent or within the term's complement — it bounds a package
+     * some positive edge brings in and never adds one (Gradle's {@code dependencyConstraints}).
      * @throws VersionUnavailableException when this exact version is <em>definitively</em> absent
      * (its metadata advertised it but its POM 404s everywhere — a half-published release
      * mid-propagation). The solver retreats to the next candidate instead of failing. Plain

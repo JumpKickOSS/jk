@@ -235,11 +235,15 @@ public final class Diagnostics {
             }
             case Incompatibility.Cause.Dependency dep -> {
                 String from = isRoot(dep.from()) ? "The project" : cap(describe(dep.from(), palette));
+                // A negative target is a constraint: it bounds the package to the complement of
+                // its set without requiring it, so it reads as what it allows.
+                boolean constraint = !dep.to().positive();
+                Term to = constraint ? Term.positive(dep.to().pkg(), dep.to().effectiveVersions()) : dep.to();
                 out.append(prefix)
                         .append(label)
                         .append(from)
-                        .append(" depends on ")
-                        .append(describe(dep.to(), palette))
+                        .append(constraint ? " constrains " : " depends on ")
+                        .append(describe(to, palette))
                         .append('\n');
             }
             case Incompatibility.Cause.NoVersions nv -> {

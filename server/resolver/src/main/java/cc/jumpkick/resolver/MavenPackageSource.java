@@ -8,6 +8,7 @@ import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
@@ -80,12 +81,20 @@ public final class MavenPackageSource implements PackageSource {
     /**
      * One compile/runtime edge before inherited-exclusion filtering. {@code declaredVersion} is the
      * plain version the POM wrote, or {@code null} when it wrote a range or the edge is synthetic.
+     * A {@code constraintOnly} edge is a Gradle metadata {@code dependencyConstraints} entry: it
+     * bounds {@code depPkg} when something else brings it in and is silent otherwise.
      */
     private record RawEdge(
             String depPkg,
             VersionSet constraint,
             Set<String> edgeExclusions,
-            @Nullable String declaredVersion) {}
+            @Nullable String declaredVersion,
+            boolean constraintOnly) {
+
+        RawEdge(String depPkg, VersionSet constraint, Set<String> edgeExclusions, @Nullable String declaredVersion) {
+            this(depPkg, constraint, edgeExclusions, declaredVersion, false);
+        }
+    }
 
     /** Package key → plain versions edges expanded in this solve have declared for it. */
     private final ConcurrentHashMap<String, Set<String>> declaredVersions = new ConcurrentHashMap<>();
@@ -454,6 +463,18 @@ public final class MavenPackageSource implements PackageSource {
         List<Term> out = new ArrayList<>(raw.size());
         Set<String> filtered = null;
         for (RawEdge edge : raw) {
+            if (edge.constraintOnly()) {
+                // Not a path to the module, so it neither obeys nor registers exclusions. The
+                // solver reads the negative term as "absent or within": the module stays out
+                // unless an edge brings it in, and then sits within the constraint.
+                if (edge.declaredVersion() != null) {
+                    declaredVersions
+                            .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
+                            .add(edge.declaredVersion());
+                }
+                out.add(Term.negative(edge.depPkg(), edge.constraint().complement()));
+                continue;
+            }
             if (isExcluded(edge.depPkg(), excl)) {
                 if (filtered == null) filtered = new LinkedHashSet<>();
                 filtered.add(edge.depPkg());
@@ -524,6 +545,15 @@ public final class MavenPackageSource implements PackageSource {
                     PackageId.ofGa(target.group() + ":" + target.module()).key();
             out.add(new RawEdge(targetPkg, VersionSet.exact(target.version()), Set.of(), null));
             kmpDropped = kmpSelection.get().allTargets();
+        }
+        // Gradle metadata constraints: how androidx keeps a family on one version (core-ktx
+        // constrains core to its own version and back). Each participates in conflict resolution
+        // for a module already in the graph without adding it — Gradle's semantics.
+        for (GradleModuleMetadata.Constraint c : kmp.constraintsFor(pkg, version)) {
+            String depPkg = PackageId.ofGa(c.group() + ":" + c.module()).key();
+            String spec = c.version().trim();
+            String declared = c.strictly() || VersionSelectors.looksLikeMavenRange(spec) ? null : spec;
+            out.add(new RawEdge(depPkg, constraintForGmmConstraint(depPkg, c), Set.of(), declared, true));
         }
         for (Pom.Dep dep : pom.dependencies()) {
             if (dep.optional()) continue;
@@ -702,6 +732,24 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
+     * PubGrub constraint for a Gradle metadata {@code dependencyConstraints} entry. A {@code
+     * requires} is a POM-style version — a floor under conflict resolution when bare, a range when
+     * bracketed — and follows the platform rules of {@link #constraintForManagedEdge}. A {@code
+     * strictly} pins, unless a platform BOM manages the module, in which case the BOM's say stands
+     * as it does for every edge.
+     */
+    VersionSet constraintForGmmConstraint(String depPkg, GradleModuleMetadata.Constraint c) {
+        String spec = c.version().trim();
+        if (c.strictly() && !VersionSelectors.looksLikeMavenRange(spec)) {
+            String ga = PackageId.parse(depPkg).ga();
+            if (firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg)) == null) {
+                return VersionSet.exact(spec);
+            }
+        }
+        return constraintForManagedEdge(depPkg, spec);
+    }
+
+    /**
      * Fire-and-forget parallel warm of BOM/lock pins: fill KMP + effective-POM process caches (and
      * {@link #rawDepsCache} via {@link #rawEdges}) so PubGrub's first decides race a hot frontier.
      * Does not block the solver — a full drain made first-in-process worse than racing.
@@ -764,6 +812,8 @@ public final class MavenPackageSource implements PackageSource {
         int budget = bomConstraints.size() > 200 ? 64 : 16;
         for (Term dep : deps) {
             if (budget <= 0) return;
+            // A constraint brings nothing in; there is no next decide to warm for it.
+            if (!dep.positive()) continue;
             String pkg = dep.pkg();
             // Exact edge pins only — soft-prefer (BOM) of every managed GA floods the pool;
             // warmUp already blasted the BOM map.

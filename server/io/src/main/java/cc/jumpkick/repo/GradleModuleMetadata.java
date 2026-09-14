@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -16,8 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Gradle {@code .module} slice for KMP root redirects: pick the {@code java-runtime} variant for
- * this build's {@code org.gradle.jvm.environment}. Unparseable → no redirect.
+ * Gradle {@code .module} slice: the {@code java-runtime} variant redirect for this build's {@code
+ * org.gradle.jvm.environment} (KMP roots), and the {@code dependencyConstraints} the JVM variants
+ * publish (family alignment). Unparseable → no redirect, no constraints.
  */
 public final class GradleModuleMetadata {
 
@@ -26,6 +28,13 @@ public final class GradleModuleMetadata {
 
     /** A variant redirect: this module's classes actually live at {@code module}:{@code version}. */
     public record Redirect(String group, String module, String version) {}
+
+    /**
+     * A {@code dependencyConstraints} entry: whenever {@code group}:{@code module} is in the graph
+     * it sits at a version matching {@code version}; the constraint alone never adds it. {@code
+     * strictly} marks Gradle's {@code strictly} form, which pins rather than floors.
+     */
+    public record Constraint(String group, String module, String version, boolean strictly) {}
 
     /**
      * Process-wide parse memo keyed by absolute path + size + mtime. First-in-process Android locks
@@ -58,10 +67,11 @@ public final class GradleModuleMetadata {
         if (hit != null) return hit;
 
         String text = Files.readString(moduleFile, StandardCharsets.UTF_8);
-        // KMP roots publish platform redirects via available-at. Most Gradle .module files are
-        // variant catalogs without redirects — skip MiniJson entirely (dominates first-in-process
-        // Android locks: hundreds of 20–70 KB parses that always yield empty).
-        if (!text.contains("\"available-at\"")) {
+        // KMP roots publish platform redirects via available-at and families align through
+        // dependencyConstraints. A .module file with neither is a variant catalog this class has
+        // no use for — skip MiniJson entirely (it dominates first-in-process Android locks:
+        // hundreds of 20–70 KB parses that would yield nothing).
+        if (!text.contains("\"available-at\"") && !text.contains("\"dependencyConstraints\"")) {
             GradleModuleMetadata empty = new GradleModuleMetadata(List.of());
             remember(cacheKey, empty);
             return empty;
@@ -126,6 +136,54 @@ public final class GradleModuleMetadata {
             if (r != null) out.add(r.group() + ":" + r.module());
         }
         return out;
+    }
+
+    /**
+     * The version constraints the JVM variants for {@code jvmEnvironment} publish — Gradle's {@code
+     * dependencyConstraints}, which androidx uses to align a family (core-ktx constrains core to
+     * its own version and back). Library variants with {@code java-api} or {@code java-runtime}
+     * usage whose environment matches contribute, under the same absent-means-standard-jvm rule as
+     * the redirect; the other environment stands in when none matches. One constraint per module:
+     * the first variant to name it speaks for it. An entry with only a {@code prefers} is soft and
+     * contributes nothing.
+     */
+    public List<Constraint> dependencyConstraints(String jvmEnvironment) {
+        String fallback = "android".equals(jvmEnvironment) ? "standard-jvm" : "android";
+        List<Constraint> matched = constraintsFor(jvmEnvironment);
+        return matched.isEmpty() ? constraintsFor(fallback) : matched;
+    }
+
+    private List<Constraint> constraintsFor(String jvmEnvironment) {
+        Map<String, Constraint> byModule = new LinkedHashMap<>();
+        for (Map<String, Object> variant : variants) {
+            if (!(variant.get("attributes") instanceof Map<?, ?> attrs)) continue;
+            Object usage = attrs.get("org.gradle.usage");
+            if (!"java-runtime".equals(usage) && !"java-api".equals(usage)) continue;
+            Object category = attrs.get("org.gradle.category");
+            if (category != null && !"library".equals(category)) continue;
+            Object env = attrs.get("org.gradle.jvm.environment");
+            boolean matches = env == null ? "standard-jvm".equals(jvmEnvironment) : env.equals(jvmEnvironment);
+            if (!matches) continue;
+            if (!(variant.get("dependencyConstraints") instanceof List<?> entries)) continue;
+            for (Object entry : entries) {
+                Constraint c = constraint(entry);
+                if (c != null) byModule.putIfAbsent(c.group() + ":" + c.module(), c);
+            }
+        }
+        return List.copyOf(byModule.values());
+    }
+
+    private static @Nullable Constraint constraint(@Nullable Object entry) {
+        if (!(entry instanceof Map<?, ?> c)) return null;
+        if (!(c.get("group") instanceof String group) || !(c.get("module") instanceof String module)) return null;
+        if (!(c.get("version") instanceof Map<?, ?> version)) return null;
+        if (version.get("strictly") instanceof String strictly && !strictly.isBlank()) {
+            return new Constraint(group, module, strictly, true);
+        }
+        if (version.get("requires") instanceof String requires && !requires.isBlank()) {
+            return new Constraint(group, module, requires, false);
+        }
+        return null;
     }
 
     private static @Nullable Redirect availableAt(Map<String, Object> variant) {
