@@ -20,10 +20,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -49,8 +49,8 @@ public final class KotlincSnapshots {
         }
     }
 
-    /** Every worker fork so far in this process, in order — how tests prove who paid for a snapshot. */
-    private static final List<Fork> FORKS = Collections.synchronizedList(new ArrayList<>());
+    /** A test's window onto the forks; empty in production, where a fork records nothing. */
+    private static final AtomicReference<@Nullable Recording<Fork>> RECORDING = new AtomicReference<>();
 
     private KotlincSnapshots() {}
 
@@ -90,7 +90,8 @@ public final class KotlincSnapshots {
 
             Map<Path, String> digests = new LinkedHashMap<>();
             ArrayDeque<String> chatter = new ArrayDeque<>();
-            FORKS.add(new Fork(request.outputDir().toAbsolutePath().normalize(), entries));
+            Recording.note(
+                    RECORDING, new Fork(request.outputDir().toAbsolutePath().normalize(), entries));
             int exit = new PluginClient(WorkerCompileDriver.KOTLIN_PREFIX)
                     .on(PluginProtocol.CP_SNAPSHOT, json -> {
                         @Nullable String path = Jsonl.str(json, PluginProtocol.PATH);
@@ -119,11 +120,9 @@ public final class KotlincSnapshots {
         }
     }
 
-    /** The snapshot workers this process has forked so far, oldest first. */
-    public static List<Fork> forks() {
-        synchronized (FORKS) {
-            return List.copyOf(FORKS);
-        }
+    /** Records every worker fork until closed — how a test proves who paid for a snapshot. */
+    public static Recording<Fork> record() {
+        return Recording.open(RECORDING);
     }
 
     /**

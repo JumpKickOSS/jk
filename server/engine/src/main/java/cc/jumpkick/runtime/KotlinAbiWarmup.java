@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.KotlincSnapshots;
+import cc.jumpkick.compile.Recording;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
@@ -21,14 +22,13 @@ import cc.jumpkick.task.KotlinClasspathAbi;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -47,8 +47,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class KotlinAbiWarmup {
 
-    /** The entries this process warmed, in order — for tests that prove who snapshotted a tree. */
-    private static final List<Path> WARMED = Collections.synchronizedList(new ArrayList<>());
+    /** A test's window onto the warmed trees; empty in production, where a warm-up records nothing. */
+    private static final AtomicReference<@Nullable Recording<Path>> RECORDING = new AtomicReference<>();
 
     private KotlinAbiWarmup() {}
 
@@ -155,13 +155,11 @@ public final class KotlinAbiWarmup {
                 .build();
         WorkerEnv env = WorkerEnv.forModule(project.build().env(), consumer.dir(), null);
         KotlinClasspathAbi.tokens(List.of(classes), KotlincSnapshots.snapshotter(request, env));
-        WARMED.add(classes.toAbsolutePath().normalize());
+        Recording.note(RECORDING, classes.toAbsolutePath().normalize());
     }
 
-    /** The classes trees this process warmed so far. */
-    public static List<Path> warmed() {
-        synchronized (WARMED) {
-            return List.copyOf(WARMED);
-        }
+    /** Records every classes tree warmed until closed — how a test proves who snapshotted a tree. */
+    public static Recording<Path> record() {
+        return Recording.open(RECORDING);
     }
 }
