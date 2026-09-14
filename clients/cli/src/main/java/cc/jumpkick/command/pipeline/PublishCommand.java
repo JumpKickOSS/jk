@@ -6,11 +6,14 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.jsonl.OutputLine;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.command.VariantSelection;
 import cc.jumpkick.config.RepositoriesScan;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -209,17 +212,39 @@ public final class PublishCommand implements CliCommand {
             return 1;
         }
 
+        // The documents the run left under target/ (the SBOMs), by path, so a release script or
+        // a reader takes them from here without an upload. Workspace-relative like every other
+        // path jk prints: a member's target/ sits under the root, outside the member's own dir.
+        Path workspaceRoot = WorkspaceLocator.findRoot(projectDir).orElse(projectDir);
         if (!global.outputIsJson()) {
             String summary = dryRun ? "(dry-run)" : "(" + files + " files)";
             CliOutput.out("Published " + Coords.gav(info.group(), info.name(), info.version()) + " " + summary);
-            // The documents the run left under target/ (the SBOMs), by path, so a release script
-            // or a reader takes them from here without an upload.
             for (String written : outcome.written()) {
-                Path p = Path.of(written);
-                CliOutput.out("  wrote " + (p.startsWith(projectDir) ? projectDir.relativize(p) : p));
+                CliOutput.out("  wrote " + displayPath(Path.of(written), workspaceRoot, projectDir));
+            }
+        } else {
+            for (String written : outcome.written()) {
+                CliOutput.out(new OutputLine(
+                                Clock.SYSTEM.millis(),
+                                "publish",
+                                "wrote " + displayPath(Path.of(written), workspaceRoot, projectDir))
+                        .encode());
             }
         }
         return 0;
+    }
+
+    /**
+     * A written document's path as the reader sees it: relative to the workspace root when it
+     * sits under it, else to the project directory, else absolute. Forward slashes on every
+     * platform, so a release script reads one spelling.
+     */
+    static String displayPath(Path written, Path workspaceRoot, Path projectDir) {
+        Path p = written.toAbsolutePath().normalize();
+        Path ws = workspaceRoot.toAbsolutePath().normalize();
+        Path proj = projectDir.toAbsolutePath().normalize();
+        Path shown = p.startsWith(ws) ? ws.relativize(p) : p.startsWith(proj) ? proj.relativize(p) : p;
+        return shown.toString().replace(shown.getFileSystem().getSeparator(), "/");
     }
 
     private RepoCredential resolvePublishCredential(Path jkBuildPath) {

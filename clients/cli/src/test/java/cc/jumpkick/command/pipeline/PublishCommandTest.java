@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.publish.testkit.GpgTestFixture;
 import cc.jumpkick.testing.SysProps;
 import com.sun.net.httpserver.HttpServer;
@@ -251,6 +252,29 @@ class PublishCommandTest {
         assertThat(Files.readString(cdx))
                 .contains("\"specVersion\": \"1.6\"")
                 .contains("pkg:maven/com.example/widget@1.0.0");
+    }
+
+    @Test
+    void a_workspace_member_s_sbom_is_reported_relative_to_the_workspace_root(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["widget"]
+                """);
+        Path member = Files.createDirectories(tempDir.resolve("widget"));
+        writeJkBuild(member);
+        writeJar(tempDir.resolve("target/widget/lib/widget-1.0.0.jar"));
+
+        String out = Capture.stdout(() -> run("publish", "-C", member.toString(), "--sbom", "--dry-run"));
+
+        assertThat(tempDir.resolve("target/widget/sbom/widget-1.0.0.cdx.json")).exists();
+        assertThat(out)
+                .contains("wrote target/widget/sbom/widget-1.0.0.cdx.json")
+                .doesNotContain("wrote " + tempDir);
     }
 
     @Test
