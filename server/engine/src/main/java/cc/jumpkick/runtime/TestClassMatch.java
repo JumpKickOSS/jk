@@ -42,14 +42,26 @@ public final class TestClassMatch {
         return "no test classes matched --class " + String.join(", ", patterns);
     }
 
+    /**
+     * The failure line for a selection: the patterns, and — when a tag filter is in force — the
+     * other way a named class runs nothing: the filter dropped it. The runner names the class and
+     * its tags in a {@code tag-excluded} warning; this line says where to look and what to pass.
+     */
+    public static String noMatchMessage(TestSelection selection) {
+        String line = noMatchMessage(selection.classes());
+        if (selection.includeTags().isEmpty() && selection.excludeTags().isEmpty()) return line;
+        return line + " — or every class it named carries a tag the filter excludes"
+                + " (see the tag-excluded warning; --include-tags <tag> or another --profile runs it)";
+    }
+
     /** A standalone run's verdict: one synthetic failure naming the patterns, attributed to the module. */
-    public static TestSummary asFailure(String moduleLabel, List<String> patterns) {
+    public static TestSummary asFailure(String moduleLabel, TestSelection selection) {
         return new TestSummary(
                 1,
                 0,
                 1,
                 0,
-                List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", noMatchMessage(patterns), "")));
+                List.of(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", noMatchMessage(selection), "")));
     }
 
     /**
@@ -66,6 +78,6 @@ public final class TestClassMatch {
             TestSummary result = plan.get(BuildPlanner.TEST_RESULT).orElse(null);
             if (result != null && result.total() > 0) return null;
         }
-        return noMatchMessage(selection.classes());
+        return noMatchMessage(selection);
     }
 }

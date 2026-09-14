@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -36,6 +37,12 @@ record Discovery(
                 classes.add(Jsonl.str(json, "class"));
             } else if ("discovery_total".equals(event)) {
                 listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
+            } else if ("warning".equals(event)) {
+                // What the runner learned while listing — a named class its tag filter dropped, an
+                // empty plan — reaches the run the same way it does from a suite JVM.
+                listener.onWarning(
+                        Objects.requireNonNullElse(Jsonl.str(json, "code"), "warning"),
+                        Objects.requireNonNullElse(Jsonl.str(json, "message"), ""));
             }
         };
     }

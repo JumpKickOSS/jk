@@ -8,11 +8,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.platform.engine.Filter;
+import org.junit.platform.engine.discovery.DiscoverySelectors;
+import org.junit.platform.launcher.TagFilter;
+import org.junit.platform.launcher.TestPlan;
+import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
+import org.junit.platform.launcher.core.LauncherFactory;
 
 /**
  * {@link LauncherPath} is the runner's only tag filter and only event emitter. These tests pin both
@@ -62,6 +71,77 @@ class LauncherPathTest {
     @Test
     void no_filters_runs_everything() {
         assertThat(run(List.of(), List.of())).containsExactlyInAnyOrder("plain()", "slowOne()", "bracketed()");
+    }
+
+    // --- a named class the tag filter dropped ------------------------------------
+
+    @Test
+    void a_named_class_the_exclude_filter_drops_is_reported_with_its_tag_and_the_flag_that_runs_it() {
+        var events = new Recorder();
+        LauncherPath.warnTagExcluded(
+                named(TagExcludedFixture.class),
+                List.of(),
+                List.of("slow"),
+                filtered(TagExcludedFixture.class, TagFilter.excludeTags("slow")),
+                events,
+                0);
+        assertThat(events.warnings()).singleElement().satisfies(w -> {
+            assertThat(w.get("code")).isEqualTo("tag-excluded");
+            assertThat(String.valueOf(w.get("message")))
+                    .contains(TagExcludedFixture.class.getName() + " [slow]")
+                    .contains("pass --include-tags slow");
+        });
+    }
+
+    @Test
+    void a_named_class_the_include_filter_admits_raises_no_warning() {
+        var events = new Recorder();
+        LauncherPath.warnTagExcluded(
+                named(TagExcludedFixture.class),
+                List.of("slow"),
+                List.of(),
+                filtered(TagExcludedFixture.class, TagFilter.includeTags("slow")),
+                events,
+                0);
+        assertThat(events.warnings()).isEmpty();
+    }
+
+    @Test
+    void a_class_filter_with_no_tag_filter_discovers_once_and_warns_of_nothing() {
+        var events = new Recorder();
+        int[] discoveries = {0};
+        LauncherPath.warnTagExcluded(
+                () -> {
+                    discoveries[0]++;
+                    return named(TagExcludedFixture.class).get();
+                },
+                List.of(),
+                List.of(),
+                filtered(TagExcludedFixture.class),
+                events,
+                0);
+        assertThat(events.warnings()).isEmpty();
+        assertThat(discoveries[0])
+                .as("no tag filter: nothing to compare against")
+                .isZero();
+    }
+
+    @Test
+    void the_message_names_an_untagged_class_an_include_filter_dropped() {
+        String msg = LauncherPath.tagExcludedMessage(Map.of("a.Plain", Set.of()), List.of("integration"), List.of());
+        assertThat(msg).contains("a.Plain (untagged)").contains("--include-tags integration admits only");
+    }
+
+    /** What {@code --class} names: a fresh request for exactly {@code c} on every call. */
+    private static Supplier<@Nullable LauncherDiscoveryRequestBuilder> named(Class<?> c) {
+        return () -> LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(c));
+    }
+
+    /** The plan the run would execute: {@code c} under {@code filters}. */
+    private static TestPlan filtered(Class<?> c, Filter<?>... filters) {
+        return LauncherFactory.create()
+                .discover(
+                        Objects.requireNonNull(named(c).get()).filters(filters).build());
     }
 
     // --- discovery ---------------------------------------------------------------
@@ -206,6 +286,14 @@ class LauncherPathTest {
         @Override
         public void close() {}
 
+        List<Map<String, Object>> warnings() {
+            var out = new ArrayList<Map<String, Object>>();
+            for (int i = 0; i < types.size(); i++) {
+                if (types.get(i) == EventType.WARNING) out.add(events.get(i));
+            }
+            return out;
+        }
+
         List<Map<String, Object>> finishedTests() {
             var out = new ArrayList<Map<String, Object>>();
             for (int i = 0; i < types.size(); i++) {
@@ -240,6 +328,14 @@ class LauncherPathTest {
             @Test
             void inner() {}
         }
+    }
+
+    /** Named by {@code --class} and dropped by an exclude of its class-level tag; its one method passes. */
+    @Tag("slow")
+    static class TagExcludedFixture {
+
+        @Test
+        void tagged() {}
     }
 
     /** Driven through {@code runClass}; every method passes so any other discoverer sees green. */

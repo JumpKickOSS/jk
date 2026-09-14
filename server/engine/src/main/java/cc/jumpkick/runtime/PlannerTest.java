@@ -568,7 +568,7 @@ public final class PlannerTest {
                             ctx.cached();
                             return;
                         }
-                        result = TestClassMatch.asFailure(moduleLabel, effectiveSel.classes());
+                        result = TestClassMatch.asFailure(moduleLabel, effectiveSel);
                     }
                     ctx.put(TEST_RESULT, result);
                     recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);

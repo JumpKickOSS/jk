@@ -6,12 +6,15 @@ import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.ClassNameFilter;
@@ -82,7 +85,8 @@ final class LauncherPath {
             throw e;
         }
         emitDiscovery(plan, adapter);
-        warnIfEmptyPlan(scanClasspath, plan, adapter);
+        warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
+        warnTagExcluded(() -> named(scanClasspath, filter), includeTags, excludeTags, plan, adapter);
         launcher.execute(request, adapter);
         long planMs = Math.max(0, (System.nanoTime() - planStart) / 1_000_000);
         adapter.emitPlanFinished(planMs);
@@ -111,16 +115,127 @@ final class LauncherPath {
             throw e;
         }
         emitDiscovery(plan, adapter);
-        warnIfEmptyPlan(scanClasspath, plan, adapter);
+        warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
+        warnTagExcluded(() -> named(scanClasspath, filter), includeTags, excludeTags, plan, adapter);
+    }
+
+    /**
+     * The classes {@code --class} names under {@code scanClasspath}, before any tag filter: the
+     * selection the tag filter is judged against. Null when no class filter is in force.
+     */
+    private static @Nullable LauncherDiscoveryRequestBuilder named(Path scanClasspath, @Nullable String filter) {
+        if (filter == null || filter.isBlank()) return null;
+        return LauncherDiscoveryRequestBuilder.request()
+                .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
+                .filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
+    }
+
+    /** {@link #warnTagExcluded(Supplier, List, List, TestPlan, Adapter)} writing to {@code writer}. */
+    static void warnTagExcluded(
+            Supplier<@Nullable LauncherDiscoveryRequestBuilder> named,
+            List<String> includeTags,
+            List<String> excludeTags,
+            TestPlan filtered,
+            EventWriter writer,
+            int workerId) {
+        warnTagExcluded(named, includeTags, excludeTags, filtered, new Adapter(writer, workerId));
+    }
+
+    /**
+     * Naming a class is the strongest selection {@code jk test} has, so a class the {@code --class}
+     * filter matched and the tag filter then dropped is reported by name — with the tags that
+     * dropped it and the flag that runs it — instead of vanishing into a green run that ran
+     * nothing of what was named. Found by discovering the named classes once more without the
+     * tag filter and taking the difference; only when both a class filter and a tag filter are
+     * in force, so an ordinary run costs nothing.
+     */
+    private static void warnTagExcluded(
+            Supplier<@Nullable LauncherDiscoveryRequestBuilder> named,
+            List<String> includeTags,
+            List<String> excludeTags,
+            TestPlan filtered,
+            Adapter adapter) {
+        List<String> inc = expressions(includeTags);
+        List<String> exc = expressions(excludeTags);
+        if (inc.isEmpty() && exc.isEmpty()) return;
+        LauncherDiscoveryRequestBuilder selection = named.get();
+        if (selection == null) return;
+        TestPlan unfiltered;
+        try {
+            unfiltered = LauncherFactory.create().discover(selection.build());
+        } catch (RuntimeException e) {
+            return;
+        }
+        Set<String> kept = new HashSet<>(discoveredClasses(filtered));
+        Map<String, Set<String>> dropped = new LinkedHashMap<>();
+        for (TestIdentifier root : unfiltered.getRoots()) collectDropped(unfiltered, root, kept, dropped);
+        if (dropped.isEmpty()) return;
+        adapter.emitWarning("tag-excluded", tagExcludedMessage(dropped, inc, exc));
+    }
+
+    /** Top-level classes of {@code plan} absent from {@code kept}, each with every tag it or its tests carry. */
+    private static void collectDropped(
+            TestPlan plan, TestIdentifier node, Set<String> kept, Map<String, Set<String>> dropped) {
+        if (isClassContainer(node)
+                && !plan.getParent(node).map(LauncherPath::isClassContainer).orElse(false)) {
+            String className = ((ClassSource) node.getSource().orElseThrow()).getClassName();
+            if (!kept.contains(className)) {
+                Set<String> tags = new TreeSet<>();
+                collectTags(plan, node, tags);
+                dropped.put(className, tags);
+            }
+            return;
+        }
+        for (TestIdentifier child : plan.getChildren(node)) collectDropped(plan, child, kept, dropped);
+    }
+
+    private static void collectTags(TestPlan plan, TestIdentifier node, Set<String> tags) {
+        node.getTags().forEach(t -> tags.add(t.getName()));
+        for (TestIdentifier child : plan.getChildren(node)) collectTags(plan, child, tags);
+    }
+
+    /** The warning's text: each dropped class with its tags, then the flag that would run them. */
+    static String tagExcludedMessage(
+            Map<String, Set<String>> dropped, List<String> includeTags, List<String> excludeTags) {
+        StringBuilder sb = new StringBuilder("--class named ")
+                .append(dropped.size())
+                .append(dropped.size() == 1 ? " class" : " classes")
+                .append(" the tag filter excluded: ");
+        Set<String> allTags = new TreeSet<>();
+        boolean first = true;
+        for (Map.Entry<String, Set<String>> e : dropped.entrySet()) {
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(e.getKey()).append(e.getValue().isEmpty() ? " (untagged)" : " " + e.getValue());
+            allTags.addAll(e.getValue());
+        }
+        if (!excludeTags.isEmpty() && !allTags.isEmpty()) {
+            sb.append("; pass --include-tags ")
+                    .append(String.join(",", allTags))
+                    .append(" (or a --profile that includes ")
+                    .append(allTags.size() == 1 ? "it" : "them")
+                    .append(") to run ")
+                    .append(dropped.size() == 1 ? "it" : "them");
+        } else {
+            sb.append("; --include-tags ")
+                    .append(String.join(",", includeTags))
+                    .append(" admits only classes carrying ")
+                    .append(includeTags.size() == 1 ? "that tag" : "those tags")
+                    .append(" — drop it, or --no-profile, to run ")
+                    .append(dropped.size() == 1 ? "it" : "them");
+        }
+        return sb.toString();
     }
 
     /**
      * Classpath-root discovery can drop classes when framework SPI (e.g. Quarkus
      * {@code FacadeClassLoader}) fails to load them — the plan is simply empty. Surface a
-     * pointer so "No tests" is not a silent dead-end.
+     * pointer so "No tests" is not a silent dead-end. Not under a class filter: a plan the filter
+     * emptied is the filter's doing — in a workspace every module but the one holding the named
+     * class is empty — and the engine judges an unmatched {@code --class} across the run.
      */
-    private static void warnIfEmptyPlan(Path scanClasspath, TestPlan plan, Adapter adapter) {
-        if (plan == null) return;
+    private static void warnIfEmptyPlan(Path scanClasspath, @Nullable String filter, TestPlan plan, Adapter adapter) {
+        if (plan == null || (filter != null && !filter.isBlank())) return;
         boolean anyTest = false;
         for (TestIdentifier root : plan.getRoots()) {
             if (hasTest(plan, root)) {

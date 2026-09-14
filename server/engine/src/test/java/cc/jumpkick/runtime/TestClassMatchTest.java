@@ -48,12 +48,29 @@ class TestClassMatchTest {
     void the_skip_label_and_the_failure_name_the_patterns() {
         assertThat(TestClassMatch.skipLabel(List.of("OrdersTest", "*IT")))
                 .isEqualTo("no classes matched --class OrdersTest, *IT — skipped");
-        TestSummary failure = TestClassMatch.asFailure("acme:orders", List.of("OrdersTest"));
+        TestSummary failure = TestClassMatch.asFailure("acme:orders", ORDERS);
         assertThat(failure.failed()).isEqualTo(1);
         assertThat(failure.failures()).singleElement().satisfies(f -> {
             assertThat(f.module()).isEqualTo("acme:orders");
             assertThat(f.message()).isEqualTo("no test classes matched --class OrdersTest");
         });
+    }
+
+    @Test
+    void under_a_tag_filter_the_failure_says_the_named_class_may_have_been_excluded_and_what_runs_it() {
+        TestSelection excluded = TestSelection.of(List.of(), true, List.of(), List.of("integration"))
+                .withClasses(List.of("SelfNukeCommandTest"));
+        String line = TestClassMatch.noMatchMessage(excluded);
+        assertThat(line)
+                .startsWith("no test classes matched --class SelfNukeCommandTest")
+                .contains("tag the filter excludes")
+                .contains("--include-tags <tag>");
+        assertThat(TestClassMatch.noMatchMessage(ORDERS))
+                .as("no tag filter: a plain no-match is a typo and says only that")
+                .isEqualTo("no test classes matched --class OrdersTest");
+        assertThat(TestClassMatch.asFailure("acme:orders", excluded).failures())
+                .singleElement()
+                .satisfies(f -> assertThat(f.message()).contains("tag the filter excludes"));
     }
 
     @Test
