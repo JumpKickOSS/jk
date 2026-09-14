@@ -14,6 +14,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
@@ -359,10 +360,17 @@ public final class CacheInventoryOps {
                     Integer.toString(declared),
                     Integer.toString(classpath.size()),
                     error,
-                    refused));
+                    refused,
+                    packagedBy(jar)));
             for (Path entry : classpath) entries.add(worker.artifactId() + "|" + entry);
         }
         return CacheInventoryAck.workers(lines, entries);
+    }
+
+    /** The sha256 of the engine that shelved {@code jar}, from its memo; empty when the memo records none. */
+    private static String packagedBy(Path jar) {
+        Path memo = jar.resolveSibling(ArtifactMemo.jkFileName(jar.getFileName().toString()));
+        return ArtifactMemo.read(memo).map(ArtifactMemo::packagedBy).orElse("");
     }
 
     /**

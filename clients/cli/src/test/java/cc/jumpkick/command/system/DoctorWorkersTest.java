@@ -9,6 +9,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -175,5 +176,62 @@ class DoctorWorkersTest {
                         .get(0))
                 .contains("workers")
                 .contains("skipped (--no-engine)");
+    }
+
+    private static final String LIVE = "ab12cd34ef56" + "0".repeat(52);
+    private static final String OLD = "ffffffffffff" + "0".repeat(52);
+
+    private static String shelved(String artifact, String source, String packagedBy) {
+        return artifact + "|0.13.3|" + source + "|/store/repos/" + source + "/cc/jumpkick/" + artifact + "/0.13.3/"
+                + artifact + "-0.13.3.jar|/store/repos/" + source + "/cc/jumpkick/" + artifact + "/0.13.3/" + artifact
+                + "-0.13.3.pom|1|2|||" + packagedBy;
+    }
+
+    @Test
+    void a_shelf_packaged_by_the_pointed_engine_is_one_ok_row() {
+        DoctorCommand.Workers workers = DoctorCommand.workers(() -> CacheInventoryAck.workers(
+                List.of(shelved("jk-image-builder", "jk-local", LIVE), shelved("jk-formatter", "jk-local", LIVE)),
+                List.of()));
+
+        assertThat(workers.rows()).allSatisfy(w -> assertThat(w.packagedBy()).isEqualTo(LIVE));
+        List<String> rows = strip(DoctorCommand.renderShelf(workers, Optional.of(LIVE), Theme.active()));
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0)).startsWith("ok:").contains("shelf").contains("engine the home names (ab12cd34ef56)");
+        assertThat(DoctorCommand.workersJson(workers)).contains("\"packagedBy\":\"" + LIVE + "\"");
+    }
+
+    @Test
+    void a_shelf_packaged_by_another_engine_names_both_engines_the_workers_and_the_fix() {
+        DoctorCommand.Workers workers = DoctorCommand.workers(() -> CacheInventoryAck.workers(
+                List.of(
+                        shelved("jk-image-builder", "jk-local", OLD),
+                        shelved("jk-formatter", "jk-local", LIVE),
+                        shelved("jk-grails", "jk-local", OLD)),
+                List.of()));
+
+        List<String> rows = strip(DoctorCommand.renderShelf(workers, Optional.of(LIVE), Theme.active()));
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0))
+                .startsWith("warn:")
+                .contains("2 workers packaged by engine ffffffffffff")
+                .contains("home names engine ab12cd34ef56")
+                .contains("jk-image-builder, jk-grails")
+                .contains("run `jk install`");
+    }
+
+    @Test
+    void the_shelf_row_is_silent_without_a_recorded_packager_or_a_pointer() {
+        DoctorCommand.Workers published = DoctorCommand.workers(() ->
+                CacheInventoryAck.workers(List.of(shelved("jk-image-builder", "jumpkick", OLD), IMAGE_ROW), List.of()));
+        assertThat(DoctorCommand.renderShelf(published, Optional.of(LIVE), Theme.active()))
+                .isEmpty();
+
+        DoctorCommand.Workers local = DoctorCommand.workers(
+                () -> CacheInventoryAck.workers(List.of(shelved("jk-image-builder", "jk-local", OLD)), List.of()));
+        assertThat(DoctorCommand.renderShelf(local, Optional.empty(), Theme.active()))
+                .isEmpty();
+        assertThat(DoctorCommand.renderShelf(
+                        new DoctorCommand.Workers(List.of(), "engine not running"), Optional.of(LIVE), Theme.active()))
+                .isEmpty();
     }
 }

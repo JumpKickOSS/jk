@@ -221,4 +221,28 @@ class RepoArtifactStoreTest {
         }
         assertThat(store.verify(rel, sha)).isEqualTo(RepoArtifactStore.IndexState.VERIFIED);
     }
+
+    @Test
+    void a_memo_refresh_keeps_the_packager_while_the_bytes_stand_and_drops_it_when_they_change(@TempDir Path dir)
+            throws IOException {
+        Path store = dir.resolve("store");
+        String rel = "cc/jumpkick/jk-foo/1.0/jk-foo-1.0.jar";
+        Path built = dir.resolve("jk-foo-1.0.jar");
+        Files.writeString(built, "shelved by the engine");
+        String engine = "a".repeat(64);
+        RepoArtifactStore.writeToLocalStore(store, rel, built, engine);
+        RepoArtifactStore shelf = new RepoArtifactStore(store, "jk-local");
+        Path shelved = store.resolve("repos/jk-local").resolve(rel);
+        Path memo = ArtifactMemo.jkPath(store.resolve("repos/jk-local"), rel);
+        assertThat(ArtifactMemo.read(memo).orElseThrow().packagedBy()).isEqualTo(engine);
+
+        // The resolver re-verifies the shelved jar (a Maven-local write-through, a re-hash): same bytes.
+        shelf.writeMemo(rel, shelved, Hashing.sha256Hex(shelved));
+        assertThat(ArtifactMemo.read(memo).orElseThrow().packagedBy()).isEqualTo(engine);
+
+        // Different bytes under the same path are another artifact; nothing vouches for its packager.
+        Files.writeString(shelved, "replaced from a remote");
+        shelf.writeMemo(rel, shelved, Hashing.sha256Hex(shelved));
+        assertThat(ArtifactMemo.read(memo).orElseThrow().packagedBy()).isNull();
+    }
 }

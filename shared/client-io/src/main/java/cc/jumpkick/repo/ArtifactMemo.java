@@ -10,21 +10,39 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One jk-owned memo next to a Maven-layout artifact under {@code JK_STORE_DIR/repos/<name>/}.
  * Filename is {@code <artifact-version>.jk} for jars/aars (extension stripped) and {@code
  * <filename>.jk} for anything else (POMs) so it does not collide with the jar memo.
  *
- * <p>Four newline-delimited lines: {@code g:a:v}, mtime epoch millis, size in bytes, sha256 hex.
- * Lives only under the jk store — never in the Maven local repository.
+ * <p>Four newline-delimited lines: {@code g:a:v}, mtime epoch millis, size in bytes, sha256 hex —
+ * and, for an artifact the engine shelved from a build, a fifth: the sha256 of the engine jar
+ * that packaged it — or last verified that the shelf already held its bytes — so {@code jk
+ * doctor} can tell a shelf no install under the home's engine has touched. Lives only under the
+ * jk store — never in the Maven local repository.
  */
-public record ArtifactMemo(String coordinate, long mtimeMillis, long size, String sha256) {
+public record ArtifactMemo(
+        String coordinate,
+        long mtimeMillis,
+        long size,
+        String sha256,
+        @Nullable String packagedBy) {
 
     public ArtifactMemo {
         Objects.requireNonNull(coordinate, "coordinate");
         Objects.requireNonNull(sha256, "sha256");
         sha256 = sha256.strip().toLowerCase(Locale.ROOT);
+        if (packagedBy != null) {
+            packagedBy = packagedBy.strip().toLowerCase(Locale.ROOT);
+            if (packagedBy.isEmpty()) packagedBy = null;
+        }
+    }
+
+    /** A memo that records no packaging engine (a fetched or client-installed artifact). */
+    public ArtifactMemo(String coordinate, long mtimeMillis, long size, String sha256) {
+        this(coordinate, mtimeMillis, size, sha256, null);
     }
 
     /**
@@ -60,19 +78,35 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
             long size = Long.parseLong(lines.get(2).strip());
             String sha = lines.get(3).strip().toLowerCase(Locale.ROOT);
             if (coord.isBlank() || sha.length() != 64) return Optional.empty();
-            return Optional.of(new ArtifactMemo(coord, mtime, size, sha));
+            String packagedBy =
+                    lines.size() > 4 && !lines.get(4).isBlank() ? lines.get(4).strip() : null;
+            return Optional.of(new ArtifactMemo(coord, mtime, size, sha, packagedBy));
         } catch (IOException | NumberFormatException e) {
             return Optional.empty();
         }
     }
 
     public static ArtifactMemo ofBlob(Path blob, String coordinate, String sha256) throws IOException {
-        return new ArtifactMemo(coordinate, Files.getLastModifiedTime(blob).toMillis(), Files.size(blob), sha256);
+        return ofBlob(blob, coordinate, sha256, null);
+    }
+
+    /** As {@link #ofBlob(Path, String, String)} recording {@code packagedBy}, the sha256 of the engine jar that built the blob. */
+    public static ArtifactMemo ofBlob(Path blob, String coordinate, String sha256, @Nullable String packagedBy)
+            throws IOException {
+        return new ArtifactMemo(
+                coordinate, Files.getLastModifiedTime(blob).toMillis(), Files.size(blob), sha256, packagedBy);
+    }
+
+    /** This memo with {@code packagedBy} as its packaging engine. */
+    public ArtifactMemo withPackagedBy(@Nullable String engineSha256) {
+        return new ArtifactMemo(coordinate, mtimeMillis, size, sha256, engineSha256);
     }
 
     public void write(Path jkFile) throws IOException {
         Files.createDirectories(jkFile.getParent());
-        AtomicWrites.replace(jkFile, coordinate + "\n" + mtimeMillis + "\n" + size + "\n" + sha256 + "\n");
+        String body = coordinate + "\n" + mtimeMillis + "\n" + size + "\n" + sha256 + "\n";
+        if (packagedBy != null) body = body + packagedBy + "\n";
+        AtomicWrites.replace(jkFile, body);
     }
 
     /**
@@ -97,7 +131,9 @@ public record ArtifactMemo(String coordinate, long mtimeMillis, long size, Strin
         String actual = Hashing.sha256Hex(blob);
         if (!actual.equalsIgnoreCase(want)) return false;
         String gav = coordinate == null || coordinate.isBlank() ? "-" : coordinate;
-        ofBlob(blob, gav, actual).write(jkFile);
+        // A re-hash refreshes size and mtime; who packaged the blob has not changed.
+        ofBlob(blob, gav, actual, memo.map(ArtifactMemo::packagedBy).orElse(null))
+                .write(jkFile);
         return true;
     }
 }

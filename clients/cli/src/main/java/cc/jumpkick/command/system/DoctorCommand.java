@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
@@ -19,6 +20,7 @@ import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -189,6 +191,7 @@ public final class DoctorCommand implements CliCommand {
         }
 
         for (String line : renderWorkers(workers, global.verbose, t)) CliOutput.out(line);
+        for (String line : renderShelf(workers, pointerEngineSha(), t)) CliOutput.out(line);
         for (String line : RepoStores.render(repos, t)) CliOutput.out(line);
 
         CliOutput.out(Theme.paint("---", t.darkGray()));
@@ -214,7 +217,9 @@ public final class DoctorCommand implements CliCommand {
      * launch classpath is rebuilt from, and that classpath. {@code error} is the resolution
      * failure when the engine could not rebuild it; {@code classpath} is then empty. {@code
      * refused} is the loader's reason when the jar's root descriptor is another plugin's: the jar
-     * is on the shelf but not registered, so the table it should own has no owner.
+     * is on the shelf but not registered, so the table it should own has no owner. {@code
+     * packagedBy} is the sha256 of the engine jar that shelved the worker, when its memo records
+     * one — what the shelf row compares with the engine the home names.
      */
     public record Worker(
             String artifact,
@@ -225,7 +230,8 @@ public final class DoctorCommand implements CliCommand {
             int declared,
             List<String> classpath,
             @Nullable String error,
-            @Nullable String refused) {}
+            @Nullable String refused,
+            @Nullable String packagedBy) {}
 
     /** The worker rows, or the reason there are none (engine unreachable, query refused). */
     public record Workers(List<Worker> rows, @Nullable String error) {}
@@ -275,7 +281,7 @@ public final class DoctorCommand implements CliCommand {
 
     /**
      * Decode the engine's {@code workers} inventory: rows are
-     * {@code artifact|version|source|jar|pom|declared|entries|error|refused}, classpath entries
+     * {@code artifact|version|source|jar|pom|declared|entries|error|refused|packagedBy}, classpath entries
      * {@code artifact|path}. The engine answers this the way a fork resolves, so a worker that
      * runs on the wrong jar shows it here — a Guava flavour, a stale self-installed POM shadowing
      * the published one — in one line instead of an evening.
@@ -300,10 +306,11 @@ public final class DoctorCommand implements CliCommand {
         }
         List<Worker> rows = new ArrayList<>();
         for (String line : ack.lines()) {
-            String[] f = line.split("\\|", 9);
+            String[] f = line.split("\\|", 10);
             if (f.length < 9) continue;
             String error = f[7].isBlank() ? null : f[7];
             String refused = f[8].isBlank() ? null : f[8];
+            String packagedBy = f.length > 9 && !f[9].isBlank() ? f[9] : null;
             rows.add(new Worker(
                     f[0],
                     f[1],
@@ -313,9 +320,15 @@ public final class DoctorCommand implements CliCommand {
                     parseIntOrZero(f[5]),
                     List.copyOf(classpaths.getOrDefault(f[0], List.of())),
                     error,
-                    refused));
+                    refused,
+                    packagedBy));
         }
         return new Workers(List.copyOf(rows), null);
+    }
+
+    /** The engine jar the home's pointer names, by digest; empty when the home has none. */
+    private static Optional<String> pointerEngineSha() {
+        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::engineSha);
     }
 
     private static int parseIntOrZero(String s) {
@@ -371,6 +384,40 @@ public final class DoctorCommand implements CliCommand {
         return out;
     }
 
+    /**
+     * The shelf row: whether the workers under {@code jk-local} were packaged by the engine the
+     * home's pointer names ({@code pointerSha}). A shelf packaged by another engine — an
+     * interrupted install, an older client, a takeover that raced — has no other standing symptom,
+     * and {@code jk install} is what brings it to the live engine. No row when no shelved worker
+     * records its packager or the home names no engine.
+     */
+    static List<String> renderShelf(Workers workers, Optional<String> pointerSha, Theme t) {
+        if (workers.error() != null || pointerSha.isEmpty()) return List.of();
+        Map<String, List<String>> byEngine = new LinkedHashMap<>();
+        for (Worker w : workers.rows()) {
+            if (w.packagedBy() == null || !RepositorySpec.JK_LOCAL.equals(w.source())) continue;
+            byEngine.computeIfAbsent(w.packagedBy().toLowerCase(Locale.ROOT), k -> new ArrayList<>())
+                    .add(w.artifact());
+        }
+        if (byEngine.isEmpty()) return List.of();
+        String live = pointerSha.get().toLowerCase(Locale.ROOT);
+        List<String> out = new ArrayList<>();
+        if (byEngine.size() == 1 && byEngine.containsKey(live)) {
+            out.add(Theme.colorize("ok:      ", t.completedStep()) + " " + Theme.colorize("shelf", t.cyan())
+                    + " — packaged by the engine the home names (" + short12(live) + ")");
+            return out;
+        }
+        for (Map.Entry<String, List<String>> e : byEngine.entrySet()) {
+            if (e.getKey().equals(live)) continue;
+            int n = e.getValue().size();
+            out.add(Theme.colorize("warn:    ", t.warning()) + " " + Theme.colorize("shelf", t.cyan()) + " — " + n
+                    + (n == 1 ? " worker" : " workers") + " packaged by engine " + short12(e.getKey())
+                    + " while the home names engine " + short12(live) + " (" + String.join(", ", e.getValue())
+                    + ") — run `jk install` so the shelf is the live engine's");
+        }
+        return out;
+    }
+
     /** The {@code workers} member of the JSON report: an array of worker objects, or an error string. */
     static String workersJson(Workers workers) {
         if (workers.error() != null) {
@@ -390,6 +437,7 @@ public final class DoctorCommand implements CliCommand {
                     .array("classpath", w.classpath())
                     .string("error", w.error())
                     .string("refused", w.refused())
+                    .string("packagedBy", w.packagedBy())
                     .finish());
         }
         return array.append(']').toString();

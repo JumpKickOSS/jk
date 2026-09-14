@@ -9,12 +9,14 @@ import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
@@ -24,6 +26,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.publish.PublishablePom;
+import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
@@ -164,6 +167,7 @@ public final class InstallPlans {
                     if (alreadyInstalled(project, layout, cache, m2Dir)) {
                         ctx.label("already in local repo");
                         ctx.cached();
+                        stampShelfPackager(coord, BuildIdentity.codeSha256());
                         ctx.put(PRIMARY, coord);
                         ctx.progress(1);
                         return;
@@ -527,6 +531,29 @@ public final class InstallPlans {
     }
 
     /**
+     * Record {@code engineSha256} as the packager of {@code coord}'s shelved jar and POM whose
+     * bytes this install found already on the shelf. The packager a memo names is the engine that
+     * produced those bytes or last verified them, so a shelf that an install under the home's
+     * engine has been over stops reading as another engine's — the row {@code jk doctor} draws
+     * from it is then a standing symptom only for a shelf no such install has touched. No-op for
+     * an engine without an identity (a classes directory) or a memo that is not there.
+     */
+    static void stampShelfPackager(Coordinate coord, String engineSha256) {
+        if (engineSha256 == null || engineSha256.isEmpty()) return;
+        Path root = JkStores.store().resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL);
+        for (String rel : List.of(MavenLayout.artifactPath(coord), MavenLayout.pomPath(coord))) {
+            Path memoFile = ArtifactMemo.jkPath(root, rel);
+            ArtifactMemo memo = ArtifactMemo.read(memoFile).orElse(null);
+            if (memo == null || engineSha256.equalsIgnoreCase(memo.packagedBy())) continue;
+            try {
+                memo.withPackagedBy(engineSha256).write(memoFile);
+            } catch (IOException e) {
+                Log.warn("jk: warning: could not record the packaging engine in " + memoFile + ": " + e.getMessage());
+            }
+        }
+    }
+
+    /**
      * Walk the shelved worker's POM graph now, while the remotes are reachable, so every POM and
      * jar its launch needs is in the store before the first fork — a fork resolves from disk and
      * never over the network. A closure that does not resolve fails the install here, naming the
@@ -549,7 +576,9 @@ public final class InstallPlans {
      * to the store root.
      */
     public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        RepoArtifactStore.writeToLocalStore(JkStores.store(), relativePath, source);
+        // The shelf records which engine packaged it: this one.
+        String engine = BuildIdentity.codeSha256();
+        RepoArtifactStore.writeToLocalStore(JkStores.store(), relativePath, source, engine.isEmpty() ? null : engine);
     }
 
     private static RepoArtifactStore localStore(Path cacheDir) {

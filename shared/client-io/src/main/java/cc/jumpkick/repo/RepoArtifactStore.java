@@ -282,13 +282,23 @@ public final class RepoArtifactStore {
         }
     }
 
-    /** Write or refresh the {@code .jk} memo for {@code blob} (which may live outside this store). */
+    /**
+     * Write or refresh the {@code .jk} memo for {@code blob} (which may live outside this store).
+     * A refresh of the same bytes keeps the packager the shelf recorded: which engine built the
+     * artifact is nothing a re-hash or a Maven-local write-through knows better, and losing it
+     * would silence the shelf row {@code jk doctor} draws from it. Different bytes record none.
+     */
     public void writeMemo(String relativePath, Path blob, String sha256) throws IOException {
         if (root == null || blob == null || !Files.isRegularFile(blob)) return;
         Path sidecar = sidecarPath(relativePath);
         Files.createDirectories(Objects.requireNonNull(sidecar.getParent(), "sidecar dir"));
         recordOrigin();
-        ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256).write(sidecar);
+        @Nullable
+        String packagedBy = ArtifactMemo.read(sidecar)
+                .filter(memo -> memo.sha256().equalsIgnoreCase(sha256))
+                .map(ArtifactMemo::packagedBy)
+                .orElse(null);
+        ArtifactMemo.ofBlob(blob, inferGav(relativePath), sha256, packagedBy).write(sidecar);
     }
 
     // -------------------------------------------------------------------------
@@ -586,6 +596,16 @@ public final class RepoArtifactStore {
      * Cas.putByLink} — no network).
      */
     public static void writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
+        writeToLocalStore(artifactRoot, relativePath, source, null);
+    }
+
+    /**
+     * As {@link #writeToLocalStore(Path, String, Path)}, recording {@code packagedBy} — the sha256
+     * of the engine jar that built the artifact — in its memo, so the shelf can later be compared
+     * with the engine the home names. Null records none (a client-side file install).
+     */
+    public static void writeToLocalStore(
+            Path artifactRoot, String relativePath, Path source, @Nullable String packagedBy) throws IOException {
         // The caller picks the root deliberately: the engine install plan passes the
         // store (where resolvers read since the cache/store split); plugin install-local may pass
         // an isolated --cache-dir root on purpose.
@@ -603,7 +623,7 @@ public final class RepoArtifactStore {
             if (!moved) Files.deleteIfExists(tmp);
         }
         String hex = Hashing.sha256Hex(target);
-        ArtifactMemo.ofBlob(target, inferGav(relativePath), hex)
+        ArtifactMemo.ofBlob(target, inferGav(relativePath), hex, packagedBy)
                 .write(target.resolveSibling(
                         ArtifactMemo.jkFileName(target.getFileName().toString())));
     }

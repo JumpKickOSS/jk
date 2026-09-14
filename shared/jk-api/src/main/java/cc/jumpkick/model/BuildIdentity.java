@@ -76,6 +76,28 @@ public final class BuildIdentity {
     }
 
     private static String computeBuildId() {
+        String sha = codeSha256();
+        return sha.isEmpty() ? "" : sha.substring(0, 12);
+    }
+
+    private static volatile @Nullable String cachedCodeSha;
+
+    /**
+     * The full sha256 of the running code archive — what an engine pointer records for its jar —
+     * or {@code ""} when none is derivable (a classes directory, a native image). The engine
+     * stamps it on every artifact it shelves so a later {@code jk doctor} can compare the shelf's
+     * packager with the engine the home names; {@link #buildId()} is its 12-character prefix.
+     */
+    public static String codeSha256() {
+        String local = cachedCodeSha;
+        if (local != null) return local;
+        synchronized (BuildIdentity.class) {
+            if (cachedCodeSha == null) cachedCodeSha = computeCodeSha();
+            return cachedCodeSha;
+        }
+    }
+
+    private static String computeCodeSha() {
         try {
             var source = BuildIdentity.class.getProtectionDomain().getCodeSource();
             if (source == null || source.getLocation() == null) return "";
@@ -83,7 +105,7 @@ public final class BuildIdentity {
             if (!Files.isRegularFile(location) || !location.toString().endsWith(".jar")) {
                 return ""; // classes dir (tests) or a native image — no jar identity
             }
-            return Hashing.sha256Hex(location).substring(0, 12);
+            return Hashing.sha256Hex(location);
         } catch (Exception e) {
             return ""; // identity is best-effort; the version-string rule still applies
         }
