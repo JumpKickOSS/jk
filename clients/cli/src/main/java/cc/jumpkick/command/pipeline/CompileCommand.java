@@ -58,7 +58,7 @@ public final class CompileCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
-        String modulesSpec = in.value("modules").orElse(null);
+        String modulesSpec = CommonOpts.modulesSpec(in);
         String affectedSince = in.value("affected-since").orElse(null);
         boolean affectedWip = in.isSet("affected");
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {

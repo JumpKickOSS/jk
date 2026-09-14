@@ -123,7 +123,7 @@ public final class NativeCommand implements CliCommand {
         this.buildOpts = new BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.global = GlobalOptions.from(in);
-        this.modulesSpec = in.value("modules").orElse(null);
+        this.modulesSpec = CommonOpts.modulesSpec(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         if (!TestCommand.installSelection(in, "Native")) return Exit.CONFIG;
         this.affectedWip = in.isSet("affected");

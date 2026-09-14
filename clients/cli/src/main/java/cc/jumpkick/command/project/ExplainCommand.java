@@ -117,7 +117,7 @@ public final class ExplainCommand implements CliCommand {
 
         String graphFmt = graphFormat(in);
         boolean hasGraph = graphFmt != null;
-        String modulesSpec = in.value("modules").orElse(null);
+        String modulesSpec = CommonOpts.modulesSpec(in);
         String affectedSinceEarly = in.value("affected-since").orElse(null);
         boolean affectedWip = in.isSet("affected");
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSinceEarly)) {

@@ -122,7 +122,7 @@ public final class ImageCommand implements CliCommand {
             return Exit.NO_INPUT;
         }
         // -m/--modules: an image is built for exactly one module — redirect to it.
-        String modulesSpec = in.value("modules").orElse(null);
+        String modulesSpec = CommonOpts.modulesSpec(in);
         String affectedSince = in.value("affected-since").orElse(null);
         boolean affectedWip = in.isSet("affected");
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {

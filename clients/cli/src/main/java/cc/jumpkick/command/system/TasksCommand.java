@@ -230,7 +230,7 @@ public final class TasksCommand implements CliCommand {
 
     private static Map<Path, ProjectInfo> resolveModules(Invocation in, Path startDir) {
         Path root = startDir.toAbsolutePath().normalize();
-        String modulesSpec = in.value("modules").orElse(null);
+        String modulesSpec = CommonOpts.modulesSpec(in);
         String affected = in.value("affected-since").orElse(null);
         boolean affectedWip = in.isSet("affected");
         if (ModuleSelectors.bothSelectors(affectedWip, affected)) {

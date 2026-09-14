@@ -62,8 +62,26 @@ public final class CommonOpts {
 
     /** Like {@link #moduleSelection()} with command-specific {@code --affected} / {@code --affected-since} help. */
     public static List<Opt> moduleSelection(Opt affected, Opt affectedSince) {
-        return List.of(
-                Opt.value("<sel>", "Only selected modules (paths/globs)", "-m", "--modules"), affected, affectedSince);
+        return List.of(modules("Selected modules (globs; repeatable)"), affected, affectedSince);
+    }
+
+    /**
+     * {@code -m}/{@code --modules}: a module selector list. Repeatable, so {@code -m a -m b}
+     * selects what {@code -m a,b} selects; {@link #modulesSpec} folds the two spellings into the
+     * one comma-joined spec the selector parser reads.
+     */
+    public static Opt modules(String description) {
+        return Opt.value("<sel>", description, "-m", "--modules").repeat();
+    }
+
+    /**
+     * Every {@code -m}/{@code --modules} value of {@code in} as one selector spec, comma-joined in
+     * the order given; null when the option is absent. The one reader of the option, so no verb
+     * keeps only the last occurrence.
+     */
+    public static @Nullable String modulesSpec(Invocation in) {
+        List<String> values = in.values("modules");
+        return values.isEmpty() ? null : String.join(",", values);
     }
 
     /**

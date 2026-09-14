@@ -2,6 +2,7 @@
 package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.api.Reentry;
@@ -70,7 +71,7 @@ public final class SelectiveCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.value("<git-ref>", "Modules changed since this git ref", "--since", "--affected-since"),
-                Opt.value("<sel>", "Module selector (list/globs)", "-m", "--modules"),
+                CommonOpts.modules("Module selector (globs; repeatable)"),
                 Opt.flag("Machine-readable module list", "--json"),
                 Opt.value("<file>", "Plan file path (selective)", "--plan"));
     }
@@ -110,7 +111,7 @@ public final class SelectiveCommand implements CliCommand {
         }
         String action = action(in);
         String since = in.value("since").or(() -> in.value("affected-since")).orElse(null);
-        String modules = in.value("modules").orElse(null);
+        String modules = CommonOpts.modulesSpec(in);
         boolean json = in.isSet("json");
         Path planPath = in.value("plan").map(Path::of).orElse(dir.resolve(PLAN_REL));
 

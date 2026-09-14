@@ -130,7 +130,7 @@ public final class BuildCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         this.affectedWip = in.isSet("affected");
-        this.modulesSpec = in.value("modules").orElse(null);
+        this.modulesSpec = CommonOpts.modulesSpec(in);
         if (ModuleSelectors.bothSelectors(affectedWip, affectedSince)) {
             CommandWedge.printFail("Build", ModuleSelectors.BOTH_MESSAGE);
             return Exit.CONFIG;
@@ -232,10 +232,11 @@ public final class BuildCommand implements CliCommand {
             argv.add("--profile");
             argv.add(p);
         });
-        in.value("modules").ifPresent(m -> {
+        String modulesArg = CommonOpts.modulesSpec(in);
+        if (modulesArg != null) {
             argv.add("--modules");
-            argv.add(m);
-        });
+            argv.add(modulesArg);
+        }
         in.value("affected-since").ifPresent(r -> {
             argv.add("--affected-since");
             argv.add(r);
