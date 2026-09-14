@@ -10,19 +10,25 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.JobCancelledException;
+import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.AggregateContext;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ToolTargets;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -55,7 +61,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -137,7 +142,7 @@ public final class InstallCommand {
             CommandWedge.printFail("Install", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }
-        return runProjectInstallBuildPlan(projectDir, "install");
+        return runProjectInstallBuildPlan(projectDir);
     }
 
     // --- mode 2: local file ----------------------------------------------
@@ -299,13 +304,13 @@ public final class InstallCommand {
 
         // After fetch, hand off to the same project-install plan used by
         // mode 1, but with the checkout dir instead of the user's CWD.
-        return runProjectInstallBuildPlan(checkout, "install-git");
+        return runProjectInstallBuildPlan(checkout);
     }
 
     // --- shared project-install plan ---------------------------------
 
     /** Package-private: {@code jk tool install <project-dir>} delegates here. */
-    public int runProjectInstallBuildPlan(Path projectDir, String planName) throws IOException {
+    public int runProjectInstallBuildPlan(Path projectDir) throws IOException {
         if (binName != null && !binName.isBlank()) {
             Integer invalidBin = rejectInvalidLauncherName(binName);
             if (invalidBin != null) return invalidBin;
@@ -325,7 +330,7 @@ public final class InstallCommand {
         }
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, proj);
         if (proj.workspaceRoot() || cwdScope.workspaceMember()) {
-            return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope, planName);
+            return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
         }
         if (proj.application()
                 && "DISABLED".equals(proj.nativeMode())
@@ -356,7 +361,17 @@ public final class InstallCommand {
         // per jk.toml; jar + generated pom into ~/.m2 / repos/jk-local) — engine-hosted for a real
         // invocation, in-process for the test-only bypass. The make-install half runs below,
         // client-side either way: it writes the user-home launcher/binary this process owns.
+        // The console `jk build`'s single-project path opens: the live region with the bar and
+        // countdown, the diagnostics above the settle line, the chip. The copy step under it is this
+        // process's own and reports after the chip — it writes the user-home launcher and the
+        // product layout, which the engine never touches.
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        String target = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
+        ConsoleSpec spec = new ConsoleSpec(
+                "Install",
+                r -> BuildTails.buildOk() + BuildTails.builtArtifact(projectDir, proj),
+                r -> Coord.module(target).renderLine(),
+                true);
         BuildPlanResult result;
         TestSummary testResult;
         var session = SessionContext.current();
@@ -373,8 +388,11 @@ public final class InstallCommand {
                             session.offline(),
                             session.force(),
                             global.verbose),
-                    steps -> BuildPlanConsole.chooseConsoleListener(planName, steps, mode),
+                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, target),
                     testResultHolder);
+        } catch (JobCancelledException e) {
+            CommandWedge.printFail("Install", "job was cancelled");
+            return Exit.FAILURE;
         } catch (IOException e) {
             CommandWedge.printFail("Install", e.getMessage());
             return Exit.SOFTWARE;
@@ -398,12 +416,15 @@ public final class InstallCommand {
                 launcher = applyInstallPlan(projectDir, cacheDir, proj.productLib(), proj.productBin());
             } catch (IOException e) {
                 CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
-                return 1;
+                return Exit.FAILURE;
             }
         }
-        if (productLib) announceProductLibInstall(Coords.gav(coord), proj.productLib());
-        else if (productBin) announceProductBinInstall(Coords.gav(coord), launcher);
-        else announceProjectInstall(Coords.gav(coord), launcher, binDir);
+        if (!global.outputIsJson()) {
+            for (String line :
+                    installedLines(Coords.gav(coord), launcher, binDir, proj.productLib(), proj.productBin())) {
+                CliOutput.out(line);
+            }
+        }
         return 0;
     }
 
@@ -415,10 +436,9 @@ public final class InstallCommand {
      */
     private boolean reshelving;
 
-    private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope, String planName) throws IOException {
+    private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope) throws IOException {
         Optional<String> engineBefore = liveEngineSha();
         Path cacheDir = cacheDir();
-        Path binDir = binDir();
         ProjectInfo root = projectInfo(wsRoot);
         if (root.error() != null) {
             CommandWedge.printFail("Install", root.error());
@@ -430,7 +450,7 @@ public final class InstallCommand {
             moduleDirs.add(d.toAbsolutePath().normalize());
         }
         // One projectInfo request per module: the Graal scan, the product-lib stale check and the
-        // announce loop below all read the same parsed-manifest summary, and every call is a full
+        // copy step after the build all read the same parsed-manifest summary, and every call is a full
         // engine round-trip — three sweeps over a 30-module workspace is ~90 requests for nothing.
         Map<Path, ProjectInfo> infoByDir = new LinkedHashMap<>();
         for (Path mod : moduleDirs) infoByDir.put(mod, projectInfo(mod));
@@ -460,16 +480,113 @@ public final class InstallCommand {
                         true)
                 .withModules(tokens)
                 .withSpec(WorkspaceSpec.install(selected, graalByDir, m2Dir()));
-        // The shared workspace renderer, exactly as build/test/native drive it: the errors list,
-        // the failing module's coordinate, and the JSONL workspace vocabulary all come from one
-        // place. A hand-rolled listener here is what made a failed workspace install print
-        // nothing at all on either stream.
+        // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
+        // axis they choose on: a live region for a terminal, the append-only block for
+        // --output json / --verbose. A hand-rolled listener here is what made a failed workspace
+        // install print nothing at all on either stream; the headless listener on a terminal is
+        // what made a succeeding one look like a log instead of a build.
         boolean json = global.outputIsJson();
-        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome(planName, true), wsRoot, null, json);
-        long start = System.nanoTime();
+        BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        boolean live = mode == BuildPlanConsole.Mode.AUTO || mode == BuildPlanConsole.Mode.QUIET;
+        var pass = new WorkspacePass(wsRoot, req, moduleDirs, infoByDir, cacheDir);
+        int exit = live ? installWorkspaceLive(pass, mode) : installWorkspaceHeadless(pass, json);
+        if (exit != 0) return exit;
+        Optional<String> engineAfter = liveEngineSha();
+        if (!reshelving && engineReplaced(engineBefore, engineAfter)) {
+            reshelving = true;
+            if (!json) {
+                CommandWedge.printOk(
+                        "Install",
+                        "the engine changed under this install — re-shelving the workers it packaged"
+                                + " with the freshly built engine");
+            }
+            // The pointer names another jar now; the next request probes again and takes the
+            // resident engine over, so the second pass runs on the engine this tree built. That
+            // handoff is asserted, not assumed: the pass re-shelves under whichever engine serves
+            // it, and a shelf packaged by the displaced engine would need yet another install.
+            int refused = handoffRefusal(engineAfter);
+            if (refused != Exit.SUCCESS) return refused;
+            return runWorkspaceInstall(wsRoot, cwdScope);
+        }
+        String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
+        if (notice != null && !json) {
+            Theme t = Theme.active();
+            CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning()) + " " + notice);
+        }
+        return 0;
+    }
+
+    /** One pass of a workspace install: the request the engine runs and what the copy step needs after it. */
+    private record WorkspacePass(
+            Path wsRoot,
+            WorkspaceRequest req,
+            List<Path> moduleDirs,
+            Map<Path, ProjectInfo> infoByDir,
+            Path cacheDir) {}
+
+    /** What the copy step put in place: the module count for the wedge, the lines naming where each went. */
+    private record Applied(int modules, List<String> lines) {}
+
+    /**
+     * Workspace install in a live region, exactly as {@code jk build} renders a workspace: the
+     * wedge, the bar calibrated to the whole graph with its countdown, the modules building right
+     * now, a completion tail. The copy step that makes this an install runs after the engine
+     * settles and before the region does, so its lines land above the one success wedge.
+     */
+    private int installWorkspaceLive(WorkspacePass pass, BuildPlanConsole.Mode mode) throws IOException {
+        boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        // Start the engine before the region opens, as build does: its wedge must not paint under it.
+        EnginePrewarm.ensure();
+        long start = Clock.SYSTEM.nanos();
+        JkManager view = JkManager.plan(CliOutput.stdout(), "Install", animate);
+        view.setPlanCoord(BuildCommand.projectGaLabel(pass.wsRoot()));
+        view.setWindowTitle("JumpKick - Installing " + BuildCommand.projectGavLabel(pass.wsRoot()) + "...");
+        AggregateContext agg = new AggregateContext(view);
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), null, false);
         WorkspaceResult result;
         try {
-            result = EngineClient.buildWorkspace(EnginePaths.current(), req, run.headless());
+            result = EngineClient.buildWorkspace(EnginePaths.current(), pass.req(), run.live(view, agg));
+        } catch (JobCancelledException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanCancelled(List.of());
+            return Exit.FAILURE;
+        } catch (IOException e) {
+            run.finishEvent(false, BuildTails.elapsedMsSince(start));
+            view.finishBuildPlanFailure(String.valueOf(e.getMessage()));
+            return Exit.SOFTWARE;
+        }
+        long elapsed = BuildTails.elapsedMsSince(start);
+        int modules = 0;
+        if (result.success() && !result.cancelled() && result.errors().isEmpty()) {
+            Applied applied;
+            try {
+                applied = applyWorkspaceInstall(pass, result);
+            } catch (IOException e) {
+                run.finishEvent(false, elapsed);
+                view.finishBuildPlanFailure("make install failed: " + e.getMessage(), run.deferredOutput());
+                return Exit.FAILURE;
+            }
+            modules = applied.modules();
+            for (String line : applied.lines()) run.defer(line);
+        }
+        int installed = modules;
+        var tails = new WorkspaceRunView.Tails(
+                (r, planned) -> installTail(installed, start),
+                r -> BuildTails.failureTail(WorkspaceRunView.failedSubject(r, "install"), start));
+        return run.settleLive(view, agg, result, elapsed, tails, settled -> {});
+    }
+
+    /**
+     * Workspace install without a region ({@code --output json} / {@code --verbose}): the
+     * append-only block per module {@code jk build} prints in those modes, then the copy step's
+     * lines and one wedge.
+     */
+    private int installWorkspaceHeadless(WorkspacePass pass, boolean json) throws IOException {
+        var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Install", true), pass.wsRoot(), null, json);
+        long start = Clock.SYSTEM.nanos();
+        WorkspaceResult result;
+        try {
+            result = EngineClient.buildWorkspace(EnginePaths.current(), pass.req(), run.headless());
         } catch (JobCancelledException e) {
             return cancelled(run, start, json);
         } catch (IOException e) {
@@ -486,30 +603,47 @@ public final class InstallCommand {
                 // Graph/lock errors never reach a module listener, so they have no module to blame
                 // and nothing else prints them.
                 for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
-                CommandWedge.printFail("Install", installFailureTail(result, elapsed));
+                CommandWedge.printFail(
+                        "Install", BuildTails.failureTail(WorkspaceRunView.failedSubject(result, "install"), start));
             }
             return result.exitCode() == 0 ? Exit.FAILURE : result.exitCode();
         }
         run.finishEvent(true, elapsed);
-        // Modules the engine built, plus any whose declared product-lib destination this process
-        // owns and finds stale. The second half is the point: a module the forecast skipped as
-        // clean has correct BUILD outputs, which says nothing about whether the artifact reached
-        // jk's product layout — and that destination is the client's to answer for, because the
-        // engine daemon's product layout is not necessarily the caller's.
+        Applied applied;
+        try {
+            applied = applyWorkspaceInstall(pass, result);
+        } catch (IOException e) {
+            CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
+            return Exit.FAILURE;
+        }
+        if (json) return 0;
+        for (String line : applied.lines()) CliOutput.out(line);
+        CommandWedge.printOk("Install", installTail(applied.modules(), start));
+        return 0;
+    }
+
+    /**
+     * The copy step — the client half of a workspace install, after the engine's half succeeded.
+     * Modules the engine built, plus any whose declared product-lib destination this process owns
+     * and finds stale. The second half is the point: a module the forecast skipped as clean has
+     * correct BUILD outputs, which says nothing about whether the artifact reached jk's product
+     * layout — and that destination is the client's to answer for, because the engine daemon's
+     * product layout is not necessarily the caller's.
+     */
+    private Applied applyWorkspaceInstall(WorkspacePass pass, WorkspaceResult result) throws IOException {
+        Path binDir = binDir();
+        Map<Path, ProjectInfo> infoByDir = pass.infoByDir();
         Set<Path> installed = new LinkedHashSet<>();
         for (var m : result.modules()) {
-            if (!m.success()) continue;
-            installed.add(m.dir());
+            if (m.success()) installed.add(m.dir());
         }
-        for (Path mod : moduleDirs) {
+        for (Path mod : pass.moduleDirs()) {
             if (installed.contains(mod)) continue;
             ProjectInfo info = infoByDir.get(mod);
             if (productLibStale(info) || productBinStale(info)) installed.add(mod);
         }
-        if (installed.isEmpty() && !json) {
-            // Keep a no-op distinguishable from a skipped install check in human output.
-            CommandWedge.printOk("Install", "everything already installed");
-        }
+        int modules = 0;
+        List<String> lines = new ArrayList<>();
         for (Path mod : installed) {
             // Engine-reported module dirs are normalized the same way moduleDirs was; fall back to
             // a fresh request only for a dir the sweep above never saw.
@@ -521,41 +655,26 @@ public final class InstallCommand {
             boolean productLib = !info.productLib().isBlank();
             boolean productBin = !info.productBin().isBlank();
             if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
-                try {
-                    launcher = applyInstallPlan(mod, cacheDir, info.productLib(), info.productBin());
-                } catch (IOException e) {
-                    CommandWedge.printFail("Install", "make install failed: " + e.getMessage());
-                    return 1;
-                }
+                launcher = applyInstallPlan(mod, pass.cacheDir(), info.productLib(), info.productBin());
             }
             String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
-            if (productLib) announceProductLibInstall(coord, info.productLib());
-            else if (productBin) announceProductBinInstall(coord, launcher);
-            else announceProjectInstall(coord, launcher, binDir);
+            lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
+            modules++;
         }
-        Optional<String> engineAfter = liveEngineSha();
-        if (!reshelving && engineReplaced(engineBefore, engineAfter)) {
-            reshelving = true;
-            if (!json) {
-                CommandWedge.printOk(
-                        "Install",
-                        "the engine changed under this install — re-shelving the workers it packaged"
-                                + " with the freshly built engine");
-            }
-            // The pointer names another jar now; the next request probes again and takes the
-            // resident engine over, so the second pass runs on the engine this tree built. That
-            // handoff is asserted, not assumed: the pass re-shelves under whichever engine serves
-            // it, and a shelf packaged by the displaced engine would need yet another install.
-            int refused = handoffRefusal(engineAfter);
-            if (refused != Exit.SUCCESS) return refused;
-            return runWorkspaceInstall(wsRoot, cwdScope, planName);
-        }
-        String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
-        if (notice != null && !json) {
-            Theme t = Theme.active();
-            CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning()) + " " + notice);
-        }
-        return 0;
+        return new Applied(modules, lines);
+    }
+
+    /** The success wedge of a workspace install: what this pass put in place, or that nothing needed to be. */
+    static String installTail(int modules, long start) {
+        String ok = Theme.colorize("Install successful", Theme.active().success());
+        if (modules == 0) return ok + ", everything already installed " + BuildTails.elapsedSince(start);
+        return ok
+                + ", installed "
+                + Theme.colorize(String.valueOf(modules), Theme.active().focused())
+                + " module"
+                + (modules == 1 ? "" : "s")
+                + " "
+                + BuildTails.elapsedSince(start);
     }
 
     /**
@@ -628,15 +747,6 @@ public final class InstallCommand {
         run.finishEvent(false, BuildTails.elapsedMsSince(startNanos));
         if (!json) CommandWedge.printFail("Install", "job was cancelled");
         return Exit.FAILURE;
-    }
-
-    /**
-     * The failure wedge for a workspace install: the first module the engine failed, or the
-     * generic verb when the run died before any module started (a graph, lock, or plan error).
-     */
-    private static String installFailureTail(WorkspaceResult result, long elapsedMs) {
-        return WorkspaceRunView.failedCoord(result, "install") + " — failed "
-                + ConsoleSpec.took(Duration.ofMillis(elapsedMs));
     }
 
     /**
@@ -917,32 +1027,26 @@ public final class InstallCommand {
     }
 
     /**
-     * A product-lib install went into jk's own product layout, not the local cache. Saying "to the
-     * local cache" here would name the one place this artifact did not go.
+     * The lines that say where an install went. A product-lib install went into jk's own product
+     * layout, not the local cache — "to the local cache" would name the one place that artifact
+     * did not go. A product-bin install replaced the PATH client, and its path is the answer to
+     * "which jk am I running now". An application names its launcher; a library is cache-only.
      */
-    private void announceProductLibInstall(String coord, String productLib) {
-        if (global.outputIsJson()) return;
-        CliOutput.out("Installed " + coord + " → "
-                + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
-    }
-
-    /** The PATH client was replaced; the path is the answer to "which jk am I running now". */
-    private void announceProductBinInstall(String coord, @Nullable Path bin) {
-        if (global.outputIsJson()) return;
-        CliOutput.out(
-                "Installed " + coord + " → " + (bin == null ? "(no native binary built)" : PathDisplay.styledRaw(bin)));
-    }
-
-    /** Announce a project install: launcher path for an app, cache-only for a library. */
-    private void announceProjectInstall(String coord, @Nullable Path launcher, Path binDir) {
-        if (global.outputIsJson()) return;
-        if (launcher == null) {
-            CliOutput.out("Installed " + coord + " to the local cache");
-            return;
+    private static List<String> installedLines(
+            String coord, @Nullable Path launcher, Path binDir, String productLib, String productBin) {
+        if (!productLib.isBlank()) {
+            return List.of("Installed " + coord + " → "
+                    + PathDisplay.styledRaw(JkDirs.productLib().resolve(productLib)));
         }
-        CliOutput.out("Installed " + coord + " → " + launcher);
-        CliOutput.out("Add to PATH if needed:");
-        CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
+        if (!productBin.isBlank()) {
+            return List.of("Installed " + coord + " → "
+                    + (launcher == null ? "(no native binary built)" : PathDisplay.styledRaw(launcher)));
+        }
+        if (launcher == null) return List.of("Installed " + coord + " to the local cache");
+        return List.of(
+                "Installed " + coord + " → " + launcher,
+                "Add to PATH if needed:",
+                "  export PATH=\"" + binDir + ":$PATH\"");
     }
 
     /**

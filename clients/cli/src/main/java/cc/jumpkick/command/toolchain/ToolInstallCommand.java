@@ -171,7 +171,7 @@ public final class ToolInstallCommand implements CliCommand {
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {
             if (Files.isRegularFile(base.resolve(ManifestPaths.MANIFEST))) {
-                return appInstallDelegate().runProjectInstallBuildPlan(base, "install");
+                return appInstallDelegate().runProjectInstallBuildPlan(base);
             }
             CommandWedge.printFail(
                     "Install",
@@ -293,7 +293,7 @@ public final class ToolInstallCommand implements CliCommand {
                         "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
                 return Exit.CONFIG;
             }
-            return appInstallDelegate().runProjectInstallBuildPlan(projectDir, "install");
+            return appInstallDelegate().runProjectInstallBuildPlan(projectDir);
         }
         if (classified instanceof ToolTarget.Git git) {
             String raw = git.raw().startsWith("git+") ? git.raw().substring("git+".length()) : git.raw();

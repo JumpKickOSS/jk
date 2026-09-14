@@ -47,7 +47,8 @@ class InstallWorkspaceTest {
         var streams = Capture.both(() -> exit[0] = install(tmp, cache));
 
         assertThat(exit[0]).isNotZero();
-        assertThat(streams.out() + streams.err())
+        // Stripped: the failure wedge styles the coordinate per segment, as build's does.
+        assertThat(TestAnsi.strip(streams.out() + streams.err()))
                 .as("a workspace install that fails must say why")
                 .isNotBlank()
                 .contains("ex:lib");

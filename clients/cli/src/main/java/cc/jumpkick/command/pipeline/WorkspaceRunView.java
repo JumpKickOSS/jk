@@ -143,6 +143,15 @@ final class WorkspaceRunView {
         }
     }
 
+    /**
+     * A line of the verb's own to print above the settle wedge, with the buffered module output —
+     * for a step the client runs after the engine's half is done ({@code install}'s copy into the
+     * user's home), so its report lands under the region and above the one wedge.
+     */
+    void defer(String line) {
+        deferred.add(line);
+    }
+
     /** Live aggregate listener over an open {@link JkManager} region. */
     WorkspaceBuildListener live(JkManager view, AggregateContext agg) {
         return live(view, agg, o -> {});
