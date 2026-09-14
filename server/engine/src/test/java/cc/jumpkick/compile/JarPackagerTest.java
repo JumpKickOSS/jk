@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Attributes;
@@ -146,6 +147,44 @@ class JarPackagerTest {
             assertThat(attrs.getValue(Attributes.Name.MAIN_CLASS)).isEqualTo("com.example.Main");
             assertThat(attrs.getValue("Implementation-Title")).isEqualTo("widget");
             assertThat(attrs.getValue("Implementation-Version")).isEqualTo("1.0.0");
+        }
+    }
+
+    @Test
+    void manifest_attributes_are_written_in_name_order_whatever_order_the_map_iterates(@TempDir Path tempDir)
+            throws IOException {
+        // The attribute order is part of the jar's bytes. The request keeps its attributes in an
+        // immutable copy whose iteration order is salted per JVM, so two engines packaging the same
+        // classes would otherwise write two manifests; the packager settles the order by name.
+        Path input = tempDir.resolve("classes");
+        Files.createDirectories(input);
+        Files.writeString(input.resolve("x.txt"), "data");
+        Map<String, String> scrambled = new LinkedHashMap<>();
+        scrambled.put("Sbom-Location", "META-INF/sbom/application.cdx.json");
+        scrambled.put("Implementation-Version", "1.0.0");
+        scrambled.put("Sbom-Format", "CycloneDX");
+        scrambled.put("Implementation-Title", "widget");
+
+        Path jar = tempDir.resolve("out.jar");
+        new JarPackager()
+                .packageJar(JarPackager.JarRequest.of(input, jar)
+                        .withMainClass("com.example.Main")
+                        .withAttributes(scrambled));
+
+        assertThat(rawManifest(jar))
+                .isEqualTo("Manifest-Version: 1.0\r\n"
+                        + "Main-Class: com.example.Main\r\n"
+                        + "Implementation-Title: widget\r\n"
+                        + "Implementation-Version: 1.0.0\r\n"
+                        + "Sbom-Format: CycloneDX\r\n"
+                        + "Sbom-Location: META-INF/sbom/application.cdx.json\r\n"
+                        + "\r\n");
+    }
+
+    private static String rawManifest(Path jar) throws IOException {
+        try (JarFile jf = new JarFile(jar.toFile());
+                InputStream in = jf.getInputStream(jf.getJarEntry("META-INF/MANIFEST.MF"))) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 

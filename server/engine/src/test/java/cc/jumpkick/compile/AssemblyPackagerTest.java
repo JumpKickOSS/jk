@@ -4,9 +4,11 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.jar.Attributes;
@@ -176,6 +178,38 @@ class AssemblyPackagerTest {
             assertThat(jf.getJarEntry("META-INF/MANIFEST.MF").getTime())
                     .as("manifest pinned to the same fixed epoch as data entries")
                     .isEqualTo(jf.getJarEntry("app/Main.class").getTime());
+        }
+    }
+
+    @Test
+    void manifest_attributes_are_written_in_name_order_whatever_order_the_map_iterates(@TempDir Path tmp)
+            throws IOException {
+        // Same contract as the thin jar: the attribute order is part of the bytes, and the request's
+        // immutable copy iterates in a per-JVM order, so the packager orders by name.
+        Path classes = tmp.resolve("classes");
+        Files.createDirectories(classes.resolve("app"));
+        Files.writeString(classes.resolve("app/Main.class"), "APPMAIN");
+        Map<String, String> scrambled = new LinkedHashMap<>();
+        scrambled.put("Sbom-Location", "META-INF/sbom/application.cdx.json");
+        scrambled.put("Implementation-Version", "1.0.0");
+        scrambled.put("Sbom-Format", "CycloneDX");
+        scrambled.put("Implementation-Title", "widget");
+
+        Path jar = tmp.resolve("app-all.jar");
+        new AssemblyPackager()
+                .packageAssembly(
+                        new AssemblyPackager.AssemblyRequest(classes, List.of(), jar, "app.Main", scrambled, 0L));
+
+        try (JarFile jf = new JarFile(jar.toFile());
+                InputStream in = jf.getInputStream(jf.getJarEntry("META-INF/MANIFEST.MF"))) {
+            assertThat(new String(in.readAllBytes(), StandardCharsets.UTF_8))
+                    .isEqualTo("Manifest-Version: 1.0\r\n"
+                            + "Main-Class: app.Main\r\n"
+                            + "Implementation-Title: widget\r\n"
+                            + "Implementation-Version: 1.0.0\r\n"
+                            + "Sbom-Format: CycloneDX\r\n"
+                            + "Sbom-Location: META-INF/sbom/application.cdx.json\r\n"
+                            + "\r\n");
         }
     }
 

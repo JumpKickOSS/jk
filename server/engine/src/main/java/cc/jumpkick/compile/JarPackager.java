@@ -64,14 +64,29 @@ public final class JarPackager {
     }
 
     private static Manifest buildManifest(JarRequest request) {
+        return manifest(request.mainClass(), request.attributes());
+    }
+
+    /**
+     * The manifest every jk-packaged jar carries: {@code Manifest-Version}, then {@code Main-Class}
+     * when there is one, then the custom attributes (the {@code [manifest]} table, the SBOM
+     * pointers) in name order.
+     *
+     * <p>The order is part of the jar's bytes, so it has to be a function of the attributes alone.
+     * The request records hold their attributes in an immutable copy whose iteration order is
+     * salted per JVM: two engines packaging the same classes would otherwise write the same
+     * attributes in two orders and produce two jars — and jk's own install, which keys packaging
+     * on the engine that runs it, would then never reach a fixed point. Sorting by name settles
+     * the order without asking the caller what map it passed.
+     */
+    static Manifest manifest(@Nullable String mainClass, Map<String, String> attributes) {
         Manifest manifest = new Manifest();
         Attributes attrs = manifest.getMainAttributes();
         attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        if (request.mainClass() != null && !request.mainClass().isBlank()) {
-            attrs.put(Attributes.Name.MAIN_CLASS, request.mainClass());
+        if (mainClass != null && !mainClass.isBlank()) {
+            attrs.put(Attributes.Name.MAIN_CLASS, mainClass);
         }
-        // Custom attributes from the [manifest] table (Implementation-*, etc.).
-        for (Map.Entry<String, String> e : request.attributes().entrySet()) {
+        for (Map.Entry<String, String> e : new TreeMap<>(attributes).entrySet()) {
             if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) continue;
             attrs.put(new Attributes.Name(e.getKey()), e.getValue());
         }

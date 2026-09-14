@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
@@ -158,18 +157,9 @@ public final class AssemblyPackager {
                 || upper.startsWith("META-INF/SIG-");
     }
 
+    /** The same manifest a thin jar gets, in the same attribute order; see {@link JarPackager#manifest}. */
     private static Manifest buildManifest(AssemblyRequest request) {
-        Manifest manifest = new Manifest();
-        Attributes attrs = manifest.getMainAttributes();
-        attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        if (request.mainClass() != null && !request.mainClass().isBlank()) {
-            attrs.put(Attributes.Name.MAIN_CLASS, request.mainClass());
-        }
-        for (Map.Entry<String, String> e : request.attributes().entrySet()) {
-            if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) continue;
-            attrs.put(new Attributes.Name(e.getKey()), e.getValue());
-        }
-        return manifest;
+        return JarPackager.manifest(request.mainClass(), request.attributes());
     }
 
     private static List<Path> collectFiles(Path root) throws IOException {
