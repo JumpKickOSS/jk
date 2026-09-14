@@ -115,7 +115,7 @@ $ReleaseRsaExponent = "AQAB"
 # The release this installer ships with. A signed latest-release pointer naming anything older is
 # a rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
 # refused; JK_VERSION remains the deliberate way to install a specific release.
-$ReleaseFloor = "0.13.4"
+$ReleaseFloor = "0.13.5"
 
 # irm|iex cannot pass positional args; allow JK_LOCAL_PATH as the local-dist seam.
 if (-not $LocalPath -and $env:JK_LOCAL_PATH) {

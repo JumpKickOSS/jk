@@ -103,7 +103,7 @@ main() {
   # The release this installer ships with. A signed pointer naming anything older is a
   # rollback — a bucket writer or a mirror re-serving an old, validly signed release — and is
   # refused; JK_VERSION remains the deliberate way to install a specific release.
-  RELEASE_FLOOR="0.13.4"
+  RELEASE_FLOOR="0.13.5"
 
   # Verify the release key's RSA/SHA-256 signature in <sig-file> over the exact bytes of
   # <signed-file>, or die naming <what>. Every remote input that steers the install — the

@@ -6,10 +6,10 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.4`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.4`** | Next public release cut from that line |
+| **`0.13.5`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.13.5`** | Next public release cut from that line |
 | Prior | **`0.13.3`** — previous tagged release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.13.4`, `0.14.0`, … |
+| Later | Semver-ish: `0.13.5`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -24,8 +24,14 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
 
-### 0.13.4
+### 0.13.5
 
+- **Inlined constants recompile their users.** javac folds a `static final` constant used in a
+  string concatenation into an `invokedynamic` recipe and drops every reference to its owner, so
+  Zinc's class-file analysis never saw the edge and a class that inlined the constant kept the old
+  value across rebuilds — a version bump left a test asserting the previous `JkVersion.VERSION`.
+  The Java worker now recovers those edges from javac's attributed AST and files them in the
+  analysis (JK-3246).
 - **The JVM client.** `jk-<version>.jar` ships beside the engine jar, and the installers install
   it on every host with no native client — macOS on Intel, Windows on ARM (`JK_CLIENT=jvm`),
   Linux on ARM, FreeBSD, Solaris, anything a JDK 25 runs on — as `bin/jk` (`bin/jk.bat`) over the
@@ -92,19 +98,19 @@ Layout under the bucket (and under the CDN path `/releases`):
 ```text
 releases/
   latest/
-    LATEST                  # signed pointer: `version 0.13.4` + `issued <unix-seconds>`, LF each
+    LATEST                  # signed pointer: `version 0.13.5` + `issued <unix-seconds>`, LF each
     LATEST.sig              # base64 RSA/SHA-256 signature over the exact LATEST bytes
     VERSION                 # bare version — a redirect-compatible convenience nothing verifies
                             # (all three: Cache-Control: no-cache)
-  0.13.4/
-    jk-linux-x86_64-0.13.4.xz
-    jk-linux-aarch64-0.13.4.xz
-    jk-macos-x86_64-0.13.4.xz
-    jk-macos-aarch64-0.13.4.xz
-    jk-windows-x86_64-0.13.4.xz    # self-update (engine inflates; no system xz needed)
-    jk-windows-x86_64-0.13.4.zip   # install.ps1 / jk.bat only
-    jk-engine-0.13.4.jar
-    jk-0.13.4.jar                  # the JVM client: every host with no native client (install.sh
+  0.13.5/
+    jk-linux-x86_64-0.13.5.xz
+    jk-linux-aarch64-0.13.5.xz
+    jk-macos-x86_64-0.13.5.xz
+    jk-macos-aarch64-0.13.5.xz
+    jk-windows-x86_64-0.13.5.xz    # self-update (engine inflates; no system xz needed)
+    jk-windows-x86_64-0.13.5.zip   # install.ps1 / jk.bat only
+    jk-engine-0.13.5.jar
+    jk-0.13.5.jar                  # the JVM client: every host with no native client (install.sh
                                    # falls back to it; install.ps1 on JK_CLIENT=jvm)
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
@@ -115,7 +121,13 @@ releases/
 `jk-<version>.jar` and `jk-engine-<version>.jar` instead (so does `install.ps1` on
 `JK_CLIENT=jvm`, and `jk self update` from a JVM install); both are platform-neutral, built by
 every platform job, and `scripts/flatten-release.sh` takes linux-x86_64's copy after checking the
-others are byte-identical. Every artifact name carries the version: the
+others are byte-identical. That identity assumes one bootstrap: the embedded SBOM
+(`META-INF/sbom/application.cdx.json`) names the jk that packaged the jar as its tool, and nothing
+else in an assembly varies between builds of one commit, so every lane packaging with the pinned
+`.jk/ci-bootstrap-version` writes the same bytes, while a dogfood tree whose install re-shelved
+under the newly built engine writes a jar that differs by that one field. A release directory is
+assembled from one build, never from a native binary of one and a jar of another. Every artifact
+name carries the version: the
 manifest is signed but not bound to its directory, so a valid manifest copied from an older
 release into a newer version's directory names only the older artifacts and satisfies no
 request for the newer one. `jk self update` prefers `.xz` on every OS
@@ -169,7 +181,7 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. Push tag `v0.13.4` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
+1. Push tag `v0.13.5` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
    so the matrix has a row for every platform jumpkick.build serves a client for at that pin
@@ -249,12 +261,24 @@ Releases are published by hand today; the workflow is not dispatched. Order matt
 version tree, then the pointer (signature before pointer), then the website — a freshly
 deployed `install.sh` carries the new floor and refuses the old pointer until step 2 is done.
 
+Before any of it, the tree is built and installed in the order the CI lane keeps: the
+**previous** release's client and engine — the ones the home names before the bump — run
+`jk install --skip-tests` on the new tree. That pass shelves the new version's workers, installs
+the new engine and client into the home, and re-shelves under the new engine (the fixed point);
+only then can the new engine compile anything, because it looks for workers of its own version
+and the repository does not serve them yet. Installing the new engine first (`install.sh
+target/dist/jk` before `jk install`) leaves a home whose engine has no workers and whose
+`jk install` cannot run. Assemble `build/release/<version>/` from the `target/dist` that pass
+leaves, so the released bytes are the installed ones; stage the first-party repository from the
+shelf afterwards (`JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=build/release/repo
+scripts/publish-maven-repo.sh`) and upload it beside the version tree.
+
 ```bash
 # 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
-gsutil -m rsync -r -d build/release/0.13.4/ gs://$BUCKET/releases/0.13.4/
+gsutil -m rsync -r -d build/release/0.13.5/ gs://$BUCKET/releases/0.13.5/
 
 # 2. The signed pointer: LATEST.sig, then LATEST, then the VERSION convenience.
-scripts/sign-latest-pointer.sh 0.13.4 build/release/latest /owner-only/path/release-key.pem
+scripts/sign-latest-pointer.sh 0.13.5 build/release/latest /owner-only/path/release-key.pem
 for object in LATEST.sig LATEST VERSION; do
   gsutil -h "Cache-Control:no-cache,max-age=0" cp "build/release/latest/$object" \
     "gs://$BUCKET/releases/latest/$object"
@@ -264,17 +288,17 @@ done
 curl -fsSL https://jumpkick.build/releases/latest/LATEST -o LATEST
 curl -fsSL https://jumpkick.build/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
 openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST   # "Verified OK"
-cat LATEST                                                                        # version 0.13.4 / issued …
+cat LATEST                                                                        # version 0.13.5 / issued …
 
 # 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
 
 # 5. The GitHub Release, from the same tree: the highlights entry must exist (step 4 of the CI
 #    flow refuses without it), the tag must be pushed, GH_TOKEN must be able to write releases.
-scripts/release-notes.sh 0.13.4 > RELEASE_NOTES.md
+scripts/release-notes.sh 0.13.5 > RELEASE_NOTES.md
 (cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
-cp target/server/engine/sbom/jk-engine-0.13.4.cdx.json jk-0.13.4.cdx.json
-scripts/publish-github-release.sh draft 0.13.4 RELEASE_NOTES.md build/release/0.13.4/* jk-0.13.4.cdx.json
-scripts/publish-github-release.sh publish 0.13.4
+cp target/server/engine/sbom/jk-engine-0.13.5.cdx.json jk-0.13.5.cdx.json
+scripts/publish-github-release.sh draft 0.13.5 RELEASE_NOTES.md build/release/0.13.5/* jk-0.13.5.cdx.json
+scripts/publish-github-release.sh publish 0.13.5
 ```
 
 `release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in
