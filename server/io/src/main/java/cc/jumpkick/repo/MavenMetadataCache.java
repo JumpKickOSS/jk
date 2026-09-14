@@ -97,14 +97,29 @@ public final class MavenMetadataCache {
         if (!force && fresh(body)) {
             return Files.readAllBytes(body);
         }
-        Map<String, String> headers = new LinkedHashMap<>(AuthHeaders.of(credential));
-        addValidators(meta, headers);
+        Map<String, String> auth = AuthHeaders.of(credential);
+        Map<String, String> headers = new LinkedHashMap<>(auth);
+        // Validators speak only for the body they were stored beside. A sidecar that outlived its
+        // body — a hand-cleared cache, a partially seeded home — would draw a 304 with nothing to
+        // serve, and every retry would send the same validators; without a body the fetch is cold.
+        if (hasBody(body)) {
+            addValidators(meta, headers);
+        } else {
+            Files.deleteIfExists(meta);
+        }
         try {
             HttpResponse<byte[]> resp = http.get(uri, headers);
             int status = resp.statusCode();
-            if (status == 304 && Files.isRegularFile(body)) {
-                touch(body); // revalidated: restart the TTL
-                return Files.readAllBytes(body);
+            if (status == 304) {
+                if (hasBody(body)) {
+                    touch(body); // revalidated: restart the TTL
+                    return Files.readAllBytes(body);
+                }
+                // Not modified relative to a body this cache no longer holds: the validators are
+                // worthless, so they go and the bytes are asked for outright.
+                Files.deleteIfExists(meta);
+                resp = http.get(uri, new LinkedHashMap<>(auth));
+                status = resp.statusCode();
             }
             if (status == 200) {
                 store(body, meta, resp);
@@ -129,6 +144,11 @@ public final class MavenMetadataCache {
             }
             throw networkError;
         }
+    }
+
+    /** A cached body worth validating: present and non-empty. */
+    private static boolean hasBody(Path body) throws IOException {
+        return Files.isRegularFile(body) && Files.size(body) > 0;
     }
 
     private boolean fresh(Path body) throws IOException {

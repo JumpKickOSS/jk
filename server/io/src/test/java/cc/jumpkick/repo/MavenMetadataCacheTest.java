@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,12 +35,14 @@ class MavenMetadataCacheTest {
     private URI uri;
     private AtomicInteger hits;
     private volatile int forceStatus; // when >0, reply with this status (e.g. 429/404)
+    private volatile int unconditional304s; // while >0, answer 304 whatever the request carries
     private volatile @Nullable String lastIfNoneMatch;
 
     @BeforeEach
     void start() throws IOException {
         hits = new AtomicInteger();
         forceStatus = 0;
+        unconditional304s = 0;
         lastIfNoneMatch = null;
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/g/a/maven-metadata.xml", exchange -> {
@@ -49,7 +53,10 @@ class MavenMetadataCacheTest {
                 exchange.close();
                 return;
             }
-            if (ETAG.equals(lastIfNoneMatch)) {
+            if (unconditional304s > 0) {
+                unconditional304s--;
+                exchange.sendResponseHeaders(304, -1);
+            } else if (ETAG.equals(lastIfNoneMatch)) {
                 exchange.sendResponseHeaders(304, -1);
             } else {
                 exchange.getResponseHeaders().set("ETag", ETAG);
@@ -134,5 +141,39 @@ class MavenMetadataCacheTest {
         // Conditional GET (304) — still a network hop, not a pure TTL hit.
         assertThat(hits.get()).isEqualTo(2);
         assertThat(lastIfNoneMatch).isEqualTo(ETAG);
+    }
+
+    @Test
+    void a_validator_sidecar_without_its_body_is_a_cold_fetch_that_rewrites_the_sidecar(@TempDir Path dir)
+            throws Exception {
+        MavenMetadataCache cache = cache(dir, Duration.ZERO);
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY); // 200: body + validators
+        Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
+        Path sidecar = body.resolveSibling(body.getFileName() + ".h");
+        assertThat(sidecar).content().startsWith(ETAG);
+
+        // The body goes; the sidecar survives, as a partial prune or a hand-cleared cache leaves it.
+        Files.delete(body);
+        lastIfNoneMatch = "unset";
+
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(hits.get()).as("one extra GET, not an exception").isEqualTo(2);
+        assertThat(lastIfNoneMatch)
+                .as("no validators are sent for a body that is not there")
+                .isNull();
+        assertThat(body).hasBinaryContent(BODY);
+        assertThat(sidecar).content().startsWith(ETAG); // the new response's validators
+    }
+
+    @Test
+    void a_304_with_no_cached_body_is_refetched_without_validators(@TempDir Path dir) throws Exception {
+        unconditional304s = 1; // the server says "not modified" to a request that carried no validators
+        MavenMetadataCache cache = cache(dir, Duration.ofHours(1));
+
+        assertThat(cache.fetch(uri, RepoCredential.ANONYMOUS)).isEqualTo(BODY);
+        assertThat(hits.get()).as("the 304 costs one unconditional re-GET").isEqualTo(2);
+        assertThat(lastIfNoneMatch).isNull();
+        Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
+        assertThat(body).hasBinaryContent(BODY);
     }
 }
