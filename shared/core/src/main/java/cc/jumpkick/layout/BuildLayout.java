@@ -285,6 +285,18 @@ public final class BuildLayout {
         return buildDir().resolve(CLASSES).resolve(MAIN);
     }
 
+    /**
+     * Where every main-compile freshness stamp ({@link cc.jumpkick.host.BuildStamps#JAVA}, {@code
+     * KOTLIN}, {@code GROOVY}) is written and read: the merged classes tree, beside javac's output.
+     * The write-stamp steps drop each stamp into the compile's own output — {@link #classesDir} —
+     * and every forecast that asks whether a compile is stamp-fresh reads from here. kotlinc's and
+     * groovyc's private output dirs ({@link #kotlinClassesDir}, {@link #groovyClassesDir}) never
+     * carry a stamp: a reader that looks there finds none and prices every build as a compile.
+     */
+    public Path compileStampDir() {
+        return classesDir();
+    }
+
     /** {@code target/classes/test/} — final assembled test classes. */
     public Path testClassesDir() {
         return buildDir().resolve(CLASSES).resolve(TEST);

@@ -147,7 +147,7 @@ final class ForecastLangArms {
         List<Path> freshInputs = new ArrayList<>(prepared.ktSrc());
         if (arm.mixedWithJava()) freshInputs.addAll(prepared.mainSrc());
         return FreshnessStamp.isFresh(
-                prepared.layout().classesDir(),
+                prepared.layout().compileStampDir(),
                 BuildStamps.KOTLIN,
                 freshInputs,
                 FreshnessStamp.ClasspathTokens.of(
@@ -199,7 +199,7 @@ final class ForecastLangArms {
             if (mixed) inputs.addAll(prepared.mainSrc());
             boolean fresh = !compileDepDirty
                     && !force
-                    && FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, inputs);
+                    && FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, inputs);
             return fresh
                     ? new TaskForecast.Task(TaskNames.COMPILE_GROOVY, TaskForecast.Status.CACHED, "", null)
                     : new TaskForecast.Task(
@@ -210,7 +210,7 @@ final class ForecastLangArms {
         if (!compileDepDirty
                 && !force
                 && FreshnessStamp.isFresh(
-                        layout.classesDir(),
+                        layout.compileStampDir(),
                         BuildStamps.GROOVY,
                         freshInputs,
                         FreshnessStamp.ClasspathTokens.of(ActionKey.groovycClasspathTokens(req, classpathToken)),

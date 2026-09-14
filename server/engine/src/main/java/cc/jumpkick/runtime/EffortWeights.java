@@ -723,7 +723,7 @@ public final class EffortWeights {
                         shared.java(),
                         () -> CompileSupport.collectJavaSources(
                                 compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java")));
-                javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, src);
+                javaRun = rerun || !FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.JAVA, src);
                 compileJava = javaRun
                         ? learnedCompile(timings, metrics, mod, TaskNames.COMPILE_JAVA, src.size(), projectDirs)
                         : SKIP;
@@ -732,18 +732,16 @@ public final class EffortWeights {
             if (useKotlin) {
                 List<Path> src = SourceRefs.get(
                         shared.kotlin(), () -> PlannerCompile.mainKotlinSources(project, in.dir(), compact));
-                ktRun = rerun || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, src);
+                ktRun = rerun || !FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.KOTLIN, src);
                 compileKotlin = ktRun
                         ? learnedCompile(timings, metrics, mod, TaskNames.COMPILE_KOTLIN, src.size(), projectDirs)
                         : SKIP;
             }
             boolean gvRun = false;
             if (useGroovy) {
-                // The groovy stamp lives in the merged classes dir — that is where
-                // write-stamp-groovy writes it (stamp-only freshness, like Kotlin's).
                 List<Path> src = SourceRefs.get(
                         shared.groovy(), () -> PlannerCompile.mainGroovySources(project, in.dir(), compact));
-                gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, src);
+                gvRun = rerun || !FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, src);
                 compileGroovy = gvRun
                         ? learnedCompile(timings, metrics, mod, TaskNames.COMPILE_GROOVY, src.size(), projectDirs)
                         : SKIP;
@@ -1007,17 +1005,17 @@ public final class EffortWeights {
             // Java main sources
             List<Path> javaSrc =
                     CompileSupport.collectJavaSources(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
-            if (!javaSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.JAVA, javaSrc)) {
+            if (!javaSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.JAVA, javaSrc)) {
                 return true;
             }
             // Kotlin
             List<Path> ktSrc = PlannerCompile.mainKotlinSources(project, dir, compact);
-            if (!ktSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), BuildStamps.KOTLIN, ktSrc)) {
+            if (!ktSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.KOTLIN, ktSrc)) {
                 return true;
             }
-            // Groovy (stamp in merged classes dir)
+            // Groovy
             List<Path> gvSrc = PlannerCompile.mainGroovySources(project, dir, compact);
-            if (!gvSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.classesDir(), BuildStamps.GROOVY, gvSrc)) {
+            if (!gvSrc.isEmpty() && !FreshnessStamp.looksFresh(layout.compileStampDir(), BuildStamps.GROOVY, gvSrc)) {
                 return true;
             }
             return false;
