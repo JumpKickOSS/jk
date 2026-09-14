@@ -131,16 +131,26 @@ declared_dependencies() {
 # to be in this stage at that version: a launch rebuilds the worker classpath from this POM and
 # fetches each coordinate from the repository, so a worker whose POM declares nothing, or names a
 # `cc.jumpkick` artifact the repository does not serve, cannot start once installed. A worker is
-# an artifact whose source module lives under plugins/ in this checkout.
+# a `cc.jumpkick:jk-<name>` artifact whose source module is plugins/<name> in this checkout — the
+# group matters: `cc.jumpkick.guards:android` is a rule pack that shares a name with the
+# jk-android worker's module and declares nothing, rightly.
 while IFS= read -r -d '' pom; do
   ver_dir="$(dirname "$pom")"
-  art="$(basename "$(dirname "$ver_dir")")"
+  art_dir="$(dirname "$ver_dir")"
+  art="$(basename "$art_dir")"
   ver="$(basename "$ver_dir")"
-  [[ -f "$ROOT/plugins/${art#jk-}/jk.toml" ]] || continue
-  declared="$(declared_dependencies "$pom" | grep -v '|test$' || true)"
-  if [[ -z "$declared" ]]; then
+  [[ "$art_dir" == "$STAGE/cc/jumpkick/$art" && "$art" == jk-* && -f "$ROOT/plugins/${art#jk-}/jk.toml" ]] || continue
+  # A stub is a POM that declares nothing at all. A self-contained worker (its runtime closure
+  # packed into the jar) rightly declares only test- or provided-scope dependencies: the build's
+  # POM, with nothing for a launch to fetch.
+  if [[ -z "$(declared_dependencies "$pom")" ]]; then
     echo "publish-maven-repo: $art:$ver declares no dependencies in $pom — a worker POM names what the worker runs on; publish the POM the build wrote, not a stub" >&2
     exit 2
+  fi
+  declared="$(declared_dependencies "$pom" | grep -v '|test$' | grep -v '|provided$' || true)"
+  if [[ -z "$declared" ]]; then
+    echo "checked $art:$ver (self-contained: nothing to fetch at launch)"
+    continue
   fi
   while IFS='|' read -r g a v _; do
     [[ "$g" == cc.jumpkick* ]] || continue

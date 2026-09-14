@@ -93,6 +93,9 @@ element() {
 artifact . jk-alpha "$VERSION"          # published at this version; the repository lists two others
 artifact . jk-beta 0.13.2               # held at an older version only: metadata untouched
 artifact guards spring "$VERSION"       # nested group, new to the repository (its read is a 404)
+# A rule pack whose name is a worker module's (plugins/android exists): a pack, in the guards
+# group, declares nothing, and the worker-POM check must not read it as the jk-android worker.
+artifact guards android "$VERSION"
 # A plugin worker (its module is plugins/image-builder in this checkout) with the POM the build
 # writes: what it declares, first-party rungs included, plus a test-scope first-party dependency
 # that a launch never fetches and the check therefore ignores.
@@ -101,6 +104,12 @@ artifact . jk-image-builder "$VERSION" "$(worker_pom \
   '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-plugin-sdk</artifactId><version>0.1.0</version></dependency>' \
   '<dependency><groupId>cc.jumpkick</groupId><artifactId>jk-host</artifactId><version>9.9.9</version><scope>test</scope></dependency>')"
 artifact . jk-plugin-sdk 0.1.0          # the first-party rung the worker declares, staged
+# A self-contained worker (plugins/test-runner): its closure is packed into the jar, so the POM
+# the build writes declares only provided- and test-scope dependencies — nothing a launch fetches,
+# and not a stub.
+artifact . jk-test-runner "$VERSION" "$(worker_pom \
+  '<dependency><groupId>org.junit.platform</groupId><artifactId>junit-platform-launcher</artifactId><version>6.1.3</version><scope>provided</scope></dependency>' \
+  '<dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>6.1.3</version><scope>test</scope></dependency>')"
 metadata cc/jumpkick/jk-alpha 0.13.1 0.13.10
 metadata cc/jumpkick/jk-beta 0.13.1
 
@@ -157,6 +166,10 @@ rm -r "$LOCAL/jk-formatter"
 artifact . jk-formatter "$VERSION" '<project><dependencies></dependencies></project>'
 if publish "$WORK/stage-stub"; then fail "a worker POM with no declared dependencies was accepted"; fi
 grep -q "jk-formatter:$VERSION declares no dependencies" "$WORK/out.log" || fail "the stub worker POM was not refused by name"
+grep -q "checked jk-test-runner:$VERSION (self-contained" "$WORK/out.log" 2>/dev/null || {
+  publish "$STAGE" || fail "the stage-only run failed"
+  grep -q "checked jk-test-runner:$VERSION (self-contained" "$WORK/out.log" || fail "a self-contained worker's provided/test-only POM was not accepted"
+}
 rm -r "$LOCAL/jk-formatter"
 
 # A first-party library is not a worker: its POM shape is its own business.
