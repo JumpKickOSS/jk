@@ -74,7 +74,9 @@ public final class EngineTestSupport {
                     EngineFleet.stopAll(true);
                 }
             } catch (IOException e) {
-                throw new IllegalStateException("failed to materialize engine jar into JK_HOME", e);
+                // The cause's text rides in the message: the test runner prints a container failure's
+                // message and nothing below it, and a bare "failed to materialize" names no path.
+                throw new IllegalStateException("failed to materialize engine jar into JK_HOME: " + e, e);
             }
             MATERIALIZED.set(true);
         }
