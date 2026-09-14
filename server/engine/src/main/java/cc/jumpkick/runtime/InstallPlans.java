@@ -27,6 +27,7 @@ import cc.jumpkick.publish.PublishablePom;
 import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
+import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.LockGraph;
@@ -286,6 +287,7 @@ public final class InstallPlans {
 
         writeToLocalStore(cacheDir, jarRelPath, jar);
         writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
+        if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
 
         if (installToMavenLocal(p)) {
             // m2Dir is caller-resolved (--m2-dir redirects it).
@@ -522,6 +524,24 @@ public final class InstallPlans {
             out.put(m.group() + ":" + m.name(), m.version());
         }
         return out;
+    }
+
+    /**
+     * Walk the shelved worker's POM graph now, while the remotes are reachable, so every POM and
+     * jar its launch needs is in the store before the first fork — a fork resolves from disk and
+     * never over the network. A closure that does not resolve fails the install here, naming the
+     * gap, rather than the worker later.
+     */
+    static void stageWorkerClosure(Coordinate coord, Path cacheDir, String jarRelPath) throws IOException {
+        Path shelved = localStore(cacheDir)
+                .locate(jarRelPath)
+                .orElseThrow(() -> new IOException("worker " + coord + " was not shelved under repos/jk-local"));
+        try {
+            PomRuntimeClasspath.stage(shelved);
+        } catch (IllegalStateException e) {
+            throw new IOException(
+                    "worker " + coord + " installed, but its launch classpath does not resolve: " + e.getMessage(), e);
+        }
     }
 
     /**

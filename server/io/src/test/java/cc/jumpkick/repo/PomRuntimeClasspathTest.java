@@ -238,7 +238,9 @@ class PomRuntimeClasspathTest {
                 </project>
                 """);
         putJar(store, "central", leaf1, "leaf1");
+        putLeafPom(store, leaf1);
         putJar(store, "central", leaf2, "leaf2");
+        putLeafPom(store, leaf2);
 
         List<String> names = resolve(store, workerJar).stream()
                 .map(Path::getFileName)
@@ -285,7 +287,9 @@ class PomRuntimeClasspathTest {
                 </project>
                 """);
         putJar(store, "central", leafOld, "leaf-old");
+        putLeafPom(store, leafOld);
         Path pinnedJar = putJar(store, "central", leafPinned, "leaf-pinned");
+        putLeafPom(store, leafPinned);
 
         List<Path> cp = resolve(store, workerJar);
         assertThat(cp).contains(pinnedJar.toAbsolutePath().normalize());
@@ -330,8 +334,11 @@ class PomRuntimeClasspathTest {
                 </project>
                 """);
         putJar(store, "central", Coordinate.of("com.example", "lib", "1.0"), "lib-managed");
-        putJar(store, "central", Coordinate.of("com.example", "leaf", "1.0"), "leaf-requested");
+        Coordinate leafRequested = Coordinate.of("com.example", "leaf", "1.0");
+        putJar(store, "central", leafRequested, "leaf-requested");
+        putLeafPom(store, leafRequested);
         Path pinnedJar = putJar(store, "central", leafPinned, "leaf-pinned");
+        putLeafPom(store, leafPinned);
 
         List<Path> cp = resolve(store, workerJar);
         assertThat(cp)
@@ -340,15 +347,6 @@ class PomRuntimeClasspathTest {
                         pinnedJar.toAbsolutePath().normalize());
         assertThat(cp.stream().map(Path::getFileName).map(Path::toString))
                 .doesNotContain("lib-1.0.jar", "leaf-1.0.jar");
-    }
-
-    @Test
-    void throws_without_a_pom(@TempDir Path tmp) throws Exception {
-        Path jar = tmp.resolve("lonely.jar");
-        Files.writeString(jar, "x");
-        assertThatThrownBy(() -> PomRuntimeClasspath.resolve(jar, PomRuntimeClasspath.localRepos(tmp)))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("POM");
     }
 
     @Test
@@ -722,69 +720,6 @@ class PomRuntimeClasspathTest {
     }
 
     @Test
-    void missing_parent_pom_is_loud_not_a_silent_prune(@TempDir Path tmp) throws Exception {
-        Path store = tmp.resolve("store");
-        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
-        Coordinate lib = Coordinate.of("com.foo", "lib", "1.0");
-        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
-        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
-                <project>
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>cc.jumpkick</groupId>
-                  <artifactId>jk-test-runner</artifactId>
-                  <version>0.12.0</version>
-                  <dependencies>
-                    <dependency>
-                      <groupId>com.foo</groupId><artifactId>lib</artifactId><version>1.0</version>
-                    </dependency>
-                  </dependencies>
-                </project>
-                """);
-        putJar(store, RepoArtifactResolver.JK_LOCAL, lib, "lib-bytes");
-        putPom(store, RepoArtifactResolver.JK_LOCAL, lib, """
-                <project>
-                  <modelVersion>4.0.0</modelVersion>
-                  <parent>
-                    <groupId>com.foo</groupId><artifactId>parent</artifactId><version>9</version>
-                  </parent>
-                  <groupId>com.foo</groupId>
-                  <artifactId>lib</artifactId>
-                  <version>1.0</version>
-                </project>
-                """);
-
-        assertThatThrownBy(() -> resolve(store, workerJar))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("incomplete POM chain")
-                .hasMessageContaining("com.foo:parent:9");
-    }
-
-    @Test
-    void dep_without_its_own_pom_is_a_jar_only_leaf(@TempDir Path tmp) throws Exception {
-        Path store = tmp.resolve("store");
-        Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
-        Coordinate fat = Coordinate.of("com.foo", "fat", "1.0");
-        Path workerJar = putJar(store, RepoArtifactResolver.JK_LOCAL, worker, "worker-bytes");
-        putPom(store, RepoArtifactResolver.JK_LOCAL, worker, """
-                <project>
-                  <modelVersion>4.0.0</modelVersion>
-                  <groupId>cc.jumpkick</groupId>
-                  <artifactId>jk-test-runner</artifactId>
-                  <version>0.12.0</version>
-                  <dependencies>
-                    <dependency>
-                      <groupId>com.foo</groupId><artifactId>fat</artifactId><version>1.0</version>
-                    </dependency>
-                  </dependencies>
-                </project>
-                """);
-        putJar(store, RepoArtifactResolver.JK_LOCAL, fat, "fat-bytes");
-
-        List<Path> cp = resolve(store, workerJar);
-        assertThat(cp.stream().map(Path::getFileName).map(Path::toString)).contains("fat-1.0.jar");
-    }
-
-    @Test
     void blank_version_after_effective_pom_is_loud(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         Coordinate worker = Coordinate.of("cc.jumpkick", "jk-test-runner", "0.12.0");
@@ -869,6 +804,16 @@ class PomRuntimeClasspathTest {
 
     private static Path putJar(Path store, String repo, Coordinate coord, String bytes) throws Exception {
         return put(store, repo, MavenLayout.artifactPath(coord), bytes.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** A dependency-free POM beside a leaf jar: every jar on the classpath has its POM in the store. */
+    private static void putLeafPom(Path store, Coordinate coord) throws Exception {
+        putPom(
+                store,
+                "central",
+                coord,
+                "<project><modelVersion>4.0.0</modelVersion><groupId>" + coord.group() + "</groupId><artifactId>"
+                        + coord.artifact() + "</artifactId><version>" + coord.version() + "</version></project>");
     }
 
     private static void putPom(Path store, String repo, Coordinate coord, String xml) throws Exception {

@@ -36,6 +36,12 @@ import org.jspecify.annotations.Nullable;
  * {@code repos/central} and {@code repos/google}, fetching a miss from the HTTP remotes — the
  * built-in repository set a lock resolves against, Google's Android Maven included, so a worker
  * whose closure lives only there (the Android worker's apksig) resolves from an empty store.
+ *
+ * <p>The whole POM graph a launch walks is staged into the store when the worker is installed
+ * ({@link #stage}), so a fork resolves from disk: a launch that still finds a POM missing is an
+ * install that did not finish, and it fails naming the coordinate and the install, rather than
+ * treating the artifact as a jar without dependencies and letting the worker die later on a class
+ * its pruned subtree carried.
  */
 public final class PomRuntimeClasspath {
 
@@ -124,6 +130,25 @@ public final class PomRuntimeClasspath {
         return resolved;
     }
 
+    /**
+     * Stage the launch classpath of a freshly shelved {@code workerJar}: walk its POM graph now,
+     * with the remotes reachable, so every POM, parent, imported BOM and jar the walk needs is in
+     * the store before the first fork asks for it. What the install does for each worker it
+     * shelves; the launch classpath it returns is the one a fork will rebuild.
+     *
+     * @throws IllegalStateException when the closure does not resolve — the install fails here,
+     *     naming the gap, instead of the worker failing later
+     */
+    public static List<Path> stage(Path workerJar) {
+        Path worker = workerJar.toAbsolutePath().normalize();
+        Path pom = pomFor(worker);
+        if (pom != null) {
+            String key = resolveCacheKey(worker, pom, extraStoreFor(worker));
+            if (key != null) RESOLVE_CACHE.remove(key);
+        }
+        return resolve(worker);
+    }
+
     private static @Nullable String resolveCacheKey(Path worker, Path pom, @Nullable Path extra) {
         try {
             return worker + "|" + Files.size(worker) + "|"
@@ -163,11 +188,22 @@ public final class PomRuntimeClasspath {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("failed reading worker POM " + pom + ": " + e.getMessage(), e);
-        } catch (RuntimeException | IOException e) {
+        } catch (IOException e) {
+            // A remote leg that could not be reached: the walk needed something the store lacks.
+            throw new IllegalStateException(
+                    "failed resolving the launch classpath of worker " + worker + " from " + pom + ": " + e.getMessage()
+                            + " — " + STAGING_REMEDY,
+                    e);
+        } catch (RuntimeException e) {
             throw new IllegalStateException("failed reading worker POM " + pom + ": " + e.getMessage(), e);
         }
         return out;
     }
+
+    /** What to do when a launch finds the store short of a POM the install should have staged. */
+    static final String STAGING_REMEDY = "`jk install` stages a worker's whole POM graph into the store;"
+            + " run it again with the network reachable (from the jk checkout for a jk-local worker), or"
+            + " `jk storage clean --workers` so the next build fetches the published worker afresh";
 
     /**
      * Fetch the runtime closure of {@code root} (jar + POM per compile/runtime dependency, parents
@@ -563,21 +599,29 @@ public final class PomRuntimeClasspath {
             if (claim.optional()) return null;
             String names =
                     repos.repos().stream().map(MavenRepo::name).distinct().collect(Collectors.joining(", "));
-            throw new IllegalStateException(
-                    "worker runtime dependency " + key + " was not found in the " + names + " repos");
+            throw new IllegalStateException("worker runtime dependency " + key + " was not found in the " + names
+                    + " repos — " + STAGING_REMEDY);
         }
         out.add(art.get().fetched().cachePath().toAbsolutePath().normalize());
         EffectivePom child;
         try {
             child = builder.build(coord);
         } catch (MavenRepo.ArtifactNotFoundException e) {
-            // Only the dep's OWN missing POM makes it a jar-only leaf. A missing parent or
-            // imported BOM anywhere in its chain must stay loud — swallowing it silently
-            // prunes the dep's whole transitive subtree and the worker dies later with
-            // NoClassDefFoundError instead of a resolution-time error naming the gap.
-            if (coord.equals(e.coordinate())) return null;
+            // A jar whose POM is not in the store is not a jar without dependencies: treating it
+            // as one prunes its whole transitive subtree and the worker dies later with
+            // NoClassDefFoundError. The install stages every POM the walk needs, so a miss here
+            // — the dep's own POM or a parent / imported BOM in its chain — is an install that
+            // did not finish, and the launch says so.
+            if (coord.equals(e.coordinate())) {
+                throw new IllegalStateException(
+                        "worker runtime dependency " + key + " has its jar in the store but no POM (" + e.getMessage()
+                                + ") — " + STAGING_REMEDY,
+                        e);
+            }
             throw new IllegalStateException(
-                    "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage(), e);
+                    "worker dependency " + key + " has an incomplete POM chain: " + e.getMessage() + " — "
+                            + STAGING_REMEDY,
+                    e);
         }
         if (child.relocation() != null && child.relocation().redirects(coord)) {
             Coordinate target = state.pinned(child.relocation().applyTo(coord));
