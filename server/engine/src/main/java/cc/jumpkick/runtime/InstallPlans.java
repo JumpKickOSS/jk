@@ -29,6 +29,7 @@ import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.resolver.LockGraph;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildStage;
@@ -39,7 +40,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -356,10 +359,62 @@ public final class InstallPlans {
         // appear on the sidecar / install POM — otherwise PomRuntimeClasspath looks for a
         // coordinate whose classes are already inside the jar.
         JkBuild forPom = omitVendoredWorkerSiblings(project, moduleRoot);
+        Lockfile lock = lockOf(moduleRoot);
         String pomXml = PublishablePom.render(
-                        forPom, null, WorkspaceResolve.siblingCoordinates(moduleRoot), lockPins(moduleRoot))
+                        forPom,
+                        null,
+                        WorkspaceResolve.siblingCoordinates(moduleRoot),
+                        lockPins(lock),
+                        lockClosure(forPom, lock))
                 .xml();
         return pomXml.getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The runtime closure the lock resolved for {@code forPom}: every artifact reachable from its
+     * MAIN / RUNTIME / EXPORT declarations along the lock's dependency edges, at the locked
+     * version. The installed POM manages these versions so a classpath rebuilt from it — a worker
+     * launch — is the closure the module was compiled and tested against, not whatever each
+     * transitive POM asks for. Empty when the module is unlocked or declares nothing the lock
+     * carries.
+     */
+    static List<Coordinate> lockClosure(JkBuild forPom, @Nullable Lockfile lock) {
+        if (lock == null) return List.of();
+        LockGraph graph = LockGraph.forLock(lock);
+        Map<String, Coordinate> out = new LinkedHashMap<>();
+        Deque<Lockfile.Artifact> queue = new ArrayDeque<>();
+        for (Scope scope : List.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)) {
+            for (Dependency d : forPom.dependencies().of(scope)) {
+                if (d.isWorkspace()) continue;
+                Lockfile.Artifact root = graph.artifact(d.packageKey());
+                if (root == null) root = graph.artifact(d.module());
+                if (root != null && !out.containsKey(root.name())) {
+                    out.put(root.name(), root.coordinate());
+                    queue.add(root);
+                }
+            }
+        }
+        while (!queue.isEmpty()) {
+            Lockfile.Artifact current = queue.poll();
+            for (String child : graph.forward(current.name())) {
+                Lockfile.Artifact next = graph.artifact(child);
+                if (next == null || out.containsKey(next.name())) continue;
+                out.put(next.name(), next.coordinate());
+                queue.add(next);
+            }
+        }
+        return List.copyOf(out.values());
+    }
+
+    /** The module's lock, or null when it has none or it does not read. */
+    static @Nullable Lockfile lockOf(Path moduleDir) {
+        try {
+            Path lockFile = LockPaths.lockFile(moduleDir);
+            if (lockFile == null || !Files.isRegularFile(lockFile)) return null;
+            return LockfileReader.read(lockFile);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -449,26 +504,24 @@ public final class InstallPlans {
 
     /** Exact versions from the module's lock, keyed by {@code group:artifact}. Empty when unlocked. */
     static Map<String, String> lockPins(Path moduleDir) {
-        try {
-            Path lockFile = LockPaths.lockFile(moduleDir);
-            if (lockFile == null || !Files.isRegularFile(lockFile)) return Map.of();
-            Lockfile lock = LockfileReader.read(lockFile);
-            Map<String, String> out = new LinkedHashMap<>();
-            for (Lockfile.Artifact a : lock.artifacts()) {
-                if (a.name() != null
-                        && !a.name().isBlank()
-                        && a.version() != null
-                        && !a.version().isBlank()) {
-                    out.put(a.name(), a.version());
-                }
+        return lockPins(lockOf(moduleDir));
+    }
+
+    static Map<String, String> lockPins(@Nullable Lockfile lock) {
+        if (lock == null) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Lockfile.Artifact a : lock.artifacts()) {
+            if (a.name() != null
+                    && !a.name().isBlank()
+                    && a.version() != null
+                    && !a.version().isBlank()) {
+                out.put(a.name(), a.version());
             }
-            for (Lockfile.ModuleEntry m : lock.modules()) {
-                out.put(m.group() + ":" + m.name(), m.version());
-            }
-            return out;
-        } catch (Exception e) {
-            return Map.of();
         }
+        for (Lockfile.ModuleEntry m : lock.modules()) {
+            out.put(m.group() + ":" + m.name(), m.version());
+        }
+        return out;
     }
 
     /**

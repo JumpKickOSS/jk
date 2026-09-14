@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.publish;
 
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
@@ -8,6 +9,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -15,7 +17,8 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Publish-grade {@code pom.xml}: coords, standard scopes, BOM import for PLATFORM; no
+ * Publish-grade {@code pom.xml}: coords, standard scopes, BOM import for PLATFORM, and — for a
+ * locally installed POM — the lock's runtime closure as managed versions; no
  * repositories/build/profiles. PROCESSOR deps are dropped. Lighter than {@code PomExporter}.
  */
 public final class PublishablePom {
@@ -85,10 +88,28 @@ public final class PublishablePom {
             @Nullable Metadata meta,
             @Nullable Set<String> workspaceSiblings,
             @Nullable Map<String, String> locked) {
+        return render(jkBuild, meta, workspaceSiblings, locked, List.of());
+    }
+
+    /**
+     * As {@link #render(JkBuild, Metadata, Set, Map)}, with {@code closure} — the module's locked
+     * runtime closure, direct and transitive — written under {@code <dependencyManagement>} as
+     * exact managed versions. {@code locked} pins what the POM declares; {@code closure} pins what
+     * those declarations pull in, so a classpath rebuilt from the POM by a Maven-style walk takes
+     * every transitive at the version the lock resolved rather than the version each transitive
+     * POM asks for. An empty closure writes no managed entries beyond the platform imports.
+     */
+    public static Pom render(
+            JkBuild jkBuild,
+            @Nullable Metadata meta,
+            @Nullable Set<String> workspaceSiblings,
+            @Nullable Map<String, String> locked,
+            @Nullable Collection<Coordinate> closure) {
         Objects.requireNonNull(jkBuild, "jkBuild");
         if (meta == null) meta = Metadata.empty();
         if (workspaceSiblings == null) workspaceSiblings = Set.of();
         if (locked == null) locked = Map.of();
+        if (closure == null) closure = List.of();
 
         StringBuilder sb = new StringBuilder(512);
         PomXml.appendPreamble(sb);
@@ -116,7 +137,8 @@ public final class PublishablePom {
         appendScm(sb, meta.scm());
 
         Map<String, String> pins = locked;
-        PomXml.appendDependencyManagement(sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d, pins));
+        PomXml.appendDependencyManagement(
+                sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d, pins), closure);
         appendDependencies(sb, jkBuild, workspaceSiblings, pins);
 
         sb.append("</project>\n");

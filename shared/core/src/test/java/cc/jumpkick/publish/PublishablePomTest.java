@@ -3,6 +3,7 @@ package cc.jumpkick.publish;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
@@ -217,5 +218,54 @@ class PublishablePomTest {
         assertThat(xml).contains("<artifactId>lib</artifactId>");
         assertThat(xml).contains("<version>9.9.9</version>");
         assertThat(xml).doesNotContain("LATEST");
+    }
+
+    @Test
+    void the_locked_closure_is_managed_beside_the_platform_imports() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(new Dependency("com.acme:lib", VersionSelector.parse("^1.0"))));
+        byScope.put(Scope.PLATFORM, List.of(new Dependency("org.example:bom", VersionSelector.parse("=2.0"))));
+        List<Coordinate> closure = List.of(
+                Coordinate.of("com.acme", "lib", "1.4"),
+                Coordinate.of("com.acme", "leaf", "3.0"),
+                new Coordinate("io.netty", "netty-native", "4.2.0", "linux-x86_64", "jar"),
+                new Coordinate("androidx.core", "core", "1.17.0", null, "aar"));
+
+        String xml = PublishablePom.render(
+                        new JkBuild(
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
+                        null,
+                        Set.of(),
+                        Map.of("com.acme:lib", "1.4"),
+                        closure)
+                .xml();
+
+        String managed = xml.substring(xml.indexOf("<dependencyManagement>"), xml.indexOf("</dependencyManagement>"));
+        assertThat(managed).contains("<artifactId>bom</artifactId>").contains("<scope>import</scope>");
+        assertThat(managed)
+                .contains("<artifactId>lib</artifactId>\n        <version>1.4</version>")
+                .contains("<artifactId>leaf</artifactId>\n        <version>3.0</version>")
+                .contains("<artifactId>netty-native</artifactId>\n        <version>4.2.0</version>\n"
+                        + "        <classifier>linux-x86_64</classifier>")
+                .contains("<artifactId>core</artifactId>\n        <version>1.17.0</version>\n"
+                        + "        <type>aar</type>");
+        // The declarations themselves are unchanged: the closure manages, it does not declare.
+        String declared = xml.substring(xml.indexOf("<dependencies>", xml.indexOf("</dependencyManagement>")));
+        assertThat(declared).contains("<artifactId>lib</artifactId>").doesNotContain("<artifactId>leaf</artifactId>");
+    }
+
+    @Test
+    void an_empty_closure_writes_no_dependency_management_without_platforms() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(new Dependency("com.acme:lib", VersionSelector.parse("=1.0"))));
+        String xml = PublishablePom.render(
+                        new JkBuild(
+                                new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope)),
+                        null,
+                        Set.of(),
+                        Map.of(),
+                        List.of())
+                .xml();
+        assertThat(xml).doesNotContain("<dependencyManagement>");
     }
 }

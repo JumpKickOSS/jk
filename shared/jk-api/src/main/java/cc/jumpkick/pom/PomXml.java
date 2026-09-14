@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.pom;
 
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -109,7 +111,22 @@ public final class PomXml {
      */
     public static void appendDependencyManagement(
             StringBuilder sb, List<Dependency> platforms, Function<Dependency, String> version) {
-        if (platforms.isEmpty()) return;
+        appendDependencyManagement(sb, platforms, version, List.of());
+    }
+
+    /**
+     * As {@link #appendDependencyManagement(StringBuilder, List, Function)}, then one managed
+     * {@code <dependency>} per coordinate of {@code closure} — the exact version (with classifier
+     * and non-jar type when present) a consumer of this POM must use for that module wherever it
+     * turns up in the transitive tree. A locally installed worker POM pins its lock's whole runtime
+     * closure this way, so a launch rebuilt from the POM runs on the versions the build tested.
+     */
+    public static void appendDependencyManagement(
+            StringBuilder sb,
+            List<Dependency> platforms,
+            Function<Dependency, String> version,
+            Collection<Coordinate> closure) {
+        if (platforms.isEmpty() && closure.isEmpty()) return;
         sb.append("  <dependencyManagement>\n    <dependencies>\n");
         for (Dependency d : platforms) {
             sb.append("      <dependency>\n");
@@ -118,6 +135,19 @@ public final class PomXml {
             sb.append("        <version>").append(escape(version.apply(d))).append("</version>\n");
             sb.append("        <type>pom</type>\n");
             sb.append("        <scope>import</scope>\n");
+            sb.append("      </dependency>\n");
+        }
+        for (Coordinate c : closure) {
+            sb.append("      <dependency>\n");
+            sb.append("        <groupId>").append(escape(c.group())).append("</groupId>\n");
+            sb.append("        <artifactId>").append(escape(c.artifact())).append("</artifactId>\n");
+            sb.append("        <version>").append(escape(c.version())).append("</version>\n");
+            if (!"jar".equalsIgnoreCase(c.type())) {
+                sb.append("        <type>").append(escape(c.type())).append("</type>\n");
+            }
+            if (c.classifier() != null && !c.classifier().isBlank()) {
+                sb.append("        <classifier>").append(escape(c.classifier())).append("</classifier>\n");
+            }
             sb.append("      </dependency>\n");
         }
         sb.append("    </dependencies>\n  </dependencyManagement>\n");
