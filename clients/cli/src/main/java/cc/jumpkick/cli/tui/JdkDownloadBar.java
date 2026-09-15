@@ -78,6 +78,16 @@ public final class JdkDownloadBar implements AutoCloseable {
     }
 
     /**
+     * A settled line above the bar — a warning that arrives mid-download — so the bar's frames
+     * never interleave with it. False when the bar paints nothing ({@code --no-progress}, a
+     * machine-consumed stdout, or finished): the caller prints the line itself, as it would with
+     * no bar open.
+     */
+    public boolean printAbove(String text) {
+        return line.printAbove(text);
+    }
+
+    /**
      * Wipe the row and restore the cursor. The caller prints the final result line (e.g. "available
      * at …"), which takes the cleared row's place on screen.
      */

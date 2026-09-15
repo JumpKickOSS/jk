@@ -3,11 +3,13 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.jdk.InstalledJdk;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class JdkInstallViewTest {
@@ -34,6 +36,59 @@ class JdkInstallViewTest {
         assertThat(out.indexOf("pins JDK")).isLessThan(out.indexOf("Downloading"));
         assertThat(out.indexOf("Downloading")).isLessThan(out.indexOf("Installing"));
         assertThat(out.indexOf("Installing")).isLessThan(out.indexOf("has been installed"));
+    }
+
+    @Test
+    void a_warning_during_the_download_is_a_line_between_the_phases_in_plain_mode() throws Exception {
+        String out = NoAnsi.forced(() -> Capture.stdout(() -> {
+            CliOutput.beginCommand(false);
+            try (JdkInstallView view = new JdkInstallView(null)) {
+                view.onDownloadStart("Temurin 21", 1_000);
+                view.onDownloadProgress(500, 1_000);
+                view.warn("the feed is unreachable; using the cached index");
+                view.onExtractStart("Temurin 21");
+                view.onInstalled(new InstalledJdk("temurin-21.0.12", HOME));
+            }
+        }));
+        assertThat(out.split("\\n"))
+                .contains("! the feed is unreachable; using the cached index")
+                .as("the warning is a line of its own, not a fragment of a status line");
+        assertThat(out.indexOf("Downloading")).isLessThan(out.indexOf("the feed is unreachable"));
+        assertThat(out.indexOf("the feed is unreachable")).isLessThan(out.indexOf("Installing"));
+        assertThat(out.indexOf("Installing")).isLessThan(out.indexOf("has been installed"));
+    }
+
+    @Test
+    void a_warning_during_a_live_bar_settles_above_it_and_the_bar_repaints_intact() throws Exception {
+        String out = NoAnsi.forcedAnsi(() -> Capture.stdout(() -> {
+            CliOutput.beginCommand(false);
+            try (JdkInstallView view = new JdkInstallView(null)) {
+                view.onDownloadStart("Temurin 21", 1_000);
+                view.onDownloadProgress(500, 1_000);
+                view.warn("the feed is unreachable; using the cached index");
+                view.onDownloadProgress(1_000, 1_000);
+                view.onInstalled(new InstalledJdk("temurin-21.0.12", HOME));
+            }
+        }));
+        // Rows are what the newline separates; frames repaint one row with \r and never end it.
+        List<String> rows = List.of(out.split("\\n"));
+        int warning = -1;
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).contains("the feed is unreachable")) warning = i;
+        }
+        assertThat(warning).as("the warning ends a row of its own\n%s", out).isNotNegative();
+        String warningRow = TestAnsi.strip(rows.get(warning));
+        // Whatever the row held before the wipe was erased in place; the settled text is the warning alone.
+        assertThat(warningRow.substring(warningRow.lastIndexOf('\r') + 1))
+                .endsWith(" the feed is unreachable; using the cached index")
+                .doesNotContain("Downloading");
+        String after = String.join("\n", rows.subList(warning + 1, rows.size()));
+        assertThat(TestAnsi.strip(after))
+                .as("the bar repaints below the warning and the done line settles last")
+                .contains("Downloading Temurin 21")
+                .contains("Temurin 21 has been installed to /opt/jdks/temurin-21.0.12");
+        assertThat(TestAnsi.strip(after).indexOf("Downloading"))
+                .isLessThan(TestAnsi.strip(after).indexOf("has been installed"));
     }
 
     @Test

@@ -184,6 +184,28 @@ final class LiveLine implements AutoCloseable, LiveRegion {
     }
 
     /**
+     * Print {@code text} as a settled line above the live row: the row is wiped, the line takes
+     * its place, and the next frame repaints below it — the transcript reads as the line, then an
+     * intact row. Plain mode prints the line between its status lines. False when silent or
+     * finished, in which case nothing is written and the caller owns the line.
+     */
+    synchronized boolean printAbove(String text) {
+        if (closed || silent) return false;
+        if (animate) {
+            if (drawn) {
+                out.print("\r");
+                out.print(Ansi.ERASE_LINE_TO_END);
+            }
+            out.println(text);
+            repaint();
+            return true;
+        }
+        out.println(text);
+        out.flush();
+        return true;
+    }
+
+    /**
      * Wipe the row and give the cursor back. The caller prints its own result line afterwards, which
      * takes the cleared row's place on screen.
      *
