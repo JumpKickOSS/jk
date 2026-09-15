@@ -44,13 +44,13 @@ This project is JumpKick. The following habits are wrong here:
 | Add or edit `pom.xml`, `build.gradle`, `build.gradle.kts`, `settings.gradle` | Edit **`jk.toml`**. Use `jk add` / `jk remove` (or MCP `jk_deps`, preview first). |
 | Run `mvn`, `./mvnw`, `gradle`, `./gradlew` | `jk build`, `jk test`, `jk run`. Wrappers `jk mvn` / `jk gradle` exist only for **unmigrated** Maven/Gradle trees. |
 | `mvn dependency:tree` / `gradle dependencies` | `jk tree`, `jk why <artifact>` (MCP `jk_why`). |
-| `mvn versions:…` / Gradle `resolutionStrategy` | `jk outdated` (read-only), then `jk update` to re-lock **on purpose**. |
+| `mvn versions:…` / Gradle `resolutionStrategy` | `jk outdated` (read-only), then `jk update` to bump the pins in `jk.toml` (same major; `--major` to cross) and relock. |
 | Re-resolve on every compile | **`jk-lock.toml` is law.** `jk build` does not re-resolve when the lock is valid. Commit the lockfile. |
 | Per-module lockfiles | **One** `jk-lock.toml` at the workspace (or standalone) root. |
 | `module/target` or `module/build` as the output root | Workspace outputs: `{workspace}/target/{module-rel}/`. Standalone: `{project}/target/`. |
 | `jdk = 17` or `jdk = 21` just to emit older bytecode | **`java = 17`** / **`java = 21`**. `java = N` is language + `--release`. `jdk =` selects an *install* (rare). JumpKick already needs JDK 25+ to run. |
 | Copy a `plugins { }` Gradle block or a Maven `<build><plugins>` soup | First-party tables in `jk.toml` (`[spring-boot]`, `[quarkus]`, …) or a real JumpKick plugin. No build-script programming language. |
-| Hand-edit versions in a BOM by feel | Platform BOMs are declared; JumpKick enforces them. `jk update` within ranges. |
+| Hand-edit versions in a BOM by feel | Platform BOMs are declared; JumpKick enforces them. `jk update` bumps the BOM pin like any other. |
 | `spotlessApply` / `ktlint` / `google-java-format` Gradle plugins | **`jk format`** (Palantir + ktfmt; import hygiene on). `jk format --check` in CI. |
 | `sdk install java` as the default teaching path | `jk jdk list` / `install` / `pin` when you truly need a specific runtime. Prefer `java = N`. |
 | Assume a clean `target/` means a full rebuild | Action cache restores outputs. `jk clean` deletes `target/`; unchanged inputs come back from cache. `jk explain` forecasts hits/misses. |
@@ -68,7 +68,7 @@ docs and your commands should use the **canonical** names.
 | **`jk.toml` is data** | TOML manifest. No Groovy/Kotlin DSL, no XML POM to program. |
 | **`jk-lock.toml` is law** | Exact versions + checksums. Commit it. `jk build` / `jk test` / `jk run` do not re-resolve when it is valid. |
 | **`java = N` not `jdk =`** | Language + bytecode (`--release`). Default 25. Host JDK 25 cross-compiles 17/21. |
-| **Newest stable by default** | Scaffolds and `jk update` prefer current stables, not a frozen mid-LTS stack. |
+| **Newest stable by default** | A version in `jk.toml` is an exact pin. Scaffolds and `jk add` write today's stable as a number; `jk update` bumps it. `^` / `~` / ranges / `latest` are opt-in. |
 | **Cache, don't recompute** | Content-addressed store + action cache. Git worktrees and branch switches reuse hits for unchanged inputs — that is why JumpKick is fast across checkouts. |
 | **One lockfile per workspace** | Root `jk.toml` lists members; members inherit identity. |
 | **Client / engine** | Slim native `jk`. Heavy work in a memory-capped resident JVM. Starts on first use. Hosts the web dashboard and MCP. |
@@ -86,11 +86,11 @@ Bind once on MCP (`jk_bind` with the project directory), then omit `dir`.
 |------|-----|-----|
 | Playbook (this page) | `jk manual` | `jk_manual` · `jk://manual` |
 | Scaffold | `jk new my-app` · `jk new -t spring-boot/hello my-api` | `jk_new` (`preview=true` first; `action=templates` lists ids) |
-| Add a library | `jk add jackson3-databind` · `jk add g:a:v` | `jk_deps` `action=add` (`apply` defaults **false**) |
+| Add a library | `jk add jackson3-databind` · `jk add g:a:1.2.3` · `jk add g:a` (today's stable, written as a pin) | `jk_deps` `action=add` (`apply` defaults **false**) |
 | Remove a library | `jk remove jackson3-databind` | `jk_deps` `action=remove` |
 | Lock / refresh lock | `jk lock` | `jk_run kind=lock` |
 | See newer versions | `jk outdated` | `jk_outdated` |
-| Re-resolve on purpose | `jk update` | `jk_run kind=update` |
+| Bump declared pins | `jk update` · `jk update <name>` · `jk update --major` | `jk_update` (`apply` defaults **false**: preview the `jk.toml` hunk, then `apply=true`) |
 | Compile | `jk compile` | `jk_run kind=compile` |
 | Package | `jk build` | `jk_run kind=build` (`wait` defaults true) |
 | Test (unit / inner loop) | `jk test` | `jk_run kind=test` |

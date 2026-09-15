@@ -26,7 +26,7 @@ main-scan      = true          # a unique main may be discovered by scanning com
 layered-image  = true          # images split release/snapshot dep layers + exploded classes
 
 [schema]
-version      = { type = "string", required = true, example = "8.0.0-M4", hint = "Apache grails-bom selector (org.grails is the pre-ASF line and has no 8.x). 8.x is still a milestone, so templates floor at 8.0.0-M4" }
+version      = { type = "string", required = true, example = "8.0.0-M4", hint = "Apache grails-bom version (org.grails is the pre-ASF line and has no 8.x). 8.x is still a milestone, so templates pin 8.0.0-M4 exactly" }
 boot-version = { type = "string", default = "4", hint = "the Spring Boot loader line matching this Grails release" }
 
 # ---- Declarative contributions — pure data, evaluated engine-side with zero plugin code.

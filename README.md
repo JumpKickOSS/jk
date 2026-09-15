@@ -34,7 +34,7 @@ version = "0.1.0"
 java    = 25
 
 [dependencies]
-jackson3-databind = "latest"   # SemVer ranges, exact pins, or "latest"
+jackson3-databind = "3.0.0"    # exact pin; ^ ~ ranges and "latest" are opt-in
 
 [platform-dependencies]   # BOMs — enforced platforms (Maven depMgmt contract)
 spring-boot-dependencies = "4.1.0"
@@ -93,7 +93,7 @@ three skins** (TTY / browser / MCP) — never scrape wedges.
 | **Reproducible by default** | `jk-lock.toml` is law; `jk build` does not re-resolve |
 | **Correct resolution you can read** | PubGrub; highest-wins without a BOM; enforced platform when a BOM is present |
 | **Warm speed without a fat daemon** | Content-addressed action cache; engine hard-capped (~256 MiB; 512 MiB when `CI=1`) |
-| **Always current by design** | Newest stable in scaffolds; `jk update` re-locks within declared ranges |
+| **Always current by design** | Scaffolds and `jk add` pin today's stable; `jk update` bumps the pins and relocks |
 | **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs; `~/.m2`-friendly cache |
 | **Adoption without a rewrite** | `jk mvn` / `jk gradle` run your *real* build; `import` / `export` when ready |
 | **Batteries included** | JDK + shell activate, format, audit/SBOM, OCI images, `jkx`, web UI, git deps |
@@ -123,8 +123,8 @@ Do **not** habitually set `jdk = 17` / `jdk = 21` — that forces obsolete runti
 Prefer `java = N` for language level.
 
 ```bash
-jk outdated     # what moved under your ranges?
-jk update       # re-resolve on purpose; rewrite jk-lock.toml
+jk outdated     # Current / Compatible / Latest, read-only
+jk update       # bump the pins in jk.toml (same major; --major to cross), relock
 jk build        # still fully reproducible from that lock
 ```
 
@@ -184,7 +184,7 @@ JumpKick writes every resolved version **and checksum** to `jk-lock.toml` and tr
 jk lock          # resolve → write jk-lock.toml (commit this)
 jk build         # uses the lock; does not re-resolve
 jk outdated      # read-only: which deps have newer versions than the lock
-jk update        # re-resolve on purpose, within your declared ranges
+jk update        # bump declared pins to the newest stable on the same major, relock
 jk sync --offline-prepare   # download everything for offline/CI
 ```
 
@@ -246,10 +246,10 @@ version = "0.1.0"
 java = 25
 
 [platform-dependencies]
-boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "3.4.0" }
+boot = "org.springframework.boot:spring-boot-dependencies:3.4.0"
 
 [dependencies]
-web = { group = "org.springframework.boot", name = "spring-boot-starter-web" }
+web = "org.springframework.boot:spring-boot-starter-web"     # versionless: the BOM manages it
 ```
 
 ### Workspace (monorepo)
@@ -260,7 +260,7 @@ web = { group = "org.springframework.boot", name = "spring-boot-starter-web" }
 modules = ["libs/*", "services/*"]
 
 [workspace.dependencies]
-jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.18.2" }
+jackson-databind = "com.fasterxml.jackson.core:jackson-databind:2.18.2"
 ```
 
 ```toml

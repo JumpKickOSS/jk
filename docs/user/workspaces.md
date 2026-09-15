@@ -13,7 +13,8 @@ version = "1.2.3"
 modules = ["libs/*", "services/*"]
 
 [workspace.dependencies]
-jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.18.2" }
+jackson2-databind = "2.22.2"                                  # catalog short name, exact
+mylib             = "com.acme:mylib:1.2.3"                    # Maven coordinate, exact
 ```
 
 ```toml

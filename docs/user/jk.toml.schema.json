@@ -448,7 +448,7 @@
     },
     "export-dependencies": {
       "type": "object",
-      "description": "[export-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[export-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -462,7 +462,7 @@
     },
     "dependencies": {
       "type": "object",
-      "description": "[dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -476,7 +476,7 @@
     },
     "provided-dependencies": {
       "type": "object",
-      "description": "[provided-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[provided-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -490,7 +490,7 @@
     },
     "runtime-dependencies": {
       "type": "object",
-      "description": "[runtime-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[runtime-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -504,7 +504,7 @@
     },
     "test-dependencies": {
       "type": "object",
-      "description": "[test-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[test-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -518,7 +518,7 @@
     },
     "processor-dependencies": {
       "type": "object",
-      "description": "[processor-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[processor-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -532,7 +532,7 @@
     },
     "platform-dependencies": {
       "type": "object",
-      "description": "[platform-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[platform-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -546,7 +546,7 @@
     },
     "dev-dependencies": {
       "type": "object",
-      "description": "[dev-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[dev-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {
@@ -560,7 +560,7 @@
     },
     "test-dev-dependencies": {
       "type": "object",
-      "description": "[test-dev-dependencies]: one dependency per key \u2014 a version string, or { group, name, version, features, ... }.",
+      "description": "[test-dev-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",
       "additionalProperties": {
         "oneOf": [
           {

@@ -57,9 +57,10 @@ jk build                    # writes jk-lock.toml on first need, then compiles a
 jk test
 ```
 
-`jk add` edits `jk.toml`. The first command that needs a lock writes **`jk-lock.toml`**.
+`jk add` edits `jk.toml`, writing today's stable as an exact pin (`jackson3-databind = "3.0.0"`).
+The first command that needs a lock writes **`jk-lock.toml`**.
 **Commit the lockfile.** Later `jk build` uses it and does **not** re-resolve. To take newer
-versions on purpose: `jk outdated` then `jk update`. Details: [Lockfile](lockfile.md),
+versions on purpose: `jk outdated`, then `jk update` rewrites the pins and relocks. Details: [Lockfile](lockfile.md),
 [Dependencies](dependencies.md).
 
 ```bash

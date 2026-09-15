@@ -49,9 +49,9 @@ dependency:
 
 ```toml
 [native]
-metadata-repository = "latest"   # the default when [native] is present
+metadata-repository = "latest"   # the default when the key is omitted
 # metadata-repository = "^1"     # newest stable 1.x
-# metadata-repository = "=1.1.4" # exactly this release
+# metadata-repository = "1.1.4"  # exactly this release
 ```
 
 `jk lock` / `jk update` resolve it and write the answer — version plus the zip's SHA-256 —

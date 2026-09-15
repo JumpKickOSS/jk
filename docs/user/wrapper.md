@@ -11,7 +11,7 @@ satisfies the lock’s optional `jk-min` floor, otherwise fetches the latest rel
 require OpenSSL; Windows wrappers use the RSA implementation built into PowerShell 5.1.
 
 Team version alignment belongs to the installer / CI images, never to a lock row.
-`jk update` re-resolves **dependencies**; `jk self update` updates **the tool** — two
+`jk update` bumps **dependency** pins; `jk self update` updates **the tool** — two
 deliberate steps.
 
 ## Related
