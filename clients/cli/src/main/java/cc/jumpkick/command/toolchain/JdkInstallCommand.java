@@ -10,13 +10,9 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Interactivity;
-import cc.jumpkick.cli.tui.JdkDownloadBar;
-import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.Wizard;
-import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Os;
@@ -24,6 +20,7 @@ import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
+import cc.jumpkick.jdk.JdkEnsureProgress;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkInventory;
@@ -303,9 +300,10 @@ public final class JdkInstallCommand implements CliCommand {
      */
     private Task installStep(JdkService service, JdkRegistry registry) {
         // download + extract are owned by JdkService.install; the CLI keeps only
-        // the presentation — an InstallView that drives the download bar and the
-        // installing spinner off the facade's listener events, plus the done
-        // lines. Merged into one step because install() is a single atomic call;
+        // the presentation — the shared JdkInstallView drives the download bar and
+        // the installing spinner off the facade's listener events and prints the
+        // done lines, while JdkEnsureProgress labels the step for --output json.
+        // Merged into one step because install() is a single atomic call;
         // interactive plans render via SilentListener, so step labels aren't
         // shown and the bars/done-lines are the only visible output.
         return Task.builder(TaskNames.INSTALL)
@@ -319,8 +317,14 @@ public final class JdkInstallCommand implements CliCommand {
                     // try-with-resources guarantees the download bar / spinner is
                     // wiped even when the install throws mid-download (matches the
                     // old per-step try-with-resources cleanup).
-                    try (InstallView view = new InstallView(entry)) {
-                        ctx.put(INSTALLED, service.install(entry, registry, refresh, view));
+                    try (JdkInstallView view = new JdkInstallView(JdkService.displayLabel(entry))) {
+                        ctx.put(
+                                INSTALLED,
+                                service.install(
+                                        entry,
+                                        registry,
+                                        refresh,
+                                        JdkInstallListener.tee(new JdkEnsureProgress(ctx), view)));
                     } catch (Exception e) {
                         ctx.error("install", Errors.text(e));
                         throw new RuntimeException(e);
@@ -455,32 +459,6 @@ public final class JdkInstallCommand implements CliCommand {
         return resolved;
     }
 
-    /**
-     * Render the post-install summary line:
-     *
-     * <pre>
-     *   ✓ JDK ▶ {label} {command} {~/path}
-     * </pre>
-     */
-    private static String doneLine(String label, Path home, String command) {
-        Theme t = Theme.active();
-        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
-        String msg = Theme.colorize(label, t.focused())
-                + Theme.colorize(" " + command + " ", t.normalGray())
-                + Theme.colorize(tildeCollapse(home), t.path());
-        return JkWedge.chipLine(Glyphs.CHECK, "JDK", nerdFont, msg);
-    }
-
-    /** Render an absolute path with {@code $HOME} collapsed to {@code ~}. */
-    static String tildeCollapse(Path path) {
-        String home = System.getProperty("user.home");
-        String abs = path.toAbsolutePath().toString();
-        if (home != null && !home.isBlank() && abs.startsWith(home)) {
-            return "~" + abs.substring(home.length());
-        }
-        return abs;
-    }
-
     private static JdkInstallWizard.Result runWizard(JdkCatalog catalog, String os, String arch, boolean showAll)
             throws IOException {
         TerminalSession terminal = Terminals.controlling();
@@ -503,64 +481,5 @@ public final class JdkInstallCommand implements CliCommand {
 
     private static boolean isInteractiveTerminalSession() {
         return Interactivity.canPrompt();
-    }
-
-    /**
-     * CLI presentation for {@link JdkService}'s install plan: turns the facade's listener events
-     * into the animated {@link cc.jumpkick.cli.tui.JdkDownloadBar} (download then installing spinner)
-     * and the {@code doneLine} summaries. {@link AutoCloseable} so a mid-install failure still wipes
-     * the active bar (via the step's try-with-resources), matching the old per-step cleanup.
-     */
-    private static final class InstallView implements JdkInstallListener, AutoCloseable {
-
-        private final String label;
-        private @Nullable JdkDownloadBar bar;
-
-        InstallView(JdkCatalog.Entry entry) {
-            this.label = JdkService.displayLabel(entry);
-        }
-
-        @Override
-        public void onAlreadyInstalled(InstalledJdk jdk) {
-            // No download bar on this path — open the envelope for the settle chip.
-            CommandWedge.envelopeStart();
-            CliOutput.out(doneLine(label, jdk.home(), "is already installed at"));
-        }
-
-        @Override
-        public void onDownloadStart(String displayName, long totalBytes) {
-            bar = JdkDownloadBar.show(CliOutput.stdout(), displayName);
-        }
-
-        @Override
-        public void onDownloadProgress(long readBytes, long totalBytes) {
-            if (bar != null) bar.update(readBytes, totalBytes);
-        }
-
-        @Override
-        public void onExtractStart(String displayName) {
-            if (bar != null) bar.finish();
-            bar = JdkDownloadBar.showInstalling(CliOutput.stdout(), displayName);
-        }
-
-        @Override
-        public void onInstalled(InstalledJdk jdk) {
-            if (bar != null) {
-                bar.finish();
-                bar = null;
-            }
-            // Print after the spinner is wiped so the done line takes its place.
-            // envelopeStart is a no-op when the download bar already opened it.
-            CommandWedge.envelopeStart();
-            CliOutput.out(doneLine(label, jdk.home(), "has been installed to"));
-        }
-
-        @Override
-        public void close() {
-            if (bar != null) {
-                bar.finish();
-                bar = null;
-            }
-        }
     }
 }

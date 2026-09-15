@@ -197,10 +197,12 @@ public final class BuildPlanConsole {
     }
 
     private static BuildPlanListener chooseConsoleListener(BuildPlan plan, Mode mode) {
-        // Interactive plans (wizards) must NOT render a progress bar
-        // the wizard owns the terminal. Same for JSON output (events
-        // already go to stdout via JsonlListener) and explicit quiet.
-        if (plan.interactive()) return new SilentListener(System.out, System.err, true);
+        // Interactive plans (wizards, download bars) must NOT render a progress bar: the plan's
+        // own chrome owns the terminal. --output json still gets its events — there is no
+        // terminal to own, and the structured lines are what the caller asked for.
+        if (plan.interactive()) {
+            return mode == Mode.JSON ? new JsonlListener(System.out) : new SilentListener(System.out, System.err, true);
+        }
         return chooseConsoleListener(plan.name(), plan.steps(), mode);
     }
 

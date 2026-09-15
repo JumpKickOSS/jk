@@ -74,7 +74,7 @@ public final class TrainCommand implements CliCommand {
         // engine error with a clear message.
         Path graalHome = null;
         try {
-            var graal = new GraalResolver(jdksDir, global.yes);
+            var graal = new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global));
             graalHome = graal.resolve(dir, null).orElse(null);
         } catch (Exception ignored) {
             // train will fail clearly if the agent is missing

@@ -352,7 +352,8 @@ public final class InstallCommand {
         // never run inside the engine).
         Path graalHome = null;
         if (isNative) {
-            Optional<Path> resolved = new GraalResolver(null, false).resolve(projectDir, proj.graal());
+            Optional<Path> resolved =
+                    new GraalResolver(null, false, BuildPlanConsole.modeFor(global)).resolve(projectDir, proj.graal());
             if (resolved.isEmpty()) return 1; // GraalResolver already printed why
             graalHome = resolved.get();
         }
@@ -460,8 +461,8 @@ public final class InstallCommand {
             if (info.error() != null || !"ALWAYS".equals(info.nativeMode())) continue;
             alwaysNative.add(new AlwaysNativeGraal.Module(mod, info.graal()));
         }
-        Optional<Map<Path, Path>> resolved =
-                AlwaysNativeGraal.homes(alwaysNative, new GraalResolver(null, false)::resolve);
+        Optional<Map<Path, Path>> resolved = AlwaysNativeGraal.homes(
+                alwaysNative, new GraalResolver(null, false, BuildPlanConsole.modeFor(global))::resolve);
         if (resolved.isEmpty()) return 1;
         Map<Path, Path> graalByDir = resolved.get();
         List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();

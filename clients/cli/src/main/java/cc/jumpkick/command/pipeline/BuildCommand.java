@@ -176,6 +176,12 @@ public final class BuildCommand implements CliCommand {
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(startDir, modulesSpec, peek);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
 
+        // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before
+        // any build console opens — never as a silent step inside the engine.
+        if (!JdkPreflight.ensure(startDir, peek, jdksDir, BuildPlanConsole.modeFor(global))) {
+            return finishSession(Exit.FAILURE);
+        }
+
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
                 CommandWedge.printFail(
@@ -280,7 +286,7 @@ public final class BuildCommand implements CliCommand {
             nativeMembers = AlwaysNativeGraal.within(nativeMembers, sel.dirs());
         }
         Optional<Map<Path, Path>> graal =
-                AlwaysNativeGraal.homes(nativeMembers, new GraalResolver(jdksDir, global.yes)::resolve);
+                AlwaysNativeGraal.homes(nativeMembers, new GraalResolver(jdksDir, global.yes, mode)::resolve);
         if (graal.isEmpty()) return Exit.FAILURE; // the resolver printed why
         this.graalHomes = graal.get();
 
@@ -592,7 +598,8 @@ public final class BuildCommand implements CliCommand {
         AlwaysNativeGraal.Module alwaysNative = AlwaysNativeGraal.fromManifest(dir);
         Path graalHome = null;
         if (alwaysNative != null) {
-            Optional<Path> resolved = new GraalResolver(jdksDir, global.yes).resolve(dir, alwaysNative.graalSpec());
+            Optional<Path> resolved = new GraalResolver(jdksDir, global.yes, BuildPlanConsole.modeFor(global))
+                    .resolve(dir, alwaysNative.graalSpec());
             if (resolved.isEmpty()) return Exit.FAILURE; // the resolver printed why
             graalHome = resolved.get();
         }

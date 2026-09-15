@@ -10,6 +10,7 @@ import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.config.GlobalConfig;
@@ -376,7 +377,7 @@ public final class JdkUninstallCommand implements CliCommand {
                 CliOutput.stdout(),
                 "Deleting "
                         + Theme.colorize(
-                                JdkInstallCommand.tildeCollapse(installDir),
+                                JdkInstallView.tildeCollapse(installDir),
                                 Theme.active().path())
                         + "...")) {
             // Try the owning tool first so its manifest stays consistent

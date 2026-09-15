@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.api;
 
+import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.ToolchainInstalls;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.GraalLauncher;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
-import cc.jumpkick.jdk.JdkInstaller;
 import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.jdk.JdkSelector;
+import cc.jumpkick.jdk.JdkService;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ToolchainPins;
@@ -41,11 +42,13 @@ public final class GraalResolver {
 
     private final @Nullable Path jdksDir; // nullable — overrides the default jdks root
     private final boolean assumeYes; // --yes: install without prompting
+    private final BuildPlanConsole.Mode mode; // how an install renders: bar, plain lines, or JSONL
     private final Map<String, Path> memo = new HashMap<>();
 
-    public GraalResolver(@Nullable Path jdksDir, boolean assumeYes) {
+    public GraalResolver(@Nullable Path jdksDir, boolean assumeYes, BuildPlanConsole.Mode mode) {
         this.jdksDir = jdksDir;
         this.assumeYes = assumeYes;
+        this.mode = mode;
     }
 
     /**
@@ -199,20 +202,16 @@ public final class GraalResolver {
                 return null;
             }
             JdkCatalog.Entry e = entry.get();
-            CliOutput.out(Theme.colorize("⬇", Theme.active().cyan())
-                    + " Installing GraalVM "
-                    + Theme.colorize(e.installFolderName(), Theme.active().focused())
-                    + " ("
-                    + announce
-                    + ")…");
-            InstalledJdk installed = new JdkInstaller(new Http(), registry).install(e);
-            CliOutput.out(
-                    Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " GraalVM ready: " + installed.home());
-            return installed.home();
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            CliOutput.err("jk native: GraalVM install interrupted.");
-            return null;
+            // The same bar, phases and done line `jk jdk install native` renders; the header says
+            // which pin asked for it.
+            String label = JdkService.displayLabel(e);
+            return ToolchainInstalls.run(
+                            mode,
+                            "Installing GraalVM " + e.installFolderName() + " (" + announce + ")",
+                            label,
+                            progress -> new JdkService().install(e, registry, false, progress))
+                    .map(InstalledJdk::home)
+                    .orElse(null);
         } catch (Exception ex) {
             CliOutput.err("jk native: failed to install GraalVM (" + spec + "): " + ex.getMessage());
             return null;

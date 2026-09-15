@@ -76,6 +76,36 @@ Illustrative lines:
 {"schema":1,"ts":1721664001000,"type":"buildplan-finish","plan":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
+### Toolchain provisioning
+
+When a build-kind verb needs a JDK or GraalVM that is not on disk — the manifest's or lockfile's
+`jdk` pin, a workspace member's own pin, the GraalVM a native build links with — the client
+installs it before the build request goes out, and the stream opens with a one-task
+**`toolchain`** plan ahead of the build's own `buildplan-start` / `workspace-start`:
+
+```json
+{"schema":1,"ts":1721663990000,"type":"buildplan-start","plan":"toolchain","denominator":1,"tasks":1,"progress":null}
+{"schema":1,"ts":1721663990000,"type":"task-start","task":"ensure-jdk","stage":"resolve","ticks":1,"progress":null}
+{"schema":1,"ts":1721663990100,"type":"label","task":"ensure-jdk","label":"downloading Temurin 21 ▰▰▰▰▱▱▱▱▱▱ 42%","progress":null}
+{"schema":1,"ts":1721663996000,"type":"label","task":"ensure-jdk","label":"installing Temurin 21 ▰▰▰▰▰▰▰▰▰▰ 100%","progress":null}
+{"schema":1,"ts":1721663999000,"type":"task-finish","task":"ensure-jdk","stage":"resolve","status":"SUCCESS","duration_ms":9000,"wait_ms":0,"progress":100}
+{"schema":1,"ts":1721663999000,"type":"buildplan-finish","plan":"toolchain","success":true,"duration_ms":9000,"warnings":0,"errors":0,"progress":100}
+```
+
+- `progress` is `null` on the plan's lines: it runs before the job is admitted, so there is no
+  job percent yet.
+- The `label` lines are the ones the engine's own `ensure-jdk` task emits when it does the
+  download (a client with no terminal — HTTP, MCP); inside the build that follows, that task
+  finishes `SKIPPED` because the toolchain is now installed.
+- A toolchain already on disk emits no `toolchain` plan at all. The human lines of the install
+  (why it is happening, the settled "has been installed to" chip) go to **stderr**.
+- A failed install emits an `error` line (`task:"ensure-jdk"`, `code:"jdk"`), ends the plan
+  with `buildplan-finish` `success:false`, and jk exits without opening a build envelope.
+
+`jk jdk install --output json` streams its own **`jdk-install`** plan in the same shape
+(`fetch-catalog`, `select`, `install`, `set-default` tasks; the `install` task carries the same
+`downloading …` / `installing …` labels).
+
 ### `jk dev`
 
 `jk dev --output json` (and `jk watch run`) keeps the workspace envelope for every build the loop

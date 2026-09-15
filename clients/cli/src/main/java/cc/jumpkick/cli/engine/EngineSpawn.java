@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.SessionContext;
@@ -389,9 +390,11 @@ public final class EngineSpawn {
         String pin = pinned.orElse("temurin-" + floor);
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
-        CliOutput.err("jk: installing the build engine's JDK (" + pin + ") ...");
-        try {
-            Path home = JdkEnsure.install(pin, CliOutput.stderr()::println).home();
+        // The same bar, phases and done line `jk jdk install` renders — this is the client, and
+        // the user is watching; the header says the download is the engine's runtime, not theirs.
+        try (JdkInstallView view = new JdkInstallView(null).header("Installing the build engine's JDK (" + pin + ")")) {
+            Path home =
+                    JdkEnsure.install(pin, CliOutput.stderr()::println, view).home();
             return probeEngineJdk(home)
                     .orElseThrow(() -> new IOException("engine JDK installed at " + home + " is unreadable"));
         } catch (InterruptedException e) {

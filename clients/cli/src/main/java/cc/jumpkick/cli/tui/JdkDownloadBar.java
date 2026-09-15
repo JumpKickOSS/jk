@@ -5,6 +5,7 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JdkInstaller;
 import java.io.PrintStream;
 import java.time.Duration;
@@ -19,10 +20,16 @@ import java.time.Duration;
  * Progress}. What is left here is the wedge for a frame and the line to settle on when the user
  * cancels, which is the whole of what is specific to downloading a JDK.
  *
+ * <p>Plain mode (no ANSI) says what is happening in lines instead: {@code Downloading Temurin 21 -
+ * working...} when the row opens, one more beat per {@link Spinner#PLAIN_HEARTBEAT_MS} carrying
+ * the percent, and {@code Installing …} when extraction starts — so a CI log or a piped installer
+ * shows the phases a terminal user watches on the bar.
+ *
  * <p>Thread-safe: the download callback may call {@link #update} from any thread.
  */
 public final class JdkDownloadBar implements AutoCloseable {
 
+    private final PrintStream out;
     private final String displayName; // "Temurin 26"
     private final NerdFontCaps nerdFont;
     private final boolean installing;
@@ -31,15 +38,20 @@ public final class JdkDownloadBar implements AutoCloseable {
 
     private volatile long numerator;
     private volatile long denominator;
+    private final Clock clock = Clock.SYSTEM;
+    private long plainLastBeatMs;
 
     private JdkDownloadBar(PrintStream out, String displayName, boolean installing) {
+        this.out = out;
         this.displayName = displayName;
         this.nerdFont = GlobalConfig.nerdFont();
         this.installing = installing;
         this.line = LiveLine.of(out, this::frame)
+                .heartbeat(() -> plainBeat(false))
                 .onCancel(JdkInstaller::reapInFlight)
                 .settle(this::cancelledLine)
                 .open();
+        if (line.plain()) plainBeat(true);
     }
 
     /**
@@ -76,6 +88,21 @@ public final class JdkDownloadBar implements AutoCloseable {
     @Override
     public void close() {
         finish();
+    }
+
+    /**
+     * The plain-mode line: on open, then no more often than {@link Spinner#PLAIN_HEARTBEAT_MS}.
+     * Carries the percent while downloading; extraction has no byte count to report.
+     */
+    private synchronized void plainBeat(boolean force) {
+        long now = clock.millis();
+        if (!force && now - plainLastBeatMs < Spinner.PLAIN_HEARTBEAT_MS) return;
+        plainLastBeatMs = now;
+        String status = (installing ? "Installing " : "Downloading ") + displayName;
+        long total = denominator;
+        if (!installing && total > 0) status += " " + Math.min(100L, numerator * 100L / total) + "%";
+        out.println(JkWedge.plainStatusLine("JDK", status, JkWedge.PlainTail.WORKING));
+        out.flush();
     }
 
     /** The animating row: spinner chip, plan bar while downloading, status suffix. */

@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JdkInstallView;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.jdk.JdkHit;
@@ -62,7 +63,7 @@ public final class JdkRender {
         String command = downloaded ? " now is available at " : " is available at ";
         String msg = Theme.colorize(displayName, t.focused())
                 + Theme.colorize(command, t.normalGray())
-                + Theme.colorize(JdkInstallCommand.tildeCollapse(home), t.path());
+                + Theme.colorize(JdkInstallView.tildeCollapse(home), t.path());
         return JkWedge.chipLine(Glyphs.CHECK, "JDK", caps, msg);
     }
 
