@@ -62,9 +62,7 @@ class AddRemoveCommandTest {
         assertThat(exit).isEqualTo(0);
 
         String toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml)
-                .contains("spring-web = { group = \"org.springframework.boot\", "
-                        + "name = \"spring-boot-starter-web\", version = \"3.4.0\" }");
+        assertThat(toml).contains("spring-web = \"org.springframework.boot:spring-boot-starter-web:3.4.0\"");
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThat(parsed.dependencies().of(Scope.MAIN)).singleElement().satisfies(d -> {
@@ -266,9 +264,7 @@ class AddRemoveCommandTest {
                 tempDir.toString());
         assertThat(exit).isEqualTo(0);
         String toml = Files.readString(tempDir.resolve("jk.toml"));
-        assertThat(toml)
-                .contains("spring-web = { group = \"org.springframework.boot\", "
-                        + "name = \"spring-boot-starter-web\", version = \"3.4.0\" }");
+        assertThat(toml).contains("spring-web = \"org.springframework.boot:spring-boot-starter-web:3.4.0\"");
     }
 
     @Test
