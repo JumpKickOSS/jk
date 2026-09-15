@@ -6,10 +6,10 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.6`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.6`** | Next public release cut from that line |
-| Prior | **`0.13.5`** — previous tagged release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.13.6`, `0.14.0`, … |
+| **`0.13.7`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.13.7`** | Next public release cut from that line |
+| Prior | **`0.13.6`** — previous tagged release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.13.7`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -23,6 +23,33 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.13.7
+
+- **A declared version is an exact pin.** `jackson3-databind = "3.2.2"` in `jk.toml` means that
+  release, in every dependency scope, `[workspace.dependencies]`, plugin `version` keys, the
+  `kotlin` / `groovy` / `scala` keys and `[native] metadata-repository`. Floating is spelled out:
+  `^`, `~`, a range, `latest`. A major-line floor is `[spring-boot] version = "^4"`.
+- **A dependency may be a Maven coordinate string.** `mylib = "com.acme:mylib:1.2.3"` pins;
+  `web = "org.springframework.boot:spring-boot-starter-web"` is managed by the BOM; the third
+  slot takes any selector. A classifier still needs the inline table.
+- **`jk update` is the bump verb.** It rewrites the declared pins in `jk.toml` to the newest
+  stable on the same Maven major, then relocks; `--major` crosses a line, `jk update <name>` or
+  `--dep` limits it, and the diff to review is `jk.toml` plus the lock. `jk lock` keeps pins,
+  `jk lock -F` moves only opt-in selectors, `jk outdated` shows Compatible equal to Current for a
+  pin. MCP gains `jk_update`, a preview by default (`apply=true` writes and relocks).
+- **Writers pin today's stable.** `jk add <name>` with no version, `jk add g:a`, `jk new` and
+  every template write the current stable as a number — catalog one-liner, coordinate string or
+  inline table, in that order — never `latest`. Offline with no version is a usage error.
+- **The run report leads with the verdict.** `jk results` opens with the outcome, a non-zero
+  exit and up to three lines of why: compiler errors, crashed test workers and failed steps all
+  count, not a JUnit pass rate alone.
+- **Windows.** PATH entries that are not paths are skipped instead of failing a tool lookup, a
+  worker's stderr survives a JUL handler close, the engine log sink tracks its file on
+  filesystems without file keys, a loopback registry no longer spawns Docker credential
+  helpers, and the shellcheck lane skips on Windows.
+- Smaller: `jk guard` runs inside a linked git worktree; a Kotlin version the importers cannot
+  read becomes `latest` for the first lock.
 
 ### 0.13.6
 

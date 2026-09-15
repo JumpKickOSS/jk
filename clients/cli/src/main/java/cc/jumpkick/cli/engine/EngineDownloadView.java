@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * phase lines and settled chip line {@code jk jdk install} renders, under an {@code Engine} chip:
  *
  * <pre>
- *   ✓ Engine ▶ build engine 0.13.6 has been downloaded to ~/.jk/lib/jk-engine/jk-engine-0.13.6.jar
+ *   ✓ Engine ▶ build engine 0.13.7 has been downloaded to ~/.jk/lib/jk-engine/jk-engine-0.13.6.jar
  * </pre>
  *
  * <p>Output modes follow the stream, as {@link JdkInstallView}'s do: a terminal animates the bar;
