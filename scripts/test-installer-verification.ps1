@@ -266,6 +266,25 @@ try {
         if ($_.Exception.Message -notmatch "unsupported architecture") { throw }
     }
 
+    # ---- the architecture probe never fails on a host whose runtime lacks RuntimeInformation ----
+    Import-InstallerFunction "Get-OsArchitectureName"
+    $archName = Get-OsArchitectureName
+    if ($null -eq $archName) { throw "Get-OsArchitectureName returned null instead of a string" }
+    if ((Get-JkTarget -ArchName $archName -ProcessorArchitecture "AMD64") -cne "windows-x86_64") { throw "the probed architecture did not map on an AMD64 host" }
+
+    # ---- a version's manifest says which clients it publishes ------------------------------
+    Import-InstallerFunction "Get-StrictManifestHash"
+    Import-InstallerFunction "Test-ManifestLists"
+    $listed = [Text.Encoding]::UTF8.GetBytes("$('a' * 64)  jk-1.0.0.jar`n$('b' * 64)  jk-engine-1.0.0.jar`n")
+    if (-not (Test-ManifestLists -ManifestBytes $listed -ArtifactName "jk-1.0.0.jar")) { throw "a listed artifact was reported missing" }
+    if (Test-ManifestLists -ManifestBytes $listed -ArtifactName "jk-windows-x86_64-1.0.0.zip") { throw "an unlisted artifact was reported present" }
+    try {
+        Test-ManifestLists -ManifestBytes ([Text.Encoding]::UTF8.GetBytes("not a manifest`n")) -ArtifactName "jk-1.0.0.jar" | Out-Null
+        throw "a malformed manifest was accepted"
+    } catch {
+        if ($_.Exception.Message -notmatch "malformed entry") { throw }
+    }
+
     # ---- downloads run with the progress bar off, without touching the caller's preference ---
     Import-InstallerFunction "Save-Url"
     $script:seenProgress = @()

@@ -128,12 +128,23 @@ function Test-Command([string] $Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+# The OS architecture as .NET reports it, or "" when the runtime cannot say. Windows PowerShell
+# 5.1 on an older .NET Framework has no RuntimeInformation type, and a null there must fall through
+# to PROCESSOR_ARCHITECTURE instead of failing the install before its first line of output.
+function Get-OsArchitectureName {
+    try {
+        return [string]([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
+    } catch {
+        return ""
+    }
+}
+
 function Get-JkTarget {
     # Releases publish windows-x86_64 only. Windows on ARM runs that build under x64 emulation,
     # so an ARM64 host installs it and is told so rather than asking for an artifact that does
     # not exist. The inputs are parameters so the mapping is testable off the host.
     param(
-        [string] $ArchName = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString(),
+        [string] $ArchName = (Get-OsArchitectureName),
         # Fallback for older hosts / unusual report strings.
         [string] $ProcessorArchitecture = $env:PROCESSOR_ARCHITECTURE
     )
@@ -162,7 +173,8 @@ function Get-JavaMajor([string] $VersionLine) {
 # (the build engine forks javac from it) of at least 25, the release the client is compiled for.
 # jk installs JDKs itself only for hosts the JDK feed covers; this path exists for the others, so
 # the JDK is the user's to provide. Returns the java.exe path.
-function Find-Java {
+function Find-Java([switch] $Probe) {
+    # With -Probe a missing or too-old JDK is $null rather than a refusal, so a caller can decide.
     $java = $null
     if ($env:JK_JAVA_HOME) {
         $java = Join-Path $env:JK_JAVA_HOME "bin\java.exe"
@@ -170,21 +182,21 @@ function Find-Java {
         $java = Join-Path $env:JAVA_HOME "bin\java.exe"
     } else {
         $cmd = Get-Command java -ErrorAction SilentlyContinue
-        if (-not $cmd) { Die "the JVM client needs a JDK 25 or newer: set JAVA_HOME (or JK_JAVA_HOME) to one and re-run." }
+        if (-not $cmd) { if ($Probe) { return $null }; Die "the JVM client needs a JDK 25 or newer: set JAVA_HOME (or JK_JAVA_HOME) to one and re-run." }
         $java = $cmd.Source
     }
     if (-not (Test-Path -LiteralPath $java -PathType Leaf)) {
-        Die "no java.exe at $java - set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run."
+        if ($Probe) { return $null }; Die "no java.exe at $java - set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run."
     }
     $firstLine = [string](& $java -version 2>&1 | Select-Object -First 1)
     $major = Get-JavaMajor $firstLine
-    if (-not $major) { Die "could not read a Java version from '$java -version'; set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run." }
-    if ($major -lt 25) { Die "$java is Java $major; the JVM client needs a JDK 25 or newer - set JAVA_HOME (or JK_JAVA_HOME) to one and re-run." }
+    if (-not $major) { if ($Probe) { return $null }; Die "could not read a Java version from '$java -version'; set JAVA_HOME (or JK_JAVA_HOME) to a JDK 25 or newer and re-run." }
+    if ($major -lt 25) { if ($Probe) { return $null }; Die "$java is Java $major; the JVM client needs a JDK 25 or newer - set JAVA_HOME (or JK_JAVA_HOME) to one and re-run." }
     $homeLine = & $java -XshowSettings:properties -version 2>&1 | Where-Object { $_ -match '^\s*java\.home = (.+)$' } | Select-Object -First 1
     if ($homeLine -and ([string]$homeLine -match '^\s*java\.home = (.+)$')) {
         $javaHome = $Matches[1].Trim()
         if (-not (Test-Path -LiteralPath (Join-Path $javaHome "bin\javac.exe") -PathType Leaf)) {
-            Die "$javaHome is a JRE (no bin\javac.exe); jk's build engine needs a full JDK 25 or newer - set JAVA_HOME (or JK_JAVA_HOME) to one and re-run."
+            if ($Probe) { return $null }; Die "$javaHome is a JRE (no bin\javac.exe); jk's build engine needs a full JDK 25 or newer - set JAVA_HOME (or JK_JAVA_HOME) to one and re-run."
         }
     }
     return $java
@@ -234,6 +246,22 @@ function Get-StrictManifestHash {
         throw "release SHA256SUMS has no unique exact entry for $ArtifactName"
     }
     return $found
+}
+
+# Whether the signed SHA256SUMS names $ArtifactName. Releases are published platform by platform,
+# so a version can be live for Linux while its Windows client is not built yet.
+function Test-ManifestLists {
+    param(
+        [Parameter(Mandatory = $true)][byte[]] $ManifestBytes,
+        [Parameter(Mandatory = $true)][string] $ArtifactName
+    )
+    try {
+        Get-StrictManifestHash -ManifestBytes $ManifestBytes -ArtifactName $ArtifactName | Out-Null
+        return $true
+    } catch {
+        if ($_.Exception.Message -match 'no unique exact entry') { return $false }
+        throw
+    }
 }
 
 # Verify the release key's RSA/SHA-256 signature in $Signature over the exact $SignedBytes, or
@@ -587,6 +615,35 @@ if ($LocalPath) {
     }
     if (-not $version) {
         Die "could not resolve the latest jk version from $ReleasesUrl/latest/LATEST"
+    }
+    if (-not $UseJvm) {
+        # The version's signed manifest is read before any client download: when it lists no
+        # Windows client, the JVM client goes on a JDK 25+ instead of a 404 after the fact.
+        $manifestFile = Join-Path $tmpRoot "SHA256SUMS"
+        $signatureFile = Join-Path $tmpRoot "SHA256SUMS.sig"
+        try {
+            Save-Url "$ReleasesUrl/$version/SHA256SUMS" $manifestFile
+            Save-Url "$ReleasesUrl/$version/SHA256SUMS.sig" $signatureFile
+        } catch {
+            Die "failed to download release evidence from $ReleasesUrl/$version ($($_.Exception.Message))"
+        }
+        $manifestBytes = [IO.File]::ReadAllBytes($manifestFile)
+        try {
+            Test-ReleaseSignature -SignedBytes $manifestBytes -Signature $signatureFile `
+                -Modulus $ReleaseRsaModulus -Exponent $ReleaseRsaExponent -What "release"
+        } catch {
+            Die $_.Exception.Message
+        }
+        $nativeName = "jk-$target-$version.zip"
+        if (-not (Test-ManifestLists -ManifestBytes $manifestBytes -ArtifactName $nativeName)) {
+            $probedJava = Find-Java -Probe
+            if ($probedJava) {
+                Write-Note "jk $version publishes no $target client yet; installing the JVM client (jk-$version.jar) on $probedJava instead."
+                $UseJvm = $true
+            } else {
+                Die "jk $version publishes no $target client yet, and no JDK 25 or newer was found for the JVM client. Install a JDK 25+ (set JAVA_HOME) and re-run, or set JK_VERSION to a release that has a $target build."
+            }
+        }
     }
     # Windows installer prefers .zip (no system xz). Self-update uses .xz via the engine. The JVM
     # client is one platform-neutral jar.
