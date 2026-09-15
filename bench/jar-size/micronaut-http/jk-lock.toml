@@ -1,8 +1,8 @@
 version = 1
-generated-by = "jk 0.13.3"
+generated-by = "jk 0.13.6"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
-manifests-sha256 = "4f2d69f61e9c0187b214710c9803aead7f6e58ba7208995897d25cc308b54dba"
+manifests-sha256 = "d38cfc2cf13f907da17aa5bc4393ccc98547249d9373accb013420dcf813212a"
 project-id = "13f91730f0f4c7da2eba3fb8624ab42c"
 
 [jdk]
@@ -752,7 +752,7 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-micronaut"
-version    = "0.13.3"
+version    = "0.13.6"
 
 [[module]]
 path    = "."

@@ -1,9 +1,9 @@
 version = 1
-generated-by = "jk 0.13.3"
+generated-by = "jk 0.13.6"
 resolution-algorithm = "pubgrub-v1"
 kotlin = "2.4.20"
 jk-min = "0.12.0"
-manifests-sha256 = "02081659bd975afa2b2c9ad1a456d0619462964264ba38d1bb77a257d2142bf5"
+manifests-sha256 = "48b22124b06841a3ba2752f6df309871ed9c59c16bb1b6f3401af49412389c2b"
 project-id = "e94b9d39535da160800be0900f04f804"
 
 [jdk]
@@ -171,4 +171,4 @@ group   = "com.example"
 name    = "kotlin-cli"
 version = "0.1.0"
 java    = 25
-kotlin  = "=2.4.20"
+kotlin  = "2.4.20"

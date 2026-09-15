@@ -33,7 +33,7 @@ class TextFilesTest {
     void a_git_pointer_file_is_outside_the_corpus_like_the_directory(@TempDir Path root) throws IOException {
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Small.java"), "class Small {}\n");
-        Files.writeString(root.resolve(".git"), "gitdir: /somewhere/.git/worktrees/JK-0000-branch\n");
+        Files.writeString(root.resolve(".git"), "gitdir: /somewhere/.git/worktrees/feature-branch\n");
         assertThat(TextFiles.corpus(root)).extracting(TextFiles.Entry::rel).containsExactly("src/Small.java");
     }
 

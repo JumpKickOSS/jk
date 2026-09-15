@@ -1,8 +1,8 @@
 version = 1
-generated-by = "jk 0.13.3"
+generated-by = "jk 0.13.6"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
-manifests-sha256 = "eb458e3595221a2f43b8c5d448770a064650da70e043e4403df906385b78fbef"
+manifests-sha256 = "0dd7de2703d909ac9c1ff99da50aa37ee044af36f0127aaf7998ac1cbceab606"
 project-id = "ad463b4593f309381c8f2f8d708ff7d0"
 
 [jdk]
@@ -135,7 +135,7 @@ scopes   = ["test"]
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-minified"
-version    = "0.13.3"
+version    = "0.13.6"
 
 [[module]]
 path    = "."
