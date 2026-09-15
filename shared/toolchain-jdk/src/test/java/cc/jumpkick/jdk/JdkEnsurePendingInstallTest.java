@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,9 +26,9 @@ class JdkEnsurePendingInstallTest {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path project = Files.createDirectories(tmp.resolve("app"));
 
-        Optional<String> pending = JdkEnsure.pendingInstall(project, jdks, "temurin-21", 0, null);
+        Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, "temurin-21", 0, null);
 
-        assertThat(pending).contains("temurin-21");
+        assertThat(pending).contains(new JdkEnsure.Pending("temurin-21", JdkResolution.Tier.PROJECT_TOML));
     }
 
     @Test
@@ -36,9 +37,43 @@ class JdkEnsurePendingInstallTest {
         Path project = Files.createDirectories(tmp.resolve("app"));
         makeJdk(jdks, "temurin-21.0.5");
 
-        Optional<String> pending = JdkEnsure.pendingInstall(project, jdks, "temurin-21", 0, null);
+        Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, "temurin-21", 0, null);
 
         assertThat(pending).isEmpty();
+    }
+
+    @Test
+    void a_jdk_version_file_is_the_tier_that_asks(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve(".jdk-version"), "zulu-21\n");
+
+        Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, "temurin-25", 0, null);
+
+        assertThat(pending).contains(new JdkEnsure.Pending("zulu-21", JdkResolution.Tier.JDK_VERSION_FILE));
+    }
+
+    @Test
+    void a_required_lock_pin_is_the_tier_that_asks(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Lockfile.JdkPin lock = new Lockfile.JdkPin("temurin", "", "", "21.0.5");
+
+        Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, null, 0, lock);
+
+        assertThat(pending).isPresent();
+        assertThat(pending.get().tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
+    }
+
+    @Test
+    void a_java_level_above_the_latest_lts_is_the_tier_that_asks(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        int above = JdkLts.OFFLINE_LATEST_LTS + 1;
+
+        Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, null, above, null);
+
+        assertThat(pending).contains(new JdkEnsure.Pending(">=" + above, JdkResolution.Tier.JAVA_RELEASE_FLOOR));
     }
 
     @Test

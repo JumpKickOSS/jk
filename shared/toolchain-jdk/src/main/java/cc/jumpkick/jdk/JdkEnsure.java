@@ -174,12 +174,25 @@ public final class JdkEnsure {
     }
 
     /**
-     * The spec {@link #ensure} would download for this project, or empty when resolution lands on
-     * a JDK already on disk (or on nothing at all). The client's pre-flight asks this before the
+     * A download {@link #ensure} would perform: the spec it would fetch and the resolution tier
+     * that asked for it — the {@code --jdk} switch, a {@code .jdk-version} file, the lock, the
+     * manifest's {@code jdk}, its {@code java} floor, or the no-JDK bootstrap — so a caller can say
+     * <em>why</em> it is installing, not only what.
+     */
+    public record Pending(String spec, JdkResolution.Tier tier) {
+        public Pending {
+            Objects.requireNonNull(spec, "spec");
+            Objects.requireNonNull(tier, "tier");
+        }
+    }
+
+    /**
+     * The download {@link #ensure} would perform for this project, or empty when resolution lands
+     * on a JDK already on disk (or on nothing at all). The client's pre-flight asks this before the
      * build request goes out, so an install that is needed renders on the terminal the user is
      * looking at and an install that is not costs one resolution walk and no output.
      */
-    public static Optional<String> pendingInstall(
+    public static Optional<Pending> pendingInstall(
             Path projectDir,
             @Nullable Path jdksDirOverride,
             @Nullable String projectJdkSpec,
@@ -188,8 +201,8 @@ public final class JdkEnsure {
         JdkRegistry registry = sharedRegistry(jdksDirOverride);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         JdkResolution.Resolved r = resolve(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
-        if (r.jdkOpt().isPresent() || !r.wouldInstall()) return Optional.empty();
-        return Optional.ofNullable(r.installSpec());
+        if (r.jdkOpt().isPresent() || !r.wouldInstall() || r.installSpec() == null) return Optional.empty();
+        return Optional.of(new Pending(r.installSpec(), r.tier()));
     }
 
     /**
