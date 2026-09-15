@@ -103,10 +103,10 @@ class JkBuildParserProjectTest {
     }
 
     @Test
-    void bare_groovy_version_floats_like_a_dependency() {
+    void bare_groovy_version_pins_like_a_dependency() {
         JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "groovy   = \"5.0.4\""));
         assertThat(parsed.project().isGroovy()).isTrue();
-        assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(parsed.project().groovy()).isEqualTo(new VersionSelector.Exact("5.0.4", "5.0.4"));
     }
 
     @Test
@@ -134,8 +134,8 @@ class JkBuildParserProjectTest {
     }
 
     @Test
-    void bare_scala_version_floats_like_a_dependency() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "scala    = \"3\""));
+    void caret_scala_version_floats_within_the_line() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "scala    = \"^3\""));
         assertThat(parsed.project().isScala()).isTrue();
         assertThat(parsed.project().scala()).isInstanceOf(VersionSelector.Caret.class);
         assertThat(parsed.project().languageName()).isEqualTo("scala");

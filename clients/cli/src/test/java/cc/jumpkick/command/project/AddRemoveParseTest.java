@@ -82,7 +82,7 @@ class AddRemoveParseTest {
         assertThat(emptyVer.floating()).isTrue();
 
         var pinned = AddCommand.ParsedDep.parse("com.foo:bar:1.2.3", null, null, null, null);
-        assertThat(pinned.versionLiteral()).isEqualTo("=1.2.3");
+        assertThat(pinned.versionLiteral()).isEqualTo("1.2.3");
         assertThat(pinned.floating()).isFalse();
     }
 

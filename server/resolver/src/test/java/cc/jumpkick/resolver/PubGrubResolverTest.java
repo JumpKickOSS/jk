@@ -185,8 +185,7 @@ class PubGrubResolverTest {
         Map<String, String> bom = Map.of("com.foo:unrelated", "0.1");
         PubGrubResolver resolver = new PubGrubResolver(repos, bom);
 
-        Resolution result =
-                resolver.resolve(List.of(new Dependency("com.foo:other", VersionSelector.parseFloating("1.5"))));
+        Resolution result = resolver.resolve(List.of(new Dependency("com.foo:other", VersionSelector.parse("^1.5"))));
         assertThat(requireNonNull(result.modules().get("com.foo:other:jar:")).version())
                 .isEqualTo("1.5");
     }

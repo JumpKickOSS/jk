@@ -39,7 +39,7 @@ class JkBuildParserFrameworkTest {
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).module()).isEqualTo("org.springframework.boot:spring-boot-dependencies");
         assertThat(platform.get(0).version().raw()).isEqualTo("4.0.0");
-        assertThat(platform.get(0).version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(platform.get(0).version()).isInstanceOf(VersionSelector.Exact.class);
         // ...which makes the versionless starter platform-managed.
         assertThat(b.dependencies().of(Scope.MAIN).get(0).isPlatformManaged()).isTrue();
     }
@@ -129,7 +129,7 @@ class JkBuildParserFrameworkTest {
     void micronaut_table_imports_platform_bom_with_caret_version() {
         var b = JkBuildParser.parse(PROJECT + """
                 [micronaut]
-                version = "5"
+                version = "^5"
 
                 [dependencies]
                 micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
@@ -138,7 +138,7 @@ class JkBuildParserFrameworkTest {
         var platform = b.dependencies().of(Scope.PLATFORM);
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).module()).isEqualTo("io.micronaut.platform:micronaut-platform");
-        assertThat(platform.get(0).version().raw()).isEqualTo("5");
+        assertThat(platform.get(0).version().raw()).isEqualTo("^5");
         assertThat(platform.get(0).version()).isInstanceOf(VersionSelector.Caret.class);
         assertThat(b.dependencies().of(Scope.MAIN).get(0).isPlatformManaged()).isTrue();
     }

@@ -30,12 +30,12 @@ class JkBuildParserDependencyTest {
         var mainDeps = parsed.dependencies().of(Scope.MAIN);
         assertThat(mainDeps).hasSize(2);
 
-        // Bare version on the new format → Caret (Cargo-style default).
+        // A bare version is an exact pin; `^` is the opt-in float.
         var slf4j = mainDeps.get(0);
         assertThat(slf4j.library()).isEqualTo("slf4j-api");
         assertThat(slf4j.module()).isEqualTo("org.slf4j:slf4j-api");
-        assertThat(slf4j.version()).isInstanceOf(VersionSelector.Caret.class);
-        assertThat(slf4j.pinned()).isFalse();
+        assertThat(slf4j.version()).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(slf4j.pinned()).isTrue();
 
         var picocli = mainDeps.get(1);
         assertThat(picocli.library()).isEqualTo("picocli");
@@ -73,11 +73,22 @@ class JkBuildParserDependencyTest {
     }
 
     @Test
-    void bare_version_is_caret_floating() {
-        // Per the v1 locked default: bare "1.2.3" reads as ^1.2.3.
+    void bare_version_is_an_exact_pin() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [dependencies]
                 lib = { group = "com.example", version = "1.2.3" }
+                """);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.version()).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(((VersionSelector.Exact) dep.version()).version()).isEqualTo("1.2.3");
+        assertThat(dep.pinned()).isTrue();
+    }
+
+    @Test
+    void caret_version_floats() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                lib = { group = "com.example", version = "^1.2.3" }
                 """);
         var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
         assertThat(dep.version()).isInstanceOf(VersionSelector.Caret.class);
@@ -377,16 +388,114 @@ class JkBuildParserDependencyTest {
     }
 
     @Test
-    void dep_string_value_is_catalog_shorthand_not_v0_6_coord_string() {
-        // A string value is now treated as the version shorthand for a
-        // catalog-known name. Pasting the old v0.6 coord-string form
-        // ("group:artifact:version") trips the unknown-short-name error.
+    void a_coordinate_as_the_key_is_an_unknown_short_name() {
+        // The key is the local handle; the coordinate belongs in the value.
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [dependencies]
                 "org.foo:bar" = "1.0"
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("unknown short name");
+                .hasMessageContaining("unknown short name")
+                .hasMessageContaining("group:artifact:1.2.3");
+    }
+
+    @Test
+    void gav_string_is_a_maven_coordinate_with_an_exact_version() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                mylib = "com.acme:mylib:1.2.3"
+                """);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.library()).isEqualTo("mylib");
+        assertThat(dep.module()).isEqualTo("com.acme:mylib");
+        assertThat(dep.version()).isEqualTo(new VersionSelector.Exact("1.2.3", "1.2.3"));
+        assertThat(dep.pinned()).isTrue();
+        assertThat(dep.isPlatformManaged()).isFalse();
+    }
+
+    @Test
+    void gav_string_key_is_the_handle_not_the_artifact() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [test-dependencies]
+                jupiter = "org.junit.jupiter:junit-jupiter:6.0.0"
+                """);
+        var dep = parsed.dependencies().of(Scope.TEST).getFirst();
+        assertThat(dep.library()).isEqualTo("jupiter");
+        assertThat(dep.name()).isEqualTo("junit-jupiter");
+        assertThat(dep.group()).isEqualTo("org.junit.jupiter");
+    }
+
+    @Test
+    void versionless_gav_string_is_platform_managed() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                web = "org.springframework.boot:spring-boot-starter-web"
+                """);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.module()).isEqualTo("org.springframework.boot:spring-boot-starter-web");
+        assertThat(dep.isPlatformManaged()).isTrue();
+    }
+
+    @Test
+    void gav_string_third_slot_takes_any_selector() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                caret = "com.acme:caret:^1.2"
+                tilde = "com.acme:tilde:~1.2.3"
+                range = "com.acme:range:>=1.2,<2"
+                latest = "com.acme:latest:latest"
+                """);
+        var deps = parsed.dependencies().of(Scope.MAIN);
+        assertThat(deps.get(0).version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(deps.get(1).version()).isInstanceOf(VersionSelector.Tilde.class);
+        assertThat(deps.get(2).version()).isInstanceOf(VersionSelector.Range.class);
+        assertThat(deps.get(2).version().raw()).isEqualTo(">=1.2,<2");
+        assertThat(deps.get(3).version()).isInstanceOf(VersionSelector.Latest.class);
+    }
+
+    @Test
+    void gav_string_with_a_classifier_names_the_inline_table() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                foo = "com.acme:foo:1.0:linux-x86_64"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("classifier")
+                .hasMessageContaining("{ group = \"com.acme\", name = \"foo\"");
+    }
+
+    @Test
+    void gav_string_with_an_empty_version_is_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                foo = "com.acme:foo:"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("empty version");
+    }
+
+    @Test
+    void windows_drive_path_is_a_path_not_a_coordinate() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                lib = 'C:\\work\\lib'
+                """);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.isPath()).isTrue();
+        assertThat(pathSourceOf(dep).rawPath()).isEqualTo("C:\\work\\lib");
+    }
+
+    @Test
+    void ssh_and_scp_git_urls_are_git_shorthand() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                a = "ssh://git@github.com/acme/a.git@main"
+                b = "git@github.com:acme/b.git@main"
+                """);
+        var deps = parsed.dependencies().of(Scope.MAIN);
+        assertThat(deps.get(0).isGit()).isTrue();
+        assertThat(deps.get(1).isGit()).isTrue();
+        assertThat(gitSourceOf(deps.get(1)).ref()).isEqualTo(new GitRefSpec.Branch("main"));
     }
 
     @Test

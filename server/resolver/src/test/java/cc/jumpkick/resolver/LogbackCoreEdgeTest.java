@@ -29,16 +29,12 @@ class LogbackCoreEdgeTest {
         MavenRepo central =
                 new MavenRepo("central", URI.create("https://repo.maven.apache.org/maven2/"), new Http(), cas);
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);
-        by.put(
-                Scope.MAIN,
-                List.of(new Dependency("ch.qos.logback:logback-classic", VersionSelector.parseFloating("1.5.37"))));
+        by.put(Scope.MAIN, List.of(new Dependency("ch.qos.logback:logback-classic", VersionSelector.parse("1.5.37"))));
         // Platform BOM like Micronaut — enforces managed pins
         by.put(
                 Scope.PLATFORM,
                 List.of(Dependency.of(
-                        "platform",
-                        "io.micronaut.platform:micronaut-platform",
-                        VersionSelector.parseFloating("=5.1.0"))));
+                        "platform", "io.micronaut.platform:micronaut-platform", VersionSelector.parse("=5.1.0"))));
         JkBuild project = new JkBuild(new Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
         Lockfile lock = new LockOrchestrator(RepoGroup.of(central)).lock(project, "test");
         Lockfile.Artifact classic = lock.artifacts().stream()

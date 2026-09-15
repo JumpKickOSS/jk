@@ -63,8 +63,7 @@ public final class LockNativePin {
             sb.append("\nOne lock pins one repository release — make them agree.");
             throw new IllegalStateException(sb.toString());
         }
-        return Optional.of(
-                VersionSelector.parseFloating(byRaw.keySet().iterator().next()));
+        return Optional.of(VersionSelector.parse(byRaw.keySet().iterator().next()));
     }
 
     /**

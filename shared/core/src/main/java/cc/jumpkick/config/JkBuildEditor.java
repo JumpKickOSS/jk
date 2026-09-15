@@ -52,7 +52,7 @@ public final class JkBuildEditor {
     /**
      * Append a dependency to the scope section (creates the section if missing).
      *
-     * @param versionLiteral exact pin as {@code "=1.2.3"}, or floating as {@code "1.2.3"}
+     * @param versionLiteral the selector as it should appear in the file: {@code "1.2.3"} pins, {@code "^1.2.3"} floats
      */
     public static String addDependency(
             String content, Scope scope, String name, String group, String artifact, String versionLiteral) {

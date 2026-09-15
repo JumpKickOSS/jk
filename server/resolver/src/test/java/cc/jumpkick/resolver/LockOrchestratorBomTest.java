@@ -147,8 +147,8 @@ class LockOrchestratorBomTest {
                 Scope.PLATFORM, List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
                 Scope.MAIN,
                         List.of(
-                                // No version on the main dep — let the BOM pin it.
-                                new Dependency("com.foo:widget", VersionSelector.parseFloating("1.0")))));
+                                // A floor on the main dep — let the BOM pin it.
+                                new Dependency("com.foo:widget", VersionSelector.parse("^1.0")))));
 
         LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
         Lockfile lock = orchestrator.lock(project, "test");
@@ -427,7 +427,7 @@ class LockOrchestratorBomTest {
         upstream.jar("com.foo", "proc", "1.0");
 
         JkBuild project = jkBuildWithDeps(
-                Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
+                Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parse("1.0")))));
 
         LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
         Lockfile lock = orchestrator.lock(project, "test");
@@ -449,9 +449,9 @@ class LockOrchestratorBomTest {
         upstream.jar("com.foo", "extra", "1.0");
 
         // `extra` is optional; the `with-extra` feature (a default) names it.
-        Dependency core = new Dependency("com.foo:core", VersionSelector.parseFloating("1.0"));
-        Dependency extra = new Dependency("com.foo:extra", VersionSelector.parseFloating("1.0"))
-                .withOptional(true); // library = "extra"
+        Dependency core = new Dependency("com.foo:core", VersionSelector.parse("1.0"));
+        Dependency extra =
+                new Dependency("com.foo:extra", VersionSelector.parse("1.0")).withOptional(true); // library = "extra"
         Features features = new Features(
                 Map.of("with-extra", new Feature("with-extra", List.of("extra"), List.of())), List.of("with-extra"));
         JkBuild project = jkBuildWithFeatures(
@@ -472,7 +472,7 @@ class LockOrchestratorBomTest {
     void feature_naming_a_non_optional_dep_is_an_error(@TempDir Path tempDir) {
         // `core` is a normal (non-optional) dep; a feature referencing it is a
         // config error — most likely a forgotten `optional = true`.
-        Dependency core = new Dependency("com.foo:core", VersionSelector.parseFloating("1.0"));
+        Dependency core = new Dependency("com.foo:core", VersionSelector.parse("1.0"));
         Features features = new Features(Map.of("x", new Feature("x", List.of("core"), List.of())), List.of("x"));
         JkBuild project = jkBuildWithFeatures(
                 new JkBuild.Dependencies(new EnumMap<>(Map.of(Scope.MAIN, List.of(core)))), features);
@@ -586,9 +586,9 @@ class LockOrchestratorBomTest {
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.PLATFORM,
-                List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parseFloating("1.0"))),
+                List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("^1.0"))),
                 Scope.MAIN,
-                List.of(new Dependency("com.foo:widget", VersionSelector.parseFloating("1.0")))));
+                List.of(new Dependency("com.foo:widget", VersionSelector.parse("^1.0")))));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         Lockfile.Artifact widget = lock.artifacts().stream()

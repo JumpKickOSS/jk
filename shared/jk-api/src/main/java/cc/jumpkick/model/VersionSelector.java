@@ -4,9 +4,21 @@ package cc.jumpkick.model;
 import java.util.Objects;
 
 /**
- * Version selector. {@link #parse} treats bare versions as {@link Exact} ({@code :} form);
- * {@link #parseFloating} as {@link Caret} ({@code @} form). Decorations: {@code ^}/{@code ~}/
- * {@code =}/range/{@code latest}/{@code snapshot}.
+ * Version selector grammar, shared by every place {@code jk.toml} names a version.
+ *
+ * <table>
+ *   <caption>Selector forms</caption>
+ *   <tr><th>Written</th><th>Means</th></tr>
+ *   <tr><td>{@code 1.2.3}</td><td>{@link Exact} {@code 1.2.3}</td></tr>
+ *   <tr><td>{@code =1.2.3}</td><td>{@link Exact} {@code 1.2.3}; writers emit the bare form</td></tr>
+ *   <tr><td>{@code ^1.2.3}</td><td>{@link Caret}</td></tr>
+ *   <tr><td>{@code ~1.2.3}</td><td>{@link Tilde}</td></tr>
+ *   <tr><td>{@code >=1.2,<2}</td><td>{@link Range}</td></tr>
+ *   <tr><td>{@code latest}</td><td>{@link Latest}: newest stable at the next resolve</td></tr>
+ *   <tr><td>{@code snapshot}</td><td>{@link Snapshot}: newest advertised, pre-releases included</td></tr>
+ * </table>
+ *
+ * <p>A bare version is a pin. Floating is always spelled out with a decoration or a keyword.
  */
 public sealed interface VersionSelector {
 
@@ -24,25 +36,12 @@ public sealed interface VersionSelector {
     record Latest(String raw) implements VersionSelector {}
 
     /**
-     * {@code snapshot} — the newest advertised version, pre-releases included.
-     *
-     * <p>The deliberate opt-in counterpart to every other floating selector, which resolve to stable
-     * releases only. Before this existed, reaching an RC was something that happened *to*
-     * you: a caret admitted the next major's pre-releases because {@code 3.0-rc5} sorts below
-     * {@code 3.0}. Now wanting a bleeding edge is something you say.
+     * {@code snapshot}: the newest advertised version, pre-releases included. Every other floating
+     * selector resolves to stable releases only.
      */
     record Snapshot(String raw) implements VersionSelector {}
 
     static VersionSelector parse(String spec) {
-        return parse(spec, /* bareIsCaret */ false);
-    }
-
-    /** Parse with caret-default bare versions ({@code @} form). */
-    public static VersionSelector parseFloating(String spec) {
-        return parse(spec, /* bareIsCaret */ true);
-    }
-
-    private static VersionSelector parse(String spec, boolean bareIsCaret) {
         Objects.requireNonNull(spec, "spec");
         String trimmed = spec.trim();
         if (trimmed.isEmpty()) {
@@ -69,10 +68,9 @@ public sealed interface VersionSelector {
         if (trimmed.startsWith(">") || trimmed.startsWith("<") || trimmed.contains(",")) {
             return new Range(spec);
         }
-        // Leading `=` is always Exact (explicit pin / lockfile round-trip).
         if (trimmed.startsWith("=")) {
             return new Exact(spec, trimmed.substring(1).trim());
         }
-        return bareIsCaret ? new Caret(spec, trimmed) : new Exact(spec, trimmed);
+        return new Exact(spec, trimmed);
     }
 }

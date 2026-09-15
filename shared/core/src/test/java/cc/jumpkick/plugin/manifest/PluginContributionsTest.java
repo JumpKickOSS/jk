@@ -42,10 +42,24 @@ class PluginContributionsTest {
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module, d -> d.version().raw())
                 .containsExactly(tuple("org.springframework.boot:spring-boot-dependencies", "4.0.0"));
-        // The contribution lands as written, not exactified with a leading `=`, so a
-        // `version = "4"` floor floats within the Boot 4 line at lock.
+        // The contribution lands as written: `version = "4.0.0"` is that BOM release.
         assertThat(build.dependencies().of(Scope.PLATFORM).getFirst().version())
-                .isInstanceOf(VersionSelector.Caret.class);
+                .isInstanceOf(VersionSelector.Exact.class);
+    }
+
+    @Test
+    void a_caret_config_version_floats_the_bom_within_the_line() {
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                jdk = "25"
+
+                [spring-boot]
+                version = "^4"
+                """);
+        assertThat(build.dependencies().of(Scope.PLATFORM).getFirst().version())
+                .isEqualTo(new VersionSelector.Caret("^4", "4"));
     }
 
     @Test

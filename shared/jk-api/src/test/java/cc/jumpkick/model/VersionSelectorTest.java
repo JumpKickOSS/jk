@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class VersionSelectorTest {
 
     @Test
-    void plain_version_is_exact_by_default() {
+    void bare_version_is_exact() {
         VersionSelector s = VersionSelector.parse("2.18.2");
         assertThat(s).isInstanceOf(VersionSelector.Exact.class);
         assertThat(((VersionSelector.Exact) s).version()).isEqualTo("2.18.2");
@@ -22,7 +22,7 @@ class VersionSelectorTest {
     }
 
     @Test
-    void equals_prefix_is_still_exact_for_back_compat() {
+    void equals_prefix_is_the_same_exact() {
         VersionSelector s = VersionSelector.parse("=2.18.2");
         assertThat(s).isInstanceOf(VersionSelector.Exact.class);
         assertThat(((VersionSelector.Exact) s).version()).isEqualTo("2.18.2");
@@ -54,7 +54,6 @@ class VersionSelectorTest {
         // stable-only.
         assertThat(VersionSelector.parse("snapshot")).isInstanceOf(VersionSelector.Snapshot.class);
         assertThat(VersionSelector.parse("SNAPSHOT")).isInstanceOf(VersionSelector.Snapshot.class);
-        assertThat(VersionSelector.parseFloating("snapshot")).isInstanceOf(VersionSelector.Snapshot.class);
         assertThat(VersionSelector.parse("snapshot").raw()).isEqualTo("snapshot");
     }
 
@@ -62,27 +61,22 @@ class VersionSelectorTest {
     void a_version_that_merely_contains_snapshot_is_not_the_keyword() {
         // `1.0-SNAPSHOT` is a Maven version, not the selector.
         assertThat(VersionSelector.parse("1.0-SNAPSHOT")).isInstanceOf(VersionSelector.Exact.class);
-        assertThat(VersionSelector.parseFloating("1.0-SNAPSHOT")).isInstanceOf(VersionSelector.Caret.class);
     }
 
     @Test
-    void parseFloating_bare_version_is_caret() {
-        VersionSelector s = VersionSelector.parseFloating("2.18.2");
-        assertThat(s).isInstanceOf(VersionSelector.Caret.class);
-        assertThat(((VersionSelector.Caret) s).version()).isEqualTo("2.18.2");
-    }
-
-    @Test
-    void parseFloating_explicit_equals_is_exact() {
-        VersionSelector s = VersionSelector.parseFloating("=2.18.2");
+    void a_bare_major_is_exact_not_a_floor() {
+        // A floor is written `^4`; "4" is the release literally called 4.
+        VersionSelector s = VersionSelector.parse("4");
         assertThat(s).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(((VersionSelector.Exact) s).version()).isEqualTo("4");
+        assertThat(VersionSelector.parse("^4")).isInstanceOf(VersionSelector.Caret.class);
     }
 
     @Test
-    void parseFloating_honors_other_decorations() {
-        assertThat(VersionSelector.parseFloating("~2.18.2")).isInstanceOf(VersionSelector.Tilde.class);
-        assertThat(VersionSelector.parseFloating(">=2.18,<3")).isInstanceOf(VersionSelector.Range.class);
-        assertThat(VersionSelector.parseFloating("latest")).isInstanceOf(VersionSelector.Latest.class);
+    void surrounding_whitespace_is_trimmed_and_raw_is_kept() {
+        VersionSelector s = VersionSelector.parse(" 2.18.2 ");
+        assertThat(((VersionSelector.Exact) s).version()).isEqualTo("2.18.2");
+        assertThat(s.raw()).isEqualTo(" 2.18.2 ");
     }
 
     @Test

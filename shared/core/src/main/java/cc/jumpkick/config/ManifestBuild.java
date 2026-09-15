@@ -176,7 +176,7 @@ public final class ManifestBuild {
         for (PluginContributions.PlatformDep dep : contributed) {
             boolean declared = platform.stream().anyMatch(d -> dep.module().equals(d.module()));
             if (declared) continue;
-            platform.add(new Dependency(dep.module(), VersionSelector.parseFloating(dep.version())));
+            platform.add(new Dependency(dep.module(), VersionSelector.parse(dep.version())));
             changed = true;
         }
         if (!changed) return deps;
@@ -237,8 +237,8 @@ public final class ManifestBuild {
     /**
      * {@code [native].metadata-repository} — the GraalVM reachability-metadata repository release,
      * in the dependency version grammar. Null (key omitted) leaves {@link
-     * JkBuild.NativeConfig#METADATA_REPOSITORY_DEFAULT} in place. Bare versions float like a
-     * dependency's ({@code "1.1"} is a caret floor); write {@code "=1.1.4"} to nail one release.
+     * JkBuild.NativeConfig#METADATA_REPOSITORY_DEFAULT} in place. A bare {@code "1.1.4"} pins one
+     * release, as it does for a dependency; {@code "^1"} floats within the line.
      */
     private static @Nullable VersionSelector parseMetadataRepository(TomlTable native_) {
         String raw = native_.getString("metadata-repository");
@@ -247,7 +247,7 @@ public final class ManifestBuild {
             throw new JkBuildParseException("[native].metadata-repository must not be blank");
         }
         try {
-            return VersionSelector.parseFloating(raw);
+            return VersionSelector.parse(raw);
         } catch (IllegalArgumentException e) {
             throw new JkBuildParseException("[native].metadata-repository: " + e.getMessage());
         }

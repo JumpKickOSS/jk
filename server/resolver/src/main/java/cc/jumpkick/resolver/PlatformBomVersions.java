@@ -13,15 +13,9 @@ import java.util.Objects;
 /**
  * Resolve a platform BOM {@link VersionSelector} to a concrete release version.
  *
- * <p>The managed catalog is loaded from the <em>resolved</em> BOM POM — so {@code version = "4"}
+ * <p>The managed catalog is loaded from the <em>resolved</em> BOM POM — so {@code version = "^4"}
  * must pick the highest stable 4.x, and {@code latest} the highest stable advertised, before
- * reading {@code dependencyManagement}.
- *
- * <p>Takes a parsed {@link VersionSelector}, never a raw string: whether a <em>bare</em> version
- * means "exact" or "caret floor" is the caller's convention, not this class's. {@code jk.toml}
- * dependencies are bare-is-caret ({@link VersionSelector#parseFloating}); {@code jk-plugin.toml}
- * tool coordinates are bare-is-exact ({@link VersionSelector#parse}) so a plugin author's literal
- * pin stays pinned.
+ * reading {@code dependencyManagement}. A bare {@code version = "4.1.0"} is that release.
  */
 public final class PlatformBomVersions {
 

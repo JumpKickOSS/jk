@@ -58,9 +58,7 @@ class SigstoreGrpcClosureTest {
             repos = RepoGroup.of(central);
         }
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);
-        by.put(
-                Scope.MAIN,
-                List.of(new Dependency("dev.sigstore:sigstore-java", VersionSelector.parseFloating("2.2.0"))));
+        by.put(Scope.MAIN, List.of(new Dependency("dev.sigstore:sigstore-java", VersionSelector.parse("2.2.0"))));
         JkBuild project = new JkBuild(new Project("com.example", "demo", "0.1.0", 25), new JkBuild.Dependencies(by));
         Lockfile lock = new LockOrchestrator(repos).lock(project, "test");
 

@@ -47,7 +47,7 @@ class LockNativePinTest {
     @Test
     void a_standalone_project_contributes_its_own_selector() throws IOException {
         manifest("", "name = \"app\"\n\n[native]\nmetadata-repository = \"=1.1.4\"\n");
-        assertThat(LockNativePin.selector(root)).contains(VersionSelector.parseFloating("=1.1.4"));
+        assertThat(LockNativePin.selector(root)).contains(VersionSelector.parse("=1.1.4"));
     }
 
     /** The case jk itself is: the table lives on a member, and the root has none. */
@@ -55,7 +55,7 @@ class LockNativePinTest {
     void a_member_declaring_native_pins_the_workspace() throws IOException {
         manifest("", ROOT + "\n[workspace]\nmodules = [\"cli\"]\n");
         manifest("cli", "name = \"cli\"\n\n[native]\nmetadata-repository = \"^1\"\n");
-        assertThat(LockNativePin.selector(root)).contains(VersionSelector.parseFloating("^1"));
+        assertThat(LockNativePin.selector(root)).contains(VersionSelector.parse("^1"));
     }
 
     /** A table with the key omitted still declares a pin — the parser's default. */
@@ -107,6 +107,6 @@ class LockNativePinTest {
         manifest("", ROOT + "\n[workspace]\nmodules = [\"a\", \"b\"]\n");
         manifest("a", "name = \"a\"\n\n[native]\nmetadata-repository = \"=1.1.4\"\n");
         manifest("b", "name = \"b\"\n\n[native]\nmetadata-repository = \"=1.1.4\"\n");
-        assertThat(LockNativePin.selector(root)).contains(VersionSelector.parseFloating("=1.1.4"));
+        assertThat(LockNativePin.selector(root)).contains(VersionSelector.parse("=1.1.4"));
     }
 }

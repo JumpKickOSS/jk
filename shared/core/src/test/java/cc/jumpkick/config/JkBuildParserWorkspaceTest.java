@@ -153,7 +153,34 @@ class JkBuildParserWorkspaceTest {
         assertThat(jj.group()).isEqualTo("org.junit.jupiter");
         assertThat(jj.artifact()).isEqualTo("junit-jupiter");
         assertThat(jj.module()).isEqualTo("org.junit.jupiter:junit-jupiter");
-        assertThat(jj.version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(jj.version()).isInstanceOf(VersionSelector.Exact.class);
+    }
+
+    @Test
+    void workspace_dependencies_gav_string_is_a_maven_coordinate() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [workspace]
+                modules = ["a"]
+
+                [workspace.dependencies]
+                jupiter = "org.junit.jupiter:junit-jupiter:6.1.0"
+                """);
+        var jj = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("jupiter"));
+        assertThat(jj.module()).isEqualTo("org.junit.jupiter:junit-jupiter");
+        assertThat(jj.version()).isEqualTo(new VersionSelector.Exact("6.1.0", "6.1.0"));
+    }
+
+    @Test
+    void workspace_dependencies_gav_string_needs_a_version() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [workspace]
+                modules = ["a"]
+
+                [workspace.dependencies]
+                jupiter = "org.junit.jupiter:junit-jupiter"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("no version");
     }
 
     @Test
@@ -180,7 +207,7 @@ class JkBuildParserWorkspaceTest {
                 """, TEST_CATALOG);
         var jd = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("jackson-databind"));
         assertThat(jd.module()).isEqualTo("tools.jackson.core:jackson-databind");
-        assertThat(jd.version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(jd.version()).isInstanceOf(VersionSelector.Exact.class);
     }
 
     @Test
@@ -252,7 +279,7 @@ class JkBuildParserWorkspaceTest {
         var dep = parsed.dependencies().of(Scope.TEST).getFirst();
         assertThat(dep.library()).isEqualTo("junit-jupiter");
         assertThat(dep.module()).isEqualTo("org.junit.jupiter:junit-jupiter");
-        assertThat(dep.version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(dep.version()).isInstanceOf(VersionSelector.Exact.class);
     }
 
     @Test

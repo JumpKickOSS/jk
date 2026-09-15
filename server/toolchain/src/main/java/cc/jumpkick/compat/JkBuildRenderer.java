@@ -266,13 +266,12 @@ public final class JkBuildRenderer {
 
     /**
      * Convert a {@link VersionSelector} into the literal that goes inside {@code version = "..."}.
-     * Exact selectors keep their {@code =} prefix so a re-parse via {@code parseFloating} round-trips
-     * back to {@code Exact}; other selectors emit their decoration as written.
+     * An exact selector is the bare version; every floating selector carries its decoration.
      */
     private static String versionLiteral(VersionSelector v) {
         return switch (v) {
-            case VersionSelector.Exact e -> "=" + e.version();
-            case VersionSelector.Caret c -> c.version();
+            case VersionSelector.Exact e -> e.version();
+            case VersionSelector.Caret c -> "^" + c.version();
             case VersionSelector.Tilde t -> "~" + t.version();
             case VersionSelector.Range r -> r.raw();
             case VersionSelector.Latest l -> "latest";

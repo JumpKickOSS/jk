@@ -45,14 +45,11 @@ class ManifestNativeTest {
                 .isEqualTo(new VersionSelector.Range(">=1.2,<2"));
     }
 
-    /**
-     * Bare is a caret floor, exactly as {@code [dependencies] foo = "1.1"} is. Reading it as an
-     * exact pin would make the one grammar mean two things depending on which table it is in.
-     */
+    /** Bare is a pin, exactly as {@code [dependencies] foo = "1.1.4"} is: one grammar, every table. */
     @Test
-    void a_bare_version_floats_like_a_dependency() {
-        assertThat(nativeConfig("[native]\nmetadata-repository = \"1.1\"\n").metadataRepository())
-                .isEqualTo(new VersionSelector.Caret("1.1", "1.1"));
+    void a_bare_version_pins_like_a_dependency() {
+        assertThat(nativeConfig("[native]\nmetadata-repository = \"1.1.4\"\n").metadataRepository())
+                .isEqualTo(new VersionSelector.Exact("1.1.4", "1.1.4"));
     }
 
     @Test

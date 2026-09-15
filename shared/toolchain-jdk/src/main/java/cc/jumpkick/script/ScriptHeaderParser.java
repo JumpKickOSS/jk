@@ -200,7 +200,7 @@ public final class ScriptHeaderParser {
 
         VersionSelector selector;
         if (floating) {
-            selector = VersionSelector.parseFloating(versionPart);
+            selector = VersionSelector.parse(versionPart);
         } else {
             String trimmed = versionPart.trim();
             if (trimmed.startsWith("^")

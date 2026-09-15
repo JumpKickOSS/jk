@@ -2,7 +2,6 @@
 package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -293,29 +292,26 @@ public final class GradleImporter {
 
     /**
      * Detect the Kotlin compiler version from the {@code plugins {}} block. Recognises {@code
-     * kotlin("jvm") version "X"} and {@code id("org.jetbrains.kotlin.jvm") version "X"}. When the
-     * Kotlin plugin is applied without an explicit version, defaults to a floating {@link
-     * KotlinResolver#DEFAULT_VERSION} (pinned later by {@code jk lock}). Returns {@code null} for a
+     * kotlin("jvm") version "X"} and {@code id("org.jetbrains.kotlin.jvm") version "X"}; the declared
+     * version is the pin. When the Kotlin plugin is applied without an explicit version the selector
+     * is {@code latest}, which the first {@code jk lock} resolves. Returns {@code null} for a
      * non-Kotlin (Java) project.
      */
     private static @Nullable VersionSelector detectKotlinVersion(String pluginsBody, ImportReport.Builder report) {
         Matcher m = KOTLIN_PLUGIN_VERSION.matcher(pluginsBody);
         if (m.find()) {
-            return VersionSelector.parseFloating(Objects.requireNonNull(firstNonNull(m.group(3), m.group(4))));
+            return VersionSelector.parse(Objects.requireNonNull(firstNonNull(m.group(3), m.group(4))));
         }
         Matcher mid = KOTLIN_ID_VERSION.matcher(pluginsBody);
         if (mid.find()) {
-            return VersionSelector.parseFloating(Objects.requireNonNull(firstNonNull(mid.group(1), mid.group(2))));
+            return VersionSelector.parse(Objects.requireNonNull(firstNonNull(mid.group(1), mid.group(2))));
         }
         boolean kotlinApplied = PLUGIN_KOTLIN.matcher(pluginsBody).find()
                 || KOTLIN_ID.matcher(pluginsBody).find();
         if (kotlinApplied) {
-            report.warning("Kotlin plugin recognised without an explicit version; defaulted"
-                    + " project.kotlin to "
-                    + KotlinResolver.DEFAULT_VERSION
-                    + " (floating)."
-                    + " `jk lock` pins it — edit jk.toml to change.");
-            return VersionSelector.parseFloating(KotlinResolver.DEFAULT_VERSION);
+            report.warning("Kotlin plugin recognised without an explicit version; project.kotlin is"
+                    + " `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
+            return VersionSelector.parse("latest");
         }
         return null;
     }

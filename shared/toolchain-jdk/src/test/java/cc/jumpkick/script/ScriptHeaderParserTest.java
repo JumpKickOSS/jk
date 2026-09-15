@@ -125,12 +125,22 @@ class ScriptHeaderParserTest {
     }
 
     @Test
-    void at_form_is_floating_with_caret_default() {
+    void at_form_with_a_bare_version_is_exact() {
         ScriptHeader h = ScriptHeaderParser.parse("""
                 //jk dep com.example:lib@1.2.3
                 """);
         Dependency d = h.deps().getFirst();
         assertThat(d.module()).isEqualTo("com.example:lib");
+        assertThat(d.pinned()).isTrue();
+        assertThat(d.version()).isEqualTo(new VersionSelector.Exact("1.2.3", "1.2.3"));
+    }
+
+    @Test
+    void at_form_with_a_caret_floats() {
+        ScriptHeader h = ScriptHeaderParser.parse("""
+                //jk dep com.example:lib@^1.2.3
+                """);
+        Dependency d = h.deps().getFirst();
         assertThat(d.pinned()).isFalse();
         assertThat(d.version()).isInstanceOf(VersionSelector.Caret.class);
     }

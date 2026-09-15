@@ -46,7 +46,7 @@ class LanguagesTest {
     @Test
     void explicit_scala_pin_enables_scala_without_sources(@TempDir Path tmp) {
         Project project = Project.builder("com.example", "hello", "1.0.0")
-                .scala(VersionSelector.parseFloating("3"))
+                .scala(VersionSelector.parse("3"))
                 .build();
         assertThat(Languages.resolve(project, tmp).scala()).isTrue();
         assertThat(project.languageName()).isEqualTo("scala");

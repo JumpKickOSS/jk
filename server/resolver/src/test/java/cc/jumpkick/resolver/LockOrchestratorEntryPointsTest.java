@@ -63,8 +63,8 @@ class LockOrchestratorEntryPointsTest {
         upstream.metadata("com.foo", "lib", "1.0", "1.1")
                 .pom("com.foo", "lib", "1.0", MavenStub.emptyPom("com.foo", "lib", "1.0"))
                 .pom("com.foo", "lib", "1.1", MavenStub.emptyPom("com.foo", "lib", "1.1"));
-        JkBuild project = project(
-                Map.of(Scope.MAIN, List.of(new Dependency("com.foo:lib", VersionSelector.parseFloating("1.0")))));
+        JkBuild project =
+                project(Map.of(Scope.MAIN, List.of(new Dependency("com.foo:lib", VersionSelector.parse("^1.0")))));
         Lockfile existing = new Lockfile(
                 Lockfile.CURRENT_VERSION,
                 "jk test",

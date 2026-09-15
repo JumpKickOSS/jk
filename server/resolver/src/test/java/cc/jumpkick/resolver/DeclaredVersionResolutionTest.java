@@ -126,7 +126,7 @@ class DeclaredVersionResolutionTest {
 
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(
-                        new Dependency("org.jetbrains:annotations", VersionSelector.parseFloating("23.0.0")),
+                        new Dependency("org.jetbrains:annotations", VersionSelector.parse("^23.0.0")),
                         new Dependency(
                                 "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm",
                                 VersionSelector.parse("=1.11.0"))));
@@ -161,8 +161,7 @@ class DeclaredVersionResolutionTest {
                 .isEqualTo("2.0.1");
 
         Resolution floating = new PubGrubResolver(repoGroup(tempDir.resolve("floating")))
-                .resolve(List.of(
-                        new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parseFloating("2.0.1"))));
+                .resolve(List.of(new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("^2.0.1"))));
         assertThat(requireNonNull(floating.modules().get(injectApi)).version()).isEqualTo("2.0.1.MR");
     }
 

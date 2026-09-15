@@ -177,8 +177,8 @@ class LockOrchestratorScopeTest {
         upstream.metadata("com.foo", "proc", "1.0");
         upstream.pom("com.foo", "proc", "1.0", MavenStub.emptyPom("com.foo", "proc", "1.0"));
 
-        JkBuild project = jkBuild(
-                Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
+        JkBuild project =
+                jkBuild(Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parse("1.0")))));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         Lockfile.Artifact proc = lock.artifacts().stream()

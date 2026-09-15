@@ -627,7 +627,7 @@ public record JkBuild(
             ToolchainSpec graalSpec) {
 
         /** {@code metadata-repository} when the key is omitted: newest stable at lock time. */
-        public static final VersionSelector METADATA_REPOSITORY_DEFAULT = VersionSelector.parseFloating("latest");
+        public static final VersionSelector METADATA_REPOSITORY_DEFAULT = VersionSelector.parse("latest");
 
         public NativeConfig {
             args = args == null ? List.of() : List.copyOf(args);

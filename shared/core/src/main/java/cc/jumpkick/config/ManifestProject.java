@@ -394,9 +394,9 @@ public final class ManifestProject {
     }
 
     /**
-     * {@code kotlin} is a Kotlin compiler version selector (string), parsed the same way as a
-     * floating dependency version: bare {@code 2.3.21} → caret, {@code =2.3.21} pins. Absent → {@code
-     * null} (a Java project).
+     * {@code kotlin} is a Kotlin compiler version selector (string) in the dependency version
+     * grammar: bare {@code 2.3.21} pins, {@code ^2.3} floats within the line. Absent → {@code null}
+     * (a Java project).
      */
     static @Nullable VersionSelector parseKotlinVersion(TomlTable root) {
         if (!root.contains("kotlin")) return null;
@@ -405,13 +405,13 @@ public final class ManifestProject {
             throw new JkBuildParseException("kotlin must be a version string, e.g. \"2.3.21\"");
         }
         if (raw.isBlank()) return null;
-        return VersionSelector.parseFloating(raw);
+        return VersionSelector.parse(raw);
     }
 
     /**
-     * {@code groovy} is a Groovy compiler version selector (string), parsed the same way as
-     * a floating dependency version: bare {@code 5.0.4} → caret, {@code =5.0.4} pins. Absent →
-     * {@code null} (not a Groovy project).
+     * {@code groovy} is a Groovy compiler version selector (string) in the dependency version
+     * grammar: bare {@code 5.0.4} pins, {@code ^5} floats within the line. Absent → {@code null}
+     * (not a Groovy project).
      */
     static @Nullable VersionSelector parseGroovyVersion(TomlTable root) {
         if (!root.contains("groovy")) return null;
@@ -420,22 +420,22 @@ public final class ManifestProject {
             throw new JkBuildParseException("groovy must be a version string, e.g. \"5.0.4\"");
         }
         if (raw.isBlank()) return null;
-        return VersionSelector.parseFloating(raw);
+        return VersionSelector.parse(raw);
     }
 
     /**
-     * {@code scala} is a Scala compiler version selector (string), parsed the same way as a
-     * floating dependency version: bare {@code 3} → caret, {@code =3.8.4} pins. Absent →
-     * {@code null} (not a Scala project).
+     * {@code scala} is a Scala compiler version selector (string) in the dependency version
+     * grammar: bare {@code 3.8.4} pins, {@code ^3} floats within the line. Absent → {@code null}
+     * (not a Scala project).
      */
     static @Nullable VersionSelector parseScalaVersion(TomlTable root) {
         if (!root.contains("scala")) return null;
         String raw = root.getString("scala");
         if (raw == null) {
-            throw new JkBuildParseException("scala must be a version string, e.g. \"3\"");
+            throw new JkBuildParseException("scala must be a version string, e.g. \"3.8.4\"");
         }
         if (raw.isBlank()) return null;
-        return VersionSelector.parseFloating(raw);
+        return VersionSelector.parse(raw);
     }
 
     /**

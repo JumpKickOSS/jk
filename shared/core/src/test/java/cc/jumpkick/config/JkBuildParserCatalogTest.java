@@ -216,7 +216,7 @@ class JkBuildParserCatalogTest {
     @Test
     void shorthand_string_value_resolves_through_catalog() {
         // The cargo-add experience: `name = "1.0.0"` looks up the coord in
-        // the bundled catalog and treats the version as caret-floating.
+        // the catalog and pins that version.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [dependencies]
                 jackson-databind = "2.18.2"
@@ -225,7 +225,7 @@ class JkBuildParserCatalogTest {
         assertThat(deps).hasSize(1);
         assertThat(deps.getFirst().library()).isEqualTo("jackson-databind");
         assertThat(deps.getFirst().module()).isEqualTo("tools.jackson.core:jackson-databind");
-        assertThat(deps.getFirst().version()).isInstanceOf(VersionSelector.Caret.class);
+        assertThat(deps.getFirst().version()).isEqualTo(new VersionSelector.Exact("2.18.2", "2.18.2"));
     }
 
     @Test

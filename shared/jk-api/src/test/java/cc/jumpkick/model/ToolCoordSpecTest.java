@@ -35,8 +35,11 @@ class ToolCoordSpecTest {
     }
 
     @Test
-    void one_colon_before_at_reads_the_suffix_as_a_floating_selector() {
-        var caret = (ToolCoordSpec.Floating) ToolCoordSpec.parse("com.example:widget-cli@1.2");
+    void one_colon_before_at_reads_the_suffix_as_a_selector() {
+        var bare = (ToolCoordSpec.Floating) ToolCoordSpec.parse("com.example:widget-cli@1.2");
+        assertThat(bare.selector()).isInstanceOf(VersionSelector.Exact.class);
+
+        var caret = (ToolCoordSpec.Floating) ToolCoordSpec.parse("com.example:widget-cli@^1.2");
         assertThat(caret.selector()).isInstanceOf(VersionSelector.Caret.class);
 
         var exact = (ToolCoordSpec.Floating) ToolCoordSpec.parse("com.example:widget-cli@=1.2.3");

@@ -6,7 +6,6 @@ import static cc.jumpkick.host.DomXml.childElements;
 import static cc.jumpkick.host.DomXml.childText;
 
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
@@ -328,13 +327,11 @@ public final class PomImporter {
         if (!present) return null; // only the plugin marks a Kotlin project
         String resolved = (pluginVersion != null && !pluginVersion.startsWith("${")) ? pluginVersion : propVersion;
         if (resolved == null || resolved.isBlank()) {
-            resolved = KotlinResolver.DEFAULT_VERSION;
-            report.warning("kotlin-maven-plugin recognised without a resolvable version; defaulted"
-                    + " project.kotlin to "
-                    + resolved
-                    + " (floating). `jk lock` pins it.");
+            report.warning("kotlin-maven-plugin recognised without a resolvable version; project.kotlin"
+                    + " is `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
+            return VersionSelector.parse("latest");
         }
-        return VersionSelector.parseFloating(resolved);
+        return VersionSelector.parse(resolved);
     }
 
     /**

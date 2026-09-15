@@ -67,7 +67,7 @@ class ScalaToolResolverTest {
 
     @Test
     void pick_scala_version_prefers_stable_highest() {
-        VersionSet set = VersionSelectors.toVersionSet(VersionSelector.parseFloating("3"));
+        VersionSet set = VersionSelectors.toVersionSet(VersionSelector.parse("^3"));
         assertThat(LockPipeline.pickVersion(set, List.of("3.8.2", "3.8.4", "3.9.0-RC6", "2.13.16")))
                 .isEqualTo("3.8.4");
         assertThat(LockPipeline.pickVersion(set, List.of("3.8.4", "3.8.4"))).isEqualTo("3.8.4");

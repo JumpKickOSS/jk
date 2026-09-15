@@ -78,7 +78,7 @@ public final class ToolTargets {
         // Validate the suffix now (it rides the wire verbatim).
         if (c.suffix() != null) {
             try {
-                VersionSelector.parseFloating(c.suffix());
+                VersionSelector.parse(c.suffix());
             } catch (IllegalArgumentException e) {
                 throw new TargetException(
                         "jk tool: bad version selector `@" + c.suffix() + "` on `" + c.name() + "`: " + e.getMessage());

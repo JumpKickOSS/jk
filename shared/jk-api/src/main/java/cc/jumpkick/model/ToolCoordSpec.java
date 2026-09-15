@@ -52,9 +52,8 @@ public sealed interface ToolCoordSpec {
                 throw new IllegalArgumentException(
                         "packaging type ('!') requires a full g:a:v coordinate, got: " + spec);
             }
-            VersionSelector selector = at >= 0
-                    ? VersionSelector.parseFloating(withoutType.substring(at + 1))
-                    : VersionSelector.parse("latest");
+            VersionSelector selector =
+                    at >= 0 ? VersionSelector.parse(withoutType.substring(at + 1)) : VersionSelector.parse("latest");
             return new Floating(group, artifact, selector, spec);
         }
         // 2+ colons (or none — Coordinate.parse renders the canonical error).

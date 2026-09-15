@@ -41,13 +41,13 @@ class JkBuildRendererTest {
     void renders_application_and_native_blocks_when_set() {
         JkBuild model = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
-                        .kotlin(VersionSelector.parseFloating("=2.3.21"))
+                        .kotlin(VersionSelector.parse("2.3.21"))
                         .build())
                 .application(new JkBuild.Application("com.example.App", true))
                 .nativeConfig(new JkBuild.NativeConfig(null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, null))
                 .build();
         String out = JkBuildRenderer.render(model);
-        assertThat(out).contains("kotlin   = \"=2.3.21\"");
+        assertThat(out).contains("kotlin   = \"2.3.21\"");
         assertThat(out).contains("[application]");
         assertThat(out).contains("main       = \"com.example.App\"");
         assertThat(out).contains("assembly = true");
@@ -85,17 +85,12 @@ class JkBuildRendererTest {
                         .jdkMajor(25)
                         .build())
                 .nativeConfig(new JkBuild.NativeConfig(
-                        null,
-                        null,
-                        List.of(),
-                        null,
-                        JkBuild.NativeMode.SUPPORTED,
-                        VersionSelector.parseFloating("=1.1.4")))
+                        null, null, List.of(), null, JkBuild.NativeMode.SUPPORTED, VersionSelector.parse("1.1.4")))
                 .build();
         String rendered = JkBuildRenderer.render(pinned);
-        assertThat(rendered).contains("metadata-repository = \"=1.1.4\"");
+        assertThat(rendered).contains("metadata-repository = \"1.1.4\"");
         assertThat(JkBuildParser.parse(rendered).nativeConfigOpt().orElseThrow().metadataRepository())
-                .isEqualTo(VersionSelector.parseFloating("=1.1.4"));
+                .isEqualTo(VersionSelector.parse("1.1.4"));
 
         JkBuild dflt = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)
@@ -217,11 +212,10 @@ class JkBuildRendererTest {
 
         // Inline-table format with name-as-key. `artifact` field omitted when
         // the artifactId matches the key.
+        assertThat(out).contains("jackson-databind = { group = \"com.fasterxml.jackson.core\", version = \"2.18.2\" }");
         assertThat(out)
-                .contains("jackson-databind = { group = \"com.fasterxml.jackson.core\", version = \"=2.18.2\" }");
-        assertThat(out)
-                .contains("spring-boot-starter-web = { group = \"org.springframework.boot\", version = \"=3.4.0\" }");
-        assertThat(out).contains("junit-jupiter = { group = \"org.junit.jupiter\", version = \"=5.11.0\" }");
+                .contains("spring-boot-starter-web = { group = \"org.springframework.boot\", version = \"3.4.0\" }");
+        assertThat(out).contains("junit-jupiter = { group = \"org.junit.jupiter\", version = \"5.11.0\" }");
 
         // Within a scope, sort by short name (alphabetical): jackson before spring.
         int jacksonIdx = out.indexOf("jackson-databind");
@@ -302,21 +296,19 @@ class JkBuildRendererTest {
     @Test
     void pinned_and_floating_deps_render_with_distinct_version_literals() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        // Exact pin via `=` prefix; caret-floating via leading `^`.
         byScope.put(
                 Scope.MAIN,
                 List.of(
                         new Dependency("com.example:pinned", VersionSelector.parse("=1.0.0")),
-                        new Dependency("com.example:floating", VersionSelector.parseFloating("^2.0.0"))));
+                        new Dependency("com.example:floating", VersionSelector.parse("^2.0.0"))));
 
         JkBuild model =
                 new JkBuild(new Project("com.example", "widget", "1.0.0", 21), new JkBuild.Dependencies(byScope));
         String out = JkBuildRenderer.render(model);
 
-        // Exact pins retain the leading `=`; caret selectors emit the bare
-        // version (parseFloating re-parses a bare version as caret).
-        assertThat(out).contains("pinned = { group = \"com.example\", version = \"=1.0.0\" }");
-        assertThat(out).contains("floating = { group = \"com.example\", version = \"2.0.0\" }");
+        // An exact pin is the bare version, however it was spelled; a caret keeps its `^`.
+        assertThat(out).contains("pinned = { group = \"com.example\", version = \"1.0.0\" }");
+        assertThat(out).contains("floating = { group = \"com.example\", version = \"^2.0.0\" }");
 
         // Round-trip: re-parsing yields the same selector kinds.
         JkBuild reparsed = JkBuildParser.parse(out);

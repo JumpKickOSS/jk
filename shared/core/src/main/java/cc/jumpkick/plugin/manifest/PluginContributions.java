@@ -488,7 +488,7 @@ public final class PluginContributions {
      * {@code 4}); {@code latest} and the other anchorless forms are returned as written.
      */
     private static String anchor(String selector) {
-        return switch (VersionSelector.parseFloating(selector)) {
+        return switch (VersionSelector.parse(selector)) {
             case VersionSelector.Exact e -> e.version();
             case VersionSelector.Caret c -> c.version();
             case VersionSelector.Tilde t -> t.version();

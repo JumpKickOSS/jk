@@ -337,28 +337,38 @@ public final class ManifestTables {
 
     /**
      * String shorthand for a workspace dependency: {@code name = "1.2.3"} (or {@code "^1.0"}, {@code
-     * "latest"}, …). The short {@code name} is resolved to a {@code group:artifact} through the
-     * bundled catalog, matching the {@code [dependencies]} shorthand. Local-path and git-URL string
-     * forms are not accepted here — a shared workspace dep must be a Maven coordinate (use the inline
-     * {@code git = "..."} table form for git, or a {@code [workspace] modules} entry for a sibling).
+     * "latest"}, …) or a {@code group:artifact:selector} coordinate. A bare version resolves the
+     * short {@code name} to a {@code group:artifact} through the catalog, matching the {@code
+     * [dependencies]} shorthand. Local-path and git-URL string forms are not accepted here: a shared
+     * workspace dep must be a Maven coordinate (use the inline {@code git = "..."} table form for
+     * git, or a {@code [workspace] modules} entry for a sibling). A versionless {@code group:artifact}
+     * is refused too, because a shared entry exists to carry the version members pin against.
      */
     static WorkspaceDependency parseWorkspaceShorthand(
             String name, String value, String displayPath, LibraryCatalog catalog) {
         if (value.isBlank()) {
             throw new JkBuildParseException(displayPath + " has an empty value string");
         }
-        if (value.startsWith(".")
-                || value.startsWith("/")
-                || value.startsWith("git://")
-                || value.startsWith("https://")) {
+        if (ManifestDeps.isPathShorthand(value) || ManifestDeps.isGitUrlShorthand(value)) {
             throw new JkBuildParseException(displayPath + " string shorthand must be a version spec"
-                    + " (e.g. \"1.2.3\"); for a git source use the inline `{ git = \"...\" }` form,"
-                    + " for a local sibling add it to `[workspace] modules`");
+                    + " (e.g. \"1.2.3\") or a `group:artifact:version` coordinate; for a git source use the"
+                    + " inline `{ git = \"...\" }` form, for a local sibling add it to `[workspace] modules`");
+        }
+        if (value.indexOf(':') >= 0) {
+            Dependency gav = ManifestDeps.parseGavShorthand(name, value, displayPath);
+            if (gav.isPlatformManaged()) {
+                throw new JkBuildParseException(displayPath
+                        + " — `"
+                        + value
+                        + "` has no version; a shared workspace dependency carries the version members"
+                        + " pin against (`group:artifact:1.2.3`)");
+            }
+            return new WorkspaceDependency(gav.group(), gav.name(), gav.version(), null);
         }
         LibraryCatalog.Module mod = catalog.lookup(name)
                 .orElseThrow(() ->
                         new JkBuildParseException(ManifestDeps.unknownLibraryMessage(displayPath, name, catalog)));
-        return new WorkspaceDependency(mod.group(), mod.artifact(), VersionSelector.parseFloating(value), null);
+        return new WorkspaceDependency(mod.group(), mod.artifact(), VersionSelector.parse(value), null);
     }
 
     static WorkspaceDependency parseWorkspaceDepEntry(String name, TomlTable entry, LibraryCatalog catalog) {
@@ -412,7 +422,7 @@ public final class ManifestTables {
         if (versionRaw == null || versionRaw.isBlank()) {
             throw new JkBuildParseException(displayPath + ".version must not be blank");
         }
-        return new WorkspaceDependency(group, artifact, VersionSelector.parseFloating(versionRaw), null);
+        return new WorkspaceDependency(group, artifact, VersionSelector.parse(versionRaw), null);
     }
 
     /**

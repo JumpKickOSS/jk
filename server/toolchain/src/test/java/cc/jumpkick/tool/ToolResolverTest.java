@@ -129,7 +129,7 @@ class ToolResolverTest {
         servePomAndJar("com.example", "widget-cli", "1.4.2", "com.example.Main");
 
         ToolResolver resolver = resolver(tempDir);
-        ToolEnv env = resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@1.0"), "widget", null, List.of());
+        ToolEnv env = resolver.resolve(ToolCoordSpec.parse("com.example:widget-cli@^1.0"), "widget", null, List.of());
 
         // Caret ^1.0 — highest within the 1.x line, not 2.1.0.
         assertThat(env.primary().toGav()).isEqualTo("com.example:widget-cli:1.4.2");

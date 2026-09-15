@@ -90,8 +90,8 @@ public final class ManifestDeps {
                 throw new JkBuildParseException(scope.tomlSection()
                         + "."
                         + name
-                        + " must be an inline table (e.g. { group = \"...\", version = \"...\" })"
-                        + " or a version-string shorthand for a catalog-known name");
+                        + " must be a string (a catalog version, a `group:artifact:version` coordinate, a path"
+                        + " or a git URL) or an inline table (e.g. { group = \"...\", version = \"...\" })");
             }
             result.add(parseDepEntry(name, entry, scope, workspace, catalog));
         }
@@ -99,19 +99,21 @@ public final class ManifestDeps {
     }
 
     /**
-     * Resolve a {@code name = "value"} string shorthand. Two forms are recognised:
+     * Resolve a {@code name = "value"} string shorthand. The rules apply in this order:
      *
-     * <ul>
-     * <li>Git URL — value starts with {@code git://} or {@code https://}: a git dependency with
-     * URL-embedded ref/subdir parsing. When no ref is embedded, {@code branch = "main"} is
-     * implied.
-     * <li>Version spec — anything else: looked up in the bundled catalog by {@code name} and
-     * treated as a floating version selector (the Cargo-style {@code name = "1.2.3"} form).
-     * </ul>
-     *
-     * <p>A leading {@code .} or {@code /} is a local-path shorthand — a consume-only path dependency
-     * ({@link Dependency#pathByName}), built compile/package-only. A local sibling that should be
-     * built fully (with tests) belongs in {@code [workspace] modules} instead.
+     * <ol>
+     * <li>{@code ./x}, {@code ../x}, {@code /x} or a Windows drive path: a consume-only path
+     * dependency ({@link Dependency#pathByName}), built compile/package-only. A sibling that should
+     * be built fully belongs in {@code [workspace] modules}.
+     * <li>{@code git://}, {@code https://}, {@code ssh://} or {@code git@}: a git dependency with
+     * URL-embedded ref/subdir parsing; no embedded ref implies {@code branch = "main"}.
+     * <li>Anything else containing {@code :}: a Maven coordinate. {@code group:artifact} is
+     * platform-managed (a BOM supplies the version); {@code group:artifact:selector} carries any
+     * selector {@link VersionSelector#parse} accepts, so {@code g:a:1.2.3} pins and
+     * {@code g:a:^1.2} floats. A classifier or type needs the inline table.
+     * <li>A version spec or keyword: the key is looked up in the catalog and the value is the
+     * selector (the Cargo-style {@code jackson-databind = "2.18.2"} form).
+     * </ol>
      */
     static Dependency parseShorthandEntry(String name, String value, Scope scope, LibraryCatalog catalog) {
         String displayPath = scope.tomlSection() + "." + name;
@@ -119,15 +121,11 @@ public final class ManifestDeps {
             throw new JkBuildParseException(displayPath + " has an empty value string");
         }
 
-        // Local-path shorthand: a relative (`./x`, `../x`) or absolute (`/x`) path is a consume-only
-        // path dependency. `isVersionSpecOrKeyword` already excludes `.`/`/`-leading strings, so this
-        // never shadows a version spec.
-        if (value.startsWith(".") || value.startsWith("/")) {
+        if (isPathShorthand(value)) {
             return Dependency.pathByName(name, new PathSource(value));
         }
 
-        // Git URL shorthand: starts with "git://" or "https://".
-        if (value.startsWith("git://") || value.startsWith("https://")) {
+        if (isGitUrlShorthand(value)) {
             JkBuildParser.EmbeddedUrlParts parts = splitEmbeddedUrl(value);
             GitRefSpec ref;
             boolean shallow;
@@ -144,6 +142,10 @@ public final class ManifestDeps {
             return Dependency.gitByName(name, source);
         }
 
+        if (value.indexOf(':') >= 0) {
+            return parseGavShorthand(name, value, displayPath);
+        }
+
         // Version spec or reserved keyword → catalog lookup.
         // A reserved keyword (latest/stable/lts/…) or a string that starts with a
         // version-spec character (digit, ^, ~, =, >, <) is always a catalog dep.
@@ -158,13 +160,74 @@ public final class ManifestDeps {
             }
             LibraryCatalog.Module mod = catalog.lookup(name)
                     .orElseThrow(() -> new JkBuildParseException(unknownLibraryMessage(displayPath, name, catalog)));
-            VersionSelector selector = VersionSelector.parseFloating(value);
+            VersionSelector selector = VersionSelector.parse(value);
             return Dependency.of(name, mod.moduleKey(), selector);
         }
 
-        // Ambiguous string: not a recognised version spec, not a git URL. There is no
-        // deferred-path fallback anymore — this is always an unknown-library error.
+        // Not a path, URL, coordinate or version spec: an unknown short name.
         throw new JkBuildParseException(unknownLibraryMessage(displayPath, name, catalog));
+    }
+
+    /** {@code ./x}, {@code ../x}, {@code /x}, or a Windows drive path such as {@code C:\\x}. */
+    static boolean isPathShorthand(String value) {
+        if (value.startsWith(".") || value.startsWith("/")) return true;
+        return value.length() >= 3
+                && Character.isLetter(value.charAt(0))
+                && value.charAt(1) == ':'
+                && (value.charAt(2) == '\\' || value.charAt(2) == '/');
+    }
+
+    /** A git URL in any of the spellings the shorthand accepts. */
+    static boolean isGitUrlShorthand(String value) {
+        return value.startsWith("git://")
+                || value.startsWith("https://")
+                || value.startsWith("ssh://")
+                || value.startsWith("git@");
+    }
+
+    /**
+     * {@code group:artifact[:selector]}. Split on {@code :} with a limit of three so a range such as
+     * {@code g:a:>=1.2,<2} keeps its commas; a fourth field (classifier or type) is refused.
+     */
+    static Dependency parseGavShorthand(String name, String value, String displayPath) {
+        String[] parts = value.split(":", 3);
+        String group = parts[0].trim();
+        String artifact = parts.length > 1 ? parts[1].trim() : "";
+        if (group.isEmpty() || artifact.isEmpty()) {
+            throw new JkBuildParseException(
+                    displayPath + " — `" + value + "` is not a `group:artifact[:version]` coordinate");
+        }
+        if (parts.length == 2) {
+            return Dependency.platformManaged(name, group + ":" + artifact);
+        }
+        String selectorRaw = parts[2];
+        if (selectorRaw.indexOf(':') >= 0 && !isRangeSelector(selectorRaw)) {
+            throw new JkBuildParseException(displayPath
+                    + " — `"
+                    + value
+                    + "` has more than three `:` fields. A classifier or packaging type needs the inline"
+                    + " table: { group = \""
+                    + group
+                    + "\", name = \""
+                    + artifact
+                    + "\", version = \"...\", classifier = \"...\" }");
+        }
+        if (selectorRaw.isBlank()) {
+            throw new JkBuildParseException(displayPath + " — `" + value + "` has an empty version after the last `:`");
+        }
+        VersionSelector selector;
+        try {
+            selector = VersionSelector.parse(selectorRaw);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(displayPath + ".version: " + e.getMessage());
+        }
+        return Dependency.of(name, group + ":" + artifact, selector);
+    }
+
+    /** A comparator list may legitimately never contain {@code :}; this guards the field count. */
+    private static boolean isRangeSelector(String selectorRaw) {
+        String t = selectorRaw.trim();
+        return t.startsWith(">") || t.startsWith("<") || t.contains(",");
     }
 
     /**
@@ -205,8 +268,8 @@ public final class ManifestDeps {
         if (!suggestions.isEmpty()) {
             msg.append("Did you mean: ").append(String.join(", ", suggestions)).append("? ");
         }
-        msg.append("Either spell out the coord as `{ group = \"...\", version = \"...\" }`, ")
-                .append("or pick a curated name from the catalog.");
+        msg.append("Write the Maven coordinate as `\"group:artifact:1.2.3\"`, spell out ")
+                .append("`{ group = \"...\", version = \"...\" }`, or pick a curated name from the catalog.");
         return msg.toString();
     }
 
@@ -427,7 +490,7 @@ public final class ManifestDeps {
         if (versionRaw == null || versionRaw.isBlank()) {
             throw new JkBuildParseException(displayPath + ".version must not be blank");
         }
-        VersionSelector selector = VersionSelector.parseFloating(versionRaw);
+        VersionSelector selector = VersionSelector.parse(versionRaw);
         return Dependency.of(name, group + ":" + artifact, selector);
     }
 

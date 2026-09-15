@@ -477,8 +477,8 @@ public final class AddCommand implements CliCommand {
 
             // Maven-coord shorthand (has a colon). Three forms:
             //   group:artifact            → version="latest", floating=true
-            //   group:artifact@version    → caret-floating
-            //   group:artifact:version    → pinned (versionLiteral prefixed with `=`)
+            //   group:artifact@selector   → the selector as written
+            //   group:artifact:version    → an exact pin
             int nextColon = coord.indexOf(':', firstColon + 1);
             int versionMark = atSign >= 0 && (nextColon < 0 || atSign < nextColon) ? atSign : nextColon;
 
@@ -519,11 +519,7 @@ public final class AddCommand implements CliCommand {
             String library = nonBlank(libraryFlag, artifactFromCoord);
             String group = nonBlank(groupFlag, groupFromCoord);
             String name = nonBlank(nameFlag, artifactFromCoord);
-            String versionLiteral = versionFlag != null && !versionFlag.isBlank()
-                    ? versionFlag
-                    // Pinned colon-form gets an explicit `=` prefix so the parser
-                    // reads it as Exact (caret-default in `parseFloating`).
-                    : floating ? rawVersion : "=" + rawVersion;
+            String versionLiteral = versionFlag != null && !versionFlag.isBlank() ? versionFlag : rawVersion;
             return new ParsedDep(library, group, name, versionLiteral, floating);
         }
 
