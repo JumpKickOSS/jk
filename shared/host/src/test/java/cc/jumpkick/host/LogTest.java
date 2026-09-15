@@ -30,6 +30,18 @@ class LogTest {
     }
 
     @Test
+    void closing_the_handler_leaves_the_stream_open() {
+        PrintStream sink = new PrintStream(bytes, true, StandardCharsets.UTF_8);
+        Log.install(sink, System.Logger.Level.INFO, UnaryOperator.identity());
+        for (var handler : Logger.getLogger("").getHandlers()) {
+            handler.close();
+        }
+        sink.print("still-open");
+        assertThat(sink.checkError()).isFalse();
+        assertThat(written()).contains("still-open");
+    }
+
+    @Test
     void every_line_is_time_level_message_and_the_threshold_hides_debug() {
         install(System.Logger.Level.INFO, UnaryOperator.identity());
 

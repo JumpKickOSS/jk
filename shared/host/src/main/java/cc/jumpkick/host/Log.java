@@ -5,6 +5,7 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -123,7 +124,15 @@ public final class Log {
             h.flush();
             root.removeHandler(h);
         }
-        Handler handler = new StreamHandler(out, new LineFormatter(redact)) {
+        // StreamHandler.close() closes its stream. A worker's stderr is merged into the
+        // protocol pipe, so that close must not close the process's stderr.
+        PrintStream sink = new PrintStream(out, false, StandardCharsets.UTF_8) {
+            @Override
+            public void close() {
+                flush();
+            }
+        };
+        Handler handler = new StreamHandler(sink, new LineFormatter(redact)) {
             @Override
             public synchronized void publish(LogRecord record) {
                 super.publish(record);

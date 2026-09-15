@@ -33,10 +33,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Order is jk's own resolved credential first, then the Docker credential store
  * ({@code ~/.docker/config.json}, its {@code credHelpers}, and the well-known cloud helpers) — the
  * same order Jib's own Maven and Gradle front-ends use, so an existing {@code docker login} keeps
- * working and an explicit {@code jk repo login <registry>} wins over it.
+ * working and an explicit {@code jk repo login <registry>} wins over it. Loopback is excluded: it
+ * is never a Docker-cred-store host, and asking still spawns the configured helper.
  *
- * <p>jk's half arrives through the spec file's {@code secret} lines and never through argv: argv is
- * world-readable in {@code /proc}, which is the bug [[]] fixed for keystore passwords.
+ * <p>jk's half arrives through the spec file's {@code secret} lines and never through argv, which
+ * is world-readable in {@code /proc}.
  */
 public final class RegistryAuth {
 
@@ -91,8 +92,11 @@ public final class RegistryAuth {
         CredentialRetrieverFactory retrievers = CredentialRetrieverFactory.forImage(parsed, RegistryAuth::log);
         Credential resolved = jibCredential(credential);
         if (resolved != null) image.addCredentialRetriever(retrievers.known(resolved, "jk"));
-        image.addCredentialRetriever(retrievers.dockerConfig());
-        image.addCredentialRetriever(retrievers.wellKnownCredentialHelpers());
+        // Loopback is not a Docker-cred-store host; asking still spawns the configured helper.
+        if (!loopback(reference)) {
+            image.addCredentialRetriever(retrievers.dockerConfig());
+            image.addCredentialRetriever(retrievers.wellKnownCredentialHelpers());
+        }
         return image;
     }
 
