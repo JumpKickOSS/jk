@@ -22,6 +22,11 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -97,6 +102,67 @@ class JdkInstallerTest {
         assertThat(installed.identifier()).isEqualTo("21.0.5-tem-x64-linux");
         assertThat(installed.home().resolve("bin/java")).exists();
         assertThat(installed.home().resolve("release")).exists();
+    }
+
+    @Test
+    void two_installs_of_one_jdk_into_one_root_both_succeed_and_one_installs(@TempDir Path tempDir) throws Exception {
+        byte[] archive = buildTarGz(
+                "jdk-21.0.5+11",
+                Map.of(
+                        "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
+                        "release", "JAVA_VERSION=21.0.5\n"));
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkCatalog.Entry entry = new JdkCatalog.Entry(
+                "Eclipse",
+                "Temurin",
+                "temurin-21",
+                21,
+                "21.0.5",
+                true,
+                false,
+                List.of(),
+                "linux",
+                "x86_64",
+                "targz",
+                base.resolve("/jdk.tar.gz"),
+                Hashing.sha256Hex(archive),
+                archive.length,
+                "jdk-21.0.5+11",
+                "");
+        // Two clients: each has probed, seen nothing, and downloaded; now both extract and move.
+        JdkInstaller first = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        JdkInstaller second = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        JdkInstaller.DownloadedArchive firstArchive = first.download(entry, read -> {});
+        JdkInstaller.DownloadedArchive secondArchive = second.download(entry, read -> {});
+        CountDownLatch go = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<InstalledJdk> a = pool.submit(() -> {
+                go.await();
+                return first.extractInstalled(entry, firstArchive);
+            });
+            Future<InstalledJdk> b = pool.submit(() -> {
+                go.await();
+                return second.extractInstalled(entry, secondArchive);
+            });
+            go.countDown();
+            InstalledJdk fromA = a.get(30, TimeUnit.SECONDS);
+            InstalledJdk fromB = b.get(30, TimeUnit.SECONDS);
+
+            assertThat(fromA.home()).isEqualTo(fromB.home()).isEqualTo(jdksRoot.resolve("temurin-21.0.5"));
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(jdksRoot.resolve("temurin-21.0.5/bin/java")).exists();
+        assertThat(JdkOwnership.isJkOwned(jdksRoot.resolve("temurin-21.0.5"))).isTrue();
+        assertThat(firstArchive.path()).doesNotExist();
+        assertThat(secondArchive.path()).doesNotExist();
+        try (var entries = Files.list(jdksRoot)) {
+            assertThat(entries.filter(p -> p.getFileName().toString().startsWith(".stage-")))
+                    .isEmpty();
+        }
     }
 
     @Test
