@@ -42,6 +42,11 @@ import org.jspecify.annotations.Nullable;
  * over the engine's own values, so a compiler, a plugin or a test JVM that downloads goes the same
  * way the engine does.
  *
+ * <p><b>The managed JDK root rides too</b> — {@link BuildEnv#JDK_ROOT}, by exact name. The client
+ * pre-flights a missing JDK into the root of the shell running {@code jk}; the engine's own
+ * ensure-jdk must then look in that same root, not in the one of the shell that started the
+ * daemon, or it downloads the JDK a second time somewhere else.
+ *
  * <p><b>Deliberately not in any action key.</b> Keying on {@code PATH} would mean a laptop and a CI
  * runner never share a cached result, and two terminals on one machine often would not either. The
  * cost of leaving it out is bounded and known: a suite whose outcome depends on a tool being on
@@ -67,21 +72,25 @@ public final class ClientEnvForward {
 
     /**
      * Those of {@link #names()} the caller actually has, in listed order, then the
-     * {@link BuildEnv#PROXY} variables it has, then every {@link #REPO_PREFIX} variable.
+     * {@link BuildEnv#PROXY} variables it has, the {@link BuildEnv#JDK_ROOT} it has, then every
+     * {@link #REPO_PREFIX} variable.
      * {@code System::getenv} is passed explicitly — the client resolves from its own shell, never
-     * from a session's {@code clientEnv}. The proxy and repository names also honour the
-     * {@code jk.env.*} seam, so a test varies one of them per invocation.
+     * from a session's {@code clientEnv}. The proxy, JDK-root and repository names also honour
+     * the {@code jk.env.*} seam, so a test varies one of them per invocation.
      */
     public static Map<String, String> resolve() {
         Map<String, String> out = new LinkedHashMap<>(BuildEnv.machine(System::getenv));
         out.putAll(BuildEnv.resolve(BuildEnv.PROXY, System::getenv));
+        out.putAll(BuildEnv.resolve(BuildEnv.JDK_ROOT, System::getenv));
         for (Map.Entry<String, String> e : System.getenv().entrySet()) {
             if (e.getKey().startsWith(REPO_PREFIX)) out.put(e.getKey(), e.getValue());
         }
         for (String property : System.getProperties().stringPropertyNames()) {
             if (!property.startsWith(SEAM)) continue;
             String name = property.substring(SEAM.length());
-            if (!name.startsWith(REPO_PREFIX) && !BuildEnv.PROXY.contains(name)) continue;
+            if (!name.startsWith(REPO_PREFIX) && !BuildEnv.PROXY.contains(name) && !BuildEnv.JDK_ROOT.contains(name)) {
+                continue;
+            }
             String value = System.getProperty(property);
             if (value != null) out.put(name, value);
         }

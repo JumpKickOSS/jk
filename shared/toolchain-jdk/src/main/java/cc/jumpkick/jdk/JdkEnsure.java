@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.discovery.Probes;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.Lockfile.JdkPin;
@@ -10,6 +11,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -266,12 +268,29 @@ public final class JdkEnsure {
      * <p>Sharing is safe because the registry already has the invalidation hook this needs:
      * {@link JdkRegistry#refresh()} drops the memo after an install or uninstall, and every later
      * caller sees that drop.
+     *
+     * <p>Without an override the root is the request's managed JDK root: the {@code JK_JDKS_DIR}
+     * of the shell running {@code jk} when it set one (it rides the request's client env), else
+     * this process's own — never only the daemon's, whose shell may keep its runtimes elsewhere
+     * than the client that just pre-flighted the download. The host probes stay in the chain
+     * either way; only an explicit override walks its one directory alone.
      */
-    private static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride) {
-        Path root = jdksDirOverride != null ? jdksDirOverride : JkDirs.jdks();
+    static JdkRegistry sharedRegistry(@Nullable Path jdksDirOverride) {
+        Path root = jdksDirOverride != null ? jdksDirOverride : requestJdksRoot();
         return REGISTRIES.computeIfAbsent(
                 root.toAbsolutePath().normalize(),
-                r -> jdksDirOverride != null ? new JdkRegistry(r) : new JdkRegistry());
+                r -> jdksDirOverride != null ? new JdkRegistry(r) : new JdkRegistry(r, Probes.defaultChain(r)));
+    }
+
+    /** The managed JDK root for this request: the caller's shell first, then this process's. */
+    private static Path requestJdksRoot() {
+        Map<String, String> clientEnv =
+                Objects.requireNonNullElse(SessionContext.current().clientEnv(), Map.of());
+        Function<String, @Nullable String> env = name -> {
+            String fromClient = clientEnv.get(name);
+            return fromClient != null ? fromClient : JkDirs.env(name);
+        };
+        return JkDirs.of(env, System.getProperty("user.home")).jdksDir();
     }
 
     private static final ConcurrentMap<Path, JdkRegistry> REGISTRIES = new ConcurrentHashMap<>();

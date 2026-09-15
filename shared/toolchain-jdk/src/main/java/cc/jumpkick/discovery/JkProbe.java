@@ -42,6 +42,14 @@ public final class JkProbe implements LocalToolProbe {
         this(jdksRoot, false);
     }
 
+    /**
+     * The shared root at an explicit path — the caller's {@code JK_JDKS_DIR} rather than this
+     * process's — with the same ownership rule as the default: only {@code .jk-owned} trees are jk's.
+     */
+    public static JkProbe sharedRoot(Path jdksRoot) {
+        return new JkProbe(jdksRoot, true);
+    }
+
     private JkProbe(Path jdksRoot, boolean requireOwnership) {
         this.jdksRoot = jdksRoot;
         this.requireOwnership = requireOwnership;

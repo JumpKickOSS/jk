@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.util.JkDirs;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,14 +34,26 @@ public final class Probes {
     private Probes() {}
 
     public static List<LocalToolProbe> defaultChain() {
-        return restrict(fullChain(), JkDirs.env(ALLOWLIST_ENV));
+        return restrict(fullChain(new JkProbe()), JkDirs.env(ALLOWLIST_ENV));
+    }
+
+    /**
+     * As {@link #defaultChain()} with jk's own probe rooted at {@code sharedRoot} — the caller's
+     * managed JDK root rather than this process's — and every other probe as usual.
+     */
+    public static List<LocalToolProbe> defaultChain(Path sharedRoot) {
+        return restrict(fullChain(JkProbe.sharedRoot(sharedRoot)), JkDirs.env(ALLOWLIST_ENV));
     }
 
     /** The built-in order plus ServiceLoader extensions, before any allowlist applies. */
     static List<LocalToolProbe> fullChain() {
+        return fullChain(new JkProbe());
+    }
+
+    private static List<LocalToolProbe> fullChain(JkProbe jk) {
         List<LocalToolProbe> chain = new ArrayList<>();
         chain.add(new EnvVarProbe());
-        chain.add(new JkProbe()); // jk-owned installs under the shared JDK root
+        chain.add(jk); // jk-owned installs under the shared JDK root
         chain.add(new IntellijProbe()); // shared IntelliJ root (~/.jdks / macOS Library JVMs)
         chain.add(new GradleProbe()); // ~/.gradle/jdks — Gradle toolchain auto-provisioned
         chain.add(new SdkmanProbe());

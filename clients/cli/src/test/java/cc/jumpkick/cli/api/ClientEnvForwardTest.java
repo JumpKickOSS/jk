@@ -53,6 +53,7 @@ class ClientEnvForwardTest {
         for (var e : resolved.entrySet()) {
             if (e.getKey().startsWith(ClientEnvForward.REPO_PREFIX)) continue; // by prefix, tested below
             if (BuildEnv.PROXY.contains(e.getKey())) continue; // by name, tested below
+            if (BuildEnv.JDK_ROOT.contains(e.getKey())) continue; // by name, tested below
             assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
         }
@@ -102,6 +103,23 @@ class ClientEnvForwardTest {
         } finally {
             System.clearProperty("jk.env.JK_REPO_X_TOKEN");
             System.clearProperty("jk.env.JK_REPO_X_HOST");
+        }
+    }
+
+    /**
+     * The client pre-flights a missing JDK into the root of the shell running {@code jk}; the
+     * engine's own ensure-jdk has to look in that same root, not in the one of the shell that
+     * started the daemon.
+     */
+    @Test
+    void it_forwards_the_managed_jdk_root_so_the_engine_looks_where_this_shell_installs() {
+        System.setProperty("jk.env.JK_JDKS_DIR", "/srv/runtimes/jdks");
+        try {
+            var resolved = ClientEnvForward.resolve();
+            assertThat(resolved).containsEntry("JK_JDKS_DIR", "/srv/runtimes/jdks");
+            assertThat(ClientEnvForward.names()).doesNotContain("JK_JDKS_DIR");
+        } finally {
+            System.clearProperty("jk.env.JK_JDKS_DIR");
         }
     }
 }

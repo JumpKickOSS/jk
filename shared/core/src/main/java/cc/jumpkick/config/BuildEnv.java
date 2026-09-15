@@ -100,6 +100,16 @@ public final class BuildEnv {
     public static final List<String> PROXY =
             List.of("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY");
 
+    /**
+     * The one variable that says where this machine keeps the JDKs jk manages ({@code JK_JDKS_DIR}).
+     * Forwarded by exact name like {@link #PROXY}, and for the same reason: the engine is a daemon,
+     * so left to its own environment it installs and resolves under whichever root the shell that
+     * started it had — while the client that pre-flighted the download used the root of the shell
+     * running {@code jk}. Off {@link #MACHINE}: it enters no action key and seeds no test JVM (a
+     * forked worker is handed the engine's own value by {@code WorkerEnv}).
+     */
+    public static final List<String> JDK_ROOT = List.of("JK_JDKS_DIR");
+
     private BuildEnv() {}
 
     /**
