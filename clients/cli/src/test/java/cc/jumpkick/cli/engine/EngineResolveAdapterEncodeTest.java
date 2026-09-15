@@ -50,7 +50,17 @@ class EngineResolveAdapterEncodeTest {
     @Test
     void the_update_request_carries_the_same_envelope() throws Exception {
         var req = new EngineRequests.UpdateRequest(
-                Path.of("/proj"), Path.of("/cache"), List.of(), false, null, false, false, false, null);
+                Path.of("/proj"),
+                Path.of("/cache"),
+                List.of(),
+                false,
+                null,
+                false,
+                false,
+                false,
+                null,
+                List.of(),
+                false);
         String line = SessionContext.where(caller(), () -> EngineResolveAdapter.updateRequestLine(req, false, null));
 
         assertThat(ProtoSession.clientEnvOf(line)).isEqualTo(CALLER_ENV);
