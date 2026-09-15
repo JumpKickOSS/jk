@@ -243,8 +243,9 @@ public final class JdkSelector {
 
     /**
      * +1 per hint that matches the entry's vendor / product / suggestedSdkName / any alias
-     * (case-insensitive substring). Substring rather than equality so {@code "graal"} hits {@code
-     * "graalvm-jdk-25"}.
+     * (case-insensitive substring), or that names the entry's vendor through another catalog's
+     * identifier ({@link #namesVendorOf}). Substring rather than equality so {@code "graal"} hits
+     * {@code "graalvm-jdk-25"}.
      */
     private static int scoreHints(JdkCatalog.Entry entry, List<String> hints) {
         if (hints.isEmpty()) return 0;
@@ -258,9 +259,27 @@ public final class JdkSelector {
                 .toLowerCase(Locale.ROOT);
         int score = 0;
         for (var h : hints) {
-            if (haystack.contains(h)) score++;
+            if (haystack.contains(h) || namesVendorOf(entry, haystack, h)) score++;
         }
         return score;
+    }
+
+    /**
+     * Whether {@code hint} is a vendor identifier from another catalog's vocabulary — the SDKMAN
+     * suffix {@code graalce}, the foojay distro {@code graalvm_ce} — for the vendor {@code entry}
+     * belongs to. The feed spells a vendor its own way ({@code GraalVM Community}, {@code
+     * graalvm-ce-25}), so such a token never appears in the haystack; it matches through {@link
+     * JdkVendor#fromAlias} instead, against the feed's own reading of the entry or the vendor's
+     * JetBrains prefix in the entry's names.
+     */
+    private static boolean namesVendorOf(JdkCatalog.Entry entry, String haystack, String hint) {
+        Optional<JdkVendor> vendor = JdkVendor.fromAlias(hint);
+        if (vendor.isEmpty()) return false;
+        if (JdkVendor.fromFeed(entry.vendor(), entry.product()) == vendor.get()) return true;
+        return vendor.get()
+                .jbPrefix()
+                .map(prefix -> haystack.contains(prefix.toLowerCase(Locale.ROOT)))
+                .orElse(false);
     }
 
     private record Scored(JdkCatalog.Entry entry, int score) {}

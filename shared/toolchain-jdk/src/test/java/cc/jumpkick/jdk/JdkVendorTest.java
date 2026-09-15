@@ -35,4 +35,18 @@ class JdkVendorTest {
 
         assertThat(JdkVendor.fromProperties(props)).isEqualTo(JdkVendor.ORACLE_OPENJDK);
     }
+
+    @Test
+    void fromAlias_names_a_vendor_by_its_sdkman_foojay_or_jetbrains_identifier() {
+        assertThat(JdkVendor.fromAlias("graalce")).contains(JdkVendor.GRAALVM_CE);
+        assertThat(JdkVendor.fromAlias("GraalVM-CE")).contains(JdkVendor.GRAALVM_CE);
+        assertThat(JdkVendor.fromAlias("graalvm_ce")).contains(JdkVendor.GRAALVM_CE);
+        assertThat(JdkVendor.fromAlias("tem")).contains(JdkVendor.TEMURIN);
+        assertThat(JdkVendor.fromAlias("graal")).contains(JdkVendor.ORACLE_GRAALVM);
+        assertThat(JdkVendor.fromAlias("community"))
+                .as("a plain word is not an identifier")
+                .isEmpty();
+        assertThat(JdkVendor.fromAlias("")).isEmpty();
+        assertThat(JdkVendor.fromAlias(null)).isEmpty();
+    }
 }

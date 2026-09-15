@@ -143,6 +143,29 @@ public enum JdkVendor {
         return Comparator.comparingInt(JdkVendor::preferenceRank);
     }
 
+    /**
+     * The vendor a spec token names through one of its catalog identifiers — the JetBrains prefix
+     * ({@code graalvm-ce}), the SDKMAN suffix ({@code graalce}, {@code tem}) or the foojay distro
+     * ({@code graalvm_ce}) — case-insensitively. Empty for a token that is none of them, so a
+     * caller can fall back to whatever matching it does on its own. What lets a spec written in
+     * one catalog's vocabulary select an entry the feed spells another way.
+     */
+    public static Optional<JdkVendor> fromAlias(@Nullable String token) {
+        if (token == null || token.isBlank()) return Optional.empty();
+        String t = token.trim().toLowerCase(Locale.ROOT);
+        for (JdkVendor v : values()) {
+            if (v == UNKNOWN) continue;
+            if (aliasIs(v.jbPrefix, t) || aliasIs(v.sdkmanSuffix, t) || aliasIs(v.foojayDistro, t)) {
+                return Optional.of(v);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static boolean aliasIs(@Nullable String identifier, String token) {
+        return identifier != null && identifier.toLowerCase(Locale.ROOT).equals(token);
+    }
+
     /** Map JetBrains feed {@code vendor}+{@code product} to an enum, or {@link #UNKNOWN}. */
     public static JdkVendor fromFeed(String vendor, String product) {
         if (vendor == null || product == null) return UNKNOWN;

@@ -690,6 +690,80 @@ class JdkSelectorTest {
                 .isEqualTo("BellSoft");
     }
 
+    /**
+     * {@code graalce} is the SDKMAN spelling of GraalVM CE; the feed spells the vendor {@code
+     * GraalVM Community} and names its entries {@code graalvm-ce-<major>}, so the token is in no
+     * haystack. It selects the CE entry through the vendor alias, and never the Oracle one.
+     */
+    @Test
+    void graalce_selects_the_community_edition_through_the_vendor_alias() {
+        JdkCatalog catalog = catalogOf(
+                entry(
+                        "GraalVM Community",
+                        "GraalVM CE",
+                        "graalvm-ce-25",
+                        25,
+                        "25.0.2",
+                        false,
+                        false,
+                        List.of("graalvm-ce-25.0.2", "graalvm-ce-25"),
+                        "linux",
+                        "x86_64"),
+                entry(
+                        "Oracle",
+                        "GraalVM",
+                        "graalvm-jdk-25",
+                        25,
+                        "25",
+                        false,
+                        false,
+                        List.of("graalvm-jdk-25"),
+                        "linux",
+                        "x86_64"));
+
+        assertThat(JdkSelector.select(catalog, JdkSpec.parse("graalce-25"), "linux", "x86_64"))
+                .isPresent()
+                .get()
+                .extracting(JdkCatalog.Entry::suggestedSdkName)
+                .isEqualTo("graalvm-ce-25");
+        assertThat(JdkSelector.selectPreferred(catalog, "graalce-25", "linux", "x86_64"))
+                .isPresent()
+                .get()
+                .extracting(JdkCatalog.Entry::vendor)
+                .isEqualTo("GraalVM Community");
+        assertThat(JdkSelector.selectFlexible(catalog, "graalce", "linux", "x86_64"))
+                .as("the alias alone, no major")
+                .isPresent()
+                .get()
+                .extracting(JdkCatalog.Entry::vendor)
+                .isEqualTo("GraalVM Community");
+        assertThat(JdkSelector.selectFlexible(catalog, "graalce-26", "linux", "x86_64"))
+                .as("the major is still a hard filter")
+                .isEmpty();
+    }
+
+    /** A feed that spells the vendor its own way still resolves the alias through the JetBrains prefix in its names. */
+    @Test
+    void graalce_resolves_when_the_feed_vendor_string_is_not_one_jk_recognises() {
+        JdkCatalog catalog = catalogOf(entry(
+                "GraalVM",
+                "Community Edition",
+                "graalvm-ce-25",
+                25,
+                "25.0.2",
+                false,
+                false,
+                List.of("graalvm-ce-25.0.2", "graalvm-ce-25"),
+                "linux",
+                "x86_64"));
+
+        assertThat(JdkSelector.selectFlexible(catalog, "graalce-25", "linux", "x86_64"))
+                .isPresent()
+                .get()
+                .extracting(JdkCatalog.Entry::suggestedSdkName)
+                .isEqualTo("graalvm-ce-25");
+    }
+
     private static JdkCatalog catalogOf(JdkCatalog.Entry... entries) {
         return new JdkCatalog(List.of(entries));
     }
