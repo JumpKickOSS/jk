@@ -34,7 +34,8 @@ has nothing to say. This section is the one home for release highlights; there i
   on a runtime without `RuntimeInformation`, native programs' stderr (`java -version`) is read as
   text instead of ending the run, and when a release has no Windows native client yet it installs
   the JVM client on a JDK 25+ and says so.
-- **Gradle is back as the bootstrap for hosts without a hosted native client** (macOS, Windows):
+- **Gradle is back as the bootstrap for hosts without a hosted native client** (macOS, Windows, Linux
+  aarch64):
   `./gradlew dist installLocal` builds the first jk; jk remains the gate and the release builder.
 - Smaller: every jk script writes under `target/`; CI bootstraps from the published 0.13.5.
 
@@ -330,7 +331,7 @@ scripts/publish-github-release.sh publish 0.13.6
 jk build --skip-tests                      # target/dist/jk + target/dist/lib/jk-engine-<ver>.jar
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 DIST_DIR=target/dist scripts/assemble-release-dir.sh
-# inspect target/release/0.13.3/
+# inspect target/release/0.13.6/
 ```
 
 ## Rotation

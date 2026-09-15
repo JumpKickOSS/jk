@@ -25,29 +25,32 @@ data class TestTier(
 
 object TestTiers {
 
-    /** Fast tier: untagged tests only. The PR gate (`ci.yml`) and the floor of `check`. */
+    /** Fast tier: untagged tests only. The floor of `check`. */
     const val UNIT = "test"
 
-    /** Engine / e2e / worker suites. Part of `checkAll`, the documented pre-merge bar. */
+    /**
+     * Engine / e2e / worker suites. Part of `checkAll`, the bootstrap's widest run; the gate is `jk test --profile
+     * integration`.
+     */
     const val INTEGRATION = "integrationTest"
 
     /**
      * Tests that talk to a real remote. **Deliberately not part of `checkAll`**: Sonatype enforces a per-IP quota on
-     * Maven Central, so a merge gate that needs the network fails for reasons the change did not cause. Runs nightly
-     * (`ci-nightly.yml`) and on demand.
+     * Maven Central, so a run that needs the network fails for reasons the change did not cause. Runs on demand
+     * (`./gradlew networkTest`).
      */
     const val NETWORK = "networkTest"
 
     /**
      * Framework and language end-to-end suites (Android / Grails / Scala / KSP / Protobuf). **Deliberately not part of
-     * `checkAll`**: they assert plugin/toolchain surfaces, not engine or CLI core, and are too expensive for the merge
-     * gate.
+     * `checkAll`**: they assert plugin/toolchain surfaces, not engine or CLI core, and are too expensive for a routine
+     * run.
      */
     const val SLOW = "slowTest"
 
     /**
      * Microbenchmarks. Not part of any gate — they print medians and assert nothing about deltas, so gating on them
-     * would gate on CI noise. They still have to *run* somewhere or they rot (`./gradlew benchTest` / nightly).
+     * would gate on noise. They still have to *run* somewhere or they rot (`./gradlew benchTest`).
      */
     const val BENCH = "benchTest"
 

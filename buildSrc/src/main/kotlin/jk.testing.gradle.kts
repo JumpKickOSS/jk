@@ -152,12 +152,12 @@ slowTier(
 slowTier(
     TestTiers.SLOW,
     Duration.ofMinutes(30),
-    "Framework/language e2e suites (@Tag slow). Nightly and on demand — never in checkAll.")
+    "Framework/language e2e suites (@Tag slow). On demand — never in checkAll.")
 
 slowTier(
     TestTiers.NETWORK,
     Duration.ofMinutes(30),
-    "Tests that talk to a real remote (@Tag network). Nightly only — never in checkAll.")
+    "Tests that talk to a real remote (@Tag network). On demand only — never in checkAll.")
 
 slowTier(
     TestTiers.BENCH,
@@ -173,7 +173,7 @@ val curatedHere = CuratedIntegration.forModule(curatedRegistry.asFile.readText()
 if (curatedHere.isNotEmpty()) {
     tasks.register<Test>(CuratedIntegration.TASK) {
         group = "verification"
-        description = "Curated integration classes for this module (the branch gate's boundary lane)"
+        description = "Curated integration classes for this module"
         val testSourceSet = sourceSets["test"]
         testClassesDirs = testSourceSet.output.classesDirs
         classpath = testSourceSet.runtimeClasspath
