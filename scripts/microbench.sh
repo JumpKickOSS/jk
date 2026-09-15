@@ -72,8 +72,8 @@ run_median() {
 echo "| scenario | median wall |"
 echo "|---|---|"
 
-# clean-all: remove target-like outputs if present
-rm -rf target out build/classes 2>/dev/null || true
+# clean-all: remove jk's outputs if present (build/ is the Gradle bootstrap's, not the bench's)
+rm -rf target out 2>/dev/null || true
 run_median "clean-all (build --skip-tests)" "$JK_BIN" build --skip-tests
 
 run_median "noop (build --skip-tests)" "$JK_BIN" build --skip-tests
