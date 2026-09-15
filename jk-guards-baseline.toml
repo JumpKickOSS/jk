@@ -6,7 +6,7 @@ population = { constants = 1, files = 3359, literals = 103330 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -19,7 +19,7 @@ population = { files = 1865 }
 
 [blind-tree-walks]
 [blind-tree-walks.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 29, sites = 1906 }
 "plugins/formatter" = { classes = 14, sites = 856 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
@@ -739,7 +739,7 @@ population = { constants = 29, files = 1947, literals = 35490 }
 
 [case-conversion-locale]
 [case-conversion-locale.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -752,23 +752,23 @@ population = { files = 1959 }
 
 [cli-engine-package-cycle]
 [cli-engine-package-cycle.populations]
-"clients/cli" = { examined = 29 }
+"clients/cli" = { examined = 31 }
 
 [cli-no-parse-types]
 [cli-no-parse-types.populations]
-"clients/cli" = { examined = 346 }
+"clients/cli" = { examined = 352 }
 
 [cli-stdio-handoff-owner]
 [cli-stdio-handoff-owner.populations]
-"clients/cli" = { examined = 346 }
+"clients/cli" = { examined = 352 }
 
 [cli-test-isolated-state]
 [cli-test-isolated-state.populations]
-"clients/cli" = { examined = 318 }
+"clients/cli" = { examined = 330 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
@@ -849,14 +849,6 @@ reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as caller
 [[clock-owner.entries]]
 in     = "clients/cli"
 at     = "cc.jumpkick.cli.tui.DrainView#start(ILcc/jumpkick/config/NerdFontCaps;)Lcc/jumpkick/cli/tui/DrainView; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JdkDownloadBar#<init>(Ljava/io/PrintStream;Ljava/lang/String;Z)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JdkDownloadBar#cancelledLine()Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "clients/cli"
@@ -1757,14 +1749,14 @@ population = { rows = 84 }
 
 [ide-client-wiring]
 [ide-client-wiring.populations]
-"clients/cli" = { examined = 134 }
+"clients/cli" = { examined = 135 }
 
 [install-tests-redirect-m2]
 population = { files = 1413 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -2103,7 +2095,7 @@ population = { files = 4038 }
 
 [null-marked-packages]
 [null-marked-packages.populations]
-"clients/cli" = { classes = 664, elements = 18 }
+"clients/cli" = { classes = 676, elements = 18 }
 "plugins/publisher" = { classes = 16, elements = 1 }
 "server/engine" = { classes = 921, elements = 19 }
 "server/io" = { classes = 34, elements = 1 }
@@ -2112,7 +2104,7 @@ population = { files = 4038 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -2122,7 +2114,7 @@ population = { files = 4038 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -2132,7 +2124,7 @@ population = { files = 4038 }
 
 [one-host-surface]
 [one-host-surface.populations]
-"clients/cli" = { classes = 664, sites = 30940 }
+"clients/cli" = { classes = 676, sites = 31445 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
@@ -2142,7 +2134,7 @@ population = { files = 4038 }
 
 [one-http-client]
 [one-http-client.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/resolver" = { classes = 85, sites = 4380 }
@@ -2156,7 +2148,7 @@ population = { files = 1865 }
 
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
-"clients/cli" = { classes = 664, sites = 30940 }
+"clients/cli" = { classes = 676, sites = 31445 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
@@ -2166,7 +2158,7 @@ population = { files = 1865 }
 
 [package-cycles]
 [package-cycles.populations]
-"clients/cli" = { edges = 77, slices = 18 }
+"clients/cli" = { edges = 79, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
@@ -2246,7 +2238,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 
 [properties-render-owner]
 [properties-render-owner.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -2271,7 +2263,7 @@ population = { files = 1985 }
 
 [runnable-owner]
 [runnable-owner.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
@@ -2381,7 +2373,7 @@ population = { files = 1 }
 
 [xml-parser-owner]
 [xml-parser-owner.populations]
-"clients/cli" = { classes = 664, sites = 41122 }
+"clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }

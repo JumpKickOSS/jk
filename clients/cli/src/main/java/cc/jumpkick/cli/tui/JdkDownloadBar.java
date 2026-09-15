@@ -30,22 +30,25 @@ import java.time.Duration;
 public final class JdkDownloadBar implements AutoCloseable {
 
     private final PrintStream out;
+    private final String chip; // "JDK", "Engine"
     private final String displayName; // "Temurin 26"
     private final NerdFontCaps nerdFont;
     private final boolean installing;
-    private final long startedAtMillis = System.currentTimeMillis();
+    private final Clock clock = Clock.SYSTEM;
+    private final long startedAtMillis;
     private final LiveLine line;
 
     private volatile long numerator;
     private volatile long denominator;
-    private final Clock clock = Clock.SYSTEM;
     private long plainLastBeatMs;
 
-    private JdkDownloadBar(PrintStream out, String displayName, boolean installing) {
+    private JdkDownloadBar(PrintStream out, String chip, String displayName, boolean installing) {
         this.out = out;
+        this.chip = chip;
         this.displayName = displayName;
         this.nerdFont = GlobalConfig.nerdFont();
         this.installing = installing;
+        this.startedAtMillis = clock.millis();
         this.line = LiveLine.of(out, this::frame)
                 .heartbeat(() -> plainBeat(false))
                 .onCancel(JdkInstaller::reapInFlight)
@@ -59,7 +62,15 @@ public final class JdkDownloadBar implements AutoCloseable {
      * {@code --no-progress} or a machine-consumed stdout — {@link LiveLine} owns that rule.
      */
     public static JdkDownloadBar show(PrintStream out, String displayName) {
-        return new JdkDownloadBar(out, displayName, false);
+        return show(out, "JDK", displayName);
+    }
+
+    /**
+     * The same bar under another chip — {@code Engine} for the build engine jar the client fetches
+     * for itself — so every download jk makes on the user's behalf looks like one thing.
+     */
+    public static JdkDownloadBar show(PrintStream out, String chip, String displayName) {
+        return new JdkDownloadBar(out, chip, displayName, false);
     }
 
     /**
@@ -67,7 +78,7 @@ public final class JdkDownloadBar implements AutoCloseable {
      * no byte count to report.
      */
     public static JdkDownloadBar showInstalling(PrintStream out, String displayName) {
-        return new JdkDownloadBar(out, displayName, true);
+        return new JdkDownloadBar(out, "JDK", displayName, true);
     }
 
     /** Report download progress; safe to call from any thread. */
@@ -111,7 +122,7 @@ public final class JdkDownloadBar implements AutoCloseable {
         String status = (installing ? "Installing " : "Downloading ") + displayName;
         long total = denominator;
         if (!installing && total > 0) status += " " + Math.min(100L, numerator * 100L / total) + "%";
-        out.println(JkWedge.plainStatusLine("JDK", status, JkWedge.PlainTail.WORKING));
+        out.println(JkWedge.plainStatusLine(chip, status, JkWedge.PlainTail.WORKING));
         out.flush();
     }
 
@@ -120,8 +131,8 @@ public final class JdkDownloadBar implements AutoCloseable {
         Theme t = Theme.active();
         String command = installing ? "Installing " : "Downloading ";
         RichText status = RichText.ansi(Theme.colorize(command + displayName, t.normalGray()));
-        JkWedge wedge = new JkWedge(Icon.spinner(), "JDK", installing ? status : RichText.empty())
-                .variant(JkWedge.Variant.WORK);
+        JkWedge wedge =
+                new JkWedge(Icon.spinner(), chip, installing ? status : RichText.empty()).variant(JkWedge.Variant.WORK);
         if (!installing) {
             // Narrow: the trailing text is a product and version we are handed, so the bar yields
             // the columns rather than the label losing them.
@@ -137,8 +148,8 @@ public final class JdkDownloadBar implements AutoCloseable {
      * in the subject. One cancel look for the product, not a second one for downloads.
      */
     private String cancelledLine() {
-        String took = ConsoleSpec.took(Duration.ofMillis(Math.max(0L, System.currentTimeMillis() - startedAtMillis)));
-        return JkWedge.cancelled("JDK", "JDK download", true, took).renderLine(context(0));
+        String took = ConsoleSpec.took(Duration.ofMillis(Math.max(0L, clock.millis() - startedAtMillis)));
+        return JkWedge.cancelled(chip, chip + " download", true, took).renderLine(context(0));
     }
 
     private RenderContext context(int tick) {

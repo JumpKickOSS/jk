@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.Signature;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
@@ -48,6 +49,9 @@ class EngineJarFetcherTest {
     private volatile int sumsStatus = 200;
     private volatile int signatureStatus = 200;
     private volatile int jarStatus = 200;
+    /** Send the jar chunked — no {@code Content-Length} — as a proxy or a compressing CDN edge does. */
+    private volatile boolean jarChunked;
+
     private KeyPair signingKey;
     private ReleaseVerifier verifier;
 
@@ -78,7 +82,7 @@ class EngineJarFetcherTest {
             exchange.close();
         });
         server.createContext("/releases/" + VERSION + "/jk-engine-" + VERSION + ".jar", exchange -> {
-            exchange.sendResponseHeaders(jarStatus, jarStatus == 200 ? jarBody.length : -1);
+            exchange.sendResponseHeaders(jarStatus, jarStatus != 200 ? -1 : jarChunked ? 0 : jarBody.length);
             if (jarStatus == 200) exchange.getResponseBody().write(jarBody);
             exchange.close();
         });
@@ -183,5 +187,69 @@ class EngineJarFetcherTest {
         assertThat(EngineJarFetcher.applicable("1.2.3-SNAPSHOT", true, false)).isFalse();
         assertThat(EngineJarFetcher.applicable("1.2.3", false, false)).isFalse();
         assertThat(EngineJarFetcher.applicable("1.2.3", true, true)).isFalse();
+    }
+
+    /** The rendering seam: what the view is told, in order, with the byte counts the bar shows. */
+    @Test
+    void the_progress_sink_sees_the_start_the_bytes_and_the_settled_jar(@TempDir Path root) throws Exception {
+        List<String> events = new ArrayList<>();
+        EngineJarFetcher.Progress sink = new EngineJarFetcher.Progress() {
+            @Override
+            public void start(String jarName, long totalBytes) {
+                events.add("start " + jarName + " " + totalBytes);
+            }
+
+            @Override
+            public void progress(long readBytes, long totalBytes) {
+                events.add("progress " + readBytes + "/" + totalBytes);
+            }
+
+            @Override
+            public void done(Path engineJar) {
+                events.add("done " + engineJar);
+            }
+        };
+
+        Path jar = EngineJarFetcher.fetch(base, VERSION, cas(root), engineInstall(root), verifier, sink);
+
+        assertThat(events).first().isEqualTo("start jk-engine-" + VERSION + ".jar " + JAR.length);
+        assertThat(events).contains("progress " + JAR.length + "/" + JAR.length);
+        assertThat(events).last().isEqualTo("done " + jar);
+        assertThat(events.indexOf("progress " + JAR.length + "/" + JAR.length))
+                .as("the bar is fed before it settles")
+                .isLessThan(events.size() - 1);
+    }
+
+    /**
+     * A body with no declared length still streams, verifies and settles; the sink is told a size
+     * of 0 throughout, which the bar renders without a percent rather than as a stall.
+     */
+    @Test
+    void a_chunked_jar_reports_no_total_and_still_verifies(@TempDir Path root) throws Exception {
+        jarChunked = true;
+        List<String> events = new ArrayList<>();
+        EngineJarFetcher.Progress sink = new EngineJarFetcher.Progress() {
+            @Override
+            public void start(String jarName, long totalBytes) {
+                events.add("start " + totalBytes);
+            }
+
+            @Override
+            public void progress(long readBytes, long totalBytes) {
+                events.add("progress " + readBytes + "/" + totalBytes);
+            }
+
+            @Override
+            public void done(Path engineJar) {
+                events.add("done");
+            }
+        };
+
+        Path jar = EngineJarFetcher.fetch(base, VERSION, cas(root), engineInstall(root), verifier, sink);
+
+        assertThat(jar).hasBinaryContent(JAR);
+        assertThat(events).first().isEqualTo("start 0");
+        assertThat(events).contains("progress " + JAR.length + "/0");
+        assertThat(events).last().isEqualTo("done");
     }
 }

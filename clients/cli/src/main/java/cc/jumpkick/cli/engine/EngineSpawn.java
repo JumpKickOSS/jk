@@ -324,8 +324,11 @@ public final class EngineSpawn {
                         clientVersion,
                         isNativeImage() || JvmClient.installed(),
                         SessionContext.current().offline())) {
-            CliOutput.err("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
-            EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
+            // The same bar, phase lines and done line `jk jdk install` renders, under an Engine
+            // chip: the user is watching this download as they watch a JDK's.
+            try (EngineDownloadView view = new EngineDownloadView(clientVersion)) {
+                EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion, view);
+            }
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
         EngineArtifact engine = resolved.orElseThrow(() -> new IOException("no build engine for jk " + clientVersion
