@@ -5,7 +5,11 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-/** A dependency update request. */
+/**
+ * A dependency update request. {@code deps} limits the pin rewrite to those handles or {@code
+ * group:artifact} coordinates (empty = every declared pin); {@code major} lets a pin cross its Maven
+ * major; {@code preview} reports the rewrites without writing or relocking.
+ */
 public record UpdateRequest(
         @Nullable String dir,
         @Nullable String cache,
@@ -17,11 +21,15 @@ public record UpdateRequest(
         boolean offline,
         boolean force,
         boolean verbose,
-        String platform) {
+        String platform,
+        List<String> deps,
+        boolean major,
+        boolean preview) {
 
     public UpdateRequest {
         features = features == null ? List.of() : List.copyOf(features);
         platform = platform == null ? "" : platform;
+        deps = deps == null ? List.of() : List.copyOf(deps);
     }
 
     public String encode() {
@@ -37,6 +45,9 @@ public record UpdateRequest(
                 .bool("force", force)
                 .bool("verbose", verbose)
                 .string("platform", platform)
+                .array("deps", deps)
+                .bool("major", major)
+                .bool("preview", preview)
                 .finish();
     }
 
@@ -52,6 +63,9 @@ public record UpdateRequest(
                 Jsonl.bool(json, "offline", false),
                 Jsonl.bool(json, "force", false),
                 Jsonl.bool(json, "verbose", false),
-                Jsonl.requiredStr(json, "platform"));
+                Jsonl.requiredStr(json, "platform"),
+                Jsonl.strArray(json, "deps"),
+                Jsonl.bool(json, "major", false),
+                Jsonl.bool(json, "preview", false));
     }
 }

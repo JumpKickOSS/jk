@@ -29,6 +29,7 @@ import cc.jumpkick.engine.http.mcp.tools.RunAliasTool;
 import cc.jumpkick.engine.http.mcp.tools.RunTool;
 import cc.jumpkick.engine.http.mcp.tools.StatusTool;
 import cc.jumpkick.engine.http.mcp.tools.TriggerTool;
+import cc.jumpkick.engine.http.mcp.tools.UpdateTool;
 import cc.jumpkick.engine.http.mcp.tools.WhyTool;
 import cc.jumpkick.engine.http.mcp.tools.WorkspaceTool;
 import java.util.ArrayList;
@@ -118,6 +119,7 @@ public final class McpTools {
                 new ExplainTool(),
                 new AffectedTestsTool(),
                 new OutdatedTool(),
+                new UpdateTool(),
                 new DepsTool(),
                 new WorkspaceTool(),
                 new ManifestTool(),

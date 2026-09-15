@@ -288,7 +288,11 @@ public final class EngineRequests {
         }
     }
 
-    /** Everything an engine-hosted {@code jk update} needs — mirrors {@code UpdateCommand}'s local fields. */
+    /**
+     * Everything an engine-hosted {@code jk update} needs — mirrors {@code UpdateCommand}'s local
+     * fields. {@code deps} limits the pin rewrite to those handles or {@code group:artifact}
+     * coordinates (empty = all); {@code major} lets a pin cross its Maven major.
+     */
     public record UpdateRequest(
             Path entryDir,
             Path cache,
@@ -298,8 +302,10 @@ public final class EngineRequests {
             boolean offline,
             boolean force,
             boolean verbose,
-            @Nullable String platform) {
-        /** No platform override. */
+            @Nullable String platform,
+            List<String> deps,
+            boolean major) {
+        /** No platform override, every pin, same major. */
         public UpdateRequest(
                 Path entryDir,
                 Path cache,
@@ -309,7 +315,18 @@ public final class EngineRequests {
                 boolean offline,
                 boolean force,
                 boolean verbose) {
-            this(entryDir, cache, features, noDefaultFeatures, repoUrl, offline, force, verbose, null);
+            this(
+                    entryDir,
+                    cache,
+                    features,
+                    noDefaultFeatures,
+                    repoUrl,
+                    offline,
+                    force,
+                    verbose,
+                    null,
+                    List.of(),
+                    false);
         }
     }
 
@@ -349,6 +366,12 @@ public final class EngineRequests {
         }
 
         default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
+
+        /**
+         * One declared pin {@code jk update} moved in the manifest under {@code dir} ({@code handle}
+         * in {@code table}, {@code from} → {@code to}); fires before that module's plan starts.
+         */
+        default void onRewrite(String dir, String table, String handle, String module, String from, String to) {}
     }
 
     /**

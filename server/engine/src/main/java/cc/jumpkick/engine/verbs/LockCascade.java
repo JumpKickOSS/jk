@@ -17,8 +17,10 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,6 +51,27 @@ final class LockCascade {
             boolean skipWhenFresh,
             @Nullable BufferedWriter writer)
             throws Exception {
+        return run(host, entryDir, cache, repoUrl, features, withDefaults, mode, skipWhenFresh, null, writer);
+    }
+
+    /**
+     * As {@link #run(VerbHost, Path, Path, URI, List, boolean, LockMode, boolean, BufferedWriter)},
+     * first moving the declared exact pins {@code rewrite} selects ({@code jk update}): each move
+     * streams as an {@code update-rewrite} event, the manifests are written, and the resolve then
+     * runs against the rewritten tree.
+     */
+    static JobOutcome run(
+            VerbHost host,
+            Path entryDir,
+            Path cache,
+            @Nullable URI repoUrl,
+            List<String> features,
+            boolean withDefaults,
+            LockMode mode,
+            boolean skipWhenFresh,
+            ManifestUpdates.@Nullable Selection rewrite,
+            @Nullable BufferedWriter writer)
+            throws Exception {
         Files.createDirectories(cache);
         Path lockDir;
         JkBuild effective;
@@ -69,6 +92,19 @@ final class LockCascade {
             if (skipWhenFresh && !LockFreshness.needsRefresh(lockDir)) {
                 host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
                 return JobOutcome.ok();
+            }
+            if (rewrite != null) {
+                try {
+                    ManifestUpdates.Plan plan = ManifestUpdates.plan(lockDir, repoUrl, rewrite);
+                    sendRewrites(host, writer, plan);
+                    ManifestUpdates.apply(plan);
+                    // The manifests just changed: the merged model the resolve sees must be theirs.
+                    if (!plan.isEmpty())
+                        effective = LockPlans.lockScope(entryDir).effective();
+                } catch (RuntimeException | IOException e) {
+                    host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
+                    return JobOutcome.failed(Exit.CONFIG);
+                }
             }
             Path dir = lockDir;
             String dirTag = dir.toString();
@@ -126,5 +162,14 @@ final class LockCascade {
         }
         host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
         return JobOutcome.ok();
+    }
+
+    /** One {@code update-rewrite} event per planned pin move. */
+    static void sendRewrites(VerbHost host, @Nullable BufferedWriter writer, ManifestUpdates.Plan plan) {
+        for (ManifestUpdates.Rewrite r : plan.rewrites()) {
+            host.sendQuiet(
+                    writer,
+                    ProtoEvents.updateRewrite(r.dir().toString(), r.table(), r.handle(), r.module(), r.from(), r.to()));
+        }
     }
 }

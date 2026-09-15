@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.project;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
@@ -15,10 +16,12 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.model.command.Param;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
@@ -28,13 +31,15 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk update} — re-resolve dependencies and overwrite {@code jk-lock.toml} (unlike {@code lock},
- * always fresh). Workspace roots cascade; {@code --git [name]} re-resolves only git deps (pinned
- * refs move only here). Engine-hosted.
+ * {@code jk update} — move the exact pins {@code jk.toml} declares to the newest stable on the same
+ * Maven major ({@code --major} to cross one; names or {@code --dep} to pick handles), then
+ * re-resolve and overwrite {@code jk-lock.toml}. Workspace roots cascade over every member; {@code
+ * --git [name]} re-resolves only git deps (pinned refs move only here). Engine-hosted.
  */
 public final class UpdateCommand implements CliCommand {
 
@@ -45,6 +50,10 @@ public final class UpdateCommand implements CliCommand {
     private GlobalOptions global;
     /** Optional {@code enforced}|{@code floor}; null = project {@code [resolve] platform}. */
     private @Nullable String platform;
+    /** Handles or {@code group:artifact} coordinates to move; empty = every declared pin. */
+    private List<String> deps = List.of();
+
+    private boolean major;
 
     @Override
     public String name() {
@@ -53,7 +62,7 @@ public final class UpdateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Propose version upgrades for declared dependencies";
+        return "Move declared pins to the newest stable on their major, then relock";
     }
 
     @Override
@@ -62,6 +71,9 @@ public final class UpdateCommand implements CliCommand {
                 Opt.value("<a,b,...>", "Activate listed features beyond defaults.", "--features")
                         .splitOn(","),
                 Opt.flag("Don't activate the project's defaults.", "--no-default-features"),
+                Opt.value("<name>", "Only this handle or group:artifact (repeatable)", "--dep")
+                        .repeat(),
+                Opt.flag("Allow a pin to cross its Maven major", "--major"),
                 Opt.value("[<name>]", "Re-resolve git dep(s) by name", "--git").withFallback("*"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
@@ -70,8 +82,18 @@ public final class UpdateCommand implements CliCommand {
     }
 
     @Override
+    public List<Param> parameters() {
+        return List.of(
+                Param.of("name", Arity.ZERO_OR_MORE, "Handles or group:artifact coordinates to move (default: all)."));
+    }
+
+    @Override
     public int run(Invocation in) throws Exception {
         this.features = in.values("features");
+        List<String> picked = new ArrayList<>(in.positionals());
+        picked.addAll(in.values("dep"));
+        this.deps = List.copyOf(picked);
+        this.major = in.isSet("major");
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
@@ -111,13 +133,21 @@ public final class UpdateCommand implements CliCommand {
                 session.offline(),
                 session.force(),
                 global.verbose,
-                platform);
+                platform,
+                deps,
+                major);
     }
 
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
     private int runHosted(Path dir, Path cache) {
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
+            @Override
+            public void onRewrite(
+                    String moduleDir, String table, String handle, String module, String from, String to) {
+                if (!global.outputIsJson()) printRewrite(Path.of(moduleDir), table, handle, from, to, dir);
+            }
+
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
                 return BuildPlanConsole.chooseConsoleListener("Update", "Updating versions", steps, mode);
@@ -170,6 +200,18 @@ public final class UpdateCommand implements CliCommand {
     }
 
     // ---- shared rendering helpers --------------------------------------------
+
+    /**
+     * One moved pin: {@code   handle  1.2.3 → 1.2.5} (workspace members prefix the manifest's
+     * directory; a {@code [workspace.dependencies]} entry says so).
+     */
+    static void printRewrite(Path manifestDir, String table, String handle, String from, String to, Path workingDir) {
+        String where = manifestDir.equals(workingDir) ? "" : PathDisplay.of(manifestDir, workingDir) + "  ";
+        String tableTag = "workspace.dependencies".equals(table) ? "  [dim](workspace.dependencies)[/]" : "";
+        CliOutput.out(RichText.parse("  [dim]" + RichText.escape(where) + "[/][bold]" + RichText.escape(handle)
+                        + "[/]  " + RichText.escape(from) + " → [yellow]" + RichText.escape(to) + "[/]" + tableTag)
+                .render());
+    }
 
     /**
      * {@code ✓ Update  Updated [yellow]N[/] packages in [path]jk-lock.toml[/]} — count in warning
