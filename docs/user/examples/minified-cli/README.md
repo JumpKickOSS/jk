@@ -51,17 +51,17 @@ keep = ["-keep class demo.GreetCommand { *; }"]
 
 # Title-casing. Most of it is unreachable, which is what the minified jar strips.
 [dependencies]
-commons-text = "=1.15.0"
+commons-text = "1.15.0"
 
 # Compile-time only (@NullMarked): present on javac's path, absent from every jar.
 [provided-dependencies]
-jspecify = "=1.0.1"
+jspecify = "1.0.1"
 
 [test-dependencies]
-junit-jupiter = "=6.1.3"
+junit-jupiter = "6.1.3"
 ```
 
-The leading `=` is an **exact** pin — a bare `"1.15.0"` would mean `^1.15.0`, and `"latest"` would
+A bare version is an **exact** pin: `jk build` and `jk lock` never move it, while `"latest"` would
 move under you ([version strings](../../projects.md#version-strings)).
 
 ## Build and run

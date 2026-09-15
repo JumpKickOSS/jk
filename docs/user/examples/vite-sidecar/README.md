@@ -38,7 +38,7 @@ ready = "http://localhost:8080/api/hello"
 web = { command = "npm run dev", cwd = "web", ready = "http://localhost:5173", front-door = true }
 
 [test-dependencies]
-junit-jupiter = "=6.1.3"
+junit-jupiter = "6.1.3"
 ```
 
 `command` is split like a shell would and run without one; `cwd` is relative to this manifest;

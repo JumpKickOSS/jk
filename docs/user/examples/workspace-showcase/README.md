@@ -65,7 +65,7 @@ The root owns identity and the shared JUnit version:
 modules = ["lib", "app"]
 
 [workspace.dependencies]
-junit-jupiter = "=6.1.3"
+junit-jupiter = "6.1.3"
 ```
 
 `lib/jk.toml` declares a `name` and nothing else about identity — `group`, `version` and

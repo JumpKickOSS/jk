@@ -18,7 +18,7 @@ java    = 25
 jackson2-databind = "2.22.2"     # catalog short name; the version is an exact pin
 
 [test-dependencies]
-junit = "5.11.0"
+junit-jupiter = "6.1.3"
 ```
 
 ### Editor support

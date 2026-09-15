@@ -26,17 +26,17 @@ assembly = true # also writes target/assembly-app-0.0.1-all.jar
 
 # Bundled into the fat jar — main hashes with it, so the jar cannot run without it.
 [dependencies]
-commons-codec = "=1.22.1"
+commons-codec = "1.22.1"
 
 # Compile-time only (@NullMarked): present on javac's path, absent from every jar.
 [provided-dependencies]
-jspecify = "=1.0.1"
+jspecify = "1.0.1"
 
 [test-dependencies]
-junit-jupiter = "=6.1.3"
+junit-jupiter = "6.1.3"
 ```
 
-The leading `=` is an **exact** pin. A bare `"1.22.1"` would mean `^1.22.1`, and `"latest"`
+A bare version is an **exact** pin: `jk build` and `jk lock` never move it, while `"latest"`
 would move under you — see [version strings](../../projects.md#version-strings).
 
 Artifacts are **additive** — the thin jar is always written too:
