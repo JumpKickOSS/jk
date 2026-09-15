@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -222,8 +223,11 @@ public final class JdkInstaller {
                 // against one root — moved its tree in between our probe and ours. A move is one
                 // rename, so what sits at the target is complete; this install is done and keeps
                 // nothing of its own. Marking is idempotent, so the loser closes the winner's gap
-                // between its move and its mark.
+                // between its move and its mark. A target the registry's own probe does not accept
+                // as a JDK is not answered as one: it is whatever refused the move, and the failure
+                // says so.
                 discardStaging(stagingDir);
+                if (ProbeSupport.discoverJdk(javaHome, "jk").isEmpty()) throw raced;
                 JdkOwnership.mark(target);
                 registry.refresh();
                 return Objects.requireNonNull(alreadyInstalled(entry), "the target that refused the move");

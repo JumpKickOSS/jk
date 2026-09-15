@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -159,6 +160,50 @@ class JdkInstallerTest {
         assertThat(JdkOwnership.isJkOwned(jdksRoot.resolve("temurin-21.0.5"))).isTrue();
         assertThat(firstArchive.path()).doesNotExist();
         assertThat(secondArchive.path()).doesNotExist();
+        try (var entries = Files.list(jdksRoot)) {
+            assertThat(entries.filter(p -> p.getFileName().toString().startsWith(".stage-")))
+                    .isEmpty();
+        }
+    }
+
+    @Test
+    void a_tree_at_the_target_that_is_not_a_jdk_is_not_answered_as_one(@TempDir Path tempDir) throws Exception {
+        byte[] archive = buildTarGz(
+                "jdk-21.0.5+11",
+                Map.of(
+                        "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
+                        "release", "JAVA_VERSION=21.0.5\n"));
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkCatalog.Entry entry = new JdkCatalog.Entry(
+                "Eclipse",
+                "Temurin",
+                "temurin-21",
+                21,
+                "21.0.5",
+                true,
+                false,
+                List.of(),
+                "linux",
+                "x86_64",
+                "targz",
+                base.resolve("/jdk.tar.gz"),
+                Hashing.sha256Hex(archive),
+                archive.length,
+                "jdk-21.0.5+11",
+                "");
+        // Whatever sits at the target holds no launcher, so it is not an install that won a race.
+        Path target = Files.createDirectories(jdksRoot.resolve("temurin-21.0.5"));
+        Files.writeString(target.resolve("stray"), "");
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        JdkInstaller.DownloadedArchive dl = installer.download(entry, read -> {});
+
+        assertThatThrownBy(() -> installer.extractInstalled(entry, dl)).isInstanceOf(FileAlreadyExistsException.class);
+
+        assertThat(target.resolve("bin/java")).doesNotExist();
+        assertThat(JdkOwnership.isJkOwned(target)).isFalse();
+        assertThat(dl.path()).doesNotExist();
         try (var entries = Files.list(jdksRoot)) {
             assertThat(entries.filter(p -> p.getFileName().toString().startsWith(".stage-")))
                     .isEmpty();
