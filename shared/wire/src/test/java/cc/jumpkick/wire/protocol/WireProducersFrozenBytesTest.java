@@ -30,7 +30,7 @@ class WireProducersFrozenBytesTest {
                                 + "\"testCount\":0,\"nativeExplicitlyDisabled\":false,\"classesDir\":\"\",\"testClassesDir\":\"\","
                                 + "\"kotlinClassesDir\":\"\",\"groovyClassesDir\":\"\",\"testResultsDir\":\"\",\"testIncludeTags\":[],"
                                 + "\"testExcludeTags\":[],\"lockStale\":false,\"scala\":false,\"scalaVersion\":\"\","
-                                + "\"coordinatorOnly\":false,\"productLib\":\"\",\"productBin\":\"\"}");
+                                + "\"coordinatorOnly\":false,\"productLib\":\"\",\"productBin\":\"\",\"toolchains\":{}}");
         // A populated line in the old template's order, with the three tri-state format flags present
         // and a null error: decode then encode must give the same bytes back.
         String line = "{\"type\":\"project-info-ack\",\"error\":null,\"group\":\"g\",\"name\":\"n\",\"version\":\"1\","
@@ -46,7 +46,8 @@ class WireProducersFrozenBytesTest {
                 + "\"nativeExplicitlyDisabled\":true,\"classesDir\":\"/c\",\"testClassesDir\":\"/tc\","
                 + "\"kotlinClassesDir\":\"/kc\",\"groovyClassesDir\":\"/gc\",\"testResultsDir\":\"/tr\","
                 + "\"testIncludeTags\":[\"fast\"],\"testExcludeTags\":[\"slow\",\"bench\"],\"lockStale\":true,\"scala\":true,"
-                + "\"scalaVersion\":\"3.9\",\"coordinatorOnly\":false,\"productLib\":\"lib\",\"productBin\":\"jk\"}";
+                + "\"scalaVersion\":\"3.9\",\"coordinatorOnly\":false,\"productLib\":\"lib\",\"productBin\":\"jk\","
+                + "\"toolchains\":{\"a/b\":\"temurin-21@21\",\"c\":\"@25\"}}";
         assertThat(ProjectInfo.decode(line).encode()).isEqualTo(line);
     }
 

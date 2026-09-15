@@ -4,7 +4,6 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ToolchainInstalls;
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -17,6 +16,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -33,9 +33,9 @@ import org.jspecify.annotations.Nullable;
  * summary's {@code jdk} is the same normalized resolver spec ({@code temurin-21} for
  * {@code jdk = "=temurin-21"}, or for {@code jdk = "temurin"} beside {@code java = 21}) and the
  * same effective {@code java} level the engine's {@code ensure-jdk} resolves with, so the two walks
- * cannot land on different downloads. The workspace root is asked once and stands for every member
- * that inherits its toolchain; a member is asked for its own summary only when its manifest names a
- * {@code jdk} or {@code java} of its own, or it carries a {@code .jdk-version} file.
+ * cannot land on different downloads. The workspace root's summary carries every member's effective
+ * toolchain ({@link ProjectInfo#toolchains}, the root's inheritance applied), so a workspace of any
+ * width costs one summary: the entry's, plus the root's when the build is entered from a member.
  *
  * <p>{@link JdkEnsure#pendingInstall} decides first, so a JDK that is already on disk costs one
  * resolution walk and no output.
@@ -82,7 +82,8 @@ public final class JdkPreflight {
 
     /**
      * The downloads a build entered at {@code dir} needs, in install order: the workspace root's,
-     * the entry's, then each member that resolves on its own. Empty when everything is on disk.
+     * the entry's, then each member's, every member read off the root's summary. Empty when
+     * everything is on disk.
      */
     static List<Need> needs(
             Path dir, ProjectInfo info, @Nullable Path jdksDir, Function<Path, @Nullable ProjectInfo> summaries) {
@@ -95,31 +96,33 @@ public final class JdkPreflight {
         Set<Path> seen = new LinkedHashSet<>();
         if (rootInfo != null) {
             seen.add(root);
-            needOf(root, rootInfo, jdksDir).ifPresent(out::add);
+            needOf(root, rootInfo.jdk(), rootInfo.javaRelease(), jdksDir).ifPresent(out::add);
         }
-        if (seen.add(entry)) needOf(entry, info, jdksDir).ifPresent(out::add);
-        List<String> members = rootInfo != null ? rootInfo.moduleDirs() : info.moduleDirs();
-        for (String listed : members) {
-            Path member = Path.of(listed).toAbsolutePath().normalize();
-            if (!seen.add(member) || !resolvesOnItsOwn(member)) continue;
-            ProjectInfo memberInfo = summaries.apply(member);
-            if (memberInfo != null) needOf(member, memberInfo, jdksDir).ifPresent(out::add);
+        if (seen.add(entry))
+            needOf(entry, info.jdk(), info.javaRelease(), jdksDir).ifPresent(out::add);
+        Map<String, ProjectInfo.Toolchain> members =
+                rootInfo != null ? rootInfo.moduleToolchains() : info.moduleToolchains();
+        for (var listed : members.entrySet()) {
+            Path member = Path.of(listed.getKey()).toAbsolutePath().normalize();
+            if (!seen.add(member)) continue;
+            ProjectInfo.Toolchain toolchain = listed.getValue();
+            needOf(member, toolchain.jdk(), toolchain.javaRelease(), jdksDir).ifPresent(out::add);
         }
         return out;
     }
 
-    private static Optional<Need> needOf(Path dir, ProjectInfo info, @Nullable Path jdksDir) {
-        String spec = info.jdk().isBlank() ? null : info.jdk();
+    private static Optional<Need> needOf(Path dir, String jdk, int javaRelease, @Nullable Path jdksDir) {
+        String spec = jdk.isBlank() ? null : jdk;
         Lockfile.JdkPin lockJdk = lockJdkPin(dir);
         Optional<JdkEnsure.Pending> pending;
         try {
-            pending = JdkEnsure.pendingInstall(dir, jdksDir, spec, info.javaRelease(), lockJdk);
+            pending = JdkEnsure.pendingInstall(dir, jdksDir, spec, javaRelease, lockJdk);
         } catch (RuntimeException probeFailed) {
             // The engine's ensure-jdk step resolves (and reports) for real; the pre-flight only
             // ever adds the on-terminal install.
             return Optional.empty();
         }
-        return pending.map(p -> new Need(dir, spec, info.javaRelease(), lockJdk, p));
+        return pending.map(p -> new Need(dir, spec, javaRelease, lockJdk, p));
     }
 
     private static boolean install(Need need, @Nullable Path jdksDir, BuildPlanConsole.Mode mode) {
@@ -157,20 +160,6 @@ public final class JdkPreflight {
             case DEFAULT -> "no JDK is installed — installing " + spec;
             case JAVA_HOME, GRAALVM_HOME, PATH, NONE -> "JDK " + spec + " is not installed — installing it";
         };
-    }
-
-    /**
-     * Whether a member's toolchain can differ from the workspace's: it names a {@code jdk} or a
-     * {@code java} of its own, or carries a {@code .jdk-version} file. Any other member inherits
-     * the root's answer, which has already been asked — so the summary round trip is spent only
-     * where it can change the outcome. Presence only; every value comes from the engine.
-     */
-    private static boolean resolvesOnItsOwn(Path member) {
-        if (Files.isRegularFile(member.resolve(".jdk-version"))) return true;
-        Path manifest = member.resolve(ManifestPaths.MANIFEST);
-        if (!Files.isRegularFile(manifest)) return false;
-        TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-vendor", "jdk-version", "java");
-        return scan.hasKey("jdk") || scan.hasKey("jdk-vendor") || scan.hasKey("jdk-version") || scan.hasKey("java");
     }
 
     /**

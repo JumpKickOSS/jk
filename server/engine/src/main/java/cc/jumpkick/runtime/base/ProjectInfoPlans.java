@@ -22,7 +22,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -93,20 +95,27 @@ public final class ProjectInfoPlans {
         }
     }
 
-    /** The workspace around {@code dir}: its root (null when standalone), the root's build, and every member. */
+    /**
+     * The workspace around {@code dir}: its root (null when standalone), the root's build, every
+     * member, and each module's effective toolchain ({@code dir → <spec>@<java>}, the root's
+     * inheritance applied). A member list the loader refused leaves {@code toolchains} empty —
+     * the build reports that refusal for real.
+     */
     private record Workspace(
             @Nullable Path wsRoot,
             String workspaceRootDir,
             JkBuild rootBuild,
             List<JkBuild> envSources,
             List<String> moduleDirs,
-            List<String> moduleNames) {}
+            List<String> moduleNames,
+            Map<String, String> toolchains) {}
 
     private static Workspace workspace(Path dir, JkBuild build) throws IOException {
         String workspaceRootDir = "";
         List<JkBuild> envSources = new ArrayList<>(List.of(build));
         List<String> moduleDirs = new ArrayList<>();
         List<String> moduleNames = new ArrayList<>();
+        Map<String, String> toolchains = new LinkedHashMap<>();
         Path wsRoot = null;
         JkBuild rootBuild = build;
         if (build.isWorkspaceRoot()) {
@@ -127,9 +136,11 @@ public final class ProjectInfoPlans {
         if (wsRoot != null && rootBuild.isWorkspaceRoot()) {
             try {
                 for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
-                    moduleDirs.add(e.getKey().toAbsolutePath().normalize().toString());
+                    String abs = e.getKey().toAbsolutePath().normalize().toString();
+                    moduleDirs.add(abs);
                     moduleNames.add(e.getValue().project().name());
                     envSources.add(e.getValue()); // a member declares what the root does not
+                    toolchains.put(abs, toolchain(e.getValue()));
                 }
             } catch (Exception ignored) {
                 for (String m : rootBuild.workspaceModules()) {
@@ -139,10 +150,19 @@ public final class ProjectInfoPlans {
                 }
             }
         } else {
-            moduleDirs.add(dir.toAbsolutePath().normalize().toString());
+            String abs = dir.toAbsolutePath().normalize().toString();
+            moduleDirs.add(abs);
             moduleNames.add(build.project().name());
+            toolchains.put(abs, toolchain(build));
         }
-        return new Workspace(wsRoot, workspaceRootDir, rootBuild, envSources, moduleDirs, moduleNames);
+        return new Workspace(wsRoot, workspaceRootDir, rootBuild, envSources, moduleDirs, moduleNames, toolchains);
+    }
+
+    /** A module's effective toolchain on the wire — the same spec and level its {@code ensure-jdk} resolves with. */
+    private static String toolchain(JkBuild module) {
+        return new ProjectInfo.Toolchain(
+                        sanitizeJdk(module.project().jdk()), module.project().javaRelease())
+                .encode();
     }
 
     /** The {@code -m}/{@code --affected-since}/{@code --affected} selection, or the selector's error. */
@@ -275,7 +295,8 @@ public final class ProjectInfoPlans {
                 build.project().scala() == null ? "" : build.project().scala().raw(),
                 CompileSupport.coordinatorOnly(build, dir),
                 build.installOpt().map(JkBuild.Install::productLib).orElse(""),
-                build.installOpt().map(JkBuild.Install::productBin).orElse(""));
+                build.installOpt().map(JkBuild.Install::productBin).orElse(""),
+                ws.toolchains());
     }
 
     private static String sanitizeIdentity(String value) {

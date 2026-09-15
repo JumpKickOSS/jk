@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,7 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The pre-flight against engine summaries handed in directly: what it asks for, in which order, and
  * how it words the install. The summaries' values are the engine's normalized ones — a resolver
- * spec and an effective {@code java} level — exactly as {@code project-info} answers them.
+ * spec and an effective {@code java} level, per module — exactly as {@code project-info} answers
+ * them; a workspace of any width costs the root's summary and no more.
  */
 class JdkPreflightTest {
 
@@ -58,11 +60,13 @@ class JdkPreflightTest {
         Path exact = member(root, "exact", "jdk = \"=temurin-21\"\njava = 21\n");
         Path jdks = jdksWith(tmp.resolve("jdks"), "temurin-25.0.2");
         Summaries summaries = new Summaries();
-        summaries.byDir.put(root, info("", 25, root, true, List.of(exact)));
-        summaries.byDir.put(exact, info("temurin-21", 21, root, false, List.of(exact)));
+        summaries.byDir.put(root, info("", 25, root, true, Map.of(exact, "temurin-21@21")));
 
         List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
 
+        assertThat(summaries.asked)
+                .as("the member's pin rides the root's summary")
+                .containsExactly(root);
         assertThat(needs).hasSize(1);
         JdkPreflight.Need need = needs.getFirst();
         assertThat(need.dir()).isEqualTo(exact);
@@ -81,7 +85,7 @@ class JdkPreflightTest {
         Path lib = member(root, "lib", "");
         Path jdks = jdksWith(tmp.resolve("jdks"), "temurin-25.0.2");
         Summaries summaries = new Summaries();
-        summaries.byDir.put(root, info("temurin-25", 25, root, true, List.of(lib)));
+        summaries.byDir.put(root, info("temurin-25", 25, root, true, Map.of(lib, "temurin-25@25")));
 
         List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
 
@@ -90,18 +94,44 @@ class JdkPreflightTest {
     }
 
     @Test
-    void a_member_that_declares_only_a_java_level_is_asked(@TempDir Path tmp) throws IOException {
+    void a_member_that_declares_only_a_java_level_is_pre_flighted_off_the_root_s_summary(@TempDir Path tmp)
+            throws IOException {
         Path root = workspace(tmp, "old");
         Path old = member(root, "old", "java = 17\n");
         Path jdks = jdksWith(tmp.resolve("jdks"), "temurin-25.0.2");
         Summaries summaries = new Summaries();
-        summaries.byDir.put(root, info("temurin-25", 25, root, true, List.of(old)));
-        summaries.byDir.put(old, info("temurin-17", 17, root, false, List.of(old)));
+        summaries.byDir.put(root, info("temurin-25", 25, root, true, Map.of(old, "temurin-17@17")));
 
         List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
 
-        assertThat(summaries.asked).containsExactly(root, old);
+        assertThat(summaries.asked).containsExactly(root);
         assertThat(needs).extracting(n -> n.pending().spec()).containsExactly("temurin-17");
+        assertThat(needs.getFirst().javaRelease()).isEqualTo(17);
+    }
+
+    @Test
+    void a_workspace_with_several_pinned_members_costs_one_summary(@TempDir Path tmp) throws IOException {
+        Path root = workspace(tmp, "a", "b", "c", "d");
+        Path a = member(root, "a", "jdk = \"=temurin-17\"\njava = 17\n");
+        Path b = member(root, "b", "jdk = \"zulu\"\njava = 21\n");
+        Path c = member(root, "c", "java = 25\n");
+        Path d = member(root, "d", "");
+        Path jdks = jdksWith(tmp.resolve("jdks"), "temurin-25.0.2");
+        Map<Path, String> pins = new LinkedHashMap<>();
+        pins.put(a, "temurin-17@17");
+        pins.put(b, "zulu-21@21");
+        pins.put(c, "temurin-25@25");
+        pins.put(d, "temurin-25@25");
+        Summaries summaries = new Summaries();
+        summaries.byDir.put(root, info("temurin-25", 25, root, true, pins));
+
+        List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
+
+        assertThat(summaries.asked)
+                .as("one project-info request for the whole workspace")
+                .containsExactly(root);
+        assertThat(needs).extracting(JdkPreflight.Need::dir).containsExactly(a, b);
+        assertThat(needs).extracting(n -> n.pending().spec()).containsExactly("temurin-17", "zulu-21");
     }
 
     @Test
@@ -110,8 +140,7 @@ class JdkPreflightTest {
         Path inline = member(root, "inline", "jdk = { workspace = true }\n");
         Path jdks = jdksWith(tmp.resolve("jdks"), "temurin-25.0.2");
         Summaries summaries = new Summaries();
-        summaries.byDir.put(root, info("temurin-25", 25, root, true, List.of(inline)));
-        summaries.byDir.put(inline, info("temurin-25", 25, root, false, List.of(inline)));
+        summaries.byDir.put(root, info("temurin-25", 25, root, true, Map.of(inline, "temurin-25@25")));
 
         List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
 
@@ -124,11 +153,14 @@ class JdkPreflightTest {
         Path exact = member(root, "exact", "jdk = \"=temurin-21\"\njava = 21\n");
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Summaries summaries = new Summaries();
-        summaries.byDir.put(root, info("zulu-25", 25, root, true, List.of(exact)));
-        summaries.byDir.put(exact, info("temurin-21", 21, root, false, List.of(exact)));
+        summaries.byDir.put(root, info("zulu-25", 25, root, true, Map.of(exact, "temurin-21@21")));
+        summaries.byDir.put(exact, info("temurin-21", 21, root, false, Map.of(exact, "temurin-21@21")));
 
         List<JdkPreflight.Need> needs = JdkPreflight.needs(exact, summaries.given(exact), jdks, summaries::of);
 
+        assertThat(summaries.asked)
+                .as("the entry's summary is held; the root's is the one request")
+                .containsExactly(exact, root);
         assertThat(needs).extracting(JdkPreflight.Need::dir).containsExactly(root, exact);
         assertThat(needs).extracting(n -> n.pending().spec()).containsExactly("zulu-25", "temurin-21");
     }
@@ -140,7 +172,7 @@ class JdkPreflightTest {
         Files.writeString(root.resolve("jk-lock.toml"), "version = \"one\"\n[jdk\n");
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Summaries summaries = new Summaries();
-        summaries.byDir.put(root, info("temurin-21", 21, root, true, List.of()));
+        summaries.byDir.put(root, info("temurin-21", 21, root, true, Map.of()));
 
         List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
 
@@ -221,21 +253,33 @@ class JdkPreflightTest {
         return jdks;
     }
 
-    /** An engine summary with the toolchain fields the pre-flight reads, as {@code project-info} encodes them. */
-    static ProjectInfo info(String jdk, int javaRelease, Path root, boolean workspaceRoot, List<Path> modules) {
+    /**
+     * An engine summary with the toolchain fields the pre-flight reads, as {@code project-info}
+     * encodes them: the dir's own spec and level, and every member's as {@code <spec>@<java>}.
+     */
+    static ProjectInfo info(String jdk, int javaRelease, Path root, boolean workspaceRoot, Map<Path, String> members) {
         StringBuilder mods = new StringBuilder();
-        for (Path m : modules) {
+        StringBuilder toolchains = new StringBuilder();
+        for (var m : members.entrySet()) {
+            String dir = m.getKey().toAbsolutePath().normalize().toString();
             if (!mods.isEmpty()) mods.append(',');
             mods.append('"')
-                    .append(m.toAbsolutePath().normalize())
+                    .append(dir)
                     .append("\":\"")
-                    .append(m.getFileName())
+                    .append(m.getKey().getFileName())
+                    .append('"');
+            if (!toolchains.isEmpty()) toolchains.append(',');
+            toolchains
+                    .append('"')
+                    .append(dir)
+                    .append("\":\"")
+                    .append(m.getValue())
                     .append('"');
         }
         return ProjectInfo.decode("{\"type\":\"project-info-ack\",\"name\":\"x\",\"jdk\":\"" + jdk
                 + "\",\"javaRelease\":" + javaRelease
                 + ",\"workspaceRoot\":" + workspaceRoot
                 + ",\"workspaceRootDir\":\"" + root.toAbsolutePath().normalize()
-                + "\",\"modules\":{" + mods + "}}");
+                + "\",\"modules\":{" + mods + "},\"toolchains\":{" + toolchains + "}}");
     }
 }

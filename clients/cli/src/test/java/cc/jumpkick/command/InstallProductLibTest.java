@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -75,7 +76,8 @@ class InstallProductLibTest {
                 base.scalaVersion(),
                 base.coordinatorOnly(),
                 productLib,
-                "");
+                "",
+                Map.of());
     }
 
     @Test

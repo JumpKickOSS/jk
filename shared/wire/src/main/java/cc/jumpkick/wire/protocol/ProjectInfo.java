@@ -26,6 +26,12 @@ import org.jspecify.annotations.Nullable;
  * a unit (it runs the workspace's build logic) but compiles, packages and publishes nothing, so
  * {@code jk install} must neither plan a {@code cache-install} for it nor claim it installed one.
  * A workspace root <em>with</em> sources is an ordinary publishing module and reports {@code false}.
+ *
+ * <p>{@code toolchains} is every workspace module's effective toolchain, {@code dir →
+ * <resolverSpec>@<javaRelease>} ({@link Toolchain}), with the root's inheritance already applied
+ * — a member that names no {@code jdk} of its own carries the root's. It is on the wire so the
+ * client's JDK pre-flight learns every member's pin from the one summary it already holds instead
+ * of asking for each member in turn. Keyed like {@code modules}, by absolute directory.
  */
 public record ProjectInfo(
         @Nullable String error,
@@ -82,7 +88,41 @@ public record ProjectInfo(
         String scalaVersion,
         boolean coordinatorOnly,
         String productLib,
-        String productBin) {
+        String productBin,
+        Map<String, String> toolchains) {
+
+    /**
+     * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
+     * spec the engine resolves ({@code temurin-21}; empty when the module pins no vendor or
+     * version) and the {@code java} level it compiles for.
+     */
+    public record Toolchain(String jdk, int javaRelease) {
+
+        /** {@code <jdk>@<javaRelease>}. */
+        public String encode() {
+            return jdk + "@" + javaRelease;
+        }
+
+        /** The inverse of {@link #encode}; a level that does not parse reads as 0, as an unset one does. */
+        public static Toolchain decode(String encoded) {
+            int at = encoded.lastIndexOf('@');
+            if (at < 0) return new Toolchain(encoded, 0);
+            int java;
+            try {
+                java = Integer.parseInt(encoded.substring(at + 1));
+            } catch (NumberFormatException unparsed) {
+                java = 0;
+            }
+            return new Toolchain(encoded.substring(0, at), java);
+        }
+    }
+
+    /** {@link #toolchains} decoded, in the engine's module order. */
+    public Map<String, Toolchain> moduleToolchains() {
+        var out = new LinkedHashMap<String, Toolchain>();
+        for (var e : toolchains.entrySet()) out.put(e.getKey(), Toolchain.decode(e.getValue()));
+        return out;
+    }
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -145,7 +185,8 @@ public record ProjectInfo(
                 "",
                 false,
                 "",
-                "");
+                "",
+                Map.of());
     }
 
     public String encode() {
@@ -204,6 +245,7 @@ public record ProjectInfo(
                 .bool("coordinatorOnly", coordinatorOnly)
                 .string("productLib", productLib)
                 .string("productBin", productBin)
+                .map("toolchains", toolchains)
                 .finish();
     }
 
@@ -264,7 +306,8 @@ public record ProjectInfo(
                 orEmpty(Jsonl.str(line, "scalaVersion")),
                 Jsonl.bool(line, "coordinatorOnly", false),
                 orEmpty(Jsonl.str(line, "productLib")),
-                orEmpty(Jsonl.str(line, "productBin")));
+                orEmpty(Jsonl.str(line, "productBin")),
+                Jsonl.strMap(line, "toolchains"));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

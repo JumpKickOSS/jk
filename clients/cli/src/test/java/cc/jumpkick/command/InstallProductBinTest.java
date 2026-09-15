@@ -9,6 +9,7 @@ import cc.jumpkick.tool.AppLauncher;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -143,6 +144,7 @@ class InstallProductBinTest {
                 base.scalaVersion(),
                 base.coordinatorOnly(),
                 "",
-                productBin);
+                productBin,
+                Map.of());
     }
 }
