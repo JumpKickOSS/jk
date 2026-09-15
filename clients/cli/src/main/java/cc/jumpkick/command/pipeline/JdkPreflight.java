@@ -173,12 +173,16 @@ public final class JdkPreflight {
         return scan.hasKey("jdk") || scan.hasKey("jdk-vendor") || scan.hasKey("jdk-version") || scan.hasKey("java");
     }
 
+    /**
+     * The lock's {@code [jdk]} pin, or null when there is no lock or it does not parse: a lock the
+     * engine will refuse is the engine's error to report, structured and once, not this walk's.
+     */
     private static Lockfile.@Nullable JdkPin lockJdkPin(Path dir) {
         Path lf = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lf)) return null;
         try {
             return LockfileReader.read(lf).jdk();
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException unreadable) {
             return null;
         }
     }

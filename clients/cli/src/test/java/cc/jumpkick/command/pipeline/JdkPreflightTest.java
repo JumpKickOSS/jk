@@ -134,6 +134,22 @@ class JdkPreflightTest {
     }
 
     @Test
+    void a_malformed_lock_is_left_to_the_engine(@TempDir Path tmp) throws IOException {
+        Path root = workspace(tmp, "exact");
+        member(root, "exact", "jdk = \"=temurin-21\"\njava = 21\n");
+        Files.writeString(root.resolve("jk-lock.toml"), "version = \"one\"\n[jdk\n");
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Summaries summaries = new Summaries();
+        summaries.byDir.put(root, info("temurin-21", 21, root, true, List.of()));
+
+        List<JdkPreflight.Need> needs = JdkPreflight.needs(root, summaries.given(root), jdks, summaries::of);
+
+        assertThat(needs).hasSize(1);
+        assertThat(needs.getFirst().lockJdk()).isNull();
+        assertThat(needs.getFirst().pending().spec()).isEqualTo("temurin-21");
+    }
+
+    @Test
     void without_an_engine_summary_the_pre_flight_stands_down(@TempDir Path tmp) {
         boolean ok = JdkPreflight.ensure(tmp, null, tmp.resolve("jdks"), BuildPlanConsole.Mode.QUIET, dir -> {
             throw new AssertionError("no summary should be asked for " + dir);
