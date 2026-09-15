@@ -147,7 +147,11 @@ binary:
 export PATH="$HOME/.jk/bin:$PATH"
 ```
 
-`./scripts/bootstrap-from-gradle.sh` is that sequence. The native client is preferred (self-heal,
+`./scripts/bootstrap-from-gradle.sh` is that sequence. **G106** (`gradle-bootstrap-parity`) holds
+the bootstrap to the tree on every `jk guard`: every Gradle `version` and `JkVersion.VERSION` equal
+the root `jk.toml` version (buildSrc reads it through `JkTreeVersion`), and every
+`gradle/libs.versions.toml` library sits at the version `jk-lock.toml` resolves, so the first client
+Gradle produces starts the engine jar it built. The native client is preferred (self-heal,
 sub-50 ms). **Windows also supports the thin JVM client** (`:cli:installDist` → `jk.bat`): Smart
 App Control blocks unsigned `jk.exe`. `:engine:installLocal` runs the materialize through a client
 that reports the engine jar's own version — the `:cli:nativeCompile` binary first, then the thin
