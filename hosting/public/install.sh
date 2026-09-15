@@ -510,11 +510,10 @@ main() {
 
   # ---- activate --------------------------------------------------------------
 
-  info "Running \`jk activate\`... This may download a JDK and optimize your installation"
-  # --yes: write shell integration without the interactive Yes/No wizard. install.sh
-  # used to call bare `jk activate`, which opened a TUI over /dev/tty and waited for
-  # a keypress even on automated/local installs. Failure must not abort warm-up —
-  # the binary is already installed.
+  info "Running \`jk activate\`..."
+  # --yes: write shell integration without the interactive Yes/No wizard, which would
+  # open a TUI over /dev/tty and wait for a keypress even on automated/local installs.
+  # Failure must not abort warm-up — the binary is already installed.
   run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
 
   # ---- preemptive payload warm-up (jk-templates, jk-libraries, jdks.json) -------
@@ -590,7 +589,12 @@ main() {
     run_jk engine stop --force >/dev/null 2>&1 || true
     # Engine self-heals missing worker AOT + host calibration on idle (and every 12h).
     # A successful start GCs parked jk.old / engine *.jar.old when the drain is done.
-    run_jk engine start >/dev/null 2>&1 \
+    # The start is what installs the engine's JDK on a machine that has none, and the
+    # client renders that download as the `jk jdk install` progress bar — so it runs on
+    # the user's terminal, not into /dev/null, where a two-minute download looks like
+    # a hang.
+    info "Starting the build engine... This may download a JDK and optimize your installation"
+    run_jk engine start \
       || note "Engine warm-up skipped; it will start on first build"
   fi
   rm -f "${JK_BIN}.old" "${JKX_BIN}.old" 2>/dev/null || true
