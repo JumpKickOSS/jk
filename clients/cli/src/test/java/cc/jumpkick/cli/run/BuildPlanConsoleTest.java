@@ -40,6 +40,19 @@ class BuildPlanConsoleTest {
     }
 
     @Test
+    void an_interactive_plan_leaves_no_progress_rider_for_the_build_that_follows(@TempDir Path cache) {
+        LiveProgress.get().clear();
+        String plan =
+                Capture.stdout(() -> BuildPlanConsole.run(oneStepInteractivePlan(), BuildPlanConsole.Mode.JSON, cache));
+        // The build's first line, emitted by its own listener right after the plan.
+        String first = Capture.stdout(() -> new JsonlListener(System.out).stepStart("parse-build", null, 1));
+
+        assertThat(plan.lines()).allSatisfy(line -> assertThat(line).contains("\"progress\":null"));
+        assertThat(LiveProgress.get().percent()).isNull();
+        assertThat(first).contains("\"progress\":null").doesNotContain("\"progress\":100");
+    }
+
+    @Test
     void interactive_plan_stays_silent_on_a_terminal(@TempDir Path cache) {
         String out =
                 Capture.stdout(() -> BuildPlanConsole.run(oneStepInteractivePlan(), BuildPlanConsole.Mode.AUTO, cache));

@@ -199,9 +199,14 @@ public final class BuildPlanConsole {
     private static BuildPlanListener chooseConsoleListener(BuildPlan plan, Mode mode) {
         // Interactive plans (wizards, download bars) must NOT render a progress bar: the plan's
         // own chrome owns the terminal. --output json still gets its events — there is no
-        // terminal to own, and the structured lines are what the caller asked for.
+        // terminal to own, and the structured lines are what the caller asked for. An interactive
+        // plan runs ahead of the job it prepares for, so it never owns the aggregate progress
+        // rider: its lines carry null, and the fraction it reaches does not leak into the first
+        // lines of the build that follows.
         if (plan.interactive()) {
-            return mode == Mode.JSON ? new JsonlListener(System.out) : new SilentListener(System.out, System.err, true);
+            return mode == Mode.JSON
+                    ? new JsonlListener(System.out, false)
+                    : new SilentListener(System.out, System.err, true);
         }
         return chooseConsoleListener(plan.name(), plan.steps(), mode);
     }
