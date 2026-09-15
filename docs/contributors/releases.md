@@ -88,10 +88,10 @@ has nothing to say. This section is the one home for release highlights; there i
 |-------|------|
 | **GCS** | Object storage for release blobs (`gs://jumpkick/releases/<ver>/…`) |
 | **Firebase CDN** | Public edge for `https://jumpkick.build` (wire later on Blaze) |
-| **install.sh** | Fetches `https://jumpkick.target/releases/…` (Linux / macOS) |
+| **install.sh** | Fetches `https://jumpkick.build/releases/…` (Linux / macOS) |
 | **install.ps1** | Fetches the Windows `.zip` from the same tree (`irm … \| iex`) |
 
-The product only knows `https://jumpkick.target/releases/`. Hosting 302s that prefix to
+The product only knows `https://jumpkick.build/releases/`. Hosting 302s that prefix to
 the current object store (GCS today). Override with `JK_RELEASES_URL` for a mirror
 or an air-gapped origin — never bake a bucket hostname into the client.
 
@@ -160,7 +160,7 @@ committed wrappers refuse one below the lock's `jk-min` floor. `JK_VERSION` and
 `jk self update <version>` never read the pointer and remain the deliberate way to a specific
 release, down included.
 
-Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.target/releases/*` is
+Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
 served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
 to Cloud Storage — either is fine as long as the URL layout above is public HTTPS).
 
@@ -228,11 +228,17 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
 
 ### Platforms without a hosted client
 
-jumpkick.build serves native clients for **linux-x86_64** and **macos-aarch64**. Linux aarch64,
-macOS x86_64 and Windows x86_64 have no hosted native client, so no CI job can bootstrap jk on
-them: their release rows and the Windows product smoke are absent until a first client exists, and
-`scripts/flatten-release.sh` refuses to publish a tree short of the five clients, so releases stay
-manual until then.
+jumpkick.build serves one native client, **linux-x86_64**, beside the engine jar and the JVM
+client. Linux aarch64, macOS (both architectures) and Windows x86_64 have no hosted native
+client, so no CI job can bootstrap jk on them: their release rows and the Windows product smoke
+are absent until a first client exists, and `scripts/flatten-release.sh` refuses to publish a
+tree short of the five clients, so releases stay manual until then.
+
+A contributor on one of those hosts builds the first jk with the Gradle bootstrap —
+`./gradlew dist installLocal` then `./install.sh build/dist/jk`, which
+`scripts/bootstrap-from-gradle.sh` runs in that order ([self-host](self-host.md#bootstrap)) — and
+the checkout's own jk takes over from there. Gradle builds nothing CI judges; jk is the gate and
+the release builder.
 
 Users on those hosts — and on every host no native client will ever be built for — install the
 **JVM client** instead: `jk-<version>.jar` is the CLI module's assembly (`[application] assembly =
@@ -299,8 +305,8 @@ for object in LATEST.sig LATEST VERSION; do
 done
 
 # 3. Verify through the public edge the installers use, with the baked-in public key:
-curl -fsSL https://jumpkick.target/releases/latest/LATEST -o LATEST
-curl -fsSL https://jumpkick.target/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
+curl -fsSL https://jumpkick.build/releases/latest/LATEST -o LATEST
+curl -fsSL https://jumpkick.build/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
 openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST   # "Verified OK"
 cat LATEST                                                                        # version 0.13.6 / issued …
 
