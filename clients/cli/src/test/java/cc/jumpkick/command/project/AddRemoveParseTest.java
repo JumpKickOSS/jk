@@ -71,19 +71,41 @@ class AddRemoveParseTest {
 
     @Test
     void parsedDep_group_artifact_forms() {
-        var latest = AddCommand.ParsedDep.parse("com.foo:bar", null, null, null, null);
-        assertThat(latest.group()).isEqualTo("com.foo");
-        assertThat(latest.name()).isEqualTo("bar");
-        assertThat(latest.versionLiteral()).isEqualTo("latest");
-        assertThat(latest.floating()).isTrue();
+        // No version means "pin the newest stable at write time": the literal is null, and
+        // nothing downstream writes `latest`.
+        var unversioned = AddCommand.ParsedDep.parse("com.foo:bar", null, null, null, null);
+        assertThat(unversioned.group()).isEqualTo("com.foo");
+        assertThat(unversioned.name()).isEqualTo("bar");
+        assertThat(unversioned.versionLiteral()).isNull();
 
         var emptyVer = AddCommand.ParsedDep.parse("com.foo:bar:", null, null, null, null);
-        assertThat(emptyVer.versionLiteral()).isEqualTo("latest");
-        assertThat(emptyVer.floating()).isTrue();
+        assertThat(emptyVer.versionLiteral()).isNull();
+
+        var atLatest = AddCommand.ParsedDep.parse("com.foo:bar@latest", null, null, null, null);
+        assertThat(atLatest.versionLiteral()).isNull();
 
         var pinned = AddCommand.ParsedDep.parse("com.foo:bar:1.2.3", null, null, null, null);
         assertThat(pinned.versionLiteral()).isEqualTo("1.2.3");
-        assertThat(pinned.floating()).isFalse();
+
+        var floated = AddCommand.ParsedDep.parse("com.foo:bar@^1.2", null, null, null, null);
+        assertThat(floated.versionLiteral()).isEqualTo("^1.2");
+    }
+
+    @Test
+    void parsedDep_catalog_name_without_version_pins_at_write_time() {
+        var bare = AddCommand.ParsedDep.parse("jackson3-core", null, null, null, null);
+        assertThat(bare.group()).isEqualTo("tools.jackson.core");
+        assertThat(bare.versionLiteral()).isNull();
+        var atLatest = AddCommand.ParsedDep.parse("jackson3-core@latest", null, null, null, null);
+        assertThat(atLatest.versionLiteral()).isNull();
+        var ver = AddCommand.ParsedDep.parse("jackson3-core", null, null, null, "3.1.0");
+        assertThat(ver.versionLiteral()).isEqualTo("3.1.0");
+    }
+
+    @Test
+    void settle_line_distinguishes_a_pin_from_a_float() {
+        assertThat(AddCommand.settleLine("3.1.0")).contains("Pinned to 3.1.0").contains("jk update");
+        assertThat(AddCommand.settleLine("^3.1")).contains("floats").contains("jk lock");
     }
 
     @Test

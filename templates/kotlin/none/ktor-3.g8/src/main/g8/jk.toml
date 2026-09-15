@@ -2,26 +2,25 @@ group = "$organization$"
 name = "$name$"
 version = "0.1.0"
 java = $java$
-kotlin = "latest"
+kotlin = "2.4.20"
 
 [application]
 main = "$package$.MainKt"
 
-# "latest" floats to the current stable; first `jk lock` pins exact versions.
 [dependencies]
-ktor-server-core = "latest"
-ktor-server-netty = { group = "io.ktor", name = "ktor-server-netty", version = "latest" }
-ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version = "latest" }
-ktor-serialization-jackson = { group = "io.ktor", name = "ktor-serialization-jackson", version = "latest" }
-koin-ktor = { group = "io.insert-koin", name = "koin-ktor", version = "latest" }
-exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version = "latest" }
-exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "latest" }
-h2 = { group = "com.h2database", name = "h2", version = "latest" }
-logback-classic = "latest"
+ktor-server-core = "3.5.2"
+ktor-server-netty = "io.ktor:ktor-server-netty:3.5.2"
+ktor-server-content-negotiation = "io.ktor:ktor-server-content-negotiation:3.5.2"
+ktor-serialization-jackson = "io.ktor:ktor-serialization-jackson:3.5.2"
+koin-ktor = "io.insert-koin:koin-ktor:4.2.2"
+exposed-core = "org.jetbrains.exposed:exposed-core:1.5.0"
+exposed-jdbc = "org.jetbrains.exposed:exposed-jdbc:1.5.0"
+h2 = "com.h2database:h2:2.5.250"
+logback-classic = "1.6.3"
 
 [test-dependencies]
-ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version = "latest" }
-junit-jupiter = "latest"
+ktor-server-test-host = "io.ktor:ktor-server-test-host:3.5.2"
+junit-jupiter = "6.1.3"
 
 # `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
 [image]

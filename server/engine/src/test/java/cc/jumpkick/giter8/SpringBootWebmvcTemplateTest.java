@@ -111,7 +111,7 @@ class SpringBootWebmvcTemplateTest {
         assertThat(dest.resolve("server/src/test/kotlin/com/acme/notes/server/NoteApiTest.kt"))
                 .content()
                 .contains("Welcome to JumpKick");
-        assertThat(dest.resolve("jk.toml")).content().contains("kotlin = \"latest\"");
+        assertThat(dest.resolve("jk.toml")).content().contains("kotlin = \"2.4.20\"");
     }
 
     @Test

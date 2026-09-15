@@ -573,6 +573,14 @@ public final class NewCommand implements CliCommand {
      * the success message.
      */
     private void scaffoldAndRegister(NewInputs inputs) throws IOException {
+        if (global.offline && needsVersionLookup(inputs)) {
+            throw new IOException("offline: jk new pins the newest stable "
+                    + (inputs.lang() == NewInputs.Language.JAVA
+                            ? "release"
+                            : inputs.lang().hoconValue() + " compiler")
+                    + (inputs.deps().isEmpty() ? "" : " and dependency versions")
+                    + " from your repositories; run without --offline");
+        }
         Path target = inputs.directory();
         Path parentDir = target.getParent() == null ? target : target.getParent();
         var ack = EngineClient.newProject(
@@ -609,6 +617,12 @@ public final class NewCommand implements CliCommand {
             EngineEdits.apply(rootToml, "register-workspace-module", List.of(rel));
             registered = new Module(root, rel, parent.displayName());
         }
+    }
+
+    /** A non-Java compiler or any dependency pick means the scaffold must look a version up. */
+    static boolean needsVersionLookup(NewInputs inputs) {
+        return !inputs.plugin()
+                && (inputs.lang() != NewInputs.Language.JAVA || !inputs.deps().isEmpty());
     }
 
     private NewInputs fromFlags(Path cwd) {

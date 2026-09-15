@@ -8,14 +8,19 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_deps} — preview or apply a surgical dependency edit in jk.toml. */
+/**
+ * {@code jk_deps} — preview or apply a surgical dependency edit in jk.toml. Entries are spelled
+ * by the same writer as {@code jk add}; a {@code group:artifact} without a version is pinned to
+ * its newest stable release.
+ */
 public final class DepsTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "jk_deps",
-                "Preview/apply surgical dependency edits (g:n:v). apply=false by default.",
+                "Preview/apply surgical dependency edits (group:artifact[:version]; no version pins the"
+                        + " newest stable). apply=false by default.",
                 McpSchemas.object(Map.of(
                         "action",
                         McpSchemas.string("add | remove"),

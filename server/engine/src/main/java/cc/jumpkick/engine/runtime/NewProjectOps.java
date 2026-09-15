@@ -3,6 +3,7 @@ package cc.jumpkick.engine.runtime;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.docs.JkManual;
@@ -16,9 +17,13 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
+import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.runtime.RepoGroupBuilder;
+import cc.jumpkick.runtime.StableVersions;
 import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.scaffold.NewInputs;
 import cc.jumpkick.scaffold.NewScaffolder;
+import cc.jumpkick.scaffold.ScaffoldVersions;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -307,7 +312,24 @@ public final class NewProjectOps {
                 req.deps() == null ? List.of() : req.deps(),
                 req.sample(),
                 target);
-        NewScaffolder.write(inputs, req.standalone());
+        NewScaffolder.write(inputs, req.standalone(), scaffoldVersions());
+    }
+
+    /**
+     * Where a scaffold gets the numbers it pins: the newest stable release in the user's global
+     * repositories over the public baseline (there is no project manifest yet). The group is built
+     * on first use, so a Java project with no dependencies never touches a repository.
+     */
+    static ScaffoldVersions scaffoldVersions() {
+        return new ScaffoldVersions() {
+            private @Nullable RepoGroup repos;
+
+            @Override
+            public String newestStable(String group, String artifact) throws IOException {
+                if (repos == null) repos = RepoGroupBuilder.buildDefault(JkStores.storeCas());
+                return StableVersions.newest(repos, group, artifact);
+            }
+        };
     }
 
     private static Prepared prepare(Request req) throws IOException {

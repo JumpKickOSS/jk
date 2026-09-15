@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -30,12 +31,12 @@ class JkBuildEditorTest {
 
     @Test
     void add_to_file_without_dependencies_table_creates_sub_scope() {
+        // `=2.18.2` and `2.18.2` are the same exact selector; the file carries the bare form.
         String result = JkBuildEditor.addDependency(
                 BASE, Scope.MAIN, "jackson-databind", "com.fasterxml.jackson.core", "jackson-databind", "=2.18.2");
 
         assertThat(result).contains("[dependencies]");
-        assertThat(result)
-                .contains("jackson-databind = { group = \"com.fasterxml.jackson.core\", version = \"=2.18.2\" }");
+        assertThat(result).contains("jackson-databind = \"com.fasterxml.jackson.core:jackson-databind:2.18.2\"");
 
         JkBuild parsed = JkBuildParser.parse(result);
         assertThat(parsed.dependencies().of(Scope.MAIN)).singleElement().satisfies(d -> {
@@ -46,14 +47,43 @@ class JkBuildEditorTest {
     }
 
     @Test
-    void add_omits_artifact_when_it_matches_name() {
-        // `acme-thing` is deliberately not in the bundled catalog — that
-        // way this test exercises the structured-form artifact-omission
-        // branch, not the catalog-shorthand branch tested below.
+    void add_writes_a_coordinate_string_for_a_non_catalog_dependency() {
+        // `acme-thing` is deliberately not in the bundled catalog: the entry is the Maven
+        // coordinate as every JVM page spells it, never an inline table.
         String result = JkBuildEditor.addDependency(BASE, Scope.MAIN, "acme-thing", "com.acme", "acme-thing", "1.0.0");
 
-        assertThat(result).contains("acme-thing = { group = \"com.acme\", version = \"1.0.0\" }");
-        assertThat(result).doesNotContain(", name =");
+        assertThat(result).contains("acme-thing = \"com.acme:acme-thing:1.0.0\"");
+        assertThat(result).doesNotContain("{ group");
+
+        JkBuild parsed = JkBuildParser.parse(result);
+        Dependency d = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(d.module()).isEqualTo("com.acme:acme-thing");
+        assertThat(d.version()).isEqualTo(VersionSelector.parse("1.0.0"));
+    }
+
+    @Test
+    void render_entry_picks_catalog_then_coordinate_and_keeps_explicit_floats() {
+        var catalog = LibraryCatalog.bundled();
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "picocli", "info.picocli", "picocli", "4.7.7"))
+                .isEqualTo("picocli = \"4.7.7\"");
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "picocli", "info.picocli", "picocli", "=4.7.7"))
+                .as("exact selectors are written bare")
+                .isEqualTo("picocli = \"4.7.7\"");
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "mylib", "com.acme", "mylib", "1.2.3"))
+                .isEqualTo("mylib = \"com.acme:mylib:1.2.3\"");
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "web", "org.acme", "acme-web", "^2.18"))
+                .as("a handle that differs from the artifact still gets the coordinate string; the float stays")
+                .isEqualTo("web = \"org.acme:acme-web:^2.18\"");
+        assertThat(JkBuildEditor.renderDependencyEntry(catalog, "mylib", "com.acme", "mylib", ">=1.2,<2"))
+                .isEqualTo("mylib = \"com.acme:mylib:>=1.2,<2\"");
+    }
+
+    @Test
+    void file_dependency_stays_a_table_with_a_bare_version() {
+        String result = JkBuildEditor.addFileDependency(
+                BASE, Scope.MAIN, "blob", "com.acme", "blob", "=1.0.0", "ab".repeat(32));
+        assertThat(result)
+                .contains("blob = { sha256 = \"" + "ab".repeat(32) + "\", group = \"com.acme\", version = \"1.0.0\" }");
     }
 
     @Test
@@ -72,13 +102,12 @@ class JkBuildEditorTest {
     }
 
     @Test
-    void add_uses_structured_form_when_group_disagrees_with_catalog() {
-        // Same name as a catalog entry but a deliberately different group:
-        // the user is overriding the catalog, so the structured form is
-        // emitted (the shorthand would lie about the resolved coord).
+    void add_uses_coordinate_form_when_group_disagrees_with_catalog() {
+        // Same name as a catalog entry but a deliberately different group: the user is
+        // overriding the catalog, so the coordinate is spelled out (the one-liner would lie).
         String result = JkBuildEditor.addDependency(BASE, Scope.MAIN, "picocli", "io.fork", "picocli", "4.7.7");
 
-        assertThat(result).contains("picocli = { group = \"io.fork\", version = \"4.7.7\" }");
+        assertThat(result).contains("picocli = \"io.fork:picocli:4.7.7\"");
     }
 
     @Test
@@ -86,9 +115,7 @@ class JkBuildEditorTest {
         String result = JkBuildEditor.addDependency(
                 BASE, Scope.MAIN, "spring-web", "org.springframework.boot", "spring-boot-starter-web", "3.4.0");
 
-        assertThat(result)
-                .contains("spring-web = { group = \"org.springframework.boot\", "
-                        + "name = \"spring-boot-starter-web\", version = \"3.4.0\" }");
+        assertThat(result).contains("spring-web = \"org.springframework.boot:spring-boot-starter-web:3.4.0\"");
 
         JkBuild parsed = JkBuildParser.parse(result);
         Dependency d = parsed.dependencies().of(Scope.MAIN).getFirst();

@@ -51,7 +51,7 @@ class AddCommandTest {
         // Pinned dep edge into the current (app) project; artifact omitted since
         // it matches the key.
         String appToml = Files.readString(tmp.resolve("app/jk.toml"));
-        assertThat(appToml).contains("libb = { group = \"cc.jumpkick\", version = \"=0.2.0\" }");
+        assertThat(appToml).contains("libb = \"cc.jumpkick:libb:0.2.0\"");
 
         // libb is now registered in the workspace root.
         JkBuild root = JkBuildParser.parse(tmp.resolve("jk.toml"));
@@ -73,8 +73,7 @@ class AddCommandTest {
 
         int exit = Jk.execute("add", ":jackson", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(Files.readString(tmp.resolve("jk.toml")))
-                .contains("jackson = { group = \"cc.jumpkick\", version = \"=1.0.0\" }");
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson = \"cc.jumpkick:jackson:1.0.0\"");
         assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("core", "jackson");
     }
@@ -113,8 +112,7 @@ class AddCommandTest {
         // Windows-style separators, resolved relative to the module dir.
         int exit = Jk.execute("add", "..\\libb", "-C", tmp.resolve("app").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(Files.readString(tmp.resolve("app/jk.toml")))
-                .contains("libb = { group = \"cc.jumpkick\", version = \"=0.2.0\" }");
+        assertThat(Files.readString(tmp.resolve("app/jk.toml"))).contains("libb = \"cc.jumpkick:libb:0.2.0\"");
         assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("app", "libb");
     }
@@ -134,8 +132,7 @@ class AddCommandTest {
 
         int exit = Jk.execute("add", "jackson", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(Files.readString(tmp.resolve("jk.toml")))
-                .contains("jackson = { group = \"cc.jumpkick\", version = \"=1.0.0\" }");
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson = \"cc.jumpkick:jackson:1.0.0\"");
         assertThat(workspaceOf(JkBuildParser.parse(tmp.resolve("jk.toml"))).modules())
                 .containsExactly("core", "jackson");
     }
@@ -189,50 +186,71 @@ class AddCommandTest {
 
         int exit = Jk.execute("add", "jackson3-core@=3.1.0", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"=3.1.0\"");
+        // `=3.1.0` is the same exact selector as `3.1.0`; the file carries the bare form.
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"3.1.0\"");
     }
 
-    @Test
-    void add_group_artifact_trailing_colon_is_latest(@TempDir Path tmp) throws IOException {
+    /**
+     * A manifest whose {@code [repositories]} names a local {@code file://} repository that
+     * advertises the given versions, so a version-less add pins from it and never asks Central.
+     */
+    private static void projectWithLocalRepo(Path tmp, String group, String artifact, String... versions)
+            throws IOException {
+        Path repo = tmp.resolve("repo");
+        Path dir = repo.resolve(group.replace('.', '/')).resolve(artifact);
+        StringBuilder list = new StringBuilder();
+        for (String v : versions) list.append("      <version>").append(v).append("</version>\n");
+        write(dir.resolve("maven-metadata.xml"), """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <metadata>
+                  <groupId>%s</groupId>
+                  <artifactId>%s</artifactId>
+                  <versioning>
+                    <versions>
+                %s    </versions>
+                  </versioning>
+                </metadata>
+                """.formatted(group, artifact, list));
         write(tmp.resolve("jk.toml"), """
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
-                """);
+
+                [repositories]
+                local = "%s"
+
+                [workspace]
+                modules = []
+                """.formatted(repo.toUri()));
+    }
+
+    @Test
+    void add_group_artifact_trailing_colon_pins_the_newest_stable(@TempDir Path tmp) throws IOException {
+        projectWithLocalRepo(tmp, "com.foo.emptyver", "bar", "1.0.0", "2.0.0", "2.1.0-RC1");
 
         int exit = Jk.execute("add", "com.foo.emptyver:bar:", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
         assertThat(Files.readString(tmp.resolve("jk.toml")))
-                .contains("bar = { group = \"com.foo.emptyver\", version = \"latest\" }");
+                .contains("bar = \"com.foo.emptyver:bar:2.0.0\"")
+                .doesNotContain("latest");
     }
 
     @Test
-    void add_bare_catalog_name_without_ver_defaults_to_latest(@TempDir Path tmp) throws IOException {
-        // A bare name that IS in the library catalog resolves group + artifact
-        // and defaults to floating "latest" when --ver is omitted, matching the
-        // group:artifact coord form. Resolution happens later at `jk lock`.
-        write(tmp.resolve("jk.toml"), """
-                group    = "cc.jumpkick"
-                name     = "jk"
-                version  = "0.1.0"
-
-                [workspace]
-                modules = []
-                """);
+    void add_bare_catalog_name_without_ver_pins_the_newest_stable(@TempDir Path tmp) throws IOException {
+        // A bare name that IS in the library catalog resolves group + artifact; the version is
+        // the newest stable the project's repositories advertise, written as a number.
+        projectWithLocalRepo(tmp, "tools.jackson.core", "jackson-core", "3.0.0", "3.1.1", "3.2.0-rc1");
 
         int exit = Jk.execute("add", "jackson3-core", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
 
-        // Because jackson3-core is a known catalog library, the editor renders
-        // the short form (library name = version) rather than the expanded coord.
+        // A catalog library renders as the one-liner (name = version).
         String toml = Files.readString(tmp.resolve("jk.toml"));
-        assertThat(toml).contains("jackson3-core = \"latest\"");
+        assertThat(toml).contains("jackson3-core = \"3.1.1\"").doesNotContain("latest");
     }
 
     @Test
-    void add_bare_catalog_name_with_at_version_pins_floating(@TempDir Path tmp) throws IOException {
-        // `library@version` resolves the library and uses the @version as a
-        // caret-floating selector, matching group:artifact@version.
+    void add_bare_catalog_name_with_at_version_pins_that_version(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
                 group    = "cc.jumpkick"
                 name     = "jk"
@@ -248,20 +266,42 @@ class AddCommandTest {
     }
 
     @Test
-    void add_bare_catalog_name_with_at_latest_is_latest(@TempDir Path tmp) throws IOException {
-        // `library@latest` is equivalent to omitting the version.
+    void add_bare_catalog_name_with_at_caret_keeps_the_float(@TempDir Path tmp) throws IOException {
         write(tmp.resolve("jk.toml"), """
                 group    = "cc.jumpkick"
                 name     = "jk"
                 version  = "0.1.0"
-
-                [workspace]
-                modules = []
                 """);
+
+        int exit = Jk.execute("add", "jackson3-core@^3.1", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(0);
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"^3.1\"");
+    }
+
+    @Test
+    void add_bare_catalog_name_with_at_latest_pins_the_newest_stable(@TempDir Path tmp) throws IOException {
+        // `library@latest` is the same request as omitting the version.
+        projectWithLocalRepo(tmp, "tools.jackson.core", "jackson-core", "3.0.0", "3.1.1");
 
         int exit = Jk.execute("add", "jackson3-core@latest", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(Files.readString(tmp.resolve("jk.toml"))).contains("jackson3-core = \"latest\"");
+        assertThat(Files.readString(tmp.resolve("jk.toml")))
+                .contains("jackson3-core = \"3.1.1\"")
+                .doesNotContain("latest");
+    }
+
+    @Test
+    void add_without_version_offline_refuses_and_names_the_fix(@TempDir Path tmp) throws IOException {
+        write(tmp.resolve("jk.toml"), """
+                group    = "cc.jumpkick"
+                name     = "jk"
+                version  = "0.1.0"
+                """);
+        String before = Files.readString(tmp.resolve("jk.toml"));
+
+        int exit = Jk.execute("add", "--offline", "com.foo.off:bar", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(64);
+        assertThat(Files.readString(tmp.resolve("jk.toml"))).isEqualTo(before);
     }
 
     @Test
@@ -279,7 +319,7 @@ class AddCommandTest {
         assertThat(exit).isEqualTo(0);
 
         String toml = Files.readString(tmp.resolve("jk.toml"));
-        assertThat(toml).contains("bar = { group = \"com.foo.add\", version = \"=1.2.3\" }");
+        assertThat(toml).contains("bar = \"com.foo.add:bar:1.2.3\"");
         // Coord add must not touch the modules list.
         JkBuild root = JkBuildParser.parse(tmp.resolve("jk.toml"));
         assertThat(workspaceOf(root).modules()).containsExactly("app");

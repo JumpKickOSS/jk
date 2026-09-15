@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.project;
 
+import static java.util.Objects.requireNonNull;
+
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
@@ -17,6 +19,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -39,7 +42,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk add}: Maven coord, catalog name, or local workspace module ({@code :name}/path) into
- * {@code jk.toml}. {@code --ping} checks availability only.
+ * {@code jk.toml}. A coordinate without a version is pinned to its newest stable release, looked
+ * up engine-side in the project's repositories; the file never carries {@code latest}. {@code
+ * --ping} checks availability only.
  */
 public final class AddCommand implements CliCommand {
 
@@ -72,7 +77,7 @@ public final class AddCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId. Required for a bare short name.", "--group"),
                 Opt.value("<name>", "Maven artifactId; defaults to the library handle.", "--name"),
                 // --version collides with the global --version, so jk uses --ver.
-                Opt.value("<ver>", "Version selector, e.g. \"3.4.0\", \"~3.4\", \"=3.4.0\".", "--ver"),
+                Opt.value("<ver>", "Version selector, e.g. \"3.4.0\", \"^3.4\", \"~3.4.0\".", "--ver"),
                 Opt.flag("Test scope", "--test"),
                 Opt.flag("Runtime scope", "--runtime"),
                 Opt.flag("Provided scope", "--provided"),
@@ -86,6 +91,7 @@ public final class AddCommand implements CliCommand {
                 "dep|path",
                 Arity.ONE,
                 "Library short name, name@ver, group:artifact[:ver], or path.\n"
+                        + "Without a version the newest stable release is pinned.\n"
                         + "A bare name is a path when that directory exists."));
     }
 
@@ -139,7 +145,7 @@ public final class AddCommand implements CliCommand {
         }
 
         if (ping) {
-            return runPing(parsed.toCoord());
+            return runPing(parsed);
         }
 
         Path file = dir.resolve(ManifestPaths.MANIFEST);
@@ -149,16 +155,25 @@ public final class AddCommand implements CliCommand {
         }
         Scope scope = resolveScope();
         if (scope == null) return Exit.USAGE;
+        if (parsed.versionLiteral() == null && global.offline) {
+            CommandWedge.printFail(
+                    "Add",
+                    "offline: cannot look up the current version of " + parsed.group() + ":" + parsed.name()
+                            + "; pass an explicit version (" + parsed.group() + ":" + parsed.name()
+                            + ":1.2.3 or --ver 1.2.3)");
+            return Exit.USAGE;
+        }
+        String version;
         try {
-            EngineEdits.apply(
+            version = EngineEdits.applyDetail(
                     file,
                     "add-dependency",
                     List.of(
                             scope.canonical(),
-                            parsed.library(),
-                            parsed.group(),
-                            parsed.name(),
-                            parsed.versionLiteral()));
+                            requireNonNull(parsed.library()),
+                            requireNonNull(parsed.group()),
+                            requireNonNull(parsed.name()),
+                            Objects.requireNonNullElse(parsed.versionLiteral(), "latest")));
         } catch (IOException e) {
             CommandWedge.printFail("Add", e.getMessage());
             return 1;
@@ -166,19 +181,29 @@ public final class AddCommand implements CliCommand {
         String msg = "Added "
                 + Coords.shortName(parsed.library())
                 + " ("
-                + Coords.gav(parsed.group(), parsed.name(), Objects.requireNonNullElse(parsed.versionLiteral(), ""))
+                + Coords.gav(parsed.group(), parsed.name(), version)
                 + ") to "
                 + Theme.colorize("dependency", Theme.active().cyan())
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan());
         CommandWedge.printOk("Add", msg);
         CliOutput.out();
-        CliOutput.out("The next "
-                + Theme.colorize("jk build", Theme.active().warning())
-                + " / "
-                + Theme.colorize("jk lock", Theme.active().warning())
-                + " will pin versions automatically");
+        CliOutput.out(settleLine(version));
         return 0;
+    }
+
+    /**
+     * What happens to the written selector from here: an exact pin stays where it is until {@code
+     * jk update} moves it; a float is picked at the next lock.
+     */
+    static String settleLine(String version) {
+        String lock = Theme.colorize("jk lock", Theme.active().warning());
+        if (VersionSelector.parse(version) instanceof VersionSelector.Exact) {
+            return "Pinned to " + version + "; " + lock + " keeps it and "
+                    + Theme.colorize("jk update", Theme.active().warning()) + " moves it";
+        }
+        return "`" + version + "` floats: the next "
+                + Theme.colorize("jk build", Theme.active().warning()) + " / " + lock + " picks the newest match";
     }
 
     /** The selected dependency scope, or {@code null} if more than one flag was given. */
@@ -264,7 +289,7 @@ public final class AddCommand implements CliCommand {
         //    version — matching how this repo's own modules reference siblings.
         try {
             EngineEdits.apply(
-                    currentToml, "add-dependency", List.of(scope.canonical(), name, group, artifact, "=" + version));
+                    currentToml, "add-dependency", List.of(scope.canonical(), name, group, artifact, version));
         } catch (IOException e) {
             CommandWedge.printFail("Add", e.getMessage());
             return 1;
@@ -394,12 +419,6 @@ public final class AddCommand implements CliCommand {
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan());
         CommandWedge.printOk("Add", msg);
-        CliOutput.out();
-        CliOutput.out("The next "
-                + Theme.colorize("jk build", Theme.active().warning())
-                + " / "
-                + Theme.colorize("jk lock", Theme.active().warning())
-                + " will pin versions automatically");
         return 0;
     }
 
@@ -408,16 +427,15 @@ public final class AddCommand implements CliCommand {
     }
 
     /**
-     * Parsed representation of a dep spec. Carries the four pieces the editor needs ({@code name},
-     * {@code group}, {@code artifact}, {@code versionLiteral}) and the floating/pinned distinction
-     * for round-trip display.
+     * Parsed representation of a dep spec: the four pieces the editor needs. {@code versionLiteral}
+     * is the selector as the user spelled it, or {@code null} when none was given (or {@code
+     * latest} was) — the engine then pins the newest stable release.
      */
     public record ParsedDep(
             @Nullable String library,
             @Nullable String group,
             @Nullable String name,
-            @Nullable String versionLiteral,
-            boolean floating) {
+            @Nullable String versionLiteral) {
 
         static ParsedDep parse(
                 String coord,
@@ -432,13 +450,11 @@ public final class AddCommand implements CliCommand {
             int atSign = coord.indexOf('@');
 
             if (firstColon < 0) {
-                // Bare short name, optionally with an `@version` suffix
-                // (e.g. `jackson3-core` or `jackson3-core@3.1.0`). The layered
-                // library catalog (workspace jk-libs.toml + global + bundled) supplies
-                // group + artifact for curated names. The version comes from
-                // --ver, else the `@version` suffix (caret-floating, like the
-                // group:artifact@version coord form), else defaults to floating
-                // "latest". All are resolved at `jk lock`. Flags override the catalog.
+                // Bare short name, optionally with an `@version` suffix (`jackson3-core` or
+                // `jackson3-core@3.1.0`). The layered library catalog (workspace jk-libs.toml +
+                // global + bundled) supplies group + artifact for curated names. The version is
+                // --ver, else the `@version` suffix, else the newest stable at write time. Flags
+                // override the catalog.
                 String libraryKey = atSign >= 0 ? coord.substring(0, atSign) : coord;
                 String atVersion = atSign >= 0 ? coord.substring(atSign + 1) : null;
                 if (libraryKey.isBlank()) {
@@ -466,17 +482,16 @@ public final class AddCommand implements CliCommand {
                                 .append(String.join(", ", suggestions))
                                 .append("? ");
                     }
-                    msg.append("Either pick an library name or supply --group ")
-                            .append("(and optionally --name) explicitly.");
+                    msg.append("Pick a catalog name, write the Maven coordinate as group:artifact[:version], ")
+                            .append("or supply --group (and optionally --name).");
                     throw new IllegalArgumentException(msg.toString());
                 }
-                boolean hasFlagVersion = versionFlag != null && !versionFlag.isBlank();
-                String versionLiteral = hasFlagVersion ? versionFlag : atVersion != null ? atVersion : "latest";
-                return new ParsedDep(library, group, name, versionLiteral, !hasFlagVersion);
+                String versionLiteral = nonBlank(versionFlag, atVersion);
+                return new ParsedDep(library, group, name, explicitOrNull(versionLiteral));
             }
 
             // Maven-coord shorthand (has a colon). Three forms:
-            //   group:artifact            → version="latest", floating=true
+            //   group:artifact            → newest stable, pinned at write time
             //   group:artifact@selector   → the selector as written
             //   group:artifact:version    → an exact pin
             int nextColon = coord.indexOf(':', firstColon + 1);
@@ -484,28 +499,20 @@ public final class AddCommand implements CliCommand {
 
             String moduleStr;
             String rawVersion;
-            boolean floating;
             if (versionMark < 0) {
                 moduleStr = coord;
-                rawVersion = "latest";
-                floating = true;
+                rawVersion = null;
             } else if (versionMark == atSign) {
                 moduleStr = coord.substring(0, atSign);
                 rawVersion = coord.substring(atSign + 1);
-                floating = true;
                 if (rawVersion.isBlank()) {
                     throw new IllegalArgumentException("empty version after '@' in: " + coord);
                 }
             } else {
                 moduleStr = coord.substring(0, nextColon);
                 rawVersion = coord.substring(nextColon + 1);
-                // group:artifact:  (empty version) → same as group:artifact → latest
-                if (rawVersion.isBlank()) {
-                    rawVersion = "latest";
-                    floating = true;
-                } else {
-                    floating = false;
-                }
+                // group:artifact:  (empty version) → same as group:artifact
+                if (rawVersion.isBlank()) rawVersion = null;
             }
             int sep = moduleStr.indexOf(':');
             if (sep < 0 || sep == moduleStr.length() - 1 || sep == 0) {
@@ -519,17 +526,25 @@ public final class AddCommand implements CliCommand {
             String library = nonBlank(libraryFlag, artifactFromCoord);
             String group = nonBlank(groupFlag, groupFromCoord);
             String name = nonBlank(nameFlag, artifactFromCoord);
-            String versionLiteral = versionFlag != null && !versionFlag.isBlank() ? versionFlag : rawVersion;
-            return new ParsedDep(library, group, name, versionLiteral, floating);
+            return new ParsedDep(library, group, name, explicitOrNull(nonBlank(versionFlag, rawVersion)));
         }
 
         private static @Nullable String nonBlank(@Nullable String flagValue, @Nullable String fallback) {
             return (flagValue == null || flagValue.isBlank()) ? fallback : flagValue;
         }
 
-        /** Best-effort Coordinate for --ping. Strips any `=` selector prefix. */
+        /** {@code latest} (any spelling) is the same request as no version: pin the newest stable. */
+        private static @Nullable String explicitOrNull(@Nullable String selector) {
+            if (selector == null) return null;
+            return VersionSelector.parse(selector) instanceof VersionSelector.Latest ? null : selector;
+        }
+
+        /**
+         * Best-effort Coordinate for --ping. A selector prefix is dropped; a version-less request
+         * carries a placeholder, and the probe reads the artifact's metadata instead of a POM.
+         */
         Coordinate toCoord() {
-            String literal = versionLiteral == null ? "" : versionLiteral;
+            String literal = versionLiteral == null ? "0" : versionLiteral;
             String v = literal.startsWith("=") || literal.startsWith("^") || literal.startsWith("~")
                     ? literal.substring(1)
                     : literal;
@@ -537,16 +552,18 @@ public final class AddCommand implements CliCommand {
         }
     }
 
-    private int runPing(Coordinate coord) throws IOException, InterruptedException {
+    private int runPing(ParsedDep parsed) throws IOException, InterruptedException {
+        Coordinate coord = parsed.toCoord();
         URI repoBase = RepositorySpec.MAVEN_CENTRAL.url();
-        URI pomUri = repoBase.resolve(MavenLayout.pomPath(coord));
-        String coordStr = Coords.gav(coord);
+        boolean versionless = parsed.versionLiteral() == null;
+        URI probe = repoBase.resolve(versionless ? MavenLayout.metadataPath(coord) : MavenLayout.pomPath(coord));
+        String coordStr = versionless ? coord.group() + ":" + coord.artifact() : Coords.gav(coord);
 
         var http = new Http();
-        var response = http.get(pomUri);
+        var response = http.get(probe);
 
         if (response.statusCode() == 200) {
-            URI artifactUri = repoBase.resolve(MavenLayout.artifactPath(coord));
+            URI artifactUri = versionless ? probe : repoBase.resolve(MavenLayout.artifactPath(coord));
             CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " " + coordStr + " is available.");
             CliOutput.out(osc8Link(artifactUri.toString()));
             return 0;

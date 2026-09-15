@@ -50,58 +50,105 @@ public final class JkBuildEditor {
     private JkBuildEditor() {}
 
     /**
-     * Append a dependency to the scope section (creates the section if missing).
+     * Append a dependency to the scope section (creates the section if missing). The entry is
+     * spelled by {@link #renderDependencyEntry} against the bundled catalog.
      *
-     * @param versionLiteral the selector as it should appear in the file: {@code "1.2.3"} pins, {@code "^1.2.3"} floats
+     * @param versionLiteral the selector as it should appear in the file: {@code "1.2.3"} pins,
+     *     {@code "^1.2.3"} floats
      */
     public static String addDependency(
             String content, Scope scope, String name, String group, String artifact, String versionLiteral) {
+        return addDependency(content, scope, name, group, artifact, versionLiteral, LibraryCatalog.bundled());
+    }
+
+    /** {@link #addDependency(String, Scope, String, String, String, String)} spelled against {@code catalog}. */
+    public static String addDependency(
+            String content,
+            Scope scope,
+            String name,
+            String group,
+            String artifact,
+            String versionLiteral,
+            LibraryCatalog catalog) {
         validateName(name);
         if (group == null || group.isBlank()) {
             throw new IllegalArgumentException("group must not be blank");
         }
-        if (versionLiteral == null || versionLiteral.isBlank()) {
-            throw new IllegalArgumentException("version must not be blank");
-        }
+        requireVersionLiteral(versionLiteral);
         if (artifact == null || artifact.isBlank()) artifact = name;
 
         List<String> lines = splitPreservingTerminator(content);
         if (findDepKey(lines, scope, name) >= 0) {
             throw new IllegalStateException(scope.tomlSection() + " already contains \"" + name + "\"");
         }
+        return validated(
+                join(insertEntry(lines, scope, renderDependencyEntry(catalog, name, group, artifact, versionLiteral))));
+    }
 
-        String entryLine = renderEntry(name, group, artifact, versionLiteral);
+    /**
+     * One dependency entry line, in the one spelling jk writes for a plain Maven coordinate:
+     *
+     * <ol>
+     *   <li>{@code name = "1.2.3"} when {@code catalog} maps {@code name} to exactly this
+     *       group:artifact;
+     *   <li>{@code name = "group:artifact:1.2.3"} otherwise.
+     * </ol>
+     *
+     * An exact selector is written bare ({@code =1.2.3} becomes {@code 1.2.3}); {@code ^}, {@code ~},
+     * ranges and {@code latest} are written as given. Entries that need more fields (sha256,
+     * classifier, optional, features, git, path) are inline tables and are rendered by their own
+     * writers.
+     */
+    public static String renderDependencyEntry(
+            LibraryCatalog catalog, String name, String group, String artifact, String versionLiteral) {
+        validateName(name);
+        if (group == null || group.isBlank()) {
+            throw new IllegalArgumentException("group must not be blank");
+        }
+        requireVersionLiteral(versionLiteral);
+        if (artifact == null || artifact.isBlank()) artifact = name;
+        String literal = bareLiteral(versionLiteral);
+        var hit = catalog.lookup(name);
+        if (hit.isPresent()
+                && hit.get().group().equals(group)
+                && hit.get().artifact().equals(artifact)) {
+            return name + " = " + MinimalToml.quote(literal);
+        }
+        return name + " = " + MinimalToml.quote(group + ":" + artifact + ":" + literal);
+    }
 
+    /** The selector as written to the file: an exact {@code =1.2.3} is spelled {@code 1.2.3}. */
+    private static String bareLiteral(String versionLiteral) {
+        String t = versionLiteral.strip();
+        return t.startsWith("=") ? t.substring(1).strip() : t;
+    }
+
+    /** Insert {@code entryLine} flush at the bottom of the scope's table, creating the table at EOF when absent. */
+    private static List<String> insertEntry(List<String> lines, Scope scope, String entryLine) {
         int header = findScopeHeader(lines, scope);
         if (header < 0) {
-            // No section for this scope. Append one at the end of the file.
             ensureTrailingBlankLine(lines);
             lines.add("[" + scope.tomlSection() + "]");
             lines.add(entryLine);
-            return validated(join(lines));
+            return lines;
         }
         int insertAt = endOfTable(lines, header);
-        // Insert just before the next header / EOF, trimming any trailing
-        // blank lines that belong between this table and the next so the
-        // entry sits flush at the bottom of the current sub-table.
         while (insertAt > header + 1 && lines.get(insertAt - 1).isBlank()) {
             insertAt--;
         }
         lines.add(insertAt, entryLine);
-        return validated(join(lines));
+        return lines;
     }
 
     /**
-     * Add a file-backed (CAS sha256) dependency entry to the scope's dependency section (e.g.
-     * {@code [dependencies]} for MAIN, {@code [test-dependencies]} for TEST). The rendered
-     * form is:
+     * Add a file-backed (CAS sha256) dependency entry to the scope's dependency section. The extra
+     * field keeps this an inline table:
      *
      * <pre>{@code
-     * library = { sha256 = "...", group = "...", version = "..." }
+     * library = { sha256 = "...", group = "...", version = "1.2.3" }
      * }</pre>
      *
-     * The {@code name} field is omitted when {@code artifact} equals {@code library}, following the
-     * same convention as {@link #addDependency}.
+     * {@code name} is omitted when {@code artifact} equals {@code library}; the version is written bare.
      */
     public static String addFileDependency(
             String content, Scope scope, String library, String group, String artifact, String version, String sha256) {
@@ -109,9 +156,7 @@ public final class JkBuildEditor {
         if (group == null || group.isBlank()) {
             throw new IllegalArgumentException("group must not be blank");
         }
-        if (version == null || version.isBlank()) {
-            throw new IllegalArgumentException("version must not be blank");
-        }
+        requireVersionLiteral(version);
         if (sha256 == null || sha256.isBlank()) {
             throw new IllegalArgumentException("sha256 must not be blank");
         }
@@ -130,22 +175,10 @@ public final class JkBuildEditor {
         if (!artifact.equals(library)) {
             sb.append(", name = ").append(MinimalToml.quote(artifact));
         }
-        sb.append(", version = ").append(MinimalToml.quote(version)).append(" }");
-        String entryLine = sb.toString();
-
-        int header = findScopeHeader(lines, scope);
-        if (header < 0) {
-            ensureTrailingBlankLine(lines);
-            lines.add("[" + scope.tomlSection() + "]");
-            lines.add(entryLine);
-            return validated(join(lines));
-        }
-        int insertAt = endOfTable(lines, header);
-        while (insertAt > header + 1 && lines.get(insertAt - 1).isBlank()) {
-            insertAt--;
-        }
-        lines.add(insertAt, entryLine);
-        return validated(join(lines));
+        sb.append(", version = ")
+                .append(MinimalToml.quote(bareLiteral(version)))
+                .append(" }");
+        return validated(join(insertEntry(lines, scope, sb.toString())));
     }
 
     /**
@@ -383,10 +416,6 @@ public final class JkBuildEditor {
     // --- internals ---------------------------------------------------------
 
     /**
-     * Map a {@link Scope} to its top-level TOML section name. MAIN → {@code dependencies}; others →
-     * {@code <canonical>-dependencies} (e.g. {@code test-dependencies}).
-     */
-    /**
      * Locate the line that opens the section for {@code scope}. MAIN scope uses the {@code
      * [dependencies]} header; non-MAIN scopes use {@code [<canonical>-dependencies]}.
      */
@@ -429,26 +458,6 @@ public final class JkBuildEditor {
             if (ANY_HEADER.matcher(lines.get(i)).matches()) return i;
         }
         return lines.size();
-    }
-
-    /** Render a single dep-entry line. Omits {@code artifact} when it matches the key. */
-    private static String renderEntry(String name, String group, String artifact, String versionLiteral) {
-        // Cargo-style one-liner when the user's name + coord matches a curated
-        // catalog entry — `picocli = "4.7.7"` reads better in big manifests
-        // than the full structured form. Falls back to the structured form
-        // otherwise.
-        var hit = LibraryCatalog.bundled().lookup(name);
-        if (hit.isPresent()
-                && hit.get().group().equals(group)
-                && hit.get().artifact().equals(artifact)) {
-            return name + " = " + MinimalToml.quote(versionLiteral);
-        }
-        StringBuilder sb = new StringBuilder(name).append(" = { group = ").append(MinimalToml.quote(group));
-        if (!artifact.equals(name)) {
-            sb.append(", name = ").append(MinimalToml.quote(artifact));
-        }
-        sb.append(", version = ").append(MinimalToml.quote(versionLiteral)).append(" }");
-        return sb.toString();
     }
 
     /**

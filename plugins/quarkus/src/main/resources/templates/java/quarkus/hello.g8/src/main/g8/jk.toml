@@ -7,7 +7,7 @@ java = $java$
 main = "$package$.Application"
 
 [quarkus]
-version = "latest"
+version = "3.39.3"
 
 [dependencies]
 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }

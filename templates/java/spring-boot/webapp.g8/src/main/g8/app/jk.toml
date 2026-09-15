@@ -5,7 +5,7 @@ description = "The service: a REST API under /api, and the SPA bundle served fro
 main = "$package$.Application"
 
 [spring-boot]
-version = "latest"
+version = "4.1.1"
 
 # `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
 [image]

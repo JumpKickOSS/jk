@@ -4,4 +4,4 @@ version = "0.0.1"
 java = "25"
 
 [test-dependencies]
-junit-jupiter = "latest"
+junit-jupiter = "6.1.3"

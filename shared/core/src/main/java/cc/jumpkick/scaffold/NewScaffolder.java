@@ -24,58 +24,49 @@ import java.util.Map;
  * <p>No {@code jk-lock.toml} — that's generated on the first build/run.
  *
  * <p>The curated dependency map is the single source of truth for which "short id" maps to which
- * Maven coordinate + version + scope; both the renderer and the wizard's MultiSelect step pull from
- * it.
+ * Maven coordinate + scope; both the renderer and the wizard's MultiSelect step pull from it. The
+ * version written is the newest stable at scaffold time, from {@link ScaffoldVersions}.
  *
  * <p>Shared by CLI {@code jk new} and engine {@code POST /api/projects}. Framework apps come
  * from Giter8 ({@code jk new -t …}), not this writer.
  */
 public final class NewScaffolder {
 
-    /**
-     * Per-dep record. {@code version} is the major-version selector that ends up after the {@code @}
-     * in the rendered TOML coord (e.g., {@code org.projectlombok:lombok@1}). Floating @-form lets the
-     * project pick up patch updates without an explicit bump.
-     */
-    public record CuratedEntry(String coord, String version, String scope) {}
+    /** Per-dep record: the {@code group:artifact} coordinate and the scope it is declared in. */
+    public record CuratedEntry(String coord, String scope) {}
 
-    /**
-     * Curated dependency catalog. The {@code version} is intentionally a bare major (e.g. {@code
-     * "1"}); the renderer emits the {@code @}-form so the resolver treats it as a floating caret
-     * selector ({@code ^1} → 1.x.x).
-     */
+    /** Curated dependency catalog: short id → coordinates and scopes. Versions come from {@link ScaffoldVersions}. */
     public static final Map<String, List<CuratedEntry>> CURATED_DEPS = Map.of(
             "lombok",
                     List.of(
-                            new CuratedEntry("org.projectlombok:lombok", "1", "processor"),
-                            new CuratedEntry("org.projectlombok:lombok", "1", "provided")),
-            "jspecify", List.of(new CuratedEntry("org.jspecify:jspecify", "1", "main")),
-            "commons-lang", List.of(new CuratedEntry("org.apache.commons:commons-lang3", "3", "main")),
-            "commons-io", List.of(new CuratedEntry("commons-io:commons-io", "2", "main")),
-            "guava", List.of(new CuratedEntry("com.google.guava:guava", "33", "main")),
-            "kotest", List.of(new CuratedEntry("io.kotest:kotest-runner-junit6", "6", "test")));
+                            new CuratedEntry("org.projectlombok:lombok", "processor"),
+                            new CuratedEntry("org.projectlombok:lombok", "provided")),
+            "jspecify", List.of(new CuratedEntry("org.jspecify:jspecify", "main")),
+            "commons-lang", List.of(new CuratedEntry("org.apache.commons:commons-lang3", "main")),
+            "commons-io", List.of(new CuratedEntry("commons-io:commons-io", "main")),
+            "guava", List.of(new CuratedEntry("com.google.guava:guava", "main")),
+            "kotest", List.of(new CuratedEntry("io.kotest:kotest-runner-junit6", "test")));
 
     private NewScaffolder() {}
 
-    public static void write(NewInputs inputs) throws IOException {
-        write(inputs, true);
-    }
-
     /**
      * Write the project tree. {@code standalone} is false for a workspace module, whose {@code
-     * .gitignore} is owned by the workspace root and so is skipped here.
+     * .gitignore} is owned by the workspace root and so is skipped here. Every library and compiler
+     * version in the manifest is a number from {@code versions}.
      *
      * <p>No {@code jk-lock.toml} is written — it's generated on the first build or run.
      */
-    public static void write(NewInputs inputs, boolean standalone) throws IOException {
+    public static void write(NewInputs inputs, boolean standalone, ScaffoldVersions versions) throws IOException {
         if (inputs.plugin()) {
-            writePluginProject(inputs, standalone);
+            writePluginProject(inputs, standalone, versions);
             return;
         }
         var dir = inputs.directory();
         Files.createDirectories(dir);
         Files.writeString(
-                dir.resolve(ManifestPaths.MANIFEST), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
+                dir.resolve(ManifestPaths.MANIFEST),
+                NewJkBuildRenderer.render(inputs, versions),
+                StandardCharsets.UTF_8);
 
         if (standalone) {
             writeGitignore(dir);
@@ -92,11 +83,14 @@ public final class NewScaffolder {
     // jk new --plugin: a build-plugin AUTHORING project (jk-plugin.toml at the jar root; PluginMain
     // is implied by that file).
 
-    private static void writePluginProject(NewInputs inputs, boolean standalone) throws IOException {
+    private static void writePluginProject(NewInputs inputs, boolean standalone, ScaffoldVersions versions)
+            throws IOException {
         Path dir = inputs.directory();
         Files.createDirectories(dir);
         Files.writeString(
-                dir.resolve(ManifestPaths.MANIFEST), NewJkBuildRenderer.render(inputs), StandardCharsets.UTF_8);
+                dir.resolve(ManifestPaths.MANIFEST),
+                NewJkBuildRenderer.render(inputs, versions),
+                StandardCharsets.UTF_8);
         if (standalone) {
             writeGitignore(dir);
             JkManual.ensureAgentsGuide(dir);
