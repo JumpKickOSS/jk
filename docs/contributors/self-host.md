@@ -311,11 +311,14 @@ The pass is run by the engine the home names when it starts, and every artifact-
 names the engine that packaged the artifact. So when the pass materializes another engine than the
 one that ran it, `jk install` runs one more pass under that engine (announced as *re-shelving*):
 the jars the displaced engine packaged are packaged afresh and the ones that changed are re-shelved,
-and one command leaves the shelf packaged by the tree's own engine. A client of another version than
-the tree's, or one older than this second pass (the hosted release CI bootstraps from), stops after
-the first: run `jk install --skip-tests` once more, which is what the CI takeover step does. The
-passes are bounded at two, so when the re-shelving pass itself ends on yet another engine, `jk
-install` says so and asks for that one more run.
+and one command leaves the shelf packaged by the tree's own engine. An engine serves only clients
+of its own version, so a client of another version than the tree's (the released client a
+contributor bootstraps from, the previous release the hosted CI installs with) stops after the
+first pass, succeeds, and says which client runs the second — the PATH client the pass installed:
+run `<home>/bin/jk install --skip-tests` once more, which is what the CI takeover step does. A
+client older than this second pass stops silently after the first. The passes are bounded at two,
+so when the re-shelving pass itself ends on yet another engine, `jk install` says so and asks for
+that one more run.
 `scripts/check-shelf-descriptors.sh "$JK_HOME"` then proves the shelf: every first-party worker
 jar's root `jk-plugin.toml` names its own module's `[plugin] table`.
 

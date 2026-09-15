@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +31,27 @@ class InstallCommandHandoffTest {
                 .contains("home names engine ab12cd34ef56")
                 .contains("`jk engine stop`")
                 .contains("`jk install`");
+    }
+
+    @Test
+    void a_client_of_another_version_than_the_engine_it_installed_hands_the_pass_to_the_tree_s_client() {
+        String notice = InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), Path.of("/home/u/.jk/bin/jk"));
+        assertThat(notice)
+                .contains("jk 0.13.6")
+                .contains("this one is jk 0.13.5")
+                .contains("run `/home/u/.jk/bin/jk install` once more");
+        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), null))
+                .as("no PATH client installed: the pass still belongs to a client of the tree's version")
+                .contains("run `jk install` as jk 0.13.6 once more");
+    }
+
+    @Test
+    void the_tree_s_own_client_runs_the_re_shelving_pass_itself() {
+        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.of("0.13.6"), Path.of("/h/bin/jk")))
+                .isNull();
+        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.empty(), null))
+                .as("a home naming no engine leaves nothing to hand over")
+                .isNull();
     }
 
     @Test

@@ -440,6 +440,13 @@ public final class InstallCommand {
      */
     private boolean reshelving;
 
+    /**
+     * The PATH client a pass put in place ({@code [install] product-bin}), or null when none was.
+     * A client of another version than the engine it installed hands the re-shelving pass to
+     * this one and names it.
+     */
+    private @Nullable Path installedClient;
+
     private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope) throws IOException {
         Optional<String> engineBefore = liveEngineSha();
         Path cacheDir = cacheDir();
@@ -497,6 +504,15 @@ public final class InstallCommand {
         if (exit != 0) return exit;
         Optional<String> engineAfter = liveEngineSha();
         if (!reshelving && engineReplaced(engineBefore, engineAfter)) {
+            // An engine serves only clients of its own version. When the pass materialized an
+            // engine of another version than this client's, no request from here can reach it, so
+            // the re-shelving pass is the tree's own client's to run: the install is complete as
+            // far as this client can take it, and says what runs the rest.
+            String handover = handoverNotice(JkVersion.VERSION, liveEngineVersion(), installedClient);
+            if (handover != null) {
+                if (!json) CommandWedge.printOk("Install", handover);
+                return Exit.SUCCESS;
+            }
             reshelving = true;
             if (!json) {
                 CommandWedge.printOk(
@@ -661,6 +677,7 @@ public final class InstallCommand {
             if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
                 launcher = applyInstallPlan(mod, pass.cacheDir(), info.productLib(), info.productBin());
             }
+            if (productBin && launcher != null) installedClient = launcher;
             String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
             lines.addAll(installedLines(coord, launcher, binDir, info.productLib(), info.productBin()));
             modules++;
@@ -691,6 +708,23 @@ public final class InstallCommand {
         if (!lastPass || !engineReplaced(before, after)) return null;
         return "the re-shelving pass ended on engine " + shortSha(after) + " while its shelf was packaged by engine "
                 + shortSha(before) + " — run `jk install` once more so the shelf is the live engine's";
+    }
+
+    /**
+     * What a pass that installed an engine of another version than {@code clientVersion} leaves
+     * to the tree's own client: the home names that engine now, an engine serves only clients of
+     * its own version, so the re-shelving pass runs when {@code client} (the PATH client the pass
+     * installed, when it did) is the one asking. Null when the versions agree — this client is
+     * served by the new engine and runs the pass itself — or when the home names no engine.
+     */
+    public static @Nullable String handoverNotice(
+            String clientVersion, Optional<String> engineVersion, @Nullable Path client) {
+        if (engineVersion.isEmpty() || engineVersion.get().equals(clientVersion)) return null;
+        String tree = engineVersion.get();
+        String next = client != null ? "`" + client + " install`" : "`jk install` as jk " + tree;
+        return "the home names jk " + tree + "'s engine now, which serves jk " + tree + " clients; this one is jk "
+                + clientVersion + ", so the re-shelving pass runs on the tree's own client — run " + next
+                + " once more";
     }
 
     /**
@@ -733,6 +767,11 @@ public final class InstallCommand {
     /** The engine jar the product library's pointer names, by digest; empty when the home has none. */
     private static Optional<String> liveEngineSha() {
         return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::engineSha);
+    }
+
+    /** The product version of the engine the pointer names; empty when the home has none. */
+    private static Optional<String> liveEngineVersion() {
+        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::version);
     }
 
     /**
