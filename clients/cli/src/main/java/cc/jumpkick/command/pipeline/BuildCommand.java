@@ -316,13 +316,13 @@ public final class BuildCommand implements CliCommand {
         EnginePrewarm.ensure();
 
         long buildStart = System.nanoTime();
+        if (sel != null && sel.error() == null && !sel.empty()) {
+            ModuleScopeHint.print("building", sel.names(), global != null && global.outputIsJson());
+        }
         JkManager view = JkManager.plan(CliOutput.stdout(), "Build", animate);
         view.setPlanCoord(projectGaLabel(entryDir));
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir) + "...");
-        if (sel != null && sel.error() == null && !sel.empty()) {
-            ModuleScopeHint.show("building", sel.names(), global != null && global.outputIsJson(), view);
-        }
         // Do not client-seed a "checking" phase row — the engine owns Checking / Lock / Graph
         // preflight events on the single build RPC. A seed left a stale Checking row until
         // checking 1/1. The live build uses that one request for Checking + Graph + Plan + execute:

@@ -439,10 +439,10 @@ public final class TestCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         EnginePrewarm.ensure();
         long start = System.nanoTime();
+        ModuleScopeHint.print("testing", scopeNames, global.outputIsJson());
         JkManager view = JkManager.plan(CliOutput.stdout(), "Test", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
         view.setWindowTitle("JumpKick - Testing " + BuildCommand.projectGavLabel(entryDir) + "...");
-        ModuleScopeHint.show("testing", scopeNames, global.outputIsJson(), view);
         AggregateContext agg = new AggregateContext(view);
         var run = new WorkspaceRunView(new WorkspaceRunView.Chrome("Test", true), entryDir, session, false);
         var request = workspaceTestRequest(entryDir, cache, workerCount, modules);

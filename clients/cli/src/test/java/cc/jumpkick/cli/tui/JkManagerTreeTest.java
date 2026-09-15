@@ -6,6 +6,7 @@ import static cc.jumpkick.cli.tui.JkManagerTestSupport.stripAll;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
@@ -169,6 +170,26 @@ class JkManagerTreeTest {
         assertThat(joined).contains(Theme.colorize("VariantSwitchTest", t.synType()));
         assertThat(joined).contains(Theme.colorize("switching_variants", t.synFunction()));
         assertThat(joined).contains(Theme.colorize("Path", t.synType()));
+    }
+
+    @Test
+    void plan_header_fits_the_row_budget_at_every_percent() throws Exception {
+        NoAnsi.forcedAnsi(() -> {
+            var cm = JkManager.plan(stream(new ByteArrayOutputStream()), "Build", false);
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.setRemainingWorkEstimate(90_000);
+            for (int cols : new int[] {40, 80, 140}) {
+                int budget = RenderContext.rowColumnBudget(cols);
+                for (int pct : new int[] {0, 9, 75, 99, 100}) {
+                    cm.progress(pct, 100);
+                    String header = cm.renderBuildPlanLines(cols, 5_000).get(0);
+                    assertThat(RenderContext.visibleWidth(header))
+                            .as("cols=%d pct=%d", cols, pct)
+                            .isLessThanOrEqualTo(budget);
+                }
+            }
+            return null;
+        });
     }
 
     @Test
@@ -423,6 +444,70 @@ class JkManagerTreeTest {
                         .lines()
                         .filter(l -> l.contains("Build"))
                         .count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void paint_on_region_grow_prescrolls_then_climbs_new_height() {
+        // Bottom-pinned growth: each extra trailing \n would scroll the viewport and orphan the
+        // previous ● Build into scrollback while lastLines still counts it — the next frame stacks
+        // a second header. Growing must emit (next-prev) newlines first, then cursorUp(next).
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.height = 24;
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+        cm.stepMessage("cc.jumpkick:jk-cli", "native-image", "classpath input size: ~4.3 MiB");
+        cm.tick();
+        int prev = cm.lastLines.size();
+        assertThat(prev).isGreaterThan(0);
+
+        for (int i = 0; i < 5; i++) {
+            cm.addCompletion("✓ [" + (11 - i) + " of 15] cc.jumpkick:mod-" + i + " took 1.0s");
+        }
+        int next = cm.renderBuildPlanLines(80, 0).size();
+        assertThat(next).isGreaterThan(prev);
+
+        buf.reset();
+        cm.tick();
+        String raw = buf.toString(StandardCharsets.UTF_8);
+        int grow = next - prev;
+        assertThat(raw).startsWith("\r\n".repeat(grow) + Ansi.cursorUp(next));
+        assertThat(TestAnsi.strip(raw).lines().filter(l -> l.contains("Build")).count())
+                .isEqualTo(1);
+    }
+
+    @Test
+    void paint_on_peek_open_via_failure_then_grow_prescrolls() {
+        // Force-show (native-image failure) paints via openPeekPaint; the next animator frame that
+        // grows the completion tail must still pre-scroll — that is the flash-then-duplicate path.
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(stream(buf), true, true, 80);
+        cm.height = 24;
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.nerdFont = NerdFontCaps.NONE;
+        cm.stepRunning("cc.jumpkick:jk-cli", "native-image", "native");
+        cm.tick();
+        cm.writeProcessOutput("native-image: Error: libz not found");
+        cm.showProcessFailureOutput();
+        int prev = cm.lastLines.size();
+        assertThat(cm.outputWindow().visible()).isTrue();
+        assertThat(prev).isGreaterThan(0);
+
+        for (int i = 0; i < 5; i++) {
+            cm.addCompletion("✓ [" + (11 - i) + " of 15] cc.jumpkick:mod-" + i + " took 1.0s");
+        }
+        int next = cm.renderBuildPlanLines(80, 0).size();
+        assertThat(next).isGreaterThan(prev);
+
+        buf.reset();
+        cm.tick();
+        String raw = buf.toString(StandardCharsets.UTF_8);
+        assertThat(raw).startsWith("\r\n".repeat(next - prev) + Ansi.cursorUp(next));
+        assertThat(TestAnsi.strip(raw).lines().filter(l -> l.contains("Build")).count())
                 .isEqualTo(1);
     }
 

@@ -288,59 +288,85 @@ final class JkManagerView {
      * committed. Process output in scrollback above is never redrawn here.
      *
      * <p>Cursor invariant: between paints the cursor is parked at the start of the line immediately
-     * below the live region. Line-diff only rewrites changed rows (spinner header most frames).
+     * below the live region.
+     *
+     * <p>Each frame climbs to the region top, erases, and rewrites. Growth at the bottom of the
+     * viewport must pre-scroll first: otherwise the extra trailing {@code \n}s orphan the header
+     * into scrollback while {@code lastLines} still counts it, and the next frame stacks a second
+     * {@code ● Build}.
      */
     void paintBuildPlan() {
         syncSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
-        boolean force = forceFullRepaint;
         forceFullRepaint = false;
-        int prev = m.lastLines.size();
+        int painted = Math.max(m.linesDrawn, m.lastLines.size());
+        int drift = m.parkDrift.getAndSet(0);
+        int next = lines.size();
         int maxUp = OutputWindow.maxRegionLines(m.height);
-        int up = Math.min(prev, maxUp);
-        if (up > 0) m.out.print(Ansi.cursorUp(up));
-        for (int i = 0; i < lines.size(); i++) {
-            boolean changed = force || i >= prev || !lines.get(i).equals(m.lastLines.get(i));
-            if (changed) {
+        int grow = next - painted;
+        if (grow > 0 && painted > 0) {
+            // Room first, then climb the new height plus any unlocked park-row newlines.
+            for (int i = 0; i < grow; i++) {
                 m.out.print('\r');
-                m.out.print(RenderContext.truncateVisible(lines.get(i), colBudget()));
-                m.out.print(Ansi.ERASE_LINE_TO_END);
+                m.out.print('\n');
             }
-            m.out.print('\n');
+            m.out.print(Ansi.cursorUp(Math.min(next + drift, maxUp)));
+        } else if (painted + drift > 0) {
+            m.out.print(Ansi.cursorUp(Math.min(painted + drift, maxUp)));
         }
-        if (prev > lines.size()) m.out.print(Ansi.ERASE_DISPLAY_TO_END);
-        long[] bd = m.displayBar(elapsed);
-        m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
-        m.lastLines = lines;
-        m.linesDrawn = lines.size();
-        paintedCols = m.width;
+        m.out.print('\r');
+        m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        writeLiveRegion(lines);
     }
 
     /**
-     * Lift the cursor to the top of the live region and erase it. The cursor invariant — parked at
-     * the start of the line below the region between paints — is enforced here rather than restated
-     * at each call site: and were each a bug in one copy of this sequence.
+     * Lift the cursor to the top of the live region and erase it. Between paints the cursor is
+     * parked on the line immediately below the region.
      */
     private void liftRegion() {
-        int up = Math.min(m.lastLines.size(), OutputWindow.maxRegionLines(m.height));
+        int up = Math.min(m.climbRows(), OutputWindow.maxRegionLines(m.height));
         if (up == 0) return;
         m.out.print(Ansi.cursorUp(up));
         m.out.print('\r');
         m.out.print(Ansi.ERASE_DISPLAY_TO_END);
     }
 
-    /** Paint one row from column 0, clipped to {@link #colBudget()}, and advance a line. */
-    private void emitLine(String line) {
+    /**
+     * Paint one row from column 0, clipped so it cannot wrap, and advance a line. Returns the
+     * physical rows occupied (1 unless clipping failed and the terminal width wrapped the row).
+     */
+    private int emitLine(String line) {
+        String painted = RenderContext.truncateVisible(line, colBudget());
         m.out.print('\r');
-        m.out.print(RenderContext.truncateVisible(line, colBudget()));
+        m.out.print(painted);
         m.out.print(Ansi.ERASE_LINE_TO_END);
         m.out.print('\n');
+        int vis = RenderContext.visibleWidth(painted);
+        int width = Math.max(1, m.width);
+        if (vis <= 0) return 1;
+        return Math.max(1, (vis + width - 1) / width);
     }
 
     /** Columns one row may paint at the current terminal width. */
     private int colBudget() {
         return RenderContext.rowColumnBudget(m.width);
+    }
+
+    /**
+     * Pin a module-scope caption into scrollback above the live plan region, then repaint chrome.
+     * Must not be used for process/tool lines (those go through the peek ring).
+     */
+    void pinScopeCaption(String captionLine) {
+        if (captionLine == null || captionLine.isEmpty()) return;
+        synchronized (m.lock) {
+            if (m.done || !m.animate || !m.planMode || !Theme.active().isAnsi()) return;
+            syncSize();
+            liftRegion();
+            emitLine(captionLine);
+            writeLiveRegion(liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
+            m.out.flush();
+        }
     }
 
     /**
@@ -394,9 +420,10 @@ final class JkManagerView {
 
     /** Write live-region lines from the current cursor and update lastLines / linesDrawn. */
     private void writeLiveRegion(List<String> live) {
-        for (String line : live) emitLine(line);
-        m.lastLines = live;
-        m.linesDrawn = live.size();
+        int rows = 0;
+        for (String line : live) rows += emitLine(line);
+        m.lastLines = List.copyOf(live);
+        m.linesDrawn = rows;
         paintedCols = m.width;
         long[] bd = m.displayBar(m.elapsedMillis());
         m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
@@ -664,12 +691,12 @@ final class JkManagerView {
                     RichText.ansi(Theme.colorize(sl, Theme.active().brightWhite())), RichText.plain(" "), clock);
             return new JkWedge(Icon.spinner(), m.name, msg)
                     .variant(JkWedge.Variant.WORK)
-                    .renderLine(ctx);
+                    .renderLiveLine(ctx);
         }
         return new JkWedge(Icon.spinner(), m.name, RichText.empty())
                 .variant(JkWedge.Variant.WORK)
                 .progress(new Progress(hasBar ? barNum : 0, hasBar ? Math.max(1, barDen) : 0).suffix(clock))
-                .renderLine(ctx);
+                .renderLiveLine(ctx);
     }
 
     private RichText clockFace(Countdown.Face face, long elapsedSec) {

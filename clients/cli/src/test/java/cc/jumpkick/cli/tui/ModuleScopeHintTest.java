@@ -8,6 +8,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.terminal.Ansi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -66,5 +67,32 @@ class ModuleScopeHintTest {
         assertThat(ModuleScopeHint.markup("building", List.of())).isEmpty();
         assertThat(ModuleScopeHint.line("building", List.of())).isEmpty();
         assertThat(ModuleScopeHint.namesFrom(null)).isEmpty();
+    }
+
+    @Test
+    void show_on_a_live_plan_pins_above_without_putting_caption_in_live_chrome() {
+        // show() after plan() must lift the region — a bare print at the park row orphans ● Build.
+        CliOutput.beginCommand(false);
+        var buf = new ByteArrayOutputStream();
+        var cm = new JkManager(new PrintStream(buf, true, StandardCharsets.UTF_8), true, true, 80);
+        cm.height = 24;
+        cm.name = "Build";
+        cm.startNanos = System.nanoTime();
+        cm.tick();
+        int prev = cm.lastLines.size();
+        assertThat(prev).isGreaterThan(0);
+        buf.reset();
+
+        ModuleScopeHint.show("building", List.of("jk-cli"), false, cm);
+
+        String raw = buf.toString(StandardCharsets.UTF_8);
+        assertThat(raw).contains(Ansi.cursorUp(prev));
+        assertThat(TestAnsi.strip(raw)).contains("building module jk-cli");
+        // Caption is scrollback only — live chrome starts with the Build header.
+        List<String> live = cm.renderBuildPlanLines(80, 0);
+        assertThat(TestAnsi.strip(live.get(0))).contains("Build");
+        assertThat(live.stream().map(TestAnsi::strip).filter(l -> l.contains("building module")))
+                .isEmpty();
+        cm.close();
     }
 }

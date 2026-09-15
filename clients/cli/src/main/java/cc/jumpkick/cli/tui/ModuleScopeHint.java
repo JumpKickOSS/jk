@@ -80,8 +80,19 @@ public final class ModuleScopeHint {
         CliOutput.out(text);
     }
 
-    /** Print the scrollback caption and, when {@code view} is open, pin it above the wedge. */
+    /**
+     * Show the module-selection caption for a live plan. When the plan is already animating on an
+     * ANSI tty, pin the line into scrollback <em>above</em> the live region — a bare {@link #print}
+     * at the cursor park would orphan the wedge. Otherwise print then {@link #apply}.
+     */
     public static void show(String verb, List<String> names, boolean json, JkManager view) {
+        if (json || names == null || names.isEmpty()) return;
+        if (view != null && view.animating() && Theme.active().isAnsi()) {
+            // Do not also apply(): that would paint the caption twice (scrollback + live chrome).
+            String text = line(verb, names);
+            if (!text.isEmpty()) view.pinScopeCaption(text);
+            return;
+        }
         print(verb, names, json);
         apply(view, verb, names);
     }

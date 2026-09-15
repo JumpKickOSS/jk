@@ -274,9 +274,9 @@ public final class ImageCommand implements CliCommand {
         if (!live) return runWorkspaceHeadless(imageReq, moduleDir, ModuleScopeHint.namesFrom(moduleInfo));
 
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
+        ModuleScopeHint.print("building", ModuleScopeHint.namesFrom(moduleInfo), false);
         JkManager view = JkManager.plan(CliOutput.stdout(), "Image", animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(moduleDir));
-        ModuleScopeHint.show("building", ModuleScopeHint.namesFrom(moduleInfo), false, view);
         AggregateContext agg = new AggregateContext(view);
         ModuleOutcome.Image[] imageOut = {null};
         long start = System.nanoTime();

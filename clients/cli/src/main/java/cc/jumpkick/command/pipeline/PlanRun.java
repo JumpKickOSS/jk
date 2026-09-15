@@ -287,9 +287,9 @@ final class PlanRun {
     private int runWorkspaceLive(Path cache, Labels labels, GlobalOptions global, BuildPlanConsole.Mode mode) {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         Path entryDir = entry.requestDir();
+        ModuleScopeHint.print(verb.gerund(), scopeNames, false);
         JkManager view = JkManager.plan(CliOutput.stdout(), labels.name(), animate);
         view.setPlanCoord(BuildCommand.projectGaLabel(entryDir));
-        ModuleScopeHint.show(verb.gerund(), scopeNames, false, view);
         AggregateContext agg = new AggregateContext(view);
         long start = Clock.SYSTEM.nanos();
         // Not buffered: the live region owns every line, so nothing is written above it.

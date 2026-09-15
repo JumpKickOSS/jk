@@ -13,8 +13,10 @@ import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -94,6 +96,11 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     int frame;
     int linesDrawn; // plan mode: lines in the live region
     List<String> lastLines = List.of(); // plan mode: last painted lines, for diffing
+    /**
+     * Newlines written to {@link #out} without holding {@link #lock}. Each one is a park-row
+     * insertion the next climb must include, or a second {@code ● Build} stacks under the orphan.
+     */
+    final AtomicInteger parkDrift = new AtomicInteger();
     /** true after the leading blank of the human chrome envelope was printed. */
     boolean leadingBlankPrinted;
 
@@ -135,9 +142,10 @@ public final class JkManager implements AutoCloseable, LiveRegion {
 
     JkManager(PrintStream out, boolean animate, boolean planMode, int width, ProgressBarMode progressMode) {
         // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
-        this.out = PlainAscii.wrapping(out);
         this.animate = animate;
         this.planMode = planMode;
+        // Unlocked newlines on this stream are park-row insertions; the next climb includes them.
+        this.out = new RegionPrintStream(PlainAscii.wrapping(out), this);
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
         this.windowTitle = new WindowTitle(this.out, animate);
         this.pane = new OutputPane(this, lock);
@@ -207,6 +215,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
             out.flush();
             cm.animator.startFrames();
             cm.pane.attachPeekKey(() -> cm.animator.stopped() || cm.done);
+            // Stray System.out/err would otherwise print at the park row.
+            cm.pane.captureOutput();
         } else if (animate) {
             // Plain plan: stage/ETA/settle lines are event-driven; heartbeat covers long stages.
             cm.animator.startPlainHeartbeat();
@@ -389,6 +399,15 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         return animate;
     }
 
+    /**
+     * Emit a module-scope caption into scrollback above the live plan region. Used by
+     * {@link ModuleScopeHint#show} when the region is already painting — writing at the park row
+     * would orphan the wedge.
+     */
+    public void pinScopeCaption(String captionLine) {
+        view.pinScopeCaption(captionLine);
+    }
+
     // --- completion / paint (JkManagerView) --------------------------------
 
     public void finishSuccess(String message) {
@@ -565,7 +584,8 @@ public final class JkManager implements AutoCloseable, LiveRegion {
     /** Erase the live region and park the cursor at its top-left. */
     void wipeRegion() {
         if (planMode) {
-            if (linesDrawn > 0) out.print(Ansi.cursorUp(linesDrawn));
+            int up = climbRows();
+            if (up > 0) out.print(Ansi.cursorUp(up));
             // Return to column 0 first: cursorUp preserves the column, and on a
             // Ctrl-C the tty has just echoed "^C" at the cursor (two columns in),
             // so a bare ERASE_DISPLAY_TO_END would leave the first two columns of
@@ -631,6 +651,14 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         pane.restoreStreams();
     }
 
+    /**
+     * Physical rows to cursor-up from the park: last painted height plus unlocked newlines that
+     * landed at the park since then.
+     */
+    int climbRows() {
+        return Math.max(linesDrawn, lastLines.size()) + parkDrift.getAndSet(0);
+    }
+
     /** The region's answer to model changes: header target, seed lock, plain-view lines. */
     private final class PlanEvents implements PlanModel.Events {
         @Override
@@ -661,6 +689,44 @@ public final class JkManager implements AutoCloseable, LiveRegion {
         @Override
         public void preflight(String pill, int done, int total, String label) {
             header.preflightLabel(pill, done, total, label);
+        }
+    }
+
+    /**
+     * Counts unlocked newlines on the region's stream so the next climb can include them. Writes
+     * that already hold {@link #lock} are the region's own paint.
+     */
+    private static final class RegionPrintStream extends PrintStream {
+        private final JkManager m;
+
+        RegionPrintStream(PrintStream inner, JkManager m) {
+            super(inner, true, StandardCharsets.UTF_8);
+            this.m = m;
+        }
+
+        @Override
+        public void write(int b) {
+            noteUnlockedNewlines(b == '\n' ? 1 : 0);
+            super.write(b);
+        }
+
+        @Override
+        public void write(byte[] buf, int off, int len) {
+            int n = 0;
+            int end = Math.min(off + len, buf.length);
+            for (int i = Math.max(0, off); i < end; i++) {
+                if (buf[i] == '\n') n++;
+            }
+            noteUnlockedNewlines(n);
+            super.write(buf, off, len);
+        }
+
+        private void noteUnlockedNewlines(int n) {
+            if (n <= 0) return;
+            if (!m.planMode || !m.animate || m.done) return;
+            if (m.lastLines.isEmpty()) return;
+            if (Thread.holdsLock(m.lock)) return;
+            m.parkDrift.addAndGet(n);
         }
     }
 }
