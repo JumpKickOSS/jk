@@ -11,9 +11,11 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -26,9 +28,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ToolchainInstalls {
 
-    /** The install itself: download + extract under {@code progress}, answering the installed JDK. */
+    /**
+     * The install itself: download + extract under {@code progress}, answering the installed JDK.
+     * {@code warn} takes a degradation the install went ahead despite (a feed that was unreachable
+     * and answered from its cache); it reaches the plan's listeners and the terminal.
+     */
     public interface Body {
-        InstalledJdk install(JdkInstallListener progress) throws Exception;
+        InstalledJdk install(JdkInstallListener progress, Consumer<String> warn) throws Exception;
     }
 
     private static final BuildPlanKey<InstalledJdk> INSTALLED = BuildPlanKey.scalar("installed", InstalledJdk.class);
@@ -50,10 +56,15 @@ public final class ToolchainInstalls {
                 .execute(ctx -> {
                     ctx.label("install " + (label == null ? "JDK" : label));
                     try (JdkInstallView view = new JdkInstallView(label).header(header)) {
-                        ctx.put(INSTALLED, body.install(JdkInstallListener.tee(new JdkEnsureProgress(ctx), view)));
+                        Consumer<String> warn = message -> {
+                            ctx.warn("jdk", message);
+                            view.warn(message);
+                        };
+                        ctx.put(
+                                INSTALLED,
+                                body.install(JdkInstallListener.tee(new JdkEnsureProgress(ctx), view), warn));
                     } catch (Exception e) {
-                        ctx.error("jdk", Errors.text(e));
-                        throw new RuntimeException(e);
+                        throw failure(ctx, e);
                     }
                     ctx.progress(1);
                 })
@@ -73,5 +84,20 @@ public final class ToolchainInstalls {
             return Optional.empty();
         }
         return plan.get(INSTALLED);
+    }
+
+    /**
+     * The step's failure, recorded on {@code ctx} for the plan's listeners. An interrupt is
+     * re-raised on the thread that received it — the plan's cancellation reads the flag, and a
+     * download that swallowed it would leave the step looking like an ordinary error.
+     */
+    static RuntimeException failure(TaskContext ctx, Exception e) {
+        if (e instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+            ctx.error("jdk", "interrupted");
+        } else {
+            ctx.error("jdk", Errors.text(e));
+        }
+        return new RuntimeException(e);
     }
 }

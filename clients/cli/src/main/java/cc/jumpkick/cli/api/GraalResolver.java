@@ -209,7 +209,7 @@ public final class GraalResolver {
                             mode,
                             "Installing GraalVM " + e.installFolderName() + " (" + announce + ")",
                             label,
-                            progress -> new JdkService().install(e, registry, false, progress))
+                            (progress, warn) -> new JdkService().install(e, registry, false, progress))
                     .map(InstalledJdk::home)
                     .orElse(null);
         } catch (Exception ex) {

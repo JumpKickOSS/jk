@@ -86,6 +86,12 @@ public final class JdkInstallView implements JdkInstallListener, AutoCloseable {
         line(doneLine(label, jdk.home(), "has been installed to"));
     }
 
+    /** A degradation the install goes ahead despite, as a human line in the view's own stream. */
+    public void warn(String message) {
+        line(Objects.requireNonNull(
+                Theme.colorize(Glyphs.BANG + " " + message, Theme.active().warning())));
+    }
+
     @Override
     public void close() {
         finishBar();

@@ -124,13 +124,13 @@ public final class JdkPreflight {
 
     private static boolean install(Need need, @Nullable Path jdksDir, BuildPlanConsole.Mode mode) {
         String header = header(need.dir(), need.javaRelease(), need.pending());
-        return ToolchainInstalls.run(mode, header, null, progress -> JdkEnsure.ensure(
+        return ToolchainInstalls.run(mode, header, null, (progress, warn) -> JdkEnsure.ensure(
                                 need.dir(),
                                 jdksDir,
                                 need.jdkSpec(),
                                 need.javaRelease(),
                                 need.lockJdk(),
-                                m -> {},
+                                warn,
                                 true,
                                 progress)
                         .jdkOpt()
