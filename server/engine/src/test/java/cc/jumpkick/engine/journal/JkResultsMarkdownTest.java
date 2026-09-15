@@ -21,10 +21,15 @@ class JkResultsMarkdownTest {
                 r, Path.of("/state/runs/3/details.jsonl"), Path.of("/ws/target/jk-results.md"));
         assertThat(md).startsWith("# jk results — OK");
         assertThat(md).contains("build · `g:a` · #3");
+        assertThat(md).contains("exit 0");
+        assertThat(md).doesNotContain("**exit");
         assertThat(md).contains("details.jsonl");
         assertThat(md).contains("target/jk-results.md");
         assertThat(md).doesNotContain("## Failures");
+        assertThat(md).doesNotContain("## Failed steps");
         assertThat(md).doesNotContain("## Warnings");
+        assertThat(md).doesNotContain("- failed");
+        assertThat(md).doesNotContain("- cancelled");
     }
 
     @Test
@@ -51,13 +56,16 @@ class JkResultsMarkdownTest {
         BuildRecord r = record(false, List.of(), List.of(err), List.of(task("compile-java", "compile", "FAIL", 80)));
         String md = JkResultsMarkdown.render(r);
         assertThat(md).startsWith("# jk results — FAIL");
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- `g:core` `compile-java`: cannot find symbol");
         assertThat(md).contains("## Failures");
         assertThat(md).contains("compile-java — g:core");
         assertThat(md).contains("`Foo.java:12:5`");
         assertThat(md).contains("cannot find symbol");
         assertThat(md).contains("missing();");
-        assertThat(md).contains("## Failed / skipped tasks");
+        assertThat(md).contains("## Failed steps");
         assertThat(md).contains("compile-java");
+        assertThat(md).doesNotContain("**100%**");
     }
 
     @Test
@@ -88,6 +96,8 @@ class JkResultsMarkdownTest {
                 List.of(task("run-tests", "test", "FAIL", 400)),
                 new BuildRecord.Tests(10, 9, 1, 0));
         String md = JkResultsMarkdown.render(r);
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- `g:core` `run-tests`: expected: <1> but was: <2>");
         assertThat(md).contains("Tests: **1 failed**, 9 passed (10 total)");
         assertThat(md).contains("## Failures");
         assertThat(md).contains("### Tests");
@@ -144,6 +154,7 @@ class JkResultsMarkdownTest {
         assertThat(md).contains("`bar()`");
         assertThat(md).contains("_took 12ms_");
         assertThat(md).contains("**67%** pass");
+        assertThat(md).doesNotContain("**100%** pass");
         assertThat(md).doesNotContain("### Tests");
         assertThat(md).doesNotContain("`g:core :: com.acme.FooTest.bar`");
     }
@@ -165,7 +176,7 @@ class JkResultsMarkdownTest {
         assertThat(md).contains("`publish`");
         assertThat(md).contains("| FAIL |");
         assertThat(md).contains("| SKIPPED |");
-        assertThat(md).doesNotContain("## Failed / skipped tasks");
+        assertThat(md).doesNotContain("## Failed steps");
     }
 
     @Test
@@ -198,10 +209,13 @@ class JkResultsMarkdownTest {
                 7L);
         String md = JkResultsMarkdown.render(r);
         assertThat(md).startsWith("# jk results — CANCELLED");
+        assertThat(md).contains("**exit 130**");
+        assertThat(md).contains("- cancelled");
         assertThat(md).contains("## Warnings");
         assertThat(md).contains("deprecated API");
         assertThat(md).contains("jid 7");
         assertThat(md).contains("commit: abc123");
+        assertThat(md).doesNotContain("## Failed steps");
     }
 
     @Test
@@ -227,6 +241,49 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_single_failure_in_a_large_suite_is_not_a_hundred_percent() {
+        List<MarkdownTestReport.Entry> entries = new ArrayList<>();
+        entries.add(new MarkdownTestReport.Entry("com.acme.FooTest", "boom()", 1, "nope", "stack", null));
+        for (int i = 0; i < 200; i++) {
+            entries.add(new MarkdownTestReport.Entry("com.acme.FooTest", "ok" + i + "()", 1, null, null, null));
+        }
+        var run = new MarkdownTestReport.ModuleRun("/ws/core", "g:core", entries);
+        BuildRecord r = record(false, List.of(), List.of(), List.of(task("run-tests", "test", "FAIL", 400)));
+        String md = JkResultsMarkdown.render(r, null, null, List.of(run));
+        assertThat(md).contains("**1 failed**");
+        assertThat(md).doesNotContain("**100%** pass");
+        assertThat(md).contains("**99%** pass");
+    }
+
+    @Test
+    void run_tests_crash_is_not_a_clean_hundred_percent() {
+        MarkdownTestReport.Entry pass = new MarkdownTestReport.Entry("com.acme.FooTest", "ok()", 4, null, null, null);
+        var run = new MarkdownTestReport.ModuleRun("/ws/web", "g:web", List.of(pass));
+        BuildRecord.Module web = new BuildRecord.Module(
+                "g:web", "/ws/web", false, 1, 80, List.of(task("run-tests", "test", "FAIL", 44)));
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                "/ws/web",
+                "run-tests",
+                "exception",
+                "Illegal char <:> at index 24: C:\\a\\bin C:\\b\\bin",
+                "",
+                "");
+        BuildRecord r = record(false, List.of(web), List.of(err), List.of(), new BuildRecord.Tests(1, 1, 0, 0));
+        String md = JkResultsMarkdown.render(r, null, null, List.of(run));
+        assertThat(md).startsWith("# jk results — FAIL");
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- `web` `run-tests`: Illegal char <:> at index 24: C:\\a\\bin C:\\b\\bin");
+        assertThat(md).doesNotContain("**100%** pass");
+        assertThat(md).doesNotContain("No failures for");
+        assertThat(md).contains("**run-tests failed**");
+        assertThat(md).contains("## Failures");
+        assertThat(md).contains("Illegal char");
+        assertThat(md).contains("## Failed steps");
+        assertThat(md).contains("`run-tests`");
+    }
+
+    @Test
     void workspace_failed_module_is_listed() {
         BuildRecord.Module bad = new BuildRecord.Module(
                 "g:core", "/ws/core", false, 1, 80, List.of(task("compile-java", "compile", "FAIL", 80)));
@@ -234,10 +291,84 @@ class JkResultsMarkdownTest {
                 "g:app", "/ws/app", true, 0, 20, List.of(task("compile-java", "compile", "SUCCESS", 20)));
         BuildRecord r = record(false, List.of(bad, ok), List.of(), List.of());
         String md = JkResultsMarkdown.render(r);
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- `g:core` `compile-java` failed");
         assertThat(md).contains("Modules: 2 (**1 failed**)");
         assertThat(md).contains("## Modules");
         assertThat(md).contains("g:core");
         assertThat(md).contains("| FAIL |");
+        assertThat(md).contains("## Failed steps");
+    }
+
+    @Test
+    void a_failed_run_with_no_steps_still_names_the_exit() {
+        String md = JkResultsMarkdown.render(record(false, List.of(), List.of(), List.of()));
+        assertThat(md).startsWith("# jk results — FAIL");
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- failed (exit 1)");
+        assertThat(md).doesNotContain("**100%**");
+        assertThat(md).doesNotContain("## Failed steps");
+    }
+
+    @Test
+    void a_compile_crash_with_no_junit_is_a_failed_run() {
+        BuildRecord.Module auditor = new BuildRecord.Module(
+                "g:auditor", "/ws/auditor", false, 1, 80, List.of(task("compile-test", "compile", "FAIL", 80)));
+        BuildRecord.Diag err = new BuildRecord.Diag(
+                "error",
+                "/ws/auditor",
+                "compile-test",
+                "exception",
+                "zinc worker exited with status 1",
+                "",
+                "",
+                "g:auditor",
+                "",
+                "",
+                "",
+                "");
+        BuildRecord r = record(false, List.of(auditor), List.of(err), List.of());
+        String md = JkResultsMarkdown.render(r);
+        assertThat(md).startsWith("# jk results — FAIL");
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- `g:auditor` `compile-test`: zinc worker exited with status 1");
+        assertThat(md).contains("## Failed steps");
+        assertThat(md).contains("`compile-test`");
+        assertThat(md).doesNotContain("**100%**");
+        assertThat(md).doesNotContain("## Tests");
+    }
+
+    @Test
+    void skipped_cache_hits_do_not_bury_a_failed_step() {
+        List<BuildRecord.Task> steps = new ArrayList<>();
+        for (int i = 0; i < 45; i++) {
+            steps.add(task("compile-java", "compile", "SKIPPED", 0));
+        }
+        steps.add(task("run-tests", "test", "FAIL", 40));
+        String md = JkResultsMarkdown.render(record(false, List.of(), List.of(), steps));
+        assertThat(md).contains("## Failed steps");
+        assertThat(md).contains("`run-tests`");
+        assertThat(md).contains("| FAIL |");
+        assertThat(md).doesNotContain("| SKIPPED |");
+        assertThat(md).doesNotContain("`compile-java`");
+        assertThat(md).contains("45 tasks skipped (cache).");
+        assertThat(md).contains("- `run-tests` failed");
+    }
+
+    @Test
+    void passing_junit_does_not_green_a_failed_compile() {
+        MarkdownTestReport.Entry pass = new MarkdownTestReport.Entry("com.acme.FooTest", "ok()", 4, null, null, null);
+        var run = new MarkdownTestReport.ModuleRun("/ws/core", "g:core", List.of(pass));
+        BuildRecord.Module core = new BuildRecord.Module(
+                "g:core", "/ws/core", false, 1, 80, List.of(task("compile-java", "compile", "FAIL", 80)));
+        BuildRecord r = record(false, List.of(core), List.of(), List.of());
+        String md = JkResultsMarkdown.render(r, null, null, List.of(run));
+        assertThat(md).contains("**exit 1**");
+        assertThat(md).contains("- `g:core` `compile-java` failed");
+        assertThat(md).doesNotContain("**100%** pass");
+        assertThat(md).doesNotContain("No failures for");
+        assertThat(md).contains("Recorded tests passed");
+        assertThat(md).contains("Tests: 1 passed (1 total)");
     }
 
     private static BuildRecord.Task task(String name, String stage, String status, long ms) {

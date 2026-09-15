@@ -5,8 +5,11 @@ How to diagnose a failing JumpKick build. This is the page to open when someone 
 
 ## First look: `jk results`
 
-Every hosted run writes a high-level markdown report of the whole invocation: compile
-errors and warnings, test failures, install / publish / native / image / package outcomes.
+Every hosted run writes a high-level markdown report of the **whole invocation** — not a
+JUnit rollup. The first screen is the outcome (`OK` / `FAIL` / `CANCELLED`), a non-zero
+**exit N**, and up to three bullets of why it failed. Compile errors, crashed test workers,
+and failed steps all count. Cache skips are not listed as failures. `details.jsonl` is the
+exhaustive step log; this file points at it rather than duplicating it.
 
 ```bash
 jk results              # latest jk-results.md

@@ -17,7 +17,8 @@ MCP tools: [MCP](mcp.md). Failures: [Troubleshooting](troubleshooting.md).
 ## `jk results`
 
 High-level markdown for the **whole invocation** (compile, test, package, native, image,
-publish). Written so you do not need to tail the TTY.
+publish). The first screen is the outcome, a non-zero **exit N**, and why it failed — not a
+JUnit pass rate. Written so you do not need to tail the TTY.
 
 ```bash
 jk results              # print the latest report

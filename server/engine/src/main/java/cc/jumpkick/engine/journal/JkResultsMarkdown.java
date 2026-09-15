@@ -20,10 +20,10 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * High-level run report ({@code jk-results.md}) for humans and agents. Compact by design: outcome,
- * failed/skipped work, compiler and test diagnostics, notable deliverables. The live JSONL
- * transcript ({@code details.jsonl}) is the exhaustive step log — this file points at it rather
- * than duplicating it.
+ * High-level run report ({@code jk-results.md}) for humans and agents. The first screen is the
+ * whole invocation: outcome, exit code, and why it failed — not a JUnit rollup. Compiler errors,
+ * test crashes, and failed steps all count. {@code details.jsonl} is the exhaustive step log;
+ * this file points at it rather than duplicating it.
  *
  * <p>Written next to {@code details.jsonl} in the journal run dir, and as the latest copy at
  * {@code target/jk-results.md}. Not a replacement for JUnit XML under {@code
@@ -42,6 +42,8 @@ public final class JkResultsMarkdown {
     static final int MAX_MODULES = 24;
     static final int MAX_PACKAGES = 80;
     static final int MAX_FAILED_TESTS = 40;
+    static final int MAX_WHY = 3;
+    static final int MAX_WHY_CHARS = 200;
 
     private JkResultsMarkdown() {}
 
@@ -89,13 +91,14 @@ public final class JkResultsMarkdown {
         String outcome = outcome(record);
         sb.append("# jk results — ").append(outcome).append("\n\n");
         appendHeadline(sb, record, outcome);
+        appendWhy(sb, record);
         appendCounts(sb, record, tests);
         appendFiles(sb, record, detailsPath, latestPath, tests);
         appendFailures(sb, record, !tests.isEmpty());
         appendGuards(sb, record);
-        appendTests(sb, tests);
+        appendTests(sb, record, tests);
         appendDeliverables(sb, record);
-        appendFailedTasks(sb, record);
+        appendFailedSteps(sb, record);
         appendWarnings(sb, record);
         appendModules(sb, record);
         return sb.toString();
@@ -113,7 +116,8 @@ public final class JkResultsMarkdown {
         if (coord != null) sb.append(" · `").append(coord).append('`');
         if (r.buildNumber() > 0) sb.append(" · #").append(r.buildNumber());
         if (r.millis() > 0) sb.append(" · ").append(fmtDuration(r.millis()));
-        sb.append(" · exit ").append(r.exitCode());
+        if (r.exitCode() != 0) sb.append(" · **exit ").append(r.exitCode()).append("**");
+        else sb.append(" · exit 0");
         if (r.requestId() > 0) sb.append(" · jid ").append(r.requestId());
         sb.append('\n');
         boolean meta = false;
@@ -136,27 +140,64 @@ public final class JkResultsMarkdown {
         sb.append('\n');
     }
 
-    private static void appendCounts(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
-        if (hasTestEntries(tests)) {
-            TestRollup roll = rollup(tests);
-            int passRate = passRate(roll);
-            sb.append("Tests: **").append(passRate).append("%** pass");
-            if (roll.fail > 0) sb.append(" · **").append(roll.fail).append(" failed**");
-            sb.append(" · ").append(roll.pass).append(" passed");
-            if (roll.skip > 0) sb.append(", ").append(roll.skip).append(" skipped");
-            sb.append(" (").append(roll.total).append(" total)");
-            if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
-            sb.append('\n');
-        } else {
-            BuildRecord.Tests t = r.tests();
-            if (t != null && t.total() > 0) {
-                sb.append("Tests: ");
-                if (t.failed() > 0) sb.append("**").append(t.failed()).append(" failed**, ");
-                sb.append(t.succeeded()).append(" passed");
-                if (t.skipped() > 0) sb.append(", ").append(t.skipped()).append(" skipped");
-                sb.append(" (").append(t.total()).append(" total)\n");
+    private static void appendWhy(StringBuilder sb, BuildRecord r) {
+        List<String> why = whyLines(r);
+        if (why.isEmpty()) return;
+        for (String line : why) sb.append("- ").append(line).append('\n');
+        sb.append('\n');
+    }
+
+    /**
+     * At most {@link #MAX_WHY} lines naming what failed: error diagnostics first, then failed
+     * steps, then {@code cancelled} or {@code failed (exit N)}. Empty on a successful run.
+     */
+    static List<String> whyLines(BuildRecord r) {
+        if (r == null || (r.success() && !r.cancelled())) return List.of();
+        List<String> out = new ArrayList<>();
+        for (BuildRecord.Diag d : r.diagnostics()) {
+            if (!isError(d) || isGuard(d)) continue;
+            out.add(whyLine(d));
+            if (out.size() >= MAX_WHY) return List.copyOf(out);
+        }
+        if (out.isEmpty()) {
+            for (Row row : failedSteps(r)) {
+                String who = row.module.isEmpty() ? "" : "`" + row.module + "` ";
+                out.add(who + "`" + row.task.name() + "` failed");
+                if (out.size() >= MAX_WHY) return List.copyOf(out);
             }
         }
+        if (!out.isEmpty()) return List.copyOf(out);
+        if (r.cancelled()) return List.of("cancelled");
+        if (r.exitCode() != 0) return List.of("failed (exit " + r.exitCode() + ")");
+        return List.of("failed");
+    }
+
+    private static String whyLine(BuildRecord.Diag d) {
+        String mod = moduleLabel(d);
+        String step = some(d.step());
+        String msg = clipOneLine(firstLine(d.message()).strip(), MAX_WHY_CHARS);
+        StringBuilder b = new StringBuilder();
+        if (!mod.isEmpty()) b.append('`').append(mod).append("` ");
+        if (step != null) b.append('`').append(step).append("`");
+        if (notBlank(msg)) {
+            if (b.length() > 0) b.append(": ");
+            b.append(msg);
+        } else if (b.length() == 0) {
+            return "failed";
+        }
+        return b.toString().strip();
+    }
+
+    private static void appendCounts(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
+        List<BuildRecord.Module> modules = r.modules();
+        if (modules.size() > 1) {
+            long failed = modules.stream().filter(m -> !m.success()).count();
+            sb.append("Modules: ").append(modules.size());
+            if (failed > 0) sb.append(" (**").append(failed).append(" failed**)");
+            else sb.append(" (all ok)");
+            sb.append('\n');
+        }
+        boolean testsLine = appendTestsCount(sb, r, tests);
         int errors = 0, warnings = 0;
         boolean coverTests = hasTestEntries(tests);
         for (BuildRecord.Diag d : r.diagnostics()) {
@@ -172,23 +213,41 @@ public final class JkResultsMarkdown {
             if (warnings > 0) sb.append(warnings).append(warnings == 1 ? " warning" : " warnings");
             sb.append('\n');
         }
-        List<BuildRecord.Module> modules = r.modules();
-        if (modules.size() > 1) {
-            long failed = modules.stream().filter(m -> !m.success()).count();
-            sb.append("Modules: ").append(modules.size());
-            if (failed > 0) sb.append(" (**").append(failed).append(" failed**)");
-            else sb.append(" (all ok)");
-            sb.append('\n');
-        }
         BuildRecord.CacheBenefit b = r.benefit();
         if (b != null && b.savedMillis() > 0) {
             sb.append("Cache saved ~").append(fmtDuration(b.savedMillis())).append('\n');
         }
-        boolean testsLine =
-                hasTestEntries(tests) || (r.tests() != null && r.tests().total() > 0);
         if (testsLine || errors > 0 || warnings > 0 || modules.size() > 1 || (b != null && b.savedMillis() > 0)) {
             sb.append('\n');
         }
+    }
+
+    /** {@code true} when a Tests count line was written. */
+    private static boolean appendTestsCount(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
+        if (hasTestEntries(tests)) {
+            TestRollup roll = rollup(tests);
+            sb.append("Tests: ");
+            boolean green = r.success() && roll.fail == 0 && !runTestsFailed(r);
+            if (green) sb.append("**100%** pass · ");
+            else if (roll.fail > 0) sb.append("**").append(roll.fail).append(" failed** · ");
+            sb.append(roll.pass).append(" passed");
+            if (roll.skip > 0) sb.append(", ").append(roll.skip).append(" skipped");
+            sb.append(" (").append(roll.total).append(" total)");
+            if (runTestsFailed(r) && roll.fail == 0) sb.append(" · **run-tests failed**");
+            if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
+            sb.append('\n');
+            return true;
+        }
+        BuildRecord.Tests t = r.tests();
+        if (t != null && t.total() > 0) {
+            sb.append("Tests: ");
+            if (t.failed() > 0) sb.append("**").append(t.failed()).append(" failed**, ");
+            sb.append(t.succeeded()).append(" passed");
+            if (t.skipped() > 0) sb.append(", ").append(t.skipped()).append(" skipped");
+            sb.append(" (").append(t.total()).append(" total)\n");
+            return true;
+        }
+        return false;
     }
 
     private static void appendFiles(
@@ -346,23 +405,35 @@ public final class JkResultsMarkdown {
         return "";
     }
 
-    private static void appendTests(StringBuilder sb, List<MarkdownTestReport.ModuleRun> tests) {
+    private static void appendTests(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
         if (!hasTestEntries(tests)) return;
         TestRollup roll = rollup(tests);
         sb.append("## Tests\n\n");
-        int passRate = passRate(roll);
-        sb.append("**").append(passRate).append("%** pass rate · ");
+        boolean runTestsFailed = runTestsFailed(r);
         if (roll.fail == 0) {
-            sb.append("No failures for **").append(roll.total).append("** ").append(roll.total == 1 ? "test" : "tests");
-        } else if (roll.total == 1) {
-            sb.append("**1 failure** out of **1** test");
+            if (runTestsFailed) {
+                sb.append("Recorded tests passed · **run-tests failed** — see Failures");
+            } else if (!r.success() || r.cancelled()) {
+                sb.append("Recorded tests passed");
+            } else {
+                sb.append("**100%** pass rate · No failures for **")
+                        .append(roll.total)
+                        .append("** ")
+                        .append(roll.total == 1 ? "test" : "tests");
+            }
         } else {
-            sb.append("**")
-                    .append(roll.fail)
-                    .append(roll.fail == 1 ? " failure**" : " failures**")
-                    .append(" out of **")
-                    .append(roll.total)
-                    .append("** tests");
+            int passRate = passRate(roll);
+            sb.append("**").append(passRate).append("%** pass rate · ");
+            if (roll.total == 1) {
+                sb.append("**1 failure** out of **1** test");
+            } else {
+                sb.append("**")
+                        .append(roll.fail)
+                        .append(roll.fail == 1 ? " failure**" : " failures**")
+                        .append(" out of **")
+                        .append(roll.total)
+                        .append("** tests");
+            }
         }
         if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
         sb.append("\n\n");
@@ -545,39 +616,65 @@ public final class JkResultsMarkdown {
         sb.append('\n');
     }
 
-    private static void appendFailedTasks(StringBuilder sb, BuildRecord r) {
+    private static void appendFailedSteps(StringBuilder sb, BuildRecord r) {
+        List<Row> rows = failedSteps(r);
+        int skipped = countSkipped(r);
+        if (rows.isEmpty() && skipped == 0) return;
+        if (!rows.isEmpty()) {
+            sb.append("## Failed steps\n\n");
+            sb.append("| Module | Task | Status | Time |\n|---|---|---|---|\n");
+            int shown = 0;
+            for (Row row : rows) {
+                if (shown >= MAX_FAILED_TASKS) {
+                    sb.append("| … | +").append(rows.size() - shown).append(" more | | |\n");
+                    break;
+                }
+                sb.append("| ")
+                        .append(escCell(row.module))
+                        .append(" | `")
+                        .append(escCell(row.task.name()))
+                        .append("` | ")
+                        .append(status(row.task.status()))
+                        .append(" | ")
+                        .append(fmtDuration(row.task.millis()))
+                        .append(" |\n");
+                shown++;
+            }
+            sb.append('\n');
+        }
+        if (skipped > 0 && (!r.success() || r.cancelled())) {
+            sb.append("_").append(skipped).append(" tasks skipped (cache)._\n\n");
+        }
+    }
+
+    /** FAIL / CANCELLED steps that are not deliverables, root then modules. */
+    static List<Row> failedSteps(BuildRecord r) {
         List<Row> rows = new ArrayList<>();
+        if (r == null) return rows;
         for (BuildRecord.Task t : r.steps()) {
-            if (isBadStatus(t.status()) && !isDeliverable(t.name())) rows.add(new Row("", t));
+            if (isFailedStatus(t.status()) && !isDeliverable(t.name())) rows.add(new Row("", t));
         }
         for (BuildRecord.Module m : r.modules()) {
             for (BuildRecord.Task t : m.steps()) {
-                if (isBadStatus(t.status()) && !isDeliverable(t.name())) {
+                if (isFailedStatus(t.status()) && !isDeliverable(t.name())) {
                     rows.add(new Row(moduleLabel(m), t));
                 }
             }
         }
-        if (rows.isEmpty()) return;
-        sb.append("## Failed / skipped tasks\n\n");
-        sb.append("| Module | Task | Status | Time |\n|---|---|---|---|\n");
-        int shown = 0;
-        for (Row row : rows) {
-            if (shown >= MAX_FAILED_TASKS) {
-                sb.append("| … | +").append(rows.size() - shown).append(" more | | |\n");
-                break;
-            }
-            sb.append("| ")
-                    .append(escCell(row.module))
-                    .append(" | `")
-                    .append(escCell(row.task.name()))
-                    .append("` | ")
-                    .append(status(row.task.status()))
-                    .append(" | ")
-                    .append(fmtDuration(row.task.millis()))
-                    .append(" |\n");
-            shown++;
+        return rows;
+    }
+
+    private static int countSkipped(BuildRecord r) {
+        int n = 0;
+        for (BuildRecord.Task t : r.steps()) {
+            if (isSkipped(t.status()) && !isDeliverable(t.name())) n++;
         }
-        sb.append('\n');
+        for (BuildRecord.Module m : r.modules()) {
+            for (BuildRecord.Task t : m.steps()) {
+                if (isSkipped(t.status()) && !isDeliverable(t.name())) n++;
+            }
+        }
+        return n;
     }
 
     private static void appendWarnings(StringBuilder sb, BuildRecord r) {
@@ -652,14 +749,35 @@ public final class JkResultsMarkdown {
                 || (n.endsWith("-image") && n.contains("write"));
     }
 
-    static boolean isBadStatus(String status) {
+    static boolean isFailedStatus(String status) {
         if (status == null || status.isBlank()) return false;
         String u = status.trim().toUpperCase(Locale.ROOT);
-        return "FAIL".equals(u)
-                || "FAILED".equals(u)
-                || "CANCELLED".equals(u)
-                || "CANCELED".equals(u)
-                || "SKIPPED".equals(u);
+        return "FAIL".equals(u) || "FAILED".equals(u) || "CANCELLED".equals(u) || "CANCELED".equals(u);
+    }
+
+    private static boolean isSkipped(String status) {
+        return status != null && "SKIPPED".equalsIgnoreCase(status.trim());
+    }
+
+    /** True when a {@code run-tests} step failed — including a worker that died before JUnit results. */
+    static boolean runTestsFailed(BuildRecord r) {
+        if (r == null) return false;
+        for (BuildRecord.Task t : r.steps()) {
+            if (isRunTestsFail(t)) return true;
+        }
+        for (BuildRecord.Module m : r.modules()) {
+            for (BuildRecord.Task t : m.steps()) {
+                if (isRunTestsFail(t)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isRunTestsFail(BuildRecord.Task t) {
+        return t != null
+                && TaskNames.RUN_TESTS.equals(t.name())
+                && t.status() != null
+                && "FAIL".equalsIgnoreCase(t.status().trim());
     }
 
     static boolean isError(BuildRecord.Diag d) {
@@ -755,8 +873,10 @@ public final class JkResultsMarkdown {
     }
 
     private static int passRate(TestRollup roll) {
-        if (roll.total == 0) return 100;
-        return (int) Math.round((double) (roll.total - roll.fail) / roll.total * 100);
+        if (roll.total == 0 || roll.fail == 0) return 100;
+        // One failure in a large suite still rounds to 100. Never report a clean rate then.
+        int pct = (int) Math.round((double) (roll.total - roll.fail) / roll.total * 100);
+        return Math.min(pct, 99);
     }
 
     private static TestRollup rollup(List<MarkdownTestReport.ModuleRun> tests) {
@@ -800,6 +920,12 @@ public final class JkResultsMarkdown {
         if (s == null) return "";
         if (s.length() <= maxChars) return s;
         return s.substring(0, maxChars) + "\n…";
+    }
+
+    static String clipOneLine(String s, int maxChars) {
+        if (s == null) return "";
+        if (s.length() <= maxChars) return s;
+        return s.substring(0, maxChars) + "…";
     }
 
     static String clipLines(String s, int maxLines) {

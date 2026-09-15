@@ -24,8 +24,9 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 ```
 
 Read **`target/jk-results.md` first** (same markdown as `jk results`). File tools beat
-shelling out `jk results` when MCP is not connected. The report is token-cheap and covers
-compile, test, and package outcomes for the whole invocation.
+shelling out `jk results` when MCP is not connected. The report is token-cheap: first
+screen is outcome, exit, and why the invocation failed — compile, test, and package, not
+JUnit alone.
 
 After an edit, MCP **`jk_affected_tests`** (or `jk test --affected`) writes
 `target/jk-tests-affected.md` — a short ranked list of test classes for the working tree.
