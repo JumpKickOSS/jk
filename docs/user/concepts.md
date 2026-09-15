@@ -16,8 +16,10 @@ Heavy reusable behavior is a [plugin](plugins.md).
 `jk-lock.toml` records every resolved version and checksum. **Commit it.**
 
 - `jk build` / `jk test` / `jk run` **do not re-resolve** when a valid lock exists.
-- `jk lock` writes or refreshes the lock — pinned versions stay; `jk lock -F` floats them.
-- `jk update` re-resolves **on purpose** within your declared ranges.
+- `jk lock` writes or refreshes the lock — pinned versions stay; `jk lock -F` moves only the
+  opt-in selectors (`^`, `~`, ranges, `latest`).
+- `jk update` **bumps** the versions declared in `jk.toml` (newest stable on the same major;
+  `--major` to cross) and relocks.
 - `jk outdated` is read-only.
 
 There is **one** lockfile: workspace root, or the standalone project root. Never per-module.
@@ -43,14 +45,18 @@ Details: [JDK](jdk.md), [Projects](projects.md).
 
 ## Newest stable by default
 
-Scaffolds, examples, and `jk update` prefer the **latest stable** of libraries and language
-features unless you pin otherwise. Unpinned `latest` still prefers a newer **stable** over a
-newer pre-release.
+A version in `jk.toml` is an exact pin (`jackson2-databind = "2.22.2"`), so "newest stable" is a
+**write-time** choice, not a hidden range: `jk new`, templates and `jk add <name>` look up
+today's stable and write that number. Staying current is a verb, and its diff is the manifest:
 
 ```bash
-jk outdated     # what moved under your ranges? (read-only)
-jk update       # rewrite the lock on purpose, then commit it
+jk outdated     # Current / Compatible / Latest (read-only)
+jk update       # rewrite the pins on the same major, relock, then commit both files
 ```
+
+Ranges exist and look like ranges — `^`, `~`, `>=…,<…`, `latest` are opt-in
+([version strings](projects.md#version-strings)). `latest` prefers a newer **stable** over a
+newer pre-release.
 
 ## Test rungs — cheapest first
 

@@ -93,7 +93,8 @@ Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 
 | Goal | Prefer |
 |------|--------|
-| Add/remove a dependency | `jk add` / `jk remove`, or MCP `jk_deps` (`apply` defaults **false** — preview first) |
+| Add/remove a dependency | `jk add` / `jk remove`, or MCP `jk_deps` (`apply` defaults **false** — preview first). The version written is an exact pin |
+| Bump dependency versions | `jk outdated` (read-only), then `jk update` (same major; `--major` to cross; `jk update <name>` for one handle), or MCP `jk_update` (`apply` defaults **false** — read the `jk.toml` hunk, then `apply=true`). Never hand-edit `jk-lock.toml` |
 | Change `java = N` | MCP `jk_manifest`, or edit `jk.toml` (`java` is language level, not `jdk`) |
 | Scaffold | `jk new -t …`, or MCP `jk_new` (`preview=true` first; `action=templates` lists ids) |
 | Format after edits | `jk format` — [Format](format.md) |

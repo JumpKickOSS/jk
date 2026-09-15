@@ -30,7 +30,7 @@ main-scan      = true          # a unique main may be discovered by scanning com
 layered-image  = true          # images split release/snapshot dep layers + exploded classes
 
 [schema]
-version       = { type = "string", required = true, example = "latest", hint = "spring-boot-dependencies selector — latest, a major-line floor (caret; lock pins exact), or =4.1.0 to hard-pin" }
+version       = { type = "string", required = true, example = "4.1.0", hint = "spring-boot-dependencies version — a release such as 4.1.0 (exact), ^4 for the newest 4.x, or latest" }
 aot           = { type = "bool" }                          # tri-state: absent = auto (on when [native] is declared)
 build-info    = { type = "bool", default = false }
 include-tools = { type = "bool", default = true }

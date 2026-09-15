@@ -29,7 +29,7 @@ classes-run    = false
 main-scan      = true
 
 [schema]
-version = { type = "string", required = true, example = "latest", hint = "quarkus-bom selector — latest, a major-line floor (caret; lock pins exact), or =3.38.0 to hard-pin" }
+version = { type = "string", required = true, example = "3.38.0", hint = "quarkus-bom version — a release such as 3.38.0 (exact), ^3 for the newest 3.x, or latest" }
 # fast-jar (default): quarkus-run.jar + lib/ layout. uber-jar: single fat runner jar.
 package = { type = "string", example = "fast-jar", hint = "fast-jar (default) or uber-jar" }
 

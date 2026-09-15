@@ -61,7 +61,7 @@ Details: [Install](install.md), [Getting started](getting-started.md), [Template
 | **`jk-lock.toml` is law** | Commit it. `jk build` does not re-resolve. | [Lockfile](lockfile.md) |
 | **`java = N` not `jdk =`** | Language/bytecode (`--release`). The CLI already needs JDK 25+. | [Concepts](concepts.md), [JDK](jdk.md) |
 | **One lockfile per workspace** | Never per-module. Output is `target/<module>/`. | [Workspaces](workspaces.md) |
-| **Newest stable by default** | Scaffolds and `jk update` prefer current stables. | [Lockfile](lockfile.md) |
+| **Newest stable by default** | Scaffolds and `jk add` write today's stable as an exact pin; `jk update` bumps it. | [Lockfile](lockfile.md#jk-update) |
 | **Cache, don’t recompute** | Content-addressed store + action cache. | [Build](build.md), [Cache](cache.md) |
 
 Why this shape exists: [Why JumpKick](why.md).

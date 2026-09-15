@@ -7,11 +7,12 @@ auto-refreshes when the lock is missing or out of sync with manifests.
 `jk build` **does not re-resolve**. That is the product.
 
 ```bash
-jk lock          # resolve → write jk-lock.toml, keeping pinned versions
-jk lock -F       # same, but float every pin within its declared range
+jk lock          # resolve → write jk-lock.toml, keeping every version it already holds
+jk lock -F       # same, but move opt-in selectors (^ ~ ranges latest) to their newest match
 jk sync          # materialize cache / --offline-prepare
-jk outdated      # read-only: newer versions than the lock
-jk update        # re-resolve within declared ranges; rewrite the lock
+jk outdated      # read-only: Current / Compatible / Latest
+jk update        # bump declared pins in jk.toml to the newest stable on the same major, relock
+jk update --major  # allow a major-line jump
 jk tree / jk why
 ```
 
@@ -22,11 +23,11 @@ the root lock. Never write per-module lockfiles.
 
 | Command | Role |
 |---------|------|
-| `jk lock` | Resolve and write the lock, keeping every pinned version; only what a changed constraint rules out moves. Metadata warm within 24h TTL (local first) |
-| `jk lock -F` | The same resolve, but float every pin to the newest version its declared range allows; revalidates metadata past the TTL |
+| `jk lock` | Resolve and write the lock, keeping every version it already holds; only what a changed constraint rules out moves. Metadata warm within 24h TTL (local first) |
+| `jk lock -F` | The same resolve, but every opt-in selector (`^`, `~`, range, `latest`) takes the newest version it allows; exact pins do not move. Revalidates metadata past the TTL |
 | `jk sync` | Materialize cache; `--offline-prepare` for offline CI |
 | `jk outdated` | Current / Compatible / Latest table (exit 0 always on success) |
-| `jk update` | Re-resolve on purpose; revalidates metadata |
+| `jk update` | Rewrite declared pins in `jk.toml` to the newest stable on the same major, then relock — [below](#jk-update) |
 | `jk build` | Uses the lock; does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
 
@@ -38,10 +39,36 @@ taking upstream drift: existing pins seed the solver, and only coordinates a new
 constraint rules out move. That is what you want for landing a manifest edit that changes no
 dependency — the lockfile diff is the manifest stamp and nothing else.
 
-Floating is deliberate and has two spellings: `jk lock -F` (a forced lock revalidates metadata and
-takes the newest compatible versions) and `jk update` (the same, plus toolchain suggestions, git
-refresh and `--platform`). Automatic refreshes — a stale lock on `jk build`, or any command that
-needs a current lock — always keep pins, `-F` or not.
+A bare version in `jk.toml` is exact ([version strings](projects.md#version-strings)), so for
+most projects there is nothing for the lock to float: the declared number is the locked number.
+`jk lock -F` moves only the **opt-in** selectors (`^`, `~`, ranges, `latest`) to the newest version
+each one allows; transitives may follow within what the directs require. Automatic refreshes — a
+stale lock on `jk build`, or any command that needs a current lock — always keep pins, `-F` or not.
+
+## `jk update`
+
+`jk update` is the bump verb. It rewrites the **declared** versions in `jk.toml`, then relocks:
+
+```bash
+jk update                      # every declared Maven coordinate → newest stable on its major
+jk update jackson2-databind    # only the named handle(s); also --dep <name>
+jk update --major              # allow a major-line jump (2.22.2 → 3.x)
+jk update --git [name]         # advance git dependencies to their current ref instead
+jk update --platform=floor     # relock with BOM pins as lower bounds — Platforms
+```
+
+| Declared | `jk update` | `jk update --major` |
+|----------|-------------|---------------------|
+| `"2.18.0"` (exact) | writes `"2.18.2"`, the newest stable **2.x** | may write `"3.0.0"` |
+| `"^2.18"` / `"~2.18"` / range / `"latest"` | the lock takes the newest match inside that selector; the text stays | same, unless the selector itself excludes the new major |
+| `"g:a"` (versionless) | untouched — the BOM decides | untouched |
+
+The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` → 33.x). Pre-releases
+are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
+manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV string stays a GAV
+string — and the reviewable diff is `jk.toml` plus `jk-lock.toml`. `jk update` also revalidates
+metadata and refreshes the recorded toolchain ([below](#toolchain-pins)). MCP has the same verb
+with a preview: [`jk_update`](mcp.md#tools).
 
 ## `jk outdated`
 
@@ -55,8 +82,8 @@ jk outdated --offline
 | Column | Meaning |
 |--------|---------|
 | **Current** | Version pinned in `jk-lock.toml` (empty if unlocked) |
-| **Compatible** | Newest version that still satisfies the declared range |
-| **Latest** | Newest stable in the repo (may be outside the range) |
+| **Compatible** | Newest version the declared selector still admits — for an exact pin, the same as Current |
+| **Latest** | Newest stable in the repo; what `jk update` (same major) or `jk update --major` would write |
 | **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
 
 Exit code is always `0` on a successful report. There is no `--fail-if-outdated` — lockfile
@@ -121,10 +148,10 @@ the shape changes in place, never by a new number.
 ## Pre-release pins
 
 A lock that records an RC/M/beta is kept by `jk lock` when it still satisfies the declared
-range. A platform BOM pin (including a pre-release line) is enforced on
-managed GAs while the platform is active. Unpinned `latest` still prefers the newest
-**stable** over a newer pre-release. Deliberate upgrades off a pre-release belong on
-`jk update`.
+selector. A platform BOM pin (including a pre-release line) is enforced on
+managed GAs while the platform is active. `latest` prefers the newest
+**stable** over a newer pre-release; `snapshot` takes pre-releases too. Deliberate upgrades off
+a pre-release belong on `jk update`.
 
 ## Lock-time trust
 

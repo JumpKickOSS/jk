@@ -61,8 +61,8 @@ processor path that javac invokes by name with `-Xplugin:<Name> <options…>`. D
 java = 25                      # the release; [javac] is the compiler table
 
 [processor-dependencies]
-error_prone_core = { group = "com.google.errorprone", name = "error_prone_core", version = "latest" }
-nullaway         = { group = "com.uber.nullaway", name = "nullaway", version = "latest" }
+error_prone_core = "com.google.errorprone:error_prone_core:latest"   # opt-in float; a number pins
+nullaway         = "com.uber.nullaway:nullaway:latest"
 
 [javac]
 plugins = { ErrorProne = { options = ["-Xep:NullAway:ERROR", "-XepOpt:NullAway:AnnotatedPackages=com.example"] } }

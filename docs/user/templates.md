@@ -17,6 +17,10 @@ flag scaffolder for a plain library or `--executable` app.
 Standalone scaffolds write **`AGENTS.md`** (unless the template already shipped one)
 pointing coding agents at `jk manual`. Workspace modules skip it — the root owns the file.
 
+Every library and framework version a scaffold writes is today's **current stable, as an exact
+pin** (`[spring-boot] version = "4.1.0"`, not `"latest"`). The committed file says what you
+build against; `jk update` moves it — [Lockfile](lockfile.md#jk-update).
+
 `--lang` defaults to **java**. For a `framework/name` ref, a miss on that language walks
 java → kotlin → groovy → scala until a hit (`jk new -t grails/hello` lands on groovy).
 `jk new --lang scala` scaffolds a Scala 3 app (mixed Java+Scala compiles in one Zinc

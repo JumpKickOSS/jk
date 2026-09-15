@@ -15,7 +15,7 @@ version = "0.1.0"
 java    = 25
 
 [dependencies]
-jackson = "2.18.2"          # bare version means caret: ^2.18.2
+jackson2-databind = "2.22.2"     # catalog short name; the version is an exact pin
 
 [test-dependencies]
 junit = "5.11.0"
@@ -49,7 +49,7 @@ their plugins.
 | `jdk` | Specific JDK *install* (rare) |
 | `kotlin` | Kotlin compiler version (Kotlin modules) |
 | `groovy` | Groovy compiler version — **5+** (Groovy modules) |
-| `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — a floating `"3.8.4"` moves compiler and library together, an exact `"=3.8.4"` holds both (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
+| `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — `"3.8.4"` holds both, an opt-in `"^3.8"` moves compiler and library together (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |
 | `[m2] integration` | Use the Maven local repository as the primary third-party jar store (default **true**). `false` hosts those jars only under `JK_STORE_DIR/repos/<origin-id>/` (one tree per repository origin — [Repositories](repositories.md#store-layout-one-tree-per-origin)). First-party workers always stay in `repos/jk-local`. Machine override: `JK_M2_INTEGRATION=false` or user-config `[m2] integration = false`. |
 | `[m2] install` | Write `jk install` artifacts into the Maven local repository (default **true**). Independent of `integration`: `[m2] install = false` keeps `jk install` under `repos/jk-local` even when third-party jars still come from `~/.m2`. Machine override: `JK_M2_INSTALL=false` or user-config `[m2] install = false`. |
@@ -60,13 +60,26 @@ module is rejected.** Scaffold with `jk new --lang kotlin`, `--lang groovy`, or 
 
 ## Version strings
 
+One grammar, every place `jk.toml` names a version: every dependency scope,
+`[workspace.dependencies]`, plugin `version` keys (`[spring-boot] version`, …), the `kotlin` /
+`groovy` / `scala` compiler keys, and `[native] metadata-repository`.
+
 | Written | Means |
 |---------|--------|
-| `"1.2.3"` | Caret: `^1.2.3` |
-| `"=1.2.3"` | Exact |
-| `"~1.2.3"` | Patch-only |
-| `">=1.2,<2"` | Range |
-| `"latest"` | Newest stable at lock time |
+| `"1.2.3"` | Exact `1.2.3` |
+| `"=1.2.3"` | Exact `1.2.3` (same type; writers emit the bare form) |
+| `"^1.2.3"` | Caret, opt-in |
+| `"~1.2.3"` | Tilde, opt-in |
+| `">=1.2,<2"` | Range, opt-in |
+| `"latest"` | Newest stable at the next resolve, opt-in; do not commit in scaffolds |
+| `"g:a:1.2.3"` | Maven GAV, exact `1.2.3` |
+| `"g:a:^1.2.3"` / `"g:a:latest"` | GAV with an explicit selector in the third slot |
+| `"g:a"` | Versionless / platform-managed |
+
+A bare version is a pin: `jk build` and `jk lock` never move it. Floating is always spelled
+out with a decoration or a keyword. `jk add` and `jk new` write today's stable as a number, and
+`jk update` rewrites those numbers — [Lockfile](lockfile.md#jk-update). A `^N` major-line
+floor is the floating form of a framework version (`[spring-boot] version = "^4"`).
 
 ## Dependency scopes
 
@@ -143,7 +156,9 @@ deps = ["postgres"]
 ```bash
 jk new my-app
 jk init
-jk add g:a:v
+jk add jackson3-databind          # catalog short name; writes today's stable
+jk add com.acme:mylib:1.2.3       # exact GAV
+jk add com.acme:mylib             # GAV without a version: today's stable
 jk remove <coord>
 ```
 

@@ -23,17 +23,26 @@ transitive edges. Explicit Maven ranges on a POM edge remain open ranges.
 
 ```toml
 [platform-dependencies]
-spring-boot-dependencies = "4.1.0"
+spring-boot-dependencies = "4.1.0"     # exactly that BOM release
 
 # or, via the plugin:
 [spring-boot]
-version = "latest"    # first jk lock pins the current stable BOM
+version = "4.1.0"     # the same pin; "^4" floats within 4.x, "latest" takes the newest stable
+
+[dependencies]
+web  = "org.springframework.boot:spring-boot-starter-web"   # versionless: the BOM manages it
+jdbc = "org.springframework.boot:spring-boot-starter-jdbc"
 ```
 
-Use `latest`, an exact pin, or a caret/tilde floor on the BOM itself. First `jk lock`
-records the concrete BOM version (and `pinned-by` on managed lock rows). Open ranges on
-the BOM pin are rejected. The tools a plugin fetches for packaging (Boot's loader, Quarkus's
-bootstrap) follow that locked version, not the selector you wrote.
+The BOM version follows the [version grammar](projects.md#version-strings): a bare version is
+that release, `^4` / `~4.1` are opt-in floors, `latest` is opt-in. Open ranges on the BOM pin
+are rejected. `jk lock` records the concrete BOM version (and `pinned-by` on managed lock
+rows); `jk update` bumps the pin like any other. The tools a plugin fetches for packaging
+(Boot's loader, Quarkus's bootstrap) follow that locked version, not the selector you wrote.
+
+A managed dependency is a versionless GAV string — `group:artifact` with no third slot — or an
+inline table without `version`. Writing a version on it is a user root, and a user root beats
+the BOM for that coordinate.
 
 ```bash
 jk tree -s platform          # BOM under the platform section, tagged (platform)
@@ -68,7 +77,7 @@ Import that POM like any other platform BOM (`[platform-dependencies]`).
 
 - **Spring Boot** — `[spring-boot] version`; starters versionless under the BOM.
   [Frameworks](frameworks.md).
-- **Quarkus** — `[quarkus] version = "latest"` (or a major-line floor / exact pin);
+- **Quarkus** — `[quarkus] version = "3.38.0"` (that release; `^3` for the newest 3.x);
   extensions versionless. [Frameworks](frameworks.md#quarkus).
 - **Grails 8** — `[grails] version`; Groovy lane. [Frameworks](frameworks.md#grails).
 

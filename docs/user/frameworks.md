@@ -19,8 +19,9 @@ names its `Instead:`.
 jk new -t spring-boot/hello my-api
 ```
 
-Pin the platform with `[spring-boot] version` (or `[platform-dependencies]`). Starters are
-versionless under the BOM. `jk build` produces a Boot jar (plugin-owned, not assembly
+Pin the platform with `[spring-boot] version = "4.1.0"` (or `[platform-dependencies]`); `"^4"`
+is the opt-in floor for the newest 4.x. Starters are versionless under the BOM
+(`web = "org.springframework.boot:spring-boot-starter-web"`). `jk build` produces a Boot jar (plugin-owned, not assembly
 packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 
 ## Quarkus
@@ -29,8 +30,9 @@ packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 jk new -t quarkus/hello my-api
 ```
 
-- `[quarkus] version = "latest"` (first `jk lock` pins the current stable BOM). A
-  major-line floor (`"3"`) or exact pin (`=3.38.0`) also works.
+- `[quarkus] version = "3.38.0"` pins that BOM release (`jk new` writes the current stable).
+  `"^3"` is the opt-in floor for the newest 3.x; `"latest"` takes the newest stable at each
+  resolve.
 - Starters / extensions are **versionless** under `[dependencies]` (`quarkus-rest`,
   `quarkus-rest-jackson`).
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
@@ -60,14 +62,14 @@ jk new -t grails/hello my-svc
 ```
 
 ```toml
-groovy = "latest"
+groovy = "5.0.0"              # exact; jk new writes the current stable
 
 [grails]
-version = "8.0.0-M4"          # 8.x milestone floor; "latest" would pick Grails 7 GA
+version = "8.0.0-M4"          # exactly this 8.x milestone; "latest" would pick Grails 7 GA
 
 [dependencies]                # versionless under the BOM
-grails-core     = { group = "org.apache.grails", name = "grails-core" }
-grails-web-boot = { group = "org.apache.grails", name = "grails-web-boot" }
+grails-core     = "org.apache.grails:grails-core"
+grails-web-boot = "org.apache.grails:grails-web-boot"
 ```
 
 The plugin contributes `grails-app/*` source/resource roots, compiles with `--parameters`,
