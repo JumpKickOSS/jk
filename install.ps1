@@ -651,7 +651,14 @@ if ($LocalPath) {
             Die $_.Exception.Message
         }
         $nativeName = "jk-$target-$version.zip"
-        if (-not (Test-ManifestLists -ManifestBytes $manifestBytes -ArtifactName $nativeName)) {
+        # A manifest that is not UTF-8, has a malformed line or lists a name twice is a refusal with
+        # the reason, not a PowerShell error trace.
+        try {
+            $listsNative = Test-ManifestLists -ManifestBytes $manifestBytes -ArtifactName $nativeName
+        } catch {
+            Die $_.Exception.Message
+        }
+        if (-not $listsNative) {
             $probedJava = Find-Java -Probe
             if ($probedJava) {
                 Write-Note "jk $version publishes no $target client yet; installing the JVM client (jk-$version.jar) on $probedJava instead."
@@ -701,8 +708,12 @@ try {
             Save-Url $ArchiveUrl $ArchiveFile
             $manifestFile = Join-Path $tmpRoot "SHA256SUMS"
             $signatureFile = Join-Path $tmpRoot "SHA256SUMS.sig"
-            Save-Url "$ReleaseVersionUrl/SHA256SUMS" $manifestFile
-            Save-Url "$ReleaseVersionUrl/SHA256SUMS.sig" $signatureFile
+            # The version directory's evidence is fetched once per run: the client probe above
+            # already holds it for a release resolved from the pointer or JK_VERSION.
+            if (-not ((Test-Path -LiteralPath $manifestFile) -and (Test-Path -LiteralPath $signatureFile))) {
+                Save-Url "$ReleaseVersionUrl/SHA256SUMS" $manifestFile
+                Save-Url "$ReleaseVersionUrl/SHA256SUMS.sig" $signatureFile
+            }
         } catch {
             Die "failed to download release artifact or verification evidence ($($_.Exception.Message))"
         }
