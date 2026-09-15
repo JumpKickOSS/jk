@@ -25,7 +25,7 @@ import org.jspecify.annotations.Nullable;
  * <pre>
  * [one-digest-surface]
  * population = { classes = 1266 }
- * scope-reason = "the second build definition left the tree"
+ * scope-reason = "the fixtures module folded into its owner"
  * [[one-digest-surface.entries]]
  * at     = "cc.jumpkick.publish.Gpg#sign([B)[B -> java.security.MessageDigest#getInstance(**)"
  * reason = "PGP needs SHA-1 by spec"

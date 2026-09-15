@@ -447,7 +447,7 @@ final class ParityRules {
             id = "bootstrap-pin-reads-tree",
             why =
                     "the release " + BOOTSTRAP_PIN
-                            + " pins is the only jk that builds this tree from nothing, so the lock's jk-min floor never exceeds the pin: a tree requiring a newer jk than the one bootstrapping it has no bootstrap (the lock schema itself is G86's)",
+                            + " pins is the only jk that builds this tree from nothing, so the lock's jk-min floor never exceeds the pin: a tree requiring a newer jk than the one bootstrapping it has no hosted bootstrap, only the Gradle build that runs no gate (the lock schema itself is G86's)",
             instead =
                     "reader first, writer second (docs/contributors/self-host.md, \"The bootstrap chain\"): host a release that satisfies the floor, move the pin to it, and only then let the tree require it")
     @Fixture("server/guard/fixtures/bootstrap-pin-reads-tree")

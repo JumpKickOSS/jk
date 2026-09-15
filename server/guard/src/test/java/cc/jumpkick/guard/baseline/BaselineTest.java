@@ -205,7 +205,7 @@ class BaselineTest {
     @Test
     void a_scope_reason_rides_with_its_lane_s_population_and_round_trips(@TempDir Path dir) throws IOException {
         RuleBaseline whole = RuleBaseline.of(Map.of("files", 30L), List.of(new Entry.Site("a", "r")))
-                .withScopeReason("", "the second build definition left the tree");
+                .withScopeReason("", "the fixtures module folded into its owner");
         RuleBaseline lanes = RuleBaseline.EMPTY
                 .withLane("shared/host", Map.of("classes", 20L), List.of())
                 .withScopeReason("shared/host", "host lost its fixtures module");
@@ -215,7 +215,7 @@ class BaselineTest {
         String text = Files.readString(f);
         assertThat(text)
                 .contains("[whole]\npopulation = { files = 30 }\n"
-                        + "scope-reason = \"the second build definition left the tree\"\n[[whole.entries]]")
+                        + "scope-reason = \"the fixtures module folded into its owner\"\n[[whole.entries]]")
                 .contains("[walks.populations]\n\"shared/host\" = { classes = 20 }\n"
                         + "[walks.scope-reasons]\n\"shared/host\" = \"host lost its fixtures module\"\n");
         assertThat(BaselineFile.read(f)).isEqualTo(b);
