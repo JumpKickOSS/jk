@@ -1,6 +1,6 @@
 # Tag-triggered release build + sign for the jumpkick.build layout.
 #
-# Trigger: push tag v0.13.5 (or any vX.Y.Z matching JkVersion without the v). The tag or the
+# Trigger: push tag v0.13.6 (or any vX.Y.Z matching JkVersion without the v). The tag or the
 # dispatch input is a request; JkVersion.java is the answer, and a request that differs from it
 # fails before anything is built (scripts/release-version.sh).
 #
@@ -33,9 +33,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (no v prefix), e.g. 0.13.5'
+        description: 'Version to release (no v prefix), e.g. 0.13.6'
         required: true
-        default: '0.13.5'
+        default: '0.13.6'
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
 # `permissions:`, naming the one scope it needs.

@@ -6,10 +6,10 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 
 | Line | Meaning |
 |------|---------|
-| **`0.13.5`** | Current product version (no `-SNAPSHOT` on `main`) |
-| Tag **`v0.13.5`** | Next public release cut from that line |
-| Prior | **`0.13.3`** — previous tagged release; **`0.10.1`** first public |
-| Later | Semver-ish: `0.13.5`, `0.14.0`, … |
+| **`0.13.6`** | Current product version (no `-SNAPSHOT` on `main`) |
+| Tag **`v0.13.6`** | Next public release cut from that line |
+| Prior | **`0.13.5`** — previous tagged release; **`0.10.1`** first public |
+| Later | Semver-ish: `0.13.6`, `0.14.0`, … |
 
 Bump `JkVersion.VERSION`, the workspace `jk.toml` `version` and the installers' pointer floor
 (`RELEASE_FLOOR` in `install.sh`, `$ReleaseFloor` in `install.ps1`, mirrored under
@@ -23,6 +23,20 @@ user deciding whether to update needs to know, in a handful of bullets. `scripts
 <version>` puts the entry at the top of the GitHub Release notes, ahead of the commit list since the
 previous tag, and refuses a version that has none — a release whose notes are only a commit list
 has nothing to say. This section is the one home for release highlights; there is no CHANGELOG.
+
+### 0.13.6
+
+- **Every JDK or GraalVM jk installs for you shows the `jk jdk install` experience.** The installer's
+  engine warm-up, a build that pins a JDK not yet in the store, and a native build's GraalVM all
+  render the same download bar, install phase and "installed at" line, then continue; plain mode
+  prints the phases, `--output json` emits a `toolchain` plan ahead of the build's.
+- **The Windows installer works on Windows PowerShell 5.1**: its architecture probe no longer dies
+  on a runtime without `RuntimeInformation`, native programs' stderr (`java -version`) is read as
+  text instead of ending the run, and when a release has no Windows native client yet it installs
+  the JVM client on a JDK 25+ and says so.
+- **Gradle is back as the bootstrap for hosts without a hosted native client** (macOS, Windows):
+  `./gradlew dist installLocal` builds the first jk; jk remains the gate and the release builder.
+- Smaller: every jk script writes under `target/`; CI bootstraps from the published 0.13.5.
 
 ### 0.13.5
 
@@ -98,19 +112,19 @@ Layout under the bucket (and under the CDN path `/releases`):
 ```text
 releases/
   latest/
-    LATEST                  # signed pointer: `version 0.13.5` + `issued <unix-seconds>`, LF each
+    LATEST                  # signed pointer: `version 0.13.6` + `issued <unix-seconds>`, LF each
     LATEST.sig              # base64 RSA/SHA-256 signature over the exact LATEST bytes
     VERSION                 # bare version — a redirect-compatible convenience nothing verifies
                             # (all three: Cache-Control: no-cache)
-  0.13.5/
-    jk-linux-x86_64-0.13.5.xz
-    jk-linux-aarch64-0.13.5.xz
-    jk-macos-x86_64-0.13.5.xz
-    jk-macos-aarch64-0.13.5.xz
-    jk-windows-x86_64-0.13.5.xz    # self-update (engine inflates; no system xz needed)
-    jk-windows-x86_64-0.13.5.zip   # install.ps1 / jk.bat only
-    jk-engine-0.13.5.jar
-    jk-0.13.5.jar                  # the JVM client: every host with no native client (install.sh
+  0.13.6/
+    jk-linux-x86_64-0.13.6.xz
+    jk-linux-aarch64-0.13.6.xz
+    jk-macos-x86_64-0.13.6.xz
+    jk-macos-aarch64-0.13.6.xz
+    jk-windows-x86_64-0.13.6.xz    # self-update (engine inflates; no system xz needed)
+    jk-windows-x86_64-0.13.6.zip   # install.ps1 / jk.bat only
+    jk-engine-0.13.6.jar
+    jk-0.13.6.jar                  # the JVM client: every host with no native client (install.sh
                                    # falls back to it; install.ps1 on JK_CLIENT=jvm)
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
@@ -181,7 +195,7 @@ that holds the signing key would be a signed release someone else cut. The
 under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow-lint job, and
 `.github/dependabot.yml` moves the pins weekly.
 
-1. Push tag `v0.13.5` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
+1. Push tag `v0.13.6` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch — with jk itself (`jk build`, the layout
    under `target/dist`). The jk that builds is the hosted release `.jk/ci-bootstrap-version` pins,
    so the matrix has a row for every platform jumpkick.build serves a client for at that pin
@@ -275,10 +289,10 @@ scripts/publish-maven-repo.sh`) and upload it beside the version tree.
 
 ```bash
 # 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):
-gsutil -m rsync -r -d target/release/0.13.5/ gs://$BUCKET/releases/0.13.5/
+gsutil -m rsync -r -d target/release/0.13.6/ gs://$BUCKET/releases/0.13.6/
 
 # 2. The signed pointer: LATEST.sig, then LATEST, then the VERSION convenience.
-scripts/sign-latest-pointer.sh 0.13.5 target/release/latest /owner-only/path/release-key.pem
+scripts/sign-latest-pointer.sh 0.13.6 target/release/latest /owner-only/path/release-key.pem
 for object in LATEST.sig LATEST VERSION; do
   gsutil -h "Cache-Control:no-cache,max-age=0" cp "target/release/latest/$object" \
     "gs://$BUCKET/releases/latest/$object"
@@ -288,17 +302,17 @@ done
 curl -fsSL https://jumpkick.target/releases/latest/LATEST -o LATEST
 curl -fsSL https://jumpkick.target/releases/latest/LATEST.sig | openssl base64 -d -A >LATEST.sig.bin
 openssl dgst -sha256 -verify release-public.pem -signature LATEST.sig.bin LATEST   # "Verified OK"
-cat LATEST                                                                        # version 0.13.5 / issued …
+cat LATEST                                                                        # version 0.13.6 / issued …
 
 # 4. Deploy hosting/public (install.sh / install.ps1 with the matching floor).
 
 # 5. The GitHub Release, from the same tree: the highlights entry must exist (step 4 of the CI
 #    flow refuses without it), the tag must be pushed, GH_TOKEN must be able to write releases.
-scripts/release-notes.sh 0.13.5 > RELEASE_NOTES.md
+scripts/release-notes.sh 0.13.6 > RELEASE_NOTES.md
 (cd server/engine && jk publish --sbom --dry-run)   # prints the path it wrote, under the root's target/
-cp target/server/engine/sbom/jk-engine-0.13.5.cdx.json jk-0.13.5.cdx.json
-scripts/publish-github-release.sh draft 0.13.5 RELEASE_NOTES.md target/release/0.13.5/* jk-0.13.5.cdx.json
-scripts/publish-github-release.sh publish 0.13.5
+cp target/server/engine/sbom/jk-engine-0.13.6.cdx.json jk-0.13.6.cdx.json
+scripts/publish-github-release.sh draft 0.13.6 RELEASE_NOTES.md target/release/0.13.6/* jk-0.13.6.cdx.json
+scripts/publish-github-release.sh publish 0.13.6
 ```
 
 `release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in
