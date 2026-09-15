@@ -78,27 +78,38 @@ Illustrative lines:
 
 ### Toolchain provisioning
 
-When a build-kind verb needs a JDK or GraalVM that is not on disk — the manifest's or lockfile's
-`jdk` pin, a workspace member's own pin, the GraalVM a native build links with — the client
-installs it before the build request goes out, and the stream opens with a one-task
-**`toolchain`** plan ahead of the build's own `buildplan-start` / `workspace-start`:
+When a build-kind verb — `jk build`, `jk test`, `jk run`, `jk install`, `jk dev` / `jk watch`,
+`jk explain` — needs a JDK or GraalVM that is not on disk (the manifest's or lockfile's `jdk`
+pin, a workspace member's own pin, the `java` floor, a `.jdk-version` file, the `--jdk`
+switch, the GraalVM a native build links with), the client installs it before the build request
+goes out, and the stream opens with a one-task **`toolchain`** plan ahead of the build's own
+`buildplan-start` / `workspace-start`:
 
 ```json
 {"schema":1,"ts":1721663990000,"type":"buildplan-start","plan":"toolchain","denominator":1,"tasks":1,"progress":null}
 {"schema":1,"ts":1721663990000,"type":"task-start","task":"ensure-jdk","stage":"resolve","ticks":1,"progress":null}
 {"schema":1,"ts":1721663990100,"type":"label","task":"ensure-jdk","label":"downloading Temurin 21 ▰▰▰▰▱▱▱▱▱▱ 42%","progress":null}
 {"schema":1,"ts":1721663996000,"type":"label","task":"ensure-jdk","label":"installing Temurin 21 ▰▰▰▰▰▰▰▰▰▰ 100%","progress":null}
-{"schema":1,"ts":1721663999000,"type":"task-finish","task":"ensure-jdk","stage":"resolve","status":"SUCCESS","duration_ms":9000,"wait_ms":0,"progress":100}
-{"schema":1,"ts":1721663999000,"type":"buildplan-finish","plan":"toolchain","success":true,"duration_ms":9000,"warnings":0,"errors":0,"progress":100}
+{"schema":1,"ts":1721663999000,"type":"task-finish","task":"ensure-jdk","stage":"resolve","status":"SUCCESS","duration_ms":9000,"wait_ms":0,"progress":null}
+{"schema":1,"ts":1721663999000,"type":"buildplan-finish","plan":"toolchain","success":true,"duration_ms":9000,"warnings":0,"errors":0,"progress":null}
 ```
 
-- `progress` is `null` on the plan's lines: it runs before the job is admitted, so there is no
-  job percent yet.
+- `progress` is `null` on every one of the plan's lines, its finish included: the plan runs
+  before the job is admitted, so there is no job percent yet, and the build's own first lines
+  start their rider from `null` too — the toolchain plan never leaves a percent behind.
 - The `label` lines are the ones the engine's own `ensure-jdk` task emits when it does the
   download (a client with no terminal — HTTP, MCP); inside the build that follows, that task
   finishes `SKIPPED` because the toolchain is now installed.
+- A workspace pre-flights every member that names a `jdk` or `java` of its own (or carries a
+  `.jdk-version` file) with the same values the engine resolves it with — the summary's
+  normalized spec, so `jdk = "=temurin-21"` and `jdk = "temurin"` beside `java = 21` both
+  install Temurin 21 once. Members that inherit the workspace toolchain are covered by the
+  root's pre-flight.
 - A toolchain already on disk emits no `toolchain` plan at all. The human lines of the install
   (why it is happening, the settled "has been installed to" chip) go to **stderr**.
+- A degradation the install goes ahead despite — the JDK feed unreachable and answered from its
+  cache — is a `warn` line (`task:"ensure-jdk"`, `code:"jdk"`) inside the plan, and a human
+  line on stderr.
 - A failed install emits an `error` line (`task:"ensure-jdk"`, `code:"jdk"`), ends the plan
   with `buildplan-finish` `success:false`, and jk exits without opening a build envelope.
 

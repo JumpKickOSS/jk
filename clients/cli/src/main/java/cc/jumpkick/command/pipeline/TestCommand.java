@@ -210,6 +210,7 @@ public final class TestCommand implements CliCommand {
         var info = ProjectInfos.orNull(dir);
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(dir, modulesSpec, info);
         if (cwdScope.inferredFromCwd()) this.modulesSpec = cwdScope.modulesSpec();
+        if (!jdkReady(dir, info)) return finishSession(Exit.FAILURE);
 
         // Workspace root: fan out to members so a bare `jk test` is not just the root
         // module's (usually empty) suite. Member dir: same as `jk test -m <this-module>`.
@@ -298,6 +299,14 @@ public final class TestCommand implements CliCommand {
         // Test failures get exit 4; compile / launcher errors are exit 1.
         if (testResult != null && !testResult.allPassed()) return finishSession(4);
         return finishSession(1);
+    }
+
+    /**
+     * A pinned JDK that is not installed downloads here, with the {@code jk jdk install} bar,
+     * before any test console opens — never as a silent step inside the engine.
+     */
+    private boolean jdkReady(Path dir, @Nullable ProjectInfo info) {
+        return JdkPreflight.ensure(dir, info, jdksDir, BuildPlanConsole.modeFor(global));
     }
 
     private int finishSession(int code) {

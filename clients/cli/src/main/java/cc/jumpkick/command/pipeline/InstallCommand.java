@@ -329,6 +329,9 @@ public final class InstallCommand {
             return Exit.CONFIG;
         }
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, proj);
+        // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before
+        // the build console opens — never as a silent step inside the engine.
+        if (!JdkPreflight.ensure(projectDir, proj, null, BuildPlanConsole.modeFor(global))) return Exit.FAILURE;
         if (proj.workspaceRoot() || cwdScope.workspaceMember()) {
             return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
         }

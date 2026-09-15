@@ -5,6 +5,8 @@ import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectContext;
+import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.watch.AppWatchLoop;
 import cc.jumpkick.cli.watch.SourceWatch;
@@ -96,6 +98,13 @@ public final class WatchCommand implements CliCommand {
         Path projectDir = global.workingDir();
         var proj = ProjectContext.require(projectDir, "watch").orElse(null);
         if (proj == null) return Exit.CONFIG;
+
+        // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before
+        // the loop's first build — never as a silent step inside the engine.
+        if (!JdkPreflight.ensure(
+                projectDir, ProjectInfos.orNull(projectDir), jdksDir, BuildPlanConsole.modeFor(global))) {
+            return Exit.FAILURE;
+        }
 
         long debounceMs;
         try {

@@ -120,6 +120,9 @@ public final class RunCommand {
             var peek = ProjectInfos.orNull(projectDir);
             if (peek != null) workspace = peek.workspaceRoot();
             CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, peek);
+            // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar,
+            // before the build console opens — never as a silent step inside the engine.
+            if (!JdkPreflight.ensure(projectDir, peek, jdksDir, mode)) return 1;
             if (workspace || cwdScope.workspaceMember()) {
                 // Workspace root: whole graph. Member dir: same as `jk build -m <this-module>`.
                 WorkspaceResult wr = buildWorkspaceForRun(projectDir, cache, mode, workspace, cwdScope, session);
