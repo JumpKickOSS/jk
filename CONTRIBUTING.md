@@ -167,7 +167,7 @@ jk guard
 jk build
 jk test --profile integration
 scripts/curated-integration.sh               # what the pull request's boundary lane runs
-scripts/shellcheck.sh                        # CI's shell lint: installers, scripts/, the wrapper (skips with a notice when shellcheck is absent)
+scripts/shellcheck.sh                        # CI's shell lint: installers, scripts/, the wrapper (skipped on Windows; skips with a notice when shellcheck is absent)
 for f in scripts/test-*.sh; do bash "$f"; done  # CI's shell fixtures (installer, wrapper bootstrap, Maven repo, release version, flatten, example lock drift, curated lane)
 actionlint .github/workflows/*.yml
 jk test --profile slow                       # nightly framework / language e2e

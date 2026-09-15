@@ -29,7 +29,7 @@ file. `jk test --profile slow` is due when a change touches a framework or langu
 
 The shell fixtures and lints are part of the same bar when a script or a workflow moves:
 `for f in scripts/test-*.sh; do bash "$f"; done`, `scripts/shellcheck.sh` (also the `shellcheck`
-guard, G100, under `jk guard`) and `actionlint .github/workflows/*.yml`.
+guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workflows/*.yml`.
 
 ## CI
 

@@ -11,8 +11,9 @@
 #
 # The binary is used when PATH has one; a container runtime falls back to the koalaman image.
 # With neither, the lint is skipped with a notice on a developer machine and fails under CI
-# (the CI variable), so a runner missing the tool cannot pass by omission. Every message names
-# the script count, which the guard reports as its population.
+# (the CI variable), so a runner missing the tool cannot pass by omission. Windows is skipped
+# outright: Git Bash plus Docker is a false red (exit 125), and POSIX CI lints the scripts.
+# Every message names the script count, which the guard reports as its population.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,6 +23,13 @@ TARGETS=(install.sh hosting/public/install.sh clients/cli/src/main/resources/cc/
 for script in scripts/*.sh; do
   TARGETS+=("$script")
 done
+
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)
+    echo "shellcheck: skipped on Windows — ${#TARGETS[@]} scripts" >&2
+    exit 0
+    ;;
+esac
 
 if command -v shellcheck >/dev/null 2>&1; then
   RUNNER=(shellcheck)

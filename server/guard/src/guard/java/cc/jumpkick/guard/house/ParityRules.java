@@ -12,6 +12,7 @@ import cc.jumpkick.guard.api.Text;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.Violations;
 import cc.jumpkick.guard.api.runtime.GuardRuntime;
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -1392,6 +1393,8 @@ final class ParityRules {
             throw new IllegalStateException("the tree has no scripts/*.sh; the scan is blind");
         if (!exists(text, SHELLCHECK))
             throw new IllegalStateException(SHELLCHECK + " is missing; the lint has no owner");
+        // Git Bash plus Docker is a false red (exit 125); POSIX CI lints the scripts.
+        if (Os.isWindows()) throw new Skipped("shellcheck: skipped on Windows");
         GuardRuntime runtime = GuardRuntime.current();
         if (runtime == null) throw new IllegalStateException("no guard runtime: jk did not configure this JVM");
         // The script owns the target list and the runner choice; this guard runs it where the text
