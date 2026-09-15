@@ -99,7 +99,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
                 java    = 25
 
                 [dependencies]
-                leaf = { group = "com.foo", name = "leaf", version = "1.0" }
+                leaf = { group = "com.foo", name = "leaf", version = "^1.0" }
                 """);
     }
 

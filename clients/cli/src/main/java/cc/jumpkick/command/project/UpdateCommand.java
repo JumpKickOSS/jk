@@ -62,7 +62,7 @@ public final class UpdateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Move declared pins to the newest stable on their major, then relock";
+        return "Bump declared pins to the newest stable on their major";
     }
 
     @Override
@@ -71,7 +71,7 @@ public final class UpdateCommand implements CliCommand {
                 Opt.value("<a,b,...>", "Activate listed features beyond defaults.", "--features")
                         .splitOn(","),
                 Opt.flag("Don't activate the project's defaults.", "--no-default-features"),
-                Opt.value("<name>", "Only this handle or group:artifact (repeatable)", "--dep")
+                Opt.value("<name>", "Limit to this handle or group:artifact", "--dep")
                         .repeat(),
                 Opt.flag("Allow a pin to cross its Maven major", "--major"),
                 Opt.value("[<name>]", "Re-resolve git dep(s) by name", "--git").withFallback("*"),
