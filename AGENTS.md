@@ -95,7 +95,7 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Layer | Choice |
 |---|---|
 | Language | Java 25 |
-| Build of jk itself | jk (root `jk.toml` workspace, `jk-lock.toml`, `.jk/*.kts` build scripts) |
+| Build of jk itself | jk (root `jk.toml` workspace, `jk-lock.toml`, `.jk/*.kts` build scripts). Gradle (`./gradlew`) is the bootstrap when this OS has no hosted client. |
 | Native CLI | GraalVM native-image (`clients/cli`) |
 | Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
 | Config / lock | TOML (`jk.toml`), canonical `jk-lock.toml` (workspace root only) |
@@ -105,7 +105,10 @@ pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java 
 | Wire | JSONL client↔engine protocol (`shared/wire`) |
 | Modules | `shared/` (client-safe), `server/` (engine-only), `clients/`, `plugins/` |
 
-Build with the installed jk (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace.
+Build with the installed jk when you have one (`jk build`; a GraalVM-capable JDK for the native
+client — see CONTRIBUTING). On a machine with no hosted client, bootstrap with Gradle first
+(`./gradlew dist installLocal && ./install.sh build/dist/jk`). Use a **separate worktree** for
+parallel work; the resident engine serializes the builds of one workspace.
 
 ## Reinstall from this checkout
 
@@ -113,16 +116,23 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 (client on PATH under `~/.jk/bin`, engine jar under `~/.jk/lib/jk-engine/`):
 
 ```bash
+# No hosted client for this OS (macOS, Windows, Linux aarch64) — Gradle is the bootstrap:
+./gradlew dist installLocal && ./install.sh build/dist/jk
+
+# Once jk is on PATH:
 jk build --skip-tests && jk install --skip-tests
 ```
 
 | Step | What it does |
 |---|---|
+| `./gradlew dist` | Native client + engine jar → `build/dist/` |
+| `./gradlew installLocal` | Worker jars onto the shelf; engine jar into `~/.jk/lib/jk-engine/`; daemon bounce |
+| `./install.sh build/dist/jk` | PATH client from the Gradle ship layout |
 | `jk build --skip-tests` | Every module compiled and packaged; `target/dist/jk` (native CLI) + `target/dist/lib/jk-engine-<version>.jar` |
 | `jk install --skip-tests` | Shelves every library and worker jar under `~/.jk/store/repos/jk-local`, materializes the engine jar into `~/.jk/lib/jk-engine/` and swaps the native client into `~/.jk/bin/jk`; the next invocation takes over the resident engine |
-| `./install.sh target/dist/jk` | The same ship layout onto a machine with no jk yet |
 
-Windows has no hosted client yet, so it has no bootstrap for this tree until one is published ([releases](docs/contributors/releases.md#platforms-without-a-hosted-client)).
+Windows thin client (Smart App Control blocks unsigned `jk.exe`):
+`.\gradlew :cli:installDist installLocal` then `.\install.cmd clients\cli\build\install\jk\bin\jk.bat`.
 
 Then verify on PATH (or the install dir):
 
