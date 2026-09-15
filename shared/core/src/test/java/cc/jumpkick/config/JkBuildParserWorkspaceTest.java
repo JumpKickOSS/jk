@@ -145,7 +145,7 @@ class JkBuildParserWorkspaceTest {
                 modules = ["a", "b"]
 
                 [workspace.dependencies]
-                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.0" }
+                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
                 assertj-core  = { group = "org.assertj",       name = "assertj-core",  version = "3.27.7" }
                 """);
         assertThat(workspaceOf(parsed).dependencies()).hasSize(2).containsKey("junit-jupiter");
@@ -271,7 +271,7 @@ class JkBuildParserWorkspaceTest {
                 modules = []
 
                 [workspace.dependencies]
-                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.0" }
+                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
 
                 [test-dependencies]
                 junit-jupiter.workspace = true

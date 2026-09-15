@@ -44,7 +44,7 @@ class PackagerIdentityKeyTest {
                 java    = 25
 
                 [test-dependencies]
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

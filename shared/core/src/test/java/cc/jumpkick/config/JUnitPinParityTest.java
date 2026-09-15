@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 /**
  * One JUnit version across every fixture manifest, and it is the one jk itself resolved.
  *
- * <p>Test fixtures that scaffold a project pin the JUnit train exactly — {@code version = "=6.1.3"}
+ * <p>Test fixtures that scaffold a project pin the JUnit train exactly — {@code version = "6.1.3"}
  * rather than {@code latest} — and that pin is deliberate: {@code KotlinSerializationTest} records
  * why, and a dozen fixtures point at it. Owning {@code [test-dependencies]} keeps the injected
  * {@code junit-jupiter} {@code latest} out of the graph, so the lock a test writes is deterministic;
@@ -48,7 +48,7 @@ class JUnitPinParityTest {
 
     /** The JUnit train's coordinates, as a fixture manifest spells them. */
     private static final Pattern PIN = Pattern.compile(
-            "name = \"junit-(?:jupiter|platform-launcher|vintage-engine)\", version = \"=([0-9][^\"]*)\"");
+            "name = \"junit-(?:jupiter|platform-launcher|vintage-engine)\", version = \"=?([0-9][^\"]*)\"");
 
     /** {@code org.junit.*} artifacts in the lock, with the version each resolved to. */
     private static final Pattern LOCKED = Pattern.compile(

@@ -53,7 +53,7 @@ class ProtobufPluginTest {
                 # junit-jupiter "latest" out of the graph and the lock deterministic
                 # (see KotlinSerializationTest).
                 [test-dependencies]
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
@@ -146,7 +146,7 @@ class ProtobufPluginTest {
                 protobuf-kotlin-lite = { group = "com.google.protobuf", name = "protobuf-kotlin-lite", version = "=4.29.2" }
 
                 [test-dependencies]
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

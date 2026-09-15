@@ -46,8 +46,8 @@ class FirstBuildJdkTest {
                 jdk     = 17
 
                 [test-dependencies]
-                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.3" }
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

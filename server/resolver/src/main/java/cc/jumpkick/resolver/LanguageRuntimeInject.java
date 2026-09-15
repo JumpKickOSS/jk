@@ -178,7 +178,7 @@ public final class LanguageRuntimeInject {
                 return VersionSelector.parse("=" + lit);
             }
         }
-        return VersionSelector.parse("@" + fallbackMajor);
+        return VersionSelector.parse("^" + fallbackMajor);
     }
 
     /** Concrete version literal, or {@code null} for range / latest / snapshot. */

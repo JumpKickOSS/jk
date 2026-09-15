@@ -57,7 +57,7 @@ class ProfileForecastTest {
             # No tests here; owning [test-dependencies] keeps the injected junit-jupiter out of
             # the graph and the launcher pin keeps the lock deterministic.
             [test-dependencies]
-            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
 
             [repositories]
             central = "https://repo.maven.apache.org/maven2/"

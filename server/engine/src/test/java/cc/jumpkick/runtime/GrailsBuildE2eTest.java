@@ -69,7 +69,7 @@ class GrailsBuildE2eTest {
                 # This project runs no tests; owning [test-dependencies] keeps the injected
                 # junit-jupiter "latest" out of the graph (see GroovyBuildE2eTest).
                 [test-dependencies]
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
                 """);
         Path domain = Files.createDirectories(project.resolve("grails-app/domain/com/example"));
         Files.writeString(domain.resolve("Note.groovy"), """

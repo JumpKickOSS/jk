@@ -16,8 +16,8 @@ import org.jspecify.annotations.Nullable;
  * rather than settling for what is on the machine. The two axes are independent —
  * {@code jdk-vendor = "=corretto"} with {@code jdk-version = 25} requires Corretto at any 25+.
  *
- * <p>{@code =} carries the same meaning here as in the dependency version grammar, where
- * {@code "=1.1.4"} nails one release instead of floating.
+ * <p>{@code =} is this grammar's "required" marker. A dependency version needs no marker to pin;
+ * a toolchain spec does, because its bare form is a suggestion.
  *
  * <p>Vendors are lower-cased short ids ({@code temurin}, {@code graalvm-ce}); versions keep the
  * text as written, because a point release is exactly what a required pin is about.

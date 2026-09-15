@@ -43,7 +43,7 @@ class JUnit4VintageTest {
 
                 [test-dependencies]
                 junit          = { group = "junit", name = "junit", version = "=4.13.2" }
-                vintage-engine = { group = "org.junit.vintage", name = "junit-vintage-engine", version = "=6.1.3" }
+                vintage-engine = { group = "org.junit.vintage", name = "junit-vintage-engine", version = "6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

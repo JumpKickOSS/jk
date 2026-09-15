@@ -188,7 +188,7 @@ public final class ScalaToolResolver {
         if (major < 3) {
             throw new IllegalArgumentException("jk requires Scala 3 or newer, but the project targets "
                     + version
-                    + ". Pin a Scala 3 version in jk.toml (scala = \"3\").");
+                    + ". Set a Scala 3 version in jk.toml (scala = \"^3\").");
         }
     }
 

@@ -3,12 +3,12 @@ name = "monorepo"
 description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
 
 [processor-dependencies]
-error_prone_core = { group = "com.google.errorprone", version = "latest" }
-nullaway = { group = "com.uber.nullaway", version = "latest" }
+error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
+nullaway = { group = "com.uber.nullaway", version = "0.14.1" }
 
 # Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
 # checks it at error severity, with the same flags in every enforced module so the block is one
-# block. The pins are `latest`; the lock is the pin.
+# block. The pins are exact; `jk update` moves them and the lock follows.
 [javac]
 args = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-Xmaxerrs", "10000"]
 

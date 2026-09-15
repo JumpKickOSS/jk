@@ -7,7 +7,7 @@ java    = 25
 modules = ["lib", "app"]
 
 # One test-framework version for the whole workspace. Modules opt in with
-# `junit-jupiter.workspace = true`. The `=` is an exact pin: a bare "6.1.3"
-# would mean `^6.1.3` and could float to another 6.x at lock time.
+# `junit-jupiter.workspace = true`. A bare version is an exact pin; `jk update`
+# is what moves it.
 [workspace.dependencies]
-junit-jupiter = "=6.1.3"
+junit-jupiter = "6.1.3"

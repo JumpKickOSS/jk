@@ -115,7 +115,7 @@ class RobolectricUnitTest {
 
                 [test-dependencies]
                 junit          = { group = "junit", name = "junit", version = "=4.13.2" }
-                vintage-engine = { group = "org.junit.vintage", name = "junit-vintage-engine", version = "=6.1.3" }
+                vintage-engine = { group = "org.junit.vintage", name = "junit-vintage-engine", version = "6.1.3" }
                 robolectric    = { group = "org.robolectric", name = "robolectric", version = "=4.16.1" }
 
                 [repositories]

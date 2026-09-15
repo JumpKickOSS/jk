@@ -2,14 +2,14 @@ group = "com.example"
 name = "kotlin-cli"
 version = "0.1.0"
 java = 25
-kotlin = "=2.4.20"
+kotlin = "2.4.20"
 
 [application]
 main     = "demo.MainKt"
 assembly = true
 
 [dependencies]
-kotlin-stdlib   = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version = "=2.4.20" }
-kotlin-reflect  = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version = "=2.4.20" }
-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core-jvm", version = "=1.11.0" }
-okio            = { group = "com.squareup.okio", name = "okio-jvm", version = "=3.18.2" }
+kotlin-stdlib   = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version = "2.4.20" }
+kotlin-reflect  = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version = "2.4.20" }
+coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core-jvm", version = "1.11.0" }
+okio            = { group = "com.squareup.okio", name = "okio-jvm", version = "3.18.2" }

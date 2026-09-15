@@ -124,9 +124,9 @@ final class QuarkusToolingPom {
     }
 
     /**
-     * The concrete {@code quarkus-bom} version for the tooling POM. Maven has no caret, so the
-     * {@code [quarkus] version = "3"} floor jk recommends cannot go in as written — {@code
-     * quarkus-bom:3} is a literal version that does not exist.
+     * The concrete {@code quarkus-bom} version for the tooling POM. Maven has no caret, so a
+     * {@code [quarkus] version = "^3"} floor cannot go in as written — {@code quarkus-bom:3} is a
+     * literal version that does not exist.
      *
      * <p>The lock wins: this POM exists so {@code @QuarkusTest}'s bootstrap agrees with the
      * classpath jk built, and {@code jk-lock.toml} is what jk built from. A concrete {@code

@@ -8,7 +8,7 @@ main     = "demo.Application"
 assembly = true
 
 [micronaut]
-version = "=5.1.5"
+version = "5.1.5"
 
 [dependencies]
 micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }

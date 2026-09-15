@@ -52,7 +52,7 @@ class VariantSwitchTest {
                 # No tests here; the pin keeps the injected junit out of the graph (see
                 # KotlinSerializationTest for the rationale).
                 [test-dependencies]
-                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.3" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

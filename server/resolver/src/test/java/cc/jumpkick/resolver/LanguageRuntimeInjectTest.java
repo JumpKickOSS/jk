@@ -68,7 +68,7 @@ class LanguageRuntimeInjectTest {
         Files.writeString(dir.resolve("src/main/scala/A.scala"), "class A");
         Files.createDirectories(dir.resolve("src/main/kotlin"));
         Files.writeString(dir.resolve("src/main/kotlin/K.kt"), "class K");
-        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nscala=\"3.8.4\"\nkotlin=\"2.2\"\n");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nscala=\"3.8.4\"\nkotlin=\"^2.2\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LanguageRuntimeInject.inject(
                 p, dir, Map.of(), deps, new LanguageRuntimeInject.ToolVersions("2.2.20", "3.8.4"));

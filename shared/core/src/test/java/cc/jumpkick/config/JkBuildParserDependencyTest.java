@@ -128,7 +128,7 @@ class JkBuildParserDependencyTest {
                 stray = { group = "com.example", version = "1.0" }
 
                 [test-dependencies]
-                junit = { group = "org.junit.jupiter", name = "junit-jupiter", version = "5.10.0" }
+                junit = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
                 """);
         assertThat(parsed.dependencies().of(Scope.MAIN)).hasSize(1);
         assertThat(parsed.dependencies().of(Scope.TEST)).hasSize(1);

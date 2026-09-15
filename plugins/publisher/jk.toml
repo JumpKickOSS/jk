@@ -5,16 +5,16 @@ description = "JumpKick's Maven publish plugin"
 jk-core.workspace = true
 jk-client-io.workspace = true
 jk-plugin-sdk.workspace = true
-bcpg-jdk18on = "latest"
-sigstore-java = "latest"
+bcpg-jdk18on = "1.85"
+sigstore-java = "2.2.0"
 
 [processor-dependencies]
-error_prone_core = { group = "com.google.errorprone", version = "latest" }
-nullaway = { group = "com.uber.nullaway", version = "latest" }
+error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }
+nullaway = { group = "com.uber.nullaway", version = "0.14.1" }
 
 # Nullness is enforced here: every production package is @NullMarked (JSpecify) and NullAway
 # checks it at error severity, with the same flags in every enforced module so the block is one
-# block. The pins are `latest`; the lock is the pin.
+# block. The pins are exact; `jk update` moves them and the lock follows.
 [javac]
 args = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW", "-Xmaxerrs", "10000"]
 
@@ -32,5 +32,5 @@ options = [
 
 [test-dependencies]
 jk-core = { workspace = true, fixtures = true }
-assertj-core = "latest"
-junit-jupiter = "latest"
+assertj-core = "3.27.7"
+junit-jupiter = "6.1.3"

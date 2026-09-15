@@ -79,9 +79,9 @@ class QuarkusToolingPomTest {
 
     @Test
     void a_major_line_floor_never_reaches_the_pom_as_a_literal_version(@TempDir Path dir) throws IOException {
-        // `version = "3"` is a caret floor in jk.toml. Maven has no caret, so writing it
+        // `version = "^3"` is a caret floor in jk.toml. Maven has no caret, so writing it
         // through would import io.quarkus.platform:quarkus-bom:3 — a version that does not exist.
-        module(dir, "name = \"svc\"\n\n[quarkus]\nversion = \"3\"\n");
+        module(dir, "name = \"svc\"\n\n[quarkus]\nversion = \"^3\"\n");
         QuarkusToolingPom.ensure(dir);
         String pom = Files.readString(dir.resolve("pom.xml"));
         assertThat(pom).doesNotContain("<quarkus.platform.version>3</quarkus.platform.version>");
@@ -94,7 +94,7 @@ class QuarkusToolingPomTest {
     void the_lock_wins_over_the_declared_floor(@TempDir Path dir) throws IOException {
         // The pom exists so @QuarkusTest's bootstrap agrees with the classpath jk built, and
         // jk-lock.toml is what jk built from — so it outranks whatever jk.toml declares.
-        module(dir, "name = \"svc\"\n\n[quarkus]\nversion = \"3\"\n");
+        module(dir, "name = \"svc\"\n\n[quarkus]\nversion = \"^3\"\n");
         Files.writeString(dir.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
