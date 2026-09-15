@@ -281,12 +281,57 @@ class EngineProtocolTest {
     @Test
     void update_request_round_trips_the_git_splice_fields() {
         String json = new UpdateRequest(
-                        "/work", "/cache", List.of(), false, null, true, "mylib", false, true, false, "")
+                        "/work", "/cache", List.of(), false, null, true, "mylib", false, true, false, "", List.of(),
+                        false, false)
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.UPDATE_REQUEST);
         assertThat(Jsonl.bool(json, "gitOnly", false)).isTrue();
         assertThat(Jsonl.str(json, "gitTarget")).isEqualTo("mylib");
         assertThat(Jsonl.bool(json, "force", false)).isTrue();
+    }
+
+    @Test
+    void update_request_round_trips_the_pin_rewrite_fields() {
+        UpdateRequest req = new UpdateRequest(
+                "/work",
+                "/cache",
+                List.of(),
+                false,
+                null,
+                false,
+                null,
+                false,
+                false,
+                false,
+                "",
+                List.of("jackson", "com.acme:other"),
+                true,
+                true);
+        UpdateRequest back = UpdateRequest.decode(req.encode());
+        assertThat(back.deps()).containsExactly("jackson", "com.acme:other");
+        assertThat(back.major()).isTrue();
+        assertThat(back.preview()).isTrue();
+        // Absent fields read as "every pin, same major, write".
+        UpdateRequest bare = UpdateRequest.decode(RequestJson.request(EngineProtocol.UPDATE_REQUEST)
+                .string("platform", "")
+                .finish());
+        assertThat(bare.deps()).isEmpty();
+        assertThat(bare.major()).isFalse();
+        assertThat(bare.preview()).isFalse();
+    }
+
+    @Test
+    void update_rewrite_event_round_trips() {
+        String line = ProtoEvents.updateRewrite(
+                "/work/lib", "dependencies", "jackson", "com.acme:jackson", "2.18.0", "2.18.2");
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.UPDATE_REWRITE);
+        UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);
+        assertThat(e.dir()).isEqualTo("/work/lib");
+        assertThat(e.table()).isEqualTo("dependencies");
+        assertThat(e.handle()).isEqualTo("jackson");
+        assertThat(e.module()).isEqualTo("com.acme:jackson");
+        assertThat(e.from()).isEqualTo("2.18.0");
+        assertThat(e.to()).isEqualTo("2.18.2");
     }
 
     @Test

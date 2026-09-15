@@ -300,6 +300,10 @@ public final class ProtoEvents {
         return new LockFinishEvent(success, exitCode, errors, refreshed).encode();
     }
 
+    public static String updateRewrite(String dir, String table, String handle, String module, String from, String to) {
+        return new UpdateRewriteEvent(dir, table, handle, module, from, to).encode();
+    }
+
     public static String auditFinding(String dir, AuditReport.Finding finding) {
         return AuditFindingEvent.of(dir, finding).encode();
     }

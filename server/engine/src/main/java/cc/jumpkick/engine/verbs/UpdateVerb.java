@@ -13,19 +13,24 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.runtime.workspace.ManifestUpdates;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.UpdateRequest;
 import java.io.BufferedWriter;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
-/** {@code update-request}: re-resolve cascade or {@code --git} splice. */
+/**
+ * {@code update-request}: move the declared exact pins, then the re-resolve cascade; {@code preview}
+ * reports the moves without writing; {@code gitOnly} is the {@code --git} splice.
+ */
 public final class UpdateVerb implements HostedVerb {
 
     private final VerbHost host;
@@ -73,7 +78,10 @@ public final class UpdateVerb implements HostedVerb {
                                 false,
                                 false,
                                 false,
-                                "")
+                                "",
+                                List.of(),
+                                false,
+                                false)
                         .encode(),
                 "web");
     }
@@ -90,6 +98,8 @@ public final class UpdateVerb implements HostedVerb {
             return SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
+                ManifestUpdates.Selection selection = new ManifestUpdates.Selection(body.deps(), body.major());
+                if (body.preview()) return preview(entryDir, repoUrl, selection, writer);
                 if (!body.gitOnly()) {
                     return LockCascade.run(
                             host,
@@ -100,6 +110,7 @@ public final class UpdateVerb implements HostedVerb {
                             !body.noDefaultFeatures(),
                             new LockMode.Update(platformFinal),
                             false,
+                            selection,
                             writer);
                 }
                 Files.createDirectories(cache);
@@ -125,5 +136,22 @@ public final class UpdateVerb implements HostedVerb {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }
+    }
+
+    /** The planned pin moves as {@code update-rewrite} events; nothing is written or relocked. */
+    private JobOutcome preview(
+            Path entryDir,
+            @Nullable URI repoUrl,
+            ManifestUpdates.Selection selection,
+            @Nullable BufferedWriter writer) {
+        try {
+            Path lockDir = LockPlans.lockScope(entryDir).lockDir();
+            LockCascade.sendRewrites(host, writer, ManifestUpdates.plan(lockDir, repoUrl, selection));
+        } catch (RuntimeException | IOException e) {
+            host.sendQuiet(writer, ProtoEvents.lockFinish(false, Exit.CONFIG, List.of(Errors.text(e)), -1));
+            return JobOutcome.failed(Exit.CONFIG);
+        }
+        host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
+        return JobOutcome.ok();
     }
 }

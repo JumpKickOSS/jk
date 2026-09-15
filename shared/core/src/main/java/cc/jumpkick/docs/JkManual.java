@@ -39,7 +39,9 @@ public final class JkManual {
 
             - `jk.toml` — the manifest: one at the workspace root, one per module.
             - `jk-lock.toml` — the lockfile, committed. `jk build` never re-resolves while it is valid;
-              `jk lock` / `jk update` move it.
+              `jk lock` rewrites it keeping every pin. A declared version is an exact pin: `jk update`
+              moves the pins in `jk.toml` to the newest stable on the same major (`--major` to cross),
+              then relocks.
             - `target/jk-results.md` — the last run's report: status, failures with stack tails, tests,
               guards, deliverables. Read or grep it after every build or test; it is the same markdown
               `jk results` prints, without a process.

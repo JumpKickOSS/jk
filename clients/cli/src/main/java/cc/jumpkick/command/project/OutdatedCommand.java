@@ -120,8 +120,8 @@ public final class OutdatedCommand implements CliCommand {
             CliOutput.out(line);
         }
         // Footer: lockfile-respecting workflow + graph inspection.
-        CliOutput.out("Next: review with `jk why <coord>` / `jk tree`, then `jk update` only when you intend"
-                + " to re-resolve (lockfile is law).");
+        CliOutput.out("Next: review with `jk why <coord>` / `jk tree`; `jk update [name…]` moves the declared"
+                + " pins to Compatible and relocks, `jk update --major` to Latest.");
         return Exit.SUCCESS;
     }
 
