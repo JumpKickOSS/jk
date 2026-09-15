@@ -451,6 +451,115 @@ public final class JkBuildEditor {
         return sb.toString();
     }
 
+    /**
+     * The first TOML string literal (basic {@code "…"} or literal {@code '…'}) with its quotes,
+     * capturing the opening quote in group 1 and the body in group 2.
+     */
+    private static final Pattern FIRST_STRING = Pattern.compile("(\")((?:[^\"\\\\]|\\\\.)*)\"|(')([^']*)'");
+
+    /** The {@code version = "…"} pair inside an inline table; the literal is group 2. */
+    private static final Pattern TABLE_VERSION =
+            Pattern.compile("(\\bversion\\s*=\\s*)(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*')");
+
+    /**
+     * Rewrite the version of the dependency {@code name} in {@code scope} in place, keeping the
+     * entry's spelling: a catalog one-liner stays a one-liner, a {@code group:artifact:version}
+     * string keeps its coordinate, an inline table keeps every other key and any trailing comment.
+     *
+     * @param versionLiteral the selector as it should appear in the file, e.g. {@code 1.2.3}
+     * @throws IllegalStateException when the entry is absent, or carries no version to rewrite
+     *     (path, git, workspace, or versionless coordinate)
+     */
+    public static String setDependencyVersion(String content, Scope scope, String name, String versionLiteral) {
+        validateName(name);
+        requireVersionLiteral(versionLiteral);
+        List<String> lines = splitPreservingTerminator(content);
+        int hit = findDepKey(lines, scope, name);
+        if (hit < 0) {
+            throw new IllegalStateException("\"" + name + "\" not found in " + scope.tomlSection());
+        }
+        lines.set(hit, rewriteVersion(lines.get(hit), scope.tomlSection() + "." + name, versionLiteral));
+        return validated(join(lines));
+    }
+
+    /** {@link #setDependencyVersion} for a {@code [workspace.dependencies]} entry. */
+    public static String setWorkspaceDependencyVersion(String content, String name, String versionLiteral) {
+        validateName(name);
+        requireVersionLiteral(versionLiteral);
+        List<String> lines = splitPreservingTerminator(content);
+        Pattern header = Pattern.compile("^\\s*\\[workspace\\.dependencies]\\s*$");
+        int headerLine = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (header.matcher(lines.get(i)).matches()) {
+                headerLine = i;
+                break;
+            }
+        }
+        if (headerLine < 0) {
+            throw new IllegalStateException("[workspace.dependencies] not found in jk.toml");
+        }
+        int end = endOfTable(lines, headerLine);
+        for (int i = headerLine + 1; i < end; i++) {
+            Matcher m = DEP_ENTRY.matcher(lines.get(i));
+            if (m.matches() && m.group(2).equals(name)) {
+                lines.set(i, rewriteVersion(lines.get(i), "workspace.dependencies." + name, versionLiteral));
+                return validated(join(lines));
+            }
+        }
+        throw new IllegalStateException("\"" + name + "\" not found in [workspace.dependencies]");
+    }
+
+    private static void requireVersionLiteral(String versionLiteral) {
+        if (versionLiteral == null || versionLiteral.isBlank()) {
+            throw new IllegalArgumentException("version must not be blank");
+        }
+    }
+
+    /**
+     * One entry line with its version replaced. A string value is either a catalog selector
+     * (replaced whole) or a coordinate (third field replaced); a table value has its {@code version}
+     * pair replaced.
+     */
+    private static String rewriteVersion(String line, String displayPath, String versionLiteral) {
+        int eq = line.indexOf('=');
+        if (eq < 0) throw new IllegalStateException(displayPath + " is not a dependency entry");
+        String before = line.substring(0, eq + 1);
+        String after = line.substring(eq + 1);
+        String rhs = after.stripLeading();
+        if (rhs.startsWith("{")) {
+            Matcher m = TABLE_VERSION.matcher(after);
+            if (!m.find()) {
+                throw new IllegalStateException(
+                        displayPath + " has no `version` to rewrite (git, path, sha256 or platform-managed)");
+            }
+            return before
+                    + after.substring(0, m.start(2))
+                    + MinimalToml.quote(versionLiteral)
+                    + after.substring(m.end(2));
+        }
+        Matcher m = FIRST_STRING.matcher(after);
+        if (!m.find() || m.start() != after.length() - rhs.length()) {
+            throw new IllegalStateException(displayPath + " has no version to rewrite");
+        }
+        String value = m.group(1) != null ? MinimalToml.unquote(m.group()) : m.group(4);
+        String replacement;
+        if (ManifestDeps.isPathShorthand(value) || ManifestDeps.isGitUrlShorthand(value)) {
+            throw new IllegalStateException(displayPath + " is a path or git dependency; it has no version to rewrite");
+        } else if (value.indexOf(':') >= 0) {
+            String[] parts = value.split(":", 3);
+            if (parts.length < 3) {
+                throw new IllegalStateException(displayPath
+                        + " is platform-managed (`"
+                        + value
+                        + "` has no version); the BOM under [platform-dependencies] owns it");
+            }
+            replacement = parts[0] + ":" + parts[1] + ":" + versionLiteral;
+        } else {
+            replacement = versionLiteral;
+        }
+        return before + after.substring(0, m.start()) + MinimalToml.quote(replacement) + after.substring(m.end());
+    }
+
     private static void validateName(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("dependency name must not be blank");

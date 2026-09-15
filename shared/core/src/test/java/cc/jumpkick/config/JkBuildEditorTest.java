@@ -10,6 +10,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.util.MinimalToml;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -655,5 +656,99 @@ class JkBuildEditorTest {
     void set_root_scalar_refuses_a_key_that_would_need_quoting() {
         assertThatThrownBy(() -> JkBuildEditor.setRootScalar(BASE, "not a key", "1"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ---- setDependencyVersion --------------------------------------------------------------
+
+    private static final String PINNED = BASE + """
+
+            [dependencies]
+            picocli = "4.7.6"                                   # cli
+            mylib   = "com.acme:mylib:1.2.3"
+            guava   = { group = "com.google.guava", version = "33.4.0-jre", optional = true } # big
+            web     = "org.springframework.boot:spring-boot-starter-web"
+            util    = "../util"
+
+            [test-dependencies]
+            junit-jupiter = { group = "org.junit.jupiter", version = '5.11.0' }
+            """;
+
+    @Test
+    void set_version_rewrites_a_catalog_one_liner_and_keeps_the_comment() {
+        String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "picocli", "4.7.7");
+        assertThat(out).contains("picocli = \"4.7.7\"                                   # cli");
+        assertThat(out).contains("mylib   = \"com.acme:mylib:1.2.3\"");
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.MAIN))
+                .filteredOn(d -> d.library().equals("picocli"))
+                .singleElement()
+                .extracting(Dependency::version)
+                .isEqualTo(VersionSelector.parse("4.7.7"));
+    }
+
+    @Test
+    void set_version_rewrites_the_third_field_of_a_coordinate_string() {
+        String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "mylib", "1.3.0");
+        assertThat(out).contains("mylib   = \"com.acme:mylib:1.3.0\"");
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.MAIN))
+                .filteredOn(d -> d.library().equals("mylib"))
+                .singleElement()
+                .satisfies(d -> {
+                    assertThat(d.module()).isEqualTo("com.acme:mylib");
+                    assertThat(d.version()).isEqualTo(VersionSelector.parse("1.3.0"));
+                });
+    }
+
+    @Test
+    void set_version_rewrites_only_the_version_pair_of_an_inline_table() {
+        String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "guava", "33.5.0-jre");
+        assertThat(out)
+                .contains(
+                        "guava   = { group = \"com.google.guava\", version = \"33.5.0-jre\", optional = true } # big");
+    }
+
+    @Test
+    void set_version_accepts_a_literal_string_value_in_another_scope() {
+        String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.TEST, "junit-jupiter", "5.12.0");
+        assertThat(out).contains("junit-jupiter = { group = \"org.junit.jupiter\", version = \"5.12.0\" }");
+        assertThat(out).contains("picocli = \"4.7.6\"");
+    }
+
+    @Test
+    void set_version_keeps_a_floating_spelling_the_caller_asks_for() {
+        String out = JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "picocli", "^4.8");
+        assertThat(out).contains("picocli = \"^4.8\"");
+    }
+
+    @Test
+    void set_version_refuses_entries_without_a_version() {
+        assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "web", "1.0"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("platform-managed");
+        assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "util", "1.0"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("path or git");
+        assertThatThrownBy(() -> JkBuildEditor.setDependencyVersion(PINNED, Scope.MAIN, "absent", "1.0"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("not found");
+    }
+
+    @Test
+    void set_workspace_dependency_version_rewrites_the_shared_table() {
+        String ws = BASE + """
+
+                [workspace]
+                modules = ["a"]
+
+                [workspace.dependencies]
+                jupiter = "org.junit.jupiter:junit-jupiter:6.0.0"
+                assertj = { group = "org.assertj", name = "assertj-core", version = "3.27.0" }
+                """;
+        String out = JkBuildEditor.setWorkspaceDependencyVersion(ws, "jupiter", "6.1.0");
+        out = JkBuildEditor.setWorkspaceDependencyVersion(out, "assertj", "3.27.7");
+        assertThat(out).contains("jupiter = \"org.junit.jupiter:junit-jupiter:6.1.0\"");
+        assertThat(out).contains("version = \"3.27.7\"");
+        var deps = workspaceOf(JkBuildParser.parse(out)).dependencies();
+        assertThat(Objects.requireNonNull(deps.get("jupiter")).version()).isEqualTo(VersionSelector.parse("6.1.0"));
+        assertThat(Objects.requireNonNull(deps.get("assertj")).version()).isEqualTo(VersionSelector.parse("3.27.7"));
     }
 }
