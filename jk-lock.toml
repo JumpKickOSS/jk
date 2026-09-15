@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.6"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "725377658097ab2aab57ab8a18f66c2e10d8a53e7bfb6de9db07ef640ab45201"
+manifests-sha256 = "84df6e6724d9952d7f5cacdea75a49e7f1f53b701f02cc8a0a4d4b04c3d0d6e6"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -1127,9 +1127,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.antlr:antlr4-runtime:jar:"
-version  = "4.13.2"
+version  = "4.11.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dd3e8a13a2d669bf84fb8d834de35ce4875f27157698d206241ec8488aadcaf7"
+checksum = "sha256:e06c6553c1ccc14d36052ec4b0fc6f13b808cf957b5b1dc3f61bf401996ada59"
 scopes   = ["main"]
 
 [[artifact]]
@@ -2427,7 +2427,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:383b7c66966c42ee4913ec977a7b6573631866bddc5318ec4a6215b688dd0d6c"
 scopes   = ["main"]
 deps = [
-  "org.antlr:antlr4-runtime:jar:@4.13.2 <- 4.11.1",
+  "org.antlr:antlr4-runtime:jar:@4.11.1 <- 4.11.1",
   "org.checkerframework:checker-qual:jar:@4.2.3 <- 3.21.2",
 ]
 
