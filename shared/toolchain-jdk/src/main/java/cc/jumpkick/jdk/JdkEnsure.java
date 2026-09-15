@@ -141,25 +141,7 @@ public final class JdkEnsure {
             throws IOException, InterruptedException {
         JdkRegistry registry = sharedRegistry(jdksDirOverride);
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
-        int latestLts = JdkLts.OFFLINE_LATEST_LTS;
-
-        // Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version /
-        // jk-lock.toml / project.jdk / project.java-floor / default / env / PATH).
-        // The environment is the request's, never this process's: the engine is a daemon, so
-        // System.getenv here would answer from whichever shell started it.
-        Function<String, @Nullable String> env =
-                projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
-        JdkResolution.Request req = new JdkResolution.Request(
-                projectDir,
-                SessionContext.current().jdkSpec(),
-                // null: the client folded JK_JDK into the switch tier before sending, and a
-                // read here would be the daemon's environment.
-                null,
-                lockJdk,
-                (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
-                javaRelease,
-                env::apply);
-        JdkResolution.Resolved r = JdkResolution.resolve(req, registry, defaults, latestLts);
+        JdkResolution.Resolved r = resolve(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
 
         if (r.jdkOpt().isPresent()) {
             return new Outcome(r.jdk(), mapSource(r.tier()), r.specUsed());
@@ -191,6 +173,54 @@ public final class JdkEnsure {
         return new Outcome(installed, Source.INSTALLED, spec);
     }
 
+    /**
+     * The spec {@link #ensure} would download for this project, or empty when resolution lands on
+     * a JDK already on disk (or on nothing at all). The client's pre-flight asks this before the
+     * build request goes out, so an install that is needed renders on the terminal the user is
+     * looking at and an install that is not costs one resolution walk and no output.
+     */
+    public static Optional<String> pendingInstall(
+            Path projectDir,
+            @Nullable Path jdksDirOverride,
+            @Nullable String projectJdkSpec,
+            int javaRelease,
+            @Nullable JdkPin lockJdk) {
+        JdkRegistry registry = sharedRegistry(jdksDirOverride);
+        JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
+        JdkResolution.Resolved r = resolve(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
+        if (r.jdkOpt().isPresent() || !r.wouldInstall()) return Optional.empty();
+        return Optional.ofNullable(r.installSpec());
+    }
+
+    /**
+     * Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version / jk-lock.toml /
+     * project.jdk / project.java-floor / default / env / PATH).
+     */
+    private static JdkResolution.Resolved resolve(
+            Path projectDir,
+            JdkRegistry registry,
+            JdkInventory defaults,
+            @Nullable String projectJdkSpec,
+            int javaRelease,
+            @Nullable JdkPin lockJdk) {
+        int latestLts = JdkLts.OFFLINE_LATEST_LTS;
+        // The environment is the request's, never this process's: the engine is a daemon, so
+        // System.getenv here would answer from whichever shell started it.
+        Function<String, @Nullable String> env =
+                projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
+        JdkResolution.Request req = new JdkResolution.Request(
+                projectDir,
+                SessionContext.current().jdkSpec(),
+                // null: the client folded JK_JDK into the switch tier before sending, and a
+                // read here would be the daemon's environment.
+                null,
+                lockJdk,
+                (projectJdkSpec == null || projectJdkSpec.isEmpty()) ? null : projectJdkSpec,
+                javaRelease,
+                env::apply);
+        return JdkResolution.resolve(req, registry, defaults, latestLts);
+    }
+
     /** Map a resolution tier to the coarse {@link Source} used for status wording. */
     private static Source mapSource(JdkResolution.Tier tier) {
         return tier == JdkResolution.Tier.LOCKFILE ? Source.LOCKFILE_INSTALL : Source.ALREADY_PINNED;
@@ -202,8 +232,14 @@ public final class JdkEnsure {
      * floor without consulting (or disturbing) the user's project pins and global default.
      */
     public static InstalledJdk install(String spec, Consumer<String> warn) throws IOException, InterruptedException {
+        return install(spec, warn, JdkInstallListener.NO_OP);
+    }
+
+    /** As {@link #install(String, Consumer)} with a progress sink for the download and extract. */
+    public static InstalledJdk install(String spec, Consumer<String> warn, JdkInstallListener progress)
+            throws IOException, InterruptedException {
         // The shared instance, so the install refreshes the memo every later ensure resolves against.
-        return install(spec, sharedRegistry(null), warn, JdkInstallListener.NO_OP);
+        return install(spec, sharedRegistry(null), warn, progress);
     }
 
     /**

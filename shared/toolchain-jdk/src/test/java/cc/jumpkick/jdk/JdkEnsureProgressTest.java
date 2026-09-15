@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.runtime;
+package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import java.util.ArrayList;
@@ -12,12 +11,12 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-class EnsureJdkProgressTest {
+class JdkEnsureProgressTest {
 
     @Test
     void labels_download_then_install_and_skips_same_percent() {
         RecordingCtx ctx = new RecordingCtx();
-        PlannerSetup.EnsureJdkProgress p = new PlannerSetup.EnsureJdkProgress(ctx);
+        JdkEnsureProgress p = new JdkEnsureProgress(ctx);
         p.onDownloadStart("Temurin 25", 200);
         p.onDownloadProgress(50, 200);
         p.onDownloadProgress(51, 200); // floor: 50/200 and 51/200 are both 25% — one label
@@ -35,7 +34,7 @@ class EnsureJdkProgressTest {
     @Test
     void unknown_size_emits_one_bar_less_label() {
         RecordingCtx ctx = new RecordingCtx();
-        PlannerSetup.EnsureJdkProgress p = new PlannerSetup.EnsureJdkProgress(ctx);
+        JdkEnsureProgress p = new JdkEnsureProgress(ctx);
         p.onDownloadStart("Temurin 25", 0);
         p.onDownloadProgress(1024, 0);
         p.onDownloadProgress(4096, 0);
