@@ -272,6 +272,17 @@ try {
     if ($null -eq $archName) { throw "Get-OsArchitectureName returned null instead of a string" }
     if ((Get-JkTarget -ArchName $archName -ProcessorArchitecture "AMD64") -cne "windows-x86_64") { throw "the probed architecture did not map on an AMD64 host" }
 
+    # ---- a native program's stderr is read as text, not raised, even under Stop ---------------
+    Import-InstallerFunction "Invoke-NativeLines"
+    $ErrorActionPreference = "Stop"
+    $stderrLines = if ($env:OS -eq "Windows_NT") {
+        @(Invoke-NativeLines "cmd" @("/c", "echo to-stderr 1>&2 & echo to-stdout"))
+    } else {
+        @(Invoke-NativeLines "sh" @("-c", "echo to-stderr 1>&2; echo to-stdout"))
+    }
+    if (($stderrLines -join "|") -notmatch "to-stderr" -or ($stderrLines -join "|") -notmatch "to-stdout") { throw "Invoke-NativeLines lost a stream: $($stderrLines -join ' | ')" }
+    foreach ($l in $stderrLines) { if ($l -isnot [string]) { throw "Invoke-NativeLines returned a $($l.GetType().Name) instead of a string" } }
+
     # ---- a version's manifest says which clients it publishes ------------------------------
     Import-InstallerFunction "Get-StrictManifestHash"
     Import-InstallerFunction "Test-ManifestLists"
