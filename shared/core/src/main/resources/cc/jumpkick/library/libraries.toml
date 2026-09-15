@@ -9,8 +9,8 @@
 #     [dependencies]
 #     jackson-databind = "2.18.2"           # parser resolves via this table
 #
-# Unknown short names fall back to the structured form
-# `{ group = "...", version = "..." }`. Workspace-defined libraries in
+# A name that is not here takes the coordinate instead: `"group:artifact:1.2.3"`
+# or `{ group = "...", version = "..." }`. Workspace-defined libraries in
 # `[workspace.dependencies]` take precedence over the bundled list.
 #
 # Versions are deliberately NOT pinned here — that's the user's call per

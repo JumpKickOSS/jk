@@ -47,8 +47,9 @@ Change the shape in place — never mint a v2 and keep v1 alive.
 - Client/engine split: thin native client, heavy work in a capped engine process.
 - **Newest stable by default** — examples, scaffolds, and fixtures prefer the **latest stable**
   of libraries, language features, and platforms unless a test/scenario explicitly needs an
-  older line. Use `jk update` to re-lock within declared ranges; do not freeze mid-LTS
-  library stacks out of habit.
+  older line. A written version is an exact pin, so "newest" is a write-time choice: `jk add`
+  and `jk new` write today's number, and `jk update` rewrites declared pins on the same major
+  (`--major` to cross one). Do not freeze mid-LTS library stacks out of habit.
 
 ## `java =` vs `jdk =` (toolchain philosophy)
 

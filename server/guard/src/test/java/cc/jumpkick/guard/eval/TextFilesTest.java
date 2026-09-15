@@ -28,6 +28,15 @@ class TextFilesTest {
                 .containsExactly("src/Small.java", "src/at-cap.txt");
     }
 
+    /** A linked git worktree has a {@code .git} pointer file where a checkout has a directory. */
+    @Test
+    void a_git_pointer_file_is_outside_the_corpus_like_the_directory(@TempDir Path root) throws IOException {
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Small.java"), "class Small {}\n");
+        Files.writeString(root.resolve(".git"), "gitdir: /somewhere/.git/worktrees/JK-0000-branch\n");
+        assertThat(TextFiles.corpus(root)).extracting(TextFiles.Entry::rel).containsExactly("src/Small.java");
+    }
+
     @Test
     void a_nul_byte_marks_a_file_binary_before_it_is_decoded(@TempDir Path root) throws IOException {
         Path text = root.resolve("Ok.java");

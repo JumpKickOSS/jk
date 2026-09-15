@@ -85,6 +85,8 @@ final class TextFiles {
         PathUtil.forEachRegularFile(r, d -> skip(r, d), (p, attrs) -> {
             if (attrs.size() > MAX_BYTES) return;
             String name = p.getFileName().toString();
+            // In a linked worktree `.git` is a pointer file naming the worktree, not a directory.
+            if (SKIP_DIRS.contains(name)) return;
             for (String ext : BINARY_EXT) if (name.endsWith(ext)) return;
             String rel = r.relativize(p.toAbsolutePath().normalize()).toString().replace('\\', '/');
             out.add(new Entry(p, rel, languageOf(name)));
