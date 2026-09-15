@@ -28,9 +28,9 @@ dependencies {
     testImplementation(libs.junit.platform.launcher)
 }
 
-// Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION, like the worker plugins
+// The version is the tree's, read from the root jk.toml like the worker plugins
 // (jk.plugin-conventions): the engine provisions this exact coordinate for a src/guard suite.
-version = "0.13.3"
+version = JkTreeVersion.of(rootProject.projectDir)
 
 // Same destination as the worker jars' `installLocal` (jk.plugin-conventions) and `jk install`:
 // store/repos/jk-local/cc/jumpkick/jk-guards-junit/<ver>/. A project's `src/guard` suite compiles

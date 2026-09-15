@@ -14,10 +14,10 @@ java {
     }
 }
 
-// Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION, like the worker plugins and
-// jk-guards-junit: a project's `[guards] extends` names the pack at the installed jk's version.
+// The version is the tree's, read from the root jk.toml like the worker plugins and jk-guards-junit:
+// a project's `[guards] extends` names the pack at the installed jk's version.
 group = "cc.jumpkick.guards"
-version = "0.13.3"
+version = JkTreeVersion.of(rootProject.projectDir)
 
 // The artifact is the pack's directory name (server/guard/packs/<name>), not the Gradle project name.
 val packArtifact: String = project.projectDir.name

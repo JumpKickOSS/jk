@@ -57,14 +57,14 @@ listOf("testFixturesApiElements", "testFixturesRuntimeElements").forEach { name 
 // every consumer. This module stays a leaf: coordinates and a publication are not a dependency,
 // and the zero-dep rule above is unchanged.
 //
-// It rides jk's release train (`cc.jumpkick.model.JkVersion.VERSION`, the same literal
-// `jk.plugin-conventions` pins), NOT the SPI's independent 0.1.0 line, because :host is the floor
+// It rides jk's release train (the root jk.toml version `cc.jumpkick.model.JkVersion.VERSION`
+// states and `jk.plugin-conventions` reads), NOT the SPI's independent 0.1.0 line, because :host is the floor
 // the engine, the native client and all 16 workers link — jk's own `jk.toml` / `jk-lock.toml`
 // already name it `cc.jumpkick:jk-host` at this version, and the flattened worker POMs resolve it
 // here too. The SDK's version line stays independent: `jk-plugin-sdk` at 0.1.0 simply pins the floor
 // it compiles against. Cost accepted: :host's version is public API from now on.
 group = "cc.jumpkick"
-version = "0.13.3"
+version = JkTreeVersion.of(rootProject.projectDir)
 
 publishing {
     publications {

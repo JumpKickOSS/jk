@@ -7,9 +7,9 @@ plugins {
     id("com.gradleup.shadow") version "9.2.2"
 }
 
-// Must match cc.jumpkick.model.JkVersion.VERSION: the client only spawns an engine jar whose
-// filename version equals its own baked-in version.
-version = "0.13.3"
+// The client only spawns an engine jar whose filename version equals its own baked-in
+// cc.jumpkick.model.JkVersion.VERSION, so the jar is named from the tree's one version source.
+version = JkTreeVersion.of(rootProject.projectDir)
 
 description = "jk build engine: EngineMain, BuildPlan/Task scheduler, and build pipeline. " +
         "Server-only — never links the CLI. Ships as jk-engine-<version>.jar."

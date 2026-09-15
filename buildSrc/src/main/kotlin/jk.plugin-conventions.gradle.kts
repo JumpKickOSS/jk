@@ -16,10 +16,11 @@ plugins {
 /** Copy [src] onto [dest]; skip when dest already has the same bytes. */
 fun copyReplacing(src: File, dest: File) = CopyReplacing.copy(src, dest)
 
-// Coordinates + version must match cc.jumpkick.model.JkVersion.VERSION and the
-// cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>).
+// Coordinates match the cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>);
+// the version is the tree's, read from the root jk.toml, which is the literal
+// cc.jumpkick.model.JkVersion.VERSION bakes into the client that launches these workers.
 group = "cc.jumpkick"
-version = "0.13.3"
+version = JkTreeVersion.of(rootProject.projectDir)
 
 val workerArtifact = "jk-${project.name}"
 
