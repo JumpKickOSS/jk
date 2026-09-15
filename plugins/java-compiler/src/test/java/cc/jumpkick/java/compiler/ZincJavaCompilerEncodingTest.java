@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import sbt.internal.inc.FileAnalysisStore;
@@ -139,8 +138,7 @@ class ZincJavaCompilerEncodingTest {
                     public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) { return false; }
                 }
                 """);
-        int rc = ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", procDir.toString(), src.toString());
-        if (rc != 0) throw new IllegalStateException("fixture javac failed, rc=" + rc);
+        FixtureJavac.compile(procDir, src);
         Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
         Files.createDirectories(services.getParent());
         Files.writeString(services, "noop.NoopProc\n");

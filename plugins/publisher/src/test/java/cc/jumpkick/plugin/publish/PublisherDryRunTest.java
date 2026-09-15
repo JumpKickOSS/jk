@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.publish;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -96,6 +97,10 @@ class PublisherDryRunTest {
                 .contains("pkg:maven/com.example/widget@1.2.3");
         assertThat(Files.readString(spdx)).contains("\"spdxVersion\":\"SPDX-2.3\"");
         String output = buffer.toString(StandardCharsets.UTF_8);
-        assertThat(output).contains("\"written\":[").contains(cdx.toString()).contains(spdx.toString());
+        // JSON quotes the path; a Windows backslash is two chars on the wire.
+        assertThat(output)
+                .contains("\"written\":[")
+                .contains(Jsonl.quote(cdx.toString()))
+                .contains(Jsonl.quote(spdx.toString()));
     }
 }

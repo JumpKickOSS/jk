@@ -15,8 +15,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -246,18 +244,14 @@ class JavaIncrementalCompilerTest {
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
         Path srcDir = outDir.resolve("_src");
         Files.createDirectories(outDir);
-        List<String> files = new ArrayList<>();
+        List<Path> files = new ArrayList<>();
         for (Map.Entry<String, String> e : sources.entrySet()) {
             Path f = srcDir.resolve(e.getKey().replace('.', '/') + ".java");
             Files.createDirectories(f.getParent());
             Files.writeString(f, e.getValue());
-            files.add(f.toString());
+            files.add(f);
         }
-        JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        List<String> args = new ArrayList<>(List.of("-d", outDir.toString()));
-        args.addAll(files);
-        int rc = javac.run(null, null, null, args.toArray(new String[0]));
-        if (rc != 0) throw new IllegalStateException("fixture javac failed, rc=" + rc);
+        FixtureJavac.compile(outDir, files.toArray(Path[]::new));
     }
 
     /** The {@code gen.Gen} annotation + {@code gen.GenProc} processor, ServiceLoader-registered in {@code procDir}. */

@@ -6,7 +6,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * A child process for {@link ToolRunForkTest}: echoes its args, then one environment variable, then
  * optionally whether {@code PATH} survived. Exits 7 when handed {@code --fail}, so a drain that
- * loses the child's status is visible.
+ * loses the child's status is visible. Lines are {@code \n}-terminated so a file redirect is the
+ * same bytes on every OS ({@code println} would write {@code \r\n} on Windows).
  */
 public final class EnvEchoMain {
 
@@ -24,15 +25,21 @@ public final class EnvEchoMain {
             } else if ("--path".equals(arg)) {
                 path = true;
             } else {
-                System.out.println("arg=" + arg);
+                line("arg=" + arg);
             }
         }
         @Nullable String probe = System.getenv(VAR);
-        System.out.println("env=" + (probe == null ? "<unset>" : probe));
+        line("env=" + (probe == null ? "<unset>" : probe));
         if (path) {
             @Nullable String p = System.getenv("PATH");
-            System.out.println("path=" + (p == null || p.isEmpty() ? "<unset>" : "present"));
+            line("path=" + (p == null || p.isEmpty() ? "<unset>" : "present"));
         }
         if (fail) System.exit(7);
+    }
+
+    /** One LF-terminated line; not {@code println}, which follows {@link System#lineSeparator()}. */
+    private static void line(String text) {
+        System.out.print(text);
+        System.out.print('\n');
     }
 }

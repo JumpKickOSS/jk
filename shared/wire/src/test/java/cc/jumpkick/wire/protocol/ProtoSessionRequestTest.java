@@ -8,6 +8,7 @@ import cc.jumpkick.config.DebugJvm;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
@@ -23,9 +24,13 @@ import org.junit.jupiter.api.Test;
  */
 class ProtoSessionRequestTest {
 
-    private static final String DIR = "/w/app";
-    private static final String CACHE = "/w/cache";
-    private static final String JDKS = "/w/jdks";
+    /** Under the user home — never a drive root or {@code /tmp}. */
+    private static final Path FIXTURE = PathUtil.userHome().resolve(".jk-test").resolve("proto-session");
+
+    private static final String DIR = FIXTURE.resolve("app").toString();
+    private static final String CACHE = FIXTURE.resolve("cache").toString();
+    private static final String JDKS = FIXTURE.resolve("jdks").toString();
+    private static final String GRAAL = FIXTURE.resolve("graal-25").toString();
     private static final TestSelection SELECTION = TestSelection.DEFAULT.withIncludeTags(List.of("integration"));
     private static final PluginTuning TUNING = new PluginTuning(60.0, "G1", null, List.of("-Xss2m"));
 
@@ -39,7 +44,7 @@ class ProtoSessionRequestTest {
                 ProtoSession.withSession(line, "release", Map.of("SIGNING_KEY", "k"), TUNING, rebuild),
                 "temurin-21",
                 "graal-25",
-                "/opt/graal-25");
+                GRAAL);
     }
 
     /**
@@ -87,7 +92,7 @@ class ProtoSessionRequestTest {
     @Test
     void the_session_carries_every_knob_the_line_does() {
         Session s = ProtoSession.sessionOf(buildLine(), TOKEN);
-        assertThat(s.workingDir()).isEqualTo(Path.of(DIR));
+        assertThat(s.workingDir()).isEqualTo(Path.of(DIR).toAbsolutePath().normalize());
         assertThat(s.cacheDir()).isEqualTo(Path.of(CACHE));
         assertThat(s.jdksDir()).isEqualTo(Path.of(JDKS));
         assertThat(s.requestedTestWorkers()).isEqualTo(3);
@@ -100,7 +105,7 @@ class ProtoSessionRequestTest {
         assertThat(s.jvm()).isEqualTo(TUNING);
         assertThat(s.jdkSpec()).isEqualTo("temurin-21");
         assertThat(s.graalSpec()).isEqualTo("graal-25");
-        assertThat(s.graalHome()).isEqualTo(Path.of("/opt/graal-25"));
+        assertThat(s.graalHome()).isEqualTo(Path.of(GRAAL));
         assertThat(s.cancel()).isSameAs(TOKEN);
     }
 
@@ -172,14 +177,14 @@ class ProtoSessionRequestTest {
     @Test
     void a_request_without_a_cache_field_falls_back_to_the_engine_cache() {
         // A read-only request may carry no cache path; that means "the engine's own", not null.
-        String request = new ProjectInfoRequest("/tmp/whatever", null, null, false, false).encode();
+        String request = new ProjectInfoRequest(DIR, null, null, false, false).encode();
         assertThat(request).doesNotContain("\"cache\"");
         assertThat(ProtoSession.sessionOf(request, TOKEN).cacheDir()).isEqualTo(JkDirs.cache());
     }
 
     @Test
     void a_request_that_carries_a_cache_still_wins() {
-        String request = new OutdatedRequest("/tmp/whatever", "/tmp/cachedir", null, false, false).encode();
-        assertThat(ProtoSession.sessionOf(request, TOKEN).cacheDir()).isEqualTo(Path.of("/tmp/cachedir"));
+        String request = new OutdatedRequest(DIR, CACHE, null, false, false).encode();
+        assertThat(ProtoSession.sessionOf(request, TOKEN).cacheDir()).isEqualTo(Path.of(CACHE));
     }
 }

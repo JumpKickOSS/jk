@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -124,8 +123,7 @@ class ZincProcessorLoaderCacheTest {
                     }
                 }
                 """);
-        int rc = ToolProvider.getSystemJavaCompiler().run(null, null, null, "-d", procDir.toString(), src.toString());
-        if (rc != 0) throw new IllegalStateException("fixture javac failed, rc=" + rc);
+        FixtureJavac.compile(procDir, src);
         Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
         Files.createDirectories(services.getParent());
         Files.writeString(services, "gen.GenProc\n");
