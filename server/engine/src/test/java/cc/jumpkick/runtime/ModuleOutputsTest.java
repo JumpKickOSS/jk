@@ -4,8 +4,11 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.BuildStamps;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.IoLedger;
@@ -140,5 +143,49 @@ class ModuleOutputsTest {
         Files.writeString(classes.resolve("cc/jumpkick/only/dirs/notes.txt"), "not a class");
         assertThat(ModuleOutputs.classesDirHasContent(classes)).isFalse();
         assertThat(ModuleOutputs.classesDirHasContent(dir.resolve("absent"))).isFalse();
+    }
+
+    /**
+     * The test view a tests-enabled build leaves: absent test classes for a module with tests, or
+     * an absent fixtures tree for a module whose fixtures root holds sources, each read as a
+     * missing output; a module with neither asks for nothing.
+     */
+    @Test
+    void the_test_view_is_missing_when_its_trees_are_empty_and_something_would_fill_them(@TempDir Path root)
+            throws Exception {
+        Path lib = Files.createDirectories(root.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "lib"
+                version = "1.0.0"
+                java    = 25
+
+                [test]
+                fixtures = true
+                """);
+        JkBuild build = JkBuildParser.parse(lib.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(root, lib, build);
+
+        assertThat(ModuleOutputs.testViewMissing(layout, build, lib, () -> true))
+                .as("a module with tests and no test classes on disk")
+                .isTrue();
+        assertThat(ModuleOutputs.testViewMissing(layout, build, lib, () -> false))
+                .as("fixtures declared but the root holds no sources: nothing to restore")
+                .isFalse();
+
+        Files.createDirectories(lib.resolve("src/fixtures/java/com/example"));
+        Files.writeString(lib.resolve("src/fixtures/java/com/example/Fx.java"), "package com.example; class Fx {}");
+        assertThat(ModuleOutputs.testViewMissing(layout, build, lib, () -> false))
+                .as("fixture sources with no fixtures tree")
+                .isTrue();
+
+        Path fixtures = Files.createDirectories(layout.testFixturesClassesDir().resolve("com/example"));
+        Files.writeString(fixtures.resolve("Fx.class"), "x");
+        Path tests = Files.createDirectories(layout.testClassesDir().resolve("com/example"));
+        Files.writeString(tests.resolve("LibTest.class"), "x");
+        assertThat(ModuleOutputs.testViewMissing(layout, build, lib, () -> {
+                    throw new AssertionError("a present test classes tree is not held against the sources");
+                }))
+                .isFalse();
     }
 }

@@ -280,9 +280,16 @@ public final class PreflightMemo {
                 fps.put(dir, row.fp());
                 if (row.dirty()) {
                     dirty.add(dir);
-                } else if (ModuleOutputs.packageOutputsMissing(root, dir, u.manifest(), actionCache)) {
-                    // Inputs still match — missing jars/classes need action-cache restore, not
-                    // a memo miss that forces a full TaskForecaster rebuild wall.
+                } else if (ModuleOutputs.packageOutputsMissing(root, dir, u.manifest(), actionCache)
+                        || (!skipTests
+                                && ModuleOutputs.testViewMissing(
+                                        BuildLayout.of(root, dir, u.manifest()),
+                                        u.manifest(),
+                                        dir,
+                                        () -> ModuleOutputs.hasSelectedTestSources(u.manifest(), dir)))) {
+                    // Inputs still match — missing jars, classes or the test view a tests-enabled
+                    // build leaves need an action-cache restore, not a memo miss that forces a
+                    // full TaskForecaster rebuild wall.
                     restoreNeeded.add(dir);
                 }
             }

@@ -143,6 +143,20 @@ final class WorkspaceRunPhase {
         return null;
     }
 
+    /**
+     * The step a failed plan stopped at: the first diagnosed error's step, else the first step
+     * reported failed. Empty when the plan failed without either — nothing to name.
+     */
+    static Optional<String> failedStep(BuildPlanResult result) {
+        for (BuildPlanResult.Diagnostic error : result.errors()) {
+            if (!error.step().isBlank()) return Optional.of(error.step());
+        }
+        for (BuildPlanResult.StepReport step : result.steps()) {
+            if (step.status() == TaskStatus.FAIL) return Optional.of(step.name());
+        }
+        return Optional.empty();
+    }
+
     /** Return a failing outcome only when fail-fast policy should stop admission. */
     static @Nullable ModuleOutcome stoppingFailure(boolean keepGoing, ModuleOutcome outcome) {
         return !outcome.success() && !keepGoing ? outcome : null;
@@ -167,7 +181,7 @@ final class WorkspaceRunPhase {
         watchArtifactSteps(module.plan(), testClassesConsumed, () -> siblings.published(module.dir()));
         long started = clock.nanos();
         try {
-            return runPlan(module, listener, clock, started);
+            return runPlan(module, listener, siblings, clock, started);
         } finally {
             siblings.completed(module.dir());
             // Completion admits the dependents when the signal never fired; the consumers' memo
@@ -177,9 +191,12 @@ final class WorkspaceRunPhase {
     }
 
     private static ModuleOutcome runPlan(
-            ModulePlan module, WorkspaceBuildListener listener, Clock clock, long started) {
+            ModulePlan module, WorkspaceBuildListener listener, SiblingArtifacts siblings, Clock clock, long started) {
         try {
             BuildPlanResult result = EffortWeights.withOverReserveTails(module.plan()::run);
+            // Recorded before completion publishes: a dependent that finds this module's output
+            // absent then names the step that failed to produce it.
+            if (!result.success()) failedStep(result).ifPresent(step -> siblings.failed(module.coord(), step));
             long millis = (clock.nanos() - started) / 1_000_000;
             boolean cancelled = result.userCancelled() || SessionCancel.cancelled();
             int exit = result.success() && !cancelled ? 0 : NativePlans.failureExitCode(module.plan(), result);

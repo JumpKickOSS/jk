@@ -8,6 +8,7 @@ import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,7 +30,8 @@ import org.jspecify.annotations.NullMarked;
  *
  * <p>A sibling this build does not schedule has its outputs on disk already and is ready from the
  * start. One that fails publishes on completion, and the waiting step then names the missing jar
- * itself, which is the accurate failure. A cancelled session ends the wait at once.
+ * itself and the step the sibling failed at, which is the accurate failure. A cancelled session
+ * ends the wait at once.
  */
 @NullMarked
 public final class SiblingArtifacts {
@@ -45,6 +47,16 @@ public final class SiblingArtifacts {
          * or as soon as {@code cancelled} answers true.
          */
         void awaitArtifacts(BooleanSupplier cancelled) throws InterruptedException;
+
+        /**
+         * The step the sibling with coordinate {@code coord} failed at this build, when its plan
+         * failed; empty for a sibling that succeeded, was not scheduled, or is unknown to the
+         * schedule. What lets a waiting step say "failed at compile-test-fixtures" instead of
+         * "not built".
+         */
+        default Optional<String> failedStep(String coord) {
+            return Optional.empty();
+        }
     }
 
     /** The gate of a plan outside a workspace schedule: nothing to wait for. */
@@ -52,6 +64,7 @@ public final class SiblingArtifacts {
 
     private final Map<Path, Set<Path>> prereqs;
     private final Map<Path, CompletableFuture<Void>> published = new ConcurrentHashMap<>();
+    private final Map<String, String> failedSteps = new ConcurrentHashMap<>();
 
     /**
      * @param edges the module graph, unit dir to the dirs that must build before it
@@ -108,25 +121,42 @@ public final class SiblingArtifacts {
         published(dir);
     }
 
+    /**
+     * The module with coordinate {@code coord} failed at {@code step}. Recorded before completion
+     * publishes, so a dependent that then finds the output absent names the step rather than
+     * "not built".
+     */
+    public void failed(String coord, String step) {
+        failedSteps.put(coord, step);
+    }
+
     /** The gate for the module at {@code dir}. */
     public Gate gateFor(Path dir) {
         Set<Path> waitOn = prereqs.getOrDefault(dir, Set.of());
         if (waitOn.isEmpty()) return NONE;
-        return cancelled -> {
-            for (Path prereq : waitOn) {
-                CompletableFuture<Void> f = published.get(prereq);
-                if (f == null) continue; // not scheduled this build: its outputs are on disk
-                while (!f.isDone()) {
-                    if (cancelled.getAsBoolean()) return;
-                    try {
-                        f.get(POLL_MS, TimeUnit.MILLISECONDS);
-                    } catch (TimeoutException stillPackaging) {
-                        // re-check the cancel, then keep waiting
-                    } catch (ExecutionException never) {
-                        // the future only ever completes normally
-                        return;
+        return new Gate() {
+            @Override
+            public void awaitArtifacts(BooleanSupplier cancelled) throws InterruptedException {
+                for (Path prereq : waitOn) {
+                    CompletableFuture<Void> f = published.get(prereq);
+                    if (f == null) continue; // not scheduled this build: its outputs are on disk
+                    while (!f.isDone()) {
+                        if (cancelled.getAsBoolean()) return;
+                        try {
+                            f.get(POLL_MS, TimeUnit.MILLISECONDS);
+                        } catch (TimeoutException stillPackaging) {
+                            // re-check the cancel, then keep waiting
+                        } catch (ExecutionException never) {
+                            // the future only ever completes normally
+                            return;
+                        }
                     }
                 }
+            }
+
+            @Override
+            public Optional<String> failedStep(String coord) {
+                return Optional.ofNullable(failedSteps.get(coord));
             }
         };
     }

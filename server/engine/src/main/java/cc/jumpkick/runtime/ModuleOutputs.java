@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
@@ -14,6 +15,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -56,6 +58,42 @@ public final class ModuleOutputs {
         if (build.assembly() && !Files.isRegularFile(layout.assemblyJar())) return true;
         if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build)) return true;
         return false;
+    }
+
+    /**
+     * True when this module's test view is absent while its inputs are unchanged: an empty test
+     * classes tree for a module with test sources, or an empty fixtures tree for a module whose
+     * declared fixtures root holds sources. The test view is an output of a tests-enabled build as
+     * much as the jar is — the module's own suite runs from it, and a sibling's {@code fixtures =
+     * true} or {@code kind = "tests"} edge compiles against it — so a build whose records all hit
+     * still schedules the module to restore it, or the sibling that reads it is admitted against a
+     * tree nothing produces. A {@code --skip-tests} build produces no test view and asks this
+     * nothing.
+     *
+     * @param hasTests whether the module has test sources under the session's suite selection;
+     *     asked only when the test classes tree is empty, because answering may walk the sources
+     */
+    public static boolean testViewMissing(BuildLayout layout, JkBuild build, Path moduleDir, BooleanSupplier hasTests) {
+        if (!classesDirHasContent(layout.testClassesDir()) && hasTests.getAsBoolean()) return true;
+        return PlannerFixtures.declared(build)
+                && !PlannerFixtures.forecastSources(build, moduleDir).isEmpty()
+                && !classesDirHasContent(layout.testFixturesClassesDir());
+    }
+
+    /** Whether the module has test sources under the session's suite selection; an unreadable tree reads as none. */
+    public static boolean hasSelectedTestSources(JkBuild build, Path moduleDir) {
+        boolean compact = CompileSupport.isSimpleLayout(build.project(), moduleDir);
+        try {
+            return !PlannerTest.TestSources.collect(
+                            build,
+                            moduleDir,
+                            compact,
+                            TestSupport.selectedSuites(
+                                    moduleDir, compact, SessionContext.current().testSelection()))
+                    .isEmpty();
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /**

@@ -1088,12 +1088,17 @@ final class ModuleForecast {
                         || (!PackagingKeys.packageResourceRoots(dir, compact).isEmpty()
                                 && !TaskForecaster.classesDirHasContent(layout.classesDir()));
             }
-            if (outputsAbsent) {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.RESTORE_OUTPUTS,
-                        TaskForecast.Status.RUN,
-                        incomplete ? "restore from cache · classes tree incomplete" : "restore from cache",
-                        null));
+            // The test view is an output of a tests-enabled build too: this module's suite runs
+            // from it and a sibling's fixtures = true or kind = "tests" edge compiles against it,
+            // yet --skip-tests leaves it unproduced while the main outputs are current. A build
+            // that runs tests restores it, or the sibling that reads it is admitted against a
+            // tree nothing produces.
+            boolean testViewAbsent = !skipTests && ModuleOutputs.testViewMissing(layout, project, dir, () -> haveTests);
+            if (outputsAbsent || testViewAbsent) {
+                String why = incomplete
+                        ? "restore from cache · classes tree incomplete"
+                        : outputsAbsent ? "restore from cache" : "restore from cache · test view absent";
+                steps.add(new TaskForecast.Task(TaskNames.RESTORE_OUTPUTS, TaskForecast.Status.RUN, why, null));
             }
         }
     }

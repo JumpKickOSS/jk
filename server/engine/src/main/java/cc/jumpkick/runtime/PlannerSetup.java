@@ -37,12 +37,14 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -401,11 +403,11 @@ public final class PlannerSetup {
         JkBuild project = ctx.require(PROJECT);
         WorkspaceClasspath.Result mainSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN));
-        requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ");
+        requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ", in.siblings());
         if (!PlannerResources.skipJUnit(in)) {
             WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
                     in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
-            requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ");
+            requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ", in.siblings());
         }
     }
 
@@ -421,12 +423,29 @@ public final class PlannerSetup {
     }
 
     /** The runtime-view guard: {@code missingSiblingJars} names each jar, test output or fixtures dir absent. */
-    private static void requireSiblingsBuilt(TaskContext ctx, WorkspaceClasspath.Result siblings, String prefix) {
+    private static void requireSiblingsBuilt(
+            TaskContext ctx, WorkspaceClasspath.Result siblings, String prefix, SiblingArtifacts.Gate gate) {
         if (siblings.missingSiblingJars().isEmpty()) return;
         for (String missing : siblings.missingSiblingJars()) {
-            ctx.error("workspace", prefix + missing);
+            ctx.error("workspace", missingSiblingMessage(prefix, missing, gate));
         }
         throw new RuntimeException("missing workspace siblings");
+    }
+
+    /**
+     * The line for one absent sibling output. Every label leads with the sibling's coordinate; a
+     * sibling whose plan failed this build is named with the step it failed at — the cause —
+     * rather than as "not built", which is kept for a sibling this build did not run or that
+     * finished without producing the output.
+     */
+    static String missingSiblingMessage(String prefix, String missing, SiblingArtifacts.Gate gate) {
+        int space = missing.indexOf(' ');
+        String coord = space < 0 ? missing : missing.substring(0, space);
+        Optional<String> step = gate.failedStep(coord);
+        if (step.isEmpty()) return prefix + missing;
+        String subject = prefix.startsWith("test ") ? "test sibling " : "sibling ";
+        return subject + coord + " failed at " + step.get() + " — "
+                + missing.substring(coord.length()).trim();
     }
 
     static Task ensureJdkStep(BuildPlanner.Ctx cx) {

@@ -113,4 +113,19 @@ class SiblingArtifactsTest {
         assertThat(siblings.gateFor(CORE)).isSameAs(SiblingArtifacts.NONE);
         assertThat(SiblingArtifacts.none().gateFor(APP)).isSameAs(SiblingArtifacts.NONE);
     }
+
+    @Test
+    void a_recorded_failure_is_readable_through_a_dependents_gate_by_coordinate() {
+        SiblingArtifacts siblings = new SiblingArtifacts(EDGES, List.of(CORE, LIB, APP));
+        siblings.failed("ex:lib", "compile-test-fixtures");
+
+        SiblingArtifacts.Gate app = siblings.gateFor(APP);
+        assertThat(app.failedStep("ex:lib")).contains("compile-test-fixtures");
+        assertThat(app.failedStep("ex:core"))
+                .as("a sibling that did not fail names no step")
+                .isEmpty();
+        assertThat(SiblingArtifacts.NONE.failedStep("ex:lib"))
+                .as("outside a schedule nothing failed")
+                .isEmpty();
+    }
 }

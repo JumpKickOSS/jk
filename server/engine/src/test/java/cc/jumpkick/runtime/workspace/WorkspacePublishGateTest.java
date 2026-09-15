@@ -10,11 +10,14 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.BuildGraph;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -299,5 +302,42 @@ class WorkspacePublishGateTest {
                 .dependencies(dependencies)
                 .build();
         return new BuildGraph.BuildUnit(WS.resolve(name), manifest, "ex:" + name, BuildGraph.Origin.MODULE);
+    }
+
+    /** What a dependent names when it finds this module's output absent: the step that failed. */
+    @Test
+    void the_failed_step_is_the_diagnosed_one_else_the_first_step_reported_failed() {
+        BuildPlanResult diagnosed = new BuildPlanResult(
+                "lib",
+                false,
+                Duration.ZERO,
+                List.of(new BuildPlanResult.StepReport(
+                        TaskNames.COMPILE_TEST_FIXTURES, TaskStatus.FAIL, Duration.ZERO)),
+                List.of(),
+                List.of(new BuildPlanResult.Diagnostic(TaskNames.COMPILE_TEST_FIXTURES, "javac", "cannot find symbol")),
+                false);
+        assertThat(WorkspaceRunPhase.failedStep(diagnosed)).contains(TaskNames.COMPILE_TEST_FIXTURES);
+
+        BuildPlanResult reportedOnly = new BuildPlanResult(
+                "lib",
+                false,
+                Duration.ZERO,
+                List.of(
+                        new BuildPlanResult.StepReport(TaskNames.COMPILE_JAVA, TaskStatus.SUCCESS, Duration.ZERO),
+                        new BuildPlanResult.StepReport(TaskNames.PACKAGE_JAR, TaskStatus.FAIL, Duration.ZERO)),
+                List.of(),
+                List.of(),
+                false);
+        assertThat(WorkspaceRunPhase.failedStep(reportedOnly)).contains(TaskNames.PACKAGE_JAR);
+
+        BuildPlanResult green = new BuildPlanResult(
+                "lib",
+                true,
+                Duration.ZERO,
+                List.of(new BuildPlanResult.StepReport(TaskNames.PACKAGE_JAR, TaskStatus.SUCCESS, Duration.ZERO)),
+                List.of(),
+                List.of(),
+                false);
+        assertThat(WorkspaceRunPhase.failedStep(green)).isEmpty();
     }
 }
