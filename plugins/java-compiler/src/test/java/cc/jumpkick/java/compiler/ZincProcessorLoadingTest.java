@@ -9,7 +9,6 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import javax.annotation.processing.Processor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -53,9 +52,9 @@ class ZincProcessorLoadingTest {
     /** A do-nothing processor, ServiceLoader-registered in {@code procDir}. */
     private static Path writeNoopProcessor(Path procDir) throws Exception {
         Files.createDirectories(procDir);
-        Path src = procDir.resolve("noop/NoopProc.java");
+        Path src = procDir.resolve("_src/noop/NoopProc.java");
         Files.createDirectories(src.getParent());
-        for (Map.Entry<String, String> e : Map.of("noop/NoopProc.java", """
+        Files.writeString(src, """
                 package noop;
                 import javax.annotation.processing.*;
                 import javax.lang.model.SourceVersion;
@@ -66,9 +65,7 @@ class ZincProcessorLoadingTest {
                     public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
                     public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) { return false; }
                 }
-                """).entrySet()) {
-            Files.writeString(procDir.resolve(e.getKey()), e.getValue());
-        }
+                """);
         FixtureJavac.compile(procDir, src);
         Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
         Files.createDirectories(services.getParent());

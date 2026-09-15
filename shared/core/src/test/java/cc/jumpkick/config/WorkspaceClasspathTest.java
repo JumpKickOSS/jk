@@ -328,7 +328,8 @@ class WorkspaceClasspathTest {
         assertThat(result.siblingClosureJars())
                 .allMatch(p -> p.getFileName().toString().endsWith(".jar"));
         // Nothing is built: both views are declared, and each names every sibling's own absence.
-        assertThat(result.missingSiblingClasses()).hasSize(2).allMatch(m -> m.endsWith("classes/main"));
+        assertThat(result.missingSiblingClasses()).hasSize(2).allMatch(m -> m.replace('\\', '/')
+                .endsWith("classes/main"));
         assertThat(result.missingSiblingJars()).hasSize(2).allMatch(m -> m.endsWith(".jar"));
     }
 

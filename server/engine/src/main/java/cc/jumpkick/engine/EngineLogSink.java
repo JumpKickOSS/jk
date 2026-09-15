@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,6 +44,9 @@ public final class EngineLogSink extends OutputStream {
 
     /** Filesystem identity of the file {@link #out} was opened on; {@code null} where the OS has none. */
     private @Nullable Object fileKey;
+
+    /** Creation time of that file; used when {@link #fileKey} is null (Windows). */
+    private @Nullable FileTime created;
 
     /** Bytes in the current file: its size when opened plus everything written since. */
     private long written;
@@ -142,10 +146,10 @@ public final class EngineLogSink extends OutputStream {
 
     /** {@code true} while {@link #log} still names the file {@link #out} is open on. */
     private boolean stillOwnsPath() {
-        if (fileKey == null) return true;
         try {
-            return fileKey.equals(
-                    Files.readAttributes(log, BasicFileAttributes.class).fileKey());
+            BasicFileAttributes attrs = Files.readAttributes(log, BasicFileAttributes.class);
+            if (fileKey != null) return fileKey.equals(attrs.fileKey());
+            return created != null && created.equals(attrs.creationTime());
         } catch (IOException pathGone) {
             return false;
         }
@@ -159,6 +163,7 @@ public final class EngineLogSink extends OutputStream {
                 truncate ? StandardOpenOption.TRUNCATE_EXISTING : StandardOpenOption.APPEND);
         BasicFileAttributes attrs = Files.readAttributes(log, BasicFileAttributes.class);
         fileKey = attrs.fileKey();
+        created = attrs.creationTime();
         written = attrs.size();
     }
 }

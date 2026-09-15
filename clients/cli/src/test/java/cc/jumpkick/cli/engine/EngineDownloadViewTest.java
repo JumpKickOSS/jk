@@ -26,7 +26,7 @@ class EngineDownloadViewTest {
         }));
         assertThat(out)
                 .contains("Engine > Downloading build engine 1.2.3 - working...")
-                .contains("build engine 1.2.3 has been downloaded to /opt/jk/lib/jk-engine/jk-engine-1.2.3.jar");
+                .contains("build engine 1.2.3 has been downloaded to " + JAR.toAbsolutePath());
         assertThat(out.indexOf("Downloading")).isLessThan(out.indexOf("has been downloaded"));
     }
 

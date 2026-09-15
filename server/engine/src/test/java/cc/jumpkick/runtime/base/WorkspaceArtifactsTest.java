@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.layout.BuildLayout;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -42,14 +43,15 @@ class WorkspaceArtifactsTest {
                 enabled = "always"
                 name = "jk"
                 """);
-        Path built = root.resolve("target/clients/cli/jk");
+        String nativeName = BuildLayout.nativeExecutableFileName("jk");
+        Path built = root.resolve("target/clients/cli").resolve(nativeName);
         Files.createDirectories(built.getParent());
         Files.writeString(built, "native client");
 
         Map<Path, Path> links = WorkspaceArtifacts.computeLinks(List.of(cli), root);
-        assertThat(links).containsEntry(built, root.resolve("target/jk"));
+        assertThat(links).containsEntry(built, root.resolve("target").resolve(nativeName));
 
         WorkspaceArtifacts.linkModule(root, cli, links);
-        assertThat(root.resolve("target/jk")).hasContent("native client");
+        assertThat(root.resolve("target").resolve(nativeName)).hasContent("native client");
     }
 }

@@ -35,11 +35,12 @@ class InstallCommandHandoffTest {
 
     @Test
     void a_client_of_another_version_than_the_engine_it_installed_hands_the_pass_to_the_tree_s_client() {
-        String notice = InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), Path.of("/home/u/.jk/bin/jk"));
+        Path client = Path.of("/home/u/.jk/bin/jk");
+        String notice = InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client);
         assertThat(notice)
                 .contains("jk 0.13.6")
                 .contains("this one is jk 0.13.5")
-                .contains("run `/home/u/.jk/bin/jk install` once more");
+                .contains("run `" + client + " install` once more");
         assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), null))
                 .as("no PATH client installed: the pass still belongs to a client of the tree's version")
                 .contains("run `jk install` as jk 0.13.6 once more");

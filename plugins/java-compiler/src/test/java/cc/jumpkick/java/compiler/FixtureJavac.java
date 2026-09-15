@@ -13,7 +13,9 @@ import javax.tools.ToolProvider;
 /**
  * In-process javac for test fixtures. Diagnostics go to a buffer, not {@code System.err}: a test
  * worker merges stderr into the protocol pipe, and javac aborting on that stream is {@code rc=4}.
- * {@code -proc:none} keeps the module's annotation processors off the fixture sources.
+ * {@code -proc:none} keeps the module's annotation processors off the fixture sources. The class
+ * path is only {@code dest}: inheriting the worker classpath made javac treat a {@code gen}
+ * package as a jar and die with {@code invalid header field}.
  */
 final class FixtureJavac {
 
@@ -25,6 +27,8 @@ final class FixtureJavac {
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         List<String> args = new ArrayList<>();
         args.add("-proc:none");
+        args.add("-classpath");
+        args.add(dest.toString());
         args.add("-d");
         args.add(dest.toString());
         for (Path src : sources) args.add(src.toString());

@@ -4,9 +4,11 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolution;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -246,6 +248,10 @@ class JdkPreflightTest {
             Files.createDirectories(home.resolve("bin"));
             Files.writeString(home.resolve("bin/java"), "#!/fake");
             Files.writeString(home.resolve("bin/javac"), "#!/fake");
+            if (Os.isWindows()) {
+                Files.writeString(home.resolve("bin/java.exe"), "fake");
+                Files.writeString(home.resolve("bin/javac.exe"), "fake");
+            }
             String version = dirName.substring(dirName.indexOf('-') + 1);
             Files.writeString(
                     home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
@@ -263,23 +269,18 @@ class JdkPreflightTest {
         for (var m : members.entrySet()) {
             String dir = m.getKey().toAbsolutePath().normalize().toString();
             if (!mods.isEmpty()) mods.append(',');
-            mods.append('"')
-                    .append(dir)
-                    .append("\":\"")
-                    .append(m.getKey().getFileName())
-                    .append('"');
+            mods.append(Jsonl.quote(dir))
+                    .append(':')
+                    .append(Jsonl.quote(m.getKey().getFileName().toString()));
             if (!toolchains.isEmpty()) toolchains.append(',');
-            toolchains
-                    .append('"')
-                    .append(dir)
-                    .append("\":\"")
-                    .append(m.getValue())
-                    .append('"');
+            toolchains.append(Jsonl.quote(dir)).append(':').append(Jsonl.quote(m.getValue()));
         }
-        return ProjectInfo.decode("{\"type\":\"project-info-ack\",\"name\":\"x\",\"jdk\":\"" + jdk
-                + "\",\"javaRelease\":" + javaRelease
+        return ProjectInfo.decode("{\"type\":\"project-info-ack\",\"name\":\"x\",\"jdk\":"
+                + Jsonl.quote(jdk)
+                + ",\"javaRelease\":" + javaRelease
                 + ",\"workspaceRoot\":" + workspaceRoot
-                + ",\"workspaceRootDir\":\"" + root.toAbsolutePath().normalize()
-                + "\",\"modules\":{" + mods + "},\"toolchains\":{" + toolchains + "}}");
+                + ",\"workspaceRootDir\":"
+                + Jsonl.quote(root.toAbsolutePath().normalize().toString())
+                + ",\"modules\":{" + mods + "},\"toolchains\":{" + toolchains + "}}");
     }
 }

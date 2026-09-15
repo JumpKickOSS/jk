@@ -27,8 +27,8 @@ class JUnitLauncherCoverageFlagsTest {
     @Test
     void the_agent_appends_to_the_module_s_one_execution_file() {
         assertThat(AGENT.agentArg())
-                .startsWith("-javaagent:/store/jacocoagent.jar=")
-                .contains("destfile=/w/target/reports/jacoco.exec")
+                .startsWith("-javaagent:" + Path.of("/store/jacocoagent.jar") + "=")
+                .contains("destfile=" + Path.of("/w/target/reports/jacoco.exec"))
                 .contains("append=true");
     }
 

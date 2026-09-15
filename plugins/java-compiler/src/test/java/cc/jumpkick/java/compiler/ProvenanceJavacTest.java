@@ -185,7 +185,7 @@ class ProvenanceJavacTest {
      */
     private static Path writeGeneratingProcessor(Path procDir) throws Exception {
         Files.createDirectories(procDir);
-        Path src = procDir.resolve("disc/DiscProc.java");
+        Path src = procDir.resolve("_src/disc/DiscProc.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
                 package disc;

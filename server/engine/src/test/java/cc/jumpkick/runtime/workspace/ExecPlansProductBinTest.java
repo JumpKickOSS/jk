@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Scope;
@@ -31,16 +32,20 @@ class ExecPlansProductBinTest {
     void the_native_client_is_linked_over_the_path_entry_with_the_jvm_launcher_beside_it(@TempDir Path tmp)
             throws Exception {
         Path dir = client(tmp);
-        Files.writeString(dir.resolve("target/jk"), "native client");
+        String nativeName = BuildLayout.nativeExecutableFileName("jk");
+        Files.writeString(dir.resolve("target").resolve(nativeName), "native client");
         Path bin = tmp.resolve("home/bin");
 
         ExecPlan plan = ExecPlans.execPlan(dir, tmp.resolve("cache"), "install", null, null, bin, null);
 
         assertThat(plan.error()).isNull();
         assertThat(plan.linkSrcs())
-                .containsExactly(dir.resolve("target/jk").toAbsolutePath().toString());
-        assertThat(plan.linkDests()).containsExactly(bin.resolve("jk").toString());
-        assertThat(plan.binPath()).isEqualTo(bin.resolve("jk").toString());
+                .containsExactly(dir.resolve("target")
+                        .resolve(nativeName)
+                        .toAbsolutePath()
+                        .toString());
+        assertThat(plan.linkDests()).containsExactly(bin.resolve(nativeName).toString());
+        assertThat(plan.binPath()).isEqualTo(bin.resolve(nativeName).toString());
         assertThat(plan.launcherPath())
                 .isEqualTo(bin.resolve(AppLauncher.launcherFileName("jk-jvm")).toString());
         assertThat(plan.launcherScript())

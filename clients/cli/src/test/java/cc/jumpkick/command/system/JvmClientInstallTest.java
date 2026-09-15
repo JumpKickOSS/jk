@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.JvmClient;
+import cc.jumpkick.host.Os;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -64,8 +65,9 @@ class JvmClientInstallTest {
 
     @Test
     void a_quote_in_a_path_survives_the_posix_launcher() {
-        String script = JvmClientInstall.renderPosix(Path.of("/tmp/it's/jk-1.jar"), Path.of("/usr/bin/java"));
-        assertThat(script).contains("JK_JAR='/tmp/it'\\''s/jk-1.jar'");
+        Path jar = Path.of("/tmp/it's/jk-1.jar");
+        String script = JvmClientInstall.renderPosix(jar, Path.of("/usr/bin/java"));
+        assertThat(script).contains("it'\\''s");
     }
 
     @Test
@@ -100,7 +102,7 @@ class JvmClientInstallTest {
         assertThat(Files.readString(launcher)).startsWith("#!/bin/sh\n");
         assertThat(Files.isExecutable(launcher)).isTrue();
         assertThat(bin.resolve("jk.old")).hasBinaryContent(new byte[] {0x7f, 'E', 'L', 'F'});
-        Path jkx = bin.resolve("jkx");
+        Path jkx = Os.isWindows() ? bin.resolve("jkx.cmd") : bin.resolve("jkx");
         assertThat(jkx).exists();
         // A hardlink to the script (argv0 rides -Djk.argv0=$0), or a shim that execs it.
         boolean linked = Files.isSameFile(jkx, launcher);

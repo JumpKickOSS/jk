@@ -32,7 +32,7 @@ class JdkInstallViewTest {
                 .contains("app/jk.toml pins JDK temurin-21 -- installing it")
                 .contains("JDK > Downloading Temurin 21 - working...")
                 .contains("JDK > Installing Temurin 21 - working...")
-                .contains("Temurin 21 has been installed to /opt/jdks/temurin-21.0.12");
+                .contains("Temurin 21 has been installed to " + HOME.toAbsolutePath());
         assertThat(out.indexOf("pins JDK")).isLessThan(out.indexOf("Downloading"));
         assertThat(out.indexOf("Downloading")).isLessThan(out.indexOf("Installing"));
         assertThat(out.indexOf("Installing")).isLessThan(out.indexOf("has been installed"));
@@ -86,7 +86,7 @@ class JdkInstallViewTest {
         assertThat(TestAnsi.strip(after))
                 .as("the bar repaints below the warning and the done line settles last")
                 .contains("Downloading Temurin 21")
-                .contains("Temurin 21 has been installed to /opt/jdks/temurin-21.0.12");
+                .contains("Temurin 21 has been installed to " + HOME.toAbsolutePath());
         assertThat(TestAnsi.strip(after).indexOf("Downloading"))
                 .isLessThan(TestAnsi.strip(after).indexOf("has been installed"));
     }
@@ -100,7 +100,7 @@ class JdkInstallViewTest {
             }
         }));
         assertThat(out).doesNotContain("why").doesNotContain("Downloading");
-        assertThat(out).contains("Temurin 21 is already installed at /opt/jdks/temurin-21.0.12");
+        assertThat(out).contains("Temurin 21 is already installed at " + HOME.toAbsolutePath());
     }
 
     @Test
@@ -129,6 +129,8 @@ class JdkInstallViewTest {
                 view.onInstalled(new InstalledJdk("graalvm-25.0.1", Path.of("/opt/jdks/graalvm-25.0.1")));
             }
         }));
-        assertThat(out).contains("GraalVM 25 has been installed to /opt/jdks/graalvm-25.0.1");
+        assertThat(out)
+                .contains("GraalVM 25 has been installed to "
+                        + Path.of("/opt/jdks/graalvm-25.0.1").toAbsolutePath());
     }
 }

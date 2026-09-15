@@ -98,7 +98,7 @@ class ZincProcessorLoaderCacheTest {
      */
     private static Path writeGeneratingProcessor(Path procDir) throws Exception {
         Files.createDirectories(procDir);
-        Path src = procDir.resolve("gen/GenProc.java");
+        Path src = procDir.resolve("_src/gen/GenProc.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
                 package gen;

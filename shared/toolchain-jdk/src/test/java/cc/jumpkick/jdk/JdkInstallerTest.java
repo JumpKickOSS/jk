@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import com.sun.net.httpserver.HttpServer;
@@ -107,12 +108,7 @@ class JdkInstallerTest {
 
     @Test
     void two_installs_of_one_jdk_into_one_root_both_succeed_and_one_installs(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz(
-                "jdk-21.0.5+11",
-                Map.of(
-                        "bin/java", "#!/fake/java",
-                        "bin/javac", "#!/fake/java",
-                        "release", "JAVA_VERSION=21.0.5\n"));
+        byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
         JdkCatalog.Entry entry = new JdkCatalog.Entry(
@@ -635,6 +631,22 @@ class JdkInstallerTest {
      * so the fixture matches what foojay serves without depending on a system {@code tar} binary (or
      * its platform-specific quirks, e.g. macOS AppleDouble sidecars).
      */
+    /**
+     * A tree the install probe accepts on this host: {@code bin/java} plus {@code .exe} launchers
+     * on Windows, so a lost race can still recognise the winner.
+     */
+    private static Map<String, String> discoverableJdkFiles() {
+        Map<String, String> files = new HashMap<>();
+        files.put("bin/java", "#!/fake/java");
+        files.put("bin/javac", "#!/fake/java");
+        files.put("release", "JAVA_VERSION=21.0.5\n");
+        if (Os.isWindows()) {
+            files.put("bin/java.exe", "fake");
+            files.put("bin/javac.exe", "fake");
+        }
+        return files;
+    }
+
     private static byte[] buildTarGz(String topLevelDir, Map<String, String> entries) throws IOException {
         String[][] raw = new String[entries.size() + 1][];
         raw[0] = new String[] {topLevelDir + "/", null};

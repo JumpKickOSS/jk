@@ -3,6 +3,7 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Os;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
@@ -48,7 +49,7 @@ class EngineProcessControlTest {
     @Test
     void a_live_pid_whose_command_is_not_a_jvm_is_not_a_holder() throws Exception {
         Path socket = tempDirs.create().resolve("gen1.sock");
-        Process sleeper = new ProcessBuilder("sleep", "30").start();
+        Process sleeper = notAJvm();
         try {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(sleeper.pid()));
             assertThat(EngineProcessControl.unresponsiveHolderPid(socket))
@@ -120,5 +121,13 @@ class EngineProcessControlTest {
         } catch (IOException e) {
             // server closed by the test
         }
+    }
+
+    /** A live process whose command line is visibly not java or jk. */
+    private static Process notAJvm() throws IOException {
+        if (Os.isWindows()) {
+            return new ProcessBuilder("cmd", "/c", "ping", "-n", "40", "127.0.0.1").start();
+        }
+        return new ProcessBuilder("sleep", "30").start();
     }
 }

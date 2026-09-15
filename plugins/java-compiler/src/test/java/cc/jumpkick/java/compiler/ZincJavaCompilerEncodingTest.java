@@ -124,7 +124,7 @@ class ZincJavaCompilerEncodingTest {
     /** A do-nothing processor, ServiceLoader-registered in {@code procDir}, to force the AP path. */
     private static Path writeNoopProcessor(Path procDir) throws Exception {
         Files.createDirectories(procDir);
-        Path src = procDir.resolve("noop/NoopProc.java");
+        Path src = procDir.resolve("_src/noop/NoopProc.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, """
                 package noop;

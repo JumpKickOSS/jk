@@ -38,6 +38,6 @@ class PublishDisplayPathTest {
     void a_document_outside_both_roots_stays_absolute() {
         Path elsewhere = tmp.resolve("elsewhere/x.cdx.json").toAbsolutePath().normalize();
         assertThat(PublishCommand.displayPath(elsewhere, tmp.resolve("ws"), tmp.resolve("ws/m")))
-                .isEqualTo(elsewhere.toString());
+                .isEqualTo(elsewhere.toString().replace('\\', '/'));
     }
 }

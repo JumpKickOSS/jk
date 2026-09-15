@@ -15,6 +15,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -218,7 +219,7 @@ public final class JdkInstaller {
                 extract(dl.path(), stagingDir, entry.packageType());
                 Path effectiveRoot = flattenedRoot(stagingDir);
                 Files.move(effectiveRoot, target);
-            } catch (FileAlreadyExistsException raced) {
+            } catch (FileAlreadyExistsException | AccessDeniedException raced) {
                 // Another install of this very JDK — a second client pre-flighting the same pin
                 // against one root — moved its tree in between our probe and ours. A move is one
                 // rename, so what sits at the target is complete; this install is done and keeps

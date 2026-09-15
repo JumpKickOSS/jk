@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.EngineSpawn.Patience;
 import cc.jumpkick.cli.engine.EngineSpawn.Reachability;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
@@ -139,7 +140,7 @@ class EngineSpawnSilentPeerTest {
         EnginePaths.Paths paths = paths();
         Path socket = EnginePaths.activeSocket(paths);
         // A recycled pid: something live, visibly not java or jk, now wearing the engine's number.
-        Process bystander = new ProcessBuilder("sleep", "30").start();
+        Process bystander = notAJvm();
         try (FakeEngine engine = new FakeEngine(socket, Integer.MAX_VALUE)) {
             Files.writeString(EnginePaths.pidFor(socket), Long.toString(bystander.pid()));
 
@@ -206,5 +207,13 @@ class EngineSpawnSilentPeerTest {
         public void close() throws IOException {
             server.close();
         }
+    }
+
+    /** A live process whose command line is visibly not java or jk. */
+    private static Process notAJvm() throws IOException {
+        if (Os.isWindows()) {
+            return new ProcessBuilder("cmd", "/c", "ping", "-n", "40", "127.0.0.1").start();
+        }
+        return new ProcessBuilder("sleep", "30").start();
     }
 }

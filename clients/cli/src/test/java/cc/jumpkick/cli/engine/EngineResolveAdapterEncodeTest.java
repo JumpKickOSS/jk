@@ -44,7 +44,7 @@ class EngineResolveAdapterEncodeTest {
         assertThat(ProtoSession.variantOf(line)).isEqualTo("ci");
         assertThat(ProtoSession.jvmTuning(line).extraArgs()).containsExactly("-Djk.probe=first");
         // The body the engine decodes is untouched by the envelope.
-        assertThat(LockRequest.decode(line).dir()).isEqualTo("/proj");
+        assertThat(LockRequest.decode(line).dir()).isEqualTo(Path.of("/proj").toString());
     }
 
     @Test
@@ -64,7 +64,7 @@ class EngineResolveAdapterEncodeTest {
         String line = SessionContext.where(caller(), () -> EngineResolveAdapter.updateRequestLine(req, false, null));
 
         assertThat(ProtoSession.clientEnvOf(line)).isEqualTo(CALLER_ENV);
-        assertThat(UpdateRequest.decode(line).dir()).isEqualTo("/proj");
+        assertThat(UpdateRequest.decode(line).dir()).isEqualTo(Path.of("/proj").toString());
     }
 
     @Test
