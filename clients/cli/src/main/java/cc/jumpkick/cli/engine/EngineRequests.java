@@ -532,6 +532,7 @@ public final class EngineRequests {
     public record InstallRequest(
             Path entryDir,
             Path cache,
+            @Nullable Path jdksDir,
             Path m2Dir,
             @Nullable Path graalHome,
             boolean skipTests,

@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.CommandModels;
 import cc.jumpkick.cli.HelpRenderer;
+import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.command.project.ExplainCommand;
 import cc.jumpkick.command.toolchain.ToolInstallCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -48,6 +50,29 @@ class TestCommandOptionsTest {
     void short_suite_is_repeatable() throws Exception {
         Invocation in = parse("-s", "test", "-s", "integration");
         assertThat(in.values("suite")).containsExactly("test", "integration");
+    }
+
+    /** A hermetic JDK root is one flag on every verb that resolves a JDK for a build, install included. */
+    @Test
+    void jdks_dir_is_on_every_build_type_verb() {
+        for (var verb : List.<Supplier<List<Opt>>>of(
+                () -> new BuildCommand().options(),
+                () -> new TestCommand().options(),
+                () -> new ImageCommand().options(),
+                () -> new NativeCommand().options(),
+                () -> new ToolInstallCommand().options(),
+                () -> new ExplainCommand().options())) {
+            assertThat(verb.get().stream()
+                            .filter(o -> o.canonicalName().equals(CommonOpts.JDKS_DIR))
+                            .count())
+                    .isEqualTo(1);
+        }
+    }
+
+    @Test
+    void install_parses_the_jdks_dir_it_hands_the_pre_flight_and_the_engine() throws Exception {
+        Invocation in = ArgParser.parse(new ToolInstallCommand(), List.of("--jdks-dir", "/opt/jdks", "--skip-tests"));
+        assertThat(CommonOpts.jdksDirValue(in)).isEqualTo(Path.of("/opt/jdks"));
     }
 
     /** One flag, one meaning, on every verb that builds through the test stage. */

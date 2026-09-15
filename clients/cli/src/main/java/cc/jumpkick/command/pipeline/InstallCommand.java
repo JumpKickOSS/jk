@@ -117,6 +117,10 @@ public final class InstallCommand {
     @Nullable
     public Path m2DirOverride;
 
+    /** From {@code jk install --jdks-dir}: the JDK root the pre-flight and the engine resolve under. */
+    @Nullable
+    public Path jdksDir;
+
     @Nullable
     public URI repoUrl;
 
@@ -331,7 +335,7 @@ public final class InstallCommand {
         CwdModuleScope.Resolved cwdScope = CwdModuleScope.resolve(projectDir, null, proj);
         // A pinned JDK that is not installed downloads here, with the `jk jdk install` bar, before
         // the build console opens — never as a silent step inside the engine.
-        if (!JdkPreflight.ensure(projectDir, proj, null, BuildPlanConsole.modeFor(global))) return Exit.FAILURE;
+        if (!JdkPreflight.ensure(projectDir, proj, jdksDir, BuildPlanConsole.modeFor(global))) return Exit.FAILURE;
         if (proj.workspaceRoot() || cwdScope.workspaceMember()) {
             return runWorkspaceInstall(cwdScope.workspaceRoot(), cwdScope);
         }
@@ -386,6 +390,7 @@ public final class InstallCommand {
                     new EngineRequests.InstallRequest(
                             projectDir,
                             cacheDir,
+                            jdksDir,
                             m2Dir(),
                             graalHome,
                             buildOpts.skipTests,
@@ -480,7 +485,7 @@ public final class InstallCommand {
         WorkspaceRequest req = new WorkspaceRequest(
                         wsRoot,
                         cacheDir,
-                        null,
+                        jdksDir,
                         0,
                         null,
                         buildOpts.skipTests,

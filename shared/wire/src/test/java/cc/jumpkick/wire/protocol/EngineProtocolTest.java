@@ -625,16 +625,20 @@ class EngineProtocolTest {
 
     @Test
     void install_request_round_trips_all_fields() {
-        String json = new InstallRequest("/work", "/cache", "/home/u/.m2", "/graal", true, false, false, true).encode();
+        String json = new InstallRequest("/work", "/cache", "/jdks", "/home/u/.m2", "/graal", true, false, false, true)
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.INSTALL_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
+        assertThat(Jsonl.str(json, ProtoJobs.JDKS_DIR)).isEqualTo("/jdks");
+        assertThat(InstallRequest.decode(json).jdksDir()).isEqualTo("/jdks");
         assertThat(Jsonl.str(json, "m2Dir")).isEqualTo("/home/u/.m2");
         assertThat(Jsonl.str(json, "graalHome")).isEqualTo("/graal");
         assertThat(Jsonl.bool(json, "skipTests", false)).isTrue();
         assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
 
-        String jvmOnly = new InstallRequest("/w", "/c", "/m2", null, false, false, false, false).encode();
+        String jvmOnly = new InstallRequest("/w", "/c", null, "/m2", null, false, false, false, false).encode();
         assertThat(Jsonl.str(jvmOnly, "graalHome")).isNull();
+        assertThat(Jsonl.str(jvmOnly, ProtoJobs.JDKS_DIR)).isNull();
     }
 
     @Test

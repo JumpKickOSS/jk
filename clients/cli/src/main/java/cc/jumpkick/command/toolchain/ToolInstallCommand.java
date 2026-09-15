@@ -80,6 +80,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
                 CommonOpts.guard(),
+                CommonOpts.jdksDir(),
                 Opt.flag("Download a build tool rather than linking a host install.", "--no-discover"),
                 Opt.value(
                                 "<dir>",
@@ -145,6 +146,10 @@ public final class ToolInstallCommand implements CliCommand {
     @Nullable
     Path m2DirOverride;
 
+    /** {@code --jdks-dir}: the JDK root the pre-flight and the engine's build resolve under, as on build. */
+    @Nullable
+    Path jdksDir;
+
     @Nullable
     URI repoUrl;
 
@@ -163,6 +168,7 @@ public final class ToolInstallCommand implements CliCommand {
         this.skipTests = in.isSet("skip-tests");
         this.libDirOverride = in.value("lib-dir").map(Path::of).orElse(null);
         this.m2DirOverride = in.value("m2-dir").map(Path::of).orElse(null);
+        this.jdksDir = CommonOpts.jdksDirValue(in);
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.global = GlobalOptions.from(in);
         // A project install builds through the test stage, so --guard means what it means on build.
@@ -534,6 +540,7 @@ public final class ToolInstallCommand implements CliCommand {
         delegate.binDirOverride = binDirOverride;
         delegate.libDirOverride = libDirOverride;
         delegate.m2DirOverride = m2DirOverride;
+        delegate.jdksDir = jdksDir;
         delegate.repoUrl = repoUrl;
         return delegate;
     }

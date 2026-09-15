@@ -349,6 +349,7 @@ final class EngineJobs {
                 envelope(new InstallRequest(
                                 req.entryDir().toString(),
                                 req.cache().toString(),
+                                req.jdksDir() != null ? req.jdksDir().toString() : null,
                                 req.m2Dir().toString(),
                                 req.graalHome() != null ? req.graalHome().toString() : null,
                                 req.skipTests(),

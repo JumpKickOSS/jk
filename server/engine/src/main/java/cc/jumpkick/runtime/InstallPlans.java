@@ -76,7 +76,13 @@ public final class InstallPlans {
      * {@code --m2-dir} override).
      */
     public static BuildPlan projectInstallBuildPlan(
-            Path projectDir, Path cache, Path m2Dir, boolean skipTests, boolean verbose, @Nullable Path graalHome)
+            Path projectDir,
+            Path cache,
+            @Nullable Path jdksDir,
+            Path m2Dir,
+            boolean skipTests,
+            boolean verbose,
+            @Nullable Path graalHome)
             throws IOException {
         JkBuild proj = JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST));
 
@@ -92,7 +98,7 @@ public final class InstallPlans {
                 1,
                 estimatedTestCount,
                 null,
-                null,
+                jdksDir,
                 skipTests,
                 verbose,
                 false,
