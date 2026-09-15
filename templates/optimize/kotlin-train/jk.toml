@@ -2,7 +2,7 @@ name = "kotlin-train"
 group = "cc.jumpkick.optimize"
 version = "0.0.1"
 java = "25"
-kotlin = "latest"
+kotlin = "2.4.20"
 
 [test-dependencies]
-junit-jupiter = "latest"
+junit-jupiter = "6.1.3"

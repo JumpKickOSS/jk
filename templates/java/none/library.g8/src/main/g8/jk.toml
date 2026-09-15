@@ -4,7 +4,7 @@ version = "0.1.0"
 java = $java$
 
 [dependencies]
-jspecify = { group = "org.jspecify", name = "jspecify", version = "1.0.0" }
+jspecify = "1.0.1"
 
 # Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
 # test runs in exactly one tier (`jk test --profile integration`).

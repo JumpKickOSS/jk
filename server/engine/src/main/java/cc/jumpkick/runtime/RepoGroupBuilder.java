@@ -140,72 +140,82 @@ public final class RepoGroupBuilder {
         return buildFor(project, overrideUrl, cas, BuildEnv.ambient());
     }
 
+    /** As {@link #buildFor(JkBuild, URI, Cas)} but resolving credentials against {@code env}. */
+    public static RepoGroup buildFor(
+            JkBuild project, @Nullable URI overrideUrl, Cas cas, Function<String, @Nullable String> env) {
+        boolean mirrorToM2 = project.project().m2integration();
+        if (overrideUrl != null) {
+            // Tests pin one URL; project-declared repos are ignored.
+            Http http = new Http();
+            return new RepoGroup(List.of(new MavenRepo(
+                    RepositorySpec.CENTRAL, overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2)));
+        }
+        return build(project.repositories(), mirrorToM2, cas, env);
+    }
+
     /**
-     * As {@link #buildFor(JkBuild, URI, Cas)} but resolving credentials against {@code env}
-     *
+     * The repositories a caller with no project in hand resolves against: the user's global
+     * repositories over the public baseline. {@code jk new} looks up the versions it pins here,
+     * before the manifest exists.
+     */
+    public static RepoGroup buildDefault(Cas cas) {
+        return build(List.of(), false, cas, BuildEnv.ambient());
+    }
+
+    /**
+     * Merge {@code projectRepos} > global repos > built-in public baseline (first declaration of a
+     * name wins) into one group, with credentials resolved against {@code env}.
      *
      * <p>Inline {@code ${VAR}} credentials are expanded here rather than during the parse, so this
      * is where the request's environment has to arrive. Build-path callers pass
      * {@code Inputs.env}, which layers the project's {@code .env} under the caller's shell
-     * environment; the three-argument overload is for tooling that has no module directory in hand.
+     * environment; the three-argument {@link #buildFor} overload is for tooling that has no module
+     * directory in hand.
      */
-    public static RepoGroup buildFor(
-            JkBuild project, @Nullable URI overrideUrl, Cas cas, Function<String, @Nullable String> env) {
+    private static RepoGroup build(
+            List<RepositorySpec> projectRepos, boolean mirrorToM2, Cas cas, Function<String, @Nullable String> env) {
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
-        boolean mirrorToM2 = project.project().m2integration();
-        if (overrideUrl != null) {
-            // Tests pin one URL; project-declared repos are ignored.
-            repos.add(new MavenRepo(
-                    RepositorySpec.CENTRAL, overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));
-        } else {
-            // Merge: project repos > global repos > built-in public baseline.
-            // Deduplicate by name: first declaration wins (project beats global,
-            // global beats built-in).
-            List<RepositorySpec> projectRepos = project.repositories();
-            List<RepositorySpec> globalRepos = GlobalConfig.repositories();
+        List<RepositorySpec> globalRepos = GlobalConfig.repositories();
 
-            // Build ordered dedup map: project first, then global fill-ins.
-            Map<String, RepositorySpec> byName = new LinkedHashMap<>();
-            for (RepositorySpec s : projectRepos) byName.put(s.name(), s);
-            for (RepositorySpec s : globalRepos) byName.putIfAbsent(s.name(), s);
+        Map<String, RepositorySpec> byName = new LinkedHashMap<>();
+        for (RepositorySpec s : projectRepos) byName.put(s.name(), s);
+        for (RepositorySpec s : globalRepos) byName.putIfAbsent(s.name(), s);
 
-            List<RepositorySpec> effective = effectiveRepos(byName);
+        List<RepositorySpec> effective = effectiveRepos(byName);
 
-            // Resolve credentials per declared repo (env / store / settings.xml /
-            // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
-            // transparent for Maven Central, Google Maven, and other open mirrors.
-            RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply);
-            List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
-            for (RepositorySpec spec : effective) {
-                RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
-                maybeWarnUrlUserInfo(spec, cred);
-                // Per-repo object-store config (region/endpoint/keys) flows to the
-                // transport; HTTP credentials still ride the MavenRepo credential.
-                // Object-store keys carry raw ${VAR} out of the parse for the same reason
-                // credentials do: they are secrets, so they must not be committed literally, and
-                // expansion belongs where the request's environment is in scope — and under the
-                // resolver's provenance rule, so a project names only its own variables.
-                RepoTransport transport = RepoTransports.forUrl(spec.url(), http, expandObjectStore(spec, creds, env));
-                // Hand the client through, not just the transport: the transport-only constructor nulls it,
-                // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
-                // build.
-                repos.add(MavenRepo.overTransport(
-                        spec.name(),
-                        spec.url(),
-                        transport,
-                        cas,
-                        cred,
-                        http,
-                        mirrorToM2,
-                        spec.allowUnverified(),
-                        spec.allowInsecure()));
-                exclusiveGroups.add(exclusiveGroupsFor(spec));
-            }
-            maybeWarnMultiRepoWithoutBindings(effective, exclusiveGroups);
-            return new RepoGroup(repos, exclusiveGroups);
+        // Resolve credentials per declared repo (env / store / settings.xml /
+        // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
+        // transparent for Maven Central, Google Maven, and other open mirrors.
+        RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply);
+        List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
+        for (RepositorySpec spec : effective) {
+            RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
+            maybeWarnUrlUserInfo(spec, cred);
+            // Per-repo object-store config (region/endpoint/keys) flows to the
+            // transport; HTTP credentials still ride the MavenRepo credential.
+            // Object-store keys carry raw ${VAR} out of the parse for the same reason
+            // credentials do: they are secrets, so they must not be committed literally, and
+            // expansion belongs where the request's environment is in scope — and under the
+            // resolver's provenance rule, so a project names only its own variables.
+            RepoTransport transport = RepoTransports.forUrl(spec.url(), http, expandObjectStore(spec, creds, env));
+            // Hand the client through, not just the transport: the transport-only constructor nulls it,
+            // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
+            // build.
+            repos.add(MavenRepo.overTransport(
+                    spec.name(),
+                    spec.url(),
+                    transport,
+                    cas,
+                    cred,
+                    http,
+                    mirrorToM2,
+                    spec.allowUnverified(),
+                    spec.allowInsecure()));
+            exclusiveGroups.add(exclusiveGroupsFor(spec));
         }
-        return new RepoGroup(repos);
+        maybeWarnMultiRepoWithoutBindings(effective, exclusiveGroups);
+        return new RepoGroup(repos, exclusiveGroups);
     }
 
     /**

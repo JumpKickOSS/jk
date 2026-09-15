@@ -193,9 +193,9 @@ class NewScaffolderTest {
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(build).contains("[dependencies]");
-        // Catalog-known short names collapse to the `name = "latest"` one-liner.
-        assertThat(build).contains("commons-io = \"latest\"");
-        assertThat(build).contains("guava = \"latest\"");
+        // Catalog-known short names collapse to the `name = "<newest stable>"` one-liner.
+        assertThat(build).contains("commons-io = \"1.2.3\"");
+        assertThat(build).contains("guava = \"1.2.3\"");
         assertThat(build).doesNotContain("[processor-dependencies]");
         assertThat(build).doesNotContain("[provided-dependencies]");
     }
@@ -210,7 +210,7 @@ class NewScaffolderTest {
         assertThat(build).doesNotContain("[dependencies]");
         assertThat(build).contains("[processor-dependencies]");
         assertThat(build).contains("[provided-dependencies]");
-        assertThat(build).contains("lombok = \"latest\"");
+        assertThat(build).contains("lombok = \"1.2.3\"");
     }
 
     @Test
@@ -235,7 +235,7 @@ class NewScaffolderTest {
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(build).contains("[dependencies]");
-        assertThat(build).contains("jspecify = \"latest\"");
+        assertThat(build).contains("jspecify = \"1.2.3\"");
     }
 
     @Test
@@ -246,7 +246,7 @@ class NewScaffolderTest {
 
         var build = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(build).contains("[test-dependencies]");
-        assertThat(build).contains("kotest-runner-junit6 = \"latest\"");
+        assertThat(build).contains("kotest-runner-junit6 = \"1.2.3\"");
     }
 
     @Test
@@ -377,7 +377,7 @@ class NewScaffolderTest {
         var toml = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(toml).doesNotContain("[application]");
         assertThat(toml).doesNotContain("PluginMain");
-        assertThat(toml).contains("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"");
+        assertThat(toml).contains("jk-plugin-sdk = \"cc.jumpkick:jk-plugin-sdk:");
 
         // The manifest lands under src/main/resources so it's packaged at the jar root.
         var manifest = tempDir.resolve("src/main/resources/jk-plugin.toml");

@@ -5,8 +5,10 @@ import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.guard.eval.MutationCheck;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.runtime.StableVersions;
 import cc.jumpkick.util.AtomicWrites;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,10 +19,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
-/** Surgical jk.toml edits (preview by default). */
+/**
+ * Surgical jk.toml edits (preview by default). Dependencies are spelled by the same writer as
+ * {@code jk add}; a {@code group:artifact} without a version is pinned to its newest stable release.
+ */
 public final class McpManifest {
 
     private McpManifest() {}
@@ -41,14 +47,18 @@ public final class McpManifest {
                     notes.add("remove " + name);
                 }
             } else {
+                LibraryCatalog catalog = LibraryCatalog.forProject(
+                        Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory"));
                 for (String c : coords) {
                     Parsed p = parseCoord(c);
-                    if (p.version == null) {
-                        notes.add("skip " + c + " (need g:n:v)");
+                    if (p.group.isBlank()) {
+                        notes.add("skip " + c + " (need group:artifact[:version])");
                         continue;
                     }
-                    after = JkBuildEditor.addDependency(after, scope, p.name, p.group, p.artifact, p.version);
-                    notes.add("add " + p.group + ":" + p.artifact + ":" + p.version);
+                    String version = StableVersions.pinnedVersion(
+                            file, p.group, p.artifact, p.version == null ? "latest" : p.version);
+                    after = JkBuildEditor.addDependency(after, scope, p.name, p.group, p.artifact, version, catalog);
+                    notes.add("add " + p.group + ":" + p.artifact + ":" + version);
                 }
             }
             String refusal = after.equals(before) ? null : MutationCheck.check(file, after);

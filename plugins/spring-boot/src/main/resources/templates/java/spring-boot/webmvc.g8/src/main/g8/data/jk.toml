@@ -1,7 +1,7 @@
 name = "data"
 
 [platform-dependencies]
-spring-boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "latest" }
+spring-boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "4.1.1" }
 
 [dependencies]
 starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }

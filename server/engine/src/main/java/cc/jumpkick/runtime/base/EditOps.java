@@ -6,21 +6,30 @@ import cc.jumpkick.config.JkBuildEditor;
 import cc.jumpkick.guard.eval.MutationCheck;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Engine-hosted {@code jk.toml} edits via {@link JkBuildEditor} (client never parses TOML). Ops:
  * add/remove dependency, add-file-dependency, add/register/remove workspace module.
+ *
+ * <p>{@code add-dependency} writes the selector it is handed and reports it in
+ * {@link Result#detail}; the verb resolves {@code latest} to a number before calling here.
  */
 public final class EditOps {
 
-    /** {@code changed} false = the edit was a no-op (content already as requested). */
+    /**
+     * {@code changed} false = the edit was a no-op (content already as requested). {@code detail}
+     * is the sha256 for {@code add-file-dependency} and the version literal written for
+     * {@code add-dependency}.
+     */
     public record Result(boolean changed, @Nullable String error, String detail) {
         public Result(boolean changed, String error) {
             this(changed, error, "");
@@ -38,16 +47,20 @@ public final class EditOps {
                 FileDep fd = addFileDependency(original, args);
                 updated = fd.toml();
                 detail = fd.sha256();
+            } else if ("add-dependency".equals(op)) {
+                String version = args.get(4);
+                updated = JkBuildEditor.addDependency(
+                        original,
+                        Scope.fromCanonical(args.get(0)),
+                        args.get(1),
+                        args.get(2),
+                        args.get(3),
+                        version,
+                        LibraryCatalog.forProject(
+                                Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory")));
+                detail = version;
             } else {
                 updated = switch (op == null ? "" : op) {
-                    case "add-dependency" ->
-                        JkBuildEditor.addDependency(
-                                original,
-                                Scope.fromCanonical(args.get(0)),
-                                args.get(1),
-                                args.get(2),
-                                args.get(3),
-                                args.get(4));
                     case "remove-dependency" ->
                         JkBuildEditor.removeDependency(original, Scope.fromCanonical(args.get(0)), args.get(1));
                     case "add-workspace-module" -> JkBuildEditor.addWorkspaceModule(original, args.get(0));

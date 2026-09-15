@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Layout;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class PluginSdkScaffoldVersionTest {
 
     @Test
-    void scaffolded_sdk_version_is_jks_own() {
+    void scaffolded_sdk_version_is_jks_own() throws IOException {
         NewInputs plugin = new NewInputs(
                 "com.example",
                 "my-plugin",
@@ -35,8 +36,10 @@ class PluginSdkScaffoldVersionTest {
                 List.of(),
                 false,
                 Path.of("."));
-        assertThat(NewJkBuildRenderer.render(plugin))
+        assertThat(NewJkBuildRenderer.render(plugin, (group, artifact) -> {
+                    throw new IOException("a plugin scaffold looks nothing up");
+                }))
                 .as("scaffolded jk-plugin-sdk pin is the version this jk publishes the SDK under")
-                .contains("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"" + JkVersion.VERSION + "\" }");
+                .contains("jk-plugin-sdk = \"cc.jumpkick:jk-plugin-sdk:" + JkVersion.VERSION + "\"");
     }
 }

@@ -7,10 +7,10 @@ java = $java$
 main = "$package$.Main"
 
 [dependencies]
-jline = "latest"
+jline = "4.4.3"
 
 [test-dependencies]
-junit-jupiter = "latest"
+junit-jupiter = "6.1.3"
 
 # Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
 # test runs in exactly one tier (`jk test --profile integration`).

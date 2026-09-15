@@ -2,7 +2,7 @@ name = "$name$"
 group = "$organization$"
 version = "0.1.0"
 java = $java$
-groovy = "latest"
+groovy = "5.0.7"
 
 [application]
 main = "$package$.Application"

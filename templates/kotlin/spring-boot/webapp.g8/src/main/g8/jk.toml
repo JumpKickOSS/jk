@@ -2,7 +2,7 @@ group = "$organization$"
 name = "$name$"
 version = "0.1.0"
 java = $java$
-kotlin = "latest"
+kotlin = "2.4.20"
 
 # `web` is the SPA bundle as a resource jar; `app` is the service that depends on it.
 [workspace]
