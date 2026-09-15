@@ -313,8 +313,10 @@ class JarSizeBenchTest {
         String path = System.getenv("PATH");
         if (path == null) return null;
         for (String dir : SearchPath.entries(path)) {
+            Path dirPath = SearchPath.path(dir);
+            if (dirPath == null) continue;
             for (String name : names) {
-                Path candidate = Path.of(dir).resolve(name);
+                Path candidate = dirPath.resolve(name);
                 if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) return candidate;
             }
         }

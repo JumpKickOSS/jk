@@ -286,10 +286,10 @@ final class SourceProjectBuilder {
         if (path == null) return null;
         List<String> names = Os.isWindows() ? List.of(bin + ".bat", bin + ".cmd", bin + ".exe", bin) : List.of(bin);
         for (String dir : SearchPath.entries(path)) {
-            // A blank entry is the current directory on POSIX; a build wrapper is never taken from there.
-            if (dir.isBlank()) continue;
+            Path dirPath = SearchPath.path(dir);
+            if (dirPath == null) continue;
             for (String name : names) {
-                Path candidate = Path.of(dir, name);
+                Path candidate = dirPath.resolve(name);
                 if (Files.isRegularFile(candidate) && PathUtil.isRunnable(candidate)) {
                     return candidate;
                 }

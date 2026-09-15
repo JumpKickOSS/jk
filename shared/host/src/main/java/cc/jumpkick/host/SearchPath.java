@@ -2,6 +2,8 @@
 package cc.jumpkick.host;
 
 import java.io.File;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -22,6 +24,9 @@ import org.jspecify.annotations.Nullable;
  *       directory is at lookup time, and rewriting them would change that meaning.
  *   <li><b>Order is precedence.</b> {@link #prepend} exists because every join in the tree is
  *       "put this {@code bin} first"; there is deliberately no general join.
+ *   <li><b>Garbage is skipped, not thrown.</b> {@link #path} turns an entry into a {@link Path} or
+ *       {@code null}. Two Windows directories jammed with a space are not a path; walkers must not
+ *       fail the lookup that merely asked where a tool is.
  * </ul>
  *
  * <p>The per-entry probe — which file names count as the tool under an entry ({@code .exe} /
@@ -44,6 +49,21 @@ public final class SearchPath {
     public static List<String> entries(@Nullable String path) {
         if (path == null || path.isEmpty()) return List.of();
         return List.of(path.split(Pattern.quote(SEPARATOR), -1));
+    }
+
+    /**
+     * {@code entry} as a {@link Path}, or {@code null} when it is blank or not a path. A {@code
+     * PATH} value can contain garbage (two Windows directories jammed with a space); walking it
+     * must skip those, not throw. Blank stays {@code null}: a blank entry is the current directory
+     * on POSIX, and callers that refuse that skip it themselves.
+     */
+    public static @Nullable Path path(@Nullable String entry) {
+        if (entry == null || entry.isBlank()) return null;
+        try {
+            return Path.of(entry);
+        } catch (InvalidPathException e) {
+            return null;
+        }
     }
 
     /**

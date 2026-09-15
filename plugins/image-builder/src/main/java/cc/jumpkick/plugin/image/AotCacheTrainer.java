@@ -435,15 +435,17 @@ final class AotCacheTrainer {
         if (path == null) return false;
         boolean windows = Os.isWindows();
         for (String dir : SearchPath.entries(path)) {
-            Path base = Path.of(dir, exe);
+            Path dirPath = SearchPath.path(dir);
+            if (dirPath == null) continue;
+            Path base = dirPath.resolve(exe);
             if (PathUtil.isRunnable(base)) return true;
             // Windows PATHEXT: docker.exe / docker.cmd / docker.bat (chocolatey shims and corp
             // wrappers ship .bat), not a bare "docker" file — same launcher set as
             // JkLayoutPaths.isRunnableClient.
             if (windows
-                    && (PathUtil.isRunnable(Path.of(dir, exe + ".exe"))
-                            || PathUtil.isRunnable(Path.of(dir, exe + ".cmd"))
-                            || PathUtil.isRunnable(Path.of(dir, exe + ".bat")))) {
+                    && (PathUtil.isRunnable(dirPath.resolve(exe + ".exe"))
+                            || PathUtil.isRunnable(dirPath.resolve(exe + ".cmd"))
+                            || PathUtil.isRunnable(dirPath.resolve(exe + ".bat")))) {
                 return true;
             }
         }

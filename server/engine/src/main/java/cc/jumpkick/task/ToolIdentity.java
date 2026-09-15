@@ -49,16 +49,17 @@ public final class ToolIdentity {
 
     /**
      * The first executable named {@code tool} on {@code path}, Windows extensions included. A blank
-     * entry — the current directory on POSIX — is skipped: a tool's identity must not depend on
-     * where the engine happens to be.
+     * entry — the current directory on POSIX — and an entry that is not a path are skipped: a
+     * tool's identity must not depend on where the engine happens to be, or on garbage in PATH.
      */
     static @Nullable Path resolve(String tool, @Nullable String path) {
         List<String> names =
                 Os.isWindows() ? List.of(tool + ".exe", tool + ".cmd", tool + ".bat", tool) : List.of(tool);
         for (String dir : SearchPath.entries(path)) {
-            if (dir.isBlank()) continue;
+            Path dirPath = SearchPath.path(dir);
+            if (dirPath == null) continue;
             for (String name : names) {
-                Path candidate = Path.of(dir).resolve(name);
+                Path candidate = dirPath.resolve(name);
                 if (Files.isRegularFile(candidate) && PathUtil.isRunnable(candidate)) return candidate;
             }
         }

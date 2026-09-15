@@ -360,8 +360,9 @@ public final class NativeImageDriver {
 
         // 3. $PATH — where the launcher sits under an entry is GraalLauncher's business, not ours.
         for (String dir : SearchPath.entries(env.apply("PATH"))) {
-            if (dir.isBlank()) continue;
-            Optional<Path> onPath = GraalLauncher.onPathEntry(Path.of(dir));
+            Path dirPath = SearchPath.path(dir);
+            if (dirPath == null) continue;
+            Optional<Path> onPath = GraalLauncher.onPathEntry(dirPath);
             if (onPath.isPresent()) return onPath;
         }
 

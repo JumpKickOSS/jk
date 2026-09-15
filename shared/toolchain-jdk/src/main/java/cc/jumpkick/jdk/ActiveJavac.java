@@ -41,8 +41,9 @@ public final class ActiveJavac {
         if (path == null || path.isBlank()) return Optional.empty();
         String exe = JdkFingerprint.toolName("javac");
         for (String dir : SearchPath.entries(path)) {
-            if (dir.isBlank()) continue;
-            Path candidate = Path.of(dir).resolve(exe);
+            Path dirPath = SearchPath.path(dir);
+            if (dirPath == null) continue;
+            Path candidate = dirPath.resolve(exe);
             if (!Files.isRegularFile(candidate)) continue;
             // PathUtil.isRunnable already answers this per platform: an access check off Windows,
             // an extension test on it, instead of the 64x security-descriptor read.

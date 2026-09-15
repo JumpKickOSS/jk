@@ -4,12 +4,15 @@ package cc.jumpkick.host;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 /**
- * The two decisions that make {@code PATH} a different vocabulary from a classpath, pinned: blanks
- * are entries (the current directory on POSIX), and prepending onto nothing must not manufacture
- * one.
+ * The decisions that make {@code PATH} a different vocabulary from a classpath, pinned: blanks are
+ * entries (the current directory on POSIX), prepending onto nothing must not manufacture one, and
+ * an entry that is not a path is skipped.
  */
 class SearchPathTest {
 
@@ -26,6 +29,21 @@ class SearchPathTest {
     void an_unset_path_searches_nothing() {
         assertThat(SearchPath.entries(null)).isEmpty();
         assertThat(SearchPath.entries("")).isEmpty();
+    }
+
+    @Test
+    void a_path_entry_that_is_not_a_path_is_skipped() {
+        assertThat(SearchPath.path(null)).isNull();
+        assertThat(SearchPath.path("")).isNull();
+        assertThat(SearchPath.path("   ")).isNull();
+        assertThat(SearchPath.path("foo\0bar")).isNull();
+        assertThat(SearchPath.path("/usr/bin")).isEqualTo(Path.of("/usr/bin"));
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void a_windows_entry_with_a_colon_past_the_drive_is_skipped() {
+        assertThat(SearchPath.path("C:\\a\\bin C:\\b\\bin")).isNull();
     }
 
     @Test
