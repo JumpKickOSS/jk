@@ -86,6 +86,18 @@ class CoexistenceBuildE2eTest {
         Path project = writeProject(tmp.resolve("greeter"));
         Path cache = cache();
 
+        // The first reader renders the shadow; `jk explain` then plans the module the way it plans
+        // a jk.toml module with the same manifest.
+        Path shadow = ManifestPaths.manifestIn(project);
+        assertThat(shadow).isEqualTo(ManifestPaths.shadowManifestPath(project)).isRegularFile();
+        String toml = Files.readString(shadow);
+        assertThat(toml).startsWith("# shadow of pom.xml ");
+        assertThat(toml).contains("pins = \"nearest\"");
+        Path twin = tmp.resolve("twin");
+        copyTree(project.resolve("src"), twin.resolve("src"));
+        Files.writeString(twin.resolve("jk.toml"), toml.substring(toml.indexOf('\n') + 1));
+        assertThat(stepNames(explain(project, cache))).isNotEmpty().isEqualTo(stepNames(explain(twin, cache)));
+
         BuildPlan first = plan(project, cache, false);
         BuildPlanResult built = first.run();
 
@@ -96,15 +108,10 @@ class CoexistenceBuildE2eTest {
         assertThat(tests.total()).isEqualTo(1);
         assertThat(tests.failed()).isZero();
 
-        // The repository is not dirtied; the shadow and its lock live under target/.
+        // The repository is not dirtied; the lock lives beside the shadow under target/.
         assertThat(project.resolve("jk.toml")).doesNotExist();
         assertThat(project.resolve("jk-lock.toml")).doesNotExist();
-        Path shadow = ManifestPaths.shadowManifestPath(project);
-        assertThat(shadow).isRegularFile();
         assertThat(LockPaths.lockFile(project)).isEqualTo(shadow.resolveSibling("jk-lock.toml")).isRegularFile();
-        String toml = Files.readString(shadow);
-        assertThat(toml).startsWith("# shadow of pom.xml ");
-        assertThat(toml).contains("pins = \"nearest\"");
 
         // What the effective POM declares that the in-place build does not carry is one warning
         // with the remedy, on the build after the POM changed, and not again.
@@ -118,12 +125,6 @@ class CoexistenceBuildE2eTest {
         assertThat(again.success()).isTrue();
         assertThat(messages(again)).noneMatch(w -> w.contains("<build><extensions>"));
         assertThat(Files.readString(shadow)).isEqualTo(toml);
-
-        // `jk explain` plans the module the way it plans a jk.toml module with the same manifest.
-        Path twin = tmp.resolve("twin");
-        copyTree(project.resolve("src"), twin.resolve("src"));
-        Files.writeString(twin.resolve("jk.toml"), toml.substring(toml.indexOf('\n') + 1));
-        assertThat(stepNames(explain(project, cache))).isNotEmpty().isEqualTo(stepNames(explain(twin, cache)));
     }
 
     @Test
