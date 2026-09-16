@@ -25,6 +25,24 @@ public final class ProjectInfos {
         return orNull(dir, false);
     }
 
+    /**
+     * Why the engine declines to describe {@code dir} — a shadow it does not render, a manifest it
+     * cannot parse — as the one line the engine reported; {@code null} when it describes the
+     * project (memoised for the calls that follow) or when no engine answered.
+     */
+    public static @Nullable String refusal(Path dir) {
+        String key = key(dir, null, null, false, false);
+        if (MEMO.containsKey(key)) return null;
+        try {
+            ProjectInfo info = EngineClient.projectInfo(EnginePaths.current(), dir, null, null, false);
+            if (info.error() != null) return info.error();
+            MEMO.put(key, info);
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** As {@link #orNull(Path)}; {@code counts=true} adds source/test tree counts. */
     public static @Nullable ProjectInfo orNull(Path dir, boolean counts) {
         String key = key(dir, null, null, false, counts);

@@ -96,6 +96,10 @@ class WorkspaceLocatorTest {
         assertThat(WorkspaceLocator.findRoot(bench)).as("a profile's module").contains(root);
         assertThat(WorkspaceLocator.owningRoot(tmp)).contains(root);
         assertThat(PomReactorScan.memberDirs(tmp)).containsExactly("api", "tools/bench");
+        assertThat(PomReactorScan.profilesListing(tmp, bench)).containsExactly("extras");
+        assertThat(PomReactorScan.profilesListing(tmp, api))
+                .as("a top-level module")
+                .isEmpty();
         // Registering a module needs a jk.toml to write into; a POM root offers none.
         assertThat(WorkspaceLocator.findEnclosingWorkspace(api).orElse(null)).isNotEqualTo(root);
 

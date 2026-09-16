@@ -12,6 +12,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
@@ -105,6 +106,10 @@ public final class TestVerb implements HostedVerb {
                 if ("affected-refuse".equals(d.code())) return JobOutcome.failed(Exit.CONFIG);
             }
             return JobOutcome.failed(Exit.FAILURE);
+        } catch (ShadowManifests.NotBuiltHere refused) {
+            // A shadowed directory Maven would not build here: a configuration refusal, not a crash.
+            host.sendQuiet(writer, host.requestFailedLine(null, refused));
+            return JobOutcome.failed(Exit.CONFIG);
         } catch (Exception e) {
             // The run threw before it could rule. Declining here would hand the journal a run
             // with no failure rows, which derives green — a test run that never finished,
