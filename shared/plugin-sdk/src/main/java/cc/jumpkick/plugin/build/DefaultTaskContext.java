@@ -21,6 +21,7 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     private final List<String> contributesClasses = new ArrayList<>();
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
+    private final List<String> contributesTestJvmArgs = new ArrayList<>();
     private @Nullable String transformsClasses;
     private @Nullable String stage;
     private boolean bodyRun;
@@ -97,6 +98,12 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     }
 
     @Override
+    public TaskContribution contributesTestJvmArgs(String relFile) {
+        contributesTestJvmArgs.add(relFile);
+        return this;
+    }
+
+    @Override
     public TaskContribution transformsClasses(String relDir) {
         this.transformsClasses = relDir;
         return this;
@@ -117,6 +124,7 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
         for (String d : contributesClasses) spec.contributesClasses(d);
         for (String d : contributesResources) spec.contributesResources(d);
         for (String d : contributesTestClasspath) spec.contributesTestClasspath(d);
+        for (String f : contributesTestJvmArgs) spec.contributesTestJvmArgs(f);
         if (transformsClasses != null) spec.transformsClasses(transformsClasses);
         spec.run(body);
         ctx.task(spec);

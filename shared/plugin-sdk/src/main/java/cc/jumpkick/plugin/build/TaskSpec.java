@@ -28,6 +28,7 @@ public final class TaskSpec {
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesSources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
+    private final List<String> contributesTestJvmArgs = new ArrayList<>();
     private @Nullable String transformsClasses;
     /**
      * Optional product stage wire name ({@code generate}, {@code compile}, {@code test}, …). Null
@@ -86,6 +87,12 @@ public final class TaskSpec {
         return this;
     }
 
+    /** See {@link TaskContribution#contributesTestJvmArgs}. */
+    public TaskSpec contributesTestJvmArgs(String relFile) {
+        contributesTestJvmArgs.add(relFile);
+        return this;
+    }
+
     public TaskSpec transformsClasses(String relDir) {
         this.transformsClasses = relDir;
         return this;
@@ -135,6 +142,10 @@ public final class TaskSpec {
 
     public List<String> testClasspathContributions() {
         return List.copyOf(contributesTestClasspath);
+    }
+
+    public List<String> testJvmArgsContributions() {
+        return List.copyOf(contributesTestJvmArgs);
     }
 
     public @Nullable String classesTransform() {

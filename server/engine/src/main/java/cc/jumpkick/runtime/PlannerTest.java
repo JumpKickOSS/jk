@@ -459,7 +459,7 @@ public final class PlannerTest {
         testRequires.addAll(extraRequires);
         if (pluginDecls != null) {
             for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
-                if (step.testOnly() || !step.contributesTestClasspath().isEmpty()) {
+                if (step.testOnly() || step.feedsTests()) {
                     testRequires.add("plugin-" + step.name());
                 }
             }
@@ -496,9 +496,12 @@ public final class PlannerTest {
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
-                    // [test] jvm-args, system-properties and the active profile's jvm-args ride the
-                    // fork and its stamp alike.
-                    List<String> testJvmArgs = PlannerSupport.testJvmArgs(projectUnderTest, in.profileName());
+                    // The plugin steps' contributed arguments, then [test] jvm-args, system-properties
+                    // and the active profile's jvm-args ride the fork and its stamp alike — the
+                    // module's own flags come last, so they win over a framework plugin's.
+                    List<String> testJvmArgs =
+                            new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
+                    testJvmArgs.addAll(PlannerSupport.testJvmArgs(projectUnderTest, in.profileName()));
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
                             testStampExtras(
                                     workerJars,

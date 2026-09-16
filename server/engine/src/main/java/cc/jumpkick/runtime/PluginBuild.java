@@ -114,6 +114,8 @@ public final class PluginBuild {
             List<String> contributesResources,
             List<String> contributesSources,
             List<String> contributesTestClasspath,
+            /** Output files whose lines ride every forked test JVM ({@code contributesTestJvmArgs}). */
+            List<String> contributesTestJvmArgs,
             /** The classes-replacing output dir ({@code TaskSpec.transformsClasses}), or null. */
             @Nullable String transformsClasses,
             /**
@@ -132,10 +134,15 @@ public final class PluginBuild {
             return contributesSources != null && !contributesSources.isEmpty();
         }
 
-        /** True when this task only contributes to the test runtime classpath. */
+        /** True when this task feeds the forked test JVM: its classpath, its arguments, or both. */
+        public boolean feedsTests() {
+            return (contributesTestClasspath != null && !contributesTestClasspath.isEmpty())
+                    || (contributesTestJvmArgs != null && !contributesTestJvmArgs.isEmpty());
+        }
+
+        /** True when this task only contributes to the forked test JVM. */
         public boolean testOnly() {
-            return contributesTestClasspath != null
-                    && !contributesTestClasspath.isEmpty()
+            return feedsTests()
                     && !sourceGenerating()
                     && (contributesClasses == null || contributesClasses.isEmpty())
                     && (contributesResources == null || contributesResources.isEmpty())
@@ -251,6 +258,7 @@ public final class PluginBuild {
                             Jsonl.strArray(line, "contributesResources"),
                             Jsonl.strArray(line, "contributesSources"),
                             Jsonl.strArray(line, "contributesTestClasspath"),
+                            Jsonl.strArray(line, "contributesTestJvmArgs"),
                             Jsonl.str(line, "transformsClasses"),
                             blankToNull(Jsonl.str(line, "stage"))));
                 case "packager" ->
@@ -786,6 +794,41 @@ public final class PluginBuild {
         } catch (Exception e) {
             /* no workspace — fine */
             Log.debug("ProdEntry: no workspace", e);
+        }
+        return out;
+    }
+
+    /**
+     * The test runtime entries a step sees ({@code In.testRuntimeEntries()}): the lock's test
+     * closure in lock order, then the workspace siblings the test scopes reach. What the forked
+     * test JVM's classpath is made of, as entries with coordinates.
+     */
+    public static List<ProdEntry> testRuntimeEntries(Path projectDir, Path lockFile, JkBuild project)
+            throws IOException {
+        List<ProdEntry> out = new ArrayList<>();
+        if (Files.exists(lockFile)) {
+            var resolver = new ClasspathResolver(JkStores.storeCas());
+            for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.TEST)) {
+                var a = entry.artifact();
+                out.add(new ProdEntry(
+                        a.moduleArtifact() + "-" + a.version() + ".jar",
+                        entry.jar(),
+                        a.version().contains("SNAPSHOT"),
+                        entry.container(),
+                        a.moduleGroup(),
+                        a.moduleArtifact(),
+                        a.version()));
+            }
+        }
+        try {
+            var siblings = WorkspaceClasspath.resolve(
+                    projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+            for (Path jar : siblings.siblingClosureJars()) {
+                out.add(new ProdEntry(jar.getFileName().toString(), Files.isRegularFile(jar) ? jar : null, true, null));
+            }
+        } catch (Exception e) {
+            /* no workspace — fine */
+            Log.debug("testRuntimeEntries: no workspace", e);
         }
         return out;
     }

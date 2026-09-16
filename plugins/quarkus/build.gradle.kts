@@ -10,9 +10,9 @@ description = "jk-quarkus: Quarkus build plugin worker (augment + fast-jar). Dec
 dependencies {
     implementation(project(":plugin-sdk"))
     // Compile against bootstrap APIs; at runtime the engine supplies step-dependency jars on the
-    // forked worker CP (quarkus-bootstrap + maven-resolver + aligned smallrye-common). The
-    // catalog's `quarkus-bootstrap` version tracks cc.jumpkick.model.ToolDefaults.QUARKUS_TOOLING_BOM_VERSION:
-    // a Gradle script cannot read a Java constant, so that is the one copy jk keeps by necessity.
+    // forked worker CP (quarkus-bootstrap + maven-resolver + aligned smallrye-common), resolved at
+    // the project's own Quarkus version. The catalog pin here is the compile-time floor and tracks
+    // plugins/quarkus/jk.toml's [provided-dependencies].
     compileOnly(libs.quarkus.bootstrap.core)
     compileOnly(libs.quarkus.bootstrap.maven.resolver)
     compileOnly(libs.quarkus.bootstrap.app.model)

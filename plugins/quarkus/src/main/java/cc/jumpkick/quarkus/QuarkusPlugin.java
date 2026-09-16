@@ -14,6 +14,8 @@ import cc.jumpkick.plugin.build.PackageContext;
 import cc.jumpkick.plugin.build.PackageExtension;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
+import cc.jumpkick.plugin.build.TestContext;
+import cc.jumpkick.plugin.build.TestExtension;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.net.URI;
@@ -33,16 +35,29 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Quarkus build plugin: {@code quarkus-augment} step + {@code quarkus-fast-jar}
- * packager.
+ * Quarkus build plugin: {@code quarkus-augment} step, {@code quarkus-test-model} step and the
+ * {@code quarkus-fast-jar} packager.
  *
  * <p>Augmentation forks {@link QuarkusAugmentMain} on a BOM-aligned bootstrap tool classpath
  * (one step-dep {@code quarkus-bootstrap}: core + maven-resolver under {@code quarkus-bootstrap-bom}).
  * The packager consumes the augment output ({@code quarkus-run.jar} fast-jar layout or uber runner); augment failure fails the build.
+ *
+ * <p>The test-model step forks {@link QuarkusTestModelMain} on the same tool classpath before the
+ * module's tests run: it resolves the locked test closure into Quarkus's {@code ApplicationModel},
+ * with {@code target/classes/main} as the one application root, and serializes it where {@code
+ * @QuarkusTest}'s bootstrap reads a serialized model instead of discovering a Maven workspace. The
+ * forked test JVM receives the path as {@code -Dquarkus-internal-test.serialized-app-model.path}.
  */
-public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension {
+public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension, TestExtension {
 
     static final String AUGMENT_STEP = "quarkus-augment";
+    static final String TEST_MODEL_STEP = "quarkus-test-model";
+    static final String TEST_MODEL_DIR = "test-model";
+    /** The file the engine reads for the test JVM's arguments, under {@link #TEST_MODEL_DIR}. */
+    static final String TEST_JVM_ARGS = TEST_MODEL_DIR + "/jvm.args";
+    /** Metaspace for a JVM that keeps an augmented Quarkus application per test profile. */
+    static final String TEST_MAX_METASPACE = "1g";
+
     private static final String BOOTSTRAP_EXTRA = "quarkus-bootstrap";
     static final String PLATFORM_PROPS_EXTRA = "quarkus-platform-properties";
 
@@ -68,6 +83,15 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     @Override
+    public void test(TestContext ctx) {
+        ctx.named(TEST_MODEL_STEP)
+                .inputs(In.classes(), In.testRuntimeEntries(), In.config())
+                .outputs(TEST_MODEL_DIR)
+                .contributesTestJvmArgs(TEST_JVM_ARGS)
+                .run(QuarkusPlugin::runTestModel);
+    }
+
+    @Override
     public void pack(PackageContext ctx) {
         ctx.inputs(In.classes(), In.runtimeEntries(), In.stepOutput(AUGMENT_STEP), In.config())
                 .produce("quarkus-fast-jar", QuarkusPlugin::produceFastJar);
@@ -81,47 +105,13 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
         Path outRoot = exec.outputDir("quarkus-app");
         Path nativeSourcesOut = exec.outputDir("native-sources");
-        Path listFile = exec.scratch().resolve("runtime-jars.tsv");
-        List<String> lines = new ArrayList<>();
-        for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) {
-            Path jar = e.jar();
-            if (jar == null || !Files.isRegularFile(jar)) continue;
-            // The coordinate rides on the entry. Deriving it from the path cannot work: jk serves
-            // the runtime classpath out of the content-addressed store, so `jar` is a hash.
-            // Workspace siblings carry no coordinate and the augment synthesizes one.
-            String gav = e.gav();
-            if (gav.isEmpty()) {
-                gav = "unknown:unknown:0";
-            }
-            lines.add(gav + "\t" + jar.toAbsolutePath().normalize());
-        }
-        Files.write(listFile, lines, StandardCharsets.UTF_8);
-
-        // Pure bootstrap: worker jar + one BOM-aligned tool closure (step-dep quarkus-bootstrap).
-        // Engine resolves core + maven-resolver under quarkus-bootstrap-bom — no dual freestyle
-        // trees, no hand-pinned smallrye modules.
-        List<Path> cp = new ArrayList<>();
-        cp.add(codeSourceOf(QuarkusPlugin.class, "jk-quarkus worker"));
-        // The augment main parses its offline flag with the engine's host helpers; the host jar
-        // is on the plugin's loader, never on a bare fork's classpath.
-        cp.add(codeSourceOf(EnvValues.class, "engine host"));
-        Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
-        if (Files.isDirectory(tools)) {
-            cp.addAll(jarsIn(tools));
-        } else if (Files.isRegularFile(tools)) {
-            cp.add(tools);
-        } else {
-            throw new IOException("step-dependency `" + BOOTSTRAP_EXTRA + "` missing at " + tools);
-        }
+        Path listFile = writeRuntimeList(exec, exec.scratch().resolve("runtime-jars.tsv"));
+        List<Path> cp = toolClasspath(exec);
 
         String baseName = exec.project().name();
         exec.label("quarkus augment (" + baseName + ")");
 
-        // [quarkus] version is a major-line floor ("3"); the augment hands it to Maven as a real
-        // version when it resolves the platform BOM and its properties artifact. Take the version
-        // the lock actually chose, which is what quarkus-core resolved to.
-        String quarkusVersion = resolvedQuarkusVersion(exec.runtimeEntries())
-                .orElseGet(() -> exec.config().string("version"));
+        String quarkusVersion = quarkusVersion(exec);
         String packageType =
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
         TaskExec.ToolRun.Result run = exec.java()
@@ -140,6 +130,124 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             // non-production artifact on every later build.
             throw new IOException("quarkus-augment failed (exit " + run.exit() + "):\n" + tail(run.output()));
         }
+    }
+
+    /**
+     * Resolve the locked test closure into a serialized {@code ApplicationModel} and hand the
+     * forked test JVM its path. The model names {@code target/classes/main} as the application's
+     * one root, so the test bootstrap indexes the application archive once — a Maven workspace read
+     * off the module's {@code pom.xml} would add {@code target/classes}, the parent of both class
+     * trees, and every bean would register twice.
+     */
+    private static void runTestModel(TaskExec exec) throws Exception {
+        Path classes = exec.classesDir();
+        if (!Files.isDirectory(classes)) {
+            throw new IOException("no classes to model at " + classes);
+        }
+        Path outDir = exec.outputDir(TEST_MODEL_DIR);
+        Path listFile = writeRuntimeList(exec, exec.scratch().resolve("test-runtime-jars.tsv"));
+        exec.label("quarkus test model (" + exec.project().name() + ")");
+        TaskExec.ToolRun.Result run = exec.java()
+                .classpath(toolClasspath(exec))
+                .arg(PreferIpv4.JVM_FLAG)
+                .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
+                .mainClass(QuarkusTestModelMain.class.getName())
+                .args(testModelArgs(exec, classes, outDir, listFile, quarkusVersion(exec)))
+                .cwd(exec.moduleDir())
+                .run();
+        if (run.exit() != 0) {
+            throw new IOException("quarkus-test-model failed (exit " + run.exit() + "):\n" + tail(run.output()));
+        }
+        Path model = outDir.resolve(QuarkusTestModelMain.MODEL_FILE);
+        if (!Files.isRegularFile(model)) {
+            throw new IOException("quarkus-test-model wrote no " + model);
+        }
+        Files.write(exec.scratch().resolve(TEST_JVM_ARGS), testJvmArgs(model), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The arguments every test JVM of a Quarkus module forks with: the serialized model's path,
+     * and a metaspace cap sized for the test bootstrap, which keeps one augmented application
+     * resident per test profile for the JVM's life — the discovery JVM that lists the classes
+     * included, since {@code @QuarkusTest} augments as its classes load. The module's own {@code
+     * [test] jvm-args} come after these and win.
+     */
+    static List<String> testJvmArgs(Path model) {
+        return List.of(
+                "-D" + QuarkusTestModelMain.SERIALIZED_TEST_APP_MODEL + "=" + model.toAbsolutePath().normalize(),
+                "-XX:MaxMetaspaceSize=" + TEST_MAX_METASPACE);
+    }
+
+    /**
+     * The test-model fork's positional argument vector — the contract {@link
+     * QuarkusTestModelMain#main} parses. Same shape as {@link #augmentArgs} without the base name:
+     * the model is serialized, not augmented.
+     */
+    static List<String> testModelArgs(TaskExec exec, Path classes, Path outDir, Path listFile, String quarkusVersion) {
+        return List.of(
+                exec.moduleDir().toString(),
+                classes.toString(),
+                outDir.toString(),
+                exec.project().group(),
+                exec.project().name(),
+                exec.project().version(),
+                listFile.toString(),
+                quarkusVersion,
+                exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
+                Boolean.toString(exec.offline()));
+    }
+
+    /**
+     * The declared entries as {@code gav<TAB>jar} lines for a fork. The coordinate rides on the
+     * entry: deriving it from the path cannot work because jk serves the classpath out of the
+     * content-addressed store, so {@code jar} is a hash. Workspace siblings carry no coordinate and
+     * the fork synthesizes one.
+     */
+    private static Path writeRuntimeList(TaskExec exec, Path listFile) throws IOException {
+        List<String> lines = new ArrayList<>();
+        for (PackageIo.RuntimeEntry e : exec.runtimeEntries()) {
+            Path jar = e.jar();
+            if (jar == null || !Files.isRegularFile(jar)) continue;
+            String gav = e.gav();
+            if (gav.isEmpty()) {
+                gav = "unknown:unknown:0";
+            }
+            lines.add(gav + "\t" + jar.toAbsolutePath().normalize());
+        }
+        Files.write(listFile, lines, StandardCharsets.UTF_8);
+        return listFile;
+    }
+
+    /**
+     * Pure bootstrap: worker jar + one BOM-aligned tool closure (step-dep quarkus-bootstrap). The
+     * engine resolves core + maven-resolver under quarkus-bootstrap-bom — no dual freestyle trees,
+     * no hand-pinned smallrye modules.
+     */
+    private static List<Path> toolClasspath(TaskExec exec) throws IOException {
+        List<Path> cp = new ArrayList<>();
+        cp.add(codeSourceOf(QuarkusPlugin.class, "jk-quarkus worker"));
+        // The forked mains parse their offline flag with the engine's host helpers; the host jar
+        // is on the plugin's loader, never on a bare fork's classpath.
+        cp.add(codeSourceOf(EnvValues.class, "engine host"));
+        Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
+        if (Files.isDirectory(tools)) {
+            cp.addAll(jarsIn(tools));
+        } else if (Files.isRegularFile(tools)) {
+            cp.add(tools);
+        } else {
+            throw new IOException("step-dependency `" + BOOTSTRAP_EXTRA + "` missing at " + tools);
+        }
+        return cp;
+    }
+
+    /**
+     * [quarkus] version is a major-line floor ("3"); the forks hand it to Maven as a real version
+     * when they resolve the platform BOM and its properties artifact. Take the version the lock
+     * actually chose, which is what quarkus-core resolved to.
+     */
+    private static String quarkusVersion(TaskExec exec) {
+        return resolvedQuarkusVersion(exec.runtimeEntries())
+                .orElseGet(() -> exec.config().string("version"));
     }
 
     /**

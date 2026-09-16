@@ -4,10 +4,12 @@ package cc.jumpkick.quarkus;
 import io.quarkus.bootstrap.model.ApplicationModel;
 import io.quarkus.bootstrap.model.ApplicationModelBuilder;
 import io.quarkus.bootstrap.model.ExtensionCapabilities;
+import io.quarkus.bootstrap.workspace.WorkspaceModule;
 import io.quarkus.maven.dependency.ArtifactKey;
 import io.quarkus.maven.dependency.DependencyFlags;
 import io.quarkus.maven.dependency.ResolvedDependency;
 import io.quarkus.maven.dependency.ResolvedDependencyBuilder;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -88,6 +90,31 @@ final class LockedAppModel {
         rebuilt.addReloadableWorkspaceModules(resolved.getReloadableWorkspaceDependencies());
         resolved.getRemovedResources().forEach(rebuilt::addRemovedResources);
         byCoords.values().forEach(rebuilt::addDependency);
+        return rebuilt.build();
+    }
+
+    /**
+     * The model with {@code module} attached to its application artifact, whose resolved paths
+     * become the module's main output — one root for the test bootstrap to index. Everything else
+     * is carried across unchanged.
+     */
+    static ApplicationModel withApplicationModule(ApplicationModel model, WorkspaceModule module) {
+        ApplicationModelBuilder rebuilt = new ApplicationModelBuilder();
+        ResolvedDependencyBuilder app = copy(model.getAppArtifact()).setWorkspaceModule(module);
+        Path root = module.getMainSources().getSourceDirs().isEmpty()
+                ? null
+                : module.getMainSources().getSourceDirs().iterator().next().getOutputDir();
+        if (root != null) app.setResolvedPath(root);
+        rebuilt.setAppArtifact(app);
+        rebuilt.setPlatformImports(model.getPlatforms());
+        for (ExtensionCapabilities capabilities : model.getExtensionCapabilities()) {
+            rebuilt.addExtensionCapabilities(capabilities);
+        }
+        rebuilt.addReloadableWorkspaceModules(model.getReloadableWorkspaceDependencies());
+        model.getRemovedResources().forEach(rebuilt::addRemovedResources);
+        for (ResolvedDependency dep : model.getDependenciesWithAnyFlag(ANY_FLAG)) {
+            rebuilt.addDependency(copy(dep));
+        }
         return rebuilt.build();
     }
 

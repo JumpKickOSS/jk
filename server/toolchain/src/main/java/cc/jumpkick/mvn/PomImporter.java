@@ -135,6 +135,7 @@ public final class PomImporter {
                 .application(application)
                 .nativeConfig(packaging.nativeConfig())
                 .pluginConfig(packaging.springBoot())
+                .pluginConfig(packaging.quarkus())
                 .pluginConfig(generators.openapi())
                 .build(buildBlock(em.model(), sourceTree, tests))
                 .build();

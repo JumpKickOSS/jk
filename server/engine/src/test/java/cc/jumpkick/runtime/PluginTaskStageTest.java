@@ -32,7 +32,7 @@ class PluginTaskStageTest {
     private static PluginBuild.TaskDecl decl(
             String name, List<String> inputs, List<String> sources, List<String> testCp, @Nullable String stage) {
         return new PluginBuild.TaskDecl(
-                name, List.of(), inputs, List.of(), List.of(), List.of(), sources, testCp, null, stage);
+                name, List.of(), inputs, List.of(), List.of(), List.of(), sources, testCp, List.of(), null, stage);
     }
 
     /** The Android plugin's declared task set — the shape that regressed. */
@@ -107,6 +107,7 @@ class PluginTaskStageTest {
                 List.of(),
                 List.of(),
                 List.of("cp"),
+                List.of(),
                 null,
                 null);
         assertThat(PlannerPlugin.pluginStage(step)).isEqualTo(BuildStage.COMPILE);

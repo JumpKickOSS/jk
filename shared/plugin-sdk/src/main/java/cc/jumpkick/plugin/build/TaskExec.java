@@ -32,8 +32,9 @@ public interface TaskExec {
     List<Path> runtimeClasspath();
 
     /**
-     * Lock-ordered production RUNTIME entries with real file names and container dirs —
-     * {@link In#runtimeEntries()}. Empty unless declared.
+     * Lock-ordered entries with real file names, coordinates and container dirs: the production
+     * RUNTIME closure under {@link In#runtimeEntries()}, the test runtime closure under {@link
+     * In#testRuntimeEntries()}. Empty unless one of them is declared.
      */
     List<PackageIo.RuntimeEntry> runtimeEntries();
 

@@ -23,6 +23,13 @@ public record In(Kind kind, @Nullable String step) {
         RUNTIME_CLASSPATH,
         /** As {@link #RUNTIME_CLASSPATH}, plus real artifact names + snapshot flags per entry. */
         RUNTIME_ENTRIES,
+        /**
+         * The test runtime closure as entries — what a forked test JVM sees, with the test-scope
+         * artifacts and their coordinates. For a TEST-window step that describes the test
+         * classpath to a framework's own bootstrap. Declared instead of {@link #RUNTIME_ENTRIES},
+         * not alongside it: a step reads one entry list.
+         */
+        TEST_RUNTIME_ENTRIES,
         /** The plugin's own validated config table — any config change re-runs. */
         CONFIG,
         /** Another step's declared outputs (chaining, e.g. packaging over an AOT step). */
@@ -54,6 +61,10 @@ public record In(Kind kind, @Nullable String step) {
 
     public static In runtimeEntries() {
         return new In(Kind.RUNTIME_ENTRIES, null);
+    }
+
+    public static In testRuntimeEntries() {
+        return new In(Kind.TEST_RUNTIME_ENTRIES, null);
     }
 
     public static In config() {

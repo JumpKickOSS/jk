@@ -42,14 +42,22 @@ jk new -t quarkus/hello my-api
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`
   still applies.
-- Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
-  `target/classes/main` layout — `@QuarkusTest` can report two mains with the same name.
+- Use a plain `main` + `Quarkus.run` (as scaffolded).
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not
   pull Maven embedder.
+- **Tests:** `@QuarkusTest` boots from an application model jk writes before the module's tests
+  run (the `quarkus-test-model` step): the locked test closure resolved through Quarkus's own
+  bootstrap, with `target/classes/main` as the application's one root. The forked test JVM gets
+  its path as `-Dquarkus-internal-test.serialized-app-model.path=…`, the seam Quarkus's Gradle
+  plugin uses, so the bootstrap indexes the application archive once and augments once per test
+  profile; no `pom.xml` is read or written. The same step gives every test JVM of the module
+  `-XX:MaxMetaspaceSize=1g`, since the bootstrap keeps one augmented application per profile
+  resident; `[test] jvm-args` overrides it. The `[quarkus]` table is what turns this on — `jk
+  import` writes it from `quarkus-maven-plugin` at the platform version.
 - **Multi-module:** workspace path deps are packaged into `lib/main` for the Quarkus app
   module. Prefer a small `@ApplicationScoped` holder in the app module over CDI producers
-  whose return types live only in sibling jars (Jandex). Synthetic `pom.xml` is for
-  tooling only — JumpKick owns resolve via `jk-lock.toml`.
+  whose return types live only in sibling jars (Jandex). JumpKick owns resolve via
+  `jk-lock.toml`; a `pom.xml` beside `jk.toml` is for IDE tooling only.
 
 Cold first lock of the Quarkus platform is large; warm CAS re-locks are fast.
 

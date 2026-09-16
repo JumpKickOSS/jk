@@ -18,16 +18,18 @@ import org.jspecify.annotations.Nullable;
  * The plugins that shape the artifact. Shade and {@code jar-with-dependencies} are {@code
  * [application] assembly = true}; a relocation, filter or transformer jk's merge rules do not
  * cover is a row. {@code spring-boot-maven-plugin} is the {@code [spring-boot]} table at the Boot
- * version the chain resolves; {@code native-maven-plugin} is {@code [native]}. Jib and the Docker
- * plugins are rows carrying the {@code [image]} lines to paste, and a war has no jk shape at all.
+ * version the chain resolves; {@code quarkus-maven-plugin} is the {@code [quarkus]} table at the
+ * platform version; {@code native-maven-plugin} is {@code [native]}. Jib and the Docker plugins are
+ * rows carrying the {@code [image]} lines to paste, and a war has no jk shape at all.
  */
 final class PackagingPlugins {
 
-    /** What the packaging plugins add: a fat jar, a native table and a Boot table, each optional. */
+    /** What the packaging plugins add: a fat jar, a native table, a Boot table and a Quarkus table, each optional. */
     record Packaging(
             boolean fatJar,
             JkBuild.@Nullable NativeConfig nativeConfig,
-            @Nullable PluginConfig springBoot) {}
+            @Nullable PluginConfig springBoot,
+            @Nullable PluginConfig quarkus) {}
 
     /** One shade {@code <relocation>}: the package moved and where to; {@code shaded} is null when the POM omits it. */
     record Relocation(String pattern, @Nullable String shaded) {
@@ -39,6 +41,7 @@ final class PackagingPlugins {
     private static final String SHADE = "maven-shade-plugin";
     private static final String ASSEMBLY = "maven-assembly-plugin";
     private static final String SPRING_BOOT = "spring-boot-maven-plugin";
+    private static final String QUARKUS = "quarkus-maven-plugin";
     private static final String NATIVE = "native-maven-plugin";
     /** Shade transformers whose effect is jk's default fat-jar merge, so they need no row. */
     private static final Set<String> COVERED_TRANSFORMERS =
@@ -57,6 +60,9 @@ final class PackagingPlugins {
         PluginConfig springBoot = PluginFacts.plugin(model, SPRING_BOOT)
                 .map(boot -> mapSpringBoot(boot, model, report))
                 .orElse(null);
+        PluginConfig quarkus = PluginFacts.plugin(model, QUARKUS)
+                .map(plugin -> mapQuarkus(plugin, model, report))
+                .orElse(null);
         JkBuild.NativeConfig nativeConfig = PluginFacts.plugin(model, NATIVE)
                 .map(plugin -> mapNative(plugin, mainClass))
                 .orElse(null);
@@ -68,7 +74,7 @@ final class PackagingPlugins {
             report.error("packaging `war` (`maven-war-plugin`) is not supported: jk builds jars, Boot jars and"
                     + " native images. Keep building this module with `jk mvn package`.");
         }
-        return new Packaging(fatJar, nativeConfig, springBoot);
+        return new Packaging(fatJar, nativeConfig, springBoot, quarkus);
     }
 
     /** Every {@code <relocation>} of the module's shade plugin, in declaration order; empty without the plugin. */
@@ -192,6 +198,29 @@ final class PackagingPlugins {
             return null;
         }
         return new PluginConfig("spring-boot", Map.of("version", version));
+    }
+
+    /**
+     * {@code [quarkus] version} is the platform version the chain resolves: the plugin's own (the
+     * platform plugin shares the BOM's version), else the managed {@code quarkus-bom}, else the
+     * {@code quarkus.platform.version} / {@code quarkus.version} property. Without one the table is
+     * a row, since the key is required. The table is what activates the Quarkus plugin: the
+     * augment, the fast-jar and the test model {@code @QuarkusTest} boots from.
+     */
+    private static @Nullable PluginConfig mapQuarkus(Plugin plugin, Model model, ImportReport.Builder report) {
+        String version = PluginFacts.usable(plugin.getVersion());
+        if (version == null) version = PluginFacts.managedVersion(model, "io.quarkus.platform", "quarkus-bom");
+        if (version == null) version = PluginFacts.managedVersion(model, "io.quarkus", "quarkus-bom");
+        if (version == null) {
+            version = PluginFacts.usable(model.getProperties().getProperty("quarkus.platform.version"));
+        }
+        if (version == null) version = PluginFacts.usable(model.getProperties().getProperty("quarkus.version"));
+        if (version == null) {
+            report.warning("`quarkus-maven-plugin` is declared without a resolvable platform version; add"
+                    + " `[quarkus] version = \"...\"` to jk.toml yourself.");
+            return null;
+        }
+        return new PluginConfig("quarkus", Map.of("version", version));
     }
 
     /** {@code <mainClass>}, {@code <imageName>} and {@code <buildArgs>} → {@code [native]} main, name and args. */
