@@ -132,7 +132,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append(" project-jdk-name=\"").append(esc(defaultSdk.sdkName())).append("\"");
         sb.append(" project-jdk-type=\"JavaSDK\">\n");
         // Project-wide compiler output lands under jk's build dir (target/), never IntelliJ's default
-        // "out". Each module also overrides this with its own target/classes output (see imlXml), but
+        // "out". Each module overrides this with the IDE-owned output under target/jdt (see imlXml), so
         // pointing the project default here too keeps anything not covered by a module out of an
         // "out"/"build" dir.
         sb.append("    <output url=\"file://$PROJECT_DIR$/target\" />\n");
@@ -242,12 +242,17 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         }
         sb.append(">\n");
 
+        // IntelliJ's own javac writes to the IDE-owned output, never to jk's target/classes: a
+        // gutter run must not leave class files where the action cache stamps jk's compile.
         sb.append("    <output url=\"file://$MODULE_DIR$/")
-                .append(esc(moduleDir.relativize(module.classesDir()).toString().replace('\\', '/')))
+                .append(esc(
+                        moduleDir.relativize(module.jdtClassesDir()).toString().replace('\\', '/')))
                 .append("\" />\n");
         sb.append("    <output-test url=\"file://$MODULE_DIR$/")
-                .append(esc(
-                        moduleDir.relativize(module.testClassesDir()).toString().replace('\\', '/')))
+                .append(esc(moduleDir
+                        .relativize(module.jdtTestClassesDir())
+                        .toString()
+                        .replace('\\', '/')))
                 .append("\" />\n");
         sb.append("    <exclude-output />\n");
 
