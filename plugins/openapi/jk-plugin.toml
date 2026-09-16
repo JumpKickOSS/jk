@@ -1,0 +1,27 @@
+# The built-in OpenAPI preset's declarative manifest. Owns [openapi]; the code layer turns the
+# table into one generator entry — openapi-generator-cli over the spec, into the generate stage,
+# contributed as sources — and runs it through the generator plugin's step. `jk explain` shows
+# that entry as the step `generate-openapi`.
+
+[plugin]
+id        = "openapi"
+table     = "openapi"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-openapi"
+protocol-prefix = "##JKOA:"
+
+[schema]
+spec      = { type = "string", default = "api/*.yaml", example = "api/openapi.yaml", hint = "the contract, module-relative; a glob runs the first match" }
+generator = { type = "string", required = true, example = "spring", hint = "an openapi-generator generator name: spring, java, kotlin-spring, …" }
+package   = { type = "string", example = "com.acme.api", hint = "the api and invoker package; models land in <package>.model. Default: the project group + .api" }
+version   = { type = "string", default = "latest", example = "7.11.0", hint = "the openapi-generator-cli release; a bare version is exact, latest the newest stable" }
+options   = { type = "string-map", default = {} }   # --additional-properties, over the preset's defaults for the generator
+
+# The CLI is one shaded jar; its Main-Class is the entry point.
+[[contribute.step-dependency]]
+artifact   = "openapi-generator-cli"
+coordinate = "org.openapitools:openapi-generator-cli:${config.version}"
+for-step   = "generate-openapi"

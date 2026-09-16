@@ -437,7 +437,13 @@ public final class PlannerPlugin {
                     }
                     Path spec = specWriter.writeTempSpec();
                     try {
-                        PluginBuild.runWorker(active, in.cache(), spec, workerEnv(ctx, in), ctx::label);
+                        PluginBuild.runWorker(
+                                active,
+                                in.cache(),
+                                spec,
+                                workerEnv(ctx, in),
+                                ctx::label,
+                                line -> forwardStepDiagnostic(ctx, step.name(), line));
                     } catch (IOException e) {
                         ctx.error(step.name(), Errors.text(e));
                         throw e;
@@ -462,6 +468,32 @@ public final class PlannerPlugin {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * One {@code diagnostic} reply from a step worker, as the step's own report entry: the
+     * {@code file:line[:col]: message} header the journal parses for a locus, an error when the
+     * tool said so, a warning otherwise.
+     */
+    static void forwardStepDiagnostic(TaskContext ctx, String step, String line) {
+        StringBuilder text = new StringBuilder();
+        @Nullable String file = Jsonl.str(line, "file");
+        if (file != null) {
+            text.append(file);
+            int at = Jsonl.intValue(line, "line", 0);
+            if (at > 0) {
+                text.append(':').append(at);
+                int col = Jsonl.intValue(line, "col", 0);
+                if (col > 0) text.append(':').append(col);
+            }
+            text.append(": ");
+        }
+        text.append(String.valueOf(Jsonl.str(line, "msg")));
+        if ("error".equals(Jsonl.str(line, "sev"))) {
+            ctx.error(step, text.toString());
+        } else {
+            ctx.warn(step, text.toString());
+        }
     }
 
     /**

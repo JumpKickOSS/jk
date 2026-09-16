@@ -56,6 +56,8 @@ public final class PluginTableRegistry {
             "quarkus.jk-plugin.toml",
             "android.jk-plugin.toml",
             "protobuf.jk-plugin.toml",
+            "generator.jk-plugin.toml",
+            "openapi.jk-plugin.toml",
             "minified.jk-plugin.toml",
             "micronaut.jk-plugin.toml");
 
@@ -278,6 +280,22 @@ public final class PluginTableRegistry {
             }
             values.put(group.table(), entries);
         }
+        // [entries]: every remaining sub-table is one entry of the entry schema, by name.
+        if (manifest.entrySchema() != null) {
+            Map<String, PluginDescriptor.SchemaKey> entrySchema =
+                    manifest.subSchemas().getOrDefault(manifest.entrySchema(), Map.of());
+            Map<String, Map<String, Object>> entries = new LinkedHashMap<>();
+            for (String key : table.keySet()) {
+                TomlTable entryTable = readTable(table, key);
+                if (entryTable == null || manifest.subTables().containsKey(key)) continue;
+                if (manifest.schema().containsKey(key)) {
+                    throw new JkBuildParseException("[" + manifest.table() + "." + key + "] is a [" + manifest.table()
+                            + "] key, not an entry name");
+                }
+                entries.put(key, validateSub(manifest.table() + "." + key, entrySchema, entryTable));
+            }
+            if (!entries.isEmpty()) values.put(PluginConfig.ENTRIES, entries);
+        }
         return new PluginConfig(manifest.id(), values);
     }
 
@@ -361,6 +379,19 @@ public final class PluginTableRegistry {
                         throw new JkBuildParseException(where + " must be an array of strings");
                     }
                     out.add(str);
+                }
+                yield out;
+            }
+            case STRING_MAP -> {
+                TomlTable map = getOr(() -> table.getTable(key.name()), where + " must be a table of strings");
+                if (map == null) throw new JkBuildParseException(where + " must be a table of strings");
+                Map<String, String> out = new LinkedHashMap<>();
+                for (String k : map.keySet()) {
+                    Object val = map.get(k);
+                    if (!(val instanceof String str)) {
+                        throw new JkBuildParseException(where + "." + k + " must be a string");
+                    }
+                    out.put(k, str);
                 }
                 yield out;
             }

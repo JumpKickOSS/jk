@@ -138,7 +138,7 @@ class PluginTableRegistryTest {
                         && r.missingVersionWarning() != null)
                 .anyMatch(r -> r.id().equals("io.spring.dependency-management") && r.versionTo() == null);
         assertThat(loaded.keySet())
-                .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "minified", "micronaut");
+                .contains("spring-boot", "grails", "quarkus", "android", "protobuf", "generator", "openapi", "minified", "micronaut");
     }
 
     @Test

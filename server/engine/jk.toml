@@ -75,6 +75,8 @@ test-plugin-jars = [
   "spring-boot",
   "cc.jumpkick:jk-android",
   "protobuf",
+  "generator",
+  "openapi",
   "minified",
   "grails",
   "groovy-compiler",

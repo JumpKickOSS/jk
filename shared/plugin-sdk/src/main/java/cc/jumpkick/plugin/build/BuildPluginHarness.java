@@ -340,8 +340,20 @@ public final class BuildPluginHarness {
                         stepName = Jsonl.str(line, PluginProtocol.NAME);
                         pluginId = required(Jsonl.str(line, "plugin"), "op.plugin");
                     }
-                    case "config" ->
-                        configValues.put(required(Jsonl.str(line, "key"), "config.key"), configValue(line));
+                    case "config" -> {
+                        String key = required(Jsonl.str(line, "key"), "config.key");
+                        @Nullable String entry = Jsonl.str(line, "entry");
+                        if (entry == null) {
+                            configValues.put(key, configValue(line));
+                        } else {
+                            // One leaf of a nested entry: <key> → <entry> → <field>.
+                            @SuppressWarnings("unchecked")
+                            Map<String, Map<String, Object>> entries = (Map<String, Map<String, Object>>)
+                                    configValues.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
+                            entries.computeIfAbsent(entry, k -> new LinkedHashMap<>())
+                                    .put(required(Jsonl.str(line, "field"), "config.field"), configValue(line));
+                        }
+                    }
                     case "project" -> {
                         group = required(Jsonl.str(line, "group"), "project.group");
                         name = required(Jsonl.str(line, "name"), "project.name");
@@ -414,6 +426,7 @@ public final class BuildPluginHarness {
                 case "bool" -> Jsonl.bool(line, "value", false);
                 case "int" -> Jsonl.longValue(line, "value", 0);
                 case "list" -> Jsonl.strArray(line, "values");
+                case "map" -> Jsonl.strMap(line, "values");
                 default -> throw new IOException("config kind `" + kind + "` is not one this harness reads");
             };
         }
@@ -496,6 +509,11 @@ public final class BuildPluginHarness {
         @Override
         public void label(String text) {
             out.emit("{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}");
+        }
+
+        @Override
+        public void diagnostic(String severity, @Nullable String file, int line, int col, String message) {
+            out.emit(PluginReply.diagnostic(severity, file, line, col, message));
         }
     }
 

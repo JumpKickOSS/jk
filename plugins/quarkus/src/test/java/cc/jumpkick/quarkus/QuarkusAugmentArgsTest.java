@@ -138,5 +138,10 @@ class QuarkusAugmentArgsTest {
         public void label(String text) {
             // the vector does not depend on progress reporting
         }
+
+        @Override
+        public void diagnostic(String severity, @Nullable String file, int line, int col, String message) {
+            // nor on findings
+        }
     }
 }

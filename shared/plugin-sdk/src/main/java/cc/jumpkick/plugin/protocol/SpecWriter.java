@@ -49,21 +49,46 @@ public final class SpecWriter {
         return configValues(config.values());
     }
 
-    /** Same as {@link #config(PluginConfig)} from a raw table (front-end {@code model.PluginConfig}). */
+    /**
+     * Same as {@link #config(PluginConfig)} from a raw table (front-end {@code model.PluginConfig}).
+     * A {@code string-map} value is one {@code map} line; a group of entries (the table's
+     * {@code [entries]}, a value whose values are themselves maps) is one line per leaf, addressed
+     * by {@code entry} and {@code field}, so the worker rebuilds the same nested map.
+     */
     public SpecWriter configValues(Map<String, Object> values) {
         for (Map.Entry<String, Object> e : values.entrySet()) {
             Object v = e.getValue();
-            if (v instanceof String s) configString(e.getKey(), s);
-            else if (v instanceof Boolean b) configBool(e.getKey(), b);
-            else if (v instanceof Long l) configInt(e.getKey(), l);
-            else if (v instanceof Integer i) configInt(e.getKey(), i.longValue());
-            else if (v instanceof List<?> list) {
-                List<String> strs = new ArrayList<>();
-                for (Object o : list) strs.add(String.valueOf(o));
-                configList(e.getKey(), strs);
+            if (v instanceof Map<?, ?> m && m.values().stream().anyMatch(x -> x instanceof Map)) {
+                for (Map.Entry<?, ?> entry : m.entrySet()) {
+                    if (!(entry.getValue() instanceof Map<?, ?> fields)) continue;
+                    for (Map.Entry<?, ?> field : fields.entrySet()) {
+                        String address = ",\"entry\":" + Jsonl.quote(String.valueOf(entry.getKey())) + ",\"field\":"
+                                + Jsonl.quote(String.valueOf(field.getKey()));
+                        configValue(e.getKey(), address, field.getValue());
+                    }
+                }
+                continue;
             }
+            configValue(e.getKey(), "", v);
         }
         return this;
+    }
+
+    /** One typed leaf under {@code key}; {@code address} is the entry/field suffix, or empty. */
+    @SuppressWarnings("unchecked")
+    private void configValue(String key, String address, @Nullable Object v) {
+        String head = "{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + address;
+        if (v instanceof String s) lines.add(head + ",\"kind\":\"string\",\"value\":" + Jsonl.quote(s) + "}");
+        else if (v instanceof Boolean b) lines.add(head + ",\"kind\":\"bool\",\"value\":" + b + "}");
+        else if (v instanceof Long l) lines.add(head + ",\"kind\":\"int\",\"value\":" + l + "}");
+        else if (v instanceof Integer i) lines.add(head + ",\"kind\":\"int\",\"value\":" + i + "}");
+        else if (v instanceof List<?> list) {
+            List<String> strs = new ArrayList<>();
+            for (Object o : list) strs.add(String.valueOf(o));
+            lines.add(head + ",\"kind\":\"list\",\"values\":" + array(strs) + "}");
+        } else if (v instanceof Map<?, ?> m) {
+            lines.add(head + ",\"kind\":\"map\",\"values\":" + Jsonl.map((Map<String, String>) m) + "}");
+        }
     }
 
     /**

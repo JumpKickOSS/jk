@@ -1,0 +1,35 @@
+# The built-in generator plugin's declarative manifest. Owns [generate]: each [generate.<name>]
+# entry is one JVM tool the code layer forks in the generate stage, its output contributed to the
+# compiler's source set (or the resources) the way the protobuf plugin contributes protoc's. The
+# preset tables ([openapi], …) are sugar over this worker: they build one such entry in code.
+
+[plugin]
+id        = "generator"
+table     = "generate"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-generator"
+protocol-prefix = "##JKGEN:"
+
+# [generate] carries no keys of its own — every sub-table is one generator.
+[entries]
+schema = "generator"
+
+[sub-schema.generator]
+tool        = { type = "string", required = true, example = "org.openapitools:openapi-generator-cli:7.11.0", hint = "the generator's Maven coordinate; a bare version is an exact pin, ^ and ~ float within the line, latest is the newest stable" }
+main        = { type = "string", example = "org.openapitools.codegen.OpenAPIGenerator", hint = "the class to run; omitted, the tool jar's Main-Class" }
+inputs      = { type = "string-list", required = true, example = "[\"api/openapi.yaml\"]", hint = "module-relative files or globs the tool reads — the step's cache key" }
+args        = { type = "string-list", default = [] }   # ${in} ${inputs} ${out} ${module.dir} expand
+contributes = { type = "string", default = "sources" } # sources | resources
+out         = { type = "string" }                      # output dir name; default generated/<name>
+
+# One tool per entry: its full runtime closure, read only by the step that forks it — a bump
+# in one generator's version re-runs that generator alone.
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "${entry.name}"
+coordinate = "${entry.tool}"
+transitive = true
+for-step   = "generate-${entry.name}"
