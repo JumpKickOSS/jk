@@ -127,8 +127,13 @@ class MavenRepoM2LookupTest {
         assertThat(hits).containsExactly("/" + REL + ".sha1");
     }
 
+    /**
+     * An adopted file is the store's copy, keyed by the repository's origin: the build reads only
+     * what the store owns, the local repository keeps its own file, and no CAS blob is involved.
+     */
     @Test
-    void a_confirmed_m2_hit_is_the_classpath_file_and_does_not_copy_into_cas(@TempDir Path tmp) throws Exception {
+    void a_confirmed_m2_hit_is_copied_into_the_store_and_the_store_file_is_the_answer(@TempDir Path tmp)
+            throws Exception {
         Path m2 = tmp.resolve("m2");
         seedM2(m2, REAL);
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
@@ -137,10 +142,12 @@ class MavenRepoM2LookupTest {
 
         MavenRepo.Fetched fetched = repo.fetchArtifact(coord());
 
-        assertThat(fetched.cachePath()).isEqualTo(m2.resolve(REL));
-        assertThat(new Cas(store).contains(Hashing.sha256Hex(REAL))).isFalse();
         Path repoStore = Objects.requireNonNull(
                 RepoArtifactStore.forRepository(store, "test", base).root());
+        assertThat(fetched.cachePath()).isEqualTo(repoStore.resolve(REL));
+        assertThat(Files.readAllBytes(fetched.cachePath())).isEqualTo(REAL);
+        assertThat(m2.resolve(REL)).hasBinaryContent(REAL);
+        assertThat(new Cas(store).contains(Hashing.sha256Hex(REAL))).isFalse();
         assertThat(ArtifactMemo.jkPath(repoStore, REL))
                 .as("the memo lives in the store keyed by the repository's origin")
                 .exists();

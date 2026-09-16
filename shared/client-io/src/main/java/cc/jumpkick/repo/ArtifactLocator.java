@@ -11,10 +11,15 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Finds a locked artifact as a real {@code *.jar} (or {@code *.aar}) path: Maven local repository
- * first when integration is on and the digest matches, else the store of the repository the lock
- * row's {@code source} names — keyed by that repository's origin, so two projects that call
- * different origins by one name never read each other's bytes.
+ * Finds a locked artifact as a real {@code *.jar} (or {@code *.aar}) path in the store of the
+ * repository the lock row's {@code source} names — keyed by that repository's origin, so two
+ * projects that call different origins by one name never read each other's bytes.
+ *
+ * <p>Every answer is a file the store owns. The Maven local repository, when integration is on,
+ * is a read-through source and never an address: a row the store lacks and the local repository
+ * holds under the locked digest is copied into the store and answered from there. A build
+ * therefore never reads a classpath entry another writer of {@code ~/.m2} — or of the shared
+ * test-m2 a forked test JVM runs against — can move or replace under it.
  */
 public final class ArtifactLocator {
 
@@ -22,36 +27,16 @@ public final class ArtifactLocator {
     private final @Nullable Path m2Root;
     private final boolean m2integration;
 
-    /**
-     * Whether the store is the only address this locator answers with: a row the store lacks and
-     * the Maven local repository has is copied into the store and answered from there.
-     */
-    private final boolean placeInStore;
-
+    /** {@code m2Root} null, or {@code m2integration} false, means the store alone answers. */
     public ArtifactLocator(Path storeRoot, @Nullable Path m2Root, boolean m2integration) {
-        this(storeRoot, m2Root, m2integration, false);
-    }
-
-    private ArtifactLocator(Path storeRoot, @Nullable Path m2Root, boolean m2integration, boolean placeInStore) {
         this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
         this.m2Root = m2Root;
         this.m2integration = m2integration && m2Root != null;
-        this.placeInStore = placeInStore;
     }
 
     /** Store-only locator (no Maven local repo). */
     public ArtifactLocator(Path storeRoot) {
         this(storeRoot, null, false);
-    }
-
-    /**
-     * A locator for paths jk writes down — a rendered launcher, an install's classpath. It answers
-     * only from the store: {@code ~/.m2} stays a read-through source, and a row only the mirror
-     * has is materialized into the store first, so the address jk records is one it owns and the
-     * bytes are the ones the store verified. {@code m2Root} null means no mirror at all.
-     */
-    public static ArtifactLocator placingInStore(Path storeRoot, @Nullable Path m2Root) {
-        return new ArtifactLocator(storeRoot, m2Root, m2Root != null, true);
     }
 
     public Optional<Path> locate(Lockfile.Artifact pkg) {
@@ -77,15 +62,9 @@ public final class ArtifactLocator {
         Path m2 = m2Root;
         // The lock row names the path; ~/.m2 is a root the row must not climb out of.
         Path m2File = m2integration && m2 != null && !storeOnly ? MavenLayout.safeResolve(m2, relativePath) : null;
-        if (m2File != null && !placeInStore) {
-            if (Files.isRegularFile(m2File) && verified(m2File, m2MemoPath(store, relativePath), gav, expectedSha256)) {
-                return Optional.of(m2File.toAbsolutePath().normalize());
-            }
-        }
         Optional<Path> found = fromStore(store, relativePath, expectedSha256);
         if (found.isPresent()) return found;
         if (m2File != null
-                && placeInStore
                 && Files.isRegularFile(m2File)
                 && verified(m2File, m2MemoPath(store, relativePath), gav, expectedSha256)) {
             store.materialize(relativePath, m2File, expectedSha256);
@@ -107,11 +86,10 @@ public final class ArtifactLocator {
     }
 
     /**
-     * The ~/.m2 probe gets its OWN memo ({@code <artifact>.m2.jk}), distinct from the store's own
-     * {@code .jk} sidecar. One shared memo can only record one blob's (mtime,size), so the m2 file
-     * and the store file kept invalidating each other's fast path and re-hashing the full jar on
-     * every resolve when they diverged (a stale ~/.m2 after a re-lock). It lives beside the
-     * repository's own store, so two origins sharing a name keep separate m2 verdicts too.
+     * The ~/.m2 probe gets its own memo ({@code <artifact>.m2.jk}), distinct from the store's own
+     * {@code .jk} sidecar: one memo records one blob's (mtime, size), and the m2 file and the store
+     * file are two blobs. It lives beside the repository's own store, so two origins sharing a name
+     * keep separate m2 verdicts too.
      */
     private Path m2MemoPath(RepoArtifactStore store, String relativePath) {
         Path dir = Objects.requireNonNull(store.root(), "a store with a root");

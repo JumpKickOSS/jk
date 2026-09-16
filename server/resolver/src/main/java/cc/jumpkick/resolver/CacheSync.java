@@ -28,8 +28,8 @@ import java.util.concurrent.ExecutionException;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Ensures every lockfile sha256 is on disk as a Maven-layout {@code *.jar} (Maven local repo
- * and/or {@code repos/<name>/}). Parallel on {@link JkThreads#io}; per-host concurrency is capped
+ * Ensures every lockfile sha256 is on disk as a Maven-layout {@code *.jar} under {@code
+ * repos/<origin>/}, written through to the Maven local repository when integration is on. Parallel on {@link JkThreads#io}; per-host concurrency is capped
  * inside {@link MavenRepo}. Checksum mismatches are reported, never accepted.
  */
 public final class CacheSync {

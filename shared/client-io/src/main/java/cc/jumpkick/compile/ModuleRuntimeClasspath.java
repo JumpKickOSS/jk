@@ -48,8 +48,7 @@ public final class ModuleRuntimeClasspath {
 
     /**
      * As {@link #jars(Path, JkBuild, Path, Cas)} with the resolver — and so the artifact locator —
-     * the caller chose: an install renders its launcher over a store-placing one, a build resolves
-     * with the default.
+     * the caller chose.
      */
     public static List<Path> jars(Path moduleDir, JkBuild project, Path lockFile, ClasspathResolver resolver)
             throws IOException {

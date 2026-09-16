@@ -726,10 +726,10 @@ public final class ExecPlans {
      * loads moves a dependency. What {@code java -cp} launchers are rendered over, jk's own JVM
      * client included.
      *
-     * <p>Every entry is a path under the home. Lock rows come from a store-placing locator, so a
-     * row the Maven local repository has and the store lacks is copied in and named from the
-     * store — a launcher that read {@code ~/.m2} broke on a purge and loaded bytes the lock never
-     * verified. A sibling's jar is the shelf's copy once {@code jk install} has shelved it; its
+     * <p>Every entry is a path under the home. A lock row is the store's copy ({@link
+     * ArtifactLocator}: a row only the Maven local repository has is copied in first), so a
+     * launcher stands when {@code ~/.m2} is purged and loads the bytes the lock verified. A
+     * sibling's jar is the shelf's copy once {@code jk install} has shelved it; its
      * {@code target/} jar serves only until then, since a launcher over the checkout's build output
      * breaks on {@code jk clean} and changes under a running client on every rebuild.
      */
@@ -744,7 +744,7 @@ public final class ExecPlans {
         classpath.add(repoJar);
         boolean mirror = JkM2Config.resolve().integration();
         var resolver = new ClasspathResolver(
-                store, ArtifactLocator.placingInStore(store, mirror ? M2Dirs.localRepository() : null));
+                store, new ArtifactLocator(store, mirror ? M2Dirs.localRepository() : null, mirror));
         Map<Path, Path> shelved = shelvedSiblingJars(dir, project, store);
         for (Path jar : ModuleRuntimeClasspath.jars(dir, project, resolveLockFile(dir), resolver)) {
             Path entry = shelved.getOrDefault(jar.toAbsolutePath().normalize(), jar);
