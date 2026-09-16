@@ -18,13 +18,26 @@ version, `jk gradle -q build` keeps Gradle quiet, `jk mvn -C install` is Maven's
 flag followed by a goal. jk's global flags go before the command name (`jk -q mvn package`,
 `jk -C app gradle build`).
 
-The one exception is the command's own three options, which say how jk provisions the tool and
+The one exception is the command's own four options, which say how jk provisions the tool and
 so are matched wherever they appear after the name, spelled out in full: `--tools-dir <dir>`
-(where jk installs Maven or Gradle), `--jdks-dir <dir>` (where it finds the JDK it runs them on)
-and `--no-discover` (skip the look for an installed one). Neither Maven nor Gradle has a flag of
-those names, and only the exact spelling is taken — `--tools` is Maven's — so nothing of the
-tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean` therefore provisions Maven under
-`/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the three.
+(where jk installs Maven or Gradle), `--jdks-dir <dir>` (where it finds the JDK it runs them on),
+`--no-discover` (skip the look for an installed one) and `--accept-unverified-tool` (below).
+Neither Maven nor Gradle has a flag of those names, and only the exact spelling is taken —
+`--tools` is Maven's — so nothing of the tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean`
+therefore provisions Maven under `/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the
+four.
+
+A distribution jk downloads is verified before it is unpacked, against the first of these that
+exists: the wrapper's own `distributionSha256Sum`; a digest accepted for that version earlier;
+the checksum its publisher puts beside the archive — Apache Maven's `.sha512` (3.7 and later),
+else its `.sha1` (the 3.6 line publishes only that), Gradle's `.sha256`. The `Maven 3.6.3
+downloaded · verified against the published .sha1` line says which one held. A wrapper pinned to
+a distribution with none of the three is refused, naming each checksum jk looked for; pin its
+SHA-256 in `maven-wrapper.properties`, or accept that one download with
+`jk mvn --accept-unverified-tool …` (or `JK_ACCEPT_UNVERIFIED_TOOL=1` in a CI step): jk installs
+the archive, records its SHA-256 as `tools/maven/<version>.accepted.sha256` in the store, and
+verifies every later download of that version against it, so the next run is silent. The flag
+never bypasses a checksum that is published.
 
 `jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history
 row behind `jk results`, MCP `jk_results` and `jk_diagnostics` (header `trigger: cli · tool: mvn`).

@@ -6,6 +6,8 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.PassthroughEnv;
+import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
@@ -42,7 +44,7 @@ public final class MvnCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Run Maven; only its three own options are jk's (jk --help mvn)";
+        return "Run Maven; only its four own options are jk's (jk --help mvn)";
     }
 
     @Override
@@ -52,10 +54,17 @@ public final class MvnCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
+        return ownOptions();
+    }
+
+    /** The options {@code jk mvn} and {@code jk gradle} share: how jk provisions the tool. */
+    static List<Opt> ownOptions() {
         return List.of(
                 Opt.value("<dir>", "Override the tools install root.", "--tools-dir"),
                 CommonOpts.jdksDir(),
-                Opt.flag("Skip tool discovery.", "--no-discover"));
+                Opt.flag("Skip tool discovery.", "--no-discover"),
+                // Held under HelpWidthTest's 78-column budget beside the longest flag name here.
+                Opt.flag("Accept a distribution no checksum vouches for", ToolRegistry.ACCEPT_FLAG));
     }
 
     @Override
@@ -73,6 +82,7 @@ public final class MvnCommand implements CliCommand {
     Path jdksDir;
 
     boolean noDiscover;
+    boolean acceptUnverified;
     List<String> args = new ArrayList<>();
 
     @Override
@@ -81,6 +91,7 @@ public final class MvnCommand implements CliCommand {
         this.toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.noDiscover = in.isSet("no-discover");
+        this.acceptUnverified = acceptUnverified(in);
         this.args = in.positionals();
 
         Path projectDir = directory != null
@@ -89,7 +100,7 @@ public final class MvnCommand implements CliCommand {
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.tools();
 
         // Provision Maven engine-side, get back the bin path.
-        Path mvnBin = provision(projectDir, toolsRoot, noDiscover, false);
+        Path mvnBin = provision(projectDir, toolsRoot, noDiscover, acceptUnverified, false);
         if (mvnBin == null) return 1;
 
         // Exec Maven directly so stdio is inherited cleanly.
@@ -137,16 +148,29 @@ public final class MvnCommand implements CliCommand {
     }
 
     /**
+     * Whether this run installs a distribution nothing vouches for: the flag, or {@link
+     * ToolRegistry#ACCEPT_ENV} set true for a CI step that cannot edit the command line.
+     */
+    static boolean acceptUnverified(Invocation in) {
+        return in.isSet(ToolRegistry.ACCEPT_FLAG.substring(2))
+                || EnvValues.bool(JkDirs::env, ToolRegistry.ACCEPT_ENV).orElse(false);
+    }
+
+    /**
      * Provision a Maven/Gradle distribution and return its launcher path, or {@code null} (with the
      * error already rendered) on failure. Engine-hosted: {@code CompatPlans.provision} links or
-     * downloads the distribution in the engine JVM and answers with the launcher path.
+     * downloads the distribution in the engine JVM and answers with the launcher path. A download
+     * is announced with what vouched for it: {@code Maven 3.6.3 downloaded · verified against the
+     * published .sha1}.
      */
-    static @Nullable Path provision(Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
+    static @Nullable Path provision(
+            Path projectDir, Path toolsRoot, boolean noDiscover, boolean acceptUnverified, boolean isGradle)
             throws IOException, InterruptedException {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
         try {
-            p = EngineClient.provision(EnginePaths.current(), projectDir, toolsRoot, noDiscover, isGradle);
+            p = EngineClient.provision(
+                    EnginePaths.current(), projectDir, toolsRoot, noDiscover, acceptUnverified, isGradle);
         } catch (IOException e) {
             CommandWedge.printFail(tool, e.getMessage());
             return null;
@@ -155,7 +179,9 @@ public final class MvnCommand implements CliCommand {
         if (p.error() != null) CommandWedge.printFail(tool, p.error());
         String source = Objects.requireNonNullElse(p.source(), "");
         if ("LINKED".equals(source) || "DOWNLOADED".equals(source)) {
-            CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " " + source.toLowerCase(Locale.ROOT));
+            String verification = Objects.requireNonNullElse(p.verification(), "");
+            CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " " + source.toLowerCase(Locale.ROOT)
+                    + (verification.isEmpty() ? "" : " · " + verification));
         }
         if (p.exit() != 0) return null;
         return p.bin() != null ? Path.of(p.bin()) : null;

@@ -10,8 +10,9 @@ import org.jspecify.annotations.Nullable;
  * GradleResolver} produces these; the {@code ToolInstaller} consumes them.
  *
  * <p>{@link #sha256} is the pin a wrapper's {@code distributionSha256Sum} supplies; when it is
- * absent the installer verifies the archive against the {@link BuildTool#publishedChecksum()
- * sidecar} the tool's publisher puts beside it, and refuses the archive when neither is available.
+ * absent the installer verifies the archive against a digest accepted for it earlier, else the
+ * first {@link BuildTool#publishedChecksums() sidecar} the tool's publisher puts beside it, and
+ * refuses the archive when none is available unless the run accepts it by name.
  */
 public record ToolDistribution(
         BuildTool tool,

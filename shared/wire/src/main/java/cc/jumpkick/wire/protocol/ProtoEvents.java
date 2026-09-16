@@ -318,8 +318,13 @@ public final class ProtoEvents {
     }
 
     public static String provisionResult(
-            @Nullable String bin, @Nullable String version, @Nullable String source, @Nullable String error, int exit) {
-        return new ProvisionResultEvent(bin, version, source, error, exit).encode();
+            @Nullable String bin,
+            @Nullable String version,
+            @Nullable String source,
+            @Nullable String verification,
+            @Nullable String error,
+            int exit) {
+        return new ProvisionResultEvent(bin, version, source, verification, error, exit).encode();
     }
 
     public static String mvnResultsResult(@Nullable String results, @Nullable String error) {

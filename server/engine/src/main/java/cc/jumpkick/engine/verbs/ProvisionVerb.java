@@ -51,11 +51,21 @@ public final class ProvisionVerb implements HostedVerb {
                 Path toolsRoot = Path.of(body.toolsRoot());
                 var outcome = body.tool() != null && !body.tool().isBlank()
                         ? CompatPlans.provisionTool(body.tool(), body.version(), toolsRoot, body.noDiscover())
-                        : CompatPlans.provision(Path.of(body.dir()), toolsRoot, body.noDiscover(), body.gradle());
+                        : CompatPlans.provision(
+                                Path.of(body.dir()),
+                                toolsRoot,
+                                body.noDiscover(),
+                                body.acceptUnverified(),
+                                body.gradle());
                 host.sendQuiet(
                         writer,
                         ProtoEvents.provisionResult(
-                                outcome.bin(), outcome.version(), outcome.source(), outcome.error(), outcome.exit()));
+                                outcome.bin(),
+                                outcome.version(),
+                                outcome.source(),
+                                outcome.verification(),
+                                outcome.error(),
+                                outcome.exit()));
                 return outcome.exit() == Exit.SUCCESS ? JobOutcome.ok() : JobOutcome.failed(outcome.exit());
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));

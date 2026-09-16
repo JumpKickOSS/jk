@@ -20,7 +20,12 @@ public final class ToolProvisioning {
 
     private ToolProvisioning() {}
 
-    public record Result(InstalledTool tool, Source source, String detail) {
+    /**
+     * How a tool was obtained: {@code detail} is the discovered install for a link or the download
+     * URI for a download; {@code verification} is, for a download, what vouched for the archive in
+     * the words the {@code downloaded} line prints, else empty.
+     */
+    public record Result(InstalledTool tool, Source source, String detail, String verification) {
         public enum Source {
             CACHED,
             LINKED,
@@ -31,7 +36,16 @@ public final class ToolProvisioning {
             if (tool == null) throw new IllegalArgumentException("tool");
             if (source == null) throw new IllegalArgumentException("source");
             if (detail == null) detail = "";
+            if (verification == null) verification = "";
         }
+    }
+
+    /**
+     * What a provisioning run may do: skip the look for a host install, ignore a cached one, and
+     * install an archive no checksum vouches for ({@link ToolRegistry#ACCEPT_FLAG}).
+     */
+    public record Policy(boolean noDiscover, boolean noCache, boolean acceptUnverified) {
+        public static final Policy DEFAULT = new Policy(false, false, false);
     }
 
     /**
@@ -39,34 +53,23 @@ public final class ToolProvisioning {
      * download. Returns the resolved {@link InstalledTool} and a tag describing how it was obtained
      * (for log output).
      */
-    public static Result provision(ToolDistribution distribution, ToolRegistry registry, Http http, boolean noDiscover)
+    public static Result provision(ToolDistribution distribution, ToolRegistry registry, Http http, Policy policy)
             throws IOException, InterruptedException {
-        return provision(distribution, registry, http, noDiscover, false, new ToolProvisioner());
-    }
-
-    public static Result provision(
-            ToolDistribution distribution, ToolRegistry registry, Http http, boolean noDiscover, boolean noCache)
-            throws IOException, InterruptedException {
-        return provision(distribution, registry, http, noDiscover, noCache, new ToolProvisioner());
+        return provision(distribution, registry, http, policy, new ToolProvisioner());
     }
 
     static Result provision(
-            ToolDistribution distribution,
-            ToolRegistry registry,
-            Http http,
-            boolean noDiscover,
-            boolean noCache,
-            ToolProvisioner provisioner)
+            ToolDistribution distribution, ToolRegistry registry, Http http, Policy policy, ToolProvisioner provisioner)
             throws IOException, InterruptedException {
 
         ToolSpec spec = specFor(distribution);
 
         // 1. Healthy cached install wins (skipped when noCache).
         Optional<InstalledTool> existing = registry.find(distribution.tool(), distribution.version());
-        if (!noCache
+        if (!policy.noCache()
                 && existing.isPresent()
                 && isHealthyEntry(spec, existing.get().home())) {
-            return new Result(existing.get(), Result.Source.CACHED, "");
+            return new Result(existing.get(), Result.Source.CACHED, "", "");
         }
         // 2. Broken cache entry — purge and continue. Through JkOwnership rather than a local
         // three-arm copy: link-vs-populated-directory is the same question got wrong
@@ -76,7 +79,7 @@ public final class ToolProvisioning {
         }
 
         // 3. Probe the host for an existing install.
-        if (!noDiscover && SymlinkProvisioner.canSymlink()) {
+        if (!policy.noDiscover() && SymlinkProvisioner.canSymlink()) {
             Optional<DiscoveredTool> hit = provisioner.discover(spec);
             if (hit.isPresent()) {
                 Path link = registry.installDir(distribution.tool(), distribution.version());
@@ -84,14 +87,19 @@ public final class ToolProvisioning {
                 return new Result(
                         new InstalledTool(distribution.tool(), distribution.version(), link),
                         Result.Source.LINKED,
-                        hit.get().source() + " → " + hit.get().home());
+                        hit.get().source() + " → " + hit.get().home(),
+                        "");
             }
         }
 
         // 4. Download fallback.
-        InstalledTool installed = new ToolInstaller(http, registry).install(distribution);
+        ToolInstaller.Installed installed =
+                new ToolInstaller(http, registry).install(distribution, policy.acceptUnverified());
         return new Result(
-                installed, Result.Source.DOWNLOADED, distribution.downloadUri().toString());
+                installed.tool(),
+                Result.Source.DOWNLOADED,
+                distribution.downloadUri().toString(),
+                installed.verification());
     }
 
     /**

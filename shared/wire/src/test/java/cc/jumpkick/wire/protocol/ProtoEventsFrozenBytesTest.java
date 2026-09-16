@@ -186,9 +186,9 @@ class ProtoEventsFrozenBytesTest {
                         "{\"type\":\"format-file\",\"dir\":\"a/b\",\"path\":\"src/A.java\",\"status\":\"changed\",\"message\":null,\"index\":1,\"total\":16}");
         assertThat(ProtoEvents.importNote("a/b", "warn", "skipped profile"))
                 .isEqualTo("{\"type\":\"import-note\",\"dir\":\"a/b\",\"kind\":\"warn\",\"text\":\"skipped profile\"}");
-        assertThat(ProtoEvents.provisionResult("/bin/mvn", "3.9", "downloaded", null, 0))
+        assertThat(ProtoEvents.provisionResult("/bin/mvn", "3.9", "downloaded", null, null, 0))
                 .isEqualTo(
-                        "{\"type\":\"provision-result\",\"bin\":\"/bin/mvn\",\"version\":\"3.9\",\"source\":\"downloaded\",\"error\":null,\"exit\":0}");
+                        "{\"type\":\"provision-result\",\"bin\":\"/bin/mvn\",\"version\":\"3.9\",\"source\":\"downloaded\",\"verification\":null,\"error\":null,\"exit\":0}");
     }
 
     @Test

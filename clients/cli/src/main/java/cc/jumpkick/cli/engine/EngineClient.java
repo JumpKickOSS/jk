@@ -498,9 +498,14 @@ public final class EngineClient {
     }
 
     public static HostedEvents.Provision provision(
-            EnginePaths.Paths paths, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
+            EnginePaths.Paths paths,
+            Path projectDir,
+            Path toolsRoot,
+            boolean noDiscover,
+            boolean acceptUnverified,
+            boolean gradle)
             throws IOException {
-        return EngineHosted.provision(paths, projectDir, toolsRoot, noDiscover, gradle);
+        return EngineHosted.provision(paths, projectDir, toolsRoot, noDiscover, acceptUnverified, gradle);
     }
 
     /** Journal a finished {@code jk mvn} run; see {@link EngineHosted#mvnResults}. */

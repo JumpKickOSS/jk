@@ -29,11 +29,15 @@ public final class HostedEvents {
         void onNote(String kind, String text);
     }
 
-    /** A provisioned Maven/Gradle distribution ({@code jk mvn}/{@code jk gradle}). */
+    /**
+     * A provisioned Maven/Gradle distribution ({@code jk mvn}/{@code jk gradle}); {@code
+     * verification} says what vouched for a downloaded archive.
+     */
     public record Provision(
             @Nullable String bin,
             @Nullable String version,
             @Nullable String source,
+            @Nullable String verification,
             @Nullable String error,
             int exit) {}
 

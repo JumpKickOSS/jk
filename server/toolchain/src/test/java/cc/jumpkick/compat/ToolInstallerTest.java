@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.io.ByteArrayOutputStream;
@@ -91,7 +92,7 @@ class ToolInstallerTest {
     void an_unpinned_archive_is_refused_when_no_checksum_is_published_beside_it(@TempDir Path tempDir)
             throws Exception {
         byte[] zip = buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
-        http.served().put("/maven.zip", zip);
+        http.withoutChecksums().served().put("/maven.zip", zip);
 
         ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
         ToolDistribution dist =
@@ -100,11 +101,102 @@ class ToolInstallerTest {
         assertThatThrownBy(() -> installer.install(dist))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("cannot be verified")
-                .hasMessageContaining(".sha512");
+                .hasMessageContaining("no .sha512 or .sha1 checksum")
+                .hasMessageContaining("/maven.zip.sha512 returned 404")
+                .hasMessageContaining("/maven.zip.sha1 returned 404")
+                .hasMessageContaining("accept this download once with --accept-unverified-tool");
         assertThat(tempDir.resolve("tools/maven/3.9.9")).doesNotExist();
         assertThat(http.requestsFor("/maven.zip"))
                 .as("the archive is not even downloaded when nothing vouches for it")
                 .isZero();
+    }
+
+    /** Apache publishes only {@code .sha1} beside the 3.6 line; it is the second sidecar Maven has. */
+    @Test
+    void a_maven_archive_with_only_a_sha1_beside_it_is_verified_against_that(@TempDir Path tempDir) throws Exception {
+        byte[] zip = buildZip("apache-maven-3.6.3", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
+        http.served().put("/maven.zip", zip);
+        http.serve("/maven.zip.sha1", Hashing.hashHex("SHA-1", zip));
+
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist =
+                new ToolDistribution(BuildTool.MAVEN, "3.6.3", http.base().resolve("/maven.zip"), "zip", null);
+
+        ToolInstaller.Installed installed = installer.install(dist, false);
+        assertThat(installed.tool().home().resolve("bin/mvn")).exists();
+        assertThat(installed.verification()).isEqualTo("verified against the published .sha1");
+        assertThat(http.requested()).containsSubsequence("/maven.zip.sha512", "/maven.zip.sha1", "/maven.zip");
+    }
+
+    @Test
+    void a_sha1_that_disagrees_with_the_archive_aborts_install(@TempDir Path tempDir) throws Exception {
+        byte[] zip = buildZip("apache-maven-3.6.3", Map.of("bin/mvn", "#!/bin/sh\n"));
+        http.served().put("/maven.zip", zip);
+        http.serve("/maven.zip.sha1", "0".repeat(40));
+
+        ToolInstaller installer = new ToolInstaller(new Http(), new ToolRegistry(tempDir.resolve("tools")));
+        ToolDistribution dist =
+                new ToolDistribution(BuildTool.MAVEN, "3.6.3", http.base().resolve("/maven.zip"), "zip", null);
+
+        assertThatThrownBy(() -> installer.install(dist))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("sha1 mismatch");
+        assertThat(tempDir.resolve("tools/maven/3.6.3")).doesNotExist();
+    }
+
+    /**
+     * Accepting by name installs the archive and records its digest beside the install; a purge
+     * and a second provision, without the flag, verifies the download against that record and
+     * says so, while a different archive under the same name is refused against it.
+     */
+    @Test
+    void an_accepted_archive_records_its_digest_and_later_downloads_are_held_to_it(@TempDir Path tempDir)
+            throws Exception {
+        byte[] zip = buildZip("apache-maven-3.6.3", Map.of("bin/mvn", "#!/bin/sh\n", "bin/mvn.cmd", "@echo mvn\r\n"));
+        http.withoutChecksums().served().put("/apache-maven-3.6.3-bin.zip", zip);
+        ToolRegistry registry = new ToolRegistry(tempDir.resolve("tools"));
+        ToolInstaller installer = new ToolInstaller(new Http(), registry);
+        ToolDistribution dist = new ToolDistribution(
+                BuildTool.MAVEN, "3.6.3", http.base().resolve("/apache-maven-3.6.3-bin.zip"), "zip", null);
+
+        ToolInstaller.Installed accepted = installer.install(dist, true);
+        assertThat(accepted.tool().home().resolve("bin/mvn")).exists();
+        assertThat(accepted.verification()).isEqualTo("accepted with --accept-unverified-tool, sha256 recorded");
+        Path record = registry.acceptedDigest(BuildTool.MAVEN, "3.6.3");
+        assertThat(record).hasContent(Hashing.sha256Hex(zip) + "  apache-maven-3.6.3-bin.zip\n");
+
+        PathUtil.deleteRecursively(accepted.tool().home());
+        ToolInstaller.Installed again = installer.install(dist, false);
+        assertThat(again.tool().home().resolve("bin/mvn")).exists();
+        assertThat(again.verification()).isEqualTo("verified against the digest accepted earlier");
+
+        PathUtil.deleteRecursively(again.tool().home());
+        http.served()
+                .put(
+                        "/apache-maven-3.6.3-bin.zip",
+                        buildZip("apache-maven-3.6.3", Map.of("bin/mvn", "#!/bin/sh\nrm -rf /\n")));
+        assertThatThrownBy(() -> installer.install(dist, false))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("sha256 mismatch")
+                .hasMessageContaining("accepted earlier");
+        assertThat(tempDir.resolve("tools/maven/3.6.3")).doesNotExist();
+    }
+
+    @Test
+    void the_flag_does_not_bypass_a_published_checksum(@TempDir Path tempDir) throws Exception {
+        byte[] zip = buildZip("gradle-9.5.1", Map.of("bin/gradle", "#!/bin/sh\n"));
+        http.served().put("/gradle.zip", zip);
+        http.serve("/gradle.zip.sha256", "0".repeat(64));
+
+        ToolRegistry registry = new ToolRegistry(tempDir.resolve("tools"));
+        ToolInstaller installer = new ToolInstaller(new Http(), registry);
+        ToolDistribution dist =
+                new ToolDistribution(BuildTool.GRADLE, "9.5.1", http.base().resolve("/gradle.zip"), "zip", null);
+
+        assertThatThrownBy(() -> installer.install(dist, true))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("sha256 mismatch");
+        assertThat(registry.acceptedDigest(BuildTool.GRADLE, "9.5.1")).doesNotExist();
     }
 
     @Test

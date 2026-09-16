@@ -23,25 +23,35 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Download/extract a {@link ToolDistribution} under {@code $JK_STORE_DIR/tools/<slug>/<version>/}
  * (zip/tar.gz; fail cleans partial install).
  *
- * <p>Every archive is verified before it is unpacked: against the distribution's own pin when it
- * has one, otherwise against the {@link PublishedChecksum} sidecar its publisher puts beside it.
- * The sidecar is fetched first, so a distribution that cannot be verified is refused before the
- * archive is downloaded at all; an archive with neither is never installed. What arrives here is
- * executed — the Kotlin compiler on every {@code .kt} build — so TLS alone is not enough.
+ * <p>Every archive is verified before it is unpacked, against the first of these that exists: the
+ * distribution's own pin; the digest a run accepted for it earlier ({@link
+ * ToolRegistry#acceptedDigest}); the {@link PublishedChecksum} sidecars its publisher puts beside
+ * it, strongest first. The sidecars are fetched before the archive, so a distribution that cannot
+ * be verified is refused before the archive is downloaded at all. An archive with none of the
+ * three is installed only when the run accepts it by name ({@link ToolRegistry#ACCEPT_FLAG}); its SHA-256 is
+ * then recorded so the next download of that version is verified, silently, against it. What
+ * arrives here is executed — the Kotlin compiler on every {@code .kt} build — so TLS alone is not
+ * enough.
  *
  * <p>A {@code file:} distribution — a wrapper pointing at an offline mirror — is copied from disk
  * and held to the same rule: its pin, or a checksum file beside the archive on that disk.
  */
 public final class ToolInstaller {
+
+    /** An install and how its archive was verified, in the words the {@code downloaded} line prints. */
+    public record Installed(InstalledTool tool, String verification) {}
 
     private final Http http;
     private final ToolRegistry registry;
@@ -52,18 +62,32 @@ public final class ToolInstaller {
     }
 
     public InstalledTool install(ToolDistribution dist) throws IOException, InterruptedException {
+        return install(dist, false).tool();
+    }
+
+    /**
+     * Install {@code dist}; {@code acceptUnverified} lets an archive with no pin, no accepted
+     * digest and no published checksum through, recording its SHA-256 for the next time.
+     */
+    public Installed install(ToolDistribution dist, boolean acceptUnverified) throws IOException, InterruptedException {
         Path target = registry.installDir(dist.tool(), dist.version());
         if (Files.isDirectory(target)) {
-            return new InstalledTool(dist.tool(), dist.version(), target);
+            return new Installed(new InstalledTool(dist.tool(), dist.version(), target), "installed earlier");
         }
         Files.createDirectories(target.getParent());
 
-        ExpectedDigest expected = expectedDigest(dist);
+        ExpectedDigest expected = expectedDigest(dist, acceptUnverified);
         Path archive = Files.createTempFile("jk-tool-", "-" + dist.archiveType());
         try {
             fetch(dist, archive);
             String actual = Hashing.fileHex(expected.algorithm(), archive);
-            if (!actual.equalsIgnoreCase(expected.hex())) {
+            if (expected.hex() == null) {
+                // Accepted by name: the archive's own digest becomes the record later downloads
+                // are held to. Written before the unpack, so a crash mid-extract still leaves the
+                // acceptance the retry needs.
+                Path record = registry.acceptedDigest(dist.tool(), dist.version());
+                Files.writeString(record, actual + "  " + archiveName(dist) + "\n", StandardCharsets.UTF_8);
+            } else if (!actual.equalsIgnoreCase(expected.hex())) {
                 throw new IOException(expected.label()
                         + " mismatch for "
                         + dist.downloadUri()
@@ -100,7 +124,14 @@ public final class ToolInstaller {
         } finally {
             Files.deleteIfExists(archive);
         }
-        return new InstalledTool(dist.tool(), dist.version(), target);
+        return new Installed(new InstalledTool(dist.tool(), dist.version(), target), expected.source());
+    }
+
+    /** The archive's file name, as a checksum record names it. */
+    private static String archiveName(ToolDistribution dist) {
+        String path = dist.downloadUri().getPath();
+        int slash = path == null ? -1 : path.lastIndexOf('/');
+        return path == null || slash < 0 ? dist.version() + "." + dist.archiveType() : path.substring(slash + 1);
     }
 
     /** Copy the distribution's archive to {@code archive}: from disk for a {@code file:} URI, else by download. */
@@ -145,59 +176,88 @@ public final class ToolInstaller {
         }
     }
 
-    /** What the archive must hash to, and where that expectation came from. */
-    private record ExpectedDigest(String label, String algorithm, String hex, String source) {}
+    /**
+     * What the archive must hash to, and where that expectation came from; {@code hex} is null
+     * only for an archive accepted by name, whose digest is recorded rather than checked.
+     */
+    private record ExpectedDigest(
+            String label, String algorithm, @Nullable String hex, String source) {}
 
     /**
-     * The distribution's pin when it has one, else the digest its publisher's sidecar advertises.
-     * Refuses — before any archive bytes move — when the sidecar is absent or is not a digest of
-     * the expected width (a repository that answers a missing file with an HTML page under 200).
+     * The distribution's pin, else the digest accepted for it earlier, else the digest the first
+     * published sidecar advertises. Refuses — before any archive bytes move — when none of those
+     * exists, naming each sidecar tried and why it did not count (absent, or a body that is not a
+     * digest of the expected width: a repository answering a missing file with an HTML page under
+     * 200), unless {@code acceptUnverified} lets the archive through.
      */
-    private ExpectedDigest expectedDigest(ToolDistribution dist) throws IOException, InterruptedException {
+    private ExpectedDigest expectedDigest(ToolDistribution dist, boolean acceptUnverified)
+            throws IOException, InterruptedException {
         String pinned = dist.sha256();
         if (pinned != null && !pinned.isBlank()) {
-            return new ExpectedDigest("sha256", "SHA-256", pinned.trim(), "pinned by the distribution");
+            return new ExpectedDigest(
+                    "sha256", "SHA-256", pinned.trim(), "pinned by the wrapper's distributionSha256Sum");
         }
-        PublishedChecksum sidecar = dist.tool().publishedChecksum();
-        URI sidecarUri = sidecar.beside(dist.downloadUri());
-        String body;
-        if (isFile(sidecarUri)) {
-            Path sidecarFile = localFile(sidecarUri, dist);
-            if (!Files.isRegularFile(sidecarFile)) {
-                throw new IOException(unverifiable(dist, sidecar, sidecarUri, "is not there"));
-            }
-            body = Files.readString(sidecarFile, StandardCharsets.UTF_8);
-        } else {
-            HttpResponse<byte[]> response = http.get(sidecarUri);
-            if (response.statusCode() != 200) {
-                throw new IOException(unverifiable(dist, sidecar, sidecarUri, "returned " + response.statusCode()));
-            }
-            body = new String(response.body(), StandardCharsets.UTF_8);
+        Path accepted = registry.acceptedDigest(dist.tool(), dist.version());
+        if (Files.isRegularFile(accepted)) {
+            String hex = Hashing.checksumFromSidecar(Files.readString(accepted, StandardCharsets.UTF_8), 64)
+                    .orElseThrow(() -> new IOException(accepted + " is not a sha256 digest; delete it to accept "
+                            + dist.tool().slug() + " " + dist.version() + " again"));
+            return new ExpectedDigest("sha256", "SHA-256", hex, "verified against the digest accepted earlier");
         }
-        String hex = Hashing.checksumFromSidecar(body, sidecar.hexLength())
-                .orElseThrow(() -> new IOException(dist.tool().slug()
-                        + " distribution "
-                        + dist.downloadUri()
-                        + " cannot be verified: "
-                        + sidecarUri
-                        + " is not a "
-                        + sidecar.label()
-                        + " digest. Refusing to install an archive nothing vouches for."));
-        return new ExpectedDigest(sidecar.label(), sidecar.algorithm(), hex, "published at " + sidecarUri);
+        List<String> tried = new ArrayList<>();
+        for (PublishedChecksum sidecar : dist.tool().publishedChecksums()) {
+            URI sidecarUri = sidecar.beside(dist.downloadUri());
+            String body;
+            if (isFile(sidecarUri)) {
+                Path sidecarFile = localFile(sidecarUri, dist);
+                if (!Files.isRegularFile(sidecarFile)) {
+                    tried.add(sidecarUri + " is not there");
+                    continue;
+                }
+                body = Files.readString(sidecarFile, StandardCharsets.UTF_8);
+            } else {
+                HttpResponse<byte[]> response = http.get(sidecarUri);
+                if (response.statusCode() != 200) {
+                    tried.add(sidecarUri + " returned " + response.statusCode());
+                    continue;
+                }
+                body = new String(response.body(), StandardCharsets.UTF_8);
+            }
+            Optional<String> hex = Hashing.checksumFromSidecar(body, sidecar.hexLength());
+            if (hex.isEmpty()) {
+                tried.add(sidecarUri + " is not a " + sidecar.label() + " digest");
+                continue;
+            }
+            return new ExpectedDigest(
+                    sidecar.label(),
+                    sidecar.algorithm(),
+                    hex.get(),
+                    "verified against the published " + sidecar.suffix());
+        }
+        if (acceptUnverified) {
+            return new ExpectedDigest(
+                    "sha256", "SHA-256", null, "accepted with " + ToolRegistry.ACCEPT_FLAG + ", sha256 recorded");
+        }
+        throw new IOException(unverifiable(dist, tried));
     }
 
-    private static String unverifiable(ToolDistribution dist, PublishedChecksum sidecar, URI sidecarUri, String why) {
+    private static String unverifiable(ToolDistribution dist, List<String> tried) {
+        String suffixes = dist.tool().publishedChecksums().stream()
+                .map(PublishedChecksum::suffix)
+                .collect(Collectors.joining(" or "));
         return dist.tool().slug()
                 + " distribution "
                 + dist.downloadUri()
                 + " cannot be verified: no "
-                + sidecar.suffix()
+                + suffixes
                 + " checksum is published beside it ("
-                + sidecarUri
-                + " "
-                + why
+                + String.join("; ", tried)
                 + "). Refusing to install an archive nothing vouches for; pin its SHA-256"
-                + " (wrapper distributionSha256Sum) or publish the checksum beside it.";
+                + " (wrapper distributionSha256Sum), or accept this download once with "
+                + ToolRegistry.ACCEPT_FLAG
+                + " (or "
+                + ToolRegistry.ACCEPT_ENV
+                + "=1) — jk records its digest under the tools store and verifies later downloads against it.";
     }
 
     static void extract(Path archive, Path destDir, String archiveType) throws IOException {

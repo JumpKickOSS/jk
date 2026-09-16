@@ -91,11 +91,15 @@ public final class CompatPlans {
                 .build();
     }
 
-    /** A provisioning call's outcome — the flat fields {@code jk mvn}/{@code jk gradle} render from. */
+    /**
+     * A provisioning call's outcome — the flat fields {@code jk mvn}/{@code jk gradle} render from;
+     * {@code verification} says what vouched for a downloaded archive.
+     */
     public record Provision(
             @Nullable String bin,
             @Nullable String version,
             @Nullable String source,
+            @Nullable String verification,
             @Nullable String error,
             int exit) {}
 
@@ -103,25 +107,31 @@ public final class CompatPlans {
      * Provision a Maven/Gradle distribution: link a discovered install or download one, and return
      * its launcher path. Runs in the engine JVM, the same way {@link CompileToolchain#resolveKotlinHome}
      * provisions Kotlin — there is no worker to fork and no worker repo to materialize.
-     * Non-interactive by construction: the exec of the provisioned tool is the caller's business.
+     * Non-interactive by construction: the exec of the provisioned tool is the caller's business,
+     * and {@code acceptUnverified} is the one consent it carries.
      */
-    public static Provision provision(Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle) {
+    public static Provision provision(
+            Path projectDir, Path toolsRoot, boolean noDiscover, boolean acceptUnverified, boolean isGradle) {
         ToolDistribution dist = null;
         try {
             dist = isGradle
                     ? new GradleResolver().resolve(projectDir.toAbsolutePath())
                     : new MavenResolver().resolve(projectDir.toAbsolutePath());
             ToolProvisioning.Result result = ToolProvisioning.provision(
-                    dist, new ToolRegistry(toolsRoot.toAbsolutePath()), new Http(), noDiscover);
+                    dist,
+                    new ToolRegistry(toolsRoot.toAbsolutePath()),
+                    new Http(),
+                    new ToolProvisioning.Policy(noDiscover, false, acceptUnverified));
             return new Provision(
                     result.tool().binary().toString(),
                     dist.version(),
                     result.source().name(),
+                    result.verification(),
                     null,
                     Exit.SUCCESS);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return new Provision(null, dist == null ? null : dist.version(), null, message(e), Exit.FAILURE);
+            return new Provision(null, dist == null ? null : dist.version(), null, null, message(e), Exit.FAILURE);
         }
     }
 
@@ -142,16 +152,20 @@ public final class CompatPlans {
                             "unknown build tool '" + toolSlug + "' — known: " + BuildTool.slugs()));
             dist = BuildToolDistributions.of(tool, version);
             ToolProvisioning.Result result = ToolProvisioning.provision(
-                    dist, new ToolRegistry(toolsRoot.toAbsolutePath()), new Http(), noDiscover);
+                    dist,
+                    new ToolRegistry(toolsRoot.toAbsolutePath()),
+                    new Http(),
+                    new ToolProvisioning.Policy(noDiscover, false, false));
             return new Provision(
                     result.tool().home().toString(),
                     dist.version(),
                     result.source().name(),
+                    result.verification(),
                     null,
                     Exit.SUCCESS);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return new Provision(null, dist == null ? null : dist.version(), null, message(e), Exit.FAILURE);
+            return new Provision(null, dist == null ? null : dist.version(), null, null, message(e), Exit.FAILURE);
         }
     }
 

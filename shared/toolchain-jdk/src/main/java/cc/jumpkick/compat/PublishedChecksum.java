@@ -7,10 +7,11 @@ import java.util.Objects;
 
 /**
  * The checksum file a distribution's publisher puts beside every archive: {@code <archive>.sha512}
- * on Maven Central for Apache Maven, {@code <archive>.sha256} on services.gradle.org and on the
- * Kotlin GitHub release. A distribution that carries no pin of its own is verified against this
- * sidecar, fetched from the same origin as the archive, and refused when the sidecar is absent —
- * TLS alone is not a reason to unpack and execute a compiler.
+ * on Maven Central for Apache Maven 3.7 and later, {@code <archive>.sha1} alone for the 3.6 line,
+ * {@code <archive>.sha256} on services.gradle.org and on the Kotlin GitHub release. A distribution
+ * that carries no pin of its own is verified against the first of its tool's sidecars that is
+ * published, fetched from the same origin as the archive, and refused when none is — TLS alone is
+ * not a reason to unpack and execute a compiler.
  *
  * @param suffix appended to the archive URL to address the sidecar, dot included
  * @param algorithm the {@link java.security.MessageDigest} name the sidecar's digest is computed with
@@ -20,6 +21,7 @@ public record PublishedChecksum(String suffix, String algorithm, int hexLength) 
 
     public static final PublishedChecksum SHA256 = new PublishedChecksum(".sha256", "SHA-256", 64);
     public static final PublishedChecksum SHA512 = new PublishedChecksum(".sha512", "SHA-512", 128);
+    public static final PublishedChecksum SHA1 = new PublishedChecksum(".sha1", "SHA-1", 40);
 
     public PublishedChecksum {
         Objects.requireNonNull(suffix, "suffix");
