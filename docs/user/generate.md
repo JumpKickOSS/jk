@@ -59,6 +59,15 @@ what `options` says.
 The worked example: [`examples/openapi-spring`](examples/openapi-spring/) — a Boot controller
 implementing the generated interface.
 
+## One plugin worker per module
+
+A module runs one plugin worker. `[generate]` or a preset table is that worker's table, so it
+cannot share a module with `[spring-boot]`, `[quarkus]`, `[micronaut]`, `[protobuf]` or
+`[android]` — the build refuses the pair by name rather than skipping the generator. Put the
+generator in its own module (an `api` module the service depends on), or in a Boot module drop
+the `[spring-boot]` table for the BOM as a platform line, as
+[`examples/openapi-spring`](examples/openapi-spring/) does.
+
 ## What the lock pins
 
 The tool coordinate you write is the pin: a bare version is exact and costs no network; a
