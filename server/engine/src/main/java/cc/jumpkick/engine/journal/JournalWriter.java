@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkHistoryConfig;
+import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobSessions;
@@ -178,11 +179,17 @@ public final class JournalWriter {
                 }
                 return;
             }
+            Iteration iteration = iteration(record, tests);
+            record = iteration.record();
             Path runDir = null;
             if (historyConfig.enabled()) {
                 Path dir = Path.of(a.dir());
-                BuildJournal.Snapshot snapshot =
-                        new BuildJournal.Snapshot(null, LockPaths.lockFile(dir), a.diagnosticsText());
+                BuildJournal.Snapshot snapshot = new BuildJournal.Snapshot(
+                        null,
+                        LockPaths.lockFile(dir),
+                        a.diagnosticsText(),
+                        iteration.testOutcomes(),
+                        iteration.sources());
                 String jid = a.journalId();
                 String locator;
                 if (jid != null && !jid.isBlank()) {
@@ -222,6 +229,48 @@ public final class JournalWriter {
             }
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
+        }
+    }
+
+    /**
+     * {@code record} with its {@link JobDelta} when the journal holds a run before it from the same
+     * origin, and the two snapshots this run leaves for the next one to compare against.
+     */
+    record Iteration(
+            BuildRecord record,
+            @Nullable String testOutcomes,
+            @Nullable String sources) {}
+
+    Iteration iteration(BuildRecord record, List<MarkdownTestReport.ModuleRun> tests) {
+        boolean journaled = historyConfig.enabled()
+                && BuildHistoryKinds.isBuildLike(record.kind())
+                && record.dir() != null
+                && !record.dir().isBlank();
+        if (!journaled) return new Iteration(record, null, null);
+        try {
+            Optional<JournalLineage.Previous> previous = journal.previousInSession(record);
+            Map<String, RunSnapshots.FileRow> priorRows = previous.map(
+                            p -> RunSnapshots.readOrNull(p.dir().resolve(BuildJournal.SOURCES_TSV)))
+                    .map(RunSnapshots::decodeSources)
+                    .orElse(null);
+            Map<String, RunSnapshots.FileRow> rows =
+                    RunSnapshots.walk(Path.of(record.dir()), priorRows == null ? Map.of() : priorRows);
+            Map<String, Character> outcomes = tests.isEmpty() ? null : RunSnapshots.testOutcomes(tests);
+            String testOutcomes = outcomes == null ? null : RunSnapshots.encodeTests(outcomes);
+            String sources = rows == null ? null : RunSnapshots.encodeSources(rows);
+            if (previous.isEmpty()) return new Iteration(record, testOutcomes, sources);
+            String priorTests = RunSnapshots.readOrNull(previous.get().dir().resolve(BuildJournal.TEST_OUTCOMES_TSV));
+            JobDelta delta = JobDelta.compute(
+                    previous.get().record(),
+                    record,
+                    priorTests == null ? null : RunSnapshots.decodeTests(priorTests),
+                    outcomes,
+                    priorRows == null ? null : RunSnapshots.hashes(priorRows),
+                    rows == null ? null : RunSnapshots.hashes(rows));
+            return new Iteration(record.withDelta(delta), testOutcomes, sources);
+        } catch (RuntimeException e) {
+            log.accept("jk engine: iteration delta skipped: " + e);
+            return new Iteration(record, null, null);
         }
     }
 

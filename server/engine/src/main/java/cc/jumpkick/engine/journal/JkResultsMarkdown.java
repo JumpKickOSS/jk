@@ -114,6 +114,7 @@ public final class JkResultsMarkdown {
         int tokensAt = appendHeadline(sb, record, outcome);
         appendWhy(sb, record);
         appendCounts(sb, record, tests);
+        JkResultsDeltaSection.append(sb, record);
         appendFiles(sb, record, detailsPath, latestPath, tests);
         appendFailures(sb, record, !tests.isEmpty());
         appendGuards(sb, record);

@@ -58,6 +58,12 @@ public final class BuildJournal {
 
     public static final String DIAGNOSTICS_TXT = "diagnostics.txt";
 
+    /** Every test's outcome this run, {@link RunSnapshots#encodeTests}. */
+    public static final String TEST_OUTCOMES_TSV = "test-outcomes.tsv";
+
+    /** Every project file's content hash at the end of this run, {@link RunSnapshots#encodeSources}. */
+    public static final String SOURCES_TSV = "sources.tsv";
+
     private static final String RECORD = "record.json";
 
     /** UTC timestamp form stored as {@link BuildRecord#id()} (not the directory name). */
@@ -107,8 +113,15 @@ public final class BuildJournal {
     public record Snapshot(
             @Nullable Path resultsMd,
             @Nullable Path lockfile,
-            @Nullable String diagnosticsText) {
-        public static final Snapshot NONE = new Snapshot(null, null, null);
+            @Nullable String diagnosticsText,
+            @Nullable String testOutcomes,
+            @Nullable String sources) {
+        public static final Snapshot NONE = new Snapshot(null, null, null, null, null);
+
+        /** Without the per-run snapshots a {@link JobDelta} compares. */
+        public Snapshot(@Nullable Path resultsMd, @Nullable Path lockfile, @Nullable String diagnosticsText) {
+            this(resultsMd, lockfile, diagnosticsText, null, null);
+        }
     }
 
     public record PruneResult(int removedEntries, long removedBytes) {}
@@ -237,6 +250,8 @@ public final class BuildJournal {
                             target.resolve(DIAGNOSTICS_TXT),
                             StandardCopyOption.REPLACE_EXISTING);
                 }
+                moveIfPresent(tmp, target, TEST_OUTCOMES_TSV);
+                moveIfPresent(tmp, target, SOURCES_TSV);
             }
             PathUtil.deleteRecursively(tmp);
             // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
@@ -476,8 +491,20 @@ public final class BuildJournal {
         return n;
     }
 
+    private static void moveIfPresent(Path from, Path to, String name) throws IOException {
+        if (Files.isRegularFile(from.resolve(name))) {
+            Files.move(from.resolve(name), to.resolve(name), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
     private static void writeSnapshot(Path dir, Snapshot s) throws IOException {
         if (s == null) return;
+        if (s.testOutcomes() != null) {
+            Files.writeString(dir.resolve(TEST_OUTCOMES_TSV), s.testOutcomes(), StandardCharsets.UTF_8);
+        }
+        if (s.sources() != null) {
+            Files.writeString(dir.resolve(SOURCES_TSV), s.sources(), StandardCharsets.UTF_8);
+        }
         if (s.resultsMd() != null && Files.isRegularFile(s.resultsMd())) {
             Files.copy(s.resultsMd(), dir.resolve(RESULTS_MD), StandardCopyOption.REPLACE_EXISTING);
         }
@@ -568,6 +595,14 @@ public final class BuildJournal {
             if (record.isPresent()) return record;
         }
         return Optional.empty();
+    }
+
+    /**
+     * The run before {@code current} from the same origin, with the directory its artifacts sit
+     * in; see {@link JournalLineage#previousInSession}.
+     */
+    public Optional<JournalLineage.Previous> previousInSession(BuildRecord current) {
+        return JournalLineage.previousInSession(buildsRoot, this::readRecord, current);
     }
 
     /** Look up by build-number directory name, {@code j-…} job directory, or record {@code id}. */
@@ -980,6 +1015,8 @@ public final class BuildJournal {
     private static boolean isArtifactName(String name) {
         return RESULTS_MD.equals(name)
                 || TEST_RESULTS_MD.equals(name)
+                || TEST_OUTCOMES_TSV.equals(name)
+                || SOURCES_TSV.equals(name)
                 || ProjectBuilds.DETAILS.equals(name)
                 || ManifestPaths.LOCK.equals(name)
                 || DIAGNOSTICS_TXT.equals(name);

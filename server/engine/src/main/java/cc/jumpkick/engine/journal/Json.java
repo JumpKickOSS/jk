@@ -138,8 +138,60 @@ final class Json {
         }
 
         if (r.publish() != null) o.put("publish", publishMap(r.publish()));
+        if (r.delta() != null) o.put("delta", deltaMap(r.delta()));
 
         return MiniJson.writePretty(o);
+    }
+
+    /**
+     * The {@code delta} object: the run before and, per list, {@code count} with the {@code shown}
+     * head. An absent comparison ({@code files}, the test rows) is an absent key.
+     */
+    static Map<String, Object> deltaMap(JobDelta d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("previousBuildNumber", d.previousBuildNumber());
+        m.put("previousSuccess", d.previousSuccess());
+        m.put("previousMillis", d.previousMillis());
+        putRows(m, "files", d.files());
+        putRows(m, "appeared", d.appeared());
+        putRows(m, "gone", d.gone());
+        putRows(m, "broke", d.broke());
+        putRows(m, "fixed", d.fixed());
+        putRows(m, "added", d.added());
+        putRows(m, "dropped", d.dropped());
+        return m;
+    }
+
+    private static void putRows(Map<String, Object> m, String key, JobDelta.@Nullable Rows rows) {
+        if (rows == null) return;
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("count", rows.count());
+        r.put("shown", new ArrayList<Object>(rows.shown()));
+        m.put(key, r);
+    }
+
+    static @Nullable JobDelta readDelta(Map<String, Object> o) {
+        if (!(o.get("delta") instanceof Map<?, ?> dm)) return null;
+        Map<String, Object> d = (Map<String, Object>) dm;
+        JobDelta.Rows appeared = rows(d, "appeared");
+        JobDelta.Rows gone = rows(d, "gone");
+        return new JobDelta(
+                lng(d, "previousBuildNumber"),
+                bool(d, "previousSuccess"),
+                lng(d, "previousMillis"),
+                rows(d, "files"),
+                appeared == null ? new JobDelta.Rows(0, List.of()) : appeared,
+                gone == null ? new JobDelta.Rows(0, List.of()) : gone,
+                rows(d, "broke"),
+                rows(d, "fixed"),
+                rows(d, "added"),
+                rows(d, "dropped"));
+    }
+
+    private static JobDelta.@Nullable Rows rows(Map<String, Object> d, String key) {
+        if (!(d.get(key) instanceof Map<?, ?> rm)) return null;
+        Map<String, Object> r = (Map<String, Object>) rm;
+        return new JobDelta.Rows((int) lng(r, "count"), strList(r, "shown"));
     }
 
     /** The {@code publish} object: what a publish run sent where, absent keys for absent facts. */
@@ -290,7 +342,8 @@ final class Json {
                 io,
                 lng(o, "requestId"),
                 publish,
-                coverage);
+                coverage,
+                readDelta(o));
     }
 
     /**
