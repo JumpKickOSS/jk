@@ -20,15 +20,17 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The manual's {@code examples/openapi-spring} through the engine: {@code [openapi]} fetches
- * openapi-generator-cli from Central, the generator worker runs it in the generate stage, and the
- * Boot module compiles against the generated interface. A second build finds the generate step
- * cached; a spec edit re-runs it and the compiler follows.
+ * The manual's {@code examples/openapi-spring} through the engine: two code plugins in one module.
+ * {@code [openapi]} fetches openapi-generator-cli from Central and its worker runs it in the
+ * generate stage; {@code [spring-boot]} compiles the module against the generated interface and
+ * its worker packs the Boot jar, generated classes included. A second build finds the generate
+ * step cached; a spec edit re-runs it and the compiler follows.
  *
  * <p>Network test (Maven Central); the CAS persists under build/ so repeat runs are warm.
  */
@@ -42,6 +44,7 @@ class OpenApiGeneratorTest {
     void the_example_generates_compiles_hits_and_regenerates_on_a_spec_edit(@TempDir Path tmp) throws Exception {
         workerJarFromWorkspace(PluginJar.GENERATOR, "plugins/generator");
         workerJarFromWorkspace(PluginJar.OPENAPI, "plugins/openapi");
+        workerJarFromWorkspace(PluginJar.SPRING_BOOT, "plugins/spring-boot");
         Path project = tmp.resolve("openapi-spring");
         PathUtil.copyTree(EXAMPLE, project);
         Files.deleteIfExists(project.resolve("jk-lock.toml"));
@@ -49,6 +52,10 @@ class OpenApiGeneratorTest {
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         assertThat(build.pluginConfig("openapi")).isPresent();
+        assertThat(build.pluginConfig("spring-boot")).isPresent();
+        assertThat(ActivePlugins.of(build, project))
+                .extracting(a -> a.manifest().id())
+                .containsExactlyInAnyOrder("openapi", "spring-boot");
         BuildPlanResult lock = LockPlans.lockBuildPlan(
                         project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
@@ -64,6 +71,17 @@ class OpenApiGeneratorTest {
                 .as("the module's own source referencing the generated interface compiled")
                 .isTrue();
         assertThat(generateStep(first).status()).isEqualTo(TaskStatus.SUCCESS);
+        Path bootJar = BuildLayout.of(project, build).mainJar();
+        try (JarFile jar = new JarFile(bootJar.toFile())) {
+            assertThat(jar.getManifest().getMainAttributes().getValue("Main-Class"))
+                    .as("the Boot packager packed the module's jar")
+                    .isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
+            assertThat(jar.getEntry("BOOT-INF/classes/com/acme/api/GreetingsApi.class"))
+                    .as("the generated interface rides in the Boot jar")
+                    .isNotNull();
+            assertThat(jar.getEntry("BOOT-INF/classes/com/acme/GreetingController.class"))
+                    .isNotNull();
+        }
 
         BuildPlanResult second = build(project, cache);
         assertThat(second.success()).isTrue();

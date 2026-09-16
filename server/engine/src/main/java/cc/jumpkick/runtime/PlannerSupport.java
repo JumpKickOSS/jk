@@ -1018,9 +1018,8 @@ public final class PlannerSupport {
     /** Package-private for {@link TaskForecaster} package-jar key parity with the live step. */
     static PluginBuild.@Nullable Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
             throws IOException, InterruptedException {
-        var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
-        if (active.isEmpty()) return null;
-        return PluginBuild.declarations(active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+        var plugins = ActivePlugins.declared(project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+        return plugins == null ? null : plugins.decls();
     }
 
     /**

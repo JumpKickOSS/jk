@@ -288,10 +288,9 @@ public final class PlannerNative {
             // whatever the plugin's steps contributed (generated classes +
             // META-INF/native-image hints), produced just before this step.
             classpath.add(layout.classesDir());
-            var activeOpt = PluginBuild.activeCodePlugin(project, dir);
-            if (activeOpt.isPresent()) {
-                var decls = PluginBuild.declarations(activeOpt.get(), project, dir, cache, layout.moduleTargetDir());
-                for (Path contributed : PluginBuild.contributedDirs(decls, layout)) {
+            var plugins = ActivePlugins.declared(project, dir, cache, layout.moduleTargetDir());
+            if (plugins != null) {
+                for (Path contributed : PluginBuild.contributedDirs(plugins.decls(), layout)) {
                     if (Files.isDirectory(contributed)) classpath.add(contributed);
                 }
             }
@@ -496,7 +495,7 @@ public final class PlannerNative {
                 : new cc.jumpkick.tool.NativeImageDriver.Request(javaHome, classpath, mainClass, out, allArgs, shared);
         if (frameworkSources != null) {
             ctx.label("native-image from "
-                    + PluginBuild.activeCodePlugin(project, dir)
+                    + ActivePlugins.packager(project, dir)
                             .map(a -> a.manifest().id())
                             .orElse("plugin")
                     + " sources");
@@ -539,37 +538,38 @@ public final class PlannerNative {
 
     // ---- helpers --------------------------------------------------------
 
-    /**
-     * The active plugin's {@code native-image-sources} step output, or null when the module's
-     * native image is jk's generic one. Present only once the plugin has actually written it — a
-     * declared directory with no {@code native-image.args} means the framework did not run a
-     * native build.
-     */
-    /** Whether the active packager declares a {@code native-image-sources} output at all. */
+    /** Whether the module's packager declares a {@code native-image-sources} output at all. */
     static boolean packagerDeclaresNativeSources(JkBuild project, Path dir) {
         try {
-            var active = PluginBuild.activeCodePlugin(project, dir);
-            if (active.isEmpty()) return false;
-            var packaging = active.get().manifest().packaging();
-            if (packaging == null) return false;
-            String rel = packaging.resolve(active.get().config()).nativeImageSources();
-            return rel != null && !rel.isBlank();
+            return nativeSourcesRel(ActivePlugins.packager(project, dir).orElse(null)) != null;
         } catch (RuntimeException e) {
             return false;
         }
     }
 
+    /**
+     * The packager's {@code native-image-sources} step output, or null when the module's native
+     * image is jk's generic one. Present only once the plugin has actually written it — a
+     * declared directory with no {@code native-image.args} means the framework did not run a
+     * native build.
+     */
     static @Nullable Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, BuildLayout layout)
             throws IOException, InterruptedException {
-        var active = PluginBuild.activeCodePlugin(project, dir);
-        if (active.isEmpty()) return null;
-        var packaging = active.get().manifest().packaging();
-        if (packaging == null) return null;
-        String rel = packaging.resolve(active.get().config()).nativeImageSources();
-        if (rel == null || rel.isBlank()) return null;
-        Path sources = PluginBuild.taskScratch(layout, stepNameOf(active.get(), project, dir, cache))
+        PluginBuild.Active packager = ActivePlugins.packager(project, dir).orElse(null);
+        String rel = nativeSourcesRel(packager);
+        if (packager == null || rel == null) return null;
+        Path sources = PluginBuild.taskScratch(layout, stepNameOf(packager, project, dir, cache))
                 .resolve(rel);
         return Files.isRegularFile(sources.resolve(NATIVE_IMAGE_ARGS)) ? sources : null;
+    }
+
+    /** The packager's declared {@code native-image-sources} dir, or null when it declares none. */
+    private static @Nullable String nativeSourcesRel(PluginBuild.@Nullable Active packager) {
+        if (packager == null) return null;
+        var packaging = packager.manifest().packaging();
+        if (packaging == null) return null;
+        String rel = packaging.resolve(packager.config()).nativeImageSources();
+        return rel == null || rel.isBlank() ? null : rel;
     }
 
     /** The plugin's build step name — the scratch dir its declared outputs live under. */

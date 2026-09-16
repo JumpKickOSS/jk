@@ -85,9 +85,9 @@ public final class PlannerPackage {
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path jarPath = layout.mainJar();
-                    if (pluginDecls != null && pluginDecls.packager() != null && ownsMainArtifact(pluginActive)) {
-                        // The packager's declared artifact extension replaces.jar (an APK, …).
-                        PluginBuild.Active owner = Objects.requireNonNull(pluginActive, "active plugin");
+                    if (pluginDecls != null && pluginDecls.packager() != null) {
+                        // The packager's declared artifact extension replaces .jar (an APK, …).
+                        PluginBuild.Active owner = Objects.requireNonNull(pluginActive, "packager plugin");
                         jarPath = PluginBuild.mainArtifactPath(layout, owner);
                         Files.createDirectories(jarPath.getParent());
                         packagePlugin(
@@ -396,12 +396,5 @@ public final class PlannerPackage {
 
     static boolean settledOutcome(String outcome) {
         return outcome.equals("up-to-date") || outcome.equals("no-sources");
-    }
-
-    static boolean ownsMainArtifact(PluginBuild.@Nullable Active active) {
-        if (active == null) return true;
-        var packaging = active.manifest().packaging();
-        if (packaging == null) return true;
-        return packaging.resolve(active.config()).mainArtifact();
     }
 }

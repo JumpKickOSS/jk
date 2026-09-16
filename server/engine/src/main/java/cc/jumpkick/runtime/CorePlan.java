@@ -56,7 +56,7 @@ final class CorePlan {
     private @Nullable JkBuild parsedBuild;
     private Map<String, String> variantSecrets = Map.of();
 
-    private PluginBuild.@Nullable Active pluginActive;
+    private ActivePlugins.@Nullable Declared plugins;
     private PluginBuild.@Nullable Declarations pluginDecls;
 
     CorePlan(BuildPlanner.Inputs in, boolean forceRebuild) {
@@ -149,25 +149,20 @@ final class CorePlan {
     }
 
     /**
-     * Build-plugin code layer: learn the registered steps/packager over the file-cached describe
-     * protocol. A missing plugin jar or a broken registration must fail the build loudly here, not
-     * mid-plan.
+     * Build-plugin code layer: learn every active plugin's registered steps/packager over the
+     * file-cached describe protocol. A missing plugin jar or a broken registration must fail the
+     * build loudly here, not mid-plan.
      */
     private void readPluginDeclarations() {
         if (parsedBuild != null) {
-            var activeOpt = PluginBuild.activeCodePlugin(parsedBuild, in.dir());
-            if (activeOpt.isPresent()) {
-                try {
-                    BuildLayout layout = BuildLayout.of(in.dir(), parsedBuild);
-                    pluginDecls = PluginBuild.declarations(
-                            activeOpt.get(), parsedBuild, in.dir(), in.cache(), layout.moduleTargetDir());
-                    pluginActive = activeOpt.get();
-                } catch (RuntimeException e) {
-                    throw e;
-                } catch (Exception e) {
-                    throw new IllegalStateException(
-                            "plugin " + activeOpt.get().manifest().id() + ": " + e.getMessage(), e);
-                }
+            try {
+                BuildLayout layout = BuildLayout.of(in.dir(), parsedBuild);
+                plugins = ActivePlugins.declared(parsedBuild, in.dir(), in.cache(), layout.moduleTargetDir());
+                if (plugins != null) pluginDecls = plugins.decls();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException(e.getMessage(), e);
             }
         }
         // Plugin-contributed generated sources can be Java even in a Kotlin- or Groovy-only
@@ -325,12 +320,13 @@ final class CorePlan {
         Task runTests = PlannerTest.runTestsStep(cx, pluginDecls, testStampRequires);
         List<Task> pluginSteps = new ArrayList<>();
         PluginBuild.TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
-        if (pluginDecls != null) {
-            for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
-                pluginSteps.add(PlannerPlugin.pluginTask(cx, pluginActive, step, transform));
+        if (plugins != null) {
+            for (PluginBuild.TaskDecl step : plugins.decls().steps()) {
+                pluginSteps.add(PlannerPlugin.pluginTask(cx, plugins.ownerOf(step), step, transform));
             }
         }
-        Task packageJar = PlannerPackage.packageJarStep(cx, pluginActive, pluginDecls, variantSecrets);
+        Task packageJar = PlannerPackage.packageJarStep(
+                cx, plugins == null ? null : plugins.packager(), pluginDecls, variantSecrets);
         Task writeStamp = PlannerPackage.writeStampStep(cx);
         // Kotlin's freshness companion (cf. write-stamp for Java). Mirrors the
         // input set compile-kotlin checked: Kotlin sources, plus Java sources in

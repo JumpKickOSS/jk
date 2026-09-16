@@ -172,7 +172,7 @@ final class ModuleForecast {
             Path javaHome,
             List<String> javacArgs,
             List<Path> processorCp,
-            PackagingKeys.@Nullable Owner plugin,
+            ActivePlugins.@Nullable Declared plugin,
             PluginBuild.@Nullable Declarations pkgDecls,
             Path mainSrcDir,
             List<Path> mainSrc,
@@ -266,7 +266,7 @@ final class ModuleForecast {
         // ---- compile-main (Java) ----
         // Resolved once: the declarations decide both the generated source roots compile-main
         // folds in and, at package time below, whether jk packs the jar or a plugin does.
-        PackagingKeys.@Nullable Owner plugin = PackagingKeys.pluginFor(project, layout, cache);
+        ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);
         PluginBuild.@Nullable Declarations pkgDecls = plugin == null ? null : plugin.decls();
         Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
         InputTrees.coverModule(dir);
@@ -822,7 +822,7 @@ final class ModuleForecast {
         boolean compact = prepared.compact();
         BuildLayout layout = prepared.layout();
         Path javaHome = prepared.javaHome();
-        PackagingKeys.@Nullable Owner plugin = prepared.plugin();
+        ActivePlugins.@Nullable Declared plugin = prepared.plugin();
         PluginBuild.@Nullable Declarations pkgDecls = prepared.pkgDecls();
         List<Path> mainSrc = prepared.mainSrc();
         List<Path> ktSrc = prepared.ktSrc();
@@ -1106,7 +1106,7 @@ final class ModuleForecast {
     }
 
     private void orderAfter(Prepared prepared) throws Exception {
-        PackagingKeys.@Nullable Owner plugin = prepared.plugin();
+        ActivePlugins.@Nullable Declared plugin = prepared.plugin();
         // ---- order-after gate ----
         // A dirty order-after-only prereq prices nothing, but the module must still schedule:
         // its real action keys are what re-check the prereq's out-of-band outputs (e.g. a
