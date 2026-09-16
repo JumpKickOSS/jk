@@ -4,9 +4,14 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.JavadocTool;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.JavadocMode;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The step's decision table over javadoc's exit. Only strict mode fails the step; the lenient
@@ -60,5 +65,58 @@ class PlannerJavadocTest {
 
         assertThat(PlannerJavadoc.errorLines(crashed))
                 .containsExactly("javadoc exited 2\njavadoc: error - cannot read");
+    }
+
+    /**
+     * The real tool over a comment with a bare {@code <} and an unclosed {@code <p>}: with doclint
+     * off the lenient default documents it (javadoc prints a warning and exits 0) and never reaches
+     * {@link PlannerJavadoc.Verdict#FAIL}; strict keeps doclint on, and the malformed HTML error fails
+     * the step. Runs on the JDK the engine runs on, and on every other installed JDK line under
+     * {@code ~/.jdks} whose javadoc is present (a 21 sits beside the 25 on a dev machine).
+     */
+    @Test
+    void a_malformed_comment_documents_under_the_lenient_default_and_fails_only_strict(@TempDir Path tmp)
+            throws Exception {
+        Path src = Files.createDirectories(tmp.resolve("src/com/ex"));
+        Path source = src.resolve("Foo.java");
+        Files.writeString(source, """
+                package com.ex;
+                /**
+                 * Summary.
+                 * <p>
+                 * a < b and an unclosed paragraph
+                 */
+                public class Foo { public void x() {} }
+                """);
+        for (Path javaHome : javaHomes()) {
+            for (JavadocMode mode : List.of(JavadocMode.LENIENT, JavadocMode.STRICT)) {
+                Path out = Files.createDirectories(tmp.resolve(javaHome.getFileName() + "-" + mode));
+                JavadocTool.Result r =
+                        JavadocTool.run(javaHome, out, List.of(source), List.of(), JavadocTool.options(mode, 21), tmp);
+                PlannerJavadoc.Verdict verdict = PlannerJavadoc.verdict(mode, r, true);
+                if (mode == JavadocMode.LENIENT) {
+                    assertThat(verdict)
+                            .as("%s lenient: %s", javaHome, r.output())
+                            .isEqualTo(PlannerJavadoc.Verdict.DOCUMENTED);
+                } else {
+                    assertThat(r.errors())
+                            .as("%s strict: %s", javaHome, r.output())
+                            .anyMatch(e -> e.contains("malformed HTML"));
+                    assertThat(verdict).isEqualTo(PlannerJavadoc.Verdict.FAIL);
+                }
+            }
+        }
+    }
+
+    /** The running JDK plus every {@code ~/.jdks/<vendor>-<major>} line that ships a javadoc. */
+    private static List<Path> javaHomes() {
+        List<Path> homes = new ArrayList<>();
+        homes.add(JavaHomes.runningJavaHome());
+        Path jdks = Path.of(System.getProperty("user.home"), ".jdks");
+        for (String line : List.of("temurin-21", "temurin-25")) {
+            Path home = jdks.resolve(line);
+            if (Files.isRegularFile(home.resolve("bin/javadoc")) && !homes.contains(home)) homes.add(home);
+        }
+        return homes;
     }
 }
