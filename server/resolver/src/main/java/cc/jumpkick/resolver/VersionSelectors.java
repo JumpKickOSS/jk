@@ -53,7 +53,7 @@ public final class VersionSelectors {
     /** True when {@code spec} is Maven-range or comparator syntax rather than a bare version. */
     static boolean looksLikeMavenRange(String spec) {
         char c = spec.charAt(0);
-        if (c == '[' || c == '(' || c == '<' || c == '>') return true;
+        if (c == '[' || c == '(' || c == ']' || c == '<' || c == '>') return true;
         // "=1.0" as comparator (rare in POMs; bare "1.0" is atLeast).
         if (c == '=' && spec.length() > 1) return true;
         return false;
@@ -61,12 +61,13 @@ public final class VersionSelectors {
 
     /**
      * Parse a range expression. Accepts Maven-bracket syntax ({@code [1.0,2.0)}, {@code [1.0]},
-     * {@code (,2.0]}), multi-ranges ({@code [1.0,2.0),[3.0,4.0]}), and comma-separated comparator
-     * lists ({@code ">=1.0, <2.0"}).
+     * {@code (,2.0]}), the ISO 31-11 spelling of an exclusive bound that Gradle writes into module
+     * metadata ({@code [1.0,2.0[}, {@code ]1.0,2.0]}), multi-ranges ({@code [1.0,2.0),[3.0,4.0]}),
+     * and comma-separated comparator lists ({@code ">=1.0, <2.0"}).
      */
     public static VersionSet parseRange(String spec) {
         String trimmed = spec.trim();
-        if (trimmed.startsWith("[") || trimmed.startsWith("(")) {
+        if (isRangeOpen(trimmed.charAt(0))) {
             return parseMavenBracketRanges(trimmed);
         }
         VersionSet result = VersionSet.ALL;
@@ -79,9 +80,9 @@ public final class VersionSelectors {
     }
 
     /**
-     * One or more adjacent Maven bracket ranges, unioned. Single range delegates to {@link
-     * #parseMavenBracketRange}; multi-range splits on the boundary between {@code )} / {@code ]} and
-     * the next {@code (} / {@code [}.
+     * One or more adjacent bracket ranges, unioned. Each range runs from its opening bracket to the
+     * first closing one; versions carry no brackets, so no nesting is possible. Single range
+     * delegates to {@link #parseMavenBracketRange}.
      */
     static VersionSet parseMavenBracketRanges(String spec) {
         VersionSet acc = null;
@@ -91,29 +92,17 @@ public final class VersionSelectors {
                 i++;
             }
             if (i >= spec.length()) break;
-            char open = spec.charAt(i);
-            if (open != '[' && open != '(') {
+            if (!isRangeOpen(spec.charAt(i))) {
                 throw new IllegalArgumentException("malformed Maven range: " + spec);
             }
-            int depth = 0;
-            int j = i;
-            for (; j < spec.length(); j++) {
-                char ch = spec.charAt(j);
-                if (ch == '[' || ch == '(') depth++;
-                else if (ch == ']' || ch == ')') {
-                    depth--;
-                    if (depth == 0) {
-                        j++; // include close
-                        break;
-                    }
-                }
-            }
-            if (depth != 0) {
+            int j = i + 1;
+            while (j < spec.length() && !isRangeClose(spec.charAt(j))) j++;
+            if (j >= spec.length()) {
                 throw new IllegalArgumentException("malformed Maven range: " + spec);
             }
-            VersionSet part = parseMavenBracketRange(spec.substring(i, j));
+            VersionSet part = parseMavenBracketRange(spec.substring(i, j + 1));
             acc = acc == null ? part : acc.union(part);
-            i = j;
+            i = j + 1;
         }
         if (acc == null) {
             throw new IllegalArgumentException("malformed Maven range: " + spec);
@@ -121,10 +110,25 @@ public final class VersionSelectors {
         return acc;
     }
 
+    /** {@code [} and {@code (} open a range; so does {@code ]}, the ISO spelling of an exclusive lower bound. */
+    private static boolean isRangeOpen(char c) {
+        return c == '[' || c == '(' || c == ']';
+    }
+
+    /** {@code ]} and {@code )} close a range; so does {@code [}, the ISO spelling of an exclusive upper bound. */
+    private static boolean isRangeClose(char c) {
+        return c == ']' || c == ')' || c == '[';
+    }
+
+    /**
+     * One bracket range. A bound is inclusive when its bracket points at the version ({@code [a}
+     * and {@code b]}) and exclusive when it points away ({@code (a}, {@code ]a}, {@code b)},
+     * {@code b[}): Maven's and the ISO 31-11 spelling both read this way.
+     */
     static VersionSet parseMavenBracketRange(String spec) {
         char open = spec.charAt(0);
         char close = spec.charAt(spec.length() - 1);
-        if ((open != '[' && open != '(') || (close != ']' && close != ')')) {
+        if (spec.length() < 2 || !isRangeOpen(open) || !isRangeClose(close)) {
             throw new IllegalArgumentException("malformed Maven range: " + spec);
         }
         boolean minInclusive = open == '[';

@@ -73,6 +73,11 @@ a transitive with no pin on it keeps the highest-declared rule either way.
 
 **Maven relocations are followed** (`distributionManagement/relocation`).
 
+**Ranges in dependency POMs and Gradle module metadata** read in Maven's spelling (`[1.0,2.0)`,
+`(,2.0]`, `[1.0]`) and in the ISO spelling Gradle publishes (`[1.0,2.0[` is exclusive above,
+`]1.0,2.0]` exclusive below). A bracket that points at the version includes it; one that points
+away excludes it.
+
 ### Repositories a dependency's POM declares
 
 A published POM may carry `<repositories>` of its own — apicurio's parent names JitPack for
