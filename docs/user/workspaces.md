@@ -98,6 +98,37 @@ widget-core = { workspace = true, fixtures = true }
 `fixtures = true` does not imply `kind = "tests"` and is illegal outside test scopes. The
 output is `{target}/test-fixtures/classes/` — it never enters a POM.
 
+## Members that disagree
+
+One lock, one solve: the workspace's dependencies are resolved together, and a row of
+`jk-lock.toml` is the version every member reads. Members that only *ask* differently still share
+it — an edge that declares `1.0` where a sibling's declares `2.0` is a floor, and the workspace
+takes `2.0` for both, as it would in one project.
+
+A member's platform BOMs — the root's `[platform-dependencies]`, its own, the BOM a framework
+table such as `[spring-boot]` injects, and those of the siblings it depends on — constrain that
+member's graph. They do not reach a member that never depends on it: `zipkin-server`'s
+`spring-boot-dependencies` lifts `jakarta.jms-api` to 3.1.0 for `zipkin-server`, and the collector
+that only depends on `activemq-client` compiles against the 2.0.3 that library declares, as it
+does under Maven.
+
+So a member is resolved on its own exactly when the workspace's answer cannot be its answer:
+
+- it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`
+  in one member, `"1.5.32"` in three others), or
+- a coordinate in its graph was pinned by a BOM the member does not hold, and an edge of the
+  member's own graph declared something else.
+
+Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
+classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
+member agrees on stays a plain row. A workspace whose members all agree has no `members` key
+anywhere, and nothing about it changes.
+
+`jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
+belongs to; `jk lock` prints one line per coordinate it partitioned, naming the member, its version
+and the workspace's; the same line reaches the results file and the web view. `jk update` rewrites
+the declared pins and relocks, so a partition that stops being necessary disappears on its own.
+
 ## Nothing to build
 
 A workspace that declares no modules, or whose every module has no source tree, no extra
