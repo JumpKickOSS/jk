@@ -784,15 +784,25 @@ public final class PlannerSupport {
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
                 project.build(),
-                profileJvmArgs(project, profileName),
+                testJvmArgs(project, profileName),
                 dir,
                 identity);
     }
 
-    /** The active profile's {@code jvm-args} for the forked test JVM; empty when no profile applies. */
-    static List<String> profileJvmArgs(JkBuild project, @Nullable String profileName) {
+    /**
+     * Every flag the module's forked test JVMs get beyond jk's own tuning: {@code [test] jvm-args},
+     * one {@code -D} per {@code [test] system-properties} entry, then the active profile's {@code
+     * jvm-args}, so the profile wins where they disagree. Empty when the module declares none and no
+     * profile applies.
+     */
+    static List<String> testJvmArgs(JkBuild project, @Nullable String profileName) {
         Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
-        return profile == null ? List.of() : profile.jvmArgs();
+        List<String> declared = project.build().testJvm().flags();
+        if (profile == null || profile.jvmArgs().isEmpty()) return declared;
+        if (declared.isEmpty()) return profile.jvmArgs();
+        List<String> all = new ArrayList<>(declared);
+        all.addAll(profile.jvmArgs());
+        return List.copyOf(all);
     }
 
     /** Lock + workspace sibling classpath the forecast uses for compile-test. */
@@ -970,7 +980,7 @@ public final class PlannerSupport {
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // Whether the suite JVM ran with -ea decides what an `assert` did.
         extras.add("assertions:" + build.testAssertions());
-        // A profile's JVM flags change what the suite sees (-D properties, heap), so they retest.
+        // The test JVM's flags change what the suite sees (-D properties, heap), so they retest.
         if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
         // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,

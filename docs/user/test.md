@@ -170,9 +170,10 @@ exclude-tags = ["slow", "network", "bench"]
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
 `--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
-jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning, and the
-step prints them as `test jvm-args (profile): …`; its `javac` list reaches the compiler the same
-way ([Projects](projects.md#features-profiles-variants)). Suites, tags and profile JVM args are
+jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning and after
+[`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
+prints the whole list as `test jvm-args: …`; its `javac` list reaches the compiler the same way
+([Projects](projects.md#features-profiles-variants)). Suites, tags and the test JVM's flags are
 part of the test stamp: changing any of them re-runs tests even if sources are unchanged. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp.
@@ -202,7 +203,7 @@ than merging, so a workspace has one answer for "which tests". Running from insi
 directory makes no difference: the CLI rehomes to the workspace root first.
 
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
-`workers`, `assertions` and `env`. This is not the `key.workspace = true` spelling that identity keys
+`workers`, `assertions`, `jvm-args`, `system-properties` and `env`. This is not the `key.workspace = true` spelling that identity keys
 (`jdk`, `java`, `layout`, …) and dependency versions use — the tag filters describe the
 invocation, not the module.
 
@@ -378,12 +379,31 @@ assertions = false      # default true
 
 The setting is a run-tests input, so flipping it re-runs the suite.
 
+## The test JVM's flags (`[test] jvm-args`, `[test] system-properties`)
+
+What Surefire's `<argLine>` and `<systemPropertyVariables>` say, per module:
+
+```toml
+[test]
+jvm-args          = ["-Xmx1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"]
+system-properties = { "spring.profiles.active" = "test", "java.awt.headless" = true }
+```
+
+`jvm-args` is appended verbatim to every forked test JVM after jk's own tuning, so an `-Xmx`, an
+`-Xss` or an agent here wins over the default; `system-properties` forks as one `-Dkey=value` per
+entry, a number or boolean rendered as its string. A profile's `jvm-args` follow both, so the
+profile wins where they disagree. The step prints the whole list as `test jvm-args: …`, and both
+keys are run-tests inputs: changing either re-runs the suite. `[jvm] args` is the other knob and
+reaches every worker JVM the module forks, compilers included; a value only the tests read belongs
+here. `jk import` writes Surefire's `<argLine>` (minus the `${argLine}` placeholder and the JaCoCo
+agent) and its system properties into these keys.
+
 ## The test JVM's thread stack
 
 Every test JVM jk forks runs on the JVM's default thread stack, as Surefire's and Gradle's do, so a
 recursive test that passes under Maven passes under jk. jk's own compiler and plugin workers run
 with a smaller reserve (`-Xss512k`); the suite never inherits it. A suite that needs a deeper stack
-puts `-Xss` in a profile's `jvm-args`, which is appended after jk's own flags and wins.
+puts `-Xss` in `[test] jvm-args`.
 
 ## Isolation contract
 

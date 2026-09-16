@@ -272,6 +272,16 @@
         "assertions": {
           "type": "boolean",
           "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
+        },
+        "jvm-args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Flags appended verbatim to every forked test JVM after jk's own tuning (-Xmx, -Xss, --add-opens, an agent); Surefire's <argLine>. A run-tests input."
+        },
+        "system-properties": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "One -Dkey=value per entry on every forked test JVM, a number or boolean rendered as its string; Surefire's <systemPropertyVariables>. A run-tests input."
         }
       }
     },

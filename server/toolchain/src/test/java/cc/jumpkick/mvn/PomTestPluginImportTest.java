@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,18 +28,22 @@ class PomTestPluginImportTest {
         assertThat(build.build().testIncludeTags()).containsExactly("fast", "smoke");
         assertThat(build.build().testExcludeTags()).containsExactly("slow");
 
-        assertThat(messages)
+        assertThat(build.build().testJvm().jvmArgs())
                 .as("the argLine minus the ${argLine} placeholder and the JaCoCo agent")
-                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<argLine>` -Xmx1g -Dfile.encoding=UTF-8 —"));
-        assertThat(messages)
-                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` system properties"
-                        + " -Dspring.profiles.active=test -Djava.awt.headless=true —"));
+                .containsExactly("-Xmx1g", "-Dfile.encoding=UTF-8");
+        assertThat(build.build().testJvm().systemProperties())
+                .containsExactly(Map.entry("spring.profiles.active", "test"), Map.entry("java.awt.headless", "true"));
+        assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` `<argLine>`"));
+        assertThat(messages).noneMatch(m -> m.startsWith("`maven-surefire-plugin` system properties"));
         assertThat(messages).anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<excludes>` **/*Slow*.java —"));
         assertThat(messages)
                 .as("failsafe's default patterns name the classes to move into the integration suite")
                 .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` runs **/IT*.java, **/*IT.java, **/*ITCase.java")
                         && m.contains("`src/integration/java`"));
-        assertThat(messages).anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<argLine>` -Xmx2g —"));
+        assertThat(messages)
+                .as("failsafe's argLine differs from surefire's, and [test] jvm-args is one list")
+                .anyMatch(m -> m.startsWith("`maven-failsafe-plugin` `<argLine>` -Xmx2g —")
+                        && m.contains("Surefire's -Xmx1g -Dfile.encoding=UTF-8 is in it"));
         assertThat(messages)
                 .anyMatch(m -> m.startsWith("`jacoco-maven-plugin` —") && m.contains("`jk test --coverage`"));
         assertThat(messages).noneMatch(m -> m.contains("skip tests"));
@@ -47,10 +52,15 @@ class PomTestPluginImportTest {
                 .noneMatch(m -> m.startsWith("`<plugin>"));
 
         String rendered = JkBuildRenderer.render(build);
-        assertThat(rendered).contains("[test]\ninclude-tags = [\"fast\", \"smoke\"]\nexclude-tags = [\"slow\"]\n");
+        assertThat(rendered)
+                .contains(
+                        "[test]\ninclude-tags = [\"fast\", \"smoke\"]\nexclude-tags = [\"slow\"]\n"
+                                + "jvm-args = [\"-Xmx1g\", \"-Dfile.encoding=UTF-8\"]\n"
+                                + "system-properties = { \"spring.profiles.active\" = \"test\", \"java.awt.headless\" = \"true\" }\n");
         JkBuild reparsed = JkBuildParser.parse(rendered);
         assertThat(reparsed.build().testIncludeTags()).containsExactly("fast", "smoke");
         assertThat(reparsed.build().testExcludeTags()).containsExactly("slow");
+        assertThat(reparsed.build().testJvm()).isEqualTo(build.build().testJvm());
         assertThat(JkBuildParser.parseTestTags(writeManifest(tempDir, rendered)).excludeTags())
                 .as("the engine's root-scoped reader sees the same filters")
                 .containsExactly("slow");
@@ -98,8 +108,8 @@ class PomTestPluginImportTest {
                   </plugin></plugins></build>
                 </project>
                 """);
-        assertThat(TestImporters.messages(result))
-                .anyMatch(m -> m.startsWith("`maven-surefire-plugin` `<argLine>` --enable-preview -XX:+UseZGC —"));
+        assertThat(result.jkBuild().build().testJvm().jvmArgs()).containsExactly("--enable-preview", "-XX:+UseZGC");
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`<argLine>`"));
     }
 
     private static Path writeManifest(Path tempDir, String rendered) throws Exception {

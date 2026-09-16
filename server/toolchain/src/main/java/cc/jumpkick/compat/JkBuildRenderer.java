@@ -55,14 +55,18 @@ public final class JkBuildRenderer {
         return sb.toString();
     }
 
-    /** {@code [build] extra-src}; {@code [test]} extra source roots and the baseline tag filters. */
+    /**
+     * {@code [build] extra-src}; {@code [test]} extra source roots, the baseline tag filters, and
+     * the test JVM's flags and system properties.
+     */
     private static void renderBuild(StringBuilder sb, JkBuild.Build build) {
         if (!build.extraSrc().isEmpty()) {
             sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
         }
         if (build.testExtraSrc().isEmpty()
                 && build.testIncludeTags().isEmpty()
-                && build.testExcludeTags().isEmpty()) {
+                && build.testExcludeTags().isEmpty()
+                && build.testJvm().isEmpty()) {
             return;
         }
         sb.append("\n[test]\n");
@@ -72,6 +76,25 @@ public final class JkBuildRenderer {
             sb.append("include-tags = ").append(list(build.testIncludeTags())).append('\n');
         if (!build.testExcludeTags().isEmpty())
             sb.append("exclude-tags = ").append(list(build.testExcludeTags())).append('\n');
+        if (!build.testJvm().jvmArgs().isEmpty())
+            sb.append("jvm-args = ").append(list(build.testJvm().jvmArgs())).append('\n');
+        if (!build.testJvm().systemProperties().isEmpty()) {
+            sb.append("system-properties = ")
+                    .append(inlineTable(build.testJvm().systemProperties()))
+                    .append('\n');
+        }
+    }
+
+    /** {@code { key = "value", "dotted.key" = "value" }} in map order. */
+    private static String inlineTable(Map<String, String> values) {
+        StringBuilder sb = new StringBuilder("{ ");
+        boolean first = true;
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(safeKey(e.getKey())).append(" = ").append(quote(e.getValue()));
+        }
+        return sb.append(" }").toString();
     }
 
     /** {@code [resolve]} — only the policies that differ from their defaults. */
