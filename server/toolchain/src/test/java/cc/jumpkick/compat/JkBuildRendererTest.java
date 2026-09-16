@@ -365,6 +365,20 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void group_qualified_workspace_edge_renders_its_group_and_round_trips() {
+        var byScope = new EnumMap<Scope, List<Dependency>>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(Dependency.workspace("edqs", "org.tb.common")));
+        JkBuild model =
+                new JkBuild(new Project("org.tb", "application", "4.4.0", 25), new JkBuild.Dependencies(byScope));
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("edqs = { workspace = true, group = \"org.tb.common\" }");
+        Dependency reparsed =
+                JkBuildParser.parse(out).dependencies().of(Scope.MAIN).getFirst();
+        assertThat(reparsed.workspaceGroup()).isEqualTo("org.tb.common");
+        assertThat(reparsed.workspaceName()).isEqualTo("edqs");
+    }
+
+    @Test
     void workspace_tests_kind_renders_as_table() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.MAIN, List.of(Dependency.workspace("lib")));

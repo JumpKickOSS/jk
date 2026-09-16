@@ -36,29 +36,25 @@ public final class WorkspaceMerge {
         for (JkBuild m : allModules) unionModules.add(Variants.unionDependencies(m));
         allModules = unionModules;
 
-        Map<String, JkBuild> siblingByArtifact = new LinkedHashMap<>();
+        Map<String, JkBuild> siblingByArtifact = siblingIndex(root, allModules);
         Set<String> internal = new HashSet<>();
-        for (JkBuild m : allModules) {
-            siblingByArtifact.put(m.project().name(), m);
+        for (JkBuild m : allModules)
             internal.add(m.project().group() + ":" + m.project().name());
-        }
-        // The workspace root is itself a unit members may depend on (Cargo/uv style:
-        // a member can `<root> = { workspace = true }`), so it joins the sibling set.
-        siblingByArtifact.put(root.project().name(), root);
         internal.add(root.project().group() + ":" + root.project().name());
         Map<String, Workspace.WorkspaceDependency> wsDeps =
                 root.workspace() != null ? root.workspace().dependencies() : Map.of();
 
-        // First pass: resolve this module's own deps, strip sibling refs, and
-        // track which siblings are direct dependencies (for export propagation).
-        Set<String> dependedSiblingNames = new LinkedHashSet<>();
+        // First pass: resolve this module's own deps, strip sibling refs, and track which
+        // siblings are direct dependencies (for export propagation) by their group:name — two
+        // siblings may share a name.
+        Set<String> dependedSiblings = new LinkedHashSet<>();
         Map<Scope, List<Dependency>> resolvedByScope = new EnumMap<>(Scope.class);
         for (Scope scope : Scope.values()) {
             List<Dependency> resolved = new ArrayList<>();
             for (Dependency d : module.dependencies().of(scope)) {
                 Dependency r = resolve(d, siblingByArtifact, wsDeps);
                 if (internal.contains(r.module())) {
-                    dependedSiblingNames.add(r.name());
+                    dependedSiblings.add(r.module());
                     continue;
                 }
                 resolved.add(r);
@@ -67,8 +63,8 @@ public final class WorkspaceMerge {
         }
 
         // Transitive MAIN+EXPORT externals from reachable siblings into this module's main scope.
-        Set<String> visited = new LinkedHashSet<>(dependedSiblingNames);
-        ArrayDeque<String> queue = new ArrayDeque<>(dependedSiblingNames);
+        Set<String> visited = new LinkedHashSet<>(dependedSiblings);
+        ArrayDeque<String> queue = new ArrayDeque<>(dependedSiblings);
         while (!queue.isEmpty()) {
             JkBuild sibling = siblingByArtifact.get(queue.poll());
             if (sibling == null) continue;
@@ -76,7 +72,7 @@ public final class WorkspaceMerge {
                 for (Dependency d : sibling.dependencies().of(scope)) {
                     Dependency r = resolve(d, siblingByArtifact, wsDeps);
                     if (internal.contains(r.module())) {
-                        if (visited.add(r.name())) queue.add(r.name());
+                        if (visited.add(r.module())) queue.add(r.module());
                         continue;
                     }
                     List<Dependency> mainList = resolvedByScope.computeIfAbsent(Scope.MAIN, k -> new ArrayList<>());
@@ -123,9 +119,7 @@ public final class WorkspaceMerge {
      * rendering, and a partial answer beats an exception at that point.
      */
     public static JkBuild resolveSiblingCoordinates(JkBuild root, JkBuild module, Collection<JkBuild> allModules) {
-        Map<String, JkBuild> siblingByArtifact = new LinkedHashMap<>();
-        for (JkBuild m : allModules) siblingByArtifact.put(m.project().name(), m);
-        siblingByArtifact.put(root.project().name(), root);
+        Map<String, JkBuild> siblingByArtifact = siblingIndex(root, allModules);
         Map<String, Workspace.WorkspaceDependency> wsDeps =
                 root.workspace() != null ? root.workspace().dependencies() : Map.of();
 
@@ -186,16 +180,10 @@ public final class WorkspaceMerge {
         for (JkBuild m : modules) unionModules.add(Variants.unionDependencies(m));
         modules = unionModules;
 
-        // Build the sibling lookup: artifact → JkBuild (full manifest).
-        Map<String, JkBuild> siblingByArtifact = new LinkedHashMap<>();
+        Map<String, JkBuild> siblingByArtifact = siblingIndex(root, modules);
         Set<String> internal = new HashSet<>();
-        for (JkBuild module : modules) {
-            String coord = module.project().group() + ":" + module.project().name();
-            siblingByArtifact.put(module.project().name(), module);
-            internal.add(coord);
-        }
-        // The root is itself a workspace unit members may depend on.
-        siblingByArtifact.put(root.project().name(), root);
+        for (JkBuild module : modules)
+            internal.add(module.project().group() + ":" + module.project().name());
         internal.add(root.project().group() + ":" + root.project().name());
 
         Map<String, Workspace.WorkspaceDependency> wsDeps =
@@ -237,34 +225,53 @@ public final class WorkspaceMerge {
     }
 
     /**
+     * Every unit of the workspace under two keys: its bare name, which a {@code workspace = true}
+     * edge spells, and its {@code group:name}, which a group-qualified edge spells. The root is a
+     * unit too (Cargo/uv style: a member can {@code <root> = { workspace = true }}).
+     */
+    private static Map<String, JkBuild> siblingIndex(JkBuild root, Collection<JkBuild> allModules) {
+        Map<String, JkBuild> index = new LinkedHashMap<>();
+        for (JkBuild m : allModules) {
+            index.put(m.project().name(), m);
+            index.put(m.project().group() + ":" + m.project().name(), m);
+        }
+        index.put(root.project().name(), root);
+        index.put(root.project().group() + ":" + root.project().name(), root);
+        return index;
+    }
+
+    /**
      * Rewrites a placeholder {@code workspace:<name>} dep into the real coord, using the sibling list
-     * first and then the workspace's shared-dep table. Non-placeholder deps pass through unchanged.
+     * first and then the workspace's shared-dep table. A group-qualified placeholder names the
+     * sibling by {@code group:name} and never reaches the shared-dep table. Non-placeholder deps
+     * pass through unchanged.
      */
     private static Dependency resolve(
             Dependency d, Map<String, JkBuild> siblingByArtifact, Map<String, Workspace.WorkspaceDependency> wsDeps) {
         if (!d.isWorkspace()) return d;
-        String name = d.library();
-        // Sibling lookup first. Modules typically name siblings as
-        // jk-core, jk-cli, etc. — the dep handle is expected to match the
-        // sibling's name directly.
-        JkBuild sibling = siblingByArtifact.get(name);
+        String name = Objects.requireNonNull(d.workspaceName());
+        String coordinate = Dependency.workspaceCoordinate(d.module());
+        JkBuild sibling = siblingByArtifact.get(coordinate != null ? coordinate : name);
+        if (sibling == null && coordinate != null) {
+            throw new IllegalStateException("no workspace member `" + coordinate + "`");
+        }
         if (sibling != null) {
             Project p = sibling.project();
             String module = p.group() + ":" + p.name();
             // Preserve kind and fixtures so classpath resolution still sees both flags. For lock,
             // siblings are dropped.
-            return Dependency.of(name, module, VersionSelector.parse("=" + p.version()))
+            return Dependency.of(d.library(), module, VersionSelector.parse("=" + p.version()))
                     .withKind(d.kind())
                     .withFixtures(d.fixtures());
         }
         Workspace.WorkspaceDependency ws = wsDeps.get(name);
         if (ws != null) {
             if (ws.gitSource() != null) {
-                return Dependency.git(name, ws.module(), ws.gitSource())
+                return Dependency.git(d.library(), ws.module(), ws.gitSource())
                         .withKind(d.kind())
                         .withFixtures(d.fixtures());
             }
-            return Dependency.of(name, ws.module(), Objects.requireNonNull(ws.version()))
+            return Dependency.of(d.library(), ws.module(), Objects.requireNonNull(ws.version()))
                     .withKind(d.kind())
                     .withFixtures(d.fixtures());
         }

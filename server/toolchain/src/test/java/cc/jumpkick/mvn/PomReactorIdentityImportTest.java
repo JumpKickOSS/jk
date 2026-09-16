@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
@@ -16,15 +17,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * What a reactor's identities become in a workspace: two leaves sharing an artifactId across groups
- * are reported (Tier 3 when a member's edge would be ambiguous), and a BOM leaf is the row on the
- * members that import it rather than a source-less module.
+ * are reported and every edge to that name carries the member's group, and a BOM leaf is the row on
+ * the members that import it rather than a source-less module.
  */
 class PomReactorIdentityImportTest {
 
     /** thingsboard's shape: {@code common/edqs} and {@code edqs}, with {@code application} depending on one of them. */
     @Test
-    void two_leaves_sharing_an_artifact_id_with_a_dependent_are_a_tier_3_row_naming_both_paths(@TempDir Path root)
-            throws Exception {
+    void an_edge_to_a_shared_artifact_id_is_written_with_the_members_group(@TempDir Path root) throws Exception {
         write(root, "pom.xml", parent(List.of("common/edqs", "edqs", "application")));
         write(root, "common/edqs/pom.xml", leaf("edqs", "org.tb.common", ""));
         write(root, "edqs/pom.xml", leaf("edqs", null, ""));
@@ -42,19 +42,24 @@ class PomReactorIdentityImportTest {
 
         assertThat(requireNonNull(result.root().workspace()).modules())
                 .containsExactly("common/edqs", "edqs", "application");
+        assertThat(result.report().hasErrors()).isFalse();
         assertThat(result.report().issues())
-                .filteredOn(i -> i.severity() == ImportReport.Severity.ERROR)
                 .extracting(ImportReport.Issue::message)
-                .singleElement()
-                .asString()
-                .contains("`common/edqs` and `edqs` both carry the name `edqs` (org.tb.common:edqs, org.tb:edqs)")
-                .contains("`application` depend on it")
-                .contains("edqs.workspace = true");
+                .anySatisfy(m -> assertThat(m)
+                        .contains(
+                                "`common/edqs` and `edqs` all carry the name `edqs` (org.tb.common:edqs, org.tb:edqs)")
+                        .contains("`application` depends on it")
+                        .contains("group = \"…\""));
         JkBuild application = requireNonNull(result.modules().get("application"));
         assertThat(application.dependencies().of(Scope.MAIN))
-                .as("the edge is written by name, never resolved to one of the two silently")
+                .as("the edge names the group Maven named, so the loader picks that member")
                 .singleElement()
-                .satisfies(d -> assertThat(d.workspaceName()).isEqualTo("edqs"));
+                .satisfies(d -> {
+                    assertThat(d.workspaceName()).isEqualTo("edqs");
+                    assertThat(d.workspaceGroup()).isEqualTo("org.tb.common");
+                });
+        assertThat(JkBuildRenderer.render(application))
+                .contains("edqs = { workspace = true, group = \"org.tb.common\" }");
     }
 
     @Test
@@ -69,8 +74,8 @@ class PomReactorIdentityImportTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`common/edqs` and `edqs` both carry the name `edqs`")
-                        .contains("nothing is ambiguous"));
+                        .contains("`common/edqs` and `edqs` all carry the name `edqs`")
+                        .contains("no member depends on the name"));
     }
 
     @Test

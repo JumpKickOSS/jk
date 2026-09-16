@@ -1129,6 +1129,8 @@ public final class PlannerSupport {
             Dependency d, Map<String, Path> dirByName, Map<String, Path> dirByCoord) {
         String ws = d.workspaceName();
         if (ws != null) {
+            String qualified = Dependency.workspaceCoordinate(d.module());
+            if (qualified != null) return dirByCoord.get(qualified);
             Path dir = dirByName.get(ws);
             if (dir != null) return dir;
             if (ws.startsWith("jk-") && ws.length() > 3) return dirByName.get(ws.substring(3));

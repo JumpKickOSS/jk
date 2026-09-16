@@ -41,8 +41,14 @@ public record Dependency(
         /** The Maven classifier of the artifact this edge wants; {@code null} for the plain jar. */
         @Nullable String classifier) {
 
-    /** Synthetic {@code module} for an unresolved workspace sibling; rewritten by {@code WorkspaceMerge}. */
+    /**
+     * Synthetic {@code module} for an unresolved workspace sibling, {@code workspace:<name>} or
+     * {@code workspace:<group>/<name>} when the edge names the group; rewritten by {@code WorkspaceMerge}.
+     */
     public static final String WORKSPACE_PREFIX = "workspace:";
+
+    /** Separates the group from the name in a qualified placeholder; a Maven group never contains it. */
+    public static final char WORKSPACE_GROUP_SEPARATOR = '/';
 
     /** Synthetic {@code module} for a bare-name git dep (write-only; use {@link #isGit()}). */
     public static final String GIT_PREFIX = "git:";
@@ -321,6 +327,16 @@ public record Dependency(
         return new Dependency(name, workspaceRef(name), new VersionSelector.Latest("workspace"), null, null, false);
     }
 
+    /**
+     * A workspace edge qualified by the sibling's {@code group}, the spelling that picks one of two
+     * members carrying the same name ({@code edqs = { workspace = true, group = "org.tb" }}).
+     */
+    public static Dependency workspace(String name, String group) {
+        Objects.requireNonNull(group, "group");
+        return new Dependency(
+                name, workspaceRef(name, group), new VersionSelector.Latest("workspace"), null, null, false);
+    }
+
     public static Dependency workspace(String name, DependencyKind kind) {
         return workspace(name).withKind(kind);
     }
@@ -361,16 +377,46 @@ public record Dependency(
         return workspaceName(module);
     }
 
+    /** The group a qualified workspace edge names; {@code null} for a bare edge or a non-workspace dep. */
+    public @Nullable String workspaceGroup() {
+        return workspaceGroup(module);
+    }
+
     public static boolean isWorkspaceRef(@Nullable String module) {
         return module != null && module.startsWith(WORKSPACE_PREFIX);
     }
 
+    /** The sibling name a placeholder spells, with the group qualifier (if any) stripped. */
     public static @Nullable String workspaceName(String module) {
-        return isWorkspaceRef(module) ? module.substring(WORKSPACE_PREFIX.length()) : null;
+        if (!isWorkspaceRef(module)) return null;
+        String ref = module.substring(WORKSPACE_PREFIX.length());
+        int slash = ref.indexOf(WORKSPACE_GROUP_SEPARATOR);
+        return slash < 0 ? ref : ref.substring(slash + 1);
+    }
+
+    /** The group a qualified placeholder ({@code workspace:<group>/<name>}) spells; {@code null} when bare. */
+    public static @Nullable String workspaceGroup(String module) {
+        if (!isWorkspaceRef(module)) return null;
+        String ref = module.substring(WORKSPACE_PREFIX.length());
+        int slash = ref.indexOf(WORKSPACE_GROUP_SEPARATOR);
+        return slash < 0 ? null : ref.substring(0, slash);
+    }
+
+    /**
+     * The {@code group:name} coordinate a qualified placeholder resolves to without a sibling
+     * list, or {@code null} for a bare placeholder or a non-workspace module.
+     */
+    public static @Nullable String workspaceCoordinate(String module) {
+        String group = workspaceGroup(module);
+        return group == null ? null : group + ":" + workspaceName(module);
     }
 
     public static String workspaceRef(String name) {
         return WORKSPACE_PREFIX + name;
+    }
+
+    public static String workspaceRef(String name, String group) {
+        return WORKSPACE_PREFIX + group + WORKSPACE_GROUP_SEPARATOR + name;
     }
 
     public String group() {

@@ -187,12 +187,13 @@ public final class WorkspaceLoader {
      * Two members may share an artifact name: each member's output lives under its own {@code
      * target/<module-rel>/}, so their jars never meet on disk. What a workspace cannot hold twice is a
      * {@code group:name:version} coordinate, since it publishes one artifact per coordinate. A
-     * shared name is refused only when some unit's {@code workspace = true} edge or {@code [build]
-     * order-after} names it, because that edge is spelled by name alone and would otherwise pick one
-     * member silently. The root counts as a unit when it declares a name of its own.
+     * shared name is refused only when some unit's bare {@code workspace = true} edge or {@code
+     * [build] order-after} names it, because that edge is spelled by name alone and would otherwise
+     * pick one member silently; an edge that also names the {@code group} picks one member and is
+     * refused only when no member carries that pair. The root counts as a unit when it declares a
+     * name of its own.
      */
     private static void checkIdentityCollisions(Path workspaceRoot, JkBuild root, Map<Path, JkBuild> modules) {
-        record Entry(@Nullable Path dir, JkBuild build) {}
         List<Entry> all = new ArrayList<>(modules.size() + 1);
         if (!root.project().name().isBlank()) all.add(new Entry(null, root));
         for (Map.Entry<Path, JkBuild> e : modules.entrySet()) all.add(new Entry(e.getKey(), e.getValue()));
@@ -212,30 +213,69 @@ public final class WorkspaceLoader {
             byName.computeIfAbsent(e.build.project().name(), k -> new ArrayList<>())
                     .add(e);
         }
+        for (Entry from : all) checkQualifiedEdges(workspaceRoot, from.dir, from.build, byName);
         byName.values().removeIf(entries -> entries.size() < 2);
         if (byName.isEmpty()) return;
         for (Entry from : all) {
-            for (String name : edgeNames(from.build)) {
+            for (String name : bareEdgeNames(from.build)) {
                 List<Entry> carriers = byName.get(name);
                 if (carriers == null) continue;
                 String paths = carriers.stream()
                         .map(c -> "`" + moduleLabel(workspaceRoot, c.dir) + "`")
                         .collect(Collectors.joining(" and "));
+                String groups = carriers.stream()
+                        .map(c -> "`" + c.build.project().group() + "`")
+                        .collect(Collectors.joining(" or "));
                 throw new JkBuildParseException("workspace edge `" + name + "` is ambiguous: `"
                         + moduleLabel(workspaceRoot, from.dir) + "` depends on it, and " + paths
-                        + " both carry that name. A workspace edge is spelled by module name alone, so"
-                        + " rename one of them.");
+                        + " both carry that name. Name the member's group on the edge — `" + name
+                        + " = { workspace = true, group = \"…\" }` with " + groups
+                        + " — or rename one of them.");
             }
         }
     }
 
-    /** The sibling names a unit's {@code workspace = true} edges and {@code [build] order-after} spell. */
-    private static List<String> edgeNames(JkBuild unit) {
+    /**
+     * Every group-qualified edge of {@code unit} names a member carrying that {@code group:name}
+     * pair; one that names none is refused, listing the groups the name is carried under.
+     */
+    private static void checkQualifiedEdges(
+            Path workspaceRoot, @Nullable Path fromDir, JkBuild unit, Map<String, List<Entry>> byName) {
+        for (Scope scope : Scope.values()) {
+            for (Dependency d : unit.dependencies().of(scope)) {
+                String group = d.workspaceGroup();
+                if (group == null) continue;
+                String name = Objects.requireNonNull(d.workspaceName());
+                List<Entry> carriers = byName.getOrDefault(name, List.of());
+                boolean found = carriers.stream().anyMatch(c -> c.group().equals(group));
+                if (found) continue;
+                String groups =
+                        carriers.stream().map(c -> "`" + c.group() + "`").collect(Collectors.joining(", "));
+                throw new JkBuildParseException("workspace edge `" + name + "` names group `" + group
+                        + "`, which no member carrying that name has: `" + moduleLabel(workspaceRoot, fromDir)
+                        + "` depends on it, and the name is carried under "
+                        + (groups.isEmpty() ? "no member" : groups) + ".");
+            }
+        }
+    }
+
+    /** One unit of the workspace: the root ({@code dir} null) or a member under its directory. */
+    private record Entry(@Nullable Path dir, JkBuild build) {
+        String group() {
+            return build.project().group();
+        }
+    }
+
+    /**
+     * The sibling names a unit's bare {@code workspace = true} edges and {@code [build] order-after}
+     * spell; an edge that names the group is resolved by the pair and is not listed.
+     */
+    private static List<String> bareEdgeNames(JkBuild unit) {
         List<String> names = new ArrayList<>();
         for (Scope scope : Scope.values()) {
             for (Dependency d : unit.dependencies().of(scope)) {
                 String name = d.workspaceName();
-                if (name != null) names.add(name);
+                if (name != null && d.workspaceGroup() == null) names.add(name);
             }
         }
         names.addAll(unit.build().allOrderAfter());

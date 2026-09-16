@@ -6,15 +6,18 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Two reactor leaves may share an artifactId under different groups; a Maven dependency tells them
- * apart by group, a jk workspace edge is spelled by module name alone. The import reports every
- * shared name: a Tier-2 row when no member depends on it, a Tier-3 row naming both paths and the
- * dependents when an edge would be ambiguous, since that edge cannot pick one member silently.
+ * apart by group, and so does a group-qualified workspace edge ({@code edqs = { workspace = true,
+ * group = "…" }}), which the import writes for every edge to a shared name. The import reports
+ * every shared name: what each carrier builds into, and which dependents got the qualified edge.
  */
 final class SiblingNames {
 
@@ -22,6 +25,16 @@ final class SiblingNames {
 
     /** One member: its root-relative path and its {@code group:artifact}. */
     private record Carrier(String path, String ga) {}
+
+    /** The module names two or more of {@code modules} (keyed by root-relative path) carry. */
+    static Set<String> shared(Map<String, JkBuild> modules) {
+        Set<String> seen = new HashSet<>();
+        Set<String> shared = new LinkedHashSet<>();
+        for (JkBuild module : modules.values()) {
+            if (!seen.add(module.project().name())) shared.add(module.project().name());
+        }
+        return shared;
+    }
 
     /** {@code modules} keyed by root-relative path, in workspace order. */
     static void report(Map<String, JkBuild> modules, ImportReport.Builder report) {
@@ -37,30 +50,28 @@ final class SiblingNames {
             List<String> coords = carriers.stream().map(Carrier::ga).toList();
             List<String> dependents = new ArrayList<>();
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
-                if (!coords.contains(ga(e.getValue())) && dependsOnAny(e.getValue(), coords)) {
-                    dependents.add(e.getKey());
-                }
+                if (dependsOnAnyOther(e.getValue(), coords)) dependents.add(e.getKey());
             }
-            String both = "`" + String.join("` and `", paths) + "` both carry the name `" + shared.getKey() + "` ("
-                    + String.join(", ", coords) + ")";
+            String all = "`" + String.join("` and `", paths) + "` all carry the name `" + shared.getKey() + "` ("
+                    + String.join(", ", coords) + "); each builds into its own `target/<path>/`";
             if (dependents.isEmpty()) {
-                report.warning(both + "; each builds into its own `target/<path>/`, and no member depends on the"
-                        + " name, so nothing is ambiguous.");
+                report.warning(all + ", and no member depends on the name.");
                 continue;
             }
-            report.error(both + ", and `" + String.join("`, `", dependents)
-                    + "` depend on it. A workspace edge is spelled by module name alone, so the edge is written as `"
-                    + shared.getKey() + ".workspace = true` and jk refuses the workspace as ambiguous until one of"
-                    + " the two modules is renamed.");
+            report.warning(all + ". `" + String.join("`, `", dependents)
+                    + (dependents.size() == 1 ? "` depends" : "` depend")
+                    + " on it, so each edge names the member's group: `" + shared.getKey()
+                    + " = { workspace = true, group = \"…\" }`.");
         }
     }
 
-    /** True when {@code module} declares any of {@code coords} outside {@code [platform]}. */
-    private static boolean dependsOnAny(JkBuild module, List<String> coords) {
+    /** True when {@code module} declares any of {@code coords} but its own outside {@code [platform]}. */
+    private static boolean dependsOnAnyOther(JkBuild module, List<String> coords) {
+        String own = ga(module);
         for (Scope scope : Scope.values()) {
             if (scope == Scope.PLATFORM) continue;
             for (Dependency d : module.dependencies().of(scope)) {
-                if (coords.contains(d.module())) return true;
+                if (!d.module().equals(own) && coords.contains(d.module())) return true;
             }
         }
         return false;

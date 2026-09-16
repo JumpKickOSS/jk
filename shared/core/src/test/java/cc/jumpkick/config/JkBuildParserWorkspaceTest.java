@@ -7,6 +7,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ProjectInherit;
@@ -307,14 +308,28 @@ class JkBuildParserWorkspaceTest {
                 .hasMessageContaining("more than one");
     }
 
+    /** The key is the sibling's name; `group` picks one of two members carrying it. */
     @Test
-    void workspace_true_cannot_combine_with_group() {
+    void workspace_true_with_group_is_a_qualified_edge() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                edqs = { workspace = true, group = "com.example.common" }
+                """);
+        Dependency edge = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(edge.isWorkspace()).isTrue();
+        assertThat(edge.workspaceName()).isEqualTo("edqs");
+        assertThat(edge.workspaceGroup()).isEqualTo("com.example.common");
+        assertThat(Dependency.workspaceCoordinate(edge.module())).isEqualTo("com.example.common:edqs");
+    }
+
+    @Test
+    void workspace_true_cannot_combine_with_name() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [dependencies]
-                bad = { workspace = true, group = "com.example" }
+                bad = { workspace = true, name = "other" }
                 """))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("must not set `group`");
+                .hasMessageContaining("must not set `name`");
     }
 
     @Test

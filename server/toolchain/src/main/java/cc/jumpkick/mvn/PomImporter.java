@@ -210,13 +210,15 @@ public final class PomImporter {
                 .build();
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
+        Set<String> sharedNames = SiblingNames.shared(moduleBuilds);
         Map<String, String> bomByGa = bomGaIndex(found.boms());
         Set<String> importedBoms = new HashSet<>();
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
         for (var e : moduleBuilds.entrySet()) {
             rewritten.put(
                     e.getKey(),
-                    rewriteSiblingDeps(e.getValue(), siblingByGa, bomByGa, importedBoms, e.getKey(), report));
+                    rewriteSiblingDeps(
+                            e.getValue(), siblingByGa, sharedNames, bomByGa, importedBoms, e.getKey(), report));
         }
         for (String bom : bomByGa.values()) {
             if (importedBoms.contains(bom)) continue;
@@ -264,7 +266,8 @@ public final class PomImporter {
     }
 
     /**
-     * Convert deps whose GA matches a workspace sibling into workspace edges. Maven
+     * Convert deps whose GA matches a workspace sibling into workspace edges; an edge to a name in
+     * {@code sharedNames} carries the dependency's group so it picks one member. Maven
      * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A BOM of
      * the reactor leaves {@code [platform]}: its managed versions are already on the declared
      * dependencies, and the lock fetches a BOM from a repository, which a reactor BOM is not in.
@@ -272,6 +275,7 @@ public final class PomImporter {
     private static JkBuild rewriteSiblingDeps(
             JkBuild module,
             Map<String, String> siblingByGa,
+            Set<String> sharedNames,
             Map<String, String> bomByGa,
             Set<String> importedBoms,
             String moduleKey,
@@ -311,7 +315,10 @@ public final class PomImporter {
                 // Library handle matches the sibling project name so `{ workspace = true }` resolves.
                 // mapDependencies already forced tests-kind deps into a test scope, so kind is
                 // carried as-is — never emitted where the parser would reject it.
-                Dependency ws = Dependency.workspace(siblingName).withOptional(d.optional());
+                Dependency ws = sharedNames.contains(siblingName)
+                        ? Dependency.workspace(siblingName, d.group())
+                        : Dependency.workspace(siblingName);
+                ws = ws.withOptional(d.optional());
                 if (d.isTestsKind()) {
                     ws = ws.withKind(DependencyKind.TESTS);
                 }

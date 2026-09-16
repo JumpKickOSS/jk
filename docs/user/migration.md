@@ -104,10 +104,10 @@ A dependency on any module of the reactor is a workspace edge — `{ workspace =
 `kind = "tests"` for a `test-jar` — wherever the module sits and however its version is spelled,
 because siblings match by `groupId:artifactId`. Two leaves that share an artifactId under
 different groups (thingsboard's `common/edqs` and `edqs`) are both modules — each builds into its
-own `target/<path>/` — and the report names them: a Tier-2 row when no member depends on the name,
-a Tier-3 row naming both paths and the dependents when one does, since a workspace edge is spelled
-by module name alone and `edqs.workspace = true` cannot pick one of them; rename one module. A
-sibling answers as a parent and as an `import`-scope BOM before any repository is asked. A BOM
+own `target/<path>/` — and an edge to that name carries the group the POM named,
+`edqs = { workspace = true, group = "org.thingsboard.common" }`, so the loader picks that member
+([Workspaces](workspaces.md#one-name-in-two-groups)); the report names the carriers and the
+dependents that got the qualified edge. A sibling answers as a parent and as an `import`-scope BOM before any repository is asked. A BOM
 leaf — packaging `pom`, no `<modules>`, a `<dependencyManagement>` table and nothing else of its
 own — is not a workspace module: a `dependencyManagement` that imports it is applied to the
 declared dependencies and the BOM is not written as a `[platform]` row (the lock fetches a BOM from
