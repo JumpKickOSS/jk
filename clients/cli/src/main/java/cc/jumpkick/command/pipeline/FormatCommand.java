@@ -4,6 +4,7 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -15,7 +16,6 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -28,7 +28,6 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -91,11 +90,7 @@ public final class FormatCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         boolean check = in.isSet("check");
         Path projectDir = global.workingDir();
-        Path buildFile = ManifestPaths.manifestIn(projectDir);
-        if (!Files.exists(buildFile)) {
-            CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
-            return Exit.CONFIG;
-        }
+        if (ProjectContext.require(projectDir, "Format").isEmpty()) return Exit.CONFIG;
         ProjectInfo build = ProjectInfos.orNull(projectDir);
         if (build == null) {
             CommandWedge.printFail("Format", "could not read the project summary (is the engine reachable?)");

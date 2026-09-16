@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -33,7 +34,6 @@ import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -116,11 +116,9 @@ public final class ImageCommand implements CliCommand {
         if (!TestCommand.installSelection(in, "Image")) return Exit.CONFIG;
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
-        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
-        if (!Files.exists(jkBuildPath)) {
-            CommandWedge.printFail("Image", jkBuildPath + " not found.");
-            return Exit.NO_INPUT;
-        }
+        var proj = ProjectContext.require(projectDir, "Image").orElse(null);
+        if (proj == null) return Exit.CONFIG;
+        Path jkBuildPath = proj.buildFile();
         // -m/--modules: an image is built for exactly one module — redirect to it.
         String modulesSpec = CommonOpts.modulesSpec(in);
         String affectedSince = in.value("affected-since").orElse(null);

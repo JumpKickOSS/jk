@@ -6,7 +6,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
@@ -41,7 +41,6 @@ import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -134,13 +133,10 @@ public final class NativeCommand implements CliCommand {
 
         Path startDir = global.workingDir();
         VariantSelection.install(in, startDir);
-        Path buildFile = ManifestPaths.manifestIn(startDir);
+        var proj = ProjectContext.require(startDir, "Native").orElse(null);
+        if (proj == null) return Exit.CONFIG;
+        Path buildFile = proj.buildFile();
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-
-        if (!Files.exists(buildFile)) {
-            CommandWedge.printFail("Native", PathDisplay.styledRaw(buildFile) + " not found.");
-            return Exit.NO_INPUT;
-        }
 
         var graal = NativePreflight.graal(System.getenv("GRAALVM_HOME"));
         if (graal instanceof NativePreflight.Graal.Fail fail) {

@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildPlanner;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.runtime.workspace.ImagePlans;
 import cc.jumpkick.util.JkDirs;
@@ -169,6 +170,10 @@ public final class ImageVerb implements HostedVerb {
                             image.version(),
                             image.daemonExe());
                 });
+            } catch (ShadowManifests.NotBuiltHere refused) {
+                // A shadowed directory Maven would not build here: a configuration refusal, not a crash.
+                host.sendQuiet(writer, host.requestFailedLine(null, refused));
+                return JobOutcome.failed(Exit.CONFIG);
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);

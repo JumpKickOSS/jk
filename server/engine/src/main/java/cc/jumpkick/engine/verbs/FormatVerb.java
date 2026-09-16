@@ -11,6 +11,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.base.FormatPlans;
 import cc.jumpkick.runtime.base.FormatWorker;
 import cc.jumpkick.util.JkDirs;
@@ -130,6 +131,10 @@ public final class FormatVerb implements HostedVerb {
                                 plan.get(FormatWorker.TOTAL).orElse(-1),
                                 plan.get(FormatWorker.WORKER_EXIT).orElse(-1)));
                 return verdict(planVerdict, plan.get(FormatWorker.ERRORS).orElse(0));
+            } catch (ShadowManifests.NotBuiltHere refused) {
+                // A shadowed directory Maven would not build here: a configuration refusal, not a crash.
+                host.sendQuiet(writer, host.requestFailedLine(null, refused));
+                return JobOutcome.failed(Exit.CONFIG);
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);
