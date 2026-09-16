@@ -98,17 +98,8 @@ public final class PomParser {
 
         Map<String, String> properties = parseProperties(project);
 
-        // Build substitution context: project.* + named properties.
         Map<String, String> ctx = new LinkedHashMap<>(properties);
-        if (groupId != null) ctx.put("project.groupId", groupId);
-        ctx.put("project.artifactId", artifactId);
-        if (version != null) ctx.put("project.version", version);
-        ctx.put("project.packaging", packaging);
-        if (parent != null) {
-            ctx.put("project.parent.groupId", parent.groupId());
-            ctx.put("project.parent.artifactId", parent.artifactId());
-            ctx.put("project.parent.version", parent.version());
-        }
+        putImplicitProperties(ctx, groupId, artifactId, version, packaging, parent);
 
         List<Pom.Dep> deps = parseDependencies(childElement(project, "dependencies"), ctx);
         List<Pom.Dep> managed =
@@ -127,6 +118,35 @@ public final class PomParser {
                 managed,
                 parseRelocation(project, ctx),
                 parseRepositories(project, ctx, gav));
+    }
+
+    /**
+     * The implicit properties Maven interpolates a model with: {@code project.groupId}, {@code
+     * project.artifactId}, {@code project.version} and {@code project.packaging}, plus {@code
+     * project.parent.groupId}, {@code project.parent.artifactId} and {@code project.parent.version}
+     * under a {@code <parent>}. The {@code pom.} and {@code parent.} spellings value the same way.
+     * A null groupId or version leaves its keys unset, so the reference stays visible to the
+     * resolver's diagnostics.
+     */
+    static void putImplicitProperties(
+            Map<String, String> ctx,
+            @Nullable String groupId,
+            String artifactId,
+            @Nullable String version,
+            String packaging,
+            Pom.@Nullable Parent parent) {
+        for (String prefix : List.of("project.", "pom.")) {
+            if (groupId != null) ctx.put(prefix + "groupId", groupId);
+            ctx.put(prefix + "artifactId", artifactId);
+            if (version != null) ctx.put(prefix + "version", version);
+            ctx.put(prefix + "packaging", packaging);
+        }
+        if (parent == null) return;
+        for (String prefix : List.of("project.parent.", "parent.")) {
+            ctx.put(prefix + "groupId", parent.groupId());
+            ctx.put(prefix + "artifactId", parent.artifactId());
+            ctx.put(prefix + "version", parent.version());
+        }
     }
 
     /**

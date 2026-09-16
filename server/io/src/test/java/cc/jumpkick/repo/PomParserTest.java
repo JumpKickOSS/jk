@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import org.junit.jupiter.api.Test;
 
@@ -218,5 +219,38 @@ class PomParserTest {
                 .singleElement()
                 .extracting(Pom.Dep::version)
                 .isEqualTo("3.8.1");
+    }
+
+    /** Maven's older spellings of the implicit properties value the same way as {@code project.*}. */
+    @Test
+    void substitutes_the_pom_and_parent_spellings_of_the_implicit_properties() {
+        Pom pom = PomParser.parse("""
+                <project>
+                  <parent>
+                    <groupId>com.example</groupId>
+                    <artifactId>sdk-parent</artifactId>
+                    <version>2.4.5</version>
+                  </parent>
+                  <artifactId>sdk</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>${pom.groupId}</groupId>
+                      <artifactId>sdk-commons</artifactId>
+                      <version>${pom.version}</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>${parent.groupId}</groupId>
+                      <artifactId>${parent.artifactId}-tests</artifactId>
+                      <version>${parent.version}</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        assertThat(pom.dependencies())
+                .extracting(Pom.Dep::groupId, Pom.Dep::artifactId, Pom.Dep::version)
+                .containsExactly(
+                        tuple("com.example", "sdk-commons", "2.4.5"),
+                        tuple("com.example", "sdk-parent-tests", "2.4.5"));
     }
 }
