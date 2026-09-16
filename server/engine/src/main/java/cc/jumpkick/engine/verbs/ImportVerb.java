@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.CompatPlans;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -106,7 +110,10 @@ public final class ImportVerb implements HostedVerb {
                         .withCacheDir(cache)
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
+                Cas cas = JkStores.storeCas();
+                PomImporter poms = new PomImporter(RepoGroupBuilder.buildDefault(cas), cas);
                 BuildPlan plan = CompatPlans.importBuildPlan(
+                        poms,
                         Path.of(body.source()),
                         Path.of(body.out()),
                         baseDir,

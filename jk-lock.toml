@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.7"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "e6ee595a0597c104fec031a99b8666f04f4a5f63f372d8f1375f95c4f6f13bb5"
+manifests-sha256 = "d40b620d276aa02c96a55622023c176e7c1c6cd632b7ddff5855fc8975ce4094"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -119,7 +119,7 @@ name     = "com.fasterxml.woodstox:woodstox-core:jar:"
 version  = "7.2.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3bd35f778fb15cd517fae51961ba7a9388eae8e4a836fac1166c7f70740e55cd"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "org.codehaus.woodstox:stax2-api:jar:@4.3.0 <- 4.3.0",
 ]
@@ -1035,7 +1035,7 @@ name     = "javax.inject:javax.inject:jar:"
 version  = "1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
-scopes   = ["provided", "processor"]
+scopes   = ["main", "provided", "processor"]
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
@@ -1338,14 +1338,14 @@ name     = "org.apache.maven:maven-api-annotations:jar:"
 version  = "4.0.0-rc-6"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:93a14f4aaef8aeac26bb80df784743d0fdac7b8eb699a928c19efa6c2745b565"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "org.apache.maven:maven-api-xml:jar:"
 version  = "4.0.0-rc-6"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:9dad0b3b411a5ef2637f8ab01dbff28e4c78dc5ae5e8a90284d25d077e134439"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "org.apache.maven:maven-api-annotations:jar:@4.0.0-rc-6 <- 4.0.0-rc-6",
 ]
@@ -1355,7 +1355,7 @@ name     = "org.apache.maven:maven-artifact:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad3e8"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
 ]
@@ -1365,7 +1365,7 @@ name     = "org.apache.maven:maven-builder-support:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:02972384eae3495801565fd27abb84cfd75a8e6d2cbb1ae0c556752ebc2b1cde"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "org.apache.maven:maven-core:jar:"
@@ -1439,7 +1439,7 @@ name     = "org.apache.maven:maven-model-builder:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:002be86d1f53b36f559a0786034a17598d71087f1935f205a1f9e51d4dd124b3"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "javax.inject:javax.inject:jar:@1 <- 1",
   "org.apache.maven:maven-artifact:jar:@3.9.16 <- 3.9.16",
@@ -1455,7 +1455,7 @@ name     = "org.apache.maven:maven-model:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f59d86a507c241bf17bbf050050d1b8b9c0d34d5010a7e2386c3cab7c83b93de"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
 ]
@@ -1532,7 +1532,7 @@ name     = "org.apache.maven:maven-xml:jar:"
 version  = "4.0.0-rc-6"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:1ba37789d4dd50cc31d6b838de71a8e73b440bdaf60d6264c2e2d1acef68d8bd"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "com.fasterxml.woodstox:woodstox-core:jar:@7.2.2 <- 7.2.1",
   "org.apache.maven:maven-api-xml:jar:@4.0.0-rc-6 <- 4.0.0-rc-6",
@@ -1644,7 +1644,7 @@ name     = "org.codehaus.plexus:plexus-interpolation:jar:"
 version  = "1.30.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:457307267f6d2ea2582f5449df9350b86728f46c23ccd486341087ace473e9a1"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-sec-dispatcher:jar:"
@@ -1661,14 +1661,14 @@ name     = "org.codehaus.plexus:plexus-utils:jar:"
 version  = "4.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-xml:jar:"
 version  = "4.2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:db143f794bd815ccff8025fd6758b168564f51ae1c78d20f5a1a356ba212303e"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "org.apache.maven:maven-api-xml:jar:@4.0.0-rc-6 <- 4.0.0-rc-6",
   "org.apache.maven:maven-xml:jar:@4.0.0-rc-6 <- 4.0.0-rc-6",
@@ -1679,7 +1679,7 @@ name     = "org.codehaus.woodstox:stax2-api:jar:"
 version  = "4.3.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7c805f36129ea9fa42b696093b7ae1eb20bb6ccec65c8280d6f33db5609ca5e1"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 
 [[artifact]]
 name     = "org.commonmark:commonmark-ext-gfm-tables:jar:"
@@ -1725,7 +1725,7 @@ name     = "org.eclipse.sisu:org.eclipse.sisu.inject:jar:"
 version  = "1.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f3edea5119c91be496e3ff55948fa16c89cdbacf9c2e74bdc9fafda1a3faba20"
-scopes   = ["provided"]
+scopes   = ["main", "provided"]
 deps = [
   "org.ow2.asm:asm:jar:@9.10.1 <- 9.10.1",
 ]

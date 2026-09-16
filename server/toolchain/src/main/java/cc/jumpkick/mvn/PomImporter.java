@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
-import static cc.jumpkick.host.DomXml.childElement;
-import static cc.jumpkick.host.DomXml.childElements;
-import static cc.jumpkick.host.DomXml.childText;
-
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
@@ -15,9 +12,8 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import cc.jumpkick.repo.Pom;
-import cc.jumpkick.repo.Pom.Parent;
 import cc.jumpkick.repo.PomParseException;
-import cc.jumpkick.repo.PomParser;
+import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -34,15 +30,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.maven.model.Build;
+import org.apache.maven.model.Model;
+import org.apache.maven.model.Parent;
+import org.apache.maven.model.Plugin;
+import org.apache.maven.model.Profile;
+import org.apache.maven.model.Repository;
 import org.jspecify.annotations.Nullable;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
 /**
  * Converts a Maven {@code pom.xml} into a {@link JkBuild} plus an {@link ImportReport} of
- * unfaithful constructs. Maps coords, scoped deps (bare versions → exact pins), BOM imports,
- * repositories, and compiler release; other POM features land in the report.
+ * unfaithful constructs. The POM is read as Maven's effective model ({@link EffectiveModel}):
+ * parents flattened, {@code dependencyManagement} applied, BOM imports and properties resolved,
+ * profiles active on this machine folded in. Coordinates, scoped deps (bare versions → exact pins),
+ * BOM imports, repositories and the compiler release are mapped; other POM features land in the
+ * report, which also names what each parent contributed.
  */
 public final class PomImporter {
 
@@ -55,107 +57,107 @@ public final class PomImporter {
      */
     public record WorkspaceImportResult(JkBuild root, Map<String, JkBuild> modules, ImportReport report) {}
 
-    private PomImporter() {}
+    private final RepoModelResolver resolver;
 
-    public static Result importFrom(Path pomXml) throws IOException {
-        return importFromBytes(Files.readAllBytes(pomXml));
+    /** Parents and BOM imports are fetched through {@code repos}, plus any {@code <repository>} the POM declares. */
+    public PomImporter(RepoGroup repos, Cas cas) {
+        this.resolver = new RepoModelResolver(repos, cas);
     }
 
-    public static Result importFromBytes(byte[] xml) {
-        return importFromBytes(xml, null);
+    public Result importFrom(Path pomXml) throws IOException {
+        Path file = pomXml.toAbsolutePath();
+        return importModel(EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null));
     }
 
-    private static Result importFromBytes(byte[] xml, @Nullable Parent suppressParentMatching) {
-        Document doc = PomParser.parseXml(xml);
-        Pom pom = PomParser.parse(doc);
+    /** A POM with no file behind it (an archive's embedded pom.xml): no {@code relativePath} lookup. */
+    public Result importFromBytes(byte[] xml) {
+        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null));
+    }
+
+    private static Result importModel(EffectiveModel em) {
         ImportReport.Builder report = ImportReport.builder();
+        reportInheritanceFailure(em, report);
+        Project project = mapProject(em, report);
+        Map<Scope, List<Dependency>> byScope = mapDependencies(em, report);
+        List<RepositorySpec> repos = mapRepositories(em.model(), report);
+        warnUnsupportedSections(em, report, /* isWorkspaceRoot= */ false);
 
-        Project project = mapProject(pom, doc, report, suppressParentMatching);
-        Map<Scope, List<Dependency>> byScope = mapDependencies(pom, report);
-        List<RepositorySpec> repos = mapRepositories(doc, report);
-        warnUnsupportedSections(doc, report, /* isWorkspaceRoot= */ false);
-
-        JkBuild.Dependencies dependencies = new JkBuild.Dependencies(byScope);
-        String mainClass = mainClassFromPom(doc);
+        String mainClass = PluginFacts.mainClass(em.model());
         JkBuild.Application application = mainClass != null ? new JkBuild.Application(mainClass, false) : null;
         JkBuild jkBuild = JkBuild.builder(project)
-                .dependencies(dependencies)
+                .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)
                 .application(application)
                 .build();
-        Map<String, String> manifest = manifestFromPom(doc);
+        Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
         return new Result(jkBuild, report.build());
     }
 
-    /**
-     * Custom jar-manifest attributes from a build plugin's {@code <archive><manifestEntries>}
-     * (maven-jar / assembly / shade). {@code Main-Class} is excluded — it routes to {@code
-     * [application].main} via {@link #mainClassFromPom}. Unresolved {@code ${...}} property values and
-     * blanks are skipped. Insertion order preserved.
-     */
-    private static Map<String, String> manifestFromPom(Document doc) {
-        Map<String, String> attrs = new LinkedHashMap<>();
-        NodeList entries = doc.getElementsByTagName("manifestEntries");
-        for (int i = 0; i < entries.getLength(); i++) {
-            if (!(entries.item(i) instanceof Element entriesEl)) continue;
-            for (Element child : childElements(entriesEl)) {
-                String name = child.getTagName();
-                String value = child.getTextContent();
-                if (name == null || name.isBlank() || value == null) continue;
-                value = value.trim();
-                if (value.isEmpty() || value.startsWith("${")) continue;
-                if (name.equalsIgnoreCase("Main-Class")) continue; // routed to [application].main
-                attrs.put(name, value);
-            }
-        }
-        return attrs;
+    /** A parent no repository has is a Tier-3 row: the POM is imported on its own declarations. */
+    private static void reportInheritanceFailure(EffectiveModel em, ImportReport.Builder report) {
+        if (em.failure() == null) return;
+        Parent parent = em.raw().getParent();
+        String subject = parent == null
+                ? "the effective model could not be built"
+                : "`<parent>` " + parent.getGroupId() + ":" + parent.getArtifactId() + ":" + parent.getVersion()
+                        + " could not be resolved";
+        report.error(subject
+                + " (" + em.failure() + "); nothing was inherited, and a dependency whose version the parent"
+                + " managed is written as `=unresolved`.");
     }
 
     /**
      * Import a multi-module Maven build into a workspace-root {@code JkBuild} plus per-module
-     * builds. No {@code <modules>} → single-POM import.
+     * builds. No {@code <modules>} → single-POM import. Sibling POMs answer parent lookups first, so
+     * the reactor never goes to the network for itself.
      */
-    public static WorkspaceImportResult importWorkspace(Path rootPom) throws IOException {
-        byte[] rootXml = Files.readAllBytes(rootPom);
-        Document rootDoc = PomParser.parseXml(rootXml);
-        List<String> modules = readModules(rootDoc);
+    public WorkspaceImportResult importWorkspace(Path rootPom) throws IOException {
+        Path rootFile = rootPom.toAbsolutePath();
+        byte[] rootXml = Files.readAllBytes(rootFile);
+        Model rootRaw = EffectiveModel.rawModel(rootXml);
+        List<String> modules = rootRaw.getModules();
         if (modules.isEmpty()) {
-            Result single = importFromBytes(rootXml);
+            Result single = importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null));
             return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report());
         }
 
         ImportReport.Builder report = ImportReport.builder();
-        Pom rootPomParsed = PomParser.parse(rootDoc);
-        Project rootProject = mapProject(rootPomParsed, rootDoc, report, null);
-        // Root coords serve as the "expected parent" for children.
-        Pom.Parent expectedParent =
-                new Pom.Parent(rootProject.group(), rootPomParsed.artifactId(), rootProject.version());
-        warnUnsupportedSections(rootDoc, report, /* isWorkspaceRoot= */ true);
-
-        Workspace workspace = new Workspace(modules);
-        String rootMainClass = mainClassFromPom(rootDoc);
-        JkBuild.Application rootApplication =
-                rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
-        // The workspace root is a coordination point — no deps of its own.
-        JkBuild rootJkBuild = JkBuild.builder(rootProject)
-                .workspace(workspace)
-                .application(rootApplication)
-                .build();
-
-        Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
-        Path projectDir = Objects.requireNonNull(rootPom.toAbsolutePath().getParent());
+        ReactorModelResolver reactor = new ReactorModelResolver();
+        reactor.add(rootFile, rootRaw);
+        Path projectDir = Objects.requireNonNull(rootFile.getParent());
+        Map<String, byte[]> childXml = new LinkedHashMap<>();
         for (String module : modules) {
             Path childPom = projectDir.resolve(module).resolve("pom.xml");
             if (!Files.exists(childPom)) {
                 report.error("workspace module `" + module + "` has no pom.xml at " + childPom);
                 continue;
             }
-            byte[] childXml = Files.readAllBytes(childPom);
-            Result childResult = importFromBytes(childXml, expectedParent);
-            moduleBuilds.put(module, childResult.jkBuild());
-            for (ImportReport.Issue issue : childResult.report().issues()) {
-                String prefixed = "[" + module + "] " + issue.message();
+            byte[] xml = Files.readAllBytes(childPom);
+            reactor.add(childPom, EffectiveModel.rawModel(xml));
+            childXml.put(module, xml);
+        }
+
+        EffectiveModel rootModel = EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), reactor);
+        reportInheritanceFailure(rootModel, report);
+        Project rootProject = mapProject(rootModel, report);
+        warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true);
+        String rootMainClass = PluginFacts.mainClass(rootModel.model());
+        JkBuild.Application rootApplication =
+                rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
+        // The workspace root is a coordination point — no deps of its own.
+        JkBuild rootJkBuild = JkBuild.builder(rootProject)
+                .workspace(new Workspace(modules))
+                .application(rootApplication)
+                .build();
+
+        Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
+        for (var e : childXml.entrySet()) {
+            Path childPom = projectDir.resolve(e.getKey()).resolve("pom.xml");
+            Result child = importModel(EffectiveModel.build(e.getValue(), childPom, resolver.newCopy(), reactor));
+            moduleBuilds.put(e.getKey(), child.jkBuild());
+            for (ImportReport.Issue issue : child.report().issues()) {
+                String prefixed = "[" + e.getKey() + "] " + issue.message();
                 if (issue.severity() == ImportReport.Severity.ERROR) {
                     report.error(prefixed);
                 } else {
@@ -238,54 +240,29 @@ public final class PomImporter {
         return out.build();
     }
 
-    private static List<String> readModules(Document doc) {
-        Element modules = childElement(doc.getDocumentElement(), "modules");
-        if (modules == null) return List.of();
-        List<String> result = new ArrayList<>();
-        for (Element m : childElements(modules, "module")) {
-            String text = m.getTextContent().trim();
-            if (!text.isEmpty()) result.add(text);
-        }
-        return result;
-    }
-
     // --- project ------------------------------------------------------------
 
-    private static Project mapProject(
-            Pom pom, Document doc, ImportReport.Builder report, @Nullable Parent suppressParentMatching) {
-        String group = pom.groupId();
-        String version = pom.version();
-        if (pom.parent() != null) {
-            if (group == null) group = pom.parent().groupId();
-            if (version == null) version = pom.parent().version();
-            boolean isWorkspaceParent = suppressParentMatching != null
-                    && pom.parent().groupId().equals(suppressParentMatching.groupId())
-                    && pom.parent().artifactId().equals(suppressParentMatching.artifactId())
-                    && pom.parent().version().equals(suppressParentMatching.version());
-            if (!isWorkspaceParent) {
-                report.warning("`<parent>` was referenced ("
-                        + pom.parent().groupId()
-                        + ":"
-                        + pom.parent().artifactId()
-                        + ":"
-                        + pom.parent().version()
-                        + ") but jk-import did not flatten its dependencyManagement / properties / build config."
-                        + " Run `mvn help:effective-pom` and re-import if any dependency versions are unresolved.");
-            }
-        }
+    private static Project mapProject(EffectiveModel em, ImportReport.Builder report) {
+        Model model = em.model();
+        Parent parent = model.getParent();
+        String group = model.getGroupId() != null ? model.getGroupId() : parent != null ? parent.getGroupId() : null;
+        String version = model.getVersion() != null ? model.getVersion() : parent != null ? parent.getVersion() : null;
         if (group == null || group.isBlank()) {
             throw new PomParseException("POM has no <groupId> and no <parent><groupId>");
         }
         if (version == null || version.isBlank()) {
             throw new PomParseException("POM has no <version> and no <parent><version>");
         }
-        int jdk = jdkFromCompilerPlugin(doc).flatMap(PomImporter::parseInt).orElse(25);
-        String description = childText(doc.getDocumentElement(), "description");
+        if (model.getArtifactId() == null) {
+            throw new PomParseException("POM missing required <artifactId>");
+        }
+        int jdk = PluginFacts.compilerRelease(model).orElse(25);
+        String description = model.getDescription();
         if (description != null && description.isBlank()) description = null;
-        VersionSelector kotlin = kotlinFromPom(doc, report);
+        VersionSelector kotlin = kotlinFrom(model, report);
         // A Kotlin project sets `kotlin` and leaves `java` at 0 (mutually exclusive).
         int java = kotlin != null ? 0 : jdk;
-        return Project.builder(group, pom.artifactId(), version)
+        return Project.builder(group, model.getArtifactId(), version)
                 .jdkMajor(jdk)
                 .java(java)
                 .kotlin(kotlin)
@@ -294,174 +271,141 @@ public final class PomImporter {
     }
 
     /**
-     * Detect the Kotlin compiler version from the {@code kotlin-maven-plugin}. The version comes from
-     * the plugin's {@code <version>} (resolving a {@code ${kotlin.version}} placeholder against
-     * {@code <properties>}), else the {@code kotlin.version} property, else a floating {@link
-     * KotlinResolver#DEFAULT_VERSION} (pinned later by {@code jk lock}). Returns {@code null} when
-     * the plugin is absent (a Java project).
+     * The Kotlin compiler version when {@code kotlin-maven-plugin} is declared anywhere in the chain;
+     * a floating {@link KotlinResolver#DEFAULT_VERSION} (pinned by {@code jk lock}) when nothing
+     * pins it. {@code null} for a Java project.
      */
-    private static @Nullable VersionSelector kotlinFromPom(Document doc, ImportReport.Builder report) {
-        Element root = doc.getDocumentElement();
-        Element properties = childElement(root, "properties");
-        String propVersion = null;
-        if (properties != null) {
-            for (String key : new String[] {"kotlin.version", "kotlin.compiler.version"}) {
-                String v = childText(properties, key);
-                if (v != null && !v.isBlank()) {
-                    propVersion = v.trim();
-                    break;
-                }
-            }
-        }
-        Element plugins = childElement(childElement(root, "build"), "plugins");
-        boolean present = false;
-        String pluginVersion = null;
-        if (plugins != null) {
-            for (Element plugin : childElements(plugins, "plugin")) {
-                if (!"kotlin-maven-plugin".equals(childText(plugin, "artifactId"))) continue;
-                present = true;
-                String v = childText(plugin, "version");
-                if (v != null && !v.isBlank()) pluginVersion = v.trim();
-            }
-        }
-        if (!present) return null; // only the plugin marks a Kotlin project
-        String resolved = (pluginVersion != null && !pluginVersion.startsWith("${")) ? pluginVersion : propVersion;
-        if (resolved == null || resolved.isBlank()) {
+    private static @Nullable VersionSelector kotlinFrom(Model model, ImportReport.Builder report) {
+        Optional<PluginFacts.Kotlin> kotlin = PluginFacts.kotlin(model);
+        if (kotlin.isEmpty()) return null;
+        String version = kotlin.get().version();
+        if (version == null) {
             report.warning("kotlin-maven-plugin recognised without a resolvable version; project.kotlin"
                     + " is `latest` — `jk lock` picks the current stable, then `jk update` moves it.");
             return VersionSelector.parse("latest");
         }
-        return VersionSelector.parse(resolved);
-    }
-
-    /**
-     * Best-effort application main class: the first non-placeholder {@code <mainClass>} element
-     * (jar/assembly/shade/exec plugin configs), or a {@code start-class}/{@code
-     * exec.mainClass}/{@code main.class} property.
-     */
-    private static @Nullable String mainClassFromPom(Document doc) {
-        NodeList nodes = doc.getElementsByTagName("mainClass");
-        for (int i = 0; i < nodes.getLength(); i++) {
-            String v = nodes.item(i).getTextContent();
-            if (v != null && !v.isBlank() && !v.trim().startsWith("${")) return v.trim();
-        }
-        Element properties = childElement(doc.getDocumentElement(), "properties");
-        if (properties != null) {
-            for (String key : new String[] {"start-class", "exec.mainClass", "main.class", "mainClass"}) {
-                String v = childText(properties, key);
-                if (v != null && !v.isBlank() && !v.trim().startsWith("${")) return v.trim();
-            }
-        }
-        return null;
-    }
-
-    private static Optional<Integer> parseInt(@Nullable String s) {
-        if (s == null) return Optional.empty();
-        try {
-            return Optional.of(Integer.parseInt(s.trim()));
-        } catch (NumberFormatException e) {
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<String> jdkFromCompilerPlugin(Document doc) {
-        Element root = doc.getDocumentElement();
-        // First check properties: maven.compiler.release / .source / .target.
-        Element properties = childElement(root, "properties");
-        if (properties != null) {
-            for (String key :
-                    new String[] {"maven.compiler.release", "maven.compiler.target", "maven.compiler.source"}) {
-                String value = childText(properties, key);
-                if (value != null && !value.isBlank()) return Optional.of(value.trim());
-            }
-        }
-        // Then check the maven-compiler-plugin <configuration>.
-        Element build = childElement(root, "build");
-        Element plugins = childElement(build, "plugins");
-        if (plugins != null) {
-            for (Element plugin : childElements(plugins, "plugin")) {
-                String artifactId = childText(plugin, "artifactId");
-                if (!"maven-compiler-plugin".equals(artifactId)) continue;
-                Element config = childElement(plugin, "configuration");
-                if (config == null) continue;
-                for (String key : new String[] {"release", "target", "source"}) {
-                    String value = childText(config, key);
-                    if (value != null && !value.isBlank()) return Optional.of(value.trim());
-                }
-            }
-        }
-        return Optional.empty();
+        return VersionSelector.parse(version);
     }
 
     // --- dependencies -------------------------------------------------------
 
-    private static Map<Scope, List<Dependency>> mapDependencies(Pom pom, ImportReport.Builder report) {
+    private static Map<Scope, List<Dependency>> mapDependencies(EffectiveModel em, ImportReport.Builder report) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        // Standard scopes.
-        for (Pom.Dep dep : pom.dependencies()) {
-            if ("system".equalsIgnoreCase(dep.scope())) {
-                report.error("`<dependency>` with `<scope>system</scope>` is rejected ("
-                        + dep.module()
-                        + "). Move it to a git dependency or a local repository.");
-                continue;
+        Set<String> used = new HashSet<>();
+        Map<String, List<String>> managedBy = new LinkedHashMap<>();
+        Map<String, List<String>> inheritedFrom = new LinkedHashMap<>();
+        for (EffectiveModel.Declared declared : em.dependencies(report)) {
+            used.add(declared.key());
+            if (!declared.own()) {
+                inheritedFrom
+                        .computeIfAbsent(declared.source(), k -> new ArrayList<>())
+                        .add(declared.dep().module());
+            } else if (declared.versionManaged() && !declared.source().startsWith("this POM")) {
+                managedBy
+                        .computeIfAbsent(declared.source(), k -> new ArrayList<>())
+                        .add(declared.dep().module());
             }
-            if (dep.optional()) {
-                report.warning("`<dependency><optional>true</optional></dependency>` on "
-                        + dep.module()
-                        + " — jk has no `<optional>`; emitted as a normal dep."
-                        + " Use a feature flag if it should be opt-in.");
-            }
-            boolean testJar = isTestJar(dep);
-            if (dep.classifier() != null
-                    && !dep.classifier().isBlank()
-                    && !(testJar && "tests".equalsIgnoreCase(dep.classifier()))) {
-                report.warning("`<classifier>"
-                        + dep.classifier()
-                        + "</classifier>` on "
-                        + dep.module()
-                        + " — classifier support lands in a later slice; the coord was emitted without it.");
-            }
-            if (!dep.exclusions().isEmpty()) {
-                report.warning("`<exclusions>` on "
-                        + dep.module()
-                        + " — exclusion support lands in a later slice; exclusions were dropped.");
-            }
-            if (dep.version() == null || dep.version().isBlank()) {
-                report.warning("`<dependency>` "
-                        + dep.module()
-                        + " has no resolved `<version>`; jk wrote `=unresolved`."
-                        + " Run `mvn help:effective-pom` and re-import.");
-            }
-            Scope scope = mapScope(dep.scope());
-            Dependency d = toDependency(dep);
-            // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
-            // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
-            // scope moves to TEST — otherwise the emitted jk.toml rejects its own `jk lock`.
-            if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) {
-                report.warning("`<type>test-jar</type>` on "
-                        + dep.module()
-                        + " is in Maven scope `"
-                        + (dep.scope() == null || dep.scope().isBlank() ? "compile" : dep.scope())
-                        + "`; jk models test-jar deps as kind=tests, which is only legal in test"
-                        + " scopes — moved to [test-dependencies].");
-                scope = Scope.TEST;
-            }
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(d);
+            mapDependency(declared.dep(), byScope, report);
         }
-        // dependencyManagement: BOM imports → PLATFORM; bare version pins → warning.
-        for (Pom.Dep managed : pom.managedDependencies()) {
-            if ("import".equalsIgnoreCase(managed.scope()) && "pom".equalsIgnoreCase(managed.type())) {
-                byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>()).add(toDependency(managed));
-            } else {
-                report.warning("`<dependencyManagement>` entry "
-                        + managed.module()
-                        + " is a version pin,"
-                        + " not a BOM import. jk has no equivalent; the pin was dropped."
-                        + " Inline the version on the matching `<dependency>` instead.");
-            }
-        }
+        mapManagement(em.management(used), byScope, report);
+        managedBy.forEach((source, modules) ->
+                report.warning("versions for " + String.join(", ", modules) + " managed by " + source + "."));
+        inheritedFrom.forEach((source, modules) ->
+                report.warning("dependencies " + String.join(", ", modules) + " inherited from " + source + "."));
         uniquifyHandles(byScope, report);
         return byScope;
+    }
+
+    private static void mapDependency(Pom.Dep dep, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+        if ("system".equalsIgnoreCase(dep.scope())) {
+            report.error("`<dependency>` with `<scope>system</scope>` is rejected ("
+                    + dep.module()
+                    + "). Move it to a git dependency or a local repository.");
+            return;
+        }
+        if (dep.optional()) {
+            report.warning("`<dependency><optional>true</optional></dependency>` on "
+                    + dep.module()
+                    + " — jk has no `<optional>`; emitted as a normal dep."
+                    + " Use a feature flag if it should be opt-in.");
+        }
+        boolean testJar = isTestJar(dep);
+        if (dep.classifier() != null
+                && !dep.classifier().isBlank()
+                && !(testJar && "tests".equalsIgnoreCase(dep.classifier()))) {
+            report.warning("`<classifier>"
+                    + dep.classifier()
+                    + "</classifier>` on "
+                    + dep.module()
+                    + " — classifier support lands in a later slice; the coord was emitted without it.");
+        }
+        if (!dep.exclusions().isEmpty()) {
+            report.warning("`<exclusions>` on "
+                    + dep.module()
+                    + " — exclusion support lands in a later slice; exclusions were dropped.");
+        }
+        warnUnresolvedVersion(dep, report);
+        Scope scope = mapScope(dep.scope());
+        Dependency d = toDependency(dep);
+        // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
+        // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
+        // scope moves to TEST — otherwise the emitted jk.toml rejects its own `jk lock`.
+        if (d.isTestsKind() && scope != Scope.TEST && scope != Scope.TEST_DEV) {
+            report.warning("`<type>test-jar</type>` on "
+                    + dep.module()
+                    + " is in Maven scope `"
+                    + (dep.scope() == null || dep.scope().isBlank() ? "compile" : dep.scope())
+                    + "`; jk models test-jar deps as kind=tests, which is only legal in test"
+                    + " scopes — moved to [test-dependencies].");
+            scope = Scope.TEST;
+        }
+        byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(d);
+    }
+
+    /**
+     * BOM imports become {@code [platform]} entries with their versions resolved; a published parent
+     * whose chain manages versions is carried as one {@code [platform]} entry of its own, so the
+     * inherited table governs transitive versions too. Bare pins nothing declared uses are named.
+     */
+    private static void mapManagement(
+            EffectiveModel.Management mgmt, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+        for (Pom.Dep bom : mgmt.platform()) {
+            warnUnresolvedVersion(bom, report);
+            byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>()).add(toDependency(bom));
+        }
+        EffectiveModel.Ancestor parent = mgmt.parentPlatform();
+        if (parent != null) {
+            String module = parent.groupId() + ":" + parent.artifactId();
+            byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>())
+                    .add(Dependency.of(parent.artifactId(), module, VersionSelector.parse(parent.version())));
+            report.warning("`<dependencyManagement>` inherited from "
+                    + parent.label()
+                    + " is carried as `[platform]` "
+                    + parent.gav()
+                    + ", so its managed versions govern transitive dependencies as well.");
+        }
+        mgmt.unusedPins().forEach((owner, modules) -> {
+            String sample =
+                    modules.size() > 5 ? String.join(", ", modules.subList(0, 5)) + ", …" : String.join(", ", modules);
+            report.warning("`<dependencyManagement>` in "
+                    + owner
+                    + " pins "
+                    + modules.size()
+                    + " version"
+                    + (modules.size() == 1 ? "" : "s")
+                    + " no declared dependency uses ("
+                    + sample
+                    + "); jk applies managed versions to declared dependencies only, so transitive"
+                    + " versions follow the resolver.");
+        });
+    }
+
+    private static void warnUnresolvedVersion(Pom.Dep dep, ImportReport.Builder report) {
+        if (PluginFacts.usable(dep.version()) != null) return;
+        report.warning("`<dependency>` "
+                + dep.module()
+                + " has no resolved `<version>` anywhere in its parent chain; jk wrote `=unresolved`."
+                + " Pin it in the POM and re-import.");
     }
 
     /**
@@ -509,18 +453,14 @@ public final class PomImporter {
     }
 
     private static Dependency toDependency(Pom.Dep dep) {
-        String version = dep.version();
-        if (version == null || version.isBlank()) {
-            // PomParser will warn via the report; emit a marker so the file
-            // still parses round-tripped.
-            version = "unresolved";
-        }
+        String version = PluginFacts.usable(dep.version());
+        // The marker keeps the emitted file parseable; the report names the dependency.
+        if (version == null) version = "unresolved";
         // Bare versions are exact pins, matching Maven semantics.
         VersionSelector selector = VersionSelector.parse(version);
-        // Maven coordinates have no notion of a manifest "short name"; default
-        // the v0.7 `name` field to the artifactId, matching the manifest's
-        // own `artifact`-defaults-to-key rule. The test-jar package gets a
-        // distinct `-tests` handle so a POM depending on both the jar and the
+        // Maven coordinates have no notion of a manifest "short name"; default the `name` field to
+        // the artifactId, matching the manifest's own `artifact`-defaults-to-key rule. The test-jar
+        // package gets a distinct `-tests` handle so a POM depending on both the jar and the
         // test-jar of one GA keeps both entries (sections key on the handle).
         boolean testJar = isTestJar(dep);
         String library = testJar ? dep.artifactId() + "-tests" : dep.artifactId();
@@ -543,25 +483,18 @@ public final class PomImporter {
 
     // --- repositories -------------------------------------------------------
 
-    private static List<RepositorySpec> mapRepositories(Document doc, ImportReport.Builder report) {
-        Element root = doc.getDocumentElement();
-        Element repos = childElement(root, "repositories");
-        if (repos == null) return List.of();
+    /** Every repository the effective model declares or inherits; Central is the implicit default. */
+    private static List<RepositorySpec> mapRepositories(Model model, ImportReport.Builder report) {
         Map<String, RepositorySpec> deduped = new LinkedHashMap<>();
-        for (Element repo : childElements(repos, "repository")) {
-            String id = childText(repo, "id");
-            String url = childText(repo, "url");
+        for (Repository repo : model.getRepositories()) {
+            String id = repo.getId();
+            String url = repo.getUrl();
             if (url == null || url.isBlank()) {
                 report.warning("`<repository>` with no `<url>` was skipped (id=" + id + ").");
                 continue;
             }
             String name = (id == null || id.isBlank()) ? "repo" + (deduped.size() + 1) : id;
-            // Central is the implicit default — skip duplicate declarations of it.
-            if (name.equals("central")
-                    || url.startsWith("https://repo.maven.apache.org/")
-                    || url.startsWith("https://repo1.maven.org/")) {
-                continue;
-            }
+            if (name.equals("central") || RepoModelResolver.isCentral(url)) continue;
             try {
                 deduped.put(name, new RepositorySpec(name, new URI(url.trim())));
             } catch (URISyntaxException e) {
@@ -573,139 +506,29 @@ public final class PomImporter {
 
     // --- unsupported-section warnings ---------------------------------------
 
-    private static void warnUnsupportedSections(Document doc, ImportReport.Builder report, boolean isWorkspaceRoot) {
-        Element root = doc.getDocumentElement();
-        Element profiles = childElement(root, "profiles");
-        if (profiles != null) {
-            for (Element profile : childElements(profiles, "profile")) {
-                analyzeProfile(profile, report);
-            }
+    private static void warnUnsupportedSections(
+            EffectiveModel em, ImportReport.Builder report, boolean isWorkspaceRoot) {
+        Model model = em.model();
+        for (Profile profile : em.raw().getProfiles()) {
+            ProfileChecklist.report(profile, em.isActive(profile), report);
         }
-        if (!isWorkspaceRoot && childElement(root, "modules") != null) {
+        if (!isWorkspaceRoot && !model.getModules().isEmpty()) {
             // The workspace-import path already converted these; warn only for the single-POM path.
             report.warning("`<modules>` block present but this import was run in single-POM mode."
                     + " Re-run as `jk import pom.xml` from the project root to materialise a workspace.");
         }
-        Element build = childElement(root, "build");
-        Element plugins = childElement(build, "plugins");
-        if (plugins != null) {
-            for (Element plugin : childElements(plugins, "plugin")) {
-                String artifactId = childText(plugin, "artifactId");
-                if (artifactId == null || "maven-compiler-plugin".equals(artifactId)) continue;
-                report.warning("`<plugin>"
-                        + artifactId
-                        + "</plugin>` was not imported."
-                        + " Plugin-aware mappings (Spotless, JaCoCo, Spring Boot, ...) arrive in slice D.");
-            }
+        for (Plugin plugin : PluginFacts.plugins(model)) {
+            String artifactId = plugin.getArtifactId();
+            if (artifactId == null || "maven-compiler-plugin".equals(artifactId)) continue;
+            report.warning("`<plugin>"
+                    + artifactId
+                    + "</plugin>` was not imported."
+                    + " Plugin-aware mappings (Spotless, JaCoCo, Spring Boot, ...) arrive in slice D.");
         }
-        Element extensions = childElement(build, "extensions");
-        if (extensions != null && !childElements(extensions).isEmpty()) {
+        Build build = model.getBuild();
+        if (build != null && !build.getExtensions().isEmpty()) {
             report.error("`<build><extensions>` is not supported. Move build extensions to a custom"
                     + " jk task once tasks land.");
         }
-    }
-
-    // --- profile analysis ---------------------------------------------------
-
-    /**
-     * Emits per-profile diagnostics describing what was inside a Maven {@code <profile>}. jk's
-     * current Profile model carries only javac/JVM args, so faithful mapping of property/dep/plugin
-     * profiles is not yet possible — instead we give the user a precise checklist of items to port by
-     * hand.
-     */
-    private static void analyzeProfile(Element profile, ImportReport.Builder report) {
-        String id = childText(profile, "id");
-        String label = id == null || id.isBlank() ? "<unnamed>" : id;
-        StringBuilder summary =
-                new StringBuilder("Maven profile `").append(label).append("`: ");
-        List<String> parts = new ArrayList<>();
-
-        String activation = describeActivation(childElement(profile, "activation"));
-        if (activation != null) parts.add(activation);
-
-        Element deps = childElement(profile, "dependencies");
-        if (deps != null) {
-            int count = childElements(deps, "dependency").size();
-            if (count > 0) {
-                parts.add(count
-                        + " dependenc"
-                        + (count == 1 ? "y" : "ies")
-                        + " (convert to a jk feature `"
-                        + label
-                        + "` if opt-in, or move into the main deps list)");
-            }
-        }
-        Element managed = childElement(childElement(profile, "dependencyManagement"), "dependencies");
-        if (managed != null && !childElements(managed, "dependency").isEmpty()) {
-            int count = childElements(managed, "dependency").size();
-            parts.add(count
-                    + " dependencyManagement entr"
-                    + (count == 1 ? "y" : "ies")
-                    + " (inline versions on the matching `<dependency>` or use a BOM import)");
-        }
-        Element properties = childElement(profile, "properties");
-        if (properties != null) {
-            List<Element> propEntries = childElements(properties);
-            if (!propEntries.isEmpty()) {
-                List<String> names = new ArrayList<>();
-                for (Element p : propEntries) names.add(p.getNodeName());
-                parts.add("properties=["
-                        + String.join(",", names)
-                        + "]"
-                        + " (no jk equivalent — fold maven.compiler.* into project.jdk; drop the rest)");
-            }
-        }
-        Element buildPlugins = childElement(childElement(profile, "build"), "plugins");
-        if (buildPlugins != null) {
-            List<String> pluginIds = new ArrayList<>();
-            for (Element plugin : childElements(buildPlugins, "plugin")) {
-                String artifactId = childText(plugin, "artifactId");
-                if (artifactId != null && !artifactId.isBlank()) pluginIds.add(artifactId);
-            }
-            if (!pluginIds.isEmpty()) {
-                parts.add("plugins=[" + String.join(",", pluginIds) + "] (plugin mapping is not yet implemented)");
-            }
-        }
-        Element repos = childElement(profile, "repositories");
-        if (repos != null && !childElements(repos, "repository").isEmpty()) {
-            parts.add("repositories declared (move into the top-level `repositories` block)");
-        }
-
-        if (parts.isEmpty()) {
-            // Profile with only an activation — name it so the user knows it's gone.
-            parts.add("contained no convertible payload; dropped");
-        }
-        summary.append(String.join("; ", parts)).append('.');
-        report.warning(summary.toString());
-    }
-
-    private static @Nullable String describeActivation(@Nullable Element activation) {
-        if (activation == null) return null;
-        List<String> kinds = new ArrayList<>();
-        if ("true".equalsIgnoreCase(childText(activation, "activeByDefault"))) {
-            kinds.add("activeByDefault");
-        }
-        String jdk = childText(activation, "jdk");
-        if (jdk != null && !jdk.isBlank()) kinds.add("jdk=" + jdk);
-        Element os = childElement(activation, "os");
-        if (os != null) {
-            String family = childText(os, "family");
-            String name = childText(os, "name");
-            kinds.add("os="
-                    + (family != null ? family : name != null ? name : "?")
-                    + " (use jk target predicates per dep)");
-        }
-        Element property = childElement(activation, "property");
-        if (property != null) {
-            String name = childText(property, "name");
-            kinds.add("property="
-                    + (name != null ? name : "?")
-                    + " (no jk equivalent — replace with an explicit jk profile or feature)");
-        }
-        Element file = childElement(activation, "file");
-        if (file != null) {
-            kinds.add("file-existence (jk has no equivalent — refactor to a jk profile)");
-        }
-        return kinds.isEmpty() ? null : "activation=" + String.join("+", kinds);
     }
 }

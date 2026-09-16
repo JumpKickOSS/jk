@@ -6,6 +6,12 @@ jk-core.workspace = true
 jk-io.workspace = true
 jk-resolver.workspace = true
 jk-toolchain-jdk.workspace = true
+# Maven's own model builder computes the effective POM `jk import` maps: parents, BOM imports,
+# dependencyManagement and property interpolation exactly as Maven would.
+maven-model-builder = { group = "org.apache.maven", version = "3.9.16" }
+# The workspace pins plexus-utils 4, which no longer ships Xpp3Dom; Maven 3.9 plugin configuration
+# is Xpp3Dom, and plexus-xml is where it lives now.
+plexus-xml = { group = "org.codehaus.plexus", version = "4.2.0" }
 
 [processor-dependencies]
 error_prone_core = { group = "com.google.errorprone", version = "2.50.0" }

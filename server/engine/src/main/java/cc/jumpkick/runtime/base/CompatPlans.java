@@ -11,6 +11,7 @@ import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.MavenResolver;
+import cc.jumpkick.mvn.PomImporter;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.Task;
@@ -47,10 +48,12 @@ public final class CompatPlans {
 
     /**
      * Build the import plan. All paths arrive absolute (the command pre-flighted source detection
-     * and overwrite checks); {@code report} may be {@code null}. Conversion runs in-process so
-     * {@code [[import.gradle-plugin]]} rules come from the engine registry, not a worker catalog.
+     * and overwrite checks); {@code report} may be {@code null}; {@code poms} resolves the parents a
+     * POM inherits. Conversion runs in-process so {@code [[import.gradle-plugin]]} rules come from
+     * the engine registry, not a worker catalog.
      */
     public static BuildPlan importBuildPlan(
+            PomImporter poms,
             Path source,
             Path out,
             Path baseDir,
@@ -64,6 +67,7 @@ public final class CompatPlans {
                 .execute(ctx -> {
                     ctx.label("convert " + source.getFileName());
                     ProjectImport.Outcome outcome = ProjectImport.run(
+                            poms,
                             source.toAbsolutePath(),
                             out.toAbsolutePath(),
                             baseDir == null ? null : baseDir.toAbsolutePath(),

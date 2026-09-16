@@ -8,15 +8,27 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.mvn.PomImporter;
+import cc.jumpkick.mvn.TestImporters;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Maven import → render → parse round trips. Whatever the POM throws at the importer, the emitted
  * jk.toml must be one jk itself accepts, and package identities (g:a:type:classifier) must survive.
  */
 class MavenImportRoundTripTest {
+
+    private PomImporter importer;
+
+    @BeforeEach
+    void importer(@TempDir Path tempDir) throws IOException {
+        importer = TestImporters.offline(tempDir);
+    }
 
     @Test
     void jar_plus_test_jar_of_one_ga_round_trips_as_two_packages() {
@@ -70,8 +82,7 @@ class MavenImportRoundTripTest {
 
     @Test
     void non_test_scope_test_jar_moves_to_test_dependencies() {
-        var result =
-                PomImporter.importFromBytes(pom("compile", null, "test-jar").getBytes(StandardCharsets.UTF_8));
+        var result = importer.importFromBytes(pom("compile", null, "test-jar").getBytes(StandardCharsets.UTF_8));
         JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(result.jkBuild()));
         assertThat(reparsed.dependencies().of(Scope.MAIN)).isEmpty();
         assertThat(reparsed.dependencies().of(Scope.TEST))
@@ -132,7 +143,7 @@ class MavenImportRoundTripTest {
                 """.formatted(dep.toString().indent(0).stripTrailing());
     }
 
-    private static JkBuild importPom(String xml) {
-        return PomImporter.importFromBytes(xml.getBytes(StandardCharsets.UTF_8)).jkBuild();
+    private JkBuild importPom(String xml) {
+        return importer.importFromBytes(xml.getBytes(StandardCharsets.UTF_8)).jkBuild();
     }
 }

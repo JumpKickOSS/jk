@@ -34,10 +34,12 @@ public final class ProjectImport {
 
     /**
      * Convert {@code source} (a {@code pom.xml} or Gradle build file) and write {@code jk.toml}
-     * files. {@code exit} 0 success, {@link Exit#USAGE} a missing argument or an unrecognised
-     * source, {@link Exit#CANT_CREATE} overwrite without force, 1 IO error.
+     * files. {@code poms} resolves the parents and BOMs a POM inherits. {@code exit} 0 success,
+     * {@link Exit#USAGE} a missing argument or an unrecognised source, {@link Exit#CANT_CREATE}
+     * overwrite without force, 1 IO error.
      */
     public static Outcome run(
+            PomImporter poms,
             Path source,
             Path out,
             @Nullable Path baseDir,
@@ -54,7 +56,7 @@ public final class ProjectImport {
             ImportReport importReport;
 
             if (filename.endsWith("pom.xml")) {
-                PomImporter.WorkspaceImportResult result = PomImporter.importWorkspace(source);
+                PomImporter.WorkspaceImportResult result = poms.importWorkspace(source);
                 root = result.root();
                 modules.putAll(result.modules());
                 importReport = result.report();

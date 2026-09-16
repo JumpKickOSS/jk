@@ -217,7 +217,7 @@ in     = "plugins/groovy-compiler/src/main/java/cc/jumpkick/groovy/compiler/Groo
 reason = "groovyc's target option (a bytecode level)"
 
 [[guards.target-dir.allow]]
-in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PluginFacts.java"
 reason = "Maven's <target> compiler configuration key, in someone else's file"
 
 [[guards.target-dir.allow]]
@@ -270,7 +270,7 @@ in     = "server/toolchain/src/main/java/cc/jumpkick/gradle/GradleImporter.java"
 reason = "recognises a foreign build file's declared repository: every spelling a user may have typed"
 
 [[guards.central-address.allow]]
-in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
+in     = "server/toolchain/src/main/java/cc/jumpkick/mvn/RepoModelResolver.java"
 reason = "recognises a foreign build file's declared repository: every spelling a user may have typed"
 
 [[guards.central-address.allow]]
