@@ -76,10 +76,11 @@ public final class RepoGroup {
     private static final int HIT_CACHE_MAX = 16_384;
     private static final int VERSIONS_CACHE_MAX = 8_192;
 
-    /** Test seam — drop process fetch memos. */
+    /** Drop the process fetch memos, the hits and the misses alike (force / tests). */
     public static void clearProcessFetchCache() {
         POM_HIT_CACHE.clear();
         ARTIFACT_HIT_CACHE.clear();
+        RepoMisses.clear();
     }
 
     /** Drop process-wide version lists (force / tests). */

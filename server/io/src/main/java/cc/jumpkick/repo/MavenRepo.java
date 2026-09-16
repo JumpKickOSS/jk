@@ -441,6 +441,10 @@ public final class MavenRepo {
             }
         }
         URI uri = baseUrl.resolve(relativePath);
+        // A miss this repository already answered is answered again without a request.
+        if (!force && RepoMisses.known(uri)) {
+            throw new ArtifactNotFoundException("not found in " + name + ": " + uri, coord);
+        }
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
         URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
         // A Maven local-repository copy this repository's own checksum vouches for costs one small GET.
@@ -482,6 +486,7 @@ public final class MavenRepo {
                 });
             }
             SessionContext.current().io().remoteDown(stored.size());
+            RepoMisses.forget(uri);
             Path placed = stored.path();
             if (mirror) {
                 placed = placeArtifact(coord, relativePath, stored.path(), stored.sha256());
@@ -494,6 +499,9 @@ public final class MavenRepo {
                 }
             }
             return new Fetched(uri, placed, stored.sha256(), stored.size());
+        } catch (ArtifactNotFoundException missing) {
+            RepoMisses.record(uri);
+            throw missing;
         }
     }
 
