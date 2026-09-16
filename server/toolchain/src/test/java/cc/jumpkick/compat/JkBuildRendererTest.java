@@ -12,6 +12,7 @@ import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -203,6 +204,7 @@ class JkBuildRendererTest {
         JkBuild model = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .java(21)
                         .sourcesMode(SourcesMode.ALWAYS)
+                        .javadocMode(JavadocMode.STRICT)
                         .build())
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .features(new Features(
@@ -219,6 +221,7 @@ class JkBuildRendererTest {
         String out = JkBuildRenderer.render(model);
         assertThat(out)
                 .contains("sources  = \"always\"")
+                .contains("javadoc  = \"strict\"")
                 .contains("[build]\nextra-src = [\"src/main/generated\"]")
                 .contains("[test]\nextra-src = [\"src/it/java\"]")
                 .contains("[javac]\nargs = [\"-parameters\"]")
@@ -230,6 +233,7 @@ class JkBuildRendererTest {
 
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.project().sourcesMode()).isEqualTo(SourcesMode.ALWAYS);
+        assertThat(reparsed.project().javadocMode()).isEqualTo(JavadocMode.STRICT);
         assertThat(reparsed.build().extraSrc()).containsExactly("src/main/generated");
         assertThat(reparsed.build().testExtraSrc()).containsExactly("src/it/java");
         assertThat(reparsed.build().javac().args()).containsExactly("-parameters");

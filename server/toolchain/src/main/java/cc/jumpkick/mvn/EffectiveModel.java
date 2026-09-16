@@ -200,6 +200,18 @@ final class EffectiveModel {
         return activeProfiles.stream().anyMatch(p -> Objects.equals(p.getId(), profile.getId()));
     }
 
+    /**
+     * The effective model's copy of one of this POM's profiles — the same declarations with
+     * {@code ${...}} placeholders interpolated — or the raw profile when the model could not be
+     * built. Profiles are never inherited, so the id is unique to this POM.
+     */
+    Profile interpolated(Profile raw) {
+        return model.getProfiles().stream()
+                .filter(p -> Objects.equals(p.getId(), raw.getId()))
+                .findFirst()
+                .orElse(raw);
+    }
+
     /** The nearest ancestor that is not a sibling pom.xml: the published parent a platform entry can name. */
     Optional<Ancestor> nearestExternal() {
         return ancestors.stream().filter(a -> !a.inReactor()).findFirst();

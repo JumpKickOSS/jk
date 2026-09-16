@@ -7,6 +7,7 @@ import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
@@ -145,6 +146,11 @@ public final class JkBuildRenderer {
             sb.append("sources  = \"always\"\n");
         } else if (p.sourcesMode() == SourcesMode.PUBLISH) {
             sb.append("sources  = true\n");
+        }
+        if (p.javadocMode() == JavadocMode.STRICT) {
+            sb.append("javadoc  = \"strict\"\n");
+        } else if (p.javadocMode() == JavadocMode.DISABLED) {
+            sb.append("javadoc  = false\n");
         }
         if (p.isKotlin()) {
             sb.append("kotlin   = ")

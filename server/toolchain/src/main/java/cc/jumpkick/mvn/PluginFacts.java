@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import cc.jumpkick.repo.Pom;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.maven.model.Build;
+import org.apache.maven.model.Dependency;
+import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
@@ -17,17 +21,34 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What the import reads out of an effective model's {@code <properties>} and {@code
- * <build><plugins>}: the compiler release, the Kotlin plugin, the application main class and
- * custom jar-manifest attributes. Values are already interpolated; one that still carries {@code
- * ${...}} had no definition anywhere in the chain and is skipped.
+ * <build><plugins>}: the compiler level and arguments, annotation processor paths, a toolchain
+ * pin, the Kotlin plugin, the application main class and custom jar-manifest attributes. Values
+ * are already interpolated; one that still carries {@code ${...}} had no definition anywhere in
+ * the chain and is skipped.
  */
 final class PluginFacts {
+
+    /** The lowest {@code java =} jk compiles for; an older declared level is raised to it. */
+    static final int JAVA_FLOOR = 17;
+
+    /** Plugins the import maps (or reports on its own terms); every other plugin gets the generic row. */
+    static final Set<String> MAPPED_PLUGINS = Set.of(
+            "maven-compiler-plugin",
+            "maven-toolchains-plugin",
+            "maven-resources-plugin",
+            "build-helper-maven-plugin",
+            "maven-jar-plugin",
+            "maven-source-plugin",
+            "maven-javadoc-plugin",
+            "kotlin-maven-plugin");
 
     private static final String[] COMPILER_PROPERTIES = {
         "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
     };
     private static final String[] COMPILER_CONFIG = {"release", "target", "source"};
     private static final String[] MAIN_CLASS_PROPERTIES = {"start-class", "exec.mainClass", "main.class", "mainClass"};
+    /** javac options that take the following token as their value and that {@code java =} already states. */
+    private static final Set<String> LEVEL_OPTIONS = Set.of("--release", "-source", "-target", "--source", "--target");
 
     private PluginFacts() {}
 
@@ -42,22 +63,135 @@ final class PluginFacts {
                 .findFirst();
     }
 
-    /** The Java release: {@code maven.compiler.*} properties, else the compiler plugin's configuration. */
-    static Optional<Integer> compilerRelease(Model model) {
+    /** A declared compiler level and the key that declared it ({@code maven.compiler.source}, {@code <release>}). */
+    record CompilerLevel(int release, String origin) {}
+
+    /** The Java level: {@code maven.compiler.*} properties, else the compiler plugin's configuration. */
+    static Optional<CompilerLevel> compilerLevel(Model model) {
         Properties props = model.getProperties();
         for (String key : COMPILER_PROPERTIES) {
             Optional<Integer> level = javaLevel(props.getProperty(key));
-            if (level.isPresent()) return level;
+            if (level.isPresent()) return Optional.of(new CompilerLevel(level.get(), "`" + key + "`"));
         }
         Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
         if (compiler.isEmpty()) return Optional.empty();
         for (Xpp3Dom config : configurations(compiler.get())) {
             for (String key : COMPILER_CONFIG) {
                 Optional<Integer> level = javaLevel(text(config.getChild(key)));
-                if (level.isPresent()) return level;
+                if (level.isPresent()) return Optional.of(new CompilerLevel(level.get(), "`<" + key + ">`"));
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * The compiler plugin's {@code <compilerArgs>}, in order, minus the level options {@code java =}
+     * states ({@code --release N}, {@code -source}, {@code -target}) — everything else, {@code -A}
+     * processor options included, is a verbatim {@code [javac] args} entry.
+     */
+    static List<String> compilerArgs(Model model) {
+        List<String> args = new ArrayList<>();
+        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        if (compiler.isEmpty()) return args;
+        for (Xpp3Dom config : configurations(compiler.get())) {
+            collectCompilerArgs(config, args);
+        }
+        return args;
+    }
+
+    static void collectCompilerArgs(Xpp3Dom config, List<String> args) {
+        Xpp3Dom list = config.getChild("compilerArgs");
+        if (list == null) return;
+        boolean skipValue = false;
+        for (Xpp3Dom arg : list.getChildren()) {
+            String v = usable(arg.getValue());
+            if (v == null) continue;
+            if (skipValue) {
+                skipValue = false;
+                continue;
+            }
+            if (LEVEL_OPTIONS.contains(v)) {
+                skipValue = true;
+                continue;
+            }
+            if (!args.contains(v)) args.add(v);
+        }
+    }
+
+    /**
+     * Every {@code <annotationProcessorPaths><path>} of the compiler plugin as a dependency. A path
+     * without a version takes the effective {@code dependencyManagement} pin for its GA, the way the
+     * compiler plugin itself resolves it; nothing there leaves the version unusable.
+     */
+    static List<Pom.Dep> annotationProcessorPaths(Model model) {
+        List<Pom.Dep> paths = new ArrayList<>();
+        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        if (compiler.isEmpty()) return paths;
+        for (Xpp3Dom config : configurations(compiler.get())) {
+            Xpp3Dom list = config.getChild("annotationProcessorPaths");
+            if (list == null) continue;
+            for (Xpp3Dom path : list.getChildren()) {
+                String group = usable(text(path.getChild("groupId")));
+                String artifact = usable(text(path.getChild("artifactId")));
+                if (group == null || artifact == null) continue;
+                String version = usable(text(path.getChild("version")));
+                if (version == null) version = managedVersion(model, group, artifact);
+                paths.add(new Pom.Dep(
+                        group,
+                        artifact,
+                        version,
+                        null,
+                        false,
+                        usable(text(path.getChild("classifier"))),
+                        null,
+                        List.of()));
+            }
+        }
+        return paths;
+    }
+
+    private static @Nullable String managedVersion(Model model, String group, String artifact) {
+        DependencyManagement dm = model.getDependencyManagement();
+        if (dm == null) return null;
+        for (Dependency d : dm.getDependencies()) {
+            if (group.equals(d.getGroupId()) && artifact.equals(d.getArtifactId())) return usable(d.getVersion());
+        }
+        return null;
+    }
+
+    /**
+     * A deliberate toolchain pin: {@code maven-toolchains-plugin}'s {@code <toolchains><jdk>} or the
+     * compiler plugin's {@code <jdkToolchain>}, as jk's {@code jdk} spec ({@code temurin-17},
+     * {@code 17}). Empty when the POM names no toolchain — a compiler level alone is not a pin.
+     */
+    static Optional<String> toolchainJdk(Model model) {
+        for (String artifactId : new String[] {"maven-toolchains-plugin", "maven-compiler-plugin"}) {
+            Optional<Plugin> plugin = plugin(model, artifactId);
+            if (plugin.isEmpty()) continue;
+            for (Xpp3Dom config : configurations(plugin.get())) {
+                List<Xpp3Dom> jdks = new ArrayList<>();
+                visit(config, "jdkToolchain", jdks::add);
+                visit(config, "toolchains", toolchains -> {
+                    Xpp3Dom jdk = toolchains.getChild("jdk");
+                    if (jdk != null) jdks.add(jdk);
+                });
+                for (Xpp3Dom jdk : jdks) {
+                    Optional<String> spec = jdkSpec(jdk);
+                    if (spec.isPresent()) return spec;
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** {@code <version>17</version><vendor>temurin</vendor>} → {@code temurin-17}; a range keeps its lower bound. */
+    private static Optional<String> jdkSpec(Xpp3Dom jdk) {
+        String version = usable(text(jdk.getChild("version")));
+        if (version == null) return Optional.empty();
+        Optional<Integer> major = javaLevel(version.replaceFirst("^[\\[(]", "").split("[,)\\]]", 2)[0]);
+        if (major.isEmpty()) return Optional.empty();
+        String vendor = usable(text(jdk.getChild("vendor")));
+        return Optional.of(vendor == null ? Integer.toString(major.get()) : vendor + "-" + major.get());
     }
 
     /** {@code 17} → 17; the {@code 1.8} spelling → 8. */

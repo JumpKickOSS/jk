@@ -46,9 +46,11 @@ reactor answers first, then any `<repository>` the POM declares, then the reposi
 placeholders are interpolated, and profiles Maven would activate on this machine (active by
 default, JDK, OS) are folded in. The fidelity report names what each parent contributed —
 "versions for X, Y managed by parent g:a:v" — and a parent no repository has is a Tier-3 row, not
-a failed import. Still not mapped: profiles that are not active (each gets a hand-port checklist),
-plugins other than `maven-compiler-plugin`, exclusions and classifiers. Read that report before
-trusting the generated `jk.toml`. Making an existing Maven project work under jk — plugin-aware
+a failed import. The compiler level is written as `java = N`, never as a `jdk` pin: a level below
+17 is raised to jk's floor with a row saying so, and `jdk =` appears only when the POM pins a
+toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inactive profiles land by payload
+(the table below); exclusions and classifiers are still rows. Read that report before trusting the
+generated `jk.toml`. Making an existing Maven project work under jk — plugin-aware
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
@@ -63,16 +65,16 @@ relates to the Maven one.
 |---|---:|---|---|
 | spring-boot-maven-plugin | 36 | `[spring-boot]` (Boot jar, platform BOM) | exact |
 | maven-surefire-plugin | 35 | `[test]` includes/excludes, `argLine`, system properties, `<groups>` → tags | approximate |
-| maven-compiler-plugin | 35 | `java =`, `[javac]` args, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
+| maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
-| maven-javadoc-plugin | 22 | javadoc jar from `jk package` for a library | exact |
-| maven-source-plugin | 19 | sources jar from `jk package` | exact |
-| maven-resources-plugin | 19 | resource filtering when declared; otherwise nothing to map | approximate |
+| maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` / `<doclint>` → `javadoc = "strict"` | exact |
+| maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |
+| maven-resources-plugin | 19 | nothing to map for the fixed layout; a filtered or non-standard `<resource>` directory is a row | approximate |
 | jacoco-maven-plugin | 17 | `[test] coverage = true` | exact |
 | maven-gpg-plugin | 17 | `jk publish --sign` | exact |
 | maven-assembly-plugin | 17 | fat jar (`jar-with-dependencies`); other descriptors → row | approximate |
 | maven-enforcer-plugin | 17 | `requireJavaVersion` → `java =`; banned deps → `jk deny`; rest → row | approximate |
-| build-helper-maven-plugin | 16 | `add-source` / `add-test-source` → extra source roots | exact |
+| build-helper-maven-plugin | 16 | `add-source` → `[build] extra-src`, `add-test-source` → `[test] extra-src`; other goals → row | approximate |
 | exec-maven-plugin | 16 | `java` goal → `[application]`; `exec` goal → row (build logic) | manual |
 | maven-dependency-plugin | 15 | nothing (analysis / copy goals) → row when bound to a phase | manual |
 | maven-clean-plugin | 15 | `jk clean` | exact |
@@ -112,8 +114,8 @@ payload and activation rather than one-to-one:
 | Maven profile shape | Lands in jk as | Why |
 |---|---|---|
 | Active on this machine (`activeByDefault`, JDK range, OS, property or file that matches) | Folded into the effective model; the report says which profile was applied | That is what Maven itself would build here |
-| Not active; only `<dependencies>` / `<dependencyManagement>` | `[features.<id>]` with those deps marked `optional = true`; not in `default` | A feature is exactly "what optional deps you have" |
-| Not active; only `maven.compiler.*` or `<compilerArgs>` properties | `[profiles.<id>]` `javac-args` / `jvm-args` | A jk profile is "how you compile" |
+| Not active; `<dependencies>` (versions from the profile's own `<dependencyManagement>` when it has one) | `[features.<id>]` with those deps marked `optional = true`; not in `default` | A feature is exactly "what optional deps you have" |
+| Not active; `maven.compiler.*` or `<compilerArgs>`, an `argLine` property | `[profiles.<id>]` `javac` (`--release N`, the args) / `jvm-args` | A jk profile is "how you compile" |
 | Not active; `<repositories>` | Merged into the top-level repositories with a Tier-2 row | A repository is never conditional in jk |
 | Not active; `<build><plugins>` | Hand-port checklist row naming the plugins | Plugin mapping is its own table; a profile does not change where a plugin lands |
 | JDK- or OS-activated with per-platform deps (native classifiers, `os-maven-plugin`) | Tier-2 row proposing a `[variants]` dimension | Which product you build, not what you compile with |
@@ -122,7 +124,8 @@ payload and activation rather than one-to-one:
 Activation kinds that never map: a property set on the Maven command line (`-Pfoo` /
 `-Dfoo=true`) has no jk equivalent, so the import names the profile and its payload's landing
 place; `<file>` existence stays a checklist row. A profile with more than one payload kind gets
-one row per kind, each naming the same `<id>`.
+one row per kind, each naming the same `<id>`; a `<dependencyManagement>` with no dependency of
+its own is a row and nothing is written.
 
 **Gradle import** does not execute build scripts (no Groovy/Kotlin evaluation). It does
 read on-disk `gradle/libs.versions.toml` (libraries, bundles, `version.ref`) and maps
