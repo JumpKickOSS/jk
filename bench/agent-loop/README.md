@@ -3,14 +3,17 @@
 The fixed inputs behind the metric in [docs/user/why.md](../../docs/user/why.md#making-the-north-star-true):
 median agent turns, tokens and wall time to green on a set of "agent breaks the build"
 scenarios, jk against Maven and Gradle. This directory holds the corpus (public repositories
-pinned by commit, each with injected failures), the one command that replays a scenario, and the
-comparator wrappers. The harness that drives agents over it is separate work.
+pinned by commit, each with injected failures), the one command that replays a scenario, the
+comparator wrappers, and the harness that drives an agent over all of it and writes the table.
 
 ```bash
 bench/agent-loop/scenario --list                                             # the repo × failure matrix
 bench/agent-loop/scenario --tool jk --repo gs-rest-service --failure compile-error --out /tmp/s1
 bench/agent-loop/scenario --tool mvn --repo gs-rest-service --failure missing-dependency --out /tmp/s2
 bench/agent-loop/scenario --verify --jobs 2 --report bench/agent-loop/VERIFY.md
+bench/agent-loop/harness --dry-run                                           # the (scenario × tool) matrix
+bench/agent-loop/harness --driver scripted                                   # the oracle over the whole matrix
+bench/agent-loop/harness --driver claude-code --only gs-rest-service:missing-dependency
 ```
 
 Clones, green baselines and verify sandboxes live under `$AGENT_LOOP_HOME` (default
@@ -99,8 +102,9 @@ lines, `## Failed steps`, `## Warnings`, `## Modules`. Compiler errors come from
 (`[ERROR] /File.java:[12,5] …` for Maven; `/File.java:12: error: …` and Kotlin's
 `e: file:///File.kt:12:5 …` for Gradle); tests come from the JUnit XML under
 `target/surefire-reports`, `target/failsafe-reports` and `build/test-results`. `target/jk-diagnostics.json`
-carries the parsed structure. `wrappers/results-mcp --dir <project>` is a stdio JSON-RPC MCP
-server exposing `results` and `diagnostics`, the two tools an agent reaches for first with jk.
+carries the parsed structure. `wrappers/results-mcp --dir <project> --tool mvn|gradle` is a stdio
+JSON-RPC MCP server exposing `run`, `results` and `diagnostics`: the wrapper's rerun and the two
+readers an agent reaches for first with jk (`jk_run`, `jk_results`, `jk_diagnostics`).
 
 These wrappers are built **deliberately well**. They are the benchmark's null hypothesis: the
 cheapest thing Maven or Gradle could ship tomorrow — a results file and two MCP tools over the
@@ -109,5 +113,41 @@ wrapper is the product. A weak comparator would make the number meaningless, so 
 found on any scenario is fixed here, not left as an advantage. What the wrapper cannot do without
 changing the tool — a repair hint, a token budget, a cache that makes the rerun cheap, a lockfile
 the agent can edit — is exactly what the measurement is for.
+
+## The harness: the loop, measured
+
+`harness` runs the metric. For each (repo × failure × tool) it materialises the sandbox with
+`scenario`, runs the tool once so the results file is red, starts the tool's MCP server (jk: the
+shared engine's, every call scoped to the sandbox with `dir`; Maven and Gradle:
+`wrappers/results-mcp`), and hands an agent one fixed system prompt: the build is red, make it
+green, use only these tools, stop when the results say OK. The agent loops until green or the
+budget ends (`--max-turns 8`, `--max-minutes 10` by default). The harness then reruns the tool
+itself; a row is **green** only when that rerun is green too, **claimed** when the agent said
+green and the rerun disagrees, **red** when the budget ran out. Every row records turns, input and
+output tokens (cache reads and writes counted), the agent's wall, the outcome, the fix sources,
+and a finding when the run had something to say; the transcript sits beside the sandbox under
+`$AGENT_LOOP_HOME/harness/<date>/<driver>/<tool>/<repo>.<failure>/`.
+
+| Driver | What drives the loop | Cost |
+|---|---|---|
+| `scripted` | a deterministic oracle: classify the failure from the results file, apply that class's known fix, rerun through MCP | none |
+| `claude-code` | `claude -p` in the sandbox with the tool's MCP server, file tools only (no shell, no git), `--max-turns` as the budget | the API's |
+| `api` | a Messages-API tool-use loop (`claude-sonnet-5` default): MCP tools bridged through the harness, file tools confined to the sandbox; needs `ANTHROPIC_API_KEY` and the `anthropic` SDK | the API's |
+
+The oracle is the plumbing proof and the results-file audit in one. It never reads the injection
+to decide what is wrong; the results file has to say. A compile locus with `';' expected` gets its
+semicolon; `package X does not exist` maps the package to the artifact and declares it in the
+tool's build file (Boot 3 and Boot 4 starter names both known); a resolve message or a
+`NoSuchMethodError` under a failing test removes the exact pin it names; a template or document
+named in a test's message is restored from the tree; an assertion message with an
+expected/actual pair edits the failing test's line. Where the file names the failure but not the
+edit, the oracle falls back to the scenario's inverse and records the gap as a finding
+(`fix_sources` says `results`, `results-heuristic`, `git-status` or `scenario`); where the file
+names nothing actionable it stops red and says so. Every finding is a fact about what the tool
+told the agent, and the table's Findings section lists them per run.
+
+Rows go to `results/<date>/rows.jsonl` and the rendered `results/<date>/TABLE.md` (median and p90
+per tool for turns, tokens and wall, the green rate, one line per scenario, the findings). A
+re-run of `--only` replaces its own rows and keeps the rest.
 
 `bench/jar-size/` is the neighbouring bench; this one measures the loop, that one the artefact.

@@ -294,9 +294,11 @@ Honesty today: the skeleton is real (`jk manual`, results, MCP, TOML edits, lock
 cache, **directory suites** so `jk test` is already the unit rung, the named `--guard` bar).
 What is **not** yet real, and is ordered in [the 1.0 plan](../contributors/plan-1.0.md):
 
-- **Turns-to-green is unmeasured.** No scenario corpus, no harness, no table. The comparator
-  will be Maven and Gradle *wrapped* with a results file and MCP tools, because that is the
-  cheapest thing an incumbent could ship.
+- **Turns-to-green has no agent numbers yet.** The corpus, the wrapped comparators and the
+  harness exist — `bench/agent-loop/harness` drives an agent over every scenario against jk,
+  Maven and Gradle and writes the table — and the comparator is Maven and Gradle *wrapped* with a
+  results file and MCP tools, because that is the cheapest thing an incumbent could ship; the
+  table with a real agent behind it is the number that is still owed.
 - **Maven import is shallow.** Only the compiler plugin maps; parents, profiles, resource
   filtering and every other plugin do not. `jk mvn` gives an agent nothing structured.
 - **IDE support is generated files.** The IntelliJ plugin is not on the Marketplace and does not
