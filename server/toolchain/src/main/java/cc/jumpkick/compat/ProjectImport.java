@@ -86,6 +86,8 @@ public final class ProjectImport {
             }
             List<Path> wrote = new ArrayList<>();
             for (Map.Entry<Path, JkBuild> e : manifests.entrySet()) {
+                Path dir = e.getKey().getParent();
+                if (dir != null) Files.createDirectories(dir);
                 Files.writeString(e.getKey(), JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
                 wrote.add(e.getKey());
             }
