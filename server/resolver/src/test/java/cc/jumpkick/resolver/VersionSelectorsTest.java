@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -84,6 +85,51 @@ class VersionSelectorsTest {
         VersionSet set = VersionSelectors.parseRange("[1.0,2.0)");
         assertThat(set.contains("2.0")).isFalse();
         assertThat(set.contains("1.9")).isTrue();
+    }
+
+    @Test
+    void iso_exclusive_upper_bracket_reads_as_exclusive_upper_bound() {
+        // Gradle module metadata spells `[2.17.1, 3)` as `[2.17.1, 3[`.
+        VersionSet set = VersionSelectors.parseRange("[2.17.1, 3[");
+        assertThat(set.toString())
+                .isEqualTo(VersionSelectors.parseRange("[2.17.1,3)").toString());
+        assertThat(set.contains("2.17.1")).isTrue();
+        assertThat(set.contains("2.99")).isTrue();
+        assertThat(set.contains("3")).isFalse();
+        assertThat(VersionSelectors.constraintFromPomVersion("[2.17.1, 3[").toString())
+                .isEqualTo(set.toString());
+    }
+
+    @Test
+    void iso_exclusive_lower_bracket_reads_as_exclusive_lower_bound() {
+        VersionSet set = VersionSelectors.parseRange("]1.0, 2.0]");
+        assertThat(set.toString())
+                .isEqualTo(VersionSelectors.parseRange("(1.0,2.0]").toString());
+        assertThat(set.contains("1.0")).isFalse();
+        assertThat(set.contains("1.5")).isTrue();
+        assertThat(set.contains("2.0")).isTrue();
+        assertThat(VersionSelectors.looksLikeMavenRange("]1.0, 2.0]")).isTrue();
+    }
+
+    @Test
+    void iso_brackets_take_part_in_a_multi_range() {
+        VersionSet set = VersionSelectors.parseRange("]1.0,2.0[,[3.0,4.0]");
+        assertThat(set.contains("1.0")).isFalse();
+        assertThat(set.contains("1.5")).isTrue();
+        assertThat(set.contains("2.0")).isFalse();
+        assertThat(set.contains("2.5")).isFalse();
+        assertThat(set.contains("3.0")).isTrue();
+        assertThat(set.contains("4.0")).isTrue();
+    }
+
+    @Test
+    void an_unclosed_bracket_is_still_malformed() {
+        assertThatThrownBy(() -> VersionSelectors.parseRange("[1.0, 2.0"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("malformed Maven range");
+        assertThatThrownBy(() -> VersionSelectors.parseRange("[1.0,2.0),3.0]"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("malformed Maven range");
     }
 
     @Test
