@@ -27,8 +27,10 @@ public final class SessionContext {
     static {
         // Propagate where()-bound sessions (and their cancel tokens) onto JkThreads pool workers;
         // ScopedValue does not reach pre-existing shared executors without this. The run ledger
-        // rides along for the reason in withLedger.
-        ContextPropagator.bind(new ContextPropagator.Propagator() {
+        // rides along for the reason in withLedger. Added beside, not bound over, whatever another
+        // subsystem registered first: class-initialization order must not decide which context
+        // survives the hop.
+        ContextPropagator.add(new ContextPropagator.Propagator() {
             @Override
             public Runnable wrapRunnable(Runnable r) {
                 Session s = current();
