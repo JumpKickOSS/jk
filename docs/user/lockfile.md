@@ -265,6 +265,14 @@ way and is recorded the same way (`<- [2.0.18,)`). A workspace resolves under it
 member brought in the transitive that asked for more. Under the default `pins = "exact"` that
 shape is a conflict the lock refuses instead; see [Dependencies](dependencies.md#coordinates).
 
+`nearest` covers direct pins and BOM order and nothing else: a module only transitive POMs name
+resolves highest-declared under both policies, so a lock row can sit above the version Maven's
+nearer declaration gives the same module. Measured on the Maven top-20 corpus in jk-examples, over
+the 14 repositories that lock and their 341 modules, 170 modules differ from Maven on some
+version, mostly through inline `<dependencyManagement>` entries jk applies to declared dependencies
+only; depth mediation alone accounts for 111 of the 705 differing (module, coordinate) pairs. The
+policy table is in [Platforms](platforms.md#two-boms-that-manage-one-module).
+
 ## Rows a member owns
 
 A workspace row without a `members` key is the workspace's version: every member's classpath
