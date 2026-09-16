@@ -186,6 +186,46 @@ class PubGrubSolverTest {
         };
     }
 
+    /**
+     * A package first met through a floor gets the compact window; when an exact pin on a release
+     * deep in a long history arrives later, widening must still offer that release, however far
+     * below the newest entries it sits.
+     */
+    @Test
+    void an_exact_pin_deep_in_a_long_history_survives_the_expanded_cap() throws Exception {
+        InMemoryPackageSource.Builder b = InMemoryPackageSource.builder();
+        for (int i = 1; i <= 80; i++) b.version("lib", i + ".0");
+        b.version("floor", "1.0", deps -> deps.require("lib", VersionSet.atLeast("1.0", true)));
+        b.version("pinner", "1.0", deps -> deps.require("lib", VersionSet.exact("3.0")));
+        PackageSource inner = b.build();
+        PackageSource src = new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                return inner.versions(pkg);
+            }
+
+            @Override
+            public Set<String> declaredVersions(String pkg) {
+                return pkg.equals("lib") ? Set.of("3.0") : Set.of();
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return inner.dependencies(pkg, version);
+            }
+        };
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve(
+                        "root",
+                        "1.0",
+                        List.of(
+                                Term.positive("floor", VersionSet.exact("1.0")),
+                                Term.positive("pinner", VersionSet.exact("1.0"))));
+
+        assertThat(solution).containsEntry("lib", "3.0");
+    }
+
     @Test
     void transitive_chain() throws Exception {
         PackageSource src = InMemoryPackageSource.builder()

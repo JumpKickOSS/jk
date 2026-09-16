@@ -78,6 +78,10 @@ a transitive with no pin on it keeps the highest-declared rule either way.
 `]1.0,2.0]` exclusive below). A bracket that points at the version includes it; one that points
 away excludes it.
 
+**An exact pin on an old release** stays a candidate however long the module's history: the
+solver's candidate window is the newest releases plus every version something asked for by
+number, so `2.17.0` of a module with two hundred releases resolves when the project pins it.
+
 ### Repositories a dependency's POM declares
 
 A published POM may carry `<repositories>` of its own — apicurio's parent names JitPack for
