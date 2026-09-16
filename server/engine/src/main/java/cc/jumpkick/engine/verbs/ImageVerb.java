@@ -69,22 +69,20 @@ public final class ImageVerb implements HostedVerb {
     @Override
     public String decodeJob(JobSpec spec) {
         // No test toggle on the dashboard/agent surface: an image job's deliverable is the image.
-        return ProtoSession.withTrigger(
-                new ImageRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                JkDirs.jdks().toString(),
-                                null,
-                                null,
-                                null,
-                                null,
-                                null,
-                                true,
-                                false,
-                                false,
-                                false)
-                        .encode(),
-                "web");
+        return new ImageRequest(
+                        spec.dir(),
+                        JkDirs.cache().toString(),
+                        JkDirs.jdks().toString(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        false,
+                        false,
+                        false)
+                .encode();
     }
 
     @Override

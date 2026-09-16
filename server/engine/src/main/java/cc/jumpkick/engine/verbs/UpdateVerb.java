@@ -66,24 +66,22 @@ public final class UpdateVerb implements HostedVerb {
 
     @Override
     public String decodeJob(JobSpec spec) {
-        return ProtoSession.withTrigger(
-                new UpdateRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                List.of(),
-                                false,
-                                null,
-                                false,
-                                null,
-                                false,
-                                false,
-                                false,
-                                "",
-                                List.of(),
-                                false,
-                                false)
-                        .encode(),
-                "web");
+        return new UpdateRequest(
+                        spec.dir(),
+                        JkDirs.cache().toString(),
+                        List.of(),
+                        false,
+                        null,
+                        false,
+                        null,
+                        false,
+                        false,
+                        false,
+                        "",
+                        List.of(),
+                        false,
+                        false)
+                .encode();
     }
 
     @Override

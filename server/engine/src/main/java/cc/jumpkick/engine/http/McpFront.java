@@ -12,11 +12,14 @@ import java.util.Map;
 
 /**
  * The MCP HTTP surface: the discovery document, JSON-RPC over {@code POST /mcp} with the request
- * body cap and a {@code 202} for notifications, and the hand-off to the MCP-framed SSE stream.
- * Reached only after {@link HttpTokenGate} has admitted the exchange — MCP is token-gated even on
- * loopback.
+ * body cap and a {@code 202} for notifications, the {@code Mcp-Session-Id} header both ways, and
+ * the hand-off to the MCP-framed SSE stream. Reached only after {@link HttpTokenGate} has admitted
+ * the exchange — MCP is token-gated even on loopback.
  */
 final class McpFront {
+
+    /** Streamable-HTTP session header: minted on {@code initialize}, echoed by the client afterwards. */
+    static final String SESSION_HEADER = "Mcp-Session-Id";
 
     private final McpHandler mcp;
     private final SseEndpoint sse;
@@ -63,13 +66,23 @@ final class McpFront {
                             .toString());
             return;
         }
+        String sessionId = exchange.getRequestHeaders().getFirst(SESSION_HEADER);
+        if (method.equals("DELETE")) {
+            // The client is done with its connection; an id this engine never issued is a 404.
+            exchange.sendResponseHeaders(mcp.closeConnection(sessionId) ? 204 : 404, -1);
+            return;
+        }
         if (!method.equals("POST")) {
-            exchange.getResponseHeaders().set("Allow", "GET, HEAD, POST");
+            exchange.getResponseHeaders().set("Allow", "GET, HEAD, POST, DELETE");
             HttpResponses.sendText(exchange, 405, "method not allowed\n");
             return;
         }
         String body = HttpRequests.body(exchange);
-        String response = mcp.handleBody(body);
+        McpHandler.Reply reply = mcp.handle(body, sessionId);
+        if (reply.openedSessionId() != null) {
+            exchange.getResponseHeaders().set(SESSION_HEADER, reply.openedSessionId());
+        }
+        String response = reply.body();
         if (response == null || response.isEmpty()) {
             // JSON-RPC notification — accepted, no body.
             exchange.sendResponseHeaders(202, -1);

@@ -49,6 +49,7 @@ export function parseTruthy(raw) {
 /**
  * Hash routes:
  *  #project/<id>
+ *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
  *  #project/<id>/files
  *  #project/<id>/files/<rel/path>?line=<n>
  *  #project/<id>/files/<rel/path>?line=<n>&col=<c>&err=true&msg=<note>  (fail-report / OSC-8)
@@ -63,6 +64,7 @@ function routeFields(over = {}) {
     col: 0,
     lineErr: false,
     msg: '',
+    run: 0,
     ...over,
   };
 }
@@ -111,14 +113,18 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
         msg: q.msg || '',
       });
     }
+    if (segs[1] === 'run') {
+      return routeFields({ view: 'project', projectId: id, run: parseLine(segs[2]) });
+    }
     return routeFields({ view: 'project', projectId: id });
   }
   return empty;
 }
 
-export function buildProjectHash({ projectId, files, path, line, col, err, msg } = {}) {
+export function buildProjectHash({ projectId, files, path, line, col, err, msg, run } = {}) {
   if (!projectId) return '#projects';
   let h = '#project/' + encodeURIComponent(projectId);
+  if (run > 0 && !files && !path) return h + '/run/' + run;
   if (files || path) {
     h += '/files';
     if (path) {

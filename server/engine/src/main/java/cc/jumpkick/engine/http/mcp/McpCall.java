@@ -7,13 +7,27 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One {@code tools/call}: the engine context, the client's {@code arguments}, and the MCP progress
- * token bound from {@code params._meta}. The argument readers live here so every tool decodes
- * {@code dir} / {@code limit} / {@code apply} the same way — a tool that hand-rolls one is
- * inventing private semantics for a shared wire.
+ * One {@code tools/call}: the engine context, the client's {@code arguments}, the MCP progress
+ * token bound from {@code params._meta}, and the {@link McpConnection connection} the call rode in
+ * on (null when the client sent no {@code Mcp-Session-Id}). The argument readers live here so every
+ * tool decodes {@code dir} / {@code limit} / {@code apply} the same way — a tool that hand-rolls
+ * one is inventing private semantics for a shared wire.
  */
 public record McpCall(
-        McpContext ctx, Map<String, Object> args, @Nullable String progressToken) {
+        McpContext ctx,
+        Map<String, Object> args,
+        @Nullable String progressToken,
+        @Nullable McpConnection connection) {
+
+    /** A call from no identified connection. */
+    public McpCall(McpContext ctx, Map<String, Object> args, @Nullable String progressToken) {
+        this(ctx, args, progressToken, null);
+    }
+
+    /** The journal's session label for a job this call starts, or null when the connection is anonymous. */
+    public @Nullable String sessionLabel() {
+        return connection == null ? null : connection.label();
+    }
 
     /** A string argument, or {@code null} when absent. */
     public @Nullable String str(String key) {

@@ -68,6 +68,7 @@ class JkResultsGuardsTest {
                 "cli",
                 null,
                 null,
+                null,
                 false,
                 null,
                 0);

@@ -58,6 +58,8 @@ public final class LiveRuns {
                     h.kind(),
                     h.dir(),
                     h.coord(),
+                    h.trigger(),
+                    h.session(),
                     h.startedAt(),
                     sessions.lastEventAt(h.requestId()),
                     p != null && !p.isNaN() ? p : Double.NaN,
@@ -93,6 +95,8 @@ public final class LiveRuns {
         m.put("kind", run.kind() == null ? "build" : run.kind());
         m.put("dir", run.dir() == null ? "" : run.dir());
         if (run.coord() != null) m.put("coord", run.coord());
+        if (run.trigger() != null) m.put("trigger", run.trigger());
+        if (run.session() != null) m.put("session", run.session());
         if (run.startedAt() > 0) {
             m.put("startedAt", run.startedAt());
             m.put("serverNow", serverNow);

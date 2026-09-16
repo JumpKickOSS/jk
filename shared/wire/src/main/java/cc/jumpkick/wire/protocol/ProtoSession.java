@@ -210,15 +210,20 @@ public final class ProtoSession {
     }
 
     /**
-     * Attach the journal-classification {@code trigger} ({@code web}, {@code optimize}, …) to an
-     * encoded request line. The engine synthesizes wire lines for HTTP/MCP job submissions and
-     * marks them here — same validated splice as {@link #withSession}, never call-site string
-     * surgery. A null/blank trigger returns the line unchanged.
+     * Attach a job's origin to an encoded request line: the journal-classification {@code trigger}
+     * ({@code cli}, {@code mcp}, {@code web}, {@code bsp}, {@code optimize}, …) and the optional
+     * {@code session} that asked (an MCP connection, an IDE window). The engine synthesizes wire
+     * lines for HTTP/MCP job submissions and marks them here; a client process that is one session
+     * marks its own lines the same way — same validated splice as {@link #withSession}, never
+     * call-site string surgery. Null/blank values leave the line unchanged.
      */
-    public static String withTrigger(String request, @Nullable String trigger) {
-        if (trigger == null || trigger.isBlank()) return request;
-        return Jsonl.append(
-                request, RequestJson.fields().string("trigger", trigger).body());
+    public static String withOrigin(String request, @Nullable String trigger, @Nullable String session) {
+        String body = RequestJson.fields()
+                .optionalNonBlankString("trigger", trigger)
+                .optionalNonBlankString("session", session)
+                .body();
+        if (body.isEmpty()) return request;
+        return Jsonl.append(request, body);
     }
 
     /*

@@ -204,9 +204,11 @@ class WireProducersFrozenBytesTest {
                 .isEqualTo("{\"type\":\"x\",\"jdk\":\"17\"}");
         assertThat(ProtoSession.withToolchain("{\"type\":\"x\"}", null, "", null))
                 .isEqualTo("{\"type\":\"x\"}");
-        assertThat(ProtoSession.withTrigger("{\"type\":\"x\"}", "manual"))
+        assertThat(ProtoSession.withOrigin("{\"type\":\"x\"}", "manual", null))
                 .isEqualTo("{\"type\":\"x\",\"trigger\":\"manual\"}");
-        assertThat(ProtoSession.withTrigger("{\"type\":\"x\"}", "")).isEqualTo("{\"type\":\"x\"}");
+        assertThat(ProtoSession.withOrigin("{\"type\":\"x\"}", "mcp", "claude-code 3f9a"))
+                .isEqualTo("{\"type\":\"x\",\"trigger\":\"mcp\",\"session\":\"claude-code 3f9a\"}");
+        assertThat(ProtoSession.withOrigin("{\"type\":\"x\"}", "", " ")).isEqualTo("{\"type\":\"x\"}");
     }
 
     @Test

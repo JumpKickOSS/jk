@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
  * The three wire splicers share one policy, because they share one implementation
  * ({@code Jsonl.append}) —.
  *
- * <p>Before, {@code withSession} and {@code withTrigger} threw on a line that was not an encoded
+ * <p>Before, {@code withSession} and {@code withOrigin} threw on a line that was not an encoded
  * object and {@code withCancelled} returned it unchanged, so the same mistake was loud on the
  * request path and silent on the event path. All three also produced the unparseable
  * {@code {,"k":v}} from an empty object, each having written its own constant comma.
@@ -25,7 +25,7 @@ class WireSpliceTest {
     void every_splicer_rejects_a_line_that_is_not_an_encoded_object() {
         assertThatThrownBy(() -> ProtoEvents.withCancelled("not-json", true))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> ProtoSession.withTrigger("not-json", "web"))
+        assertThatThrownBy(() -> ProtoSession.withOrigin("not-json", "web", null))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> ProtoSession.withSession("not-json", "release", null, null, false))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -39,12 +39,13 @@ class WireSpliceTest {
     @Test
     void every_splicer_produces_parseable_json_from_an_empty_object() {
         assertThat(ProtoEvents.withCancelled("{}", true)).isEqualTo("{\"cancelled\":true}");
-        assertThat(ProtoSession.withTrigger("{}", "web")).isEqualTo("{\"trigger\":\"web\"}");
+        assertThat(ProtoSession.withOrigin("{}", "web", null)).isEqualTo("{\"trigger\":\"web\"}");
         assertThat(ProtoSession.withSession("{}", null, null, null, true)).isEqualTo("{\"rebuild\":true}");
 
         assertThat(Jsonl.bool(ProtoEvents.withCancelled("{}", true), "cancelled", false))
                 .isTrue();
-        assertThat(Jsonl.str(ProtoSession.withTrigger("{}", "web"), "trigger")).isEqualTo("web");
+        assertThat(Jsonl.str(ProtoSession.withOrigin("{}", "web", null), "trigger"))
+                .isEqualTo("web");
         assertThat(Jsonl.bool(ProtoSession.withSession("{}", null, null, null, true), "rebuild", false))
                 .isTrue();
     }
@@ -52,8 +53,8 @@ class WireSpliceTest {
     @Test
     void a_splice_with_nothing_to_add_is_byte_identical() {
         String base = ProtoLifecycle.ping();
-        assertThat(ProtoSession.withTrigger(base, null)).isEqualTo(base);
-        assertThat(ProtoSession.withTrigger(base, "  ")).isEqualTo(base);
+        assertThat(ProtoSession.withOrigin(base, null, null)).isEqualTo(base);
+        assertThat(ProtoSession.withOrigin(base, "  ", null)).isEqualTo(base);
         assertThat(ProtoSession.withSession(base, null, null, null, false)).isEqualTo(base);
     }
 

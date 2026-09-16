@@ -116,6 +116,9 @@ export function foldEvent(cards, event) {
         coord: d.coord || null,
         projectId: d.projectId || null,
         buildNumber: d.buildNumber || null,
+        // Who asked — the same trigger/session the journal row and jk-results.md carry.
+        trigger: d.trigger || null,
+        session: d.session || null,
         state: 'running',
         startedAt: engineStart ?? event.at ?? null,
         // Client-epoch anchor: skew-corrected when serverNow rides the frame, else a
@@ -360,6 +363,8 @@ function applyRunSnapshot(cards, d, at) {
       coord: d.coord,
       projectId: d.projectId,
       buildNumber: d.buildNumber,
+      trigger: d.trigger,
+      session: d.session,
       startedAt: d.startedAt,
       progress: d.progress,
     },
@@ -517,6 +522,8 @@ export function seedFromHistory(cards, records) {
       live.historyId = rec.id; // reconcile: the live card is this run — make it deletable
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
       if (rec.projectId && !live.projectId) live.projectId = rec.projectId;
+      if (rec.trigger && !live.trigger) live.trigger = rec.trigger;
+      if (rec.session && !live.session) live.session = rec.session;
       if (rec.running) live.state = 'running';
       else if (live.state === 'running') {
         // The journal says this run is over: a finish frame lost to a connect/reconnect race
@@ -587,6 +594,8 @@ export function historyCard(rec) {
     dir: rec.dir || '',
     coord: rec.coord || null,
     projectId: rec.projectId || null,
+    trigger: rec.trigger || null,
+    session: rec.session || null,
     state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
     startedAtClient: null,

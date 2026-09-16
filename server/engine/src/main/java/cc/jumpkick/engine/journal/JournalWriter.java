@@ -56,6 +56,7 @@ public final class JournalWriter {
             String kind,
             String dir,
             String trigger,
+            @Nullable String session,
             boolean noTimeline,
             boolean rebuild,
             long buildNumber,
@@ -70,7 +71,16 @@ public final class JournalWriter {
         sessions.accumulator(
                 requestId,
                 new BuildAccumulator(
-                        kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId, requestId));
+                        kind,
+                        dir,
+                        coordOf(dir),
+                        trigger,
+                        session,
+                        timeline,
+                        rebuild,
+                        buildNumber,
+                        journalId,
+                        requestId));
     }
 
     /** {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout. */

@@ -126,7 +126,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                                 null,
                                 Map.of(),
                                 null,
-                                "web",
+                                null, // the admission point stamps who asked
                                 null)
                         .encode(),
                 (spec.affected() ? "\"affected\":true" : "")

@@ -48,7 +48,8 @@ class JsonTest {
                         "expected 1 but was 2\nline two",
                         "com.example.AppTest#adds",
                         "org.opentest4j.AssertionFailedError")),
-                "web",
+                "mcp",
+                "claude-code 3f9a",
                 "abc1234",
                 new BuildRecord.CacheBenefit(9000, 6000, 3, 4),
                 false,
@@ -59,7 +60,9 @@ class JsonTest {
 
         assertThat(back.id()).isEqualTo(original.id());
         assertThat(back.buildNumber()).isEqualTo(412);
-        assertThat(back.trigger()).isEqualTo("web");
+        assertThat(back.trigger()).isEqualTo("mcp");
+        assertThat(back.session()).isEqualTo("claude-code 3f9a");
+        assertThat(back.origin()).isEqualTo("mcp · claude-code 3f9a");
         assertThat(back.commit()).isEqualTo("abc1234");
         assertThat(back.kind()).isEqualTo("build");
         assertThat(back.dir()).isEqualTo("/proj \"quoted\"");
@@ -115,6 +118,7 @@ class JsonTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null,
                 null,
                 null,
@@ -214,6 +218,7 @@ class JsonTest {
                 List.of(new BuildRecord.Task("run-tests", "test", "FAIL", 10, 0L)),
                 diagnostics,
                 "cli",
+                null,
                 "abc1234",
                 null,
                 false,

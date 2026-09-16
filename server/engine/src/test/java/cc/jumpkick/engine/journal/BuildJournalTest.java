@@ -50,6 +50,7 @@ class BuildJournalTest {
                 "cli",
                 null,
                 null,
+                null,
                 false,
                 null,
                 0L);
@@ -146,6 +147,7 @@ class BuildJournalTest {
                 base.steps(),
                 base.diagnostics(),
                 trigger,
+                base.session(),
                 base.commit(),
                 base.benefit(),
                 base.running(),
@@ -156,7 +158,8 @@ class BuildJournalTest {
     @Test
     void format_job_is_journaled_without_a_build_number() {
         BuildJournal j = new BuildJournal(dir);
-        BuildRecord run = BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", 9L);
+        BuildRecord run =
+                BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", null, 9L);
         String locator = requireNonNull(j.begin(run));
         assertThat(locator).startsWith("j-");
         assertThat(locator).contains("9");
@@ -186,6 +189,7 @@ class BuildJournalTest {
                 "web",
                 null,
                 null,
+                null,
                 false,
                 null,
                 9L);
@@ -201,7 +205,8 @@ class BuildJournalTest {
     @Test
     void raw_finished_record_by_request_id_skips_running_stub_then_returns_finished_json() {
         BuildJournal j = new BuildJournal(dir);
-        BuildRecord run = BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", 9L);
+        BuildRecord run =
+                BuildRecord.running(0, "format", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "web", null, 9L);
         String locator = requireNonNull(j.begin(run));
         assertThat(j.rawFinishedRecordByRequestId(9L)).isEmpty(); // running stub is not a result
         assertThat(j.rawFinishedRecordByRequestId(7L)).isEmpty(); // unknown jid
@@ -225,6 +230,7 @@ class BuildJournalTest {
                 List.of(),
                 List.of(),
                 "web",
+                null,
                 null,
                 null,
                 false,
@@ -652,6 +658,7 @@ class BuildJournalTest {
                 base.steps(),
                 base.diagnostics(),
                 base.trigger(),
+                base.session(),
                 base.commit(),
                 base.benefit(),
                 base.running(),
@@ -732,6 +739,7 @@ class BuildJournalTest {
                 tasks,
                 base.diagnostics(),
                 base.trigger(),
+                base.session(),
                 base.commit(),
                 base.benefit(),
                 base.running(),

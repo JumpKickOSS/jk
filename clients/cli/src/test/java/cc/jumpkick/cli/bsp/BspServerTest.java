@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.cli.ide.IdeEngineClient;
+import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.wire.protocol.RequestEnvironment;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -136,6 +138,36 @@ class BspServerTest {
         String responses = out.toString(StandardCharsets.UTF_8);
         assertThat(responses).contains("\"statusCode\":");
         assertThat(responses).contains("\"id\":2");
+    }
+
+    @Test
+    void initialize_declares_this_process_as_the_ide_session(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        IdeEngineClient ide = IdeEngineClient.open(dir, dir.resolve("cache"), null);
+        String init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"build/initialize\","
+                + "\"params\":{\"displayName\":\"IntelliJ-BSP\",\"version\":\"2025.2\"}}";
+        try {
+            new BspServer(
+                            ide,
+                            new ByteArrayInputStream((frame(init) + frame(shutdown(2)) + frame(exit()))
+                                    .getBytes(StandardCharsets.UTF_8)),
+                            new ByteArrayOutputStream())
+                    .serve();
+            // Every build this process sends from here on journals as the IDE's own.
+            assertThat(RequestEnvironment.trigger()).isEqualTo("bsp");
+            assertThat(RequestEnvironment.session()).matches("IntelliJ-BSP [0-9a-f]{4}");
+            // The same four hex digits for the life of the process: two windows are two sessions.
+            assertThat(BspServer.sessionLabel(MiniJson.parse(init))).isEqualTo(RequestEnvironment.session());
+            assertThat(BspServer.sessionLabel(null)).matches("bsp-client [0-9a-f]{4}");
+        } finally {
+            System.clearProperty("jk.build.trigger");
+            System.clearProperty("jk.build.session");
+        }
     }
 
     @Test

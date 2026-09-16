@@ -53,20 +53,18 @@ public final class LockVerb implements HostedVerb {
 
     @Override
     public String decodeJob(JobSpec spec) {
-        return ProtoSession.withTrigger(
-                new LockRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                List.of(),
-                                false,
-                                false,
-                                null,
-                                false,
-                                false,
-                                false,
-                                false)
-                        .encode(),
-                "web");
+        return new LockRequest(
+                        spec.dir(),
+                        JkDirs.cache().toString(),
+                        List.of(),
+                        false,
+                        false,
+                        null,
+                        false,
+                        false,
+                        false,
+                        false)
+                .encode();
     }
 
     /**

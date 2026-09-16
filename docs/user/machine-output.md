@@ -32,6 +32,12 @@ target/jk-results.md
 ~/.jk/state/builds/projects/<key>/runs/<build-number>/jk-results.md
 ```
 
+The header's second line names who asked: `trigger: cli`, or `trigger: mcp · session:
+claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an IDE), then
+`commit:` and the jk version. The same `trigger`/`session` fields sit on the journal record
+(`jk history`, `GET /api/history`, `jk_history`) and on the `session-start` line of
+`details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked).
+
 The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
 There is no separate `test-results.md`. MCP: **`jk_results`** and resource
 `jk://runs/latest/results`. After a test run, prefer this file over `--all` guesswork:
@@ -155,7 +161,8 @@ stops itself. `jk dev --no-sidecars` emits no `sidecar-*` events at all. [Run](r
 ```
 
 Same event shape as `--output json`. Default **on**; disable with `JK_CLI_DETAILS=off`
-(or `0`). Appended live (`tail -F`). Opens with `session-start`, a `job` meta line after
+(or `0`). Appended live (`tail -F`). Opens with `session-start` (command, argv, and the
+run's origin: `trigger`, plus `session` when the requester has one), a `job` meta line after
 admit, ends with `session-finish`. Includes **jid**, **buildNumber**, and **etaMs** when
 known. Writing is best-effort: a missing project or full disk never fails the user command.
 

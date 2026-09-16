@@ -84,6 +84,9 @@
       <div class="feed-head">
         <h2>Live activity</h2>
         <span class="retention">Last 50 requests</span>
+        <button type="button" class="ghost group-toggle" :class="{ active: groupBySession }" @click="toggleSessionGrouping()"
+                :data-tip="groupBySession ? 'One card per run' : 'Group runs under the session that asked'">
+          <jk-icon name="dot"></jk-icon>{{ groupBySession ? 'Sessions' : 'By session' }}</button>
         <span class="spacer"></span>
         <form class="trigger" @submit.prevent="triggerBuild()">
           <input v-model="buildDir" placeholder="/path/to/workspace" spellcheck="false">
@@ -97,6 +100,35 @@
         No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
       </p>
 
+      <!-- Grouped by session: one block per session that asked, its runs in the order they happened. -->
+      <template v-if="groupBySession">
+        <section v-for="g in sessionGroups" :key="g.key" class="card session-group">
+          <div class="card-head">
+            <span class="origin" :class="'origin-' + (g.trigger || 'none')">{{ g.label }}</span>
+            <span class="summary">{{ g.runs.length }} run{{ g.runs.length === 1 ? '' : 's' }}</span>
+            <span class="tally"><span v-if="g.running" class="badge running">{{ g.running }} running</span>
+              <span v-if="g.passed" class="badge success">{{ g.passed }} ok</span>
+              <span v-if="g.failed" class="badge failed">{{ g.failed }} failed</span>
+              <span v-if="g.cancelled" class="badge cancelled">{{ g.cancelled }} cancelled</span></span>
+            <span class="spacer"></span>
+            <span class="millis" data-tip="Wall time of the finished runs">{{ duration(g.wallMillis) }}</span>
+          </div>
+          <ol class="timeline">
+            <li v-for="r in g.runs" :key="r.id" :class="r.outcome">
+              <span class="badge to-project" :class="r.outcome" role="link" tabindex="0"
+                    @click="openProjectFromCard(r)" @keydown.enter.prevent="openProjectFromCard(r)">
+                <jk-icon :name="stateIcon(r.outcome)"></jk-icon><template v-if="r.buildNumber">#{{ r.buildNumber }}</template></span>
+              <span class="coord"><template v-if="coordParts(r).group"><span class="cg">{{ coordParts(r).group }}</span><span class="csep">:</span></template><span class="cn">{{ coordParts(r).name }}</span></span>
+              <span class="kind">{{ r.kind }}</span>
+              <span class="spacer"></span>
+              <span class="millis">{{ r.outcome === 'running' ? elapsed(r) : duration(r.millis) }}</span>
+              <span class="ago" :data-tip="fmtDateTime(r.finishedAt || r.startedAt) || undefined">{{ ago(r.finishedAt || r.startedAt) }}</span>
+            </li>
+          </ol>
+        </section>
+      </template>
+
+      <template v-else>
       <article v-for="(card, i) in cards" :key="card.id" class="card rise-in" :class="outcome(card)" :style="{ animationDelay: riseDelay(i) }">
         <div class="card-head">
           <span v-if="outcome(card) === 'running'" class="spin"></span>
@@ -118,6 +150,8 @@
                conjugate to "built" (incl. fully-cached / no module rows). -->
           <span v-if="card.modules.length <= 1" class="kind">{{ kindLabel(card) }}</span>
           <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
+          <!-- Who asked: trigger · session, the same line the results header prints. -->
+          <span v-if="card.trigger" class="origin" :class="'origin-' + card.trigger" data-tip="Trigger · session that asked">{{ originLabel(card) }}</span>
           <span class="spacer"></span>
           <button v-if="outcome(card) === 'running' && card.id != null" class="rebuild icon danger"
                   @click="cancelCard(card)" aria-label="Cancel" data-tip="Cancel this job (jid)"><jk-icon name="ban"></jk-icon></button>
@@ -252,6 +286,7 @@
         </div>
 
       </article>
+      </template>
     </main>
 
     <main v-if="view === 'projects'">
@@ -368,16 +403,55 @@
         <module-dep-graph :dir="selectedProjectDir" :key="selectedProjectDir"></module-dep-graph>
       </section>
 
+      <!-- The run this page shows: the newest by default (a live one first), or the one a history
+           row pinned. The route carries the pin (#project/<id>/run/<n>) so a reload keeps it. -->
+      <section v-if="projectRun" class="panel wide focused-run" :class="projectRun.outcome">
+        <div class="panel-head">
+          <span class="lbl">{{ projectRun.following ? 'following newest run' : 'pinned run' }}</span>
+          <span class="spacer"></span>
+          <button v-if="!projectRun.following" type="button" class="ghost small" @click="unpinRun()" data-tip="Back to following the newest run">Follow newest</button>
+        </div>
+        <div class="card-head">
+          <span v-if="projectRun.outcome === 'running'" class="spin"></span>
+          <span v-else class="badge" :class="projectRun.outcome"><jk-icon :name="stateIcon(projectRun.outcome)"></jk-icon>{{ activityBadge(projectRun.card) }}</span>
+          <span v-if="projectRun.buildNumber" class="mono">#{{ projectRun.buildNumber }}</span>
+          <span class="kind">{{ kindLabel(projectRun.card) }}</span>
+          <span v-if="projectRun.card.trigger" class="origin" :class="'origin-' + projectRun.card.trigger">{{ originLabel(projectRun.card) }}</span>
+          <span class="spacer"></span>
+          <span class="millis">{{ projectRun.outcome === 'running' ? elapsed(projectRun.card) : duration(projectRun.card.millis) }}</span>
+          <span v-if="projectRun.outcome !== 'running'" class="ago" :data-tip="fmtDateTime(projectRun.card.finishedAt) || undefined">{{ ago(projectRun.card.finishedAt) }}</span>
+        </div>
+        <div v-if="projectRun.outcome === 'running'" class="cardbar" role="progressbar"
+             :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
+          <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
+        </div>
+        <div v-for="m in failedModules(projectRun.card)" :key="m.dir" class="module">
+          <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || projectRun.card.coord || ''"></phase-chain>
+          <div v-if="m.diagnostics.length" class="diag"><div class="console">
+            <template v-for="(d, i) in m.diagnostics" :key="i">
+              <div v-if="isTestFailure(d)" class="fail-report">
+                <fail-report v-for="rep in tfReports(m, d)" :key="'ptf'+i" :rep="rep" :project-id="projectRun.card.projectId" :checkout-dir="projectRun.card.dir" :module-dir="m.dir"></fail-report>
+              </div>
+              <div v-else-if="isCompiler(d)" class="fail-report">
+                <fail-report v-for="(rep, ri) in cfReports(m, d)" :key="'pcf'+i+'-'+ri" :rep="rep" :project-id="projectRun.card.projectId" :checkout-dir="projectRun.card.dir" :module-dir="m.dir"></fail-report>
+              </div>
+              <div v-else class="diag-line"><span class="console-err">✘&nbsp;</span><span class="console-dir">{{ d.step }}</span><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span></div>
+            </template>
+          </div></div>
+        </div>
+      </section>
+
       <template v-if="projectDetail && !projectDetail.empty">
         <div class="panels">
           <div class="panel wide">
-            <div class="panel-head"><span class="lbl">build history</span><span class="spacer"></span><span class="mono dim">{{ projectDetail.total }} builds total</span></div>
+            <div class="panel-head"><span class="lbl">build history</span><span class="spacer"></span><span class="mono dim">{{ projectDetail.total }} builds total · click a row to pin it</span></div>
             <table class="stats history">
               <thead><tr><th>Build</th><th>Trigger</th><th>Commit</th><th>Tests</th><th>Cache</th><th>Duration</th><th>When</th></tr></thead>
               <tbody>
-                <tr v-for="r in projectDetail.rows" :key="r.id">
+                <tr v-for="r in projectDetail.rows" :key="r.id" class="pinnable" :class="{ pinned: pinnedRun && r.buildNumber === pinnedRun }"
+                    tabindex="0" @click="pinRun(r.buildNumber)" @keydown.enter.prevent="pinRun(r.buildNumber)">
                   <td><span class="badge" :class="r.outcome"><jk-icon :name="stateIcon(r.outcome)"></jk-icon><template v-if="r.buildNumber">#{{ r.buildNumber }}</template></span></td>
-                  <td>{{ triggerLabel(r.trigger) }}</td>
+                  <td>{{ originLabel(r) }}</td>
                   <td class="mono">{{ r.commit || '—' }}</td>
                   <td><template v-if="r.tests">{{ r.tests.succeeded }} / {{ r.tests.total }}</template><template v-else>—</template></td>
                   <td :class="{ ok: r.savedPct >= 50 }"><template v-if="r.saved">{{ r.saved }} <span class="dim">({{ r.savedPct }}%)</span></template><template v-else>—</template></td>

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,8 @@ public final class McpJobRuns {
             fields.put("kind", spec.kind());
             fields.put("jid", requestId);
             fields.put("dir", spec.dir());
+            putOrigin(fields, spec.origin());
+            putDashboard(ctx, fields, spec.dir());
             fields.put("events", "/api/events");
             fields.put("mcpEvents", "GET /mcp?jid=" + requestId);
             putSelection(fields, spec);
@@ -80,7 +83,8 @@ public final class McpJobRuns {
                 in.strings("suites"),
                 in.flag("skip_tests"),
                 affected,
-                deadlineMs(in));
+                deadlineMs(in),
+                JobOrigin.mcp(in.sessionLabel()));
         boolean wait = in.flagOr("wait", true);
         int timeoutS = in.count("timeout_s", 600, 1, MAX_WAIT_S);
         long triggeredAt = System.currentTimeMillis();
@@ -89,6 +93,8 @@ public final class McpJobRuns {
         fields.put("kind", spec.kind());
         fields.put("jid", jid);
         fields.put("dir", spec.dir());
+        putOrigin(fields, spec.origin());
+        putDashboard(ctx, fields, spec.dir());
         putSelection(fields, spec);
         if (!wait) {
             fields.put("mcpEvents", "GET /mcp?jid=" + jid);
@@ -172,6 +178,18 @@ public final class McpJobRuns {
         if (seconds == null) return null;
         if (seconds < 0) throw new McpError(-32602, "deadline_s must be >= 0 (0 = no deadline)");
         return seconds * 1000L;
+    }
+
+    /** The origin the journal will record for this job — what the run record and the dashboard show. */
+    private static void putOrigin(Map<String, Object> fields, JobOrigin origin) {
+        fields.put("trigger", origin.trigger());
+        if (origin.session() != null) fields.put("session", origin.session());
+    }
+
+    /** The authenticated project page for the job's checkout; absent when HTTP is not serving. */
+    private static void putDashboard(McpContext ctx, Map<String, Object> fields, String dir) {
+        String url = ctx.dashboardLink().apply(dir);
+        if (url != null && !url.isBlank()) fields.put("dashboard", url);
     }
 
     /** Modules and test filters, emitted only when the caller narrowed the job. */

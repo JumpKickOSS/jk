@@ -34,6 +34,43 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void header_names_the_trigger_and_the_session_that_asked() {
+        BuildRecord cli = record(true, List.of(), List.of(), List.of(task("compile-java", "compile", "SUCCESS", 200)));
+        assertThat(JkResultsMarkdown.render(cli)).contains("\ntrigger: cli · jk 9.9\n");
+
+        BuildRecord mcp = new BuildRecord(
+                cli.id(),
+                cli.buildNumber(),
+                cli.schema(),
+                cli.kind(),
+                cli.dir(),
+                cli.coord(),
+                cli.projectId(),
+                cli.startedAt(),
+                cli.finishedAt(),
+                cli.millis(),
+                cli.success(),
+                cli.cancelled(),
+                cli.exitCode(),
+                cli.jkVersion(),
+                cli.tests(),
+                cli.modules(),
+                cli.steps(),
+                cli.diagnostics(),
+                "mcp",
+                "claude-code 3f9a",
+                cli.commit(),
+                cli.benefit(),
+                cli.running(),
+                cli.io(),
+                cli.requestId());
+        String md = JkResultsMarkdown.render(mcp);
+        assertThat(md)
+                .startsWith("# jk results — OK\n\n**OK** · build · `g:a` · #3 · 100ms · exit 0\n"
+                        + "trigger: mcp · session: claude-code 3f9a · jk 9.9\n\n");
+    }
+
+    @Test
     void compile_error_surfaces_file_line_and_snippet() {
         BuildRecord.Diag err = new BuildRecord.Diag(
                 "error",
@@ -203,6 +240,7 @@ class JkResultsMarkdownTest {
                 List.of(),
                 List.of(warn),
                 "cli",
+                null,
                 "abc123",
                 null,
                 false,
@@ -428,6 +466,7 @@ class JkResultsMarkdownTest {
                 steps,
                 diags,
                 "cli",
+                null,
                 null,
                 null,
                 false,

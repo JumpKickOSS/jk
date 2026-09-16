@@ -29,6 +29,7 @@ import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.RequestEnvironment;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import java.time.Instant;
@@ -122,7 +123,14 @@ public final class JsonlShape {
 
     /** Command session opened (details under project run dir). */
     public static String sessionStart(String command, List<String> argv) {
-        return new SessionStartLine(nowMillis(), command, argv == null ? List.of() : argv).encode();
+        String trigger = RequestEnvironment.trigger();
+        return new SessionStartLine(
+                        nowMillis(),
+                        command,
+                        argv == null ? List.of() : argv,
+                        trigger == null ? "cli" : trigger,
+                        RequestEnvironment.session())
+                .encode();
     }
 
     /**

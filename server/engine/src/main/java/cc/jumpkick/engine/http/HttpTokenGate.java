@@ -53,6 +53,13 @@ final class HttpTokenGate {
         Files.writeString(tokenFile, minted);
     }
 
+    /** The bearer token in force, for links the engine itself hands out; null before {@link #loadOrMint}. */
+    @Nullable
+    String tokenText() {
+        byte[] t = token;
+        return t == null ? null : new String(t, StandardCharsets.UTF_8);
+    }
+
     /** The persisted token if the file exists and holds a non-blank value, else {@code null}. */
     private @Nullable String readPersistedToken() {
         try {

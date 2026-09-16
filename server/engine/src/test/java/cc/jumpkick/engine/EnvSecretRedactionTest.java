@@ -109,6 +109,7 @@ class EnvSecretRedactionTest {
                 "cli",
                 null,
                 null,
+                null,
                 false,
                 null,
                 0L);
@@ -225,6 +226,7 @@ class EnvSecretRedactionTest {
                 List.of(),
                 List.of(new BuildRecord.Diag("error", project.toString(), "publish", "upload", onTheWire, "", "")),
                 "cli",
+                null,
                 null,
                 null,
                 false,

@@ -39,6 +39,7 @@ public record BuildRecord(
         List<Task> steps,
         List<Diag> diagnostics,
         @Nullable String trigger,
+        @Nullable String session,
         @Nullable String commit,
         @Nullable CacheBenefit benefit,
         boolean running,
@@ -80,6 +81,7 @@ public record BuildRecord(
                 steps,
                 diagnostics,
                 trigger,
+                session,
                 commit,
                 benefit,
                 running,
@@ -109,6 +111,7 @@ public record BuildRecord(
                 steps,
                 diagnostics,
                 trigger,
+                session,
                 commit,
                 benefit,
                 running,
@@ -152,11 +155,18 @@ public record BuildRecord(
                 List.of(),
                 List.of(),
                 trigger,
+                session,
                 commit,
                 /* benefit */ null,
                 /* running */ false,
                 io,
                 requestId);
+    }
+
+    /** {@code trigger}, then the session that asked when there is one: {@code mcp · claude-code 3f9a}. */
+    public @Nullable String origin() {
+        if (trigger == null || trigger.isBlank()) return null;
+        return session == null || session.isBlank() ? trigger : trigger + " · " + session;
     }
 
     /**
@@ -179,7 +189,7 @@ public record BuildRecord(
         return "optimize".equals(t) || "calibrate".equals(t) || "synthetic".equals(t);
     }
 
-    /** In-flight stub at admission. */
+    /** In-flight stub at admission, with no session and no engine {@code requestId}. */
     public static BuildRecord running(
             long buildNumber,
             String kind,
@@ -189,34 +199,13 @@ public record BuildRecord(
             long startedAt,
             String jkVersion,
             @Nullable String trigger) {
-        return new BuildRecord(
-                null,
-                buildNumber,
-                SCHEMA,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                0L,
-                0L,
-                false,
-                false,
-                0,
-                jkVersion,
-                null,
-                List.of(),
-                List.of(),
-                List.of(),
-                trigger,
-                null,
-                null,
-                true,
-                null,
-                0L);
+        return running(buildNumber, kind, dir, coord, projectId, startedAt, jkVersion, trigger, null, 0L);
     }
 
-    /** In-flight stub that records the engine {@code requestId} (MCP wait / job lookup). */
+    /**
+     * In-flight stub at admission: the origin that asked and the engine {@code requestId} (MCP wait
+     * / job lookup).
+     */
     public static BuildRecord running(
             long buildNumber,
             String kind,
@@ -226,6 +215,7 @@ public record BuildRecord(
             long startedAt,
             String jkVersion,
             @Nullable String trigger,
+            @Nullable String session,
             long requestId) {
         return new BuildRecord(
                 null,
@@ -247,6 +237,7 @@ public record BuildRecord(
                 List.of(),
                 List.of(),
                 trigger,
+                session,
                 null,
                 null,
                 true,

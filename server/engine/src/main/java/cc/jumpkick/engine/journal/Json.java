@@ -94,6 +94,7 @@ final class Json {
         o.put("diagnostics", diagnostics);
 
         o.put("trigger", r.trigger());
+        if (r.session() != null) o.put("session", r.session());
         o.put("commit", r.commit());
         o.put("running", r.running());
         if (r.requestId() > 0) o.put("requestId", r.requestId());
@@ -226,6 +227,7 @@ final class Json {
                 steps,
                 diagnostics,
                 text(o, "trigger"),
+                str(o, "session"),
                 str(o, "commit"),
                 benefit,
                 bool(o, "running"),

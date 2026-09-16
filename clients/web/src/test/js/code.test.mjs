@@ -55,6 +55,7 @@ test('routeFromHash nests files under #project/<id>', () => {
     col: 0,
     lineErr: false,
     msg: '',
+    run: 0,
   });
   assert.deepEqual(routeFromHash('#project/ab12/files'), {
     view: 'project',
@@ -65,6 +66,7 @@ test('routeFromHash nests files under #project/<id>', () => {
     col: 0,
     lineErr: false,
     msg: '',
+    run: 0,
   });
   const r = routeFromHash('#project/ab12/files/src/Main.java?line=42');
   assert.equal(r.view, 'project');

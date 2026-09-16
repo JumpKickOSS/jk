@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -35,7 +36,8 @@ class HostedVerbDecodeJobTest {
         String build = verb.decodeJob(JobSpec.of("build", dir.toString()));
         assertThat(EngineProtocol.typeOf(build)).isEqualTo(EngineProtocol.BUILD_REQUEST);
         assertThat(Jsonl.str(build, "dir")).isEqualTo(dir.toString());
-        assertThat(Jsonl.str(build, "trigger")).isEqualTo("web");
+        // The verb decodes the job; the admission point stamps who asked.
+        assertThat(Jsonl.str(build, "trigger")).isNull();
         assertThat(Jsonl.bool(build, "skipTests", false)).isFalse();
         assertThat(Jsonl.bool(build, "testOnly", false)).isFalse();
 
@@ -55,7 +57,16 @@ class HostedVerbDecodeJobTest {
         project(dir);
         WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
         String line = verb.decodeJob(new JobSpec(
-                "test", dir.toString(), List.of(), List.of("fast"), List.of("slow"), List.of(), false, false, null));
+                "test",
+                dir.toString(),
+                List.of(),
+                List.of("fast"),
+                List.of("slow"),
+                List.of(),
+                false,
+                false,
+                null,
+                JobOrigin.WEB));
         var sel = ProtoJobs.testSelectionOf(line);
         assertThat(sel.includeTags()).containsExactly("fast");
         assertThat(sel.excludeTags()).containsExactly("slow");
@@ -67,7 +78,7 @@ class HostedVerbDecodeJobTest {
         project(dir);
         String lock = new LockVerb(new InertVerbHost()).decodeJob(JobSpec.of("lock", dir.toString()));
         assertThat(EngineProtocol.typeOf(lock)).isEqualTo(EngineProtocol.LOCK_REQUEST);
-        assertThat(Jsonl.str(lock, "trigger")).isEqualTo("web");
+        assertThat(Jsonl.str(lock, "trigger")).isNull();
         assertThat(Jsonl.bool(lock, "freshen", true)).isFalse();
 
         String update = new UpdateVerb(new InertVerbHost()).decodeJob(JobSpec.of("update", dir.toString()));

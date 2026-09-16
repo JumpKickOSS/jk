@@ -58,19 +58,9 @@ public final class InstallVerb implements HostedVerb {
     public String decodeJob(JobSpec spec) {
         String m2 =
                 Path.of(System.getProperty("user.home"), ".m2", "repository").toString();
-        return ProtoSession.withTrigger(
-                new InstallRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                null,
-                                m2,
-                                null,
-                                spec.skipTests(),
-                                false,
-                                false,
-                                false)
-                        .encode(),
-                "web");
+        return new InstallRequest(
+                        spec.dir(), JkDirs.cache().toString(), null, m2, null, spec.skipTests(), false, false, false)
+                .encode();
     }
 
     @Override

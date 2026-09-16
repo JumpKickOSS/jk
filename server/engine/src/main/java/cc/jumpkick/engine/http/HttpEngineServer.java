@@ -6,6 +6,7 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
+import cc.jumpkick.runtime.base.ProjectIds;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -178,6 +179,10 @@ public final class HttpEngineServer implements AutoCloseable {
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.
         if (this.mcp != null) this.mcp.detailsFile(journal::detailsFile);
+        // jk_run answers the project page that follows the job it just started, authenticated.
+        if (this.mcp != null) {
+            this.mcp.dashboardLink(dir -> DashboardLinks.project(url(), tokens.tokenText(), ProjectIds.idOf(dir)));
+        }
         this.sse = new SseEndpoint(events, liveVitals, progressTokens, this.log);
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());

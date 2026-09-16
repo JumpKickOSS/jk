@@ -63,6 +63,12 @@ public final class HistoryCommand extends GroupCommand {
         return slash >= 0 && slash < norm.length() - 1 ? norm.substring(slash + 1) : norm;
     }
 
+    /** {@code trigger}, then {@code · session} when the run record names one. */
+    static String origin(@Nullable String trigger, @Nullable String session) {
+        if (trigger == null || trigger.isBlank()) return "";
+        return session == null || session.isBlank() ? trigger : trigger + " · " + session;
+    }
+
     static String duration(long millis) {
         if (millis < 0) return "—";
         if (millis < 1000) return millis + "ms";
@@ -139,6 +145,7 @@ public final class HistoryCommand extends GroupCommand {
                         String.valueOf(Jsonl.str(e, "id")),
                         label,
                         kind == null ? "" : kind,
+                        origin(Jsonl.str(e, "trigger"), Jsonl.str(e, "session")),
                         duration(Jsonl.longValue(e, "millis", -1)),
                         ago(Jsonl.longValue(e, "finishedAt", 0), now),
                         saved,
@@ -146,7 +153,9 @@ public final class HistoryCommand extends GroupCommand {
             }
             CommandWedge.envelopeStart();
             for (String line : Table.render(
-                    "Build history", List.of("", "Id", "Project", "Kind", "Took", "When", "Saved", "Notes"), rows)) {
+                    "Build history",
+                    List.of("", "Id", "Project", "Kind", "Trigger", "Took", "When", "Saved", "Notes"),
+                    rows)) {
                 CliOutput.out(line);
             }
             return 0;
@@ -202,6 +211,8 @@ public final class HistoryCommand extends GroupCommand {
             CliOutput.out("  status:   " + outcome(success, cancelled) + " (exit "
                     + Jsonl.longValue(record, "exitCode", 0) + ")");
             CliOutput.out("  kind:     " + Jsonl.str(record, "kind"));
+            String origin = origin(Jsonl.str(record, "trigger"), Jsonl.str(record, "session"));
+            if (!origin.isEmpty()) CliOutput.out("  trigger:  " + origin);
             CliOutput.out("  project:  " + label(Jsonl.str(record, "coord"), Jsonl.str(record, "dir")));
             CliOutput.out("  dir:      " + Jsonl.str(record, "dir"));
             CliOutput.out("  duration: " + duration(Jsonl.longValue(record, "millis", -1)) + "   "
