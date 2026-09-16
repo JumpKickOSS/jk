@@ -112,7 +112,7 @@ public final class WorkspaceClasspath {
                 return new Result(List.of(), List.of());
             }
             root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+            rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
             if (!rootManifest.isWorkspaceRoot()) {
                 return new Result(List.of(), List.of());
             }

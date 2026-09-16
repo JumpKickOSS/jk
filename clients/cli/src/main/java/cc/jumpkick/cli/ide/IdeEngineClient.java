@@ -75,7 +75,7 @@ public class IdeEngineClient {
     public static IdeEngineClient open(Path projectDir, Path cacheDir, @Nullable Path jdksDir) throws IOException {
         Objects.requireNonNull(projectDir, "projectDir");
         Objects.requireNonNull(cacheDir, "cacheDir");
-        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
             throw new IOException("no jk.toml in " + projectDir);
         }
         return new IdeEngineClient(projectDir, cacheDir, jdksDir);

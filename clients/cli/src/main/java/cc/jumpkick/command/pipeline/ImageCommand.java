@@ -116,7 +116,7 @@ public final class ImageCommand implements CliCommand {
         if (!TestCommand.installSelection(in, "Image")) return Exit.CONFIG;
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
-        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         if (!Files.exists(jkBuildPath)) {
             CommandWedge.printFail("Image", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
@@ -147,7 +147,7 @@ public final class ImageCommand implements CliCommand {
                 return Exit.USAGE;
             }
             projectDir = Path.of(selected.moduleDirs().getFirst());
-            jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
+            jkBuildPath = ManifestPaths.manifestIn(projectDir);
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         var peek = ProjectInfos.orNull(projectDir);

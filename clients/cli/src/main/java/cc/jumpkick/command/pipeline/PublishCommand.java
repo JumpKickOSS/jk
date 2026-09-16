@@ -141,7 +141,7 @@ public final class PublishCommand implements CliCommand {
 
         Path projectDir = global.workingDir();
         VariantSelection.install(in, projectDir);
-        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         if (!Files.exists(jkBuildPath)) {
             CommandWedge.printFail("Publish", jkBuildPath + " not found.");
             return Exit.NO_INPUT;

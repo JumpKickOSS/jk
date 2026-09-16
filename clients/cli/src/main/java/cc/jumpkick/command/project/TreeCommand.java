@@ -206,21 +206,21 @@ public final class TreeCommand implements CliCommand {
      * ({@code workspace.modules} + each member's {@code name}).
      */
     private static TreeDir matchColonNameBootstrap(Path root, String spec, String want) {
-        List<String> rels = TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), "workspace.modules")
+        List<String> rels = TomlScan.scan(ManifestPaths.manifestIn(root), "workspace.modules")
                 .stringArray("workspace.modules");
         List<String> dirs = new ArrayList<>();
         List<String> names = new ArrayList<>();
         if (rels.isEmpty()) {
             dirs.add(root.toString());
             String n =
-                    TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), "name").get("name");
+                    TomlScan.scan(ManifestPaths.manifestIn(root), "name").get("name");
             names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
         } else {
             for (String rel : rels) {
                 Path d = root.resolve(rel).toAbsolutePath().normalize();
                 dirs.add(d.toString());
                 String n =
-                        TomlScan.scan(d.resolve(ManifestPaths.MANIFEST), "name").get("name");
+                        TomlScan.scan(ManifestPaths.manifestIn(d), "name").get("name");
                 names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);
             }
         }
@@ -240,7 +240,7 @@ public final class TreeCommand implements CliCommand {
         if (Files.exists(relative) && !Files.isDirectory(relative)) {
             return TreeDir.fail("`" + spec + "` is not a directory");
         }
-        if (Files.isDirectory(relative) && !Files.isRegularFile(relative.resolve(ManifestPaths.MANIFEST))) {
+        if (Files.isDirectory(relative) && !Files.isRegularFile(ManifestPaths.manifestIn(relative))) {
             return TreeDir.fail("no jk.toml in " + relative);
         }
         return TreeDir.fail("`" + spec + "` is not a module directory");
@@ -258,7 +258,7 @@ public final class TreeCommand implements CliCommand {
     }
 
     private static boolean isModuleDir(Path dir) {
-        return Files.isDirectory(dir) && Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST));
+        return Files.isDirectory(dir) && Files.isRegularFile(ManifestPaths.manifestIn(dir));
     }
 
     record TreeDir(@Nullable Path dir, @Nullable String error) {

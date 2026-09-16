@@ -47,7 +47,6 @@ import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -158,8 +157,7 @@ public final class BuildCommand implements CliCommand {
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path startDir = global.workingDir();
-        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(buildFile)) {
+        if (!ManifestPaths.describesProject(startDir)) {
             CommandWedge.printFail("Build", "no jk.toml in " + PathDisplay.styledRaw(startDir));
             return Exit.CONFIG;
         }
@@ -550,11 +548,11 @@ public final class BuildCommand implements CliCommand {
      */
     private int runForDir(Path dir) throws Exception {
         long startNanos = System.nanoTime(); // captured before the forecast so timing includes it
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(buildFile)) {
+        if (!ManifestPaths.describesProject(dir)) {
             CommandWedge.printFail("Build", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }
+        Path buildFile = ManifestPaths.manifestIn(dir);
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
         try {

@@ -50,7 +50,7 @@ public final class GuardExplainVerb implements HostedVerb {
     /** The manifest's {@code [guards]} table; an unparseable manifest is the build's error, not explain's. */
     private static GuardsConfig guardsConfig(Path root) {
         try {
-            return JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+            return JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
         } catch (RuntimeException unparseable) {
             return GuardsConfig.ABSENT;
         }

@@ -115,7 +115,7 @@ public final class AffectedTestRun {
     /** Distinct workspace modules owning dirty paths; 1 when not a workspace or unreadable. */
     private static int countDirtyModules(Path wsRoot, List<String> dirty) {
         try {
-            JkBuild root = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+            JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
             if (!root.isWorkspaceRoot()) return 1;
             int n = 0;
             for (Path modDir : WorkspaceLoader.loadModules(wsRoot, root).keySet()) {

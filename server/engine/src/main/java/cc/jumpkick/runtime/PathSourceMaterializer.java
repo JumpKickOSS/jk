@@ -75,7 +75,7 @@ final class PathSourceMaterializer {
         Path repo = fpDir.resolve("repo");
         Path marker = fpDir.resolve("coordinate.txt");
 
-        boolean isJk = Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST));
+        boolean isJk = Files.isRegularFile(ManifestPaths.manifestIn(projectDir));
 
         // Coordinate: read cheaply from a jk target's project identity; a foreign target reveals it only
         // after building (cached in the marker for a fingerprint hit).
@@ -83,7 +83,7 @@ final class PathSourceMaterializer {
         String artifact = null;
         String version = null;
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
+            JkBuild project = JkBuildParser.parse(Files.readString(ManifestPaths.manifestIn(projectDir)));
             group = project.project().group();
             artifact = project.project().name();
             version = project.project().version();

@@ -76,7 +76,7 @@ public final class NativeVerb implements HostedVerb {
         Path entryDir = Path.of(spec.dir());
         JkBuild entry;
         try {
-            entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+            entry = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }
@@ -179,7 +179,7 @@ public final class NativeVerb implements HostedVerb {
             List<String> moduleTokens = body.moduleDirs();
             Set<Path> selected = new LinkedHashSet<>();
             if (!moduleTokens.isEmpty()) {
-                JkBuild entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                JkBuild entry = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
                 var hit = JobSelect.resolveTokens(entryDir, entry, moduleTokens);
                 if (hit != null && !hit.ok()) {
                     host.sendQuiet(

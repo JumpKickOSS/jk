@@ -17,6 +17,9 @@ import java.util.Optional;
  *       {@code <workspaceRoot>/jk-lock.toml} (one lock for the monorepo).
  *   <li><strong>Standalone project</strong> (not listed in any ancestor workspace) —
  *       {@code <projectDir>/jk-lock.toml}.
+ *   <li><strong>Shadowed project</strong> ({@code pom.xml}, no {@code jk.toml}) — beside the
+ *       shadow manifest, {@code <projectDir>/target/jk/shadow/jk-lock.toml}, so the repository
+ *       stays clean.
  * </ul>
  *
  * <p>Modules never own a lockfile. Paths not listed in {@code workspace.modules} are treated as
@@ -33,6 +36,9 @@ public final class LockPaths {
     public static Path lockOwnerDir(Path projectDir) {
         Objects.requireNonNull(projectDir, "projectDir");
         Path dir = projectDir.toAbsolutePath().normalize();
+        if (ManifestPaths.isShadowed(dir)) {
+            return ManifestPaths.shadowDir(dir);
+        }
         Path toml = dir.resolve(ManifestPaths.MANIFEST);
         if (Files.isRegularFile(toml) && WorkspaceScan.isWorkspaceRoot(dir)) {
             return dir;
@@ -58,8 +64,11 @@ public final class LockPaths {
      * workspace root lock rather than a standalone project lock.
      */
     public static boolean isWorkspaceLock(Path projectDir) {
-        Path owner = lockOwnerDir(projectDir);
         Path dir = projectDir.toAbsolutePath().normalize();
+        if (ManifestPaths.isShadowed(dir)) {
+            return false; // the shadow dir owns the lock, and it is no workspace
+        }
+        Path owner = lockOwnerDir(projectDir);
         if (!owner.equals(dir)) {
             return true; // member → root
         }

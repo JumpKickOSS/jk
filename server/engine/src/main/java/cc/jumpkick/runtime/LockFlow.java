@@ -76,7 +76,7 @@ public final class LockFlow {
     public static Result run(
             Path dir, Path cache, List<String> features, boolean noDefaultFeatures, @Nullable URI repoUrl)
             throws Exception {
-        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.exists(ManifestPaths.manifestIn(dir))) {
             return new Result(Exit.CONFIG, "no jk.toml in " + dir, null, null, 0);
         }
         Files.createDirectories(cache);
@@ -156,7 +156,7 @@ public final class LockFlow {
     private static String variantUnionHint(Path lockDir) {
         List<String> lines = new ArrayList<>();
         try {
-            JkBuild owner = JkBuildParser.parse(lockDir.resolve(ManifestPaths.MANIFEST));
+            JkBuild owner = JkBuildParser.parse(ManifestPaths.manifestIn(lockDir));
             collectOverlayLines(owner, null, lines);
             if (owner.isWorkspaceRoot()) {
                 for (var e : WorkspaceLoader.loadModules(lockDir, owner).entrySet()) {

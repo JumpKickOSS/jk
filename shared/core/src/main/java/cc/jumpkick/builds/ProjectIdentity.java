@@ -244,14 +244,14 @@ public record ProjectIdentity(
      */
     public static String coordOf(Path projectDir) {
         Path dir = projectDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(dir);
         var local = TomlScan.scan(toml, "group", "name");
         String g = blankToEmpty(local.get("group"));
         String n = blankToEmpty(local.get("name"));
         if (g.isEmpty()) {
             Optional<Path> root = WorkspaceScan.findRoot(dir);
             if (root.isPresent()) {
-                String inherited = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "group")
+                String inherited = TomlScan.scan(ManifestPaths.manifestIn(root.get()), "group")
                         .get("group");
                 g = blankToEmpty(inherited);
             }
@@ -272,7 +272,7 @@ public record ProjectIdentity(
      */
     private static Optional<String> explicitId(Path projectDir) {
         String id =
-                TomlScan.scan(projectDir.resolve(ManifestPaths.MANIFEST), "id").get("id");
+                TomlScan.scan(ManifestPaths.manifestIn(projectDir), "id").get("id");
         if (id == null || id.isBlank()) return Optional.empty();
         return Optional.of(normalizeId(id));
     }

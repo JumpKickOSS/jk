@@ -33,7 +33,7 @@ public final class DeclaredDeps {
     public static Set<String> collect(@Nullable Path projectOrWorkspaceRoot) {
         if (projectOrWorkspaceRoot == null) return Set.of();
         Path root = projectOrWorkspaceRoot.toAbsolutePath().normalize();
-        Path rootToml = root.resolve(ManifestPaths.MANIFEST);
+        Path rootToml = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(rootToml)) return Set.of();
 
         LibraryCatalog catalog;
@@ -46,7 +46,7 @@ public final class DeclaredDeps {
         TreeSet<String> out = new TreeSet<>();
         collectFromToml(rootToml, catalog, out);
         for (Path moduleDir : moduleDirs(root, rootToml)) {
-            Path mt = moduleDir.resolve(ManifestPaths.MANIFEST);
+            Path mt = ManifestPaths.manifestIn(moduleDir);
             if (Files.isRegularFile(mt)) collectFromToml(mt, catalog, out);
         }
         return Set.copyOf(out);

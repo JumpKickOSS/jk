@@ -2,6 +2,9 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.host.ManifestNames;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Objects;
 
 /**
  * Every file name jk itself owns on disk, spelled once.
@@ -21,8 +24,70 @@ import cc.jumpkick.host.ManifestNames;
  * <p>Test sources keep the literal on purpose: a fixture that writes {@code jk.toml} and asserts on
  * {@code no jk.toml in <dir>} is pinning the on-disk vocabulary, and a rename that the suite
  * silently followed would be a rename nothing verified.
+ *
+ * <p>{@link #manifestIn} is the one way to name a module's manifest. A directory with a {@code
+ * pom.xml} and no {@code jk.toml} is <em>shadowed</em>: its manifest is the rendering of Maven's
+ * effective POM under {@link #shadowDir}, a build artefact beside the module's other outputs, and
+ * its lock lives beside that shadow so the repository is never dirtied. The engine installs the
+ * {@link ShadowSource} that renders and refreshes the shadow; a process without one (the native
+ * client) only names the path.
  */
 public final class ManifestPaths {
+
+    /** Maven's manifest. A directory with one and no {@link #MANIFEST} is built through a shadow. */
+    public static final String POM = "pom.xml";
+
+    /**
+     * Where a shadowed module's manifest and lock live, relative to the module: inside the build
+     * output tree so {@code jk clean} reaches it and no checkout has to ignore a new path.
+     */
+    public static final String SHADOW_DIR = "target/jk/shadow";
+
+    /** Renders the shadow manifest of a shadowed module, refreshing it when the POM changed. */
+    @FunctionalInterface
+    public interface ShadowSource {
+        /** The shadow manifest of {@code dir}, current with {@code dir/pom.xml}. */
+        Path shadowManifest(Path dir);
+    }
+
+    private static volatile ShadowSource shadows = ManifestPaths::shadowManifestPath;
+
+    /** The engine installs the source that renders the effective POM; nothing else calls this. */
+    public static void installShadowSource(ShadowSource source) {
+        shadows = Objects.requireNonNull(source, "source");
+    }
+
+    /**
+     * The manifest that defines the module at {@code dir}: {@code dir/jk.toml} when it exists,
+     * the shadow manifest when {@code dir} is {@linkplain #isShadowed shadowed}, else the absent
+     * {@code dir/jk.toml} so existence tests keep their meaning.
+     */
+    public static Path manifestIn(Path dir) {
+        Path toml = dir.resolve(MANIFEST);
+        if (Files.isRegularFile(toml)) return toml;
+        if (Files.isRegularFile(dir.resolve(POM))) return shadows.shadowManifest(dir);
+        return toml;
+    }
+
+    /** True when {@code dir} has a {@code pom.xml} and no {@code jk.toml}. */
+    public static boolean isShadowed(Path dir) {
+        return !Files.isRegularFile(dir.resolve(MANIFEST)) && Files.isRegularFile(dir.resolve(POM));
+    }
+
+    /** True when {@code dir} holds a manifest jk can build from: a {@code jk.toml} or a {@code pom.xml}. */
+    public static boolean describesProject(Path dir) {
+        return Files.isRegularFile(dir.resolve(MANIFEST)) || Files.isRegularFile(dir.resolve(POM));
+    }
+
+    /** {@code dir/target/jk/shadow}: the shadow manifest's and lock's home for a shadowed module. */
+    public static Path shadowDir(Path dir) {
+        return dir.resolve(SHADOW_DIR);
+    }
+
+    /** The shadow manifest's path, whether or not it has been rendered. */
+    public static Path shadowManifestPath(Path dir) {
+        return shadowDir(dir).resolve(MANIFEST);
+    }
 
     /** The build manifest that defines a project or a workspace member. */
     public static final String MANIFEST = ManifestNames.MANIFEST;

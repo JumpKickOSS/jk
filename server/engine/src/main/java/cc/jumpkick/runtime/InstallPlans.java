@@ -84,7 +84,7 @@ public final class InstallPlans {
             boolean verbose,
             @Nullable Path graalHome)
             throws IOException {
-        JkBuild proj = JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST));
+        JkBuild proj = JkBuildParser.parse(ManifestPaths.manifestIn(projectDir));
 
         Path lockFile = LockPaths.lockFile(projectDir);
         boolean compact = ModuleLayout.isCompact(projectDir);
@@ -92,7 +92,7 @@ public final class InstallPlans {
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 projectDir,
                 cache,
-                projectDir.resolve(ManifestPaths.MANIFEST),
+                ManifestPaths.manifestIn(projectDir),
                 lockFile,
                 projectDir,
                 1,
@@ -273,7 +273,7 @@ public final class InstallPlans {
 
     /** Cache-install the thin jar of {@code moduleDir} after a workspace package. */
     public static void installThinJar(Path moduleDir, Path cache, Path m2Dir) throws IOException {
-        JkBuild proj = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
+        JkBuild proj = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir));
         proj = WorkspaceResolve.applyWorkspace(moduleDir, proj);
         cacheInstallArtifact(proj, BuildLayout.of(moduleDir, proj), cache, m2Dir);
     }

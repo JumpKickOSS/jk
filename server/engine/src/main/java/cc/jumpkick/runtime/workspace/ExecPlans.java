@@ -107,7 +107,7 @@ public final class ExecPlans {
             Map<String, String> clientEnv,
             @Nullable DebugJvm debug) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
             BuildLayout layout = BuildLayout.of(dir, project);
@@ -774,7 +774,7 @@ public final class ExecPlans {
                 Optional<Path> found = WorkspaceLocator.findRoot(dir);
                 if (found.isEmpty()) return Map.of();
                 root = found.get();
-                rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+                rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
                 if (!rootManifest.isWorkspaceRoot()) return Map.of();
             }
             Map<Path, Path> out = new LinkedHashMap<>();

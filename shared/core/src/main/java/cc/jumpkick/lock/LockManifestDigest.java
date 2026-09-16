@@ -55,7 +55,7 @@ public final class LockManifestDigest {
         // the memo re-validates, so a member added to [workspace] is caught by the root manifest's
         // own stamp changing and a member edited in place by its own.
         List<Stamp> inputs = new ArrayList<>();
-        Path rootToml = owner.resolve(ManifestPaths.MANIFEST);
+        Path rootToml = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(rootToml)) {
             absent(rootToml, inputs);
         } else {
@@ -66,7 +66,7 @@ public final class LockManifestDigest {
                 if (root.isWorkspaceRoot()) {
                     for (Map.Entry<Path, JkBuild> member :
                             WorkspaceLoader.loadModules(owner, root).entrySet()) {
-                        Path mt = member.getKey().resolve(ManifestPaths.MANIFEST);
+                        Path mt = ManifestPaths.manifestIn(member.getKey());
                         if (!Files.isRegularFile(mt)) {
                             absent(mt, inputs);
                             continue;

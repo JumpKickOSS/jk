@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.MarkdownTestReport;
@@ -175,6 +176,13 @@ public final class JkResultsMarkdown {
             meta = true;
         }
         if (meta) sb.append('\n');
+        if (notBlank(r.dir()) && ManifestPaths.isShadowed(Path.of(r.dir()))) {
+            sb.append("manifest: ")
+                    .append(ManifestPaths.POM)
+                    .append(", no ")
+                    .append(ManifestPaths.MANIFEST)
+                    .append(" (effective POM, built in place)\n");
+        }
         int tokensAt = sb.length();
         sb.append('\n');
         return tokensAt;

@@ -71,7 +71,7 @@ public final class JavaHomes {
     /** Bootstrap jdk/java pins for {@code projectDir}, workspace-inherited. Test-visible. */
     static @Nullable JkBuild readBuildSoft(Path projectDir) {
         try {
-            Path toml = projectDir.resolve(ManifestPaths.MANIFEST);
+            Path toml = ManifestPaths.manifestIn(projectDir);
             if (!Files.isRegularFile(toml)) return null;
             var scan = TomlScan.scan(toml, "jdk", "java");
             String jdk = scan.get("jdk");
@@ -81,7 +81,7 @@ public final class JavaHomes {
                 // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
                 var root = WorkspaceScan.findRoot(projectDir);
                 if (root.isPresent()) {
-                    var rootScan = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "jdk", "java");
+                    var rootScan = TomlScan.scan(ManifestPaths.manifestIn(root.get()), "jdk", "java");
                     if (isBlank(jdk)) jdk = rootScan.get("jdk");
                     if (isBlank(java)) java = rootScan.get("java");
                 }

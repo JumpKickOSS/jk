@@ -43,7 +43,7 @@ public final class AffectedTestsCompute {
     public static AffectedTests fromDisk(
             Path root, TestSelection selection, @Nullable Set<Path> onlyModules, @Nullable String since)
             throws Exception {
-        JkBuild build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         List<String> dirty;
         AffectedSelection.Result cone;
         if (since != null && !since.isBlank()) {

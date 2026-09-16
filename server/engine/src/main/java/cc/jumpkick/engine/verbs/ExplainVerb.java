@@ -61,7 +61,7 @@ public final class ExplainVerb implements HostedVerb {
                 Path entryDir = Path.of(req.dir());
                 Path cache = Path.of(req.cache());
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                JkBuild entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
                 String etaJdksDirStr = req.jdksDir();
                 int maxModuleConcurrency = req.maxModuleConcurrency();
                 if (maxModuleConcurrency <= 0 && req.serial()) {

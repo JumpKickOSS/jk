@@ -56,7 +56,7 @@ public final class McpReads {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> m = new LinkedHashMap<>();
         try {
-            var build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+            var build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
             Path cache = JkDirs.cache();
             Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
             ExplainReport report = ExplainReport.compute(root, build, cache, session, ExplainReport.Knobs.defaults());
@@ -226,7 +226,7 @@ public final class McpReads {
             Set<Path> only = null;
             if (modules != null && !modules.isEmpty()) {
                 // Same intersection semantics as jk test --affected -m ….
-                var entry = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+                var entry = JkBuildParser.parse(ManifestPaths.manifestIn(root));
                 var msel = ModuleSelection.resolve(root, entry, String.join(",", modules));
                 if (!msel.ok()) {
                     m.put("error", msel.errorMessage());

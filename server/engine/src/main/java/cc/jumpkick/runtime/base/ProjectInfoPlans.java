@@ -64,7 +64,7 @@ public final class ProjectInfoPlans {
             boolean affectedWip,
             boolean counts) {
         try {
-            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+            Path buildFile = ManifestPaths.manifestIn(dir);
             if (!Files.exists(buildFile)) {
                 return ProjectInfo.error("no jk.toml in " + dir);
             }
@@ -127,7 +127,7 @@ public final class ProjectInfoPlans {
                 wsRoot = root.get();
                 workspaceRootDir = wsRoot.toString();
                 try {
-                    rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+                    rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
                 } catch (Exception ignored) {
                     rootBuild = build;
                 }

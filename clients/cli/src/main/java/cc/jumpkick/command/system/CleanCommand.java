@@ -142,7 +142,7 @@ public final class CleanCommand implements CliCommand {
     private static List<Path> collectProjectDirs(Path workspaceRoot, List<String> warnings) {
         List<Path> dirs = new ArrayList<>();
         dirs.add(workspaceRoot);
-        Path rootToml = workspaceRoot.resolve(ManifestPaths.MANIFEST);
+        Path rootToml = ManifestPaths.manifestIn(workspaceRoot);
         if (!Files.exists(rootToml)) return dirs;
         var info = ProjectInfos.orNull(workspaceRoot);
         if (info != null && info.workspaceRoot()) {
@@ -178,7 +178,7 @@ public final class CleanCommand implements CliCommand {
 
     /** Invalidate this project's (+ workspace's) action-cache entries for {@code --force}. */
     private static int clearProjectActionCache(Path projectDir, @Nullable Path cacheDirOverride) {
-        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
             // Not a project dir: nothing project-scoped to clear; the file clean already ran.
             return 0;
         }

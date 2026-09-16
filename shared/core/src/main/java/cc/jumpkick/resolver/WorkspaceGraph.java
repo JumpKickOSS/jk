@@ -60,7 +60,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             var rootDir = WorkspaceLocator.findRoot(projectDir);
             if (rootDir.isEmpty()) return none();
             Path root = rootDir.get();
-            JkBuild rootBuild = JkBuildParser.parseLocal(root.resolve(ManifestPaths.MANIFEST));
+            JkBuild rootBuild = JkBuildParser.parseLocal(ManifestPaths.manifestIn(root));
             if (!rootBuild.isWorkspaceRoot()) return none();
             List<LoadedModule> loaded = loadModules(rootBuild.workspaceModules(), root, lock);
             List<JkBuild> siblingBuilds = new ArrayList<>(loaded.size());
@@ -94,7 +94,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
         if (rootDir == null) return byName;
         for (String m : modules) {
             try {
-                JkBuild b = JkBuildParser.parse(rootDir.resolve(m).normalize().resolve(ManifestPaths.MANIFEST));
+                JkBuild b = JkBuildParser.parse(ManifestPaths.manifestIn(rootDir.resolve(m).normalize()));
                 byName.put(
                         b.project().name(),
                         b.project().group() + ":" + b.project().name());
@@ -125,7 +125,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
         JkBuild rootBuild = null;
         if (rootDir != null) {
             try {
-                Path rootToml = rootDir.resolve(ManifestPaths.MANIFEST);
+                Path rootToml = ManifestPaths.manifestIn(rootDir);
                 if (Files.isRegularFile(rootToml)) rootBuild = JkBuildParser.parse(rootToml);
             } catch (Exception e) {
                 // inheritance best-effort
@@ -139,7 +139,7 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             JkBuild build = null;
             Lockfile lock = sharedLock;
             try {
-                Path toml = dir == null ? null : dir.resolve(ManifestPaths.MANIFEST);
+                Path toml = dir == null ? null : ManifestPaths.manifestIn(dir);
                 if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parseLocal(toml);
                 if (lock == null && dir != null) {
                     Path lf = LockPaths.lockFile(dir);

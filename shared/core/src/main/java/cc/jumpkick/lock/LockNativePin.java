@@ -38,7 +38,7 @@ public final class LockNativePin {
      */
     public static Optional<VersionSelector> selector(Path lockOwnerDir) throws IOException {
         Path dir = lockOwnerDir.toAbsolutePath().normalize();
-        Path toml = dir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(dir);
         if (!Files.isRegularFile(toml)) return Optional.empty();
 
         // raw selector -> the manifest that asked for it, for the conflict message.

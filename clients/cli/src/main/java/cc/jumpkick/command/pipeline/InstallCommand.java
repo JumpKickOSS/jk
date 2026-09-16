@@ -143,7 +143,7 @@ public final class InstallCommand {
 
     private int installCurrentProject() throws IOException {
         Path projectDir = global.workingDir();
-        Path manifest = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(projectDir);
         if (!Files.exists(manifest)) {
             CommandWedge.printFail("Install", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
@@ -376,7 +376,7 @@ public final class InstallCommand {
         // process's own and reports after the chip — it writes the user-home launcher and the
         // product layout, which the engine never touches.
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-        String target = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
+        String target = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
         ConsoleSpec spec = new ConsoleSpec(
                 "Install",
                 r -> BuildTails.buildOk() + BuildTails.builtArtifact(projectDir, proj),

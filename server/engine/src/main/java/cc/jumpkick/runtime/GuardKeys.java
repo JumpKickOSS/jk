@@ -249,10 +249,10 @@ final class GuardKeys {
     /** Manifest and lock digests, the model lane's read set; the lane and the forecast share it. */
     static List<String> modelTokens(Path root, JkBuild rootBuild) throws IOException {
         List<String> tokens = new ArrayList<>();
-        tokens.add(fileToken("manifest", root.resolve(ManifestPaths.MANIFEST)));
+        tokens.add(fileToken("manifest", ManifestPaths.manifestIn(root)));
         if (rootBuild.workspace() != null) {
             for (String m : rootBuild.workspace().modules()) {
-                tokens.add(fileToken("manifest:" + m, root.resolve(m).resolve(ManifestPaths.MANIFEST)));
+                tokens.add(fileToken("manifest:" + m, ManifestPaths.manifestIn(root.resolve(m))));
             }
         }
         tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));

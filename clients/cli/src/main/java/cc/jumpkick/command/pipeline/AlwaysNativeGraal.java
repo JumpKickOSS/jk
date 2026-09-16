@@ -41,7 +41,7 @@ final class AlwaysNativeGraal {
      */
     static List<Module> fromManifests(Path root) {
         Path abs = root.toAbsolutePath().normalize();
-        List<String> rels = TomlScan.scan(abs.resolve(ManifestPaths.MANIFEST), "workspace.modules")
+        List<String> rels = TomlScan.scan(ManifestPaths.manifestIn(abs), "workspace.modules")
                 .stringArray("workspace.modules");
         List<Path> dirs = new ArrayList<>();
         if (rels.isEmpty()) {
@@ -77,7 +77,7 @@ final class AlwaysNativeGraal {
     /** {@code dir} as an always-native module, or null when its build links no native image. */
     static @Nullable Module fromManifest(Path dir) {
         TomlScan scan = TomlScan.scan(
-                dir.resolve(ManifestPaths.MANIFEST), "application.native", "native.enabled", "native.graal");
+                ManifestPaths.manifestIn(dir), "application.native", "native.enabled", "native.graal");
         boolean always = EnvValues.parseBool(scan.get("application.native")).orElse(false)
                 || "always".equalsIgnoreCase(scan.get("native.enabled"));
         if (!always) return null;

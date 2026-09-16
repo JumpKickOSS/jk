@@ -95,7 +95,7 @@ public final class VerifyBuildCommand implements CliCommand {
         this.cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
         this.global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(dir);
         Path lockFile = LockPaths.lockFile(dir);
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
             CommandWedge.printFail("Verify", "jk.toml and jk-lock.toml required in " + PathDisplay.styledRaw(dir));
@@ -369,7 +369,7 @@ public final class VerifyBuildCommand implements CliCommand {
         if (name.equals(".git")) return true;
         return name.equals(BuildLayout.TARGET)
                 && d.getParent() != null
-                && Files.exists(d.getParent().resolve(ManifestPaths.MANIFEST));
+                && Files.exists(ManifestPaths.manifestIn(d.getParent()));
     }
 
     /**

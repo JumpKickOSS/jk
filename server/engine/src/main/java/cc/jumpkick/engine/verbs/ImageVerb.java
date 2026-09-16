@@ -97,7 +97,7 @@ public final class ImageVerb implements HostedVerb {
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 var wsRoot = WorkspaceLocator.findRoot(entryDir);
                 if (wsRoot.isPresent()) {
-                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
+                    JkBuild rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot.get()));
                     if (rootBuild.isWorkspaceRoot()
                             && !BuildGraph.canonicalPath(wsRoot.get()).equals(BuildGraph.canonicalPath(entryDir))) {
                         // Workspace member: same orchestrator as jk build; image terminal on this

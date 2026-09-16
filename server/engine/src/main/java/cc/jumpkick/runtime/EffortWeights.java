@@ -865,7 +865,7 @@ public final class EffortWeights {
      */
     public static int jdkWeight(Path dir, @Nullable Path jdksDir) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             Path lf = LockPaths.lockFile(dir);
             Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
@@ -980,7 +980,7 @@ public final class EffortWeights {
     static boolean producesNativeImage(Path dir) {
         try {
             if (dir == null || !Files.isDirectory(dir)) return false;
-            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             return project.nativeMode() == JkBuild.NativeMode.ALWAYS;
         } catch (Exception e) {
             return false;
@@ -998,7 +998,7 @@ public final class EffortWeights {
             var cfg = SessionContext.current().config();
             if (cfg.rebuildOr(false) || cfg.forceOr(false)) return true;
             if (dir == null || !Files.isDirectory(dir)) return true;
-            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             BuildLayout layout = BuildLayout.of(dir, project);
             if (!Files.isRegularFile(layout.mainJar())) return true;
             boolean compact = ModuleLayout.isCompact(dir);
@@ -1037,7 +1037,7 @@ public final class EffortWeights {
         try {
             if (SessionContext.current().config().rebuildOr(false)) return false;
             if (SessionContext.current().config().forceOr(false)) return false;
-            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             BuildLayout layout = BuildLayout.of(dir, project);
             Path art = artifact.apply(layout);
             if (!Files.isRegularFile(art)) return false;

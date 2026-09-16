@@ -80,7 +80,7 @@ public final class RunCommand {
         // after the build. Workspace roots build the whole graph, then pick a module to run.
         Path cache = cacheDir();
 
-        String coord = ProjectInfos.buildTarget(projectDir.resolve(ManifestPaths.MANIFEST), projectDir);
+        String coord = ProjectInfos.buildTarget(ManifestPaths.manifestIn(projectDir), projectDir);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         // In chip modes (AUTO/QUIET) the build plan settles as the ▶ Run CommandWedge with
         // "Executing `java …`" — no second banner line. In VERBOSE/JSON no chip is printed, so

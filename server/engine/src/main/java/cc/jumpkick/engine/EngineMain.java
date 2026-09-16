@@ -12,6 +12,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -98,6 +99,7 @@ public final class EngineMain {
             installLogging(config); // re-bind: System.err is now the capped sink
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
+            ShadowManifests.install();
             try {
                 BuiltInPluginJars.installUserConfig();
             } catch (RuntimeException badConfig) {

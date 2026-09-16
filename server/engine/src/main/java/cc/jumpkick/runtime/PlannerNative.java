@@ -344,7 +344,7 @@ public final class PlannerNative {
             metadataDirs = withTrain;
             // Refuse to native-build on stale train outputs when configured.
             try {
-                var trainCfg = cc.jumpkick.config.JkBuildParser.trainConfig(dir.resolve(ManifestPaths.MANIFEST));
+                var trainCfg = cc.jumpkick.config.JkBuildParser.trainConfig(ManifestPaths.manifestIn(dir));
                 String stale = TrainRunner.staleReason(dir, project, layout, lockFile, javaHome, trainCfg);
                 if (stale != null) {
                     ctx.error("train-stale", stale);

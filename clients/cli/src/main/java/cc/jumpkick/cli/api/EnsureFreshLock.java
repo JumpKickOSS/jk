@@ -113,7 +113,7 @@ public final class EnsureFreshLock {
             @Nullable URI repoUrl) {
         if (projectDir == null) return Exit.SUCCESS; // no project, nothing to freshen
         Path dir = projectDir.toAbsolutePath().normalize();
-        if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
+        if (!ManifestPaths.describesProject(dir)) {
             return Exit.SUCCESS; // caller already validated project
         }
         if (!needsRefresh(dir)) {
@@ -216,12 +216,15 @@ public final class EnsureFreshLock {
         }
     }
 
-    /** Plain {@code group:name} for the lock owner (workspace root or standalone). */
+    /**
+     * Plain {@code group:name} for the lock owner (workspace root or standalone). A shadowed
+     * project's owner is its shadow dir; the identity is asked of the project itself.
+     */
     static String lockCoordLabel(Path projectDir) {
         try {
             Path owner = LockPaths.lockOwnerDir(projectDir);
-            Path toml = owner.resolve(ManifestPaths.MANIFEST);
-            if (!Files.isRegularFile(toml)) return owner.getFileName().toString();
+            if (ManifestPaths.isShadowed(projectDir)) owner = projectDir;
+            if (!ManifestPaths.describesProject(owner)) return owner.getFileName().toString();
             var info = ProjectInfos.orNull(owner);
             if (info != null && info.error() == null) {
                 String g = info.group();

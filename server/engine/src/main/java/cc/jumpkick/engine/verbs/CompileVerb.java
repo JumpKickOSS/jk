@@ -103,7 +103,7 @@ public final class CompileVerb implements HostedVerb {
         if (!spec.modules().isEmpty()) {
             JkBuild entry;
             try {
-                entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                entry = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
             } catch (Exception e) {
                 throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
             }
@@ -128,7 +128,7 @@ public final class CompileVerb implements HostedVerb {
                 // The client mirrors this condition and expects workspace events.
                 var wsRoot = WorkspaceLocator.owningRoot(entryDir);
                 if (wsRoot.isPresent()) {
-                    JkBuild rootBuild = JkBuildParser.parse(wsRoot.get().resolve(ManifestPaths.MANIFEST));
+                    JkBuild rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot.get()));
                     if (rootBuild.isWorkspaceRoot()) {
                         Set<Path> selected = new LinkedHashSet<>();
                         List<String> raw = new ArrayList<>();

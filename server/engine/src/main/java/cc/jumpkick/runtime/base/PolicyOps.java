@@ -26,7 +26,7 @@ public final class PolicyOps {
 
     public static DenyReport denyCheck(Path dir) {
         try {
-            var policy = JkBuildParser.denyPolicy(dir.resolve(ManifestPaths.MANIFEST));
+            var policy = JkBuildParser.denyPolicy(ManifestPaths.manifestIn(dir));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             List<PolicyChecker.Violation> violations = new PolicyChecker(policy).check(lock);
             List<String> modules = new ArrayList<>(violations.size());

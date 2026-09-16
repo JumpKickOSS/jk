@@ -36,8 +36,8 @@ final class DevSidecars {
             throws IOException {
         Map<String, ExecPlan.Sidecar> byName = new LinkedHashMap<>();
         Path root = WorkspaceLocator.findRoot(moduleDir).orElse(null);
-        if (root != null && !root.equals(moduleDir) && Files.isRegularFile(root.resolve(ManifestPaths.MANIFEST))) {
-            JkBuild rootBuild = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        if (root != null && !root.equals(moduleDir) && Files.isRegularFile(ManifestPaths.manifestIn(root))) {
+            JkBuild rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(root));
             for (Sidecar s : rootBuild.build().devSidecars()) {
                 byName.put(s.name(), resolve(root, s, clientEnv));
             }

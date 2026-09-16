@@ -82,7 +82,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             // accepted here and fails as a job (202 + request-finish), never a bare 400.
             JkBuild entry;
             try {
-                entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                entry = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
             } catch (Exception e) {
                 throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
             }
@@ -184,7 +184,7 @@ public final class WorkspaceBuildVerb implements HostedVerb {
                     ? null
                     : dirtyHintDirs.stream().map(Path::of).collect(Collectors.toUnmodifiableSet());
             if (dirty == null && !moduleTokens.isEmpty()) {
-                JkBuild entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                JkBuild entry = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
                 var hit = JobSelect.resolveTokens(entryDir, entry, moduleTokens);
                 if (hit != null && !hit.ok()) {
                     host.sendQuiet(

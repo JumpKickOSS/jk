@@ -60,7 +60,7 @@ public final class AssemblyCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path toml = dir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(dir);
         if (!Files.isRegularFile(toml)) {
             CommandWedge.printFail("Assemble", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;

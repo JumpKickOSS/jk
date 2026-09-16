@@ -107,7 +107,7 @@ public final class ImagePlans {
             @Nullable String tarballArg,
             @Nullable String dockerExecutableArg,
             @Nullable UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
         Path lockFile = LockPaths.lockFile(projectDir);
         boolean compact = ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);

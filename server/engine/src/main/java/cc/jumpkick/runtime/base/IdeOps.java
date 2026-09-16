@@ -78,7 +78,7 @@ public final class IdeOps {
             throws IOException {
         Cas cas = JkStores.storeCas();
 
-        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(startDir);
         if (!Files.exists(buildFile)) {
             return IdeWireModel.error("no jk.toml in " + startDir);
         }
@@ -160,7 +160,7 @@ public final class IdeOps {
         } else {
             var rootOpt = WorkspaceLocator.findRoot(startDir);
             wsRoot = rootOpt.orElse(startDir);
-            rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+            rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
         }
         // Canonicalize wsRoot so paths from BuildGraph (which calls toRealPath) and workspace-loader
         // paths are consistent — critical for correct relativize() on systems where the temp/project

@@ -657,7 +657,7 @@ public final class TestCommand implements CliCommand {
         if (scriptsOnly && !BuildLogicToml.hasStem(root, "guard")) {
             throw new IllegalArgumentException(BuildLogicToml.NO_GUARD_SCRIPTS);
         }
-        Path toml = root.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(root);
         String explicit = in.value("profile").orElse(null);
         boolean explicitProfile = explicit != null && !explicit.isBlank();
         String profileName = explicitProfile ? explicit : Profiles.autoSelect(System.getenv());

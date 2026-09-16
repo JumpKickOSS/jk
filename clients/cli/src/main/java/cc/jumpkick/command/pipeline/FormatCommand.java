@@ -91,7 +91,7 @@ public final class FormatCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         boolean check = in.isSet("check");
         Path projectDir = global.workingDir();
-        Path buildFile = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(projectDir);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;

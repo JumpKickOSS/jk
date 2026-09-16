@@ -128,7 +128,7 @@ public final class GuardSuiteLibrary {
 
     /** The workspace module named like the library, compiled or not; {@code null} when {@code root} has none. */
     public static @Nullable Module workspaceModule(Path root) {
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return null;
         JkBuild build;
         try {
@@ -139,7 +139,7 @@ public final class GuardSuiteLibrary {
         if (build.workspace() == null) return null;
         for (String m : build.workspace().modules()) {
             Path dir = root.resolve(m);
-            Path mm = dir.resolve(ManifestPaths.MANIFEST);
+            Path mm = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(mm)) continue;
             try {
                 JkBuild module = JkBuildParser.parse(mm);

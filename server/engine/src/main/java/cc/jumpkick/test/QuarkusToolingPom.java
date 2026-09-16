@@ -38,7 +38,7 @@ final class QuarkusToolingPom {
     static void ensure(@Nullable Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return;
         Path pom = moduleDir.resolve("pom.xml");
-        Path jkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path jkToml = ManifestPaths.manifestIn(moduleDir);
         if (!Files.isRegularFile(jkToml)) return;
         try {
             String toml = Files.readString(jkToml);

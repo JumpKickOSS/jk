@@ -91,7 +91,7 @@ public final class ModuleLayout {
      * traditional, {@code null} = no key or an unrecognized value (let the tree decide).
      */
     private static @Nullable Boolean explicitLayout(Path dir) {
-        Path toml = dir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(dir);
         Path key = toml.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return null; // absent or unreadable — let the tree decide

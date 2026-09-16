@@ -85,7 +85,7 @@ public final class NativePreflight {
      */
     public static @Nullable String specifiedMain(Path moduleDir, @Nullable String cliOverride) {
         if (notBlank(cliOverride)) return cliOverride;
-        Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(moduleDir);
         if (!Files.isRegularFile(toml)) return null;
         var scan = TomlScan.scan(toml, "native.main", "image.main", "application.main");
         String fromNative = scan.get("native.main");

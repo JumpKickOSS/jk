@@ -34,7 +34,7 @@ public final class GraphOps {
     /** The marker-tagged tree, ready for {@link DependencyTreeStyle#applyStyling} client-side. */
     public static String treeRender(Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames)
             throws IOException {
-        JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+        JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
         Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
         List<Scope> scopes = scopeNames.isEmpty()
                 ? null
@@ -45,7 +45,7 @@ public final class GraphOps {
 
     public static WhyReport why(Path dir, @Nullable String query) {
         try {
-            JkBuild project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
             // One LockGraph per request: a fuzzy query with many matches must not rebuild the
             // whole reverse adjacency per match.

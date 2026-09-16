@@ -63,7 +63,7 @@ public final class LockFreshness {
      */
     public static boolean isStale(Path dir, Path lockFile) {
         try {
-            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+            Path buildFile = ManifestPaths.manifestIn(dir);
             if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
 
             Lockfile lock = LockfileReader.read(lockFile);

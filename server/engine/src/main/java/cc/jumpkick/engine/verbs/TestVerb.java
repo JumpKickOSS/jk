@@ -65,7 +65,7 @@ public final class TestVerb implements HostedVerb {
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
-            Path buildFile = entryDir.resolve(ManifestPaths.MANIFEST);
+            Path buildFile = ManifestPaths.manifestIn(entryDir);
             Path lockFile = LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 

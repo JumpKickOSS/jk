@@ -10,24 +10,24 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Resolved project dir + {@code jk.toml}/{@code jk-lock.toml} for leaf commands that require a
- * project. On a missing manifest, {@link #require} prints the standard error and returns empty
- * ({@link Exit#CONFIG}). Workspace-ascent commands resolve their own root.
+ * Resolved project dir + manifest/{@code jk-lock.toml} for leaf commands that require a project.
+ * A {@code pom.xml} with no {@code jk.toml} counts: its manifest is the engine-rendered shadow
+ * ({@link ManifestPaths#manifestIn}). On neither, {@link #require} prints the standard error and
+ * returns empty ({@link Exit#CONFIG}). Workspace-ascent commands resolve their own root.
  */
 public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
 
     /**
-     * Resolve the project at {@code dir}, requiring {@code jk.toml}. On absence, prints {@code jk
-     * <command>: no jk.toml in <dir>} to stderr and returns empty (the caller returns {@link
-     * Exit#CONFIG}).
+     * Resolve the project at {@code dir}, requiring a {@code jk.toml} or a {@code pom.xml}. On
+     * absence, prints {@code jk <command>: no jk.toml in <dir>} to stderr and returns empty (the
+     * caller returns {@link Exit#CONFIG}).
      */
     public static Optional<ProjectContext> require(Path dir, String command) {
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(buildFile)) {
+        if (!ManifestPaths.describesProject(dir)) {
             CommandWedge.printFail(command, "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Optional.empty();
         }
-        return Optional.of(new ProjectContext(dir, buildFile, LockPaths.lockFile(dir)));
+        return Optional.of(new ProjectContext(dir, ManifestPaths.manifestIn(dir), LockPaths.lockFile(dir)));
     }
 
     /** True when the project has been locked ({@code jk-lock.toml} exists). */

@@ -59,7 +59,7 @@ public final class ForecastVerb implements HostedVerb {
                 Path cache = Path.of(req.cache());
                 boolean skipTests = req.skipTests();
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
-                JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+                JkBuild entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
                 SessionContext.where(session, () -> {
                     BuildService.ResolvedGraph graph;
                     try {

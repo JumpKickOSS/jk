@@ -202,7 +202,7 @@ public final class ModuleSelection {
         String bare = bareName(rel);
         if (!bare.isBlank()) aliases.add(bare);
         if (withNames) {
-            Path manifest = root.resolve(rel).resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(root.resolve(rel));
             if (Files.isRegularFile(manifest)) {
                 try {
                     JkBuild unit = JkBuildParser.parse(manifest);

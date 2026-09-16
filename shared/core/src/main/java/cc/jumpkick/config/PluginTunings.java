@@ -64,7 +64,7 @@ public final class PluginTunings {
         PluginTuning eff = base == null ? PluginTuning.NONE : base;
         return projectDir == null
                 ? eff
-                : overlay(eff, JkBuildParser.jvmTuning(projectDir.resolve(ManifestPaths.MANIFEST)));
+                : overlay(eff, JkBuildParser.jvmTuning(ManifestPaths.manifestIn(projectDir)));
     }
 
     /** The {@code JK_*} environment layer as {@code env} answers it. Coercion via the shared {@link EnvValues}. */

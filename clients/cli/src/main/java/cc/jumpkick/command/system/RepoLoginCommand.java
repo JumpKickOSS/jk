@@ -127,7 +127,7 @@ public final class RepoLoginCommand implements CliCommand {
         for (RepositorySpec spec : GlobalConfig.repositories()) {
             if (spec.name().equals(id)) return spec.url();
         }
-        for (RepositoriesScan.Repo repo : RepositoriesScan.scan(workingDir.resolve(ManifestPaths.MANIFEST))) {
+        for (RepositoriesScan.Repo repo : RepositoriesScan.scan(ManifestPaths.manifestIn(workingDir))) {
             if (repo.name().equals(id)) return URI.create(repo.url());
         }
         return hostAsUrl(id);

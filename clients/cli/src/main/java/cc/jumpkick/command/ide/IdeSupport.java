@@ -80,7 +80,7 @@ public final class IdeSupport {
 
         Path startDir = global.workingDir();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
-        if (!Files.exists(startDir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.exists(ManifestPaths.manifestIn(startDir))) {
             throw new IdeException(2, "no jk.toml in " + PathDisplay.styledRaw(startDir));
         }
 

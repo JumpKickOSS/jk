@@ -161,7 +161,7 @@ public final class EngineHttpFront {
 
     private static Path requireProject(String dirStr) {
         Path entryDir = PathUtil.resolveUserPath(dirStr);
-        if (!Files.isRegularFile(entryDir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.isRegularFile(ManifestPaths.manifestIn(entryDir))) {
             throw new IllegalArgumentException("no jk.toml in " + entryDir);
         }
         return entryDir;

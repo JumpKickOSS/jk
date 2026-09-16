@@ -265,7 +265,7 @@ final class PlanRun {
     private int runSingle(Path cache, Labels labels, GlobalOptions global, BuildPlanConsole.Mode mode) {
         ConsoleSpec spec = new ConsoleSpec(
                 labels.name(), r -> Theme.paint(labels.done(), Theme.active().focused()), r -> labels.failed());
-        String target = ProjectInfos.buildTarget(entry.dir().resolve(ManifestPaths.MANIFEST), entry.dir());
+        String target = ProjectInfos.buildTarget(ManifestPaths.manifestIn(entry.dir()), entry.dir());
         BuildPlanResult result;
         try {
             result = verb.single(
