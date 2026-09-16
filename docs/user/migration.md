@@ -81,16 +81,20 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | main, 2026-09-16 |
-|---|---:|---:|
-| import with no Tier-3 row | 15 | 13 |
-| `jk lock` succeeds | 2 | 6 |
-| `jk build --skip-tests` compiles something | 1 | 3 |
-| `jk test` runs and passes | 0 | 0 |
+| Count (of 20) | jk 0.13.7 | main, 2026-09-16, run 2 | main, 2026-09-16, run 3 |
+|---|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 |
+| `jk lock` succeeds | 2 | 6 | 6 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 |
+| `jk test` runs and passes | 0 | 0 | 0 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
-Tier-3 row where 0.13.7 wrote `=unresolved` and failed later. The one repository that runs end to
+Tier-3 row where 0.13.7 wrote `=unresolved` and failed later. Run 3 lowered it again for the same
+reason: the packaging mapping now names a `war` module (apollo, java-design-patterns) as a Tier-3
+row instead of importing it as a jar that Maven would never have built that way. An import count
+that falls because a silent mismatch became a named one is the ratchet working; a count that falls
+because a repository stopped importing is not. The one repository that runs end to
 end, TheAlgorithms/Java, runs its 9,745 tests in 13 s under jk against 37 s under Maven, with one
 jk-only failure (a recursive test that needs the platform default thread stack). The walls that
 stop the other nineteen are named in the corpus's `tier3-reasons.md`, each with its ticket: a
