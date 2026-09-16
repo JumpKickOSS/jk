@@ -55,6 +55,24 @@ class ClasspathProcessorsTest {
                 .containsExactly(declared);
     }
 
+    @Test
+    void the_registered_processor_classes_are_read_from_a_jar_or_a_directory(@TempDir Path tmp) throws IOException {
+        Path jar = jar(tmp.resolve("gen.jar"), true);
+        Path dir = Files.createDirectories(tmp.resolve("classes"));
+        Files.createDirectories(dir.resolve("META-INF/services"));
+        Files.writeString(
+                dir.resolve(ClasspathProcessors.SERVICE),
+                "# the mapper\ncom.example.Mapper # trailing note\n\n  com.example.Validator  \n");
+
+        assertThat(ClasspathProcessors.processorNames(jar)).containsExactly("com.example.Gen");
+        assertThat(ClasspathProcessors.processorNames(dir))
+                .containsExactly("com.example.Mapper", "com.example.Validator");
+        assertThat(ClasspathProcessors.processorNames(jar(tmp.resolve("plain.jar"), false)))
+                .isEmpty();
+        assertThat(ClasspathProcessors.processorNames(tmp.resolve("absent.jar")))
+                .isEmpty();
+    }
+
     private static Path jar(Path file, boolean registersProcessor) throws IOException {
         try (OutputStream out = Files.newOutputStream(file);
                 JarOutputStream jar = new JarOutputStream(out)) {
