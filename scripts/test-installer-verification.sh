@@ -51,11 +51,23 @@ chmod +x "$WORK/bin/curl" "$WORK/bin/git"
 
 ARTIFACT="jk-linux-x86_64-1.0.0"
 RELEASE="$WORK/http/releases/1.0.0"
-cat >"$RELEASE/$ARTIFACT" <<'SH'
+# The fixture client: records every invocation in FIXTURE_JK_LOG and, asked to `activate --yes`,
+# writes the installer block into the rc files of $HOME the way the real client does.
+write_artifact() {
+  cat >"$RELEASE/$ARTIFACT" <<'SH'
 #!/usr/bin/env sh
+if [ -n "${FIXTURE_JK_LOG:-}" ]; then printf '%s\n' "$*" >>"$FIXTURE_JK_LOG"; fi
+case " $* " in
+  *" activate --yes "*)
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+      printf '# >>> jk installer >>>\neval "$("%s/bin/jk" activate sh)"\n# <<< jk installer <<<\n' "${JK_HOME:-$HOME/.jk}" >>"$rc"
+    done ;;
+esac
 exit 0
 SH
-chmod +x "$RELEASE/$ARTIFACT"
+  chmod +x "$RELEASE/$ARTIFACT"
+}
+write_artifact
 
 write_evidence() {
   local body="${1:-}"
@@ -70,16 +82,27 @@ write_evidence() {
 }
 
 # Runs the installer against the fixture site; extra NAME=VALUE arguments override the defaults.
+# $HOME is a fixture user home with seeded rc files, never the developer's; INSTALLER_ARGS are
+# the installer's own arguments (`--rc`).
+INSTALLER_ARGS=()
+seed_user_home() {
+  rm -rf "$1" && mkdir -p "$1"
+  printf 'export EDITOR=vi\n' >"$1/.zshrc"
+  printf 'alias ll="ls -l"\n' >"$1/.bashrc"
+}
+seed_user_home "$WORK/user-home"
 run_installer() {
   local home="$1"
   shift
   env PATH="$WORK/bin:$PATH" \
     FIXTURE_HTTP_ROOT="$WORK/http" \
+    FIXTURE_JK_LOG="$WORK/jk-calls" \
+    HOME="$WORK/user-home" \
     JK_HOME="$home" \
     JK_RELEASES_URL="https://fixture/releases" \
     CI=1 \
     "$@" \
-    bash "$WORK/install.sh" >"$WORK/last-install.log" 2>&1
+    bash "$WORK/install.sh" "${INSTALLER_ARGS[@]}" >"$WORK/last-install.log" 2>&1
 }
 
 # The pinned flow (explicit version and archive URL) that every refusal case exercises.
@@ -104,15 +127,51 @@ assert_refused_unchanged() {
 }
 
 write_evidence
+rm -f "$WORK/jk-calls"
 run_pinned_installer "$WORK/home-success"
 cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-success/bin/jk"
+
+# ---- the shell rc block ------------------------------------------------------------------------
+#
+# JK_HOME above is a private home, so the run left the user's rc files exactly as seeded, never
+# ran `jk activate --yes`, and printed the eval line for this shell instead.
+assert_rc_untouched() {
+  [[ "$(cat "$WORK/user-home/.zshrc")" == 'export EDITOR=vi' && "$(cat "$WORK/user-home/.bashrc")" == 'alias ll="ls -l"' ]] || {
+    cat "$WORK/user-home/.zshrc" "$WORK/user-home/.bashrc" >&2
+    echo "$1: a private JK_HOME rewrote the user's rc files" >&2
+    exit 1
+  }
+}
+assert_rc_untouched "private-home"
+if grep -q -- "activate --yes" "$WORK/jk-calls"; then
+  echo "a private JK_HOME ran 'jk activate --yes'" >&2; exit 1
+fi
+grep -qF -- "the shell rc files are left alone" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "a private JK_HOME did not say the rc files were left alone" >&2; exit 1; }
+grep -qF -- "\"$WORK/home-success/bin/jk\" activate" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "a private JK_HOME did not print the activate line for its own bin" >&2; exit 1; }
+
+# --rc asks for the block on a private home.
+rm -f "$WORK/jk-calls"
+INSTALLER_ARGS=(--rc)
+run_pinned_installer "$WORK/home-rc" || { cat "$WORK/last-install.log" >&2; echo "--rc install failed" >&2; exit 1; }
+INSTALLER_ARGS=()
+grep -q -- "activate --yes" "$WORK/jk-calls" || { echo "--rc did not run 'jk activate --yes'" >&2; exit 1; }
+grep -qF -- "$WORK/home-rc/bin/jk" "$WORK/user-home/.zshrc" || { echo "--rc did not write the rc block" >&2; exit 1; }
+seed_user_home "$WORK/user-home"
+
+# The default home ($HOME/.jk, JK_HOME unset) writes the block unasked.
+rm -f "$WORK/jk-calls"
+run_pinned_installer "" || { cat "$WORK/last-install.log" >&2; echo "default-home install failed" >&2; exit 1; }
+grep -q -- "activate --yes" "$WORK/jk-calls" || { echo "the default home did not run 'jk activate --yes'" >&2; exit 1; }
+cmp -s "$RELEASE/$ARTIFACT" "$WORK/user-home/.jk/bin/jk" || { echo "the default home did not land under \$HOME/.jk/bin" >&2; exit 1; }
+grep -qF -- "$WORK/user-home/.jk/bin/jk" "$WORK/user-home/.bashrc" || { echo "the default home did not write the rc block" >&2; exit 1; }
+seed_user_home "$WORK/user-home"
 
 write_evidence
 printf 'tampered' >>"$RELEASE/$ARTIFACT"
 assert_refused_unchanged "tampered-artifact"
-git_artifact="$RELEASE/$ARTIFACT"
-printf '%s\n' '#!/usr/bin/env sh' 'exit 0' >"$git_artifact"
-chmod +x "$git_artifact"
+write_artifact
 
 write_evidence
 printf '%064d  %s\n' 0 "$ARTIFACT" >"$RELEASE/SHA256SUMS"

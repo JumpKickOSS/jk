@@ -5,7 +5,14 @@
 # Usage:
 #   curl -fsSL https://jumpkick.build/install.sh | bash
 #   wget -qO- https://jumpkick.build/install.sh | bash
-#   bash install.sh [/path/to/jk[.xz|.zip] | /path/to/lib/jk-<version>.jar]
+#   bash install.sh [--rc] [/path/to/jk[.xz|.zip] | /path/to/lib/jk-<version>.jar]
+#
+# Options:
+#   --rc             Write the `# >>> jk installer >>>` block into the shell rc files
+#                    for an install whose JK_HOME is not the default $HOME/.jk. An
+#                    install into the default home always writes it; a private home
+#                    leaves ~/.zshrc and ~/.bashrc alone and prints the eval line to
+#                    run instead.
 #
 # Environment variables:
 #   JK_ARCHIVE_URL   Override the archive URL to download. JK_VERSION is required
@@ -35,6 +42,7 @@ main() {
   # directory JkDirs.binDirectory() resolves — which it is, by having one answer.
   JK_HOME_DIR="${JK_HOME:-${HOME}/.jk}"
   INSTALL_DIR="${JK_HOME_DIR}/bin"
+  DEFAULT_HOME_DIR="${HOME}/.jk"
   # One immutable directory per version (jk-<os>-<arch>-<version>[.xz] + jk-engine-<version>.jar
   # + SHA256SUMS); `latest/LATEST` is the only mutable pointer, and it is signed data
   # (`version <v>` / `issued <unix-seconds>` + LATEST.sig) verified before anything it
@@ -43,8 +51,24 @@ main() {
   # and an engine jar that disagree (the client refuses to launch a version-skewed jar).
   RELEASES_URL="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 
-  # Optional positional argument: local path to jk, jk.xz, or jk.zip.
-  LOCAL_FILE="${1:-}"
+  # Optional positional argument: local path to jk, jk.xz, or jk.zip. `--rc` asks for the
+  # shell rc block on a non-default JK_HOME, which otherwise leaves the rc files alone.
+  LOCAL_FILE=""
+  RC_REQUESTED=0
+  for arg in "$@"; do
+    case "$arg" in
+      --rc) RC_REQUESTED=1 ;;
+      *) LOCAL_FILE="$arg" ;;
+    esac
+  done
+  # The rc block names one home, so only the default home may claim it unasked: a private
+  # JK_HOME (a scratch build, a hermetic test, an /opt install) must not turn every new shell
+  # into a shell that runs it.
+  if [ "$JK_HOME_DIR" = "$DEFAULT_HOME_DIR" ] || [ "$RC_REQUESTED" = 1 ]; then
+    WRITE_RC=1
+  else
+    WRITE_RC=0
+  fi
 
   # ---- terminal / interactivity detection ------------------------------------
   #
@@ -522,11 +546,27 @@ main() {
 
   # ---- activate --------------------------------------------------------------
 
-  info "Running \`jk activate\`..."
-  # --yes: write shell integration without the interactive Yes/No wizard, which would
-  # open a TUI over /dev/tty and wait for a keypress even on automated/local installs.
-  # Failure must not abort warm-up — the binary is already installed.
-  run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
+  case "${SHELL##*/}" in
+    zsh|bash|fish) ACTIVATE_SHELL="${SHELL##*/}" ;;
+    *)             ACTIVATE_SHELL="zsh" ;;
+  esac
+  if [ "$ACTIVATE_SHELL" = fish ]; then
+    ACTIVATE_LINE="\"$JK_HOME_DIR/bin/jk\" activate fish | source"
+  else
+    # shellcheck disable=SC2016 # the eval line is printed for the user's shell to expand, not this one
+    ACTIVATE_LINE="eval \"\$(\"$JK_HOME_DIR/bin/jk\" activate $ACTIVATE_SHELL)\""
+  fi
+  if [ "$WRITE_RC" = 1 ]; then
+    info "Running \`jk activate\`..."
+    # --yes: write shell integration without the interactive Yes/No wizard, which would
+    # open a TUI over /dev/tty and wait for a keypress even on automated/local installs.
+    # Failure must not abort warm-up — the binary is already installed.
+    run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
+  else
+    info "JK_HOME is $JK_HOME_DIR, not the default $DEFAULT_HOME_DIR: the shell rc files are left alone."
+    note "To use this install in the current shell, run: $ACTIVATE_LINE"
+    note "To write the rc block for this home anyway, install again with --rc."
+  fi
 
   # ---- preemptive payload warm-up (jk-templates, jk-libraries, jdks.json) -------
   #
@@ -621,19 +661,25 @@ main() {
   # the script feel hung after `jk activate`. Print how to pick up PATH/hooks;
   # the user reloads when ready. `jk activate` already closed with the human
   # envelope's trailing blank — do not add another spacer before this section.
-  case "${SHELL##*/}" in
-    zsh)  SOURCE_HINT='source ~/.zshrc' ;;
-    bash) SOURCE_HINT='source ~/.bashrc' ;;
-    fish) SOURCE_HINT='source ~/.config/fish/config.fish' ;;
-    *)    SOURCE_HINT='source ~/.zshrc' ;;
-  esac
   info "JumpKick is ready! Hi-ya!"
-  # shellcheck disable=SC2016 # `exec $SHELL` is printed for the user to type, not expanded here
-  printf '%s%s%s Run %s%s%s or %s%s%s to start using %s%s%s\n' \
-    "$GREEN" "$DOT" "$RESET" \
-    "$YELLOW" 'exec $SHELL' "$RESET" \
-    "$YELLOW" "$SOURCE_HINT" "$RESET" \
-    "$YELLOW" 'jk' "$RESET"
+  if [ "$WRITE_RC" = 1 ]; then
+    case "$ACTIVATE_SHELL" in
+      zsh)  SOURCE_HINT='source ~/.zshrc' ;;
+      bash) SOURCE_HINT='source ~/.bashrc' ;;
+      fish) SOURCE_HINT='source ~/.config/fish/config.fish' ;;
+    esac
+    # shellcheck disable=SC2016 # `exec $SHELL` is printed for the user to type, not expanded here
+    printf '%s%s%s Run %s%s%s or %s%s%s to start using %s%s%s\n' \
+      "$GREEN" "$DOT" "$RESET" \
+      "$YELLOW" 'exec $SHELL' "$RESET" \
+      "$YELLOW" "$SOURCE_HINT" "$RESET" \
+      "$YELLOW" 'jk' "$RESET"
+  else
+    printf '%s%s%s Run %s%s%s to start using %s%s%s in this shell\n' \
+      "$GREEN" "$DOT" "$RESET" \
+      "$YELLOW" "$ACTIVATE_LINE" "$RESET" \
+      "$YELLOW" 'jk' "$RESET"
+  fi
   printf '\n'
 }
 
