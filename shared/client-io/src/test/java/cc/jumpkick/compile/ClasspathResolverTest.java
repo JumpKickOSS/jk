@@ -70,6 +70,23 @@ class ClasspathResolverTest {
     }
 
     @Test
+    void requirePresent_names_every_missing_row_in_one_diagnostic(@TempDir Path tempDir) throws Exception {
+        Path present = putJar(tempDir, "com/foo/here/1.0/here-1.0.jar", "here");
+        Lockfile lock = lock(
+                pkg("com.foo:here", "1.0", Hashing.sha256Hex(present)),
+                pkg("com.foo:a", "1.0", "0".repeat(64)),
+                pkg("com.foo:b", "2.0", "1".repeat(64)));
+
+        assertThatThrownBy(
+                        () -> new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:a:1.0")
+                .hasMessageContaining("com.foo:b:2.0")
+                .hasMessageContaining("not on disk after sync")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("com.foo:here"));
+    }
+
+    @Test
     void classpath_closure_only_includes_reachable_runtime_deps(@TempDir Path tempDir) throws Exception {
         Path app = putJar(tempDir, "com/foo/app/1.0/app-1.0.jar", "app");
         Path lib = putJar(tempDir, "com/foo/lib/1.0/lib-1.0.jar", "lib");

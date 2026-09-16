@@ -688,13 +688,18 @@ public final class PluginBuild {
      * The production classpath a step sees ({@code In.runtimeClasspath()}): lockfile RUNTIME jars
      * + workspace sibling jars (and their transitive RUNTIME deps). The module's own classes dir
      * is NOT included — the plugin adds {@code exec.classesDir()} itself.
+     *
+     * <p>{@code cas} is the planner's artifact store, the one {@code resolve-deps} synced into.
+     * Every checksummed row of the module's lock must be on disk there; a missing one fails the
+     * step naming the row, as the compile classpaths do, so the runtime closure a step or packager
+     * ships is never silently short of a jar.
      */
-    public static List<Path> productionClasspath(Path projectDir, Path cache, Path lockFile, JkBuild project)
+    public static List<Path> productionClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
         List<Path> classpath = new ArrayList<>();
+        var resolver = new ClasspathResolver(cas);
         if (Files.exists(lockFile)) {
-            var resolver = new ClasspathResolver(JkStores.storeCas());
-            classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
+            classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true));
         }
         try {
             var siblings = WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
@@ -704,8 +709,7 @@ public final class PluginBuild {
             for (Path sibLock : siblings.siblingLockfiles()) {
                 try {
                     var sib = LockfileReader.read(sibLock);
-                    for (Path pth :
-                            new ClasspathResolver(JkStores.storeCas()).classpathFor(sib, ClasspathResolver.RUNTIME)) {
+                    for (Path pth : resolver.classpathFor(sib, ClasspathResolver.RUNTIME, true)) {
                         if (!classpath.contains(pth)) classpath.add(pth);
                     }
                 } catch (Exception e) {
@@ -746,14 +750,15 @@ public final class PluginBuild {
      * artifacts (an AAR rides as its exploded container + classes.jar) followed by workspace
      * sibling artifacts (a sibling that also produced a container artifact — e.g. an [android]
      * library's AAR next to its conventional classes jar — rides with that container attached).
+     * Lock rows resolve against {@code cas} as in {@link #productionClasspath}: a row that is not
+     * on disk fails the step by name instead of leaving the packaged closure.
      */
-    public static List<ProdEntry> productionEntries(Path projectDir, Path cache, Path lockFile, JkBuild project)
+    public static List<ProdEntry> productionEntries(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
         List<ProdEntry> out = new ArrayList<>();
-        Cas cas = JkStores.storeCas();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
-            for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME)) {
+            for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true)) {
                 var a = entry.artifact();
                 String ext = entry.container() != null ? ".aar" : ".jar";
                 out.add(new ProdEntry(

@@ -348,10 +348,9 @@ public final class PlannerPlugin {
                     // runs ahead of the compile and reads it only for shape; every other step
                     // packages or tests with it and waits for the siblings to have written it.
                     if (!beforeCompile(step)) PlannerSetup.awaitSiblingArtifacts(ctx, in);
-                    List<Path> classpath =
-                            PluginBuild.productionClasspath(in.dir(), in.cache(), in.lockFile(), project);
+                    List<Path> classpath = PluginBuild.productionClasspath(in.dir(), cx.cas(), in.lockFile(), project);
                     List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")
-                            ? PluginBuild.productionEntries(in.dir(), in.cache(), in.lockFile(), project)
+                            ? PluginBuild.productionEntries(in.dir(), cx.cas(), in.lockFile(), project)
                             : List.of();
 
                     // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones
