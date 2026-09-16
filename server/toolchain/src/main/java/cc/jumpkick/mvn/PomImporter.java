@@ -443,11 +443,6 @@ public final class PomImporter {
                     + " — jk has no `<optional>`; emitted as a normal dep."
                     + " Use a feature flag if it should be opt-in.");
         }
-        if (!dep.exclusions().isEmpty()) {
-            report.warning("`<exclusions>` on "
-                    + dep.module()
-                    + " — exclusion support lands in a later slice; exclusions were dropped.");
-        }
         DependencyMapping.warnUnresolvedVersion(dep, report);
         Scope scope = DependencyMapping.scope(dep.scope());
         if (DependencyMapping.isPom(dep)) {
@@ -457,6 +452,8 @@ public final class PomImporter {
             scope = Scope.PLATFORM;
         }
         Dependency d = raiseToEngineFloor(DependencyMapping.toDependency(dep), scope, report);
+        // A BOM import governs versions, not a classpath subtree; its exclusions have nothing to prune.
+        if (scope != Scope.PLATFORM) d = ExclusionMapping.apply(d, dep, report);
         // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
         // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
         // scope moves to TEST — otherwise the emitted jk.toml rejects its own `jk lock`.
