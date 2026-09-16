@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.7"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "c265ef3b20765d879ec512d2fe85870f7839b03af44c405293d11da6c6909455"
+manifests-sha256 = "8d518d7aae1906e0f147c94e503617e09a0c05902b57afb7711a1c45fa658dfc"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -2508,6 +2508,14 @@ java    = 25
 description = "JumpKick's source code formatter plugin"
 
 [[module]]
+path    = "plugins/generator"
+group   = "cc.jumpkick"
+name    = "jk-generator"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's code-generator plugin: one worker behind [generate], the preset tables ride on it"
+
+[[module]]
 path    = "plugins/grails"
 group   = "cc.jumpkick"
 name    = "jk-grails"
@@ -2562,6 +2570,14 @@ name    = "jk-minified"
 version = "0.13.7"
 java    = 25
 description = "JumpKick's R8 minify plugin"
+
+[[module]]
+path    = "plugins/openapi"
+group   = "cc.jumpkick"
+name    = "jk-openapi"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's OpenAPI preset: [openapi] as one generator entry over the generator worker"
 
 [[module]]
 path    = "plugins/protobuf"
