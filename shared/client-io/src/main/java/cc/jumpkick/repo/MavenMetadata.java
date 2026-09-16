@@ -52,14 +52,22 @@ public record MavenMetadata(
         return new MavenMetadata(groupId, artifactId, List.of(), null, null);
     }
 
-    public static MavenMetadata parse(byte[] xml) {
+    /**
+     * The document a repository served for {@code groupId:artifactId}. Maven reads {@code
+     * <groupId>}, {@code <artifactId>} and {@code <versioning>} as optional and trusts the path it
+     * asked for: a Nexus group repository answers {@code org/jboss/jandex/maven-metadata.xml} with
+     * the plugin index of the {@code org.jboss.jandex} group, which names none of the three, and
+     * that document lists no versions rather than failing the lookup. Ids the document carries win;
+     * the ones it omits are the requested coordinate's.
+     */
+    public static MavenMetadata parse(byte[] xml, @Nullable String groupId, String artifactId) {
         Document doc;
         try {
             doc = DomXml.parse(xml);
         } catch (IOException e) {
             throw new IllegalArgumentException("failed to parse maven-metadata.xml: " + e.getMessage(), e);
         }
-        return fromDocument(doc);
+        return fromDocument(doc, groupId, artifactId);
     }
 
     /**
@@ -107,17 +115,17 @@ public record MavenMetadata(
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static MavenMetadata fromDocument(Document doc) {
+    private static MavenMetadata fromDocument(
+            Document doc, @Nullable String requestedGroupId, String requestedArtifactId) {
         Element metadata = doc.getDocumentElement();
         if (metadata == null || !"metadata".equals(metadata.getNodeName())) {
             throw new IllegalArgumentException(
                     "expected <metadata> root, got: " + (metadata == null ? "<none>" : metadata.getNodeName()));
         }
-        String groupId = childText(metadata, "groupId");
-        String artifactId = childText(metadata, "artifactId");
-        if (artifactId == null) {
-            throw new IllegalArgumentException("maven-metadata.xml missing <artifactId>");
-        }
+        String declaredGroupId = childText(metadata, "groupId");
+        String groupId = declaredGroupId != null ? declaredGroupId : requestedGroupId;
+        String declaredArtifactId = childText(metadata, "artifactId");
+        String artifactId = declaredArtifactId != null ? declaredArtifactId : requestedArtifactId;
         Element versioning = childElement(metadata, "versioning");
         String latest = versioning == null ? null : childText(versioning, "latest");
         String release = versioning == null ? null : childText(versioning, "release");

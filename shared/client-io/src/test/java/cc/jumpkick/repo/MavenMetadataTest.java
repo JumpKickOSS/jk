@@ -20,7 +20,68 @@ class MavenMetadataTest {
     }
 
     private static MavenMetadata reread(MavenMetadata md) {
-        return MavenMetadata.parse(md.render());
+        return MavenMetadata.parse(md.render(), md.groupId(), md.artifactId());
+    }
+
+    /**
+     * A Nexus group repository answers {@code org/jboss/jandex/maven-metadata.xml} with the plugin
+     * index of the {@code org.jboss.jandex} group: no groupId, no artifactId, no versioning. Maven
+     * reads it as a document with nothing to say about versions and moves on to the next repository.
+     */
+    @Test
+    void a_group_index_without_ids_or_versioning_is_an_empty_version_list() {
+        byte[] xml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <metadata modelVersion="1.1.0">
+                  <plugins>
+                    <plugin>
+                      <name>Jandex wrapper for Maven</name>
+                      <prefix>jandex</prefix>
+                      <artifactId>jandex-maven-plugin</artifactId>
+                    </plugin>
+                  </plugins>
+                </metadata>
+                """.getBytes(StandardCharsets.UTF_8);
+        MavenMetadata md = MavenMetadata.parse(xml, "org.jboss", "jandex");
+        assertThat(md.versions()).isEmpty();
+        assertThat(md.latest()).isNull();
+        assertThat(md.release()).isNull();
+        assertThat(md.groupId()).isEqualTo("org.jboss");
+        assertThat(md.artifactId()).isEqualTo("jandex");
+    }
+
+    @Test
+    void a_document_without_versioning_lists_no_versions() {
+        byte[] xml = """
+                <metadata>
+                  <groupId>com.example</groupId>
+                  <artifactId>widget</artifactId>
+                </metadata>
+                """.getBytes(StandardCharsets.UTF_8);
+        MavenMetadata md = MavenMetadata.parse(xml, "org.other", "other");
+        assertThat(md.versions()).isEmpty();
+        assertThat(md.groupId()).isEqualTo("com.example");
+        assertThat(md.artifactId()).isEqualTo("widget");
+    }
+
+    @Test
+    void ids_the_document_omits_come_from_the_request() {
+        byte[] xml = """
+                <metadata>
+                  <versioning>
+                    <versions>
+                      <version>1.0</version>
+                      <version>1.1</version>
+                    </versions>
+                  </versioning>
+                </metadata>
+                """.getBytes(StandardCharsets.UTF_8);
+        MavenMetadata md = MavenMetadata.parse(xml, "com.example", "widget");
+        assertThat(md.versions()).containsExactly("1.0", "1.1");
+        assertThat(md.groupId()).isEqualTo("com.example");
+        assertThat(md.artifactId()).isEqualTo("widget");
+        assertThat(new String(md.withVersion("1.2").render(), StandardCharsets.UTF_8))
+                .contains("<artifactId>widget</artifactId>");
     }
 
     @Test
@@ -77,7 +138,7 @@ class MavenMetadataTest {
     void parsing_an_empty_version_list_yields_no_versions() {
         byte[] xml = "<metadata><artifactId>a</artifactId><versioning><versions/></versioning></metadata>"
                 .getBytes(StandardCharsets.UTF_8);
-        assertThat(MavenMetadata.parse(xml).versions()).isEmpty();
+        assertThat(MavenMetadata.parse(xml, "g", "a").versions()).isEmpty();
     }
 
     @Test
@@ -131,7 +192,7 @@ class MavenMetadataTest {
                 .withVersion("1.0.0")
                 .withVersion("2.0.0-SNAPSHOT")
                 .render();
-        assertThat(MavenMetadata.parse(once).render()).isEqualTo(once);
+        assertThat(MavenMetadata.parse(once, "com.example", "widget").render()).isEqualTo(once);
     }
 
     @Test
@@ -139,7 +200,7 @@ class MavenMetadataTest {
         byte[] compact = ("<metadata><groupId>g</groupId><artifactId>a</artifactId>"
                         + "<versioning><versions><version>1.0</version></versions></versioning></metadata>")
                 .getBytes(StandardCharsets.UTF_8);
-        MavenMetadata md = MavenMetadata.parse(compact);
+        MavenMetadata md = MavenMetadata.parse(compact, "g", "a");
         assertThat(md.versions()).containsExactly("1.0");
         assertThat(text(md)).doesNotContain("<latest>").doesNotContain("<release>");
     }

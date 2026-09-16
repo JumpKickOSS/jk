@@ -83,7 +83,10 @@ class MavenPublisherTest {
 
     /** The version list read back the way the resolver reads it — through the one owner. */
     private List<String> versionsOnServer() {
-        return MavenMetadata.parse(requireNonNull(received.get("/repo/com/example/widget/maven-metadata.xml")))
+        return MavenMetadata.parse(
+                        requireNonNull(received.get("/repo/com/example/widget/maven-metadata.xml")),
+                        "com.example",
+                        "widget")
                 .versions();
     }
 

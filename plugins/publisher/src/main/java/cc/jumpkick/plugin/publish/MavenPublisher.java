@@ -143,7 +143,7 @@ public final class MavenPublisher {
         try {
             existing = transport
                     .fetch(uri, credential)
-                    .map(MavenMetadata::parse)
+                    .map(body -> MavenMetadata.parse(body, project.group(), project.name()))
                     .orElseGet(() -> MavenMetadata.empty(project.group(), project.name()));
         } catch (IOException | IllegalArgumentException e) {
             throw new IOException(

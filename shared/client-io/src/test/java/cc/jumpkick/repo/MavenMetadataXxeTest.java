@@ -31,7 +31,7 @@ class MavenMetadataXxeTest {
                 </metadata>
                 """.formatted(secret.toAbsolutePath());
 
-        assertThatThrownBy(() -> MavenMetadata.parse(xml.getBytes(StandardCharsets.UTF_8)))
+        assertThatThrownBy(() -> MavenMetadata.parse(xml.getBytes(StandardCharsets.UTF_8), "com.example", "widget"))
                 .as("the DOCTYPE is refused outright, not merely the reference to what it declares")
                 .hasMessageContaining("DOCTYPE")
                 .hasMessageNotContaining("TOP_SECRET_VALUE")
