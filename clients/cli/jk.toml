@@ -98,12 +98,15 @@ test-plugin-jars = [
 ]
 
 [test]
-# One file out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
-# wire parser needs no platform SDK (java.util + regex + org.jetbrains.annotations), while its
-# five neighbours do — so this names the file, not the directory. Compiling it here puts the
-# parallel-array alignment and null-vs-empty rules in-gate, which G22 arm 4 can only approximate
-# textually.
-extra-src = ["../intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java"]
+# Two files out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
+# wire model and its JSON reader need no platform SDK (java.util + org.jetbrains.annotations),
+# while their neighbours do — so this names the files, not the directory. Compiling them here
+# puts the parallel-array alignment and null-vs-empty rules in-gate, which G22 arm 4 can only
+# approximate textually.
+extra-src = [
+  "../intellij/src/main/java/cc/jumpkick/idea/JkWireModel.java",
+  "../intellij/src/main/java/cc/jumpkick/idea/JkJson.java",
+]
 # Nested engines / shared sockets: integration classes materialize the resident engine and
 # share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
 # the hermetic unit tier shards across this build's auto share of workers.

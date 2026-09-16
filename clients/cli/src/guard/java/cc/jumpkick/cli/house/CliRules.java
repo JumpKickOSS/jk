@@ -204,12 +204,9 @@ final class CliRules {
         if (exists(text, cliAction))
             shelled.addAll(matches(
                     Pattern.compile("super\\(\\s*\"[^\"]*\"\\s*,\\s*\"([a-z][a-z0-9-]*)\""), raw(text, cliAction), 1));
-        String syncService = IDEA_JAVA + "cc/jumpkick/idea/JkSyncService.java";
-        if (exists(text, syncService))
-            shelled.addAll(matches(
-                    Pattern.compile("JkCliRunner\\.run\\([^,]+,\\s*List\\.of\\(\"([a-z][a-z0-9-]*)\""),
-                    raw(text, syncService),
-                    1));
+        String resolver = IDEA_JAVA + "cc/jumpkick/idea/JkProjectResolver.java";
+        if (exists(text, resolver))
+            shelled.addAll(matches(Pattern.compile("List\\.of\\(\"([a-z][a-z0-9-]*)\""), raw(text, resolver), 1));
         if (shelled.isEmpty())
             throw new IllegalStateException(
                     "found no jk verbs invoked by either IDE client — the call shape moved and this arm is blind");
@@ -247,9 +244,10 @@ final class CliRules {
         if (!exists(text, modelFile))
             throw new IllegalStateException("clients/intellij's JkWireModel.java is gone — this arm is blind");
         String model = raw(text, modelFile);
-        TreeSet<String> read = matches(
-                Pattern.compile("str(?:Field|Array)\\(\\s*(?:body|json)\\s*,\\s*\"([A-Za-z][A-Za-z0-9]*)\""), model, 1);
-        read.addAll(matches(Pattern.compile("\\\\\"([A-Za-z][A-Za-z0-9]*)\\\\\"\\s*:"), model, 1));
+        // Reads are `str(o, "field")`, `strings(o, "field")`, `at(o, "field", i)` or `o.get("field")`.
+        TreeSet<String> read =
+                matches(Pattern.compile("(?:str|strings|at)\\(\\s*o\\s*,\\s*\"([A-Za-z][A-Za-z0-9]*)\""), model, 1);
+        read.addAll(matches(Pattern.compile("o\\.get\\(\"([A-Za-z][A-Za-z0-9]*)\"\\)"), model, 1));
         if (read.isEmpty())
             throw new IllegalStateException(
                     "JkWireModel reads no recognised wire field — the parse shape moved and this arm is blind");

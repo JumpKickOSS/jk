@@ -51,6 +51,17 @@ public class JkCliLinesTest {
     }
 
     @Test
+    public void a_failure_is_reported_by_its_first_error_line() {
+        assertEquals(
+                "no jk.toml in /w", JkCliLines.firstErrorLine("\nno jk.toml in /w\n  at Foo.bar\n", "{\"x\":1}", "?"));
+        assertEquals(
+                "✗ IDE  engine refused",
+                JkCliLines.firstErrorLine("", "{\"type\":\"progress\"}\n✗ IDE  engine refused\n", "?"));
+        assertEquals(
+                "jk failed (exit 2)", JkCliLines.firstErrorLine(null, "{\"type\":\"progress\"}", "jk failed (exit 2)"));
+    }
+
+    @Test
     public void args_is_a_mutable_copy() {
         List<String> args = JkCliRunner.args("build", "--flat");
         args.add("--offline");

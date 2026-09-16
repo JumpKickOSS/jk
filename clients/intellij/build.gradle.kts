@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // JumpKick IntelliJ plugin — wire-only (jk CLI + BSP). Never depends on engine jars.
 import net.ltgt.gradle.errorprone.errorprone
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import net.ltgt.gradle.nullaway.nullaway
 
 plugins {
@@ -30,6 +31,7 @@ dependencies {
         intellijIdeaCommunity("2024.1.7")
         bundledPlugin("com.intellij.java")
         instrumentationTools()
+        testFramework(TestFrameworkType.Platform)
     }
     testImplementation(libs.junit4)
     // Nullness is enforced here as in the root build: this build is standalone, so it names the
