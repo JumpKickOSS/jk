@@ -123,6 +123,35 @@ class PomPluginImportTest {
     }
 
     @Test
+    void compiler_switches_become_javac_flags_once(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <properties><maven.compiler.release>21</maven.compiler.release></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                      <parameters>true</parameters>
+                      <enablePreview>true</enablePreview>
+                      <failOnWarning>true</failOnWarning>
+                      <showWarnings>true</showWarnings>
+                      <compilerArgs><arg>-parameters</arg><arg>-Xlint:all</arg></compilerArgs>
+                    </configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().javac().args())
+                .as("a switch spelled twice lands once; a switch with no javac flag is not invented")
+                .containsExactly("-parameters", "-Xlint:all", "--enable-preview", "-Werror");
+    }
+
+    @Test
     void a_toolchain_pin_is_the_only_thing_that_writes_jdk(@TempDir Path tempDir) throws Exception {
         PomImporter.Result pinned = importXml(tempDir, """
                 <project>

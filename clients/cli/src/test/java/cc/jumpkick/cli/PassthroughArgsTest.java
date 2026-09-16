@@ -66,6 +66,15 @@ class PassthroughArgsTest {
     }
 
     @Test
+    void system_properties_reach_the_tool_with_their_values() throws Exception {
+        Invocation in = parse(
+                new MvnCommand(), List.of(), "-Drevision=1.2.3", "-Dtest=FooTest", "-DskipITs", "-Xmx1g", "verify");
+
+        assertThat(in.positionals())
+                .containsExactly("-Drevision=1.2.3", "-Dtest=FooTest", "-DskipITs", "-Xmx1g", "verify");
+    }
+
+    @Test
     void help_and_version_after_the_name_belong_to_the_tool() throws Exception {
         Invocation in = parse(new GradleCommand(), List.of(), "--help", "-V");
 

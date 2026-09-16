@@ -208,7 +208,10 @@ final class ProfileMapping {
             }
         }
         compilerPlugin(profile.getBuild()).ifPresent(compiler -> {
-            for (Xpp3Dom config : PluginFacts.configurations(compiler)) PluginFacts.collectCompilerArgs(config, javac);
+            for (Xpp3Dom config : PluginFacts.configurations(compiler)) {
+                PluginFacts.collectCompilerArgs(config, javac);
+                PluginFacts.collectCompilerSwitches(config, javac);
+            }
         });
         List<String> jvm = new ArrayList<>();
         String argLine = PluginFacts.usable(props.getProperty("argLine"));

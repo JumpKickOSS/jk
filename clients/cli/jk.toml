@@ -71,6 +71,9 @@ enabled = "always"
 name = "jk"
 args = [
   "-Os",
+  # The image launcher would otherwise swallow every -Dkey=value and -XX: token in argv before
+  # main runs; jk mvn -Drevision=… and jk run -- -Dfoo=bar must reach their child intact.
+  "-H:-ParseRuntimeOptions",
   "--gc=serial",
   "-R:MaxHeapSize=134217728",
   "-R:MinHeapSize=25165824",
