@@ -328,8 +328,24 @@ public final class LockfileReader {
             git = new Lockfile.Artifact.GitInfo(gitUrl, requireString(table, "rev"), table.getString("ref"));
         }
         String sourcesChecksum = table.getString("sources"); // optional
+        List<String> excludedBy = new ArrayList<>();
+        TomlArray excludedArray = table.getArray("excluded-by");
+        if (excludedArray != null) {
+            for (int i = 0; i < excludedArray.size(); i++) excludedBy.add(excludedArray.getString(i));
+        }
         return new Lockfile.Artifact(
-                name, version, source, checksum, path, scopes, deps, pinnedBy, git, sourcesChecksum, declared);
+                name,
+                version,
+                source,
+                checksum,
+                path,
+                scopes,
+                deps,
+                pinnedBy,
+                git,
+                sourcesChecksum,
+                declared,
+                excludedBy);
     }
 
     /**

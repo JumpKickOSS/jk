@@ -167,6 +167,41 @@ class LockfileRoundTripTest {
     }
 
     @Test
+    void excluded_by_lines_round_trip_sorted() {
+        Lockfile original = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk 0.13.3",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(new Lockfile.Artifact(
+                        "com.example:widget:jar:",
+                        "1.2.3",
+                        "central+https://repo.maven.apache.org/maven2/",
+                        "sha256:0123abcd",
+                        null,
+                        List.of(Scope.MAIN),
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        Map.of(),
+                        List.of("com.example:noise <- jk.toml:widget", "com.acme:util <- com.example:widget@1.2.3"))));
+
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("excluded-by = [\n  \"com.acme:util <- com.example:widget@1.2.3\",\n"
+                        + "  \"com.example:noise <- jk.toml:widget\",\n]");
+
+        Lockfile.Artifact parsed = LockfileReader.parse(rendered).artifacts().getFirst();
+        assertThat(parsed.excludedBy())
+                .containsExactly("com.acme:util <- com.example:widget@1.2.3", "com.example:noise <- jk.toml:widget");
+        assertThat(LockfileReader.parse(LockfileWriter.render(original))
+                        .artifacts()
+                        .getFirst()
+                        .deps())
+                .isEmpty();
+    }
+
+    @Test
     void kotlin_version_round_trips() {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", Lockfile.JdkPin.suggested("temurin", "25.0.3"))
                 .withKotlin("2.3.21");

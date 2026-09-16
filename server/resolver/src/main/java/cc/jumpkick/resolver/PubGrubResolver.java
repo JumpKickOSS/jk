@@ -140,6 +140,13 @@ public final class PubGrubResolver implements Resolver {
                 rootDepNames.put(pkg, dep.library());
             }
         }
+        if (source instanceof MavenPackageSource mps) {
+            // A declared edge's exclusions govern its subtree the way a POM edge's do, and a
+            // declared edge without any collapses the set for that package.
+            for (Dependency dep : roots) {
+                if (!dep.isWorkspace()) mps.registerRootExclusions(dep.packageKey(), dep.exclusions(), dep.library());
+            }
+        }
 
         Map<String, String> decisions;
         try {
@@ -251,13 +258,16 @@ public final class PubGrubResolver implements Resolver {
 
         Map<String, Resolution.ResolvedModule> out = new TreeMap<>();
         for (Map.Entry<String, String> e : decisions.entrySet()) {
+            List<String> excluded =
+                    source instanceof MavenPackageSource mps ? mps.prunedEdges(e.getKey(), e.getValue()) : List.of();
             out.put(
                     e.getKey(),
                     new Resolution.ResolvedModule(
                             e.getKey(),
                             e.getValue(),
                             new ArrayList<>(dependsOn.getOrDefault(e.getKey(), Set.of())),
-                            declaredOn.getOrDefault(e.getKey(), Map.of())));
+                            declaredOn.getOrDefault(e.getKey(), Map.of()),
+                            excluded));
         }
         return new Resolution(out);
     }

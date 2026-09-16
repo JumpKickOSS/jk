@@ -73,10 +73,29 @@ public final class GraphOps {
                             .collect(Collectors.joining(WhyReport.STEP_SELECTOR_SEPARATOR)));
                 }
             }
-            return new WhyReport(null, names, versions, owners, paths, selectors);
+            return new WhyReport(null, names, versions, owners, paths, selectors, prunedEdges(lock, query));
         } catch (IOException | RuntimeException e) {
             return WhyReport.error(Errors.text(e));
         }
+    }
+
+    /** Every {@code excluded-by} line in the lock whose pruned child matches {@code query}, as wire fields. */
+    private static List<String> prunedEdges(Lockfile lock, @Nullable String query) {
+        List<String> out = new ArrayList<>();
+        for (Lockfile.Artifact row : lock.artifacts()) {
+            for (String line : row.excludedBy()) {
+                int sep = line.indexOf(Lockfile.DECLARED_SEPARATOR);
+                String child = sep < 0 ? line : line.substring(0, sep);
+                String origin = sep < 0 ? "" : line.substring(sep + Lockfile.DECLARED_SEPARATOR.length());
+                if (!matchesQuery(child, query)) continue;
+                out.add(String.join(
+                        WhyReport.EXCLUSION_FIELD_SEPARATOR,
+                        child,
+                        origin,
+                        ga(row.packageKey()) + "@" + row.version()));
+            }
+        }
+        return out;
     }
 
     /**

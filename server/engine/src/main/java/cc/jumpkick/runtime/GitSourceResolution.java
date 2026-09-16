@@ -145,7 +145,8 @@ public final class GitSourceResolution {
                         p.pinnedBy(),
                         gi,
                         p.sourcesChecksum(),
-                        p.declared()));
+                        p.declared(),
+                        p.excludedBy()));
             } else {
                 out.add(p);
             }

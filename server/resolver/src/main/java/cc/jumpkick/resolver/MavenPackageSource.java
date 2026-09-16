@@ -117,20 +117,8 @@ public final class MavenPackageSource implements PackageSource {
     /** The repositories dependency POMs declare, granted per subtree; see {@link DeclaredRepositories}. */
     private final DeclaredRepositories declared;
 
-    /**
-     * Modules to strip when expanding a package, keyed by package module id.
-     *
-     * <p>Maven drops a dependency only when <em>every</em> path reaching it excludes that
-     * dependency, so entries here are the <strong>intersection</strong> of the sets registered by
-     * parents, not their union. Two parents, one excluding and one not, leave the child expanding
-     * with nothing stripped.
-     *
-     * <p>Intersection only shrinks, so registrations may arrive in any order and still converge on
-     * the same set.
-     */
-    private final ConcurrentHashMap<String, Set<String>> exclusionsWhenExpanding = new ConcurrentHashMap<>();
-    /** pkg@version → edges its last expansion filtered; see {@link #anyExpansionStale}. */
-    private final ConcurrentHashMap<String, Set<String>> filteredAtExpansion = new ConcurrentHashMap<>();
+    /** The exclusions in force per package, their origins, and the edges they pruned. */
+    private final ExclusionLedger exclusions = new ExclusionLedger();
 
     private final Semaphore prefetchSlots = new Semaphore(PREFETCH_PERMITS);
 
@@ -263,8 +251,7 @@ public final class MavenPackageSource implements PackageSource {
      * so they are graph-independent.
      */
     public void resetSolveScopedState() {
-        exclusionsWhenExpanding.clear();
-        filteredAtExpansion.clear();
+        exclusions.reset();
         declaredVersions.clear();
     }
 
@@ -595,7 +582,8 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
         long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
-        Set<String> excl = exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
+        Map<String, Set<String>> view = exclusions.viewFor(pkg);
+        Set<String> excl = view.keySet();
         List<RawEdge> raw = rawEdges(pkg, version);
         List<Term> out = new ArrayList<>(raw.size());
         Set<String> filtered = null;
@@ -621,9 +609,18 @@ public final class MavenPackageSource implements PackageSource {
             // Cascade parent exclusions + edge exclusions onto the child. Registered even when
             // empty: an unencumbered path is exactly what has to collapse the child's set to
             // nothing, and staying silent here would leave another path's exclusions standing.
-            Set<String> merged = new LinkedHashSet<>(excl);
-            merged.addAll(edge.edgeExclusions());
-            registerExclusions(edge.depPkg(), merged);
+            Map<String, Set<String>> child = new LinkedHashMap<>(view);
+            if (!edge.edgeExclusions().isEmpty()) {
+                Set<String> origin = Set.of(ExclusionLedger.gaOf(pkg) + "@" + version);
+                for (String pattern : edge.edgeExclusions()) {
+                    child.merge(pattern, origin, (a, b) -> {
+                        Set<String> both = new LinkedHashSet<>(a);
+                        both.addAll(b);
+                        return both;
+                    });
+                }
+            }
+            exclusions.register(edge.depPkg(), child);
             if (edge.declaredVersion() != null) {
                 declaredVersions
                         .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
@@ -632,14 +629,8 @@ public final class MavenPackageSource implements PackageSource {
             out.add(Term.positive(edge.depPkg(), nearestOrOwn(pkg, version, edge)));
         }
         // Remember what this expansion dropped so the resolver can detect a stale expansion
-        // after the exclusion sets converge (they only ever narrow). Overwrite, not merge: a
-        // re-expansion in a later solve round supersedes the earlier one.
-        String expansionKey = pkg + "@" + version;
-        if (filtered == null) {
-            filteredAtExpansion.remove(expansionKey);
-        } else {
-            filteredAtExpansion.put(expansionKey, Set.copyOf(filtered));
-        }
+        // after the exclusion sets converge (they only ever narrow).
+        exclusions.recordFiltered(pkg, version, filtered);
         List<Term> immutable = List.copyOf(out);
         prefetchTransitiveAsync(immutable);
         if (ResolveProfile.on()) {
@@ -742,60 +733,42 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * Intersect {@code extra} into the exclusion set applied when {@code pkg} is expanded — a
-     * module is stripped only if every observed parent path strips it. The first registration
-     * establishes the set; later ones can only narrow it. Package-visible for tests.
+     * module is stripped only if every observed parent path strips it; see {@link
+     * ExclusionLedger#register}. Package-visible for tests.
      */
     void registerExclusions(String pkg, Set<String> extra) {
-        Set<String> incoming = extra == null ? Set.of() : Set.copyOf(extra);
-        exclusionsWhenExpanding.merge(pkg, incoming, (existing, fresh) -> {
-            if (existing.isEmpty() || fresh.isEmpty()) return Set.of();
-            Set<String> both = new LinkedHashSet<>(existing);
-            both.retainAll(fresh);
-            return Set.copyOf(both);
-        });
+        exclusions.register(pkg, ExclusionLedger.view(extra == null ? Set.of() : extra, null));
+    }
+
+    /**
+     * Register the view a manifest edge applies to its root: {@code patterns} pruned from the
+     * subtree of {@code pkg}, each attributed to the declaring {@code handle}. A root that excludes
+     * nothing registers an empty view, so a transitive path's exclusions never reach a package the
+     * manifest declares directly.
+     */
+    void registerRootExclusions(String pkg, List<String> patterns, String handle) {
+        exclusions.register(
+                pkg, ExclusionLedger.view(new LinkedHashSet<>(patterns), ExclusionLedger.MANIFEST_ORIGIN + handle));
     }
 
     /** The exclusions currently applied when {@code pkg} expands. Package-visible for tests. */
     Set<String> exclusionsFor(String pkg) {
-        return exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
+        return exclusions.exclusionsFor(pkg);
     }
 
-    /**
-     * Whether any decided package's expansion filtered an edge the converged exclusion set would
-     * keep. Intersection registrations only narrow a package's set, so an expansion taken before
-     * a clean path registered (discovered deeper than the excluding path) can bake a
-     * too-aggressive filter into the solve — the dropped child never enters the resolution and
-     * no conflict ever surfaces it. A stale expansion means the solve must be re-run with the
-     * converged sets. Package-visible for the resolver's fixpoint loop.
-     */
+    /** Whether a decided package filtered an edge the converged set keeps; see {@link ExclusionLedger#anyExpansionStale}. */
     boolean anyExpansionStale(Map<String, String> decisions) {
-        for (Map.Entry<String, String> e : decisions.entrySet()) {
-            Set<String> filtered = filteredAtExpansion.get(e.getKey() + "@" + e.getValue());
-            if (filtered == null) continue;
-            Set<String> converged = exclusionsFor(e.getKey());
-            for (String dep : filtered) {
-                if (!isExcluded(dep, converged)) return true;
-            }
-        }
-        return false;
+        return exclusions.anyExpansionStale(decisions);
     }
 
-    /**
-     * Whether {@code packageKey} is covered by any exclusion entry. Exclusions are GA-scoped
-     * ({@code group:artifact} / wildcards); type/classifier do not escape an exclusion.
-     */
+    /** The edges {@code pkg@version} pruned, as lock {@code excluded-by} lines; see {@link ExclusionLedger#prunedEdges}. */
+    List<String> prunedEdges(String pkg, String version) {
+        return exclusions.prunedEdges(pkg, version);
+    }
+
+    /** Whether {@code packageKey} is covered by any exclusion entry; see {@link ExclusionLedger#isExcluded}. */
     static boolean isExcluded(String packageKey, Set<String> exclusions) {
-        if (exclusions == null || exclusions.isEmpty()) return false;
-        String ga = PackageId.isMavenPackageKey(packageKey)
-                ? PackageId.parse(packageKey).ga()
-                : packageKey;
-        if (exclusions.contains(ga) || exclusions.contains(packageKey)) return true;
-        // Wildcard forms stored as "group:*", "*:artifact", "*:*"
-        int colon = ga.indexOf(':');
-        if (colon < 0) return exclusions.contains("*:*");
-        String g = ga.substring(0, colon);
-        String a = ga.substring(colon + 1);
-        return exclusions.contains(g + ":*") || exclusions.contains("*:" + a) || exclusions.contains("*:*");
+        return ExclusionLedger.isExcluded(packageKey, exclusions);
     }
 
     /**
