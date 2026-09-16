@@ -121,9 +121,7 @@ public final class PlannerPlugin {
      * consumer rejects a plan where the task claims a later stage than it.
      */
     static BuildStage pluginCeiling(PluginBuild.TaskDecl step) {
-        boolean requiredByTests = step.testOnly()
-                || (step.contributesTestClasspath() != null
-                        && !step.contributesTestClasspath().isEmpty());
+        boolean requiredByTests = step.testOnly() || step.feedsTests();
         if (requiredByTests) return BuildStage.TEST;
         if (step.packageTime()) return BuildStage.PACKAGE;
         return BuildStage.IMAGE;
@@ -181,6 +179,8 @@ public final class PlannerPlugin {
             requires.add(TaskNames.PARSE_BUILD);
             requires.add(TaskNames.RESOLVE_DEPS);
             requires.add(TaskNames.ENSURE_JDK);
+            // A test-window step that reads the compiled classes waits for them to be complete.
+            if (step.inputs().contains("classes")) requires.add(TaskNames.COPY_RESOURCES);
         } else {
             requires.add(TaskNames.COPY_RESOURCES);
         }
@@ -224,7 +224,9 @@ public final class PlannerPlugin {
             switch (declared.kind()) {
                 case CLASSES -> tokens.add("classes:" + ClasspathFingerprint.entry(src.classes()));
                 case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
-                case RUNTIME_ENTRIES -> {
+                case RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES -> {
+                    // The test closure is keyed by the entries themselves below; the production
+                    // classpath token rides both arms so a runtime jar swap moves either key.
                     tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
                     // The shape of the entry list, in lock order. `cp:` is content only and
                     // ClasspathFingerprint.of sorts, so three things a packager writes verbatim
@@ -351,7 +353,9 @@ public final class PlannerPlugin {
                     List<Path> classpath = PluginBuild.productionClasspath(in.dir(), cx.cas(), in.lockFile(), project);
                     List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")
                             ? PluginBuild.productionEntries(in.dir(), cx.cas(), in.lockFile(), project)
-                            : List.of();
+                            : step.inputs().contains("test-runtime-entries")
+                                    ? PluginBuild.testRuntimeEntries(in.dir(), in.lockFile(), project)
+                                    : List.of();
 
                     // Manifest-contributed tool artifacts (aapt2, r8, a platform jar) — the ones
                     // this step reads, fetched into the cache, handed to the body by artifact

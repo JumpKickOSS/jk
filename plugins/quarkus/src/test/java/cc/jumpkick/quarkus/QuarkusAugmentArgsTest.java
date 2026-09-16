@@ -70,6 +70,41 @@ class QuarkusAugmentArgsTest {
         assertThat(offline).element(4).isEqualTo("com.example");
     }
 
+    /**
+     * The test-model fork shares the shape: the engine's offline decision last, the platform
+     * properties path from the step-dependency, and the arity {@code QuarkusTestModelMain.main}
+     * requires.
+     */
+    @Test
+    void the_test_model_vector_carries_the_same_decisions() {
+        List<String> offline = testModelArgsFor(true);
+        List<String> online = testModelArgsFor(false);
+        assertThat(offline).hasSize(10).last().isEqualTo("true");
+        assertThat(online).last().isEqualTo("false");
+        assertThat(offline).element(8).isEqualTo(PROPS.toString());
+        assertThat(offline).element(2).isEqualTo("/m/target/plugin/quarkus-test-model/test-model");
+        assertThat(offline.subList(0, offline.size() - 1)).isEqualTo(online.subList(0, online.size() - 1));
+    }
+
+    /** The fork's arguments name the model and the metaspace the bootstrap's resident applications need. */
+    @Test
+    void the_test_jvm_arguments_name_the_model_and_the_metaspace_cap() {
+        assertThat(QuarkusPlugin.testJvmArgs(Path.of("/m/target/plugin/quarkus-test-model/test-model/test-app-model.json")))
+                .containsExactly(
+                        "-Dquarkus-internal-test.serialized-app-model.path="
+                                + "/m/target/plugin/quarkus-test-model/test-model/test-app-model.json",
+                        "-XX:MaxMetaspaceSize=1g");
+    }
+
+    private static List<String> testModelArgsFor(boolean offline) {
+        return QuarkusPlugin.testModelArgs(
+                new ProbeExec(offline, PROPS),
+                Path.of("/m/target/classes/main"),
+                Path.of("/m/target/plugin/quarkus-test-model/test-model"),
+                Path.of("/m/target/test-runtime-jars.tsv"),
+                "3.38.3");
+    }
+
     private static List<String> argsFor(boolean offline) {
         return QuarkusPlugin.augmentArgs(
                 new ProbeExec(offline, PROPS),

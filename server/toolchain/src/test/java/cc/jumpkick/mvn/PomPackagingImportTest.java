@@ -13,8 +13,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Where the packaging plugins land: Shade and {@code jar-with-dependencies} in {@code [application]
- * assembly}, Boot in {@code [spring-boot]}, native-image in {@code [native]}, Jib in an {@code
- * [image]} row, and a war in a Tier-3 row.
+ * assembly}, Boot in {@code [spring-boot]}, Quarkus in {@code [quarkus]}, native-image in {@code
+ * [native]}, Jib in an {@code [image]} row, and a war in a Tier-3 row.
  */
 class PomPackagingImportTest {
 
@@ -98,6 +98,44 @@ class PomPackagingImportTest {
                         .orElseThrow()
                         .string("version"))
                 .isEqualTo("3.5.5");
+    }
+
+    @Test
+    void quarkus_plugin_is_the_table_at_the_platform_version(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "quarkus-pom.xml");
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.pluginConfig("quarkus")).isPresent();
+        assertThat(build.pluginConfig("quarkus").get().string("version")).isEqualTo("3.39.2");
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.startsWith("`<plugin>"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered).contains("[quarkus]\nversion = \"3.39.2\"\n");
+        assertThat(JkBuildParser.parse(rendered)
+                        .pluginConfig("quarkus")
+                        .orElseThrow()
+                        .string("version"))
+                .isEqualTo("3.39.2");
+    }
+
+    @Test
+    void a_quarkus_plugin_without_a_version_anywhere_is_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>io.quarkus.platform</groupId>
+                    <artifactId>quarkus-maven-plugin</artifactId>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().pluginConfig("quarkus")).isEmpty();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(
+                        m -> m.startsWith("`quarkus-maven-plugin` is declared without a resolvable platform version"));
     }
 
     @Test

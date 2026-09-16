@@ -40,7 +40,8 @@ import org.jspecify.annotations.Nullable;
  * <p>The embedded resolver's job stops at the <em>deployment</em> closure, which is build-time only.
  * What ships is jk's: the runtime list is the full locked closure, it is declared as the model's
  * direct dependencies, and {@link LockedAppModel} pins the resolved model's runtime classpath back
- * onto it before augmentation runs. See {@link LockedClosure}.
+ * onto it before augmentation runs. See {@link LockedClosure}. {@link QuarkusTestModelMain} resolves
+ * the same way for the test closure and serializes the model instead of augmenting.
  */
 public final class QuarkusAugmentMain {
 
@@ -124,7 +125,7 @@ public final class QuarkusAugmentMain {
      * resolver type, so a miss can never fall back to resolving through the user's Maven settings
      * (QuarkusPlatformPropertiesTest reflects on the signatures to hold that).
      */
-    private static ApplicationModel resolveModel(
+    static ApplicationModel resolveModel(
             LockedClosure locked,
             Path localRepo,
             boolean offline,
@@ -291,8 +292,8 @@ public final class QuarkusAugmentMain {
         }
     }
 
-    private static void injectPlatform(
-            ApplicationModel model, String quarkusVersion, Path platformProps, boolean offline) throws Exception {
+    static void injectPlatform(ApplicationModel model, String quarkusVersion, Path platformProps, boolean offline)
+            throws Exception {
         if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
             System.err.println("jk-quarkus-augment: warning: cannot inject platform props (platforms type "
                     + (model.getPlatforms() == null

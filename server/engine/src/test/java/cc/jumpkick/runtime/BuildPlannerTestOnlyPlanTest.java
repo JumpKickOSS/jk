@@ -74,18 +74,26 @@ class BuildPlannerTestOnlyPlanTest {
                         // Helper the test-classpath task depends on — must ride along.
                         "{\"t\":\"task\",\"name\":\"helper\",\"inputs\":[],\"outputs\":[\"h\"]}",
                         "{\"t\":\"task\",\"name\":\"test-config\",\"inputs\":[\"step:helper\"],"
-                                + "\"outputs\":[\"tc\"],\"contributesTestClasspath\":[\"tc\"]}"));
+                                + "\"outputs\":[\"tc\"],\"contributesTestClasspath\":[\"tc\"]}",
+                        // Feeds the fork its arguments only (a framework's serialized model) — rides too.
+                        "{\"t\":\"task\",\"name\":\"test-model\",\"inputs\":[\"classes\",\"test-runtime-entries\"],"
+                                + "\"outputs\":[\"tm\"],\"contributesTestJvmArgs\":[\"tm/jvm.args\"]}"));
 
         Set<String> testPlan = planNames(dir, true);
         assertThat(testPlan)
                 .as("testOnly plan validates and keeps run-tests' plugin requires")
-                .contains(TaskNames.RUN_TESTS, "plugin-test-config", "plugin-helper")
+                .contains(TaskNames.RUN_TESTS, "plugin-test-config", "plugin-helper", "plugin-test-model")
                 .doesNotContain("plugin-dex", TaskNames.PACKAGE_JAR);
 
         Set<String> buildPlan = planNames(dir, false);
         assertThat(buildPlan)
                 .as("full build plan still schedules every plugin task and packaging")
-                .contains("plugin-dex", "plugin-helper", "plugin-test-config", TaskNames.PACKAGE_JAR);
+                .contains(
+                        "plugin-dex",
+                        "plugin-helper",
+                        "plugin-test-config",
+                        "plugin-test-model",
+                        TaskNames.PACKAGE_JAR);
     }
 
     @Test

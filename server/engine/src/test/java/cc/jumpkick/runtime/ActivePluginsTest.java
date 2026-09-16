@@ -155,6 +155,7 @@ class ActivePluginsTest {
 
     private static PluginBuild.TaskDecl step(String name) {
         return new PluginBuild.TaskDecl(
-                name, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null, null);
+                name, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
+                null);
     }
 }

@@ -51,6 +51,15 @@ public interface TaskContribution {
     /** Append a declared output dir to the module's test runtime classpath. */
     TaskContribution contributesTestClasspath(String relDir);
 
+    /**
+     * A declared output file (relative to the task's scratch root) whose non-blank lines the engine
+     * appends, one argument each, to every test JVM it forks for the module — after jk's tuning
+     * and before the module's own {@code [test] jvm-args}, so a flag the module sets wins. How a
+     * TEST-window step hands a framework's bootstrap a file it wrote ({@code
+     * -Dframework.model.path=…}) or the limits that framework's tests need.
+     */
+    TaskContribution contributesTestJvmArgs(String relFile);
+
     /** Declare a declared output dir as the module's classes-dir replacement (at most one per build). */
     TaskContribution transformsClasses(String relDir);
 

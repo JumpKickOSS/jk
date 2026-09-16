@@ -109,6 +109,27 @@ public final class PlannerKsp {
         return out;
     }
 
+    /**
+     * The arguments plugin steps contributed to the forked test JVM ({@code contributesTestJvmArgs}):
+     * every non-blank line of each declared file, in declaration order. A declared file the step
+     * did not write contributes nothing.
+     */
+    static List<String> pluginTestJvmArgs(BuildLayout layout, PluginBuild.@Nullable Declarations decls)
+            throws IOException {
+        List<String> out = new ArrayList<>();
+        if (decls == null) return out;
+        for (PluginBuild.TaskDecl step : decls.steps()) {
+            for (String rel : step.contributesTestJvmArgs()) {
+                Path file = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
+                if (!Files.isRegularFile(file)) continue;
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    if (!line.isBlank()) out.add(line.strip());
+                }
+            }
+        }
+        return out;
+    }
+
     /** The provided-classpath contribution (platform jars), re-read for the test step. */
     static List<Path> contributedProvidedFor(TaskContext ctx) {
         return ctx.get(PROVIDED_CP).orElse(List.of());

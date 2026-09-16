@@ -485,8 +485,10 @@ public final class JUnitLauncher {
         // One debugger, one JVM: a pool would have every shard contend for the same port.
         int wanted = debug != null ? 1 : workers;
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
-        // Quarkus PathTestHelper only recognizes Maven/Gradle/IDE test-dir fragments. JK uses
-        // target/classes/test + target/classes/main — register via TEST_TO_MAIN_MAPPINGS (BootstrapConstants).
+        // Quarkus's PathTestHelper maps a test classes dir to the main one by known fragments
+        // (Maven, Gradle, IDE layouts); jk's target/classes/test → target/classes/main is registered
+        // through TEST_TO_MAIN_MAPPINGS (BootstrapConstants). The application model itself is the
+        // Quarkus plugin's serialized test model, not a workspace read off a pom.xml.
         Map<String, String> defaults = new LinkedHashMap<>();
         defaults.put(
                 "TEST_TO_MAIN_MAPPINGS", "classes" + File.separator + "test" + ":classes" + File.separator + "main");
@@ -497,7 +499,6 @@ public final class JUnitLauncher {
         this.testClassesDir = testClassesDir.toAbsolutePath().normalize();
         this.inferredModuleDir = inferModuleDir(testClassesDir);
         this.testTmpDir = TestTmpDir.ensure(this.testEnv.extras().get("TMPDIR"));
-        QuarkusToolingPom.ensure(this.inferredModuleDir);
 
         Path runnerJar = locateRunner(cacheRoot);
         var classpathBase = new LinkedHashSet<Path>();

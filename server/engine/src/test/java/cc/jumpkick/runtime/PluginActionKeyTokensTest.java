@@ -292,7 +292,8 @@ class PluginActionKeyTokensTest {
 
     private static String wire(In.Kind kind) {
         return switch (kind) {
-            case CLASSES, RUNTIME_CLASSPATH, RUNTIME_ENTRIES, CONFIG -> new In(kind, null).wireName();
+            case CLASSES, RUNTIME_CLASSPATH, RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES, CONFIG ->
+                new In(kind, null).wireName();
             case STEP_OUTPUT -> In.stepOutput("aot").wireName();
             case PROJECT_FILES -> In.projectFiles("src/main/res").wireName();
         };
