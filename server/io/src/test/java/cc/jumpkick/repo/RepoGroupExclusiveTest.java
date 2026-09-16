@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -172,6 +173,60 @@ class RepoGroupExclusiveTest {
         Optional<RepoGroup.RepoFetched> hit = group.tryFetchPom(Coordinate.of("com.example", "widget", "1.0"));
         assertThat(hit).isPresent();
         assertThat(hit.get().repo().name()).isEqualTo("central");
+    }
+
+    @Test
+    void routed_group_is_served_by_the_router_alone_and_falls_back_when_it_misses(@TempDir Path tmp) throws Exception {
+        // com.google.firebase is split: the Android SDK (firebase-bom) is on Google's Maven,
+        // firebase-admin on Central. Google routes the group: a coordinate it holds never probes
+        // Central, and a coordinate it does not hold is still found on Central.
+        Path centralDir = tmp.resolve("central");
+        Path googleDir = tmp.resolve("google");
+        writeMeta(centralDir, "com.google.firebase", "firebase-admin", "9.2.0");
+        writePom(centralDir, "com.google.firebase", "firebase-admin", "9.2.0");
+        writeMeta(googleDir, "com.google.firebase", "firebase-bom", "33.7.0");
+        writePom(googleDir, "com.google.firebase", "firebase-bom", "33.7.0");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo central = new MavenRepo("central", centralDir.toUri(), new Http(), cas);
+        MavenRepo google = new MavenRepo("google", googleDir.toUri(), new Http(), cas);
+        RepoGroup group = new RepoGroup(
+                List.of(central, google),
+                null,
+                List.of(List.of(), List.of("com.google.firebase", "com.google.firebase.*")));
+
+        Coordinate admin = Coordinate.of("com.google.firebase", "firebase-admin", "9.2.0");
+        assertThat(group.eligibleRepos(admin)).extracting(MavenRepo::name).containsExactly("google");
+        assertThat(group.repositoriesFor(admin)).extracting(MavenRepo::name).containsExactly("google", "central");
+        assertThat(group.availableVersions(admin, Set.of("9.2.0"), false)).containsExactly("9.2.0");
+        Optional<RepoGroup.RepoFetched> adminHit = group.tryFetchPom(admin);
+        assertThat(adminHit).isPresent();
+        assertThat(adminHit.get().repo().name()).isEqualTo("central");
+
+        Coordinate bom = Coordinate.of("com.google.firebase", "firebase-bom", "33.7.0");
+        assertThat(group.availableVersions(bom)).containsExactly("33.7.0");
+        Optional<RepoGroup.RepoFetched> bomHit = group.tryFetchPom(bom);
+        assertThat(bomHit).isPresent();
+        assertThat(bomHit.get().repo().name()).isEqualTo("google");
+    }
+
+    @Test
+    void an_exclusive_claim_outranks_a_routing_claim_on_the_same_group(@TempDir Path tmp) throws Exception {
+        // A user who binds com.google.firebase exclusively on Google means it: Central is not asked.
+        Path centralDir = tmp.resolve("central");
+        Path googleDir = tmp.resolve("google");
+        writeMeta(centralDir, "com.google.firebase", "firebase-admin", "9.2.0");
+        Files.createDirectories(googleDir);
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo central = new MavenRepo("central", centralDir.toUri(), new Http(), cas);
+        MavenRepo google = new MavenRepo("google", googleDir.toUri(), new Http(), cas);
+        RepoGroup group = new RepoGroup(
+                List.of(central, google),
+                List.of(List.of(), List.of("com.google.firebase")),
+                List.of(List.of(), List.of("com.google.firebase", "com.google.firebase.*")));
+
+        Coordinate admin = Coordinate.of("com.google.firebase", "firebase-admin", "9.2.0");
+        assertThat(group.repositoriesFor(admin)).extracting(MavenRepo::name).containsExactly("google");
+        assertThat(group.availableVersions(admin, Set.of("9.2.0"), false)).isEmpty();
     }
 
     private static void writeMeta(Path repoRoot, String group, String artifact, String... versions) throws Exception {

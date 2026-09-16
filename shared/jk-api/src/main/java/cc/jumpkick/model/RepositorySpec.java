@@ -62,19 +62,18 @@ public record RepositorySpec(
     public static final String JK_LOCAL = "jk-local";
 
     /**
-     * Groups that live on Google's Android Maven (not Maven Central). Applied as exclusive
-     * bindings when the Google remote is present so warm multi-repo locks do not probe Central
-     * for every {@code androidx.*} GAV.
+     * Groups Google's Android Maven serves. Applied as <em>routed</em> bindings when the Google
+     * remote is present: Google is asked first and alone when it answers, so warm multi-repo locks
+     * do not probe Central for every {@code androidx.*} GAV, and every other repository is asked
+     * when Google misses, because these namespaces are shared: {@code com.google.firebase} holds
+     * the Firebase Android SDK on Google and {@code firebase-admin} on Central, and
+     * {@code com.google.android:annotations} (a grpc-core runtime dep) is Central-only.
      */
-    public static final List<String> GOOGLE_ANDROID_EXCLUSIVE_GROUPS = List.of(
+    public static final List<String> GOOGLE_ANDROID_GROUPS = List.of(
             "androidx",
             "androidx.*",
             "com.android",
             "com.android.*",
-            // NOT the bare "com.google.android" group: its artifacts (com.google.android:annotations,
-            // a grpc-core runtime dep) are hosted only on Central — claiming the bare group made
-            // grpc-netty-shaded's closure unresolvable and the b1a1e7d9 re-lock silently dropped
-            // it. Subgroups below stay exclusive.
             "com.google.android.*",
             "com.google.android.gms",
             "com.google.android.gms.*",
@@ -96,14 +95,11 @@ public record RepositorySpec(
 
     /**
      * Google's Android / Play services Maven repository (after Central in the built-in list).
-     * Exclusive for {@link #GOOGLE_ANDROID_EXCLUSIVE_GROUPS} by default.
+     * Routed for {@link #GOOGLE_ANDROID_GROUPS}; {@link #groups()} carries only what a user binds
+     * exclusively on top.
      */
-    public static final RepositorySpec GOOGLE_MAVEN = releasesOnly(new RepositorySpec(
-            GOOGLE,
-            URI.create("https://dl.google.com/dl/android/maven2/"),
-            null,
-            null,
-            GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+    public static final RepositorySpec GOOGLE_MAVEN =
+            releasesOnly(new RepositorySpec(GOOGLE, URI.create("https://dl.google.com/dl/android/maven2/")));
 
     /**
      * The one name the official first-party repository answers to inside jk — store directory,

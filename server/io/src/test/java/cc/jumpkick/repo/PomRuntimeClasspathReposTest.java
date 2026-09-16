@@ -66,15 +66,18 @@ class PomRuntimeClasspathReposTest {
         assertThat(cp).contains(apksigJar.toAbsolutePath().normalize());
     }
 
-    /** The remotes a miss walks are the lock's built-in set, Google claiming the Android groups. */
+    /** The remotes a miss walks are the lock's built-in set, Google routing the Android groups. */
     @Test
-    void the_worker_remotes_are_jumpkick_central_then_google_with_the_android_groups_exclusive(@TempDir Path tmp) {
+    void the_worker_remotes_are_jumpkick_central_then_google_with_the_android_groups_routed(@TempDir Path tmp) {
         RepoGroup repos = PomRuntimeClasspath.storeRepos(tmp.resolve("store"));
         List<String> names = repos.repos().stream().map(MavenRepo::name).toList();
         assertThat(names.subList(names.size() - 3, names.size()))
                 .containsExactly(RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL, RepositorySpec.GOOGLE);
-        assertThat(repos.exclusiveGroups().get(names.lastIndexOf(RepositorySpec.GOOGLE)))
+        assertThat(repos.routedGroups().get(names.lastIndexOf(RepositorySpec.GOOGLE)))
                 .contains("com.android.*", "androidx.*");
+        assertThat(repos.exclusiveGroups().get(names.lastIndexOf(RepositorySpec.GOOGLE)))
+                .as("Google claims nothing exclusively")
+                .isEmpty();
         assertThat(repos.exclusiveGroups().get(names.lastIndexOf(RepositorySpec.CENTRAL)))
                 .as("Central claims nothing")
                 .isEmpty();
