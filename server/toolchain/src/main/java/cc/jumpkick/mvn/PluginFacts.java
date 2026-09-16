@@ -43,6 +43,7 @@ final class PluginFacts {
             "maven-toolchains-plugin",
             "maven-resources-plugin",
             "build-helper-maven-plugin",
+            "openapi-generator-maven-plugin",
             "maven-jar-plugin",
             "maven-source-plugin",
             "maven-javadoc-plugin",

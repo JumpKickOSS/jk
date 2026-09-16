@@ -3,6 +3,7 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JavacConfig;
@@ -23,6 +24,7 @@ import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -61,27 +63,54 @@ public final class PomImporter {
     public record WorkspaceImportResult(
             JkBuild root, Map<String, JkBuild> modules, ImportReport report, Set<Path> pomFiles) {}
 
+    /** Fetches a file the POM names by URL (a generator's remote spec); an {@link IOException} is the row's reason. */
+    @FunctionalInterface
+    public interface RemoteFile {
+        byte[] fetch(URI uri) throws IOException;
+    }
+
     private final RepoModelResolver resolver;
+    private final RemoteFile remote;
 
     /** Parents and BOM imports are fetched through {@code repos}, plus any {@code <repository>} the POM declares. */
     public PomImporter(RepoGroup repos, Cas cas) {
+        this(repos, cas, overHttp(new Http()));
+    }
+
+    /** {@code remote} answers the URLs a POM's generator plugins read their specs from. */
+    public PomImporter(RepoGroup repos, Cas cas, RemoteFile remote) {
         this.resolver = new RepoModelResolver(repos, cas);
+        this.remote = remote;
+    }
+
+    private static RemoteFile overHttp(Http http) {
+        return uri -> {
+            try {
+                HttpResponse<byte[]> response = http.get(uri);
+                if (response.statusCode() / 100 != 2) throw new IOException("HTTP " + response.statusCode());
+                return response.body();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted", e);
+            }
+        };
     }
 
     public Result importFrom(Path pomXml) throws IOException {
         Path file = pomXml.toAbsolutePath();
-        return importModel(EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null));
+        return importModel(EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null), remote);
     }
 
     /** A POM with no file behind it (an archive's embedded pom.xml): no {@code relativePath} lookup. */
     public Result importFromBytes(byte[] xml) {
-        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null));
+        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote);
     }
 
-    private static Result importModel(EffectiveModel em) {
+    private static Result importModel(EffectiveModel em, RemoteFile remote) {
         ImportReport.Builder report = ImportReport.builder();
         reportInheritanceFailure(em, report);
-        SourceTreePlugins.SourceTree sourceTree = SourceTreePlugins.map(em, report);
+        GeneratorPlugins.Generators generators = GeneratorPlugins.map(em.model(), remote, report);
+        SourceTreePlugins.SourceTree sourceTree = SourceTreePlugins.map(em, generators.outputRoots(), report);
         Project project = mapProject(em, report, sourceTree);
         List<Pom.Dep> processorPaths = PluginFacts.annotationProcessorPaths(em.model());
         Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths);
@@ -106,6 +135,7 @@ public final class PomImporter {
                 .application(application)
                 .nativeConfig(packaging.nativeConfig())
                 .pluginConfig(packaging.springBoot())
+                .pluginConfig(generators.openapi())
                 .build(buildBlock(em.model(), sourceTree, tests))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
@@ -165,7 +195,7 @@ public final class PomImporter {
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
         if (!ReactorModules.declaresModules(rootRaw)) {
-            Result single = importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null));
+            Result single = importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote);
             return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report(), Set.of(rootFile));
         }
 
@@ -176,7 +206,7 @@ public final class PomImporter {
         EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
         if (leaves.isEmpty() && found.boms().isEmpty()) reportInactiveModules(rootModel, report);
-        SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, report);
+        SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, List.of(), report);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
         warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true);
         String rootMainClass = PluginFacts.mainClass(rootModel.model());
@@ -185,7 +215,7 @@ public final class PomImporter {
 
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
         for (ReactorModules.Leaf leaf : leaves) {
-            Result child = importModel(leaf.model());
+            Result child = importModel(leaf.model(), remote);
             moduleBuilds.put(leaf.path(), child.jkBuild());
             for (ImportReport.Issue issue : child.report().issues()) {
                 String prefixed = "[" + leaf.path() + "] " + issue.message();

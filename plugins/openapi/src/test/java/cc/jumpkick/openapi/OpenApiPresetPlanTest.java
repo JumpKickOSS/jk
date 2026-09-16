@@ -70,6 +70,42 @@ class OpenApiPresetPlanTest {
                                 + "annotationLibrary=none,openApiNullable=false,useTags=false");
     }
 
+    /** apollo-portal's layout: api at {@code <root>.api}, models at {@code <root>.model}, invoker at {@code <root>.invoker}. */
+    @Test
+    void each_package_key_replaces_the_name_the_root_derives() {
+        GeneratorEntry entry = OpenApiPreset.entry(
+                new PluginConfig(
+                        "openapi",
+                        Map.of(
+                                "generator", "spring",
+                                "package", "com.ctrip.framework.apollo.openapi",
+                                "api-package", "com.ctrip.framework.apollo.openapi.api",
+                                "invoker-package", "com.ctrip.framework.apollo.openapi.invoker")),
+                PROJECT);
+
+        assertThat(entry.args())
+                .containsSubsequence(
+                        "--api-package",
+                        "com.ctrip.framework.apollo.openapi.api",
+                        "--model-package",
+                        "com.ctrip.framework.apollo.openapi.model",
+                        "--invoker-package",
+                        "com.ctrip.framework.apollo.openapi.invoker",
+                        "--package-name",
+                        "com.ctrip.framework.apollo.openapi");
+    }
+
+    /** The generator refuses `useSpringBoot3` beside `useSpringBoot4`; asking for Boot 4 drops the preset's Boot 3 default. */
+    @Test
+    void asking_for_spring_boot_4_drops_the_boot_3_default() {
+        GeneratorEntry entry = OpenApiPreset.entry(
+                new PluginConfig("openapi", Map.of("generator", "spring", "options", Map.of("useSpringBoot4", "true"))),
+                PROJECT);
+
+        String properties = entry.args().getLast();
+        assertThat(properties).contains("useSpringBoot4=true").doesNotContain("useSpringBoot3");
+    }
+
     @Test
     void another_generator_gets_only_the_tables_options_and_the_group_package() {
         GeneratorEntry entry = OpenApiPreset.entry(

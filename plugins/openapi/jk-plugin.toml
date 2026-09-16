@@ -16,7 +16,10 @@ protocol-prefix = "##JKOA:"
 [schema]
 spec      = { type = "string", default = "api/*.yaml", example = "api/openapi.yaml", hint = "the contract, module-relative; a glob runs the first match" }
 generator = { type = "string", required = true, example = "spring", hint = "an openapi-generator generator name: spring, java, kotlin-spring, …" }
-package   = { type = "string", example = "com.acme.api", hint = "the api and invoker package; models land in <package>.model. Default: the project group + .api" }
+package   = { type = "string", example = "com.acme.api", hint = "the root the generated packages derive from: api and invoker at <package>, models at <package>.model. Default: the project group + .api" }
+api-package     = { type = "string", example = "com.acme.api.controller", hint = "the api package when it is not <package>" }
+model-package   = { type = "string", example = "com.acme.dto", hint = "the model package when it is not <package>.model" }
+invoker-package = { type = "string", example = "com.acme.api.client", hint = "the invoker package when it is not <package>" }
 version   = { type = "string", default = "latest", example = "7.11.0", hint = "the openapi-generator-cli release; a bare version is exact, latest the newest stable" }
 options   = { type = "string-map", default = {} }   # --additional-properties, over the preset's defaults for the generator
 

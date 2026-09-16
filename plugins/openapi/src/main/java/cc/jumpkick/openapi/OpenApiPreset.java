@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.openapi;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.generate.GeneratorEntry;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -31,7 +32,8 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
     /**
      * What the {@code spring} generator needs to produce an interface-only API a Boot module
      * compiles with no extra libraries: no controllers or application class, Jakarta imports, no
-     * swagger annotations, no {@code JsonNullable}. {@code [openapi] options} overrides any of them.
+     * swagger annotations, no {@code JsonNullable}. {@code [openapi] options} overrides any of them,
+     * and {@code useSpringBoot4 = "true"} replaces the Boot 3 switch.
      */
     private static final List<String> SPRING_DEFAULTS = List.of(
             "interfaceOnly=true",
@@ -57,7 +59,11 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
         ctx.task(entry(ctx.config(), ctx.project()).task());
     }
 
-    /** The generator entry the table expands to. */
+    /**
+     * The generator entry the table expands to. {@code package} is the root every generated package
+     * derives from; {@code api-package}, {@code model-package} and {@code invoker-package} each
+     * replace their derived name.
+     */
     static GeneratorEntry entry(PluginConfig config, ProjectFacts project) {
         String generator = config.string("generator");
         String pkg = config.stringOpt("package").orElse(project.group() + ".api");
@@ -70,11 +76,11 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 "-o",
                 "${out}",
                 "--api-package",
-                pkg,
+                config.stringOpt("api-package").orElse(pkg),
                 "--model-package",
-                pkg + ".model",
+                config.stringOpt("model-package").orElse(pkg + ".model"),
                 "--invoker-package",
-                pkg,
+                config.stringOpt("invoker-package").orElse(pkg),
                 "--package-name",
                 pkg));
         Map<String, String> options = new LinkedHashMap<>();
@@ -84,7 +90,14 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 options.put(pair.substring(0, eq), pair.substring(eq + 1));
             }
         }
-        options.putAll(config.stringMap("options"));
+        Map<String, String> declared = config.stringMap("options");
+        options.putAll(declared);
+        // The spring generator refuses both Boot switches at once: a table asking for Boot 4
+        // drops the preset's Boot 3 default unless it set that one too.
+        if (EnvValues.parseBool(declared.get("useSpringBoot4")).orElse(false)
+                && !declared.containsKey("useSpringBoot3")) {
+            options.remove("useSpringBoot3");
+        }
         if (!options.isEmpty()) {
             List<String> pairs = new ArrayList<>(options.size());
             options.forEach((k, v) -> pairs.add(k + "=" + v));

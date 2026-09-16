@@ -226,7 +226,7 @@ relates to the Maven one.
 | maven-gpg-plugin | 17 | `jk publish --sign` | exact |
 | maven-assembly-plugin | 17 | `jar-with-dependencies` → `[application] assembly = true` (needs a `<mainClass>`, else a row); other descriptors → row | approximate |
 | maven-enforcer-plugin | 17 | `requireJavaVersion` → `java =`; banned deps → `jk deny`; rest → row | approximate |
-| build-helper-maven-plugin | 16 | `add-source` → `[build] extra-src`, `add-test-source` → `[test] extra-src`; other goals → row | approximate |
+| build-helper-maven-plugin | 16 | `add-source` → `[build] extra-src`, `add-test-source` → `[test] extra-src`; a root inside a generator's output (`target/generated-sources/openapi/…`) is that generator's contribution and is not written; other goals → row | approximate |
 | exec-maven-plugin | 16 | `java` goal → `[application]`; `exec` goal → row (build logic) | manual |
 | maven-dependency-plugin | 15 | nothing (analysis / copy goals) → row when bound to a phase | manual |
 | maven-clean-plugin | 15 | `jk clean` | exact |
@@ -253,7 +253,7 @@ relates to the Maven one.
 | native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main` | approximate |
 | maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
 | antlr4-maven-plugin | 5 | `[antlr]` (planned generator preset) | manual |
-| openapi-generator-maven-plugin | 4 | `[openapi]` (planned generator preset) | manual |
+| openapi-generator-maven-plugin | 4 | `[openapi]`: `<inputSpec>` → `spec` (an HTTP URL is fetched once into `api/<file>` beside the manifest, a row says so), `<generatorName>` → `generator`, the `<modelPackage>` root (else the api or invoker package) → `package` with `<apiPackage>` / `<modelPackage>` / `<invokerPackage>` the root does not derive → `api-package` / `model-package` / `invoker-package`, `<configOptions>` / `<additionalProperties>` → `options`, the plugin version → `version`; `<packageName>`, a second `generate` execution and any other option → row | approximate |
 | any other `<build><extensions>` entry | 4 | Tier-3 row naming the coordinate and, for build-reporter-maven-extension, gitflow-incremental-builder, wagon-ssh and archetype-packaging, what it does under Maven | none |
 
 **Grades.** *exact*: the imported build does what the plugin did. *approximate*: the common

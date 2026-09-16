@@ -11,6 +11,7 @@ import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
@@ -18,9 +19,11 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -228,28 +231,49 @@ public final class JkBuildRenderer {
      * lives here.
      */
     private static void renderPluginTables(StringBuilder sb, JkBuild jkBuild) {
-        for (var manifest : PluginTableRegistry.manifests()) {
-            var config = jkBuild.pluginConfig(manifest.id()).orElse(null);
-            if (config == null) continue;
-            sb.append("\n[").append(manifest.table()).append("]\n");
+        for (PluginConfig config : jkBuild.pluginConfigs().values()) {
+            PluginDescriptor manifest = PluginTableRegistry.byIdOrTable(config.id());
+            sb.append("\n[")
+                    .append(manifest != null ? manifest.table() : config.id())
+                    .append("]\n");
+            if (manifest == null) {
+                // No manifest installed here: every value as the model carries it, so the table
+                // is never dropped from the file it belongs in.
+                for (Map.Entry<String, Object> e : config.values().entrySet()) {
+                    if (PluginConfig.ENTRIES.equals(e.getKey())) continue;
+                    sb.append(e.getKey()).append(" = ");
+                    renderPluginValue(sb, e.getValue());
+                    sb.append('\n');
+                }
+                continue;
+            }
             for (var schemaKey : manifest.schema().values()) {
                 Object value = config.values().get(schemaKey.name());
                 if (value == null || value.equals(schemaKey.normalizedDefault())) continue;
                 sb.append(schemaKey.name()).append(" = ");
-                if (value instanceof String str) {
-                    sb.append(quote(str));
-                } else if (value instanceof List<?> list) {
-                    sb.append('[');
-                    for (int i = 0; i < list.size(); i++) {
-                        if (i > 0) sb.append(", ");
-                        sb.append(quote(String.valueOf(list.get(i))));
-                    }
-                    sb.append(']');
-                } else {
-                    sb.append(value); // bool / int render bare
-                }
+                renderPluginValue(sb, value);
                 sb.append('\n');
             }
+        }
+    }
+
+    /** A plugin table value by its runtime shape: string, string map, string list, else bare (bool / int). */
+    private static void renderPluginValue(StringBuilder sb, Object value) {
+        if (value instanceof String str) {
+            sb.append(quote(str));
+        } else if (value instanceof Map<?, ?> map) {
+            Map<String, String> strings = new LinkedHashMap<>();
+            map.forEach((k, v) -> strings.put(String.valueOf(k), String.valueOf(v)));
+            sb.append(inlineTable(strings));
+        } else if (value instanceof List<?> list) {
+            sb.append('[');
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(quote(String.valueOf(list.get(i))));
+            }
+            sb.append(']');
+        } else {
+            sb.append(value);
         }
     }
 
