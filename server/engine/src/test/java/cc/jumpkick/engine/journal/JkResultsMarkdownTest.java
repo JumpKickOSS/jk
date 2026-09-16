@@ -64,7 +64,8 @@ class JkResultsMarkdownTest {
                 cli.running(),
                 cli.io(),
                 cli.requestId(),
-                null);
+                null,
+                List.of());
         String md = JkResultsMarkdown.render(mcp);
         assertThat(md)
                 .startsWith("# jk results — OK\n\n**OK** · build · `g:a` · #3 · 100ms · exit 0\n"
@@ -286,7 +287,8 @@ class JkResultsMarkdownTest {
                 false,
                 null,
                 7L,
-                null);
+                null,
+                List.of());
         String md = JkResultsMarkdown.render(r);
         assertThat(md).startsWith("# jk results — CANCELLED");
         assertThat(md).contains("**exit 130**");
@@ -511,7 +513,8 @@ class JkResultsMarkdownTest {
                         List.of("Missing signature for file: widget-1.0.0.pom", "Javadocs must be provided"),
                         List.of(
                                 "com/example/widget/1.0.0/widget-1.0.0.jar",
-                                "com/example/widget/1.0.0/widget-1.0.0.jar.asc")));
+                                "com/example/widget/1.0.0/widget-1.0.0.jar.asc")),
+                List.of());
         String md = JkResultsMarkdown.render(r);
         assertThat(md)
                 .contains("## Publish\n\n- destination: Central Portal (user-managed)\n- files: 16\n"
@@ -561,6 +564,7 @@ class JkResultsMarkdownTest {
                 false,
                 null,
                 0L,
-                null);
+                null,
+                List.of());
     }
 }

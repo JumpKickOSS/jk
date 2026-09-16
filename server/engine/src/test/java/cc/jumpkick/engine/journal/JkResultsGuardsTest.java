@@ -72,7 +72,8 @@ class JkResultsGuardsTest {
                 false,
                 null,
                 0,
-                null);
+                null,
+                List.of());
     }
 
     private static final String THRASHING = SITE.replace(

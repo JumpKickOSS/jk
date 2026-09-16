@@ -54,7 +54,8 @@ class BuildJournalTest {
                 false,
                 null,
                 0L,
-                null);
+                null,
+                List.of());
     }
 
     /** The journal writes {@code trigger}, never a {@code synthetic} key: both loaders derive it. */
@@ -154,7 +155,8 @@ class BuildJournalTest {
                 base.running(),
                 base.io(),
                 base.requestId(),
-                null);
+                null,
+                List.of());
     }
 
     @Test
@@ -195,7 +197,8 @@ class BuildJournalTest {
                 false,
                 null,
                 9L,
-                null);
+                null,
+                List.of());
         assertThat(j.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
         assertThat(j.get(locator).orElseThrow().running()).isFalse();
         assertThat(j.get(locator).orElseThrow().success()).isTrue();
@@ -239,7 +242,8 @@ class BuildJournalTest {
                 false,
                 null,
                 9L,
-                null);
+                null,
+                List.of());
         assertThat(j.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
         String json = j.rawFinishedRecordByRequestId(9L).orElseThrow();
         BuildRecord parsed = Json.read(json);
@@ -668,7 +672,8 @@ class BuildJournalTest {
                 base.running(),
                 base.io(),
                 base.requestId(),
-                null);
+                null,
+                List.of());
     }
 
     /**
@@ -750,6 +755,7 @@ class BuildJournalTest {
                 base.running(),
                 base.io(),
                 base.requestId(),
-                null);
+                null,
+                List.of());
     }
 }
