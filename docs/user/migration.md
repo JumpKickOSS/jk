@@ -116,12 +116,14 @@ own — is not a workspace module: a `dependencyManagement` that imports it is a
 declared dependencies and the BOM is not written as a `[platform]` row (the lock fetches a BOM from
 a repository, which a reactor BOM is not in; the row on each importing member says so), and a BOM
 no member imports is one row. A `pom`-packaged leaf with plugins of its own stays a module.
-A dependency on a reactor POM the workspace does not build — a `<type>pom</type>` edge to an
-aggregator, or any edge to a module only an inactive profile lists — is dropped with a row naming
-the POM and its modules or its profile (and, for an aggregator with compile dependencies of its
-own, what the pom edge put on the classpath), because no repository has a reactor POM for the lock
-to fetch.
-A published parent's `<repository>` whose URL is a property nothing values (`${vertx.snapshotRepository}`
+A dependency on a reactor POM the workspace does not build — a jar edge to an aggregator, or any
+edge to a module only an inactive profile lists — is dropped with a row naming the POM and its
+modules or its profile, because no repository has a reactor POM for the lock to fetch. A
+`<type>pom</type>` edge to an aggregator is rewritten instead of dropped: the aggregator's own
+compile and runtime dependencies, which Maven put on the dependent's classpath through the pom, are
+written on the dependent in the edge's place — a reactor member among them as a workspace edge, a
+coordinate the dependent declares itself left to that declaration — and the row names them. A
+published parent's `<repository>` whose URL is a property nothing values (`${vertx.snapshotRepository}`
 in the Vert.x parents) is left out of the lookup the way Maven only fails on a fetch from it, so the
 parent still hands its managed versions down; and a dependency an inactive profile declares without a
 version takes the one the POM's effective `dependencyManagement` supplies, so a `[features.<id>]`
