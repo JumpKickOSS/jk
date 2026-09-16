@@ -3,7 +3,6 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PinPolicy;
@@ -57,6 +56,29 @@ public final class LockOrchestrator {
 
     /** How a declared exact pin meets a transitive's constraint; default {@link PinPolicy#EXACT}. */
     private PinPolicy pinPolicy = PinPolicy.EXACT;
+
+    /** The workspace members behind a merged manifest, each with its own effective manifest. */
+    private List<Member> members = List.of();
+
+    /**
+     * One workspace member as the lock sees it: its {@code [[module]]} path and its manifest with
+     * workspace placeholders resolved, sibling externals and platform tables folded in.
+     */
+    public record Member(String path, JkBuild manifest) {
+        public Member {
+            Objects.requireNonNull(path, "path");
+            Objects.requireNonNull(manifest, "manifest");
+        }
+    }
+
+    /**
+     * The members of the workspace {@code project} merges; empty for a standalone project. A member
+     * the merged answer cannot serve is solved on its own and its rows carry {@code members}.
+     */
+    public LockOrchestrator withMembers(List<Member> members) {
+        this.members = members == null ? List.of() : List.copyOf(members);
+        return this;
+    }
 
     /** The compiler versions this lock pins; the injected stdlibs follow them exactly. */
     public LockOrchestrator withToolVersions(LanguageRuntimeInject.ToolVersions tools) {
@@ -163,7 +185,7 @@ public final class LockOrchestrator {
      * {@code existing} as <em>soft preferences</em>. The solver selects each locked version first; if
      * a new or changed dep's constraint rules it out, the solver backtracks to the next candidate
      * automatically. Only versions that genuinely conflict with new constraints are bumped
-     * everything else stays pinned.
+     * everything else stays pinned. A member partition row seeds only the member it lists.
      */
     public Lockfile lockConservative(
             JkBuild project,
@@ -174,15 +196,24 @@ public final class LockOrchestrator {
             ResolveObserver observer)
             throws IOException, InterruptedException {
         Map<String, String> prefs = new HashMap<>();
+        Map<String, Map<String, String>> memberPrefs = new HashMap<>();
         for (Lockfile.Artifact pkg : existing.artifacts()) {
-            // Prefer main-scoped rows over test-only / processor-only duals.
-            boolean specializedOnly =
-                    pkg.scopes().stream().allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
-                            && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
             String key = pkg.packageKey();
             String ga = PackageId.isMavenPackageKey(pkg.name())
                     ? PackageId.parse(pkg.name()).ga()
                     : pkg.name();
+            if (pkg.isPartition()) {
+                for (String member : pkg.members()) {
+                    Map<String, String> mine = memberPrefs.computeIfAbsent(member, k -> new HashMap<>());
+                    mine.put(key, pkg.version());
+                    mine.put(ga, pkg.version());
+                }
+                continue;
+            }
+            // Prefer main-scoped rows over test-only / processor-only duals.
+            boolean specializedOnly =
+                    pkg.scopes().stream().allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
+                            && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
             if (specializedOnly) {
                 prefs.putIfAbsent(key, pkg.version());
                 prefs.putIfAbsent(ga, pkg.version());
@@ -191,7 +222,7 @@ public final class LockOrchestrator {
                 prefs.put(ga, pkg.version());
             }
         }
-        return lock(project, jkVersion, featuresRequested, withDefaults, observer, prefs);
+        return lock(project, jkVersion, featuresRequested, withDefaults, observer, prefs, memberPrefs);
     }
 
     private Lockfile lock(
@@ -202,11 +233,70 @@ public final class LockOrchestrator {
             ResolveObserver observer,
             Map<String, String> lockedVersionPrefs)
             throws IOException, InterruptedException {
-        LockProgress progress = new LockProgress(observer, timings);
+        return lock(project, jkVersion, featuresRequested, withDefaults, observer, lockedVersionPrefs, Map.of());
+    }
 
-        LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults);
+    private Lockfile lock(
+            JkBuild project,
+            String jkVersion,
+            Collection<String> featuresRequested,
+            boolean withDefaults,
+            ResolveObserver observer,
+            Map<String, String> lockedVersionPrefs,
+            Map<String, Map<String, String>> memberPrefs)
+            throws IOException, InterruptedException {
+        LockProgress progress = new LockProgress(observer, timings);
         // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
+        Solve union = solveManifest(
+                project, featuresRequested, withDefaults, lockedVersionPrefs, progress, observer, pomBuilder);
+        for (String line : repos.weakChecksumNotes()) observer.onNote(line);
+        // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
+        JupiterLine.checkAligned(union.solved().test());
+
+        progress.materializePhase(
+                progress.graphPackages() + union.roots().fileDeps().size());
+        Lockfile lockfile = assemble(union, project, jkVersion, progress, pomBuilder);
+        if (!members.isEmpty()) {
+            MemberPartitions.MemberSolver solver = (manifest, prefs) -> {
+                // A member solved on its own: its rows, assembled against its own platform table.
+                LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
+                Solve solve = solveManifest(
+                        manifest, featuresRequested, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder);
+                silent.materializePhase(0);
+                return assemble(solve, manifest, jkVersion, silent, pomBuilder);
+            };
+            MemberPartitions partitions =
+                    new MemberPartitions(union, repos, pomBuilder, pinPolicy, featuresRequested, withDefaults);
+            lockfile = partitions.apply(lockfile, members, memberPrefs, solver, observer);
+        }
+        progress.finished(lockfile.artifacts().size());
+        return lockfile;
+    }
+
+    /**
+     * One manifest's platform table, roots and three solved graphs.
+     *
+     * @param source the package source the graphs were solved over; {@code null} under a test's
+     *     resolver override
+     */
+    record Solve(
+            PlatformConstraints constraints,
+            LockRoots.Roots roots,
+            ScopeSolves.Solved solved,
+            @Nullable MavenPackageSource source,
+            KmpRedirects kmp) {}
+
+    private Solve solveManifest(
+            JkBuild project,
+            Collection<String> featuresRequested,
+            boolean withDefaults,
+            Map<String, String> prefs,
+            LockProgress progress,
+            ResolveObserver observer,
+            EffectivePomBuilder pomBuilder)
+            throws IOException, InterruptedException {
+        LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults);
         PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder, pinPolicy);
         Map<String, String> bomConstraints = constraints.versions();
 
@@ -222,32 +312,29 @@ public final class LockOrchestrator {
         // The framework a suite declares is the framework it runs on: an injected engine's own edge
         // onto it takes the declared pin, as a transitive takes a direct dependency's in Maven.
         bomConstraints.putAll(TestEngines.declaredTriggerPins(project));
-        List<Dependency> fileDeps = roots.fileDeps();
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
         // Shared package source across main/test/processor so version/deps caches survive scope splits.
         MavenPackageSource sharedSource = resolverOverride != null
                 ? null
-                : new MavenPackageSource(
-                        repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
+                : new MavenPackageSource(repos, pomBuilder, bomConstraints, prefs, kmp, platformPolicy, unmappedPolicy);
 
         progress.graphPhase(roots.declaredCount());
         ScopeSolves.Solved solved = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy)
-                .solve(roots, lockedVersionPrefs, progress);
+                .solve(roots, prefs, progress);
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
             for (String line : sharedSource.declaredRepositoryNotes()) observer.onNote(line);
         }
-        for (String line : repos.weakChecksumNotes()) observer.onNote(line);
-        // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
-        JupiterLine.checkAligned(solved.test());
+        return new Solve(constraints, roots, solved, sharedSource, kmp);
+    }
 
-        progress.materializePhase(progress.graphPackages() + fileDeps.size());
-        Function<String, RepoGroup> reposFor = sharedSource != null ? sharedSource::reposFor : pkg -> repos;
-        Lockfile lockfile = new LockfileAssembler(repos, reposFor, kmp, pomBuilder, constraints, activatedFeatures)
-                .assemble(project, solved, fileDeps, jkVersion, progress);
-        progress.finished(lockfile.artifacts().size());
-        return lockfile;
+    private Lockfile assemble(
+            Solve solve, JkBuild project, String jkVersion, LockProgress progress, EffectivePomBuilder pomBuilder)
+            throws IOException, InterruptedException {
+        Function<String, RepoGroup> reposFor = solve.source() != null ? solve.source()::reposFor : pkg -> repos;
+        return new LockfileAssembler(repos, reposFor, solve.kmp(), pomBuilder, solve.constraints(), activatedFeatures)
+                .assemble(project, solve.solved(), solve.roots().fileDeps(), jkVersion, progress);
     }
 }

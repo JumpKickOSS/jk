@@ -44,18 +44,8 @@ final class SourcesAttacher {
             try {
                 RepoGroup.RepoFetched hit = repos.tryFetchArtifact(sourcesCoord).orElse(null);
                 if (hit != null) {
-                    updated.add(new Lockfile.Artifact(
-                            pkg.name(),
-                            pkg.version(),
-                            pkg.source(),
-                            pkg.checksum(),
-                            pkg.path(),
-                            pkg.scopes(),
-                            pkg.deps(),
-                            pkg.pinnedBy(),
-                            pkg.git(),
-                            "sha256:" + hit.fetched().sha256(),
-                            pkg.declared()));
+                    updated.add(
+                            pkg.withSourcesChecksum("sha256:" + hit.fetched().sha256()));
                     continue;
                 }
             } catch (Exception e) {
