@@ -44,6 +44,7 @@ final class PluginFacts {
             "maven-resources-plugin",
             "build-helper-maven-plugin",
             "openapi-generator-maven-plugin",
+            "protobuf-maven-plugin",
             "localizer-maven-plugin",
             "maven-jar-plugin",
             "maven-source-plugin",

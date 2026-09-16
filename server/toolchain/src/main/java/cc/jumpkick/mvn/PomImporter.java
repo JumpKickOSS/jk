@@ -136,6 +136,7 @@ public final class PomImporter {
                 .pluginConfig(packaging.springBoot())
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(generators.openapi())
+                .pluginConfig(generators.protobuf())
                 .build(buildBlock(em.model(), sourceTree, tests))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
