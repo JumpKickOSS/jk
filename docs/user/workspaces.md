@@ -95,6 +95,12 @@ source root and no build logic, fails `jk build` and `jk test` with exit 2 and a
 a passing build; jk does not report one. A module selection (`-m`) is judged by the selection
 alone.
 
+`jk test` has the sibling verdict: a workspace test run in which no module ran a test — none has
+a test tree, or every suite is empty — fails with exit 2 and a one-line `no tests ran` reason
+naming the modules, after every module has finished. A suite replayed from its green stamp counts
+as run. `--skip-tests`, a `--class` selection (which has its own `no test classes matched`
+verdict) and a plain project are not judged by it. [Test](test.md#an-empty-run-is-not-green).
+
 ## Select modules
 
 From a **module directory**, `jk build` / `jk test` is that module plus upstream

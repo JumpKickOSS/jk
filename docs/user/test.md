@@ -96,6 +96,16 @@ same cone for `jk build` and `jk test`. To reach one module's class from the wor
 name the class: `jk test -m clients/cli --class SelfNukeCommandTest` runs it in `clients/cli`
 and skips the prerequisites, whose suites match nothing.
 
+## An empty run is not green
+
+A workspace `jk test` in which no module ran a test fails with **exit 2** and the reason
+`no tests ran: none of the 2 modules has a test suite (com.example:lib, com.example:app)` — the
+test verb's sibling of `built nothing`. Every module still finishes (the verdict is the run's, so
+`## Modules` reads green), and the headline of `target/jk-results.md` carries the reason, so an
+agent reading the exit or the file cannot take an empty run for a passing suite. A suite replayed
+from its green stamp counts as run. The verdict is not raised for `--skip-tests`, for a `--class`
+selection (whose empty match is `no test classes matched`, exit 4), or for a plain project.
+
 ## Debug a test JVM
 
 ```bash

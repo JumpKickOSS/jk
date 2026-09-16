@@ -38,6 +38,8 @@ final class WorkspaceFinalPhase {
         if (!decision.learn()) return decision.result();
         WorkspaceResult noMatch = noClassMatched(run);
         if (noMatch != null) return noMatch;
+        WorkspaceResult noTests = noTestsRan(run);
+        if (noTests != null) return noTests;
         learn(run);
         return decision.result();
     }
@@ -54,6 +56,22 @@ final class WorkspaceFinalPhase {
         String verdict = TestClassMatch.runWideVerdict(SessionContext.current(), skipTests, plans);
         if (verdict == null) return null;
         return new WorkspaceResult(false, Exit.TESTS_FAILED, run.outcomes(), List.of(verdict), false);
+    }
+
+    /**
+     * The other run-wide failure a green run can turn into: a workspace {@code jk test} in which no
+     * module ran a test. Exit {@link Exit#CONFIG}, like {@code built nothing}: the project's shape,
+     * not a red suite. {@code null} when some module ran or replayed a test, or the run is not one
+     * {@link NoTestsRan} judges.
+     */
+    static @Nullable WorkspaceResult noTestsRan(WorkspaceRunPhase.Run run) {
+        WorkspaceResourcePhase.Resources resources = run.prepared().resources();
+        List<BuildPlan> plans =
+                run.prepared().plans().values().stream().map(ModulePlan::plan).toList();
+        String verdict = NoTestsRan.verdict(
+                resources.request(), resources.preflight().entry(), SessionContext.current(), plans, run.outcomes());
+        if (verdict == null) return null;
+        return new WorkspaceResult(false, Exit.CONFIG, run.outcomes(), List.of(verdict), false);
     }
 
     /**
