@@ -40,6 +40,26 @@ trusting the generated `jk.toml`. Making an existing Maven project work under jk
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
+### Where Maven profiles land
+
+Maven uses one `<profile>` for five different jobs; jk keeps them apart, so import maps by
+payload and activation rather than one-to-one:
+
+| Maven profile shape | Lands in jk as | Why |
+|---|---|---|
+| Active on this machine (`activeByDefault`, JDK range, OS, property or file that matches) | Folded into the effective model; the report says which profile was applied | That is what Maven itself would build here |
+| Not active; only `<dependencies>` / `<dependencyManagement>` | `[features.<id>]` with those deps marked `optional = true`; not in `default` | A feature is exactly "what optional deps you have" |
+| Not active; only `maven.compiler.*` or `<compilerArgs>` properties | `[profiles.<id>]` `javac-args` / `jvm-args` | A jk profile is "how you compile" |
+| Not active; `<repositories>` | Merged into the top-level repositories with a Tier-2 row | A repository is never conditional in jk |
+| Not active; `<build><plugins>` | Hand-port checklist row naming the plugins | Plugin mapping is its own table; a profile does not change where a plugin lands |
+| JDK- or OS-activated with per-platform deps (native classifiers, `os-maven-plugin`) | Tier-2 row proposing a `[variants]` dimension | Which product you build, not what you compile with |
+| `<properties>` that only other POM fields read | Interpolated away; nothing written | The effective model already substituted them |
+
+Activation kinds that never map: a property set on the Maven command line (`-Pfoo` /
+`-Dfoo=true`) has no jk equivalent, so the import names the profile and its payload's landing
+place; `<file>` existence stays a checklist row. A profile with more than one payload kind gets
+one row per kind, each naming the same `<id>`.
+
 **Gradle import** does not execute build scripts (no Groovy/Kotlin evaluation). It does
 read on-disk `gradle/libs.versions.toml` (libraries, bundles, `version.ref`) and maps
 type-safe accessors like `libs.guava` into `[dependencies]`. Unresolved catalog refs show
