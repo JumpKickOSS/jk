@@ -259,6 +259,45 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_pom_only_build_names_its_mode_in_the_header(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("pom.xml"), "<project/>");
+        BuildRecord r = new BuildRecord(
+                "id",
+                1,
+                BuildRecord.SCHEMA,
+                "build",
+                tmp.toString(),
+                "com.example:greeter",
+                "pid",
+                1,
+                2,
+                100,
+                true,
+                false,
+                0,
+                "9.9",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                7L,
+                null,
+                List.of());
+
+        String md = JkResultsMarkdown.render(r);
+
+        assertThat(md).contains("manifest: pom.xml, no jk.toml (effective POM, built in place)");
+        assertThat(JkResultsMarkdown.render(record(true, List.of(), List.of(), List.of())))
+                .doesNotContain("manifest: pom.xml");
+    }
+
+    @Test
     void warnings_and_cancelled_show_up() {
         BuildRecord.Diag warn = new BuildRecord.Diag("warning", "", "compile-java", "javac", "deprecated API", "", "");
         BuildRecord r = new BuildRecord(
