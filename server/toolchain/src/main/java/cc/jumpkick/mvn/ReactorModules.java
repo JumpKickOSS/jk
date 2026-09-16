@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Profile;
 import org.jspecify.annotations.Nullable;
@@ -26,6 +27,14 @@ final class ReactorModules {
 
     /** One module the workspace lists: its relative path, its pom.xml and its effective model. */
     record Leaf(String path, Path pomFile, EffectiveModel model) {}
+
+    /**
+     * What the walk found: the leaves the workspace builds, and the BOM leaves it does not — a
+     * {@code pom}-packaged module with no {@code <modules>} whose own POM is a {@code
+     * <dependencyManagement>} table and nothing else. A BOM has no sources to compile and no jar to
+     * package; its managed versions reach the members through their effective models.
+     */
+    record Reactor(List<Leaf> modules, List<Leaf> boms) {}
 
     private final Path projectDir;
     private final ReactorModelResolver reactor;
@@ -54,16 +63,28 @@ final class ReactorModules {
      * or not, so any POM of the tree can answer as a parent or a BOM for any other; the walk
      * follows only what Maven would build here.
      */
-    static List<Leaf> collect(
+    static Reactor collect(
             Path rootFile, byte[] rootXml, Model rootRaw, ReactorModelResolver reactor, ImportReport.Builder report)
             throws IOException {
         Path projectDir = Objects.requireNonNull(rootFile.getParent());
         ReactorModules modules = new ReactorModules(projectDir, reactor, report);
         modules.register(rootFile, rootXml, rootRaw);
-        List<Leaf> leaves = new ArrayList<>();
+        Reactor found = new Reactor(new ArrayList<>(), new ArrayList<>());
         modules.walked.add(rootFile);
-        modules.walk(rootFile, reactor.effective(rootFile), leaves);
-        return leaves;
+        modules.walk(rootFile, reactor.effective(rootFile), found);
+        return found;
+    }
+
+    /**
+     * True for a BOM's own POM: only a {@code <dependencyManagement>} table, with no dependencies
+     * and no plugins of its own. Judged on the raw model, since the effective one inherits the
+     * parent's management and every leaf would read as a BOM.
+     */
+    static boolean isBom(Model raw) {
+        DependencyManagement management = raw.getDependencyManagement();
+        if (management == null || management.getDependencies().isEmpty()) return false;
+        if (!raw.getDependencies().isEmpty()) return false;
+        return raw.getBuild() == null || raw.getBuild().getPlugins().isEmpty();
     }
 
     private void register(Path pomFile, byte[] xml, Model raw) throws IOException {
@@ -83,7 +104,7 @@ final class ReactorModules {
         register(pomFile, xml, EffectiveModel.rawModel(xml));
     }
 
-    private void walk(Path pomFile, EffectiveModel em, List<Leaf> leaves) throws IOException {
+    private void walk(Path pomFile, EffectiveModel em, Reactor found) throws IOException {
         for (String module : em.model().getModules()) {
             Path childPom = childPom(pomFile, module);
             if (!Files.isRegularFile(childPom)) {
@@ -101,11 +122,12 @@ final class ReactorModules {
             register(childPom);
             EffectiveModel child = reactor.effective(childPom);
             Model model = child.model();
-            if (!"pom".equals(model.getPackaging())) leaves.add(new Leaf(path, childPom, child));
+            Leaf leaf = new Leaf(path, childPom, child);
+            if (!"pom".equals(model.getPackaging())) found.modules().add(leaf);
             if (!model.getModules().isEmpty()) {
-                walk(childPom, child, leaves);
+                walk(childPom, child, found);
             } else if ("pom".equals(model.getPackaging())) {
-                leaves.add(new Leaf(path, childPom, child));
+                (isBom(child.raw()) ? found.boms() : found.modules()).add(leaf);
             }
         }
     }

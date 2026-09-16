@@ -169,10 +169,11 @@ public final class PomImporter {
 
         ImportReport.Builder report = ImportReport.builder();
         ReactorModelResolver reactor = new ReactorModelResolver(resolver);
-        List<ReactorModules.Leaf> leaves = ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report);
+        ReactorModules.Reactor found = ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report);
+        List<ReactorModules.Leaf> leaves = found.modules();
         EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
-        if (leaves.isEmpty()) reportInactiveModules(rootModel, report);
+        if (leaves.isEmpty() && found.boms().isEmpty()) reportInactiveModules(rootModel, report);
         SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, report);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
         warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true);
@@ -203,11 +204,30 @@ public final class PomImporter {
         SiblingNames.report(moduleBuilds, report);
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
+        Map<String, String> bomByGa = bomGaIndex(found.boms());
+        Set<String> importedBoms = new HashSet<>();
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
         for (var e : moduleBuilds.entrySet()) {
-            rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa, e.getKey(), report));
+            rewritten.put(
+                    e.getKey(),
+                    rewriteSiblingDeps(e.getValue(), siblingByGa, bomByGa, importedBoms, e.getKey(), report));
+        }
+        for (String bom : bomByGa.values()) {
+            if (importedBoms.contains(bom)) continue;
+            report.warning("`" + bom + "` is a BOM (packaging `pom`, a `<dependencyManagement>` table and nothing"
+                    + " else) that no module of the reactor imports; it is not a workspace module.");
         }
         return new WorkspaceImportResult(rootJkBuild, rewritten, report.build());
+    }
+
+    /** {@code group:artifact} → root-relative path for every BOM leaf of the reactor. */
+    private static Map<String, String> bomGaIndex(List<ReactorModules.Leaf> boms) {
+        Map<String, String> ga = new LinkedHashMap<>();
+        for (ReactorModules.Leaf bom : boms) {
+            Model model = bom.model().model();
+            ga.put(model.getGroupId() + ":" + model.getArtifactId(), bom.path());
+        }
+        return ga;
     }
 
     /** Modules listed only in profiles Maven would not activate here leave nothing to build: a Tier-3 row says which. */
@@ -239,12 +259,17 @@ public final class PomImporter {
 
     /**
      * Convert deps whose GA matches a workspace sibling into workspace edges. Maven
-     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A sibling
-     * BOM leaves {@code [platform]}: its managed versions are already on the declared dependencies,
-     * and a workspace module is not a published BOM the lock could fetch.
+     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A BOM of
+     * the reactor leaves {@code [platform]}: its managed versions are already on the declared
+     * dependencies, and the lock fetches a BOM from a repository, which a reactor BOM is not in.
      */
     private static JkBuild rewriteSiblingDeps(
-            JkBuild module, Map<String, String> siblingByGa, String moduleKey, ImportReport.Builder report) {
+            JkBuild module,
+            Map<String, String> siblingByGa,
+            Map<String, String> bomByGa,
+            Set<String> importedBoms,
+            String moduleKey,
+            ImportReport.Builder report) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         boolean changed = false;
         for (Scope scope : Scope.values()) {
@@ -252,6 +277,16 @@ public final class PomImporter {
             if (in.isEmpty()) continue;
             List<Dependency> out = new ArrayList<>(in.size());
             for (Dependency d : in) {
+                String bomPath = scope == Scope.PLATFORM ? bomByGa.get(d.module()) : null;
+                if (bomPath != null) {
+                    changed = true;
+                    importedBoms.add(bomPath);
+                    report.warning("[" + moduleKey + "] `<dependencyManagement>` imports the reactor BOM `" + bomPath
+                            + "` (" + d.module() + "); its managed versions are applied to the declared dependencies"
+                            + " and no `[platform]` row is written, because the lock fetches a BOM from a repository"
+                            + " and a reactor BOM is not published, so transitive versions follow the resolver.");
+                    continue;
+                }
                 String siblingName = siblingByGa.get(d.module());
                 if (siblingName == null) {
                     // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
