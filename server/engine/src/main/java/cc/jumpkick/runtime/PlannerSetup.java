@@ -308,7 +308,7 @@ public final class PlannerSetup {
         requireSiblingsCompiled(ctx, mainSiblings, "sibling not compiled — ");
         // Lockfile + sibling classes trees + siblings' transitive lockfile deps — the
         // exact classpath `jk explain` re-derives, so the action keys match.
-        List<Path> mainCp = PlannerSupport.mainCompileClasspath(lock, resolver, mainSiblings, true);
+        List<Path> mainCp = PlannerSupport.mainCompileClasspath(project, lock, resolver, mainSiblings, true);
         // Plugin-contributed PROVIDED classpath (an Android platform jar): javac
         // sees it, runtime/packaging never do. Resolved through the same engine
         // fetch the steps use, so the compile action key fingerprints it.
@@ -341,7 +341,7 @@ public final class PlannerSetup {
                                 + " run `jk lock`");
             throw new RuntimeException("unresolved processor dependencies");
         }
-        ctx.put(PROCESSOR_CP, PlannerSupport.processorClasspath(lock, resolver, processorSiblings, true));
+        ctx.put(PROCESSOR_CP, PlannerSupport.processorClasspath(project, lock, resolver, processorSiblings, true));
 
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
@@ -354,9 +354,10 @@ public final class PlannerSetup {
         // Both test classpaths name the declared closure, built or not: a sibling's test classes
         // and jar may still be on their way when this step runs, and a list filtered to what is
         // on disk now would silently drop them from the tests.
-        List<Path> compileTestCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true));
+        List<Path> compileTestCp =
+                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, true, project));
         compileTestCp.addAll(testSiblings.siblingClosureClasses());
-        List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true));
+        List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true, project));
         testRuntimeCp.addAll(testSiblings.siblingClosureJars());
         // A sibling's own external deps (e.g. resolver's maven-artifact) must also reach the test
         // classpath, or tests exercising sibling code hit NoClassDefFoundError. Its rows are held to

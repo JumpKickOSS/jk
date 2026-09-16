@@ -93,6 +93,15 @@ the exclusion — beside any path that still brings it.
 Main, **test**, and **processor** graphs are solved **separately** so annotation-processor
 constraints do not force main classpath versions.
 
+**Classpath order.** A module's compile, test and run classpaths (javac, the test JVM, `jk run`,
+the jars a fat jar or image embeds) list the module's own declarations first, in `jk.toml` order
+(`[dependencies]`, then `[provided-dependencies]`, then the test tables), then their transitives
+breadth-first through the lock graph, then — in a workspace — the remaining rows of the shared lock;
+workspace siblings' classes trees and jars come after the lock rows. This is Maven's order: when two
+jars carry the same package (a fork beside the library it forked), the jar the module declared is
+the one javac and the JVM see first. The order is a compile input, so moving a declaration recompiles
+the module.
+
 A dependency that only transitive POMs name resolves to the **highest version any of those
 POMs declares** (Gradle's rule, not Maven nearest-wins), never to a newer release the
 repository happens to advertise; only your own opt-in selectors (`^`, `~`, `latest`, ranges)

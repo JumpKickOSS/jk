@@ -93,8 +93,8 @@ public final class LocalProjectBuilder {
                 .withUnmappedPolicy(project.build().unmappedPolicy())
                 .withPinPolicy(project.build().pinPolicy())
                 .lock(project, jkVersion);
-        List<Path> classpath =
-                new ArrayList<>(new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN));
+        List<Path> classpath = new ArrayList<>(
+                new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, project));
 
         BuildLayout layout = BuildLayout.of(projectDir, project);
         Path classes = layout.classesDir();

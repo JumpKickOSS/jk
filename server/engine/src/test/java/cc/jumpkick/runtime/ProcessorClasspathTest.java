@@ -38,7 +38,7 @@ class ProcessorClasspathTest {
         assertThat(siblings.missingSiblingClasses()).isEmpty();
 
         List<Path> cp = PlannerSupport.processorClasspath(
-                Lockfile.empty("test"), new ClasspathResolver(new Cas(tmp.resolve("cas"))), siblings);
+                build, Lockfile.empty("test"), new ClasspathResolver(new Cas(tmp.resolve("cas"))), siblings, false);
 
         // Workspace layout: <ws>/target/<module-rel>/classes/main (not module/target/). The tree,
         // not the jar: javac loads the processor and its service registration from it, and it is
