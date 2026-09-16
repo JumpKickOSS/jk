@@ -150,8 +150,9 @@ public final class PubGrubResolver implements Resolver {
 
         Map<String, String> decisions;
         try {
-            // Parallel-load BOM/lock pins before the first decide (warm disk, cold process).
+            // Parallel-load BOM/lock pins and the roots before the first decide (warm disk, cold process).
             source.warmUp();
+            if (source instanceof MavenPackageSource mps) mps.prefetchRoots(rootTerms);
             decisions = solveFor(rootTerms);
             // Intersection exclusion sets only narrow as paths register, so a package decided
             // early can have filtered an edge the converged set keeps (clean path discovered

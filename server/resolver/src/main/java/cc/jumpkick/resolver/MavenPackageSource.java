@@ -26,9 +26,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
@@ -45,11 +48,11 @@ public final class MavenPackageSource implements PackageSource {
     private static final Set<String> FOLLOWED_SCOPES = Set.of("compile", "runtime");
 
     /**
-     * Concurrent warm of POMs / KMP metadata (pre-solve BOM blast + frontier prefetch). Disk-bound
-     * on a warm CAS; virtual threads + local store tolerate higher fan-out than network-polite
-     * Maven Central.
+     * Workers draining the speculative warm queue at once (pre-solve BOM blast, roots, frontier,
+     * widening). Disk-bound on a warm CAS; virtual threads + local store tolerate higher fan-out
+     * than network-polite Maven Central.
      */
-    private static final int PREFETCH_PERMITS = 32;
+    private static final int PREFETCH_WORKERS = 32;
 
     /** Upper bound on how long a solve waits for speculative prefetches to wind down. */
     private static final long QUIESCE_TIMEOUT_MS = 30_000;
@@ -120,7 +123,16 @@ public final class MavenPackageSource implements PackageSource {
     /** The exclusions in force per package, their origins, and the edges they pruned. */
     private final ExclusionLedger exclusions = new ExclusionLedger();
 
-    private final Semaphore prefetchSlots = new Semaphore(PREFETCH_PERMITS);
+    /**
+     * Speculative work not yet run, drained by at most {@link #PREFETCH_WORKERS} threads. A queue
+     * rather than a thread per submission: a reactor's roots or a widening pass hand over hundreds
+     * of items at once, and a parked thread per item would hold its stack and closure until a
+     * worker slot freed.
+     */
+    private final Queue<PrefetchWork> prefetchQueue = new ConcurrentLinkedQueue<>();
+
+    /** Workers draining {@link #prefetchQueue} right now; never above {@link #PREFETCH_WORKERS}. */
+    private final AtomicInteger prefetchWorkers = new AtomicInteger();
 
     /** Speculative prefetches submitted and not yet finished. Guards {@link #quiesce}. */
     private final AtomicInteger outstandingPrefetches = new AtomicInteger();
@@ -936,66 +948,129 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Speculative I/O for children of a just-expanded package — the next PubGrub decides.
-     *
-     * <ul>
-     * <li>Exact pins: warm effective POM <em>and</em> KMP {@code .module} redirect in parallel so
-     * the next decide does not block on serial disk+JSON work.
-     * <li>Open ranges: left cold (metadata list is cheap enough on miss).
-     * </ul>
-     *
-     * <p>Large platform BOMs still prefetch a bounded frontier of exact-pin children (not zero —
-     * the old {@code size > 200 → return} left Android/Compose graphs fully serial).
+     * Speculative I/O for the children of a just-expanded package — the next PubGrub decides. Each
+     * positive edge warms what the solver will ask for it: an exact edge or one with a lock/BOM
+     * preference goes straight to the KMP {@code .module} redirect and the effective POM (parents
+     * and imports included) of that version; a floating edge first reads its version catalog, then
+     * warms the version the solver takes unless a constraint rules it out — the highest plain
+     * version the edges declared for it, else the front of its candidate window. Bounded per
+     * expansion so a wide POM cannot flood the queue; a large platform BOM keeps a wider window so
+     * Android/Compose graphs stay ahead of the solver.
      */
     private void prefetchTransitiveAsync(List<Term> deps) {
-        // Warm the next decide frontier in parallel. Unbounded fan-out stampeded heap on Quarkus;
-        // large BOMs still get a wide window so Android/Compose stay ahead of PubGrub.
-        int budget = bomConstraints.size() > 200 ? 64 : 16;
+        prefetch(deps, bomConstraints.size() > 200 ? 64 : 32);
+    }
+
+    /**
+     * Warm every root before the first decide. The roots are the whole first frontier, so every one
+     * is queued: on a cold multi-repository reactor lock the solver would otherwise pay each root's
+     * catalog, {@code .module} probe and POM chain in sequence.
+     */
+    public void prefetchRoots(List<Term> roots) {
+        prefetch(roots, Integer.MAX_VALUE);
+    }
+
+    @Override
+    public void warmExpandedVersions(List<String> pkgs) {
+        CountDownLatch done = new CountDownLatch(pkgs.size());
+        for (String pkg : pkgs) {
+            submitPrefetch(() -> {
+                try {
+                    expandedVersions(pkg);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        try {
+            if (!done.await(QUIESCE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                Log.debug(
+                        "warmExpandedVersions: still reading catalogs after the bound; the pass reads the rest itself");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void prefetch(List<Term> deps, int budget) {
         for (Term dep : deps) {
             if (budget <= 0) return;
             // A constraint brings nothing in; there is no next decide to warm for it.
             if (!dep.positive()) continue;
             String pkg = dep.pkg();
-            // Exact edge pins only — soft-prefer (BOM) of every managed GA floods the pool;
-            // warmUp already blasted the BOM map.
             Optional<String> exact = dep.versions().asExactSingleton();
-            if (exact.isEmpty()) continue;
-            String pin = exact.get();
             budget--;
-            Coordinate child = withVersion(pkg, pin);
-            // One task does both: KMP redirect then POM (POM often already warm from the parent walk).
             submitPrefetch(() -> {
-                kmp.selectionFor(pkg, pin);
-                declared.builderFor(pkg).build(child);
+                String pick = exact.or(() -> preferredVersion(pkg)).orElse(null);
+                if (pick == null) {
+                    List<String> candidates = versions(pkg);
+                    // Plain versions the edges wrote steer the solver to the highest of them.
+                    pick = highestOf(new ArrayList<>(declaredVersions(pkg)));
+                    if (pick == null && !candidates.isEmpty()) pick = candidates.getFirst();
+                    if (pick == null) return;
+                }
+                kmp.selectionFor(pkg, pick);
+                declared.builderFor(pkg).build(withVersion(pkg, pick));
             });
         }
     }
 
-    /** Run {@code work} on the io pool under a permit, counted so {@link #quiesce} can wait for it. */
+    /** Queue {@code work} for the io-pool workers, counted so {@link #quiesce} can wait for it. */
     private void submitPrefetch(PrefetchWork work) {
         outstandingPrefetches.incrementAndGet();
-        try {
-            JkThreads.io().execute(() -> {
+        prefetchQueue.add(work);
+        startWorkerIfRoom();
+    }
+
+    /** Start one more draining worker when work is queued and fewer than the cap are running. */
+    private void startWorkerIfRoom() {
+        while (!prefetchQueue.isEmpty()) {
+            int running = prefetchWorkers.get();
+            if (running >= PREFETCH_WORKERS) return;
+            if (prefetchWorkers.compareAndSet(running, running + 1)) {
                 try {
-                    prefetchSlots.acquire();
-                    try {
-                        work.run();
-                    } finally {
-                        prefetchSlots.release();
-                    }
+                    JkThreads.io().execute(this::drainPrefetches);
+                } catch (RuntimeException rejected) {
+                    prefetchWorkers.decrementAndGet();
+                    PrefetchWork left;
+                    while ((left = prefetchQueue.poll()) != null) finishPrefetch();
+                    throw rejected;
+                }
+                return;
+            }
+        }
+    }
+
+    /**
+     * One worker: run queued items until none is left. A worker interrupted mid-item leaves the
+     * rest of the queue to a fresh one.
+     */
+    private void drainPrefetches() {
+        try {
+            PrefetchWork work;
+            while ((work = prefetchQueue.poll()) != null) {
+                try {
+                    work.run();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                    return;
                 } catch (Exception e) {
                     // best-effort warming; the sync path surfaces real failures
-                    Log.debug("submitPrefetch: best-effort warming", e);
+                    Log.debug("drainPrefetches: best-effort warming", e);
                 } finally {
                     finishPrefetch();
                 }
-            });
-        } catch (RuntimeException e) {
-            finishPrefetch(); // rejected before it ever ran
-            throw e;
+            }
+        } finally {
+            prefetchWorkers.decrementAndGet();
+            // A submit that saw a full complement while this worker was leaving left its item behind.
+            startWorkerIfRoom();
         }
+    }
+
+    /** Workers draining the warm queue right now; package-visible for tests. */
+    int prefetchWorkersRunning() {
+        return prefetchWorkers.get();
     }
 
     private void finishPrefetch() {
@@ -1012,11 +1087,15 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Block until no speculative prefetch is running. Warming is best-effort, so this gives up
-     * after {@link #QUIESCE_TIMEOUT_MS} rather than holding a build hostage to a wedged fetch.
+     * Drop the speculative work not yet started and block until none is running. What has not
+     * started by the time a solve ends is fetched on demand if the next solve needs it, and it must
+     * not run beside the downloads that follow. Warming is best-effort, so this gives up after
+     * {@link #QUIESCE_TIMEOUT_MS} rather than holding a build hostage to a wedged fetch.
      */
     @Override
     public void quiesce() {
+        PrefetchWork left;
+        while ((left = prefetchQueue.poll()) != null) finishPrefetch();
         long deadline = System.nanoTime() + QUIESCE_TIMEOUT_MS * 1_000_000L;
         synchronized (prefetchIdle) {
             while (outstandingPrefetches.get() > 0) {

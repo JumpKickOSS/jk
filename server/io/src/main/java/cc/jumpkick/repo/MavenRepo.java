@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -541,6 +540,8 @@ public final class MavenRepo {
         Path shard = storeDir();
         Files.createDirectories(shard);
         Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
+        // The sidecars travel beside the body, so the check costs no round trip of its own.
+        ChecksumSidecars sidecars = mirror ? ChecksumSidecars.start(transport, credential, uri) : null;
         MessageDigest digest = Hashing.newSha256();
         long size = 0;
         try (InputStream in = transport
@@ -561,9 +562,9 @@ public final class MavenRepo {
         String hex = Hashing.hex(digest.digest());
         Downloaded stored = new Downloaded(tmp, hex, size);
         long ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
-        if (mirror) {
+        if (sidecars != null) {
             try {
-                verifyUpstreamChecksum(coord, uri, relativePath, stored, leg, expectedSha256);
+                verifyUpstreamChecksum(coord, sidecars, relativePath, stored, leg, expectedSha256);
             } catch (IOException e) {
                 Files.deleteIfExists(tmp);
                 throw e;
@@ -629,7 +630,7 @@ public final class MavenRepo {
      */
     private void verifyUpstreamChecksum(
             Coordinate coord,
-            URI artifactUri,
+            ChecksumSidecars sidecars,
             String relativePath,
             Downloaded stored,
             Leg leg,
@@ -640,18 +641,18 @@ public final class MavenRepo {
             throw new ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " (" + relativePath
                     + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
         }
-        for (Sidecar sidecar : Sidecar.values()) {
-            Optional<String> expected = publishedDigest(artifactUri, sidecar);
-            // Absent, or a non-hex body (e.g. test servers that path-prefix-match the artifact): the
-            // next sidecar speaks.
-            if (expected.isEmpty()) continue;
-            String actual =
-                    sidecar == Sidecar.SHA256 ? actualSha256 : Hashing.fileHex(sidecar.algorithm, stored.path());
-            if (!expected.get().equalsIgnoreCase(actual)) {
+        Optional<ChecksumSidecars.Published> published = sidecars.strongest();
+        if (published.isPresent()) {
+            ChecksumSidecars.Algorithm algorithm = published.get().algorithm();
+            String expected = published.get().hex();
+            String actual = algorithm == ChecksumSidecars.Algorithm.SHA256
+                    ? actualSha256
+                    : Hashing.fileHex(algorithm.jca, stored.path());
+            if (!expected.equalsIgnoreCase(actual)) {
                 throw new ChecksumMismatchException("upstream checksum mismatch for " + coord + " from " + name + " ("
-                        + relativePath + "): expected " + sidecar.label + " " + expected.get() + " but got " + actual);
+                        + relativePath + "): expected " + algorithm.label + " " + expected + " but got " + actual);
             }
-            if (sidecar == Sidecar.MD5) {
+            if (algorithm == ChecksumSidecars.Algorithm.MD5) {
                 weakChecksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
                         + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
                         + " repository publishes; the lock pins its bytes by sha256 from here on");
@@ -672,36 +673,6 @@ public final class MavenRepo {
         if (leg == Leg.ARTIFACT) unverifiedAllowed.incrementAndGet();
     }
 
-    /** The checksum sidecars a Maven repository publishes, strongest first. */
-    private enum Sidecar {
-        SHA256(".sha256", 64, "SHA-256", "sha256"),
-        SHA1(".sha1", 40, "SHA-1", "sha1"),
-        MD5(".md5", 32, "MD5", "md5");
-
-        final String suffix;
-        final int hexLength;
-        final String algorithm;
-        final String label;
-
-        Sidecar(String suffix, int hexLength, String algorithm, String label) {
-            this.suffix = suffix;
-            this.hexLength = hexLength;
-            this.algorithm = algorithm;
-            this.label = label;
-        }
-    }
-
-    /**
-     * The digest this repository publishes in {@code sidecar} beside {@code artifactUri}; empty
-     * when the sidecar is absent or its body is not a digest of the sidecar's length.
-     */
-    private Optional<String> publishedDigest(URI artifactUri, Sidecar sidecar)
-            throws IOException, InterruptedException {
-        Optional<byte[]> body = transport.fetch(sidecarUri(artifactUri, sidecar.suffix), credential);
-        if (body.isEmpty()) return Optional.empty();
-        return Hashing.checksumFromSidecar(new String(body.get(), StandardCharsets.UTF_8), sidecar.hexLength);
-    }
-
     /**
      * One sentence per artifact this run verified against an {@code .md5} sidecar alone, sorted:
      * the lock output carries each so the weaker digest is on record.
@@ -710,10 +681,6 @@ public final class MavenRepo {
         List<String> out = new ArrayList<>(weakChecksumNotes);
         out.sort(null);
         return List.copyOf(out);
-    }
-
-    private static URI sidecarUri(URI artifactUri, String suffix) {
-        return URI.create(artifactUri.toString() + suffix);
     }
 
     /**

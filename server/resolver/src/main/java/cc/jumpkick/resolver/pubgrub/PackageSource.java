@@ -66,6 +66,13 @@ public interface PackageSource {
     default void warmUp() {}
 
     /**
+     * Read the full candidate lists of {@code pkgs} at once, returning when they are memoized (or
+     * the source's bound on waiting has passed), ahead of a widening pass that asks {@link
+     * #expandedVersions} for each in turn. Default: no-op.
+     */
+    default void warmExpandedVersions(List<String> pkgs) {}
+
+    /**
      * Wait for any speculative work this source started in the background. Called when a solve
      * finishes, so a caller that then deletes the cache directory is not racing a prefetch still
      * writing into it. Default: nothing to wait for.
