@@ -4,6 +4,7 @@ package cc.jumpkick.command.interop;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,6 +47,29 @@ class ImportCommandTest {
         String report = Files.readString(tempDir.resolve("jk-import-report.md"));
         assertThat(report).contains("# jk import report");
         assertThat(report).contains("Import was lossless");
+    }
+
+    @Test
+    void relative_report_and_out_paths_resolve_against_the_working_directory(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>widget</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                """, StandardCharsets.UTF_8);
+
+        int[] exit = new int[1];
+        String out = Capture.stdout(() -> exit[0] =
+                run("import", "-C", tempDir.toString(), "--report", "reports/import.md", "--out", "out/jk.toml"));
+
+        assertThat(exit[0]).as(out).isEqualTo(0);
+        assertThat(tempDir.resolve("reports/import.md"))
+                .as("a relative --report lands under the directory the command runs in, not the engine's")
+                .isRegularFile();
+        assertThat(tempDir.resolve("out/jk.toml")).isRegularFile();
+        assertThat(tempDir.resolve("jk.toml")).doesNotExist();
     }
 
     @Test

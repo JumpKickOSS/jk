@@ -62,11 +62,15 @@ public final class ImportCommand implements CliCommand {
     public int run(Invocation in) throws IOException, InterruptedException {
         Path source =
                 in.positionals().isEmpty() ? null : Path.of(in.positionals().get(0));
-        Path out = in.value("out").map(Path::of).orElse(null);
-        Path reportPath = in.value("report").map(Path::of).orElse(null);
         boolean force = in.isSet("overwrite");
         GlobalOptions global = GlobalOptions.from(in);
         Path baseDir = global.workingDir();
+        // Every path the command line names is the user's, so a relative one is read against the
+        // directory the command runs in before it crosses to the engine, whose own directory is not
+        // the user's.
+        Path out = in.value("out").map(o -> baseDir.resolve(o).normalize()).orElse(null);
+        Path reportPath =
+                in.value("report").map(r -> baseDir.resolve(r).normalize()).orElse(null);
 
         if (source == null) {
             source = autoDetectSource(baseDir);
@@ -78,7 +82,7 @@ public final class ImportCommand implements CliCommand {
             }
             CliOutput.out("Importing " + PathDisplay.styled(source, baseDir));
         } else {
-            source = source.isAbsolute() ? source : baseDir.resolve(source);
+            source = baseDir.resolve(source).normalize();
             if (!Files.exists(source)) {
                 CommandWedge.printFail("Import", "source not found: " + PathDisplay.styled(source, baseDir));
                 return Exit.NO_INPUT;
