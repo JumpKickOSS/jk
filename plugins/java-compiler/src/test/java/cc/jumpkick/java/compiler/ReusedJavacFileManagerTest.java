@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -32,8 +33,10 @@ class ReusedJavacFileManagerTest {
 
     @Test
     void the_same_thread_gets_one_manager_back_rather_than_a_new_one() {
-        StandardJavaFileManager first = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
-        StandardJavaFileManager second = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager first =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
+        StandardJavaFileManager second =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
 
         assertThat(second).isSameAs(first);
     }
@@ -44,23 +47,40 @@ class ReusedJavacFileManagerTest {
      */
     @Test
     void a_different_charset_replaces_the_manager_instead_of_reusing_it() {
-        StandardJavaFileManager utf8 = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager utf8 = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
         StandardJavaFileManager latin1 =
-                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.ISO_8859_1, d -> {}, false);
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.ISO_8859_1, d -> {}, Set.of());
 
         assertThat(latin1).isNotSameAs(utf8);
-        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false))
+        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of()))
                 .isNotSameAs(utf8);
+    }
+
+    /**
+     * A module path set by one compile must not leak into the next: a compile that declares no
+     * {@code --module-path} gets a fresh manager, one that declares it keeps the held one.
+     */
+    @Test
+    void a_module_path_the_next_compile_never_asked_for_replaces_the_manager(@TempDir Path dir) throws Exception {
+        StandardJavaFileManager modular =
+                ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
+        modular.setLocationFromPaths(StandardLocation.MODULE_PATH, List.of(Files.createDirectories(dir.resolve("mp"))));
+
+        assertThat(ReusedJavacFileManager.acquire(
+                        JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of(StandardLocation.MODULE_PATH)))
+                .isSameAs(modular);
+        assertThat(ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of()))
+                .isNotSameAs(modular);
     }
 
     /** Not thread-safe, so a second compile thread must get its own rather than share this one. */
     @Test
     void another_thread_gets_its_own_manager() throws Exception {
-        StandardJavaFileManager mine = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager mine = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
         ExecutorService pool = Executors.newSingleThreadExecutor();
         try {
             Future<StandardJavaFileManager> theirs =
-                    pool.submit(() -> ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false));
+                    pool.submit(() -> ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of()));
 
             assertThat(theirs.get()).isNotSameAs(mine);
         } finally {
@@ -78,7 +98,7 @@ class ReusedJavacFileManagerTest {
         Path out = Files.createDirectories(dir.resolve("out"));
         buildDep(dir, dep, "public int v() { return 1; }");
 
-        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
         assertThat(compileAgainst(fm, dir, out, dep, "v")).isTrue();
 
         buildDep(dir, dep, "public int v() { return 1; } public int w() { return 2; }");
@@ -93,7 +113,7 @@ class ReusedJavacFileManagerTest {
         Path out = Files.createDirectories(dir.resolve("out"));
         buildDep(dir, dep, "public int v() { return 1; }");
 
-        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, false);
+        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(JAVAC, StandardCharsets.UTF_8, d -> {}, Set.of());
         assertThat(compileAgainst(fm, dir, out, dep, "v")).isTrue();
 
         deleteTree(dep);

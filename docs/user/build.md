@@ -77,6 +77,23 @@ MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jp
 as plain dependencies in a POM without `annotationProcessorPaths` are written into
 `[processor-dependencies]` as well, and the import report says which. [Migration](migration.md).
 
+## Java modules (`module-info.java`)
+
+A module whose main sources include a `module-info.java` compiles on the module path, the way
+Maven's compiler plugin and Gradle compile it:
+
+| Compile | What javac gets |
+|---------|-----------------|
+| `compile-main` | The compile classpath on `--module-path` as well as `-classpath`: a jar with a descriptor is an explicit module, a plain jar an automatic one (its `Automatic-Module-Name`, else the name derived from the file name), a workspace sibling's classes tree an explicit module when it has a descriptor |
+| `compile-test` | The same module path plus `--patch-module <module>=<test source roots>` and `--add-reads <module>=ALL-UNNAMED`: the tests compile as part of the module, so a test in the module's package reaches package-private members, and read the test classpath (JUnit, fixtures) as the unnamed module |
+
+Nothing is declared for this; the descriptor is the switch. `requires` names resolve against the
+dependencies as declared, so a dependency the descriptor requires must be in `[dependencies]` (or
+`[provided-dependencies]`), not only reachable at runtime. The incremental compile runs through
+Zinc unchanged: its analysis tracks classes, not modules, and a descriptor change recompiles the
+module like any other source. javac's own module diagnostics (`module not found`, `package is not
+visible`) land in the results as compile errors.
+
 ## javac plugins
 
 A javac **plugin** (Error Prone, NullAway, Checker Framework, Manifold) is a jar on the

@@ -10,7 +10,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
@@ -87,8 +89,7 @@ final class ProvenanceJavac implements JavaCompiler {
         // This path reads sources through the file manager, and the charset given here is what
         // decides: it outranks -encoding, which BaseFileManager.getDecoder only falls back to.
         // Same constant as the flag, so the two spellings of the charset cannot drift apart.
-        StandardJavaFileManager fm =
-                ReusedJavacFileManager.acquire(javac, encoding, diags, declaresProcessorPath(options));
+        StandardJavaFileManager fm = ReusedJavacFileManager.acquire(javac, encoding, diags, declaredLocations(options));
         try {
             Files.createDirectories(classOut);
             fm.setLocationFromPaths(StandardLocation.CLASS_OUTPUT, List.of(classOut));
@@ -137,12 +138,18 @@ final class ProvenanceJavac implements JavaCompiler {
         }
     }
 
-    /** Whether this compile names its own {@code -processorpath}. */
-    private static boolean declaresProcessorPath(String[] options) {
+    /** The path locations this compile's options set: processor path, module path, patched modules. */
+    static Set<StandardLocation> declaredLocations(String[] options) {
+        Set<StandardLocation> declared = EnumSet.noneOf(StandardLocation.class);
         for (String option : options) {
-            if ("-processorpath".equals(option) || "--processor-path".equals(option)) return true;
+            switch (option) {
+                case "-processorpath", "--processor-path" -> declared.add(StandardLocation.ANNOTATION_PROCESSOR_PATH);
+                case "--module-path", "-p" -> declared.add(StandardLocation.MODULE_PATH);
+                case "--patch-module" -> declared.add(StandardLocation.PATCH_MODULE_PATH);
+                default -> {}
+            }
         }
-        return false;
+        return declared;
     }
 
     /**

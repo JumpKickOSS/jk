@@ -277,7 +277,9 @@ public final class PlannerCompile {
     /**
      * Every fact compile-test's {@link CompileRequest} is derived from. {@code sources} is {@link
      * PlannerTest.TestSources#javacSources}; {@code classpath} is the base test compile classpath,
-     * to which {@link #testCompileRequest} adds the Scala toolchain's library jars.
+     * to which {@link #testCompileRequest} adds the Scala toolchain's library jars; {@code
+     * mainClasses} is the module's own main classes tree, whose module descriptor (when it has one)
+     * the test sources patch.
      */
     public record TestCompile(
             List<Path> sources,
@@ -288,7 +290,8 @@ public final class PlannerCompile {
             List<String> javacArgs,
             JavacConfig javac,
             Path javaHome,
-            ScalaCompile.@Nullable Setup scala) {}
+            ScalaCompile.@Nullable Setup scala,
+            @Nullable Path mainClasses) {}
 
     /** compile-test's request — the build's javac invocation and the forecast's key, from one body. */
     public static CompileRequest testCompileRequest(TestCompile in) {
@@ -304,7 +307,8 @@ public final class PlannerCompile {
                 .classpath(classpath)
                 .outputDir(in.outputDir())
                 .release(in.release())
-                .extraOptions(javacOptions(in.javacArgs(), in.javac()))
+                .extraOptions(ModularCompile.testOptions(
+                        javacOptions(in.javacArgs(), in.javac()), in.mainClasses(), in.sources()))
                 .javaHome(in.javaHome())
                 .processorPath(effectiveProcessorPath(in.processorPath(), classpath));
         return withScala(req, in.scala()).build();

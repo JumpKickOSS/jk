@@ -3,7 +3,9 @@ package cc.jumpkick.java.compiler;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.EnumSet;
 import java.util.Locale;
+import java.util.Set;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticListener;
 import javax.tools.JavaCompiler;
@@ -55,26 +57,33 @@ final class ReusedJavacFileManager {
      * next call. A manager built for a different charset is discarded rather than reused, because
      * the charset a manager is constructed with is what decodes sources and cannot be changed after.
      *
-     * <p>{@code declaresProcessorPath} says whether the compile about to run names its own
-     * {@code -processorpath}. If it does not, and the held manager still carries one, that manager is
-     * thrown away rather than handed over — see {@link #staleProcessorPath}.
+     * <p>{@code declared} names the path locations the compile about to run sets through its own
+     * options: {@code -processorpath}, {@code --module-path}, {@code --patch-module}. If the held
+     * manager still carries one the compile never asked for, that manager is thrown away rather than
+     * handed over — see {@link #staleLocation}.
      */
     static StandardJavaFileManager acquire(
             JavaCompiler javac,
             Charset encoding,
             DiagnosticListener<JavaFileObject> diags,
-            boolean declaresProcessorPath) {
-        return PER_THREAD.get().get(javac, encoding, diags, declaresProcessorPath);
+            Set<StandardLocation> declared) {
+        return PER_THREAD.get().get(javac, encoding, diags, declared);
     }
+
+    /** The option-set locations a held manager may carry over from an earlier compile. */
+    static final Set<StandardLocation> OPTION_LOCATIONS = EnumSet.of(
+            StandardLocation.ANNOTATION_PROCESSOR_PATH,
+            StandardLocation.MODULE_PATH,
+            StandardLocation.PATCH_MODULE_PATH);
 
     private StandardJavaFileManager get(
             JavaCompiler javac,
             Charset wanted,
             DiagnosticListener<JavaFileObject> diags,
-            boolean declaresProcessorPath) {
+            Set<StandardLocation> declared) {
         relay.to = diags;
         StandardJavaFileManager current = fm;
-        if (current != null && wanted.equals(encoding) && !staleProcessorPath(current, declaresProcessorPath)) {
+        if (current != null && wanted.equals(encoding) && !staleLocation(current, declared)) {
             return current;
         }
         close(current);
@@ -85,18 +94,21 @@ final class ReusedJavacFileManager {
     }
 
     /**
-     * Whether the held manager carries a processor path the compile about to run never asked for.
+     * Whether the held manager carries a path location the compile about to run never asked for.
      *
-     * <p>Such a manager has to be discarded rather than corrected, because the location cannot be put
-     * back to "never set": clearing it with a null leaves javac treating the processor path as
+     * <p>Such a manager has to be discarded rather than corrected, because a location cannot be put
+     * back to "never set": clearing the processor path with a null leaves javac treating it as
      * declared and empty, which stops it falling back to the compile classpath for {@code -proc:full}
      * discovery. Leaving it alone instead is worse — the compile would silently run the previous
-     * module's processors and generate code into a build that never asked for any. Discarding costs
-     * one manager on a transition between a module with processors and one without, and nothing on a
-     * run of either kind.
+     * module's processors, or resolve the previous module's module path and patches, in a build that
+     * never asked for them. Discarding costs one manager on a transition between a module with the
+     * location and one without, and nothing on a run of either kind.
      */
-    private static boolean staleProcessorPath(StandardJavaFileManager held, boolean declaresProcessorPath) {
-        return !declaresProcessorPath && held.hasLocation(StandardLocation.ANNOTATION_PROCESSOR_PATH);
+    private static boolean staleLocation(StandardJavaFileManager held, Set<StandardLocation> declared) {
+        for (StandardLocation location : OPTION_LOCATIONS) {
+            if (!declared.contains(location) && held.hasLocation(location)) return true;
+        }
+        return false;
     }
 
     /**
