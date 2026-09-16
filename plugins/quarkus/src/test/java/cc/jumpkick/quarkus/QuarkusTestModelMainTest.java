@@ -20,14 +20,15 @@ class QuarkusTestModelMainTest {
     void the_main_source_set_outputs_to_the_classes_dir_alone(@TempDir Path module) throws Exception {
         Files.createDirectories(module.resolve("src/main/java"));
         Files.createDirectories(module.resolve("src/main/resources"));
-        Path classes = module.resolve("target/classes/main");
+        Path build = module.resolve("out");
+        Path classes = build.resolve("classes").resolve("main");
 
         WorkspaceModule ws = QuarkusTestModelMain.workspaceModule(module, classes, "com.ex", "svc", "1.0");
 
         assertThat(ws.getId().getGroupId()).isEqualTo("com.ex");
         assertThat(ws.getId().getArtifactId()).isEqualTo("svc");
         assertThat(ws.getModuleDir()).isEqualTo(module);
-        assertThat(ws.getBuildDir()).isEqualTo(classes.getParent().getParent());
+        assertThat(ws.getBuildDir()).isEqualTo(build);
         assertThat(ws.getMainSources().getSourceDirs())
                 .extracting(SourceDir::getOutputDir)
                 .containsExactly(classes);
@@ -44,7 +45,7 @@ class QuarkusTestModelMainTest {
 
     @Test
     void a_module_without_conventional_source_dirs_still_roots_the_classes_dir(@TempDir Path module) {
-        Path classes = module.resolve("target/classes/main");
+        Path classes = module.resolve("out").resolve("classes").resolve("main");
         WorkspaceModule ws = QuarkusTestModelMain.workspaceModule(module, classes, "com.ex", "svc", "1.0");
         assertThat(ws.getMainSources().getSourceDirs()).isEmpty();
         assertThat(ws.getMainSources().getResourceDirs()).isEmpty();
