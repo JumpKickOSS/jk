@@ -26,6 +26,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -142,7 +143,7 @@ public final class ExecPlans {
         if (!Files.isRegularFile(lockFile)) {
             return ExecPlan.error("jshell", "no jk-lock.toml — lock refresh did not produce one");
         }
-        Lockfile lock = LockfileReader.read(lockFile);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile.getParent(), dir);
         Cas cas = JkStores.storeCas();
         List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
         List<String> paths = new ArrayList<>();
@@ -411,7 +412,7 @@ public final class ExecPlans {
         boolean hotReload = false;
         Path lockFile = LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
-            Lockfile lock = LockfileReader.read(lockFile);
+            Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile.getParent(), dir);
             classpath.addAll(new ClasspathResolver(JkStores.storeCas()).classpathFor(lock, ClasspathResolver.RUN));
             if (dev) hotReload = locksDevtools(lock);
         }

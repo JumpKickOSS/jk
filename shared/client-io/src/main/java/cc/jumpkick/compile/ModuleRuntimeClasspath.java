@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Workspace;
@@ -77,7 +78,7 @@ public final class ModuleRuntimeClasspath {
             }
             return depJars;
         }
-        Lockfile lock = LockfileReader.read(lockFile);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile.getParent(), moduleDir);
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
 

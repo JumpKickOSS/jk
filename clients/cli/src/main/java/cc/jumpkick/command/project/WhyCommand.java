@@ -72,8 +72,16 @@ public final class WhyCommand implements CliCommand {
 
         CliOutput.out(Theme.active().gradientHeaderAnsi("Jk - Dependency Lookup"));
         for (int i = 0; i < report.matchNames().size(); i++) {
+            List<String> members = report.membersOf(i);
+            String forMembers = members.isEmpty()
+                    ? ""
+                    : Theme.colorize(
+                            " (for " + String.join(", ", members) + ")",
+                            Theme.active().darkGray());
             CliOutput.out(Coords.module(
-                            report.matchNames().get(i), report.matchVersions().get(i)) + " is pulled in by:");
+                            report.matchNames().get(i), report.matchVersions().get(i))
+                    + forMembers
+                    + " is pulled in by:");
             boolean any = false;
             for (int j = 0; j < report.paths().size(); j++) {
                 if (!report.pathOwners().get(j).equals(Integer.toString(i))) continue;

@@ -62,12 +62,20 @@ public final class WorkspaceMerge {
             if (!resolved.isEmpty()) resolvedByScope.put(scope, resolved);
         }
 
+        // The platform table a member's own graph is solved under: the root's BOMs first, then the
+        // member's own, then those of the siblings it depends on — a BOM constrains the member that
+        // declares it and the members that depend on that member, never an unrelated one.
+        List<Dependency> platform = new ArrayList<>();
+        for (Dependency d : root.dependencies().of(Scope.PLATFORM)) addPlatform(platform, d);
+        for (Dependency d : resolvedByScope.getOrDefault(Scope.PLATFORM, List.of())) addPlatform(platform, d);
+
         // Transitive MAIN+EXPORT externals from reachable siblings into this module's main scope.
         Set<String> visited = new LinkedHashSet<>(dependedSiblings);
         ArrayDeque<String> queue = new ArrayDeque<>(dependedSiblings);
         while (!queue.isEmpty()) {
             JkBuild sibling = siblingByArtifact.get(queue.poll());
             if (sibling == null) continue;
+            for (Dependency d : sibling.dependencies().of(Scope.PLATFORM)) addPlatform(platform, d);
             for (Scope scope : List.of(Scope.MAIN, Scope.EXPORT)) {
                 for (Dependency d : sibling.dependencies().of(scope)) {
                     Dependency r = resolve(d, siblingByArtifact, wsDeps);
@@ -81,6 +89,11 @@ public final class WorkspaceMerge {
                     }
                 }
             }
+        }
+        if (platform.isEmpty()) {
+            resolvedByScope.remove(Scope.PLATFORM);
+        } else {
+            resolvedByScope.put(Scope.PLATFORM, platform);
         }
 
         JkBuild.Builder out = JkBuild.builder(module.project())
@@ -101,6 +114,11 @@ public final class WorkspaceMerge {
             out.pluginConfig(config);
         }
         return out.build();
+    }
+
+    /** Add a BOM to a member's platform table unless an earlier entry already manages that module. */
+    private static void addPlatform(List<Dependency> platform, Dependency bom) {
+        if (platform.stream().noneMatch(e -> e.module().equals(bom.module()))) platform.add(bom);
     }
 
     /**

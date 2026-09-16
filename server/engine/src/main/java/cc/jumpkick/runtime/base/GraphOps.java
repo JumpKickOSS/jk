@@ -55,6 +55,7 @@ public final class GraphOps {
                     .toList();
             List<String> names = new ArrayList<>(matches.size());
             List<String> versions = new ArrayList<>(matches.size());
+            List<String> members = new ArrayList<>(matches.size());
             List<String> owners = new ArrayList<>();
             List<String> paths = new ArrayList<>();
             List<String> selectors = new ArrayList<>();
@@ -63,6 +64,7 @@ public final class GraphOps {
                 // Display GA form to users (not g:a:jar:).
                 names.add(ga(target.packageKey()));
                 versions.add(target.version());
+                members.add(String.join(",", target.members()));
                 for (Provenance.Path path : Provenance.pathsTo(graph, target.packageKey())) {
                     owners.add(Integer.toString(i));
                     paths.add(path.steps().stream()
@@ -73,7 +75,7 @@ public final class GraphOps {
                             .collect(Collectors.joining(WhyReport.STEP_SELECTOR_SEPARATOR)));
                 }
             }
-            return new WhyReport(null, names, versions, owners, paths, selectors, prunedEdges(lock, query));
+            return new WhyReport(null, names, versions, members, owners, paths, selectors, prunedEdges(lock, query));
         } catch (IOException | RuntimeException e) {
             return WhyReport.error(Errors.text(e));
         }
