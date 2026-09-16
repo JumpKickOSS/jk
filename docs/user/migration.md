@@ -294,7 +294,7 @@ relates to the Maven one.
 | quarkus-maven-plugin | 7 | `[quarkus]` | exact |
 | flatten-maven-plugin | 6 | nothing (`jk export maven` writes a flat POM) | exact |
 | os-maven-plugin (a `<build><extensions>` entry or the `detect` goal) | 6 | nothing to write: `os.detected.name`, `os.detected.arch` and `os.detected.classifier` are valued from the host in the effective model, so a `${os.detected.classifier}` classifier is this machine's word | exact |
-| native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main` | approximate |
+| native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main`; declared bare with its executions only in an inactive profile → Tier-2 row naming the profile, no `[native]` (so Spring AOT stays off) | approximate |
 | maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
 | antlr4-maven-plugin | 5 | `[antlr]` (planned generator preset) | manual |
 | localizer-maven-plugin | 1 | Tier-3 row naming the `Messages` classes it generates from `Messages.properties` bundles and the output root, which no `extra-src` names (the plugin has a mojo and an Ant task, no `main` a `[generate]` entry could run); generate once with `jk mvn generate-sources` and check the classes in under a source root of their own | none |
@@ -322,6 +322,7 @@ payload and activation rather than one-to-one:
 | Not active; `maven.compiler.*` or `<compilerArgs>`, an `argLine` property | `[profiles.<id>]` `javac` (`--release N`, the args) / `jvm-args` | A jk profile is "how you compile" |
 | Not active; `<repositories>` | Merged into the top-level repositories with a Tier-2 row | A repository is never conditional in jk |
 | Not active; `<build><plugins>` | Hand-port checklist row naming the plugins | Plugin mapping is its own table; a profile does not change where a plugin lands |
+| Not active; `<build>` executions for a plugin the POM declares bare (`native-maven-plugin`, shade, assembly, Jib, Docker) | The plugin writes nothing — no `[native]`, no fat jar, no `[image]` lines — and a Tier-2 row names the profile | Under Maven that plugin runs only with `-P`, so a default build does not build the image or the fat jar |
 | JDK- or OS-activated with per-platform deps (native classifiers, `os-maven-plugin`) | Tier-2 row proposing a `[variants]` dimension | Which product you build, not what you compile with |
 | `<properties>` that only other POM fields read | Interpolated away; nothing written | The effective model already substituted them |
 

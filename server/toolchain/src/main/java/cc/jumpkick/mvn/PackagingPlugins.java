@@ -49,9 +49,15 @@ final class PackagingPlugins {
 
     private PackagingPlugins() {}
 
-    /** {@code mainClass} is the application main the import already found, if any. */
-    static Packaging map(Model model, @Nullable String mainClass, ImportReport.Builder report) {
-        boolean fatJar = mapShade(model, report) | mapAssembly(model, report);
+    /**
+     * {@code mainClass} is the application main the import already found, if any. A plugin the POM
+     * declares bare whose executions live only in an inactive profile ({@link
+     * PluginFacts#boundOnlyInProfile}) runs under Maven only with {@code -P}, so it shapes nothing
+     * here: a row names the profile and the table or fat jar it would have written.
+     */
+    static Packaging map(EffectiveModel em, @Nullable String mainClass, ImportReport.Builder report) {
+        Model model = em.model();
+        boolean fatJar = mapShade(em, report) | mapAssembly(em, report);
         if (fatJar && mainClass == null) {
             report.warning("a fat jar was requested but no `<mainClass>` was found; `[application] assembly = true`"
                     + " needs `[application] main`, so no `[application]` table was written — add both.");
@@ -63,11 +69,13 @@ final class PackagingPlugins {
         PluginConfig quarkus = PluginFacts.plugin(model, QUARKUS)
                 .map(plugin -> mapQuarkus(plugin, model, report))
                 .orElse(null);
-        JkBuild.NativeConfig nativeConfig = PluginFacts.plugin(model, NATIVE)
+        JkBuild.NativeConfig nativeConfig = active(em, NATIVE, "no `[native]` table is written", report)
                 .map(plugin -> mapNative(plugin, mainClass))
                 .orElse(null);
-        PluginFacts.plugin(model, "jib-maven-plugin").ifPresent(jib -> reportImage(jib, report));
-        PluginFacts.plugin(model, "docker-maven-plugin").ifPresent(docker -> reportImage(docker, report));
+        active(em, "jib-maven-plugin", "no `[image]` lines are proposed", report)
+                .ifPresent(jib -> reportImage(jib, report));
+        active(em, "docker-maven-plugin", "no `[image]` lines are proposed", report)
+                .ifPresent(docker -> reportImage(docker, report));
         // Packaging decides: a parent's <build><plugins> declaration of the war plugin is inherited
         // by every jar module and binds nothing there.
         if ("war".equals(model.getPackaging())) {
@@ -92,9 +100,27 @@ final class PackagingPlugins {
         return relocations;
     }
 
+    /**
+     * The module's declaration of {@code artifactId} when Maven would run it here; a declaration
+     * bound only in an inactive profile is a row saying so and {@code written} is what stays out.
+     */
+    private static Optional<Plugin> active(
+            EffectiveModel em, String artifactId, String written, ImportReport.Builder report) {
+        Optional<Plugin> plugin = PluginFacts.plugin(em.model(), artifactId);
+        if (plugin.isEmpty()) return plugin;
+        Optional<String> profile = PluginFacts.boundOnlyInProfile(em, plugin.get());
+        if (profile.isEmpty()) return plugin;
+        report.warning("`" + artifactId + "` is declared without executions or configuration; Maven profile `"
+                + profile.get() + "` supplies them, and that profile is not active on this machine, so the plugin"
+                + " runs only under `-P " + profile.get() + "`; " + written
+                + ". Activate the profile and re-import, or add the table to jk.toml yourself.");
+        return Optional.empty();
+    }
+
     /** Shade is the fat jar; what jk's merge rules do not do is a row per construct. */
-    private static boolean mapShade(Model model, ImportReport.Builder report) {
-        Optional<Plugin> shade = PluginFacts.plugin(model, SHADE);
+    private static boolean mapShade(EffectiveModel em, ImportReport.Builder report) {
+        Model model = em.model();
+        Optional<Plugin> shade = active(em, SHADE, "no fat jar is written", report);
         if (shade.isEmpty()) return false;
         List<String> relocations =
                 relocations(model).stream().map(Relocation::label).toList();
@@ -136,8 +162,8 @@ final class PackagingPlugins {
     }
 
     /** {@code jar-with-dependencies} is the fat jar; any other descriptor is a row. */
-    private static boolean mapAssembly(Model model, ImportReport.Builder report) {
-        Optional<Plugin> assembly = PluginFacts.plugin(model, ASSEMBLY);
+    private static boolean mapAssembly(EffectiveModel em, ImportReport.Builder report) {
+        Optional<Plugin> assembly = active(em, ASSEMBLY, "no fat jar is written", report);
         if (assembly.isEmpty()) return false;
         boolean fatJar = false;
         List<String> other = new ArrayList<>();
