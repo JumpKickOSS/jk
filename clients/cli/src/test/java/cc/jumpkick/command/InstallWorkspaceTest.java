@@ -68,6 +68,61 @@ class InstallWorkspaceTest {
                 .contains("\"success\":false");
     }
 
+    @Test
+    void a_member_s_declared_test_env_name_reaches_its_test_jvm(@TempDir Path tmp) throws Exception {
+        // `JK_WEB_JS_SKIP=1 jk install` must skip the JS tier as `jk build` does. A declared
+        // [test] env name reaches the test JVM only on the request's client env — the engine is a
+        // daemon — and install's request used to carry none. The jk.env seam stands in for the
+        // shell: JK_REPO_* names ride ClientEnvForward, and the member declares the same name.
+        Path cache = Path.of(SharedTestCache.arg());
+        workspace(tmp, "public final class Lib { }");
+        Files.writeString(tmp.resolve("lib/jk.toml"), """
+                name = "lib"
+
+                [m2]
+                install = false
+
+                [test-dependencies]
+                junit-jupiter = "latest"
+
+                [test]
+                env = ["JK_REPO_PROBE"]
+                """);
+        Path test = tmp.resolve("lib/src/test/java/ex/LibTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, """
+                package ex;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class LibTest {
+                    @Test
+                    void the_declared_name_came_from_the_shell_that_ran_jk() {
+                        assertEquals("from-the-client", System.getenv("JK_REPO_PROBE"));
+                    }
+                }
+                """);
+        assertThat(run("lock", "-C", tmp.toString(), "--cache-dir", cache.toString()))
+                .as("the fixture's lock resolves JUnit")
+                .isEqualTo(0);
+
+        System.setProperty("jk.env.JK_REPO_PROBE", "from-the-client");
+        int[] exit = {0};
+        Capture.Streams streams;
+        try {
+            streams = Capture.both(() -> exit[0] = install(tmp, cache));
+        } finally {
+            System.clearProperty("jk.env.JK_REPO_PROBE");
+        }
+
+        assertThat(exit[0])
+                .as("the member's test reads the forwarded name\n%s", TestAnsi.strip(streams.out() + streams.err()))
+                .isEqualTo(0);
+        assertThat(TestAnsi.strip(streams.out())).contains("Installed ex:lib:1.0");
+    }
+
     private static int install(Path ws, Path cache, String... extra) {
         String[] base = {
             "install",

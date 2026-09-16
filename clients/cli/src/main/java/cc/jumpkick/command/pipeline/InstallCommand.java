@@ -26,6 +26,8 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.command.CwdModuleScope;
 import cc.jumpkick.command.ToolTargets;
+import cc.jumpkick.command.VariantSelection;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
@@ -382,6 +384,9 @@ public final class InstallCommand {
                 true);
         BuildPlanResult result;
         TestSummary testResult;
+        // The request envelope carries the session's client env; resolve it here, from the shell
+        // running jk, or the module's [test] env names reach the test JVM only on jk build.
+        VariantSelection.installEnv(projectDir);
         var session = SessionContext.current();
         TestSummary[] testResultHolder = new TestSummary[1];
         try {
@@ -482,6 +487,10 @@ public final class InstallCommand {
         Map<Path, Path> graalByDir = resolved.get();
         List<String> tokens = cwdScope.scoped() ? List.of(cwdScope.modulesSpec()) : List.of();
         Set<Path> selected = cwdScope.scoped() ? Set.of(cwdScope.workingDir()) : Set.of();
+        // A workspace request carries its own client env, as jk build's does: the engine is a
+        // daemon, so a member's [test] env name set in this shell rides the request or not at all.
+        VariantSelection.installEnv(wsRoot);
+        Session session = SessionContext.current();
         WorkspaceRequest req = new WorkspaceRequest(
                         wsRoot,
                         cacheDir,
@@ -494,6 +503,7 @@ public final class InstallCommand {
                         selected.isEmpty() ? null : selected,
                         true,
                         true)
+                .withVariant(session.variant(), session.clientEnv())
                 .withModules(tokens)
                 .withSpec(WorkspaceSpec.install(selected, graalByDir, m2Dir()));
         // The shared workspace renderer, exactly as build/test/native drive it, on the same mode
