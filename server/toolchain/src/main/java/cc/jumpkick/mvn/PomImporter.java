@@ -440,8 +440,12 @@ public final class PomImporter {
         for (Pom.Dep path : processorPaths) used.add(path.module() + ":jar");
         Map<String, List<String>> managedBy = new LinkedHashMap<>();
         Map<String, List<String>> inheritedFrom = new LinkedHashMap<>();
+        List<Pom.Dep> plainProcessors = new ArrayList<>();
         for (EffectiveModel.Declared declared : em.dependencies(report)) {
             used.add(declared.key());
+            if (processorPaths.isEmpty() && KnownProcessors.recognizes(declared.dep())) {
+                plainProcessors.add(declared.dep());
+            }
             if (!declared.own()) {
                 inheritedFrom
                         .computeIfAbsent(declared.source(), k -> new ArrayList<>())
@@ -458,6 +462,7 @@ public final class PomImporter {
                 report.warning("versions for " + String.join(", ", modules) + " managed by " + source + "."));
         inheritedFrom.forEach((source, modules) ->
                 report.warning("dependencies " + String.join(", ", modules) + " inherited from " + source + "."));
+        KnownProcessors.write(plainProcessors, byScope, report);
         uniquifyHandles(byScope, report);
         return byScope;
     }
@@ -515,7 +520,8 @@ public final class PomImporter {
     /**
      * {@code <annotationProcessorPaths>} → {@code [processor-dependencies]}. With that element
      * present Maven hands javac a processor path and stops discovering processors on the classpath,
-     * which is exactly what the jk table does, so only the listed paths are written.
+     * which is exactly what the jk table does, so only the listed paths are written. Without it,
+     * the processors {@link KnownProcessors} recognizes among the plain dependencies are written.
      */
     private static void mapProcessorPaths(
             List<Pom.Dep> paths, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {

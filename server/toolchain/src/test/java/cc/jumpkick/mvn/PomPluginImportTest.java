@@ -61,6 +61,34 @@ class PomPluginImportTest {
     }
 
     @Test
+    void processors_declared_as_plain_dependencies_are_written_when_no_path_is_declared(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = importFixture(tempDir, "plugins", "plain-processors-pom.xml");
+        JkBuild build = result.jkBuild();
+
+        assertThat(versions(build.dependencies().of(Scope.PROCESSOR)))
+                .as("the recognized processors, at the POM's versions; guava and the mapstruct API are not processors")
+                .containsExactly(
+                        "org.projectlombok:lombok=1.18.42",
+                        "org.mapstruct:mapstruct-processor=1.6.3",
+                        "com.google.auto.value:auto-value=1.11.0");
+        assertThat(versions(build.dependencies().of(Scope.PROVIDED)))
+                .as("the plain declarations stay where the POM put them")
+                .containsExactly("org.projectlombok:lombok=1.18.42", "com.google.auto.value:auto-value=1.11.0");
+        assertThat(versions(build.dependencies().of(Scope.MAIN)))
+                .containsExactly(
+                        "org.mapstruct:mapstruct=1.6.3",
+                        "org.mapstruct:mapstruct-processor=1.6.3",
+                        "com.google.guava:guava=33.4.8-jre");
+        assertThat(messages(result))
+                .anyMatch(m -> m.startsWith("AutoValue, Lombok, MapStruct are declared as plain dependencies")
+                        && m.contains("`[processor-dependencies]`"));
+
+        JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(build));
+        assertThat(reparsed.dependencies().of(Scope.PROCESSOR)).hasSize(3);
+    }
+
+    @Test
     void source_tree_plugins_land_in_extra_src_sources_and_rows(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = importFixture(tempDir, "plugins", "source-tree-pom.xml");
         JkBuild build = result.jkBuild();

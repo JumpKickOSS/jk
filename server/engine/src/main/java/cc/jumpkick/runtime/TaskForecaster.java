@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavaCompilerHost;
@@ -581,15 +582,34 @@ public final class TaskForecaster {
         return compileStep(name, pred, compileDepDirty, request, DepHint.NONE);
     }
 
-    /** As above with the consumer's {@link DepHint}: the text a dependency-dirty hit carries. */
+    /**
+     * As above with the consumer's {@link DepHint}: the text a dependency-dirty hit carries. The
+     * step then names the javac plugins the request invokes and the annotation processors on its
+     * processor path — each processor class with the jar it comes from — so {@code jk explain
+     * --verbose} shows what the compile runs beside the sources it compiles.
+     */
     static TaskForecast.Task compileStep(
             String name, JavaCompile.Prediction pred, boolean compileDepDirty, CompileRequest request, DepHint hint) {
         TaskForecast.Task step = compileStep(name, pred, compileDepDirty, hint);
+        List<String> parts = new ArrayList<>();
+        if (!step.text().isEmpty()) parts.add(step.text());
         List<String> plugins = PlannerCompile.pluginNames(request);
-        if (plugins.isEmpty()) return step;
-        String text = PlannerCompile.PLUGIN_FLAG + String.join(",", plugins);
-        if (!step.text().isEmpty()) text = step.text() + " · " + text;
-        return new TaskForecast.Task(name, step.status(), text, step.key());
+        if (!plugins.isEmpty()) parts.add(PlannerCompile.PLUGIN_FLAG + String.join(",", plugins));
+        String processors = processorsText(request.processorPath());
+        if (!processors.isEmpty()) parts.add(processors);
+        if (parts.size() == (step.text().isEmpty() ? 0 : 1)) return step;
+        return new TaskForecast.Task(name, step.status(), String.join(" · ", parts), step.key());
+    }
+
+    /** {@code processors: a.b.Gen (gen.jar), c.d.Mapper (mapper-1.0.jar)}, or {@code ""} when the path registers none. */
+    static String processorsText(List<Path> processorPath) {
+        List<String> named = new ArrayList<>();
+        for (Path entry : processorPath) {
+            for (String processor : ClasspathProcessors.processorNames(entry)) {
+                named.add(processor + " (" + entry.getFileName() + ")");
+            }
+        }
+        return named.isEmpty() ? "" : "processors: " + String.join(", ", named);
     }
 
     /** The text of a hit whose compile-scope dependency is rebuilding: the hint when there is one. */

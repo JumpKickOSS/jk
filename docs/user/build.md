@@ -68,6 +68,14 @@ guard suite all apply the rule. Declare `[processor-dependencies]` when the mani
 what runs, when the processor needs dependencies of its own that do not belong on the compile
 classpath, or when a classpath jar registers a processor you want silent.
 
+`jk explain --verbose` names what a compile step runs: each processor class on the step's
+processor path with the jar it comes from (`processors: org.mapstruct.ap.MappingProcessor
+(mapstruct-processor-1.6.3.jar)`), discovered or declared alike, after the `-Xplugin:` names.
+`jk import` makes the intent explicit for a Maven module that relies on discovery: Lombok,
+MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared
+as plain dependencies in a POM without `annotationProcessorPaths` are written into
+`[processor-dependencies]` as well, and the import report says which. [Migration](migration.md).
+
 ## javac plugins
 
 A javac **plugin** (Error Prone, NullAway, Checker Framework, Manifold) is a jar on the

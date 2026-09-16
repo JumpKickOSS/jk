@@ -10,7 +10,7 @@ Prefer this over Gradle build scans for day-to-day “why did this rebuild?” q
 
 ```bash
 jk explain                   # phase rollup + rebuild-surface table + ETA
-jk explain --verbose         # expand every task under each module (a compile step names its -Xplugin:s)
+jk explain --verbose         # expand every task under each module (a compile step names its -Xplugin:s and processors)
 jk explain --redo            # forecast full rebuild (same as jk build --redo)
 ```
 
