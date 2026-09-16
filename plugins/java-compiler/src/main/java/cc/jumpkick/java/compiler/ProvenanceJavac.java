@@ -53,15 +53,23 @@ final class ProvenanceJavac implements JavaCompiler {
     /** Collects the inlined-constant edges javac's bytecode erases; see {@link ConstantDeps}. */
     private final @Nullable ConstantDeps constants;
 
+    /**
+     * The worker's reporter, which keeps javac's key beside each diagnostic; null hands the
+     * diagnostics to whatever reporter Zinc passes, through its bridge, and the keys are lost.
+     */
+    private final @Nullable CollectingReporter keyed;
+
     ProvenanceJavac(
             @Nullable URLClassLoader loader,
             ApProvenance provenance,
             Charset encoding,
-            @Nullable ConstantDeps constants) {
+            @Nullable ConstantDeps constants,
+            @Nullable CollectingReporter keyed) {
         this.loader = loader;
         this.provenance = provenance;
         this.encoding = encoding;
         this.constants = constants;
+        this.keyed = keyed;
     }
 
     @Override
@@ -117,6 +125,10 @@ final class ProvenanceJavac implements JavaCompiler {
             if (constants != null) constants.listen(task);
             boolean ok = task.call();
             fileOps.write(classOut);
+            if (keyed != null) {
+                for (var d : diags.getDiagnostics()) keyed.report(d);
+                return ok && !keyed.hasErrors();
+            }
             DiagnosticsReporter bridge = new DiagnosticsReporter(reporter);
             for (var d : diags.getDiagnostics()) bridge.report(d);
             return ok && !bridge.hasErrors();

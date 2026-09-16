@@ -315,7 +315,8 @@ public final class ForkedJavac {
                                 Jsonl.str(json, "file"),
                                 Jsonl.longValue(json, "line", 0),
                                 Jsonl.longValue(json, "col", 0),
-                                Jsonl.str(json, "msg")));
+                                Jsonl.str(json, "msg"),
+                                Jsonl.str(json, "key")));
                     })
                     .on(PluginProtocol.PROVENANCE, json -> {
                         String genStr = Jsonl.str(json, "gen");

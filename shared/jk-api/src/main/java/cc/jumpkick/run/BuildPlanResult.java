@@ -67,6 +67,10 @@ public record BuildPlanResult(
      * {@code method}), {@code exceptionClass}, and full {@code stack}. Non-test diagnostics leave
      * those empty. {@code test} is kept empty for new emits (prefer {@code module} +
      * {@code method}).
+     *
+     * <p>{@code code} names the tool ({@code javac}, {@code kotlinc}, a guard rule); {@code key} is
+     * that tool's own name for the diagnostic ({@code compiler.err.cant.resolve.location}), {@code
+     * ""} when the tool reports text only.
      */
     public record Diagnostic(
             String step,
@@ -83,11 +87,69 @@ public record BuildPlanResult(
             int line,
             int snippetStart,
             List<String> snippet,
-            int worker) {
+            int worker,
+            String key) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
             this(step, code, message, "", "", "", "", "", "", "", "", 0, 0, List.of(), 0);
+        }
+
+        /** Every field but the tool's key, which is {@code ""}. */
+        public Diagnostic(
+                String step,
+                String code,
+                @Nullable String message,
+                @Nullable String test,
+                @Nullable String exceptionClass,
+                @Nullable String module,
+                @Nullable String engine,
+                @Nullable String className,
+                @Nullable String method,
+                @Nullable String stack,
+                @Nullable String file,
+                int line,
+                int snippetStart,
+                List<String> snippet,
+                int worker) {
+            this(
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    file,
+                    line,
+                    snippetStart,
+                    snippet,
+                    worker,
+                    "");
+        }
+
+        /** This diagnostic with the tool's key for it. */
+        public Diagnostic withKey(String key) {
+            return new Diagnostic(
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    file,
+                    line,
+                    snippetStart,
+                    snippet,
+                    worker,
+                    key);
         }
 
         /** Two-field test failure (display label + exception class). */
@@ -138,6 +200,7 @@ public record BuildPlanResult(
         public Diagnostic {
             if (snippet == null) snippet = List.of();
             else snippet = List.copyOf(snippet);
+            key = key == null ? "" : key;
         }
 
         public @Nullable TestFailureInfo testFailure() {

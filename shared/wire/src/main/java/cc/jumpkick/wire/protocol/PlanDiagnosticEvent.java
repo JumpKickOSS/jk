@@ -5,11 +5,16 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestFailureInfo;
 import java.util.List;
 
-/** A plan-level diagnostic, plain or enriched with the test-failure fields (see {@link EngineProtocol#BUILDPLAN_DIAGNOSTIC}). */
+/**
+ * A plan-level diagnostic, plain or enriched with the test-failure fields (see {@link
+ * EngineProtocol#BUILDPLAN_DIAGNOSTIC}). {@code key} is the tool's own name for the diagnostic
+ * ({@code compiler.err.cant.resolve.location}), {@code ""} when the tool gave none.
+ */
 public record PlanDiagnosticEvent(
         String dir,
         String task,
         String code,
+        String key,
         String message,
         String test,
         String module,
@@ -41,16 +46,18 @@ public record PlanDiagnosticEvent(
                 snippetStart,
                 worker,
                 snippet,
-                stack);
+                stack,
+                key);
     }
 
-    /** The record for one failure's fields, with the caller's own dir/task/code/message/test. */
+    /** The record for one failure's fields, with the caller's own dir/task/code/key/message/test. */
     static PlanDiagnosticEvent of(
-            String dir, String task, String code, String message, String test, TestFailureInfo f) {
+            String dir, String task, String code, String key, String message, String test, TestFailureInfo f) {
         return new PlanDiagnosticEvent(
                 dir,
                 task,
                 code,
+                key,
                 message,
                 test,
                 f.module(),
@@ -71,6 +78,7 @@ public record PlanDiagnosticEvent(
                 DiagnosticFields.str(json, "dir"),
                 DiagnosticFields.str(json, "task"),
                 DiagnosticFields.str(json, "code"),
+                DiagnosticFields.str(json, "key"),
                 DiagnosticFields.str(json, "message"),
                 DiagnosticFields.str(json, "test"),
                 DiagnosticFields.str(json, "module"),

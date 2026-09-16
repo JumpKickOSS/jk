@@ -56,10 +56,13 @@ its output. A compiler error whose repair is mechanical ends with a `→` line, 
 violation carries `instead`: javac's cannot find symbol, package does not exist, incompatible types,
 unreported exception, missing return statement, variable might not have been initialized and
 non-static referenced from a static context; kotlinc's unresolved reference, type mismatch, unsafe
-call on a nullable receiver and no value passed for a parameter. The hint quotes the symbol, package
-or types from the compiler's own message — `symbol:` and `location:` for cannot find symbol — and
-names `jk add` when a dependency is the likely repair; it never names a coordinate, because the
-library catalog maps short names to coordinates, not packages to libraries. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
+call on a nullable receiver and no value passed for a parameter. A javac row is chosen by javac's
+own key for the diagnostic (`compiler.err.cant.resolve.location`), which the compile worker records
+beside every diagnostic and the record carries as `key`; the shape of the message is the fallback
+for kotlinc. The hint quotes the symbol, package or types from the compiler's own message —
+`symbol:` and `location:` for cannot find symbol — and names `jk add` when a dependency is the
+likely repair; it never names a coordinate, because the library catalog maps short names to
+coordinates, not packages to libraries. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
 test class together with the assertion frame above it — the middle is elided with a frame count —
 so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
 launcher missing from the classpath — is that shape with code `test-launcher`: the exit, the

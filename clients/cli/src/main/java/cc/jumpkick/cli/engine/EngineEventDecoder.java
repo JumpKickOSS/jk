@@ -402,9 +402,10 @@ final class EngineEventDecoder {
                 e.snippetStart(),
                 e.snippet());
         if (f != null) {
-            return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), f);
+            return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), f).withKey(e.key());
         }
-        return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), e.test(), e.exceptionClass());
+        return new BuildPlanResult.Diagnostic(e.task(), e.code(), e.message(), e.test(), e.exceptionClass())
+                .withKey(e.key());
     }
 
     /**

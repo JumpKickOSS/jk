@@ -558,7 +558,8 @@ public final class JavaCompilerHost {
                         Jsonl.str(json, "file"),
                         Jsonl.longValue(json, "line", 0),
                         Jsonl.longValue(json, "col", 0),
-                        Jsonl.str(json, "msg")));
+                        Jsonl.str(json, "msg"),
+                        Jsonl.str(json, "key")));
                 return;
             }
             if (PluginProtocol.PROVENANCE.equals(t)) {

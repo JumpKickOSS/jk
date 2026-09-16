@@ -4,6 +4,9 @@ package cc.jumpkick.java.compiler;
 import cc.jumpkick.java.compiler.ZincJavaCompiler.Diag;
 import java.util.ArrayList;
 import java.util.List;
+import javax.tools.Diagnostic;
+import javax.tools.JavaFileObject;
+import sbt.internal.inc.javac.DiagnosticsReporter;
 import xsbti.Position;
 import xsbti.Problem;
 import xsbti.Reporter;
@@ -15,12 +18,36 @@ import xsbti.Severity;
  * {@link Diag} — the failure path in {@code ZincJavaCompiler} needs the same translation for
  * problems that arrive on a thrown {@code CompileFailed}, and two spellings of it would let the two
  * routes disagree about severity or line numbering.
+ *
+ * <p>A javac diagnostic reported through {@link #report} keeps its {@link Diagnostic#getCode()
+ * key} beside the problem: Zinc's {@link DiagnosticsReporter} renders the message and position
+ * but drops the key, so the key is taken from the diagnostic before the bridge logs its problem.
  */
 final class CollectingReporter implements Reporter {
 
-    private final List<Problem> problems = new ArrayList<>();
+    /** A logged problem and the javac key it arrived with ({@code ""} when it came without one). */
+    private record Keyed(Problem problem, String key) {}
+
+    private final List<Keyed> problems = new ArrayList<>();
+    private final DiagnosticsReporter bridge = new DiagnosticsReporter(this);
+    private String pendingKey = "";
+
+    /** Log a javac diagnostic: Zinc's rendering of it, with javac's key kept. */
+    void report(Diagnostic<? extends JavaFileObject> diagnostic) {
+        String code = diagnostic.getCode();
+        pendingKey = code == null ? "" : code;
+        try {
+            bridge.report(diagnostic);
+        } finally {
+            pendingKey = "";
+        }
+    }
 
     static Diag toDiag(Problem p) {
+        return toDiag(p, "");
+    }
+
+    private static Diag toDiag(Problem p, String key) {
         Position pos = p.position();
         String file = pos.sourcePath().orElse(null);
         long line = pos.line().map(Integer::longValue).orElse(0L);
@@ -30,12 +57,12 @@ final class CollectingReporter implements Reporter {
                     case Warn -> "WARNING";
                     case Info -> "NOTE";
                 };
-        return new Diag(kind, file, line, 0, p.message());
+        return new Diag(kind, file, line, 0, p.message(), key);
     }
 
     List<Diag> diagnostics() {
         List<Diag> out = new ArrayList<>();
-        for (Problem p : problems) out.add(toDiag(p));
+        for (Keyed k : problems) out.add(toDiag(k.problem(), k.key()));
         return out;
     }
 
@@ -46,13 +73,13 @@ final class CollectingReporter implements Reporter {
 
     @Override
     public boolean hasErrors() {
-        for (Problem p : problems) if (p.severity() == Severity.Error) return true;
+        for (Keyed k : problems) if (k.problem().severity() == Severity.Error) return true;
         return false;
     }
 
     @Override
     public boolean hasWarnings() {
-        for (Problem p : problems) if (p.severity() == Severity.Warn) return true;
+        for (Keyed k : problems) if (k.problem().severity() == Severity.Warn) return true;
         return false;
     }
 
@@ -61,12 +88,12 @@ final class CollectingReporter implements Reporter {
 
     @Override
     public Problem[] problems() {
-        return problems.toArray(Problem[]::new);
+        return problems.stream().map(Keyed::problem).toArray(Problem[]::new);
     }
 
     @Override
     public void log(Problem problem) {
-        problems.add(problem);
+        problems.add(new Keyed(problem, pendingKey));
     }
 
     @Override

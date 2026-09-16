@@ -109,6 +109,26 @@ class ProtoEventsFrozenBytesTest {
         assertThat(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "boom", "t", "AE"))
                 .isEqualTo(
                         "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"run-tests\",\"code\":\"E1\",\"message\":\"boom\",\"test\":\"t\",\"exceptionClass\":\"AE\"}");
+        assertThat(ProtoEvents.planDiagnostic(
+                        "a/b",
+                        "compile-java",
+                        "javac",
+                        "cannot find symbol",
+                        "",
+                        "",
+                        "compiler.err.cant.resolve.location"))
+                .isEqualTo(
+                        "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"compile-java\",\"code\":\"javac\",\"key\":\"compiler.err.cant.resolve.location\",\"message\":\"cannot find symbol\"}");
+        assertThat(PlanDiagnosticEvent.decode(ProtoEvents.planDiagnostic(
+                                "a/b",
+                                "compile-java",
+                                "javac",
+                                "cannot find symbol",
+                                "",
+                                "",
+                                "compiler.err.doesnt.exist"))
+                        .key())
+                .isEqualTo("compiler.err.doesnt.exist");
     }
 
     @Test

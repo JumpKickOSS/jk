@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -704,15 +703,7 @@ public final class TestSupport {
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.
-        boolean errored = false;
-        for (CompileResult.Diagnostic d : r.diagnostics()) {
-            if (d.severity() == CompileResult.Severity.ERROR) {
-                ctx.error("javac", d.describe());
-                errored = true;
-            } else {
-                ctx.warn("javac", d.describe());
-            }
-        }
+        boolean errored = JavacDiagnostics.report(ctx, r.diagnostics());
         if (!r.success()) {
             // A failure must never be silent: if the compiler produced no ERROR
             // diagnostic (crash, swallowed output), say so explicitly.

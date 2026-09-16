@@ -32,11 +32,23 @@ public record CompileResult(boolean success, List<Diagnostic> diagnostics) {
         return diagnostics.stream().map(Diagnostic::describe).collect(Collectors.joining("\n"));
     }
 
-    public record Diagnostic(Severity severity, @Nullable Path source, long line, long column, String message) {
+    /**
+     * One diagnostic. {@code key} is the compiler's own name for it — javac's {@code
+     * compiler.err.cant.resolve.location} — and {@code ""} when the compiler reported text only
+     * (kotlinc, groovyc, a forked javac's stderr).
+     */
+    public record Diagnostic(
+            Severity severity, @Nullable Path source, long line, long column, String message, String key) {
 
         public Diagnostic {
             Objects.requireNonNull(severity, "severity");
             Objects.requireNonNull(message, "message");
+            key = key == null ? "" : key;
+        }
+
+        /** A diagnostic the compiler gave no key for. */
+        public Diagnostic(Severity severity, @Nullable Path source, long line, long column, String message) {
+            this(severity, source, line, column, message, "");
         }
 
         /**
