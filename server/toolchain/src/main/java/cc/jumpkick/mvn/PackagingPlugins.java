@@ -29,6 +29,13 @@ final class PackagingPlugins {
             JkBuild.@Nullable NativeConfig nativeConfig,
             @Nullable PluginConfig springBoot) {}
 
+    /** One shade {@code <relocation>}: the package moved and where to; {@code shaded} is null when the POM omits it. */
+    record Relocation(String pattern, @Nullable String shaded) {
+        String label() {
+            return pattern + (shaded == null ? "" : " → " + shaded);
+        }
+    }
+
     private static final String SHADE = "maven-shade-plugin";
     private static final String ASSEMBLY = "maven-assembly-plugin";
     private static final String SPRING_BOOT = "spring-boot-maven-plugin";
@@ -64,20 +71,31 @@ final class PackagingPlugins {
         return new Packaging(fatJar, nativeConfig, springBoot);
     }
 
+    /** Every {@code <relocation>} of the module's shade plugin, in declaration order; empty without the plugin. */
+    static List<Relocation> relocations(Model model) {
+        Optional<Plugin> shade = PluginFacts.plugin(model, SHADE);
+        if (shade.isEmpty()) return List.of();
+        List<Relocation> relocations = new ArrayList<>();
+        for (Xpp3Dom config : PluginFacts.configurations(shade.get())) {
+            PluginFacts.visit(config, "relocation", relocation -> {
+                String pattern = PluginFacts.child(relocation, "pattern");
+                if (pattern != null)
+                    relocations.add(new Relocation(pattern, PluginFacts.child(relocation, "shadedPattern")));
+            });
+        }
+        return relocations;
+    }
+
     /** Shade is the fat jar; what jk's merge rules do not do is a row per construct. */
     private static boolean mapShade(Model model, ImportReport.Builder report) {
         Optional<Plugin> shade = PluginFacts.plugin(model, SHADE);
         if (shade.isEmpty()) return false;
-        List<String> relocations = new ArrayList<>();
+        List<String> relocations =
+                relocations(model).stream().map(Relocation::label).toList();
         List<String> filters = new ArrayList<>();
         List<String> transformers = new ArrayList<>();
         boolean minimize = false;
         for (Xpp3Dom config : PluginFacts.configurations(shade.get())) {
-            PluginFacts.visit(config, "relocation", relocation -> {
-                String pattern = PluginFacts.child(relocation, "pattern");
-                String shaded = PluginFacts.child(relocation, "shadedPattern");
-                if (pattern != null) relocations.add(pattern + (shaded == null ? "" : " → " + shaded));
-            });
             PluginFacts.visit(config, "filter", filter -> {
                 String artifact = PluginFacts.child(filter, "artifact");
                 if (artifact != null) filters.add(artifact);
