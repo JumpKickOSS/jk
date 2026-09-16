@@ -4,7 +4,6 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
@@ -196,12 +195,10 @@ public final class BuildForecasting {
         // target-aware forecast walk — a memo hit here would skip a missing binary, a
         // never-skippable image push, or a cache-install into repos/jk-local. The memo is also
         // keyed without target, so a PACKAGE store must never be consumed by a terminal-target
-        // run (jk build && jk install would no-op to success).
-        // The memo is also keyed without the test selection: a widened run (`jk build --all`,
-        // tag flags) must take the real forecast walk — its run-tests stamps differ from the
-        // default tier the memo's clean claim covered.
-        boolean defaultSelection = SessionContext.current().testSelection().equals(TestSelection.DEFAULT);
-        boolean memoSafe = (t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST) && defaultSelection;
+        // run (jk build && jk install would no-op to success). The suite/tag selection needs no
+        // gate here: the memo carries it as a header, so a widened run misses on its own key
+        // instead of costing every workspace with `[test] exclude-tags` the whole walk.
+        boolean memoSafe = t == WorkspaceTarget.PACKAGE || t == WorkspaceTarget.TEST;
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --redo: every module runs — skip the expensive per-step forecast walk for dirty
@@ -212,6 +209,9 @@ public final class BuildForecasting {
         }
         Map<Path, String> fps;
         Map<Path, PreflightMemo.Uncertain> uncertain = Map.of();
+        if (entryDir == null || !memoSafe) {
+            Perf.note("preflight-memo skipped", "entryDir", entryDir, "buildTarget", t);
+        }
         if (entryDir != null && memoSafe) {
             var memo = PreflightMemo.tryLoadDirty(
                     entryDir,

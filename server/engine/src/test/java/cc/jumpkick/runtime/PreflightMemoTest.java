@@ -9,6 +9,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
@@ -97,6 +98,37 @@ class PreflightMemoTest {
         PreflightMemo.storeDirty(tmp, graph, false, "strict", Set.of(), fps);
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, "strict")).isPresent();
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null)).isEmpty();
+    }
+
+    /**
+     * A workspace that declares {@code [test] exclude-tags} never runs under
+     * {@link TestSelection#DEFAULT}, and must still hit the memo it wrote: the header keys the
+     * selection, so the matching run hits and a widened one misses. Refusing every selection but
+     * the zero value made such a workspace pay the whole forecast walk on every build.
+     */
+    @Test
+    void a_memo_stored_under_a_tag_selection_hits_it_and_misses_a_wider_one(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
+        TestSelection fastTier = TestSelection.of(List.of(), false, List.of(), List.of("slow"), true);
+        TestSelection widened = TestSelection.of(List.of(), false, List.of("slow"), List.of(), true);
+
+        SessionContext.runWhere(Session.defaults().withTestSelection(fastTier), () -> {
+            PreflightMemo.storeDirty(tmp, graph, false, null, Set.of(), fps);
+            assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false, null))
+                    .as("the selection that wrote the memo reads it back")
+                    .isPresent();
+        });
+        SessionContext.runWhere(Session.defaults().withTestSelection(widened), () -> assertThat(
+                        PreflightMemo.tryLoadDirty(tmp, graph, false, null))
+                .as("a widened selection covers tests the stored clean claim did not")
+                .isEmpty());
+        SessionContext.runWhere(Session.defaults().withTestSelection(TestSelection.DEFAULT), () -> assertThat(
+                        PreflightMemo.tryLoadDirty(tmp, graph, false, null))
+                .as("the unfiltered default is itself a different selection")
+                .isEmpty());
     }
 
     /**
