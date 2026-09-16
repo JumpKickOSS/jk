@@ -18,6 +18,7 @@ import cc.jumpkick.wire.runtime.TaskForecast;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -107,8 +108,7 @@ class CoexistenceBuildE2eTest {
 
         // What the effective POM declares that the in-place build does not carry is one warning
         // with the remedy, on the build after the POM changed, and not again.
-        List<String> warnings = built.warnings().stream().map(BuildPlanResult.Diagnostic::message).toList();
-        assertThat(warnings)
+        assertThat(messages(built))
                 .filteredOn(w -> w.contains("<build><extensions>"))
                 .hasSize(1)
                 .allSatisfy(w -> assertThat(w).contains("jk import pom.xml"));
@@ -116,7 +116,7 @@ class CoexistenceBuildE2eTest {
         BuildPlan second = plan(project, cache, false);
         BuildPlanResult again = second.run();
         assertThat(again.success()).isTrue();
-        assertThat(again.warnings()).noneMatch(w -> w.message().contains("<build><extensions>"));
+        assertThat(messages(again)).noneMatch(w -> w.contains("<build><extensions>"));
         assertThat(Files.readString(shadow)).isEqualTo(toml);
 
         // `jk explain` plans the module the way it plans a jk.toml module with the same manifest.
@@ -182,6 +182,13 @@ class CoexistenceBuildE2eTest {
         return project;
     }
 
+    private static List<String> messages(BuildPlanResult result) {
+        return result.warnings().stream()
+                .map(BuildPlanResult.Diagnostic::message)
+                .map(m -> m == null ? "" : m)
+                .toList();
+    }
+
     private static void copyTree(Path from, Path to) throws Exception {
         try (var walk = Files.walk(from)) {
             for (Path p : walk.toList()) {
@@ -204,7 +211,7 @@ class CoexistenceBuildE2eTest {
                 cache,
                 buildFile,
                 lockFile,
-                lockFile.getParent(),
+                Objects.requireNonNull(lockFile.getParent(), "lock dir"),
                 1,
                 0,
                 null,
