@@ -40,7 +40,10 @@ final class PluginFacts {
             "maven-jar-plugin",
             "maven-source-plugin",
             "maven-javadoc-plugin",
-            "kotlin-maven-plugin");
+            "kotlin-maven-plugin",
+            "maven-surefire-plugin",
+            "maven-failsafe-plugin",
+            "jacoco-maven-plugin");
 
     private static final String[] COMPILER_PROPERTIES = {
         "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
@@ -278,7 +281,7 @@ final class PluginFacts {
     }
 
     /** Depth-first over {@code node}, calling {@code sink} on every element named {@code name}. */
-    private static void visit(Xpp3Dom node, String name, Consumer<Xpp3Dom> sink) {
+    static void visit(Xpp3Dom node, String name, Consumer<Xpp3Dom> sink) {
         if (name.equals(node.getName())) {
             sink.accept(node);
             return;
@@ -286,8 +289,13 @@ final class PluginFacts {
         for (Xpp3Dom child : node.getChildren()) visit(child, name, sink);
     }
 
-    private static @Nullable String text(@Nullable Xpp3Dom node) {
+    static @Nullable String text(@Nullable Xpp3Dom node) {
         return node == null ? null : node.getValue();
+    }
+
+    /** The usable text of {@code parent}'s child {@code name}; null when absent, blank or a placeholder. */
+    static @Nullable String child(@Nullable Xpp3Dom parent, String name) {
+        return parent == null ? null : usable(text(parent.getChild(name)));
     }
 
     /** Trimmed, or null when blank or still a {@code ${...}} placeholder. */
