@@ -70,6 +70,7 @@ public final class JkBuildEditor {
             String artifact,
             String versionLiteral,
             LibraryCatalog catalog) {
+        requireWritable(scope);
         validateName(name);
         if (group == null || group.isBlank()) {
             throw new IllegalArgumentException("group must not be blank");
@@ -83,6 +84,11 @@ public final class JkBuildEditor {
         }
         return validated(
                 join(insertEntry(lines, scope, renderDependencyEntry(catalog, name, group, artifact, versionLiteral))));
+    }
+
+    /** The plugin scope has no manifest table: its rows are the lock's own ({@link ManifestDeps#PLUGIN_TABLE_REFUSED}). */
+    private static void requireWritable(Scope scope) {
+        if (scope == Scope.PLUGIN) throw new IllegalArgumentException(ManifestDeps.PLUGIN_TABLE_REFUSED);
     }
 
     /**
@@ -152,6 +158,7 @@ public final class JkBuildEditor {
      */
     public static String addFileDependency(
             String content, Scope scope, String library, String group, String artifact, String version, String sha256) {
+        requireWritable(scope);
         validateName(library);
         if (group == null || group.isBlank()) {
             throw new IllegalArgumentException("group must not be blank");
@@ -189,6 +196,7 @@ public final class JkBuildEditor {
      * @throws IllegalStateException if the scope or name isn't present.
      */
     public static String removeDependency(String content, Scope scope, String name) {
+        requireWritable(scope);
         validateName(name);
         List<String> lines = splitPreservingTerminator(content);
         int hit = findDepKey(lines, scope, name);

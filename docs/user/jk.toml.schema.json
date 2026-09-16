@@ -575,18 +575,8 @@
       }
     },
     "plugin-dependencies": {
-      "type": "object",
-      "description": "[plugin-dependencies]: jars a plugin worker's fork needs and nothing of this module compiles or runs with; jk lock writes a pinned third-party plugin's SDK floor (jk-plugin-sdk, jk-host) under this scope itself. Same value shapes as [dependencies].",
-      "additionalProperties": {
-        "oneOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "object"
-          }
-        ]
-      }
+      "not": {},
+      "description": "[plugin-dependencies]: refused — jk lock writes a pinned third-party plugin's SDK floor (jk-plugin-sdk, jk-host) into jk-lock.toml under the plugin scope itself; declare the plugin under [plugins]."
     },
     "processor-dependencies": {
       "type": "object",

@@ -31,8 +31,20 @@ public final class ManifestDeps {
 
     private ManifestDeps() {}
 
+    /**
+     * The one refusal a scope table carries: {@code [plugin-dependencies]} is written by
+     * {@code jk lock} into the lockfile, never by hand into the manifest.
+     */
+    static final String PLUGIN_TABLE_REFUSED = "[" + Scope.PLUGIN.tomlSection()
+            + "] is not a table you write: `jk lock` adds a pinned third-party plugin's SDK floor (jk-plugin-sdk,"
+            + " jk-host at the SDK version its manifest names) to jk-lock.toml as plugin-scoped rows itself."
+            + " Declare the plugin under [plugins]; a library its worker needs ships inside the plugin jar";
+
     static JkBuild.Dependencies parseDependencies(
             TomlTable root, @Nullable Workspace workspace, LibraryCatalog catalog) {
+        if (root.getTable(Scope.PLUGIN.tomlSection()) != null) {
+            throw new JkBuildParseException(PLUGIN_TABLE_REFUSED);
+        }
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
 
         // [dependencies] → MAIN scope (all entries are flat deps, no sub-tables)

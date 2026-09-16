@@ -12,7 +12,8 @@ public enum Scope {
     PLATFORM("platform", "platform-dependencies"),
     /**
      * Jars a plugin worker's fork needs and nothing of the module's own compiles or runs with: the
-     * SDK floor of a pinned third-party plugin, written by {@code jk lock} itself.
+     * SDK floor of a pinned third-party plugin, written by {@code jk lock} itself. The only scope
+     * with no manifest table: a hand-written {@code [plugin-dependencies]} is a parse error.
      */
     PLUGIN("plugin", "plugin-dependencies"),
     /** {@code jk run}/{@code jk dev} runtime only; never in artifacts or POMs. */
