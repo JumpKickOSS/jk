@@ -69,7 +69,7 @@ public final class PomImporter {
         byte[] fetch(URI uri) throws IOException;
     }
 
-    private final RepoModelResolver resolver;
+    final RepoModelResolver resolver;
     private final RemoteFile remote;
 
     /** Parents and BOM imports are fetched through {@code repos}, plus any {@code <repository>} the POM declares. */

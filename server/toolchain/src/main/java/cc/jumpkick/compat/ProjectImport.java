@@ -5,6 +5,7 @@ import cc.jumpkick.gradle.GradleImporter;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.mvn.DeclaredPins;
 import cc.jumpkick.mvn.PomImporter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -64,7 +65,7 @@ public final class ProjectImport {
                 PomImporter.WorkspaceImportResult result = poms.importWorkspace(source);
                 root = result.root();
                 modules.putAll(result.modules());
-                importReport = result.report();
+                importReport = DeclaredPins.check(root, modules, result.report(), poms);
             } else if (filename.equals("build.gradle") || filename.equals("build.gradle.kts")) {
                 GradleImporter.Result result = GradleImporter.importFrom(source);
                 root = result.jkBuild();
