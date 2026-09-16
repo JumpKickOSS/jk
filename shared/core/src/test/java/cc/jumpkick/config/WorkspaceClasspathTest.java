@@ -375,4 +375,41 @@ class WorkspaceClasspathTest {
                 .map(p -> p.getFileName().toString())
                 .toList();
     }
+
+    /**
+     * A {@code [provided-dependencies]} sibling is what Maven's {@code provided} scope is: on the
+     * consumer's compile and test classpaths, absent from what it packages and runs.
+     */
+    @Test
+    void a_provided_sibling_is_in_the_compile_and_test_views_and_out_of_the_runtime_view(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["api", "plugin"]
+                """);
+        module(root, "api", "");
+        module(root, "plugin", """
+                [provided-dependencies]
+                api = { workspace = true }
+                """);
+        JkBuild plugin = JkBuildParser.parse(root.resolve("plugin/jk.toml"));
+
+        var compile = WorkspaceClasspath.resolve(root.resolve("plugin"), plugin, WorkspaceClasspath.COMPILE_SCOPES);
+        var test = WorkspaceClasspath.resolve(root.resolve("plugin"), plugin, WorkspaceClasspath.TEST_SCOPES);
+        var runtime = WorkspaceClasspath.resolve(root.resolve("plugin"), plugin, WorkspaceClasspath.RUNTIME_SCOPES);
+
+        assertThat(compile.siblingClosureClasses())
+                .as("javac sees the provided sibling's classes tree")
+                .singleElement()
+                .satisfies(p -> assertThat(p.toString()).contains("api"));
+        assertThat(test.siblingClosureClasses()).hasSize(1);
+        assertThat(runtime.siblingClosureJars())
+                .as("the jar never rides into the consumer's package or run")
+                .isEmpty();
+    }
 }

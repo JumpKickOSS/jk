@@ -800,8 +800,7 @@ public final class PlannerSupport {
     /** Lock + workspace sibling classpath the forecast uses for compile-test. */
     static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
-        WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
         cp.addAll(sib.siblingClosureClasses());
         for (Path sl : sib.siblingLockfiles()) {
@@ -819,8 +818,7 @@ public final class PlannerSupport {
     /** Lock + workspace sibling classpath the forecast uses for run-tests. */
     static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
-        WorkspaceClasspath.Result sib =
-                WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
         cp.addAll(sib.siblingClosureJars());
         for (Path sl : sib.siblingLockfiles()) {

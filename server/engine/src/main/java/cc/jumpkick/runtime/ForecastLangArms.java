@@ -13,7 +13,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.ActionCache;
@@ -25,7 +24,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -91,7 +89,7 @@ final class ForecastLangArms {
                 langs.java(), prepared.compact(), dir, prepared.layout(), prepared.pkgDecls());
         PlannerLang.KotlinConfig config = PlannerLang.kotlinConfig(
                 project, prepared.lock(), dir, prepared.release(), prepared.javaHome(), javaRoots);
-        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+        WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
         List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
         return new KotlinArm(config, cp, langs.java());
     }
@@ -186,7 +184,7 @@ final class ForecastLangArms {
         String full = "full compile · " + TaskForecaster.count(gvSrc.size(), "source");
         GroovycRequest req;
         try {
-            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
             List<Path> cp = PlannerSupport.mainCompileClasspath(prepared.lock(), resolver, sib);
             List<Path> javaRoots = mixed
                     ? PlannerKsp.kotlinJavaSourceRoots(true, prepared.compact(), dir, layout, prepared.pkgDecls())

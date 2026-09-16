@@ -27,7 +27,6 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ClasspathFingerprint;
 import java.io.IOException;
@@ -416,7 +415,7 @@ public final class GuardFixtures {
         if (Files.isRegularFile(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             WorkspaceClasspath.Result siblings =
-                    WorkspaceClasspath.resolve(moduleDir, build, Set.of(Scope.EXPORT, Scope.MAIN));
+                    WorkspaceClasspath.resolve(moduleDir, build, WorkspaceClasspath.COMPILE_SCOPES);
             for (Path p : PlannerSupport.mainCompileClasspath(lock, new ClasspathResolver(cas), siblings))
                 if (!cp.contains(p)) cp.add(p);
         }

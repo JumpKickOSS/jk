@@ -303,7 +303,7 @@ public final class PlannerSetup {
         ClasspathResolver resolver = new ClasspathResolver(cas);
 
         WorkspaceClasspath.Result mainSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN));
+                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.COMPILE_SCOPES);
         requireSiblingsCompiled(ctx, mainSiblings, "sibling not compiled — ");
         // Lockfile + sibling classes trees + siblings' transitive lockfile deps — the
         // exact classpath `jk explain` re-derives, so the action keys match.
@@ -342,8 +342,8 @@ public final class PlannerSetup {
         }
         ctx.put(PROCESSOR_CP, PlannerSupport.processorClasspath(lock, resolver, processorSiblings, true));
 
-        WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
-                in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+        WorkspaceClasspath.Result testSiblings =
+                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
         // Only when compile-test is planned: under --skip-tests a test-only sibling may be outside
         // the build's cone, and nothing in this plan consumes the test classpath, so its absence is
         // the cone working, not a broken setup.
@@ -405,11 +405,11 @@ public final class PlannerSetup {
         if (ctx.cancelled()) return;
         JkBuild project = ctx.require(PROJECT);
         WorkspaceClasspath.Result mainSiblings =
-                WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN));
+                WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.RUNTIME_SCOPES);
         requireSiblingsBuilt(ctx, mainSiblings, "sibling not built — ", in.siblings());
         if (!PlannerResources.skipJUnit(in)) {
-            WorkspaceClasspath.Result testSiblings = WorkspaceClasspath.resolve(
-                    in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST, Scope.TEST_DEV));
+            WorkspaceClasspath.Result testSiblings =
+                    WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);
             requireSiblingsBuilt(ctx, testSiblings, "test sibling not built — ", in.siblings());
         }
     }
