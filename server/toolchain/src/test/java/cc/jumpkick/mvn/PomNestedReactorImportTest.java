@@ -138,6 +138,118 @@ class PomNestedReactorImportTest {
                 .anyMatch(m -> m.startsWith("module `../outside` of the root pom.xml lies outside the root directory"));
     }
 
+    /**
+     * A sibling is a workspace edge wherever it sits in the tree and however its version is spelled:
+     * nested under an aggregator, in a sub-group, versioned by {@code ${revision}}, declared with
+     * {@code ${project.version}}, with a stale literal version, or as its {@code test-jar}.
+     */
+    @Test
+    void nested_and_property_versioned_siblings_are_workspace_edges_whatever_the_declared_version(@TempDir Path root)
+            throws Exception {
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>io.demo</groupId>
+                  <artifactId>demo-parent</artifactId>
+                  <version>${revision}</version>
+                  <packaging>pom</packaging>
+                  <properties>
+                    <revision>3.6.2-SNAPSHOT</revision>
+                  </properties>
+                  <modules>
+                    <module>collector</module>
+                    <module>server</module>
+                  </modules>
+                </project>
+                """);
+        write(root, "collector/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>io.demo</groupId>
+                    <artifactId>demo-parent</artifactId>
+                    <version>${revision}</version>
+                  </parent>
+                  <groupId>${project.parent.groupId}.collector</groupId>
+                  <artifactId>collector-parent</artifactId>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>core</module>
+                    <module>kafka</module>
+                  </modules>
+                </project>
+                """);
+        write(root, "collector/core/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>io.demo.collector</groupId>
+                    <artifactId>collector-parent</artifactId>
+                    <version>${revision}</version>
+                  </parent>
+                  <artifactId>collector</artifactId>
+                </project>
+                """);
+        write(root, "collector/kafka/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>io.demo.collector</groupId>
+                    <artifactId>collector-parent</artifactId>
+                    <version>${revision}</version>
+                  </parent>
+                  <artifactId>collector-kafka</artifactId>
+                </project>
+                """);
+        write(root, "server/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>io.demo</groupId>
+                    <artifactId>demo-parent</artifactId>
+                    <version>${revision}</version>
+                  </parent>
+                  <artifactId>server</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>${project.groupId}.collector</groupId>
+                      <artifactId>collector</artifactId>
+                      <version>${project.version}</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>io.demo.collector</groupId>
+                      <artifactId>collector-kafka</artifactId>
+                      <version>3.6.1</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>io.demo.collector</groupId>
+                      <artifactId>collector</artifactId>
+                      <version>${project.version}</version>
+                      <type>test-jar</type>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(requireNonNull(result.root().workspace()).modules())
+                .containsExactly("collector/core", "collector/kafka", "server");
+        JkBuild server = requireNonNull(result.modules().get("server"));
+        assertThat(server.project().version()).isEqualTo("3.6.2-SNAPSHOT");
+        assertThat(server.dependencies().of(Scope.MAIN))
+                .allMatch(Dependency::isWorkspace)
+                .extracting(Dependency::library)
+                .containsExactly("collector", "collector-kafka");
+        assertThat(server.dependencies().of(Scope.TEST)).singleElement().satisfies(d -> {
+            assertThat(d.isWorkspace()).isTrue();
+            assertThat(d.isTestsKind()).isTrue();
+            assertThat(d.library()).isEqualTo("collector");
+        });
+        assertThat(result.report().hasErrors()).isFalse();
+    }
+
     private static String leaf(String artifactId, String relativePath, String parentArtifactId) {
         return """
                 <project>
