@@ -574,6 +574,20 @@
         ]
       }
     },
+    "plugin-dependencies": {
+      "type": "object",
+      "description": "[plugin-dependencies]: jars a plugin worker's fork needs and nothing of this module compiles or runs with; jk lock writes a pinned third-party plugin's SDK floor (jk-plugin-sdk, jk-host) under this scope itself. Same value shapes as [dependencies].",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
     "processor-dependencies": {
       "type": "object",
       "description": "[processor-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",

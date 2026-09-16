@@ -10,6 +10,11 @@ public enum Scope {
     TEST("test", "test-dependencies"),
     PROCESSOR("processor", "processor-dependencies"),
     PLATFORM("platform", "platform-dependencies"),
+    /**
+     * Jars a plugin worker's fork needs and nothing of the module's own compiles or runs with: the
+     * SDK floor of a pinned third-party plugin, written by {@code jk lock} itself.
+     */
+    PLUGIN("plugin", "plugin-dependencies"),
     /** {@code jk run}/{@code jk dev} runtime only; never in artifacts or POMs. */
     DEV("dev", "dev-dependencies"),
     /** {@link #DEV} plus test compile/runtime; never in artifacts or POMs. */

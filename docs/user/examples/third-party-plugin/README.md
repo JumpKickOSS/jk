@@ -23,9 +23,11 @@ hello = { path = "vendor/hello-plugin-0.1.0.jar", sha256 = "<sha256sum of the ja
 greeting = "hi"
 ```
 
-`jk lock` materializes the manifest, validates `[hello]` against its schema and stores the jar's
-bytes under their pin; the javac flag applies to the consumer's compile and is part of its
-compile key. The code layer forks only after `jk trust plugin path:hello` — a path pin is trusted
+`jk lock` materializes the manifest, validates `[hello]` against its schema, stores the jar's
+bytes under their pin and adds the plugin's SDK floor (`jk-plugin-sdk`, `jk-host` at the running
+jk's version) to the lock as `plugin`-scoped rows resolved from the consumer's `[repositories]`;
+the worker forks with the jar plus those rows. The javac flag applies to the consumer's compile
+and is part of its compile key. The code layer forks only after `jk trust plugin path:hello` — a path pin is trusted
 by its `path:<alias>` coordinate, and jk refuses untrusted third-party code with that exact
 remedy.
 

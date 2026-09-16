@@ -443,11 +443,24 @@ public final class LockPipeline {
         Cas cas = JkStores.storeCas();
         RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas, BuildEnv.forModule(lockDir));
         List<Lockfile.PluginEntry> entries = new ArrayList<>();
+        List<Lockfile.Artifact> sdkRows = new ArrayList<>();
         for (PluginDeclaration pd : effective.plugins()) {
             progress.label("lock " + pd.coordinate());
             entries.add(pinDeclared(pd, repos, progress));
+            // A third-party plugin forks with the SDK it compiled against; the floor rides in this
+            // lock as [[artifact]] rows the consumer's repositories resolve, like any dependency.
+            if (PluginSdkFloor.needsFloor(pd)) {
+                try {
+                    sdkRows.addAll(PluginSdkFloor.rows(repos, pd, progress::note));
+                } catch (IOException | InterruptedException e) {
+                    if (e instanceof InterruptedException)
+                        Thread.currentThread().interrupt();
+                    throw new IllegalStateException(pd.coordinate() + " — " + e.getMessage(), e);
+                }
+            }
             progress.tick(1);
         }
+        lock = PluginSdkFloor.withRows(lock, sdkRows);
         Set<String> seen = new HashSet<>();
         for (Lockfile.PluginEntry e : entries) seen.add(e.coordinate() + ":" + e.version());
         String floor = lock.jkMin();

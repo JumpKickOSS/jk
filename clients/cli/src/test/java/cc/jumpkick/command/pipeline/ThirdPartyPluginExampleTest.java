@@ -101,27 +101,38 @@ class ThirdPartyPluginExampleTest {
                     .isEqualTo("cc.jumpkick.plugin.process.PluginMain");
         }
 
-        // 3. A consumer pins the jar by content, trusts its code, and builds under its table.
+        // 3. A consumer pins the jar by content, trusts its code, and builds under its table; its
+        // lock carries the plugin's SDK floor as ordinary rows.
         Path app = Files.createDirectories(dir.resolve("app"));
         Files.createDirectories(app.resolve("src/main/java/app"));
         Files.writeString(app.resolve("src/main/java/app/App.java"), """
                 package app;
                 public class App { public static String greet(String who) { return "hi " + who; } }
                 """);
-        Files.writeString(
-                app.resolve("jk.toml"), """
+        Files.writeString(app.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "app"
                 version = "0.1.0"
                 java    = 25
+
+                # The plugin forks with the SDK floor it compiled against, resolved from this
+                # module's repositories at lock time — the same file repository the plugin used.
+                [repositories]
+                sdk-repo = "%s"
 
                 [plugins]
                 hello = { path = "%s", sha256 = "%s" }
 
                 [hello]
                 greeting = "hi"
-                """.formatted(jar.toString().replace('\\', '/'), Hashing.sha256Hex(jar)));
+                """.formatted(
+                        repoUrl, jar.toString().replace('\\', '/'), Hashing.sha256Hex(jar)));
         assertThat(run("lock", "-C", app.toString())).isEqualTo(0);
+        assertThat(Files.readString(app.resolve("jk-lock.toml")))
+                .as("the plugin's SDK floor rides in the consumer's lock")
+                .contains("cc.jumpkick:jk-plugin-sdk:jar:")
+                .contains("cc.jumpkick:jk-host:jar:")
+                .contains("scopes   = [\"plugin\"]");
         try (Stream<Path> manifests = Files.list(app.resolve("target/plugin-manifests"))) {
             assertThat(manifests.map(p -> p.getFileName().toString()))
                     .as("the plugin's manifest is materialized for the consumer")

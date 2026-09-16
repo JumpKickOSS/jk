@@ -56,6 +56,7 @@ public final class PomXml {
             case PROVIDED -> "provided";
             case TEST -> "test";
             case PLATFORM, PROCESSOR -> null; // emitted elsewhere
+            case PLUGIN -> null; // a plugin worker's floor is the consumer's, never a published edge
             // Dev-loop scopes never publish/export: a POM must not leak development-only deps.
             case DEV, TEST_DEV -> null;
         };
