@@ -2,10 +2,12 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -94,7 +97,7 @@ public final class WorkspaceLoader {
 
     /**
      * The uncached build of the list: expand the entries, parse each member's manifest, inherit from
-     * the root, refuse nested workspaces and artifact collisions. {@code loadModules} answers this
+     * the root, refuse nested workspaces and identity collisions. {@code loadModules} answers this
      * once per request; the cost is a directory listing per glob segment plus a stat and a parse per
      * member, and a request parsing every member would otherwise pay it once per member.
      */
@@ -125,7 +128,7 @@ public final class WorkspaceLoader {
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
         }
-        checkArtifactCollisions(workspaceRoot, root, modules);
+        checkIdentityCollisions(workspaceRoot, root, modules);
         return modules;
     }
 
@@ -181,50 +184,62 @@ public final class WorkspaceLoader {
     }
 
     /**
-     * Final artifacts land in a shared {@code <workspaceRoot>/target/} directory keyed by {@code
-     * <artifact>-<version>.jar} — so two modules declaring the same artifact + version would race to
-     * write the same jar and the second one would silently win. Reject at workspace-parse time so the
-     * failure is loud and the file paths in the error point at the conflict.
-     *
-     * <p>Modules and the workspace root itself can collide (a workspace root that's <i>also</i> a
-     * runnable project is rare but legal, so we include the root in the uniqueness set).
+     * Two members may share an artifact name: each member's output lives under its own {@code
+     * target/<module-rel>/}, so their jars never meet on disk. What a workspace cannot hold twice is a
+     * {@code group:name:version} coordinate, since it publishes one artifact per coordinate. A
+     * shared name is refused only when some unit's {@code workspace = true} edge or {@code [build]
+     * order-after} names it, because that edge is spelled by name alone and would otherwise pick one
+     * member silently. The root counts as a unit when it declares a name of its own.
      */
-    private static void checkArtifactCollisions(Path workspaceRoot, JkBuild root, Map<Path, JkBuild> modules) {
-        Map<String, Path> claimed = new LinkedHashMap<>();
+    private static void checkIdentityCollisions(Path workspaceRoot, JkBuild root, Map<Path, JkBuild> modules) {
         record Entry(@Nullable Path dir, JkBuild build) {}
         List<Entry> all = new ArrayList<>(modules.size() + 1);
-        // Only include the root if it could plausibly produce its own jar
-        // (i.e., it declares a non-blank artifact). Many workspace roots
-        // are pure coordinators with no own artifact; skip those.
-        if (!root.project().name().isBlank()) {
-            all.add(new Entry(null, root));
-        }
-        for (Map.Entry<Path, JkBuild> e : modules.entrySet()) {
-            all.add(new Entry(e.getKey(), e.getValue()));
-        }
+        if (!root.project().name().isBlank()) all.add(new Entry(null, root));
+        for (Map.Entry<Path, JkBuild> e : modules.entrySet()) all.add(new Entry(e.getKey(), e.getValue()));
+
+        Map<String, Entry> byCoord = new LinkedHashMap<>();
+        Map<String, List<Entry>> byName = new LinkedHashMap<>();
         for (Entry e : all) {
-            String key = e.build.project().name() + "-" + e.build.project().version();
-            // containsKey, not the put return value: the workspace root
-            // stores `null` as its dir, and Map.put can't distinguish a
-            // returned null between "no prior entry" and "prior entry's
-            // value was null".
-            if (claimed.containsKey(key)) {
-                Path previous = claimed.get(key);
-                String prevLabel = moduleLabel(workspaceRoot, previous);
-                String thisLabel = moduleLabel(workspaceRoot, e.dir);
-                throw new JkBuildParseException("workspace artifact collision: `"
-                        + key
-                        + ".jar` would be "
-                        + "produced by both `"
-                        + prevLabel
-                        + "` and `"
-                        + thisLabel
-                        + "`. Final artifacts share <workspaceRoot>/target/, so two "
-                        + "modules can't emit the same `<artifact>-<version>.jar`. "
-                        + "Differentiate via the modules' name or version.");
+            String coord = e.build.project().group() + ":" + e.build.project().name() + ":"
+                    + e.build.project().version();
+            Entry previous = byCoord.putIfAbsent(coord, e);
+            if (previous != null) {
+                throw new JkBuildParseException("workspace module collision: `" + coord + "` is declared by both `"
+                        + moduleLabel(workspaceRoot, previous.dir) + "` and `" + moduleLabel(workspaceRoot, e.dir)
+                        + "`. A workspace publishes one artifact per coordinate, so give one of them a different"
+                        + " `name` or `group`.");
             }
-            claimed.put(key, e.dir);
+            byName.computeIfAbsent(e.build.project().name(), k -> new ArrayList<>())
+                    .add(e);
         }
+        byName.values().removeIf(entries -> entries.size() < 2);
+        if (byName.isEmpty()) return;
+        for (Entry from : all) {
+            for (String name : edgeNames(from.build)) {
+                List<Entry> carriers = byName.get(name);
+                if (carriers == null) continue;
+                String paths = carriers.stream()
+                        .map(c -> "`" + moduleLabel(workspaceRoot, c.dir) + "`")
+                        .collect(Collectors.joining(" and "));
+                throw new JkBuildParseException("workspace edge `" + name + "` is ambiguous: `"
+                        + moduleLabel(workspaceRoot, from.dir) + "` depends on it, and " + paths
+                        + " both carry that name. A workspace edge is spelled by module name alone, so"
+                        + " rename one of them.");
+            }
+        }
+    }
+
+    /** The sibling names a unit's {@code workspace = true} edges and {@code [build] order-after} spell. */
+    private static List<String> edgeNames(JkBuild unit) {
+        List<String> names = new ArrayList<>();
+        for (Scope scope : Scope.values()) {
+            for (Dependency d : unit.dependencies().of(scope)) {
+                String name = d.workspaceName();
+                if (name != null) names.add(name);
+            }
+        }
+        names.addAll(unit.build().allOrderAfter());
+        return names;
     }
 
     /**

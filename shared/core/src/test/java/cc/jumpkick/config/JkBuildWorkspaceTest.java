@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.workspaceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -300,8 +301,7 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
-    void workspace_loader_collision_uses_inherited_version(@TempDir Path tempDir) throws IOException {
-        // Two modules inherit the same root version and share an artifact name → collision.
+    void workspace_loader_refuses_one_coordinate_declared_twice(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "root"
@@ -322,8 +322,72 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("artifact collision")
-                .hasMessageContaining("dup-1.0.0");
+                .hasMessageContaining("workspace module collision")
+                .hasMessageContaining("com.example:dup")
+                .hasMessageContaining("`a`")
+                .hasMessageContaining("`b`");
+    }
+
+    /**
+     * A shared artifact name across groups is Maven's own shape (thingsboard's {@code common/edqs} and
+     * {@code edqs}): both load, and each member's jar lands under its own {@code target/<rel>/}.
+     */
+    @Test
+    void workspace_loader_accepts_one_name_in_two_groups_and_lays_their_jars_out_apart(@TempDir Path tempDir)
+            throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group   = "org.tb"
+                name    = "root"
+                version = "4.4.0"
+
+                [workspace]
+                modules = ["common/edqs", "edqs"]
+                """);
+        writeModule(tempDir, "common/edqs", "org.tb.common");
+        writeModule(tempDir, "edqs", "org.tb");
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        assertThat(modules).hasSize(2);
+        List<Path> jars = modules.entrySet().stream()
+                .map(e -> BuildLayout.of(tempDir, e.getKey(), e.getValue()).mainJar())
+                .toList();
+        assertThat(jars)
+                .containsExactly(
+                        tempDir.resolve("target/common/edqs/lib/edqs-4.4.0.jar"),
+                        tempDir.resolve("target/edqs/lib/edqs-4.4.0.jar"));
+    }
+
+    /** An edge to a name two members carry cannot pick one silently: it is refused, naming both. */
+    @Test
+    void workspace_loader_refuses_an_edge_to_a_name_two_members_carry(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group   = "org.tb"
+                name    = "root"
+                version = "4.4.0"
+
+                [workspace]
+                modules = ["common/edqs", "edqs", "application"]
+                """);
+        writeModule(tempDir, "common/edqs", "org.tb.common");
+        writeModule(tempDir, "edqs", "org.tb");
+        Path application = Files.createDirectories(tempDir.resolve("application"));
+        Files.writeString(application.resolve("jk.toml"), """
+                name = "application"
+
+                [dependencies]
+                edqs.workspace = true
+                """);
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace edge `edqs` is ambiguous")
+                .hasMessageContaining("`application` depends on it")
+                .hasMessageContaining("`common/edqs` and `edqs` both carry that name");
+    }
+
+    private static void writeModule(Path workspace, String rel, String group) throws IOException {
+        Path dir = Files.createDirectories(workspace.resolve(rel));
+        Files.writeString(dir.resolve("jk.toml"), "group = \"" + group + "\"\nname = \"edqs\"\n");
     }
 
     /** `libs/*` is what the docs open with: one glob, every module under it, sorted, no root edit. */
@@ -407,7 +471,7 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
-    void workspace_loader_rejects_artifact_collision_between_modules(@TempDir Path tempDir) throws IOException {
+    void workspace_loader_rejects_one_coordinate_between_modules(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 group    = "com.example"
                 name     = "root"
@@ -416,8 +480,6 @@ class JkBuildWorkspaceTest {
                 [workspace]
                 modules = ["libs/a", "libs/b"]
                 """);
-        // Two modules both call themselves `widget-0.1.0` — they'd race to
-        // write the same jar under <root>/target/.
         for (String name : new String[] {"libs/a", "libs/b"}) {
             Path moduleDir = tempDir.resolve(name);
             Files.createDirectories(moduleDir);
@@ -430,8 +492,8 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace artifact collision")
-                .hasMessageContaining("widget-0.1.0.jar")
+                .hasMessageContaining("workspace module collision")
+                .hasMessageContaining("com.example:widget")
                 .hasMessageContaining("libs/a")
                 .hasMessageContaining("libs/b");
     }
@@ -456,7 +518,7 @@ class JkBuildWorkspaceTest {
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("workspace artifact collision")
+                .hasMessageContaining("workspace module collision")
                 .hasMessageContaining("<workspace root>")
                 .hasMessageContaining("libs/a");
     }
