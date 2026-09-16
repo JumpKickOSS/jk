@@ -59,10 +59,14 @@ and write the plain jar, and no more. The exact commands are in the
   at the start and the end of the run; a number measured under load says so.
 - **Peak RSS is a ceiling.** Summing RSS over several JVMs counts shared pages once per JVM; the
   column is an upper bound, the same upper bound for every tool. jk's includes the whole resident
-  engine, including memory it holds from earlier builds of other projects: in the banked run the
-  engine alone was 2.4 GiB before the first jk command, after a day of building jk's own tree, so
-  the wall rows' jk peaks are that engine plus about 300 MiB of build. Gradle's daemon was fresh
-  (1.5 GiB before its first row) because the harness gives it a user home of its own.
+  engine, including whatever it still holds from earlier builds of other projects. The engine
+  returns to a floor after a job — heap uncommitted, native heap trimmed, again after thirty idle
+  seconds ([engine memory](engine.md#memory-after-a-build)) — so the resident RSS the harness
+  records at the start of a row (`resident_rss_mb`) is that floor plus what the last job left in
+  flight, not a day's accumulation. In the banked run the engine predates the trim and was 2.4 GiB
+  before the first jk command, after a day of building jk's own tree, so the wall rows' jk peaks
+  are that engine plus about 300 MiB of build. Gradle's daemon was fresh (1.5 GiB before its first
+  row) because the harness gives it a user home of its own.
 - **The test row is where the tools differ most in shape.** jk shards the suite across forked
   test JVMs sized from the host's cores and RAM — on this 24-thread host that is the 7.5 GiB peak —
   where Gradle runs one test JVM and Maven one surefire fork; the walls end up within a few seconds

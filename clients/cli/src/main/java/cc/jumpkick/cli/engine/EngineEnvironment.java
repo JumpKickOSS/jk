@@ -91,12 +91,24 @@ final class EngineEnvironment {
      * Replace {@code env} (a {@link ProcessBuilder#environment()}, pre-filled with this process's
      * whole environment) with the inherited subset of {@code shell}.
      */
+    /**
+     * glibc's per-thread malloc arenas, capped for the engine. Each arena keeps what its threads
+     * freed; a coordinator with a hundred threads and the default cap (eight per core) held over a
+     * gigabyte of freed native memory across dozens of arenas. Four keeps allocation off one lock
+     * while bounding the retention. A shell that sets its own value wins; other allocators ignore
+     * the variable.
+     */
+    static final String MALLOC_ARENA_MAX = "MALLOC_ARENA_MAX";
+
+    static final String DEFAULT_MALLOC_ARENA_MAX = "4";
+
     static void seed(Map<String, String> env, Map<String, String> shell) {
         env.clear();
         boolean caseInsensitive = Os.isWindows();
         for (Map.Entry<String, String> e : shell.entrySet()) {
             if (inherited(e.getKey(), caseInsensitive)) env.put(e.getKey(), e.getValue());
         }
+        env.putIfAbsent(MALLOC_ARENA_MAX, DEFAULT_MALLOC_ARENA_MAX);
     }
 
     /**
@@ -107,7 +119,7 @@ final class EngineEnvironment {
     static boolean inherited(String name, boolean caseInsensitive) {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
         if (PER_REQUEST.contains(key)) return false;
-        if (key.startsWith("JK_") || key.startsWith("LC_")) return true;
+        if (key.startsWith("JK_") || key.startsWith("LC_") || key.equals(MALLOC_ARENA_MAX)) return true;
         if (caseInsensitive ? PROXY_UPPER.contains(key) : BuildEnv.PROXY.contains(key)) return true;
         return caseInsensitive ? MACHINE_UPPER.contains(key) : MACHINE.contains(key);
     }

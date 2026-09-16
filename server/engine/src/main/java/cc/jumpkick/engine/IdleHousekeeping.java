@@ -36,7 +36,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Idle-boundary chores: cache prune, journal/metrics/heap-dump retention, host warmup, trailing
- * GC. Exactly-once at the build boundary; GC is always last.
+ * GC and native-heap trim ({@link HeapTrim}). Exactly-once at the build boundary; GC is always
+ * last, and a settled trim follows once the engine has been idle for {@link HeapTrim#SETTLE}.
  */
 @RequiredArgsConstructor
 public final class IdleHousekeeping {
@@ -69,6 +70,24 @@ public final class IdleHousekeeping {
         if (activeBuildPlans.get() != 0) return;
         run();
         if (draining.getAsBoolean()) onDrainIdle.run();
+        else HeapTrim.later(this::idle, this::settledTrim, HeapTrim.SETTLE);
+    }
+
+    private boolean idle() {
+        return activeBuildPlans.get() == 0 && !warmupRunning.get() && !shuttingDown.getAsBoolean();
+    }
+
+    /**
+     * The trim that runs once the engine has sat idle for {@link HeapTrim#SETTLE}: drop the
+     * per-build memos again (the harvest thread and client disconnects allocate after the
+     * boundary), collect so the heap uncommits, and return the native heap. One log line says
+     * what came back.
+     */
+    private void settledTrim() {
+        if (!idle()) return;
+        dropHeapResidue();
+        System.gc();
+        log.accept("jk engine: idle trim: " + HeapTrim.trimNative());
     }
 
     public void maybeIdleGc() {
@@ -105,6 +124,7 @@ public final class IdleHousekeeping {
             if (activeBuildPlans.get() == 0 && !warmupRunning.get()) {
                 dropHeapResidue();
                 System.gc();
+                HeapTrim.trimNative();
             }
         } finally {
             running.set(false);
@@ -193,6 +213,7 @@ public final class IdleHousekeeping {
                         if (trailGc && !more && activeBuildPlans.get() == 0) {
                             dropHeapResidue();
                             System.gc();
+                            HeapTrim.trimNative();
                         }
                         warmupRunning.set(false);
                         if (pendingWarmupForce.get() != null && activeBuildPlans.get() == 0) {
