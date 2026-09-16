@@ -602,6 +602,24 @@ public final class PomImporter {
     }
 
     /**
+     * A BOM import whose version is still a property is a Tier-3 row naming that property and no
+     * {@code [platform-dependencies]} row: a lock cannot ask a repository for a BOM at the version
+     * {@code unresolved}, and the effective model left the property that way because the chain
+     * that defines it could not be built.
+     */
+    private static void reportUnresolvedBom(Pom.Dep bom, ImportReport.Builder report) {
+        String version = bom.version() == null ? "" : bom.version();
+        List<String> properties = CiFriendlyVersions.unresolved(version);
+        String named = properties.isEmpty()
+                ? "no version"
+                : "version `" + version + "`, and " + String.join(", ", properties)
+                        + (properties.size() == 1 ? " has" : " have") + " no value in the effective model";
+        report.error("`<scope>import</scope>` BOM " + bom.module() + " has " + named
+                + "; no `[platform-dependencies]` row is written for it. Make the parent chain resolvable"
+                + " or pin the version in the POM and re-import.");
+    }
+
+    /**
      * BOM imports become {@code [platform]} entries with their versions resolved; a published parent
      * whose chain manages versions is carried as one {@code [platform]} entry of its own, so the
      * inherited table governs transitive versions too. Bare pins nothing declared uses are named.
@@ -609,7 +627,10 @@ public final class PomImporter {
     private static void mapManagement(
             EffectiveModel.Management mgmt, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Pom.Dep bom : mgmt.platform()) {
-            DependencyMapping.warnUnresolvedVersion(bom, report);
+            if (PluginFacts.usable(bom.version()) == null) {
+                reportUnresolvedBom(bom, report);
+                continue;
+            }
             byScope.computeIfAbsent(Scope.PLATFORM, s -> new ArrayList<>()).add(DependencyMapping.toDependency(bom));
         }
         EffectiveModel.Ancestor parent = mgmt.parentPlatform();

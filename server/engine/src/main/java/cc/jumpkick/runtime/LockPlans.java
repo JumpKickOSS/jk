@@ -532,6 +532,7 @@ public final class LockPlans {
             Path wsRoot = rootOpt.get();
             return workspaceScope(wsRoot, JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot)));
         }
+        UnresolvedPins.refuse(ManifestPaths.manifestIn(entryDir), root);
         // Standalone: variant dep overlays union here (workspace scopes union inside WorkspaceMerge).
         JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);
         return new LockScope(entryDir, effective, coordLabel(effective, entryDir), false, 0);
@@ -539,6 +540,12 @@ public final class LockPlans {
 
     private static LockScope workspaceScope(Path wsRoot, JkBuild rootManifest) throws IOException {
         var modules = WorkspaceLoader.loadModules(wsRoot, rootManifest);
+        // A member's `unresolved` pin is refused at the member's own line, before the union hides
+        // which manifest declared it.
+        UnresolvedPins.refuse(ManifestPaths.manifestIn(wsRoot), rootManifest);
+        for (var module : modules.entrySet()) {
+            UnresolvedPins.refuse(ManifestPaths.manifestIn(module.getKey()), module.getValue());
+        }
         JkBuild effective = Variants.unionDependencies(WorkspaceMerge.merge(rootManifest, modules.values()));
         return new LockScope(wsRoot, effective, coordLabel(rootManifest, wsRoot), true, modules.size());
     }

@@ -171,6 +171,54 @@ class PomInheritanceImportTest {
                 .contains("versions for org.apache.commons:commons-lang3 managed by parent org.ex:top:1.");
     }
 
+    /**
+     * A BOM import whose version is a property the effective model left as written (the parent
+     * that would value it is unresolvable) is a Tier-3 row naming the property, and no
+     * {@code [platform-dependencies]} row asks a repository for the version {@code unresolved}.
+     */
+    @Test
+    void bom_import_with_an_unresolved_version_property_is_an_error_row_not_a_platform_pin(@TempDir Path tempDir)
+            throws Exception {
+        Path pom = tempDir.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.nowhere</groupId>
+                    <artifactId>gone</artifactId>
+                    <version>9</version>
+                  </parent>
+                  <artifactId>orphan</artifactId>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>io.netty</groupId>
+                        <artifactId>netty-bom</artifactId>
+                        <version>${netty.version}</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.slf4j</groupId>
+                      <artifactId>slf4j-api</artifactId>
+                      <version>2.0.16</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(tempDir).importFrom(pom);
+        assertThat(result.jkBuild().dependencies().of(Scope.PLATFORM)).isEmpty();
+        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("unresolved");
+        assertThat(result.report().issues())
+                .filteredOn(i -> i.severity() == ImportReport.Severity.ERROR)
+                .extracting(ImportReport.Issue::message)
+                .anyMatch(m -> m.contains("io.netty:netty-bom") && m.contains("netty.version"));
+    }
+
     /** A parent no repository has is a Tier-3 row; the POM's own declarations still import. */
     @Test
     void missing_parent_is_an_error_row_not_a_crash(@TempDir Path tempDir) throws Exception {
