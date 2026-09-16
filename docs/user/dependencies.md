@@ -53,6 +53,43 @@ handles. It applies to a Maven coordinate only, and `kind = "tests"` already nam
 Version syntax: [Projects](projects.md#version-strings). Scopes:
 [Projects](projects.md#dependency-scopes).
 
+### Exclusions
+
+A dependency's inline table may prune coordinates from its own subtree — Maven's `<exclusions>`:
+
+```toml
+[dependencies]
+schema-json = { group = "io.apicurio", name = "apicurio-registry-schema-util-json", version = "2.6.13.Final",
+                exclude = ["io.apicurio:apicurio-common-app-components-logging", "com.github.everit-org.json-schema:*"] }
+```
+
+Each entry is `group:artifact`, or `group:*` for every artifact of a group. A wildcard group
+(`*:artifact`, Maven's `<groupId>*</groupId>`) is refused; name the groups. The key needs the
+inline table: a catalog one-liner or a GAV string has nowhere to carry it, so a catalog name with an
+exclusion is written `jackson2-databind = { version = "2.22.2", exclude = ["…"] }` — the group and
+artifact still come from the catalog.
+
+The rule is Maven's. An exclusion on your edge to A removes, inside A's subtree, every edge to the
+excluded coordinate and everything only reachable through it. The coordinate still lands in the
+lock when another path brings it — your own entry for it, or another dependency's POM that does
+not exclude it — because a coordinate is dropped only when *every* path that reaches it excludes
+it. The `<exclusions>` a dependency POM writes on its own edges apply the same way, one level
+down. A package you declare yourself expands under your edge's exclusions alone: a POM path that
+excludes something from that package's subtree does not prune it, as a direct dependency is the
+nearest edge under Maven.
+
+With `[platform-dependencies]`: a versionless entry the BOM manages carries `exclude` like any
+other — the BOM supplies the version, the table the exclusions. The `<exclusions>` a BOM's own
+`<dependencyManagement>` writes do not travel to the entry it manages; write them on the entry.
+(`jk import` reads the effective POM, so managed exclusions the project's own POM inherits are
+written into `exclude` at import.) A `git` or `path` source has no POM subtree and refuses the key;
+a `workspace = true` edge carries its `exclude` to the coordinate the workspace resolves it to.
+
+The lock row whose POM edge was pruned records it under `excluded-by`
+([Lockfile](lockfile.md#what-an-exclusion-records)), and `jk why <coordinate>` prints
+`<coordinate> is excluded under <row> (excluded by jk.toml:<handle>)` — or by the POM that declared
+the exclusion — beside any path that still brings it.
+
 Main, **test**, and **processor** graphs are solved **separately** so annotation-processor
 constraints do not force main classpath versions.
 

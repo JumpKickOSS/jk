@@ -265,6 +265,26 @@ way and is recorded the same way (`<- [2.0.18,)`). A workspace resolves under it
 member brought in the transitive that asked for more. Under the default `pins = "exact"` that
 shape is a conflict the lock refuses instead; see [Dependencies](dependencies.md#coordinates).
 
+## What an exclusion records
+
+A row whose POM edge an exclusion pruned lists the edge under `excluded-by`: the child's
+`group:artifact` and, after `<-`, who excluded it — `jk.toml:<handle>` for an `exclude` entry in the
+manifest, `group:artifact@version` for an `<exclusions>` block in a dependency POM.
+
+```toml
+[[artifact]]
+name = "io.apicurio:apicurio-registry-schema-util-json:jar:"
+version = "2.6.13.Final"
+excluded-by = [
+  "io.apicurio:apicurio-common-app-components-logging <- jk.toml:schema-json",
+]
+```
+
+The line is about the edge, not the coordinate: the child may still sit in the lock through another
+path, and `jk why <child>` shows both — every path that brings it and every edge that dropped it.
+A pattern several paths declared lists each origin, comma-separated. A row with nothing pruned has
+no `excluded-by` key. See [Dependencies](dependencies.md#exclusions).
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)
