@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -29,17 +30,19 @@ final class ReactorModules {
     record Leaf(String path, Path pomFile, EffectiveModel model) {}
 
     /**
-     * What the walk found: the leaves the workspace builds, and the BOM leaves it does not — a
+     * What the walk found: the leaves the workspace builds, the BOM leaves it does not — a
      * {@code pom}-packaged module with no {@code <modules>} whose own POM is a {@code
-     * <dependencyManagement>} table and nothing else. A BOM has no sources to compile and no jar to
-     * package; its managed versions reach the members through their effective models.
+     * <dependencyManagement>} table and nothing else, with no sources to compile and no jar to
+     * package, whose managed versions reach the members through their effective models — and every
+     * pom.xml the reactor registered (the root, each leaf, each aggregator and the modules of
+     * inactive profiles) in registration order.
      */
-    record Reactor(List<Leaf> modules, List<Leaf> boms) {}
+    record Reactor(List<Leaf> modules, List<Leaf> boms, Set<Path> pomFiles) {}
 
     private final Path projectDir;
     private final ReactorModelResolver reactor;
     private final ImportReport.Builder report;
-    private final Set<Path> registered = new HashSet<>();
+    private final Set<Path> registered = new LinkedHashSet<>();
     private final Set<Path> walked = new HashSet<>();
 
     private ReactorModules(Path projectDir, ReactorModelResolver reactor, ImportReport.Builder report) {
@@ -69,10 +72,10 @@ final class ReactorModules {
         Path projectDir = Objects.requireNonNull(rootFile.getParent());
         ReactorModules modules = new ReactorModules(projectDir, reactor, report);
         modules.register(rootFile, rootXml, rootRaw);
-        Reactor found = new Reactor(new ArrayList<>(), new ArrayList<>());
+        Reactor found = new Reactor(new ArrayList<>(), new ArrayList<>(), Set.of());
         modules.walked.add(rootFile);
         modules.walk(rootFile, reactor.effective(rootFile), found);
-        return found;
+        return new Reactor(found.modules(), found.boms(), Set.copyOf(modules.registered));
     }
 
     /**

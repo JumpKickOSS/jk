@@ -149,10 +149,7 @@ public final class AddCommand implements CliCommand {
         }
 
         Path file = dir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(file)) {
-            CommandWedge.printFail("Add", "no jk.toml in current directory");
-            return Exit.CONFIG;
-        }
+        if (!Files.exists(file)) return ManifestEditRefusal.print("Add", dir);
         Scope scope = resolveScope();
         if (scope == null) return Exit.USAGE;
         if (parsed.versionLiteral() == null && global.offline) {
@@ -257,10 +254,7 @@ public final class AddCommand implements CliCommand {
      */
     private int addModule(Path cwd, Scope scope) throws IOException {
         Path currentToml = cwd.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(currentToml)) {
-            CommandWedge.printFail("Add", "no jk.toml in current directory");
-            return Exit.CONFIG;
-        }
+        if (!Files.exists(currentToml)) return ManifestEditRefusal.print("Add", cwd);
         // Strip the optional leading ':' marker and normalise Windows-style
         // separators so `:jackson`, `jackson/`, and `..\..\jackson` all resolve.
         String raw = coord.charAt(0) == ':' ? coord.substring(1) : coord;
@@ -350,10 +344,7 @@ public final class AddCommand implements CliCommand {
      */
     private int addFile(Path cwd, Path filePath, Scope scope) throws IOException {
         Path tomlFile = cwd.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(tomlFile)) {
-            CommandWedge.printFail("Add", "no jk.toml in current directory");
-            return Exit.CONFIG;
-        }
+        if (!Files.exists(tomlFile)) return ManifestEditRefusal.print("Add", cwd);
 
         // Auto-detect coordinates from JAR metadata (best-effort).
         Optional<Coordinate> detected = Optional.empty();

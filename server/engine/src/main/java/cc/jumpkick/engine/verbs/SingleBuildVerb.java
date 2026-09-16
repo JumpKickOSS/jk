@@ -27,7 +27,6 @@ import cc.jumpkick.wire.protocol.SingleBuildRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -91,7 +90,7 @@ public final class SingleBuildVerb implements HostedVerb {
                             cache,
                             buildFile,
                             lockFile,
-                            Objects.requireNonNull(lockFile.getParent(), "lock dir"),
+                            LockPaths.lockOwnerDir(entryDir),
                             workerCount,
                             estimatedTestCount,
                             profile,

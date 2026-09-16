@@ -2,24 +2,35 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.workspace.ExplainReport;
+import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.TaskForecast;
+import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
+import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -31,7 +42,9 @@ import org.junit.jupiter.api.io.TempDir;
  * lock sits beside it, the repository gains no {@code jk.toml} or {@code jk-lock.toml}, the POM's
  * direct versions win ({@code pins = "nearest"}), a Tier-3 row of the import report is one warning
  * with the {@code jk import} remedy, and {@code jk explain} plans the same steps a {@code jk.toml}
- * module with the same manifest gets.
+ * module with the same manifest gets. A reactor builds as a workspace whose root shadow lists the
+ * leaves and whose lock sits beside the root shadow; a shadow lists the POM files it read, so an
+ * edit to a relative-path parent re-renders the child.
  *
  * <p>Network: jspecify and JUnit come from Maven Central into the cache under {@code build/}, which
  * persists across runs so repeats are warm.
@@ -130,8 +143,116 @@ class CoexistenceBuildE2eTest {
     }
 
     @Test
-    void a_reactor_root_is_refused_with_the_import_remedy(@TempDir Path tmp) throws Exception {
-        Path root = Files.createDirectories(tmp.resolve("reactor"));
+    void a_reactor_builds_as_a_workspace_with_the_lock_beside_the_root_shadow(@TempDir Path tmp) throws Exception {
+        Path root = writeReactor(tmp.resolve("reactor"));
+        Path cache = cache();
+
+        Path rootShadow = ManifestPaths.manifestIn(root);
+        assertThat(rootShadow).isEqualTo(ManifestPaths.shadowManifestPath(root)).isRegularFile();
+        assertThat(Files.readString(rootShadow)).contains("[workspace]").contains("modules = [\"api\", \"app\"]");
+        assertThat(ManifestPaths.manifestIn(root.resolve("app")))
+                .isEqualTo(ManifestPaths.shadowManifestPath(root.resolve("app")))
+                .isRegularFile();
+        assertThat(Files.readString(ManifestPaths.manifestIn(root.resolve("app"))))
+                .contains("api.workspace = true");
+        assertThat(LockPaths.lockOwnerDir(root.resolve("app"))).isEqualTo(root);
+        assertThat(LockPaths.lockFile(root.resolve("app"))).isEqualTo(rootShadow.resolveSibling("jk-lock.toml"));
+
+        Steps steps = new Steps();
+        WorkspaceResult built = WorkspaceExecute.buildWorkspace(
+                new WorkspaceRequest(root, cache, null, 0, null, false, false, 2, null, false, true), steps);
+
+        assertThat(built.errors()).isEmpty();
+        assertThat(built.success()).isTrue();
+        assertThat(built.modules())
+                .extracting(m -> m.dir().getFileName().toString())
+                .containsExactlyInAnyOrder("api", "app");
+        for (String module : List.of("api", "app")) {
+            assertThat(steps.status(module, TaskNames.COMPILE_JAVA)).isEqualTo(TaskStatus.SUCCESS);
+            assertThat(steps.status(module, TaskNames.RUN_TESTS)).isEqualTo(TaskStatus.SUCCESS);
+        }
+        Path appDir = root.resolve("app");
+        BuildLayout app = BuildLayout.of(root, appDir, JkBuildParser.parse(ManifestPaths.manifestIn(appDir)));
+        assertThat(app.classesDir().resolve("com/example/app/Main.class")).exists();
+
+        assertThat(LockPaths.lockFile(root))
+                .isEqualTo(rootShadow.resolveSibling("jk-lock.toml"))
+                .isRegularFile();
+        assertThat(root.resolve("jk.toml")).doesNotExist();
+        assertThat(root.resolve("jk-lock.toml")).doesNotExist();
+        assertThat(root.resolve("api/jk.toml")).doesNotExist();
+        assertThat(root.resolve("app/jk.toml")).doesNotExist();
+        assertThat(root.resolve("app/jk-lock.toml")).doesNotExist();
+        assertThat(ManifestPaths.shadowDir(appDir).resolve("jk-lock.toml")).doesNotExist();
+    }
+
+    @Test
+    void editing_a_relative_path_parent_re_renders_the_child_shadow(@TempDir Path tmp) throws Exception {
+        Path parent = Files.createDirectories(tmp.resolve("parent"));
+        Path child = writeProject(tmp.resolve("child"));
+        Files.writeString(parent.resolve("pom.xml"), parentPom("1.0.0"));
+        Files.writeString(child.resolve("pom.xml"), CHILD_OF_PARENT);
+
+        Path shadow = ManifestPaths.manifestIn(child);
+        String first = Files.readString(shadow);
+        assertThat(first).contains("# read pom.xml\n").contains("# read ../parent/pom.xml\n");
+        assertThat(first).contains("jspecify").doesNotContain("\"0.3.0\"");
+        assertThat(ManifestPaths.manifestIn(child)).isEqualTo(shadow);
+        assertThat(Files.readString(shadow)).isEqualTo(first);
+
+        Files.writeString(parent.resolve("pom.xml"), parentPom("0.3.0"));
+
+        String second = Files.readString(ManifestPaths.manifestIn(child));
+        assertThat(second).isNotEqualTo(first).contains("\"0.3.0\"");
+    }
+
+    /** A parent that manages jspecify at {@code version}; the child inherits it without a version of its own. */
+    private static String parentPom(String version) {
+        return """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <properties>
+                    <maven.compiler.release>25</maven.compiler.release>
+                  </properties>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.jspecify</groupId>
+                        <artifactId>jspecify</artifactId>
+                        <version>%s</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """.formatted(version);
+    }
+
+    private static final String CHILD_OF_PARENT = """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <modelVersion>4.0.0</modelVersion>
+              <parent>
+                <groupId>com.example</groupId>
+                <artifactId>parent</artifactId>
+                <version>1.0.0</version>
+                <relativePath>../parent/pom.xml</relativePath>
+              </parent>
+              <artifactId>child</artifactId>
+              <dependencies>
+                <dependency>
+                  <groupId>org.jspecify</groupId>
+                  <artifactId>jspecify</artifactId>
+                </dependency>
+              </dependencies>
+            </project>
+            """;
+
+    /** Two leaves under one root: {@code app} depends on {@code api}; both have a JUnit test. */
+    private static Path writeReactor(Path root) throws Exception {
+        Files.createDirectories(root);
         Files.writeString(root.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
@@ -141,15 +262,131 @@ class CoexistenceBuildE2eTest {
                   <packaging>pom</packaging>
                   <modules>
                     <module>api</module>
+                    <module>app</module>
                   </modules>
+                  <properties>
+                    <maven.compiler.release>25</maven.compiler.release>
+                    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+                  </properties>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.junit.jupiter</groupId>
+                      <artifactId>junit-jupiter</artifactId>
+                      <version>6.1.3</version>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
                 </project>
                 """);
+        Path api = Files.createDirectories(root.resolve("api"));
+        Files.writeString(api.resolve("pom.xml"), leafPom("api", ""));
+        Files.writeString(
+                Files.createDirectories(api.resolve("src/main/java/com/example/api"))
+                        .resolve("Greeting.java"),
+                """
+                package com.example.api;
 
-        assertThatThrownBy(() -> ShadowManifests.materialize(root))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("<modules>")
-                .hasMessageContaining("jk import pom.xml");
-        assertThat(ManifestPaths.shadowManifestPath(root)).doesNotExist();
+                public final class Greeting {
+                    public static String text() {
+                        return "hello";
+                    }
+                }
+                """);
+        Files.writeString(
+                Files.createDirectories(api.resolve("src/test/java/com/example/api"))
+                        .resolve("GreetingTest.java"),
+                """
+                package com.example.api;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class GreetingTest {
+                    @Test
+                    void says_hello() {
+                        assertEquals("hello", Greeting.text());
+                    }
+                }
+                """);
+        Path app = Files.createDirectories(root.resolve("app"));
+        Files.writeString(app.resolve("pom.xml"), leafPom("app", """
+                    <dependency>
+                      <groupId>com.example</groupId>
+                      <artifactId>api</artifactId>
+                      <version>1.0.0</version>
+                    </dependency>
+                """));
+        Files.writeString(
+                Files.createDirectories(app.resolve("src/main/java/com/example/app"))
+                        .resolve("Main.java"),
+                """
+                package com.example.app;
+
+                import com.example.api.Greeting;
+
+                public final class Main {
+                    public static String shout() {
+                        return Greeting.text().toUpperCase();
+                    }
+                }
+                """);
+        Files.writeString(
+                Files.createDirectories(app.resolve("src/test/java/com/example/app"))
+                        .resolve("MainTest.java"),
+                """
+                package com.example.app;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class MainTest {
+                    @Test
+                    void shouts() {
+                        assertEquals("HELLO", Main.shout());
+                    }
+                }
+                """);
+        return root;
+    }
+
+    private static String leafPom(String artifactId, String dependencies) {
+        return """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.example</groupId>
+                    <artifactId>reactor</artifactId>
+                    <version>1.0.0</version>
+                  </parent>
+                  <artifactId>%s</artifactId>
+                  <dependencies>
+                %s  </dependencies>
+                </project>
+                """.formatted(artifactId, dependencies);
+    }
+
+    /** Step statuses per module directory name, from the workspace build's listener. */
+    private static final class Steps implements WorkspaceBuildListener {
+        private final Map<String, TaskStatus> statusByModuleStep = new ConcurrentHashMap<>();
+
+        @Override
+        public BuildPlanListener onModuleStart(ModulePlan module) {
+            String name = module.dir().getFileName().toString();
+            return new BuildPlanListener() {
+                @Override
+                public void stepFinish(
+                        String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
+                    statusByModuleStep.put(name + "/" + step, status);
+                }
+            };
+        }
+
+        @Nullable
+        TaskStatus status(String module, String step) {
+            return statusByModuleStep.get(module + "/" + step);
+        }
     }
 
     private static Path writeProject(Path project) throws Exception {
@@ -214,7 +451,7 @@ class CoexistenceBuildE2eTest {
                 cache,
                 buildFile,
                 lockFile,
-                Objects.requireNonNull(lockFile.getParent(), "lock dir"),
+                LockPaths.lockOwnerDir(project),
                 1,
                 0,
                 null,

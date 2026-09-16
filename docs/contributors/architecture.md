@@ -489,15 +489,21 @@ them is churn without a product gain. Instead:
   `dir/jk.toml` when that exists; otherwise, when `dir/pom.xml` exists, it answers the **shadow**
   `dir/target/jk/shadow/jk.toml` through the process's `ManifestPaths.ShadowSource`. The engine
   installs `ShadowManifests` at start-up, which renders the shadow on first read and again when
-  the POM's bytes (or the running jk) differ from the shadow's header; the native client installs
-  nothing and only names the path. Every read site resolves through `manifestIn(dir)`; the sites
-  that write a `jk.toml` (`jk new`, `jk add`, `jk import`, the MCP manifest edits) and the
-  workspace-root scan keep the raw `dir/jk.toml`, since a shadow is never edited and never a root.
+  any POM file it read (or the running jk) differs from what the shadow's header names; the native
+  client installs nothing and only names the path. Every read site resolves through
+  `manifestIn(dir)`; `ManifestPaths.moduleOf(manifest)` maps a manifest back to its module, so a
+  shadow parsed through `JkBuildParser.parse` resolves its workspace from the module, not from
+  `target/jk/shadow`. The sites that write a `jk.toml` (`jk new`, `jk import`) keep the raw
+  `dir/jk.toml`; the ones that edit it (`jk add`, `jk remove`, `jk update`, the MCP manifest
+  editors) refuse a shadowed directory with `ManifestPaths.noManifestToEdit`, which names both
+  remedies: `jk import pom.xml` to own a `jk.toml`, or edit the POM.
 - The shadow is what `PomImporter` produces from the effective POM (parents flattened, managed
-  versions applied, properties interpolated), rendered by `JkBuildRenderer` under a header line
-  naming the POM digest it came from (`PomShadow`). It is a build artefact under `target/`, never
-  committed. `jk import` still writes a real `jk.toml` for a user who wants one; the shadow makes
-  that optional.
+  versions applied, properties interpolated), rendered by `JkBuildRenderer` under a `ShadowStamp`
+  header (`PomShadow`): the first line carries a digest and the rendering jk's version, one `# read
+  <path>` line per POM file the import read — the module's own and every parent its
+  `<relativePath>` reaches on disk — and the digest covers those files' bytes, so editing a parent
+  re-renders the child. It is a build artefact under `target/`, never committed. `jk import` still
+  writes a real `jk.toml` for a user who wants one; the shadow makes that optional.
 - Digests stay byte-based. `PreflightMemo`'s three `feedFile` sites and `LockManifestDigest` hash
   the shadow's bytes, which change exactly when the POM chain changes, so memos and lock
   staleness keep their meaning.
@@ -510,31 +516,43 @@ them is churn without a product gain. Instead:
 build under `target/jk/` (a per-build `BuildLayout` root) is open.
 
 **Lockfile.** Maven has no lockfile, so the first coexistence build resolves and writes the lock
-beside the shadow — `LockPaths.lockOwnerDir` answers `target/jk/shadow/` for a shadowed module —
-and later builds reuse it; the repository gains no file. The POM's direct versions win over
-transitive requests (`[resolve] pins = "nearest"`, the policy `jk import` writes), bare versions
-are exact pins and BOM imports are enforced platforms; transitives resolve by PubGrub.
+beside the owner's shadow and later builds reuse it; the repository gains no file.
+`LockPaths.lockOwnerDir` keeps answering a project directory — the module itself, or the reactor
+root for a leaf — and `LockPaths.lockFile` places the file under that owner's `target/jk/shadow/`
+when the owner is shadowed, so every site that resolves modules, `.env` files or JDK pins against
+the lock owner reads the real tree. The POM's direct versions win over transitive requests
+(`[resolve] pins = "nearest"`, the policy `jk import` writes), bare versions are exact pins and
+BOM imports are enforced platforms; transitives resolve by PubGrub.
 
 **Tier-3 rows.** What the import report would grade Tier 3 (`<build><extensions>`, a `war`
 packaging, a `system`-scoped dependency, a parent no repository serves) does not stop the build:
 `ShadowManifests` parks the rows at render time and the next build's parse step reports each once
-under Warnings with the `jk import pom.xml` remedy. A reactor root — `<modules>` at the top level
-or in a profile — is refused with the same remedy; it becomes a workspace by import.
+under Warnings with the `jk import pom.xml` remedy; a reactor's own rows ride with the first leaf
+that drains.
 
-**Multi-module (open).** The reactor root's `<modules>` become the workspace list; each member's
-shadow is generated the same way; `WorkspaceLoader` reads shadows through `manifestIn`.
-Inter-module dependencies become workspace edges exactly as `PomImporter.importWorkspace` rewrites
-them today.
+**Multi-module.** A reactor root — `<modules>` at the top level or in a profile — is rendered
+through `PomImporter.importWorkspace`: the root's shadow carries the leaves `ReactorModules` walks
+as `[workspace] modules`, each leaf's shadow lands under the leaf's own `target/jk/shadow/` with
+sibling dependencies rewritten to workspace edges, and every shadow of the tree lists every POM of
+the tree, so an edit anywhere re-renders them all. Whichever module is read first triggers the
+render: a leaf finds its root through `PomReactorScan.reactorRootOf` and materializes the root.
+`PomReactorScan` (shared/core, `DomXml`, no Maven) is the bootstrap twin of the TOML scan: it
+follows the raw `<modules>` of the root and of every profile through nested aggregators, and
+`WorkspaceScan.isWorkspaceRoot` / `findRoot` answer for a POM-built tree the way they do for a
+`jk.toml` one — the outermost reactor is the root, a nested aggregator is not — so `LockPaths`,
+`BuildLayout` and the `jk build` entry all agree on one root. A directory the root lists that
+Maven would not build here (an aggregator, a module of an inactive profile) has no shadow;
+reading it names the root to build from.
 
 **MCP.** `jk_bind` already accepts any directory; the card for a shadowed project reads its
 identity from the shadow, and `jk_results` / `jk_diagnostics` need no change once the engine writes
 through the normal journal.
 
-**Scope.** Single module, default Maven layout (`ModuleLayout.TRADITIONAL` matches
+**Scope.** Single modules and reactors, default Maven layout (`ModuleLayout.TRADITIONAL` matches
 `src/main/java`, `src/test/java`, resources): `jk build`, `jk test`, `jk explain`, results, cache
-hit on the second run, one-file edit recompiles the delta. Multi-module, a `--partial` skip of
-unshadowable modules, and POM-declared `<sourceDirectory>` (which needs a root override the model
-does not have) are open.
+hit on the second run, one-file edit recompiles the delta. A `--partial` skip of unshadowable
+modules and POM-declared `<sourceDirectory>` (which needs a root override the model does not
+have) are open.
 
 ## Status
 

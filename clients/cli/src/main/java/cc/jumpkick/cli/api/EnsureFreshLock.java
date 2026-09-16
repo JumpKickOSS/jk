@@ -216,14 +216,10 @@ public final class EnsureFreshLock {
         }
     }
 
-    /**
-     * Plain {@code group:name} for the lock owner (workspace root or standalone). A shadowed
-     * project's owner is its shadow dir; the identity is asked of the project itself.
-     */
+    /** Plain {@code group:name} for the lock owner (workspace root or standalone). */
     static String lockCoordLabel(Path projectDir) {
         try {
             Path owner = LockPaths.lockOwnerDir(projectDir);
-            if (ManifestPaths.isShadowed(projectDir)) owner = projectDir;
             if (!ManifestPaths.describesProject(owner))
                 return owner.getFileName().toString();
             var info = ProjectInfos.orNull(owner);

@@ -76,10 +76,7 @@ public final class RemoveCommand implements CliCommand {
 
         Path dir = global.workingDir();
         Path file = dir.resolve(ManifestPaths.MANIFEST);
-        if (!Files.exists(file)) {
-            CommandWedge.printFail("Remove", "no jk.toml in current directory");
-            return Exit.CONFIG;
-        }
+        if (!Files.exists(file)) return ManifestEditRefusal.print("Remove", dir);
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
             CommandWedge.printFail("Remove", "--test / --runtime / --provided / --processor are mutually exclusive");

@@ -101,10 +101,7 @@ public final class UpdateCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
-        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
-            CommandWedge.printFail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir));
-            return Exit.CONFIG;
-        }
+        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return ManifestEditRefusal.print("Update", dir);
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
         // Same pre-flight as lock: first-time download + revalidate before engine parses jk.toml.

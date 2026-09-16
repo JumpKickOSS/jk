@@ -43,7 +43,7 @@ public final class NativePlans {
      * [image].main}, then {@code [application] main}.
      */
     public static @Nullable String resolveMain(Path buildFile, @Nullable String mainOverride) {
-        Path dir = buildFile.getParent();
+        Path dir = ManifestPaths.moduleOf(buildFile);
         return dir == null ? mainOverride : NativePreflight.specifiedMain(dir, mainOverride);
     }
 

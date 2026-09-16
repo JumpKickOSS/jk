@@ -127,7 +127,9 @@ The project model is Maven's effective POM — parents flattened, managed versio
 properties interpolated — imported exactly as `jk import` imports it and rendered as a *shadow*
 manifest at `target/jk/shadow/jk.toml`, with the lock beside it at `target/jk/shadow/jk-lock.toml`.
 Nothing is written into the repository: no `jk.toml`, no `jk-lock.toml`. The shadow is a build
-artefact, rendered again whenever the POM's bytes change and gone with `jk clean`.
+artefact: its header lists the POM files it was rendered from — the module's own and every parent
+a `<relativePath>` reaches on disk — so editing a parent renders the child again, and `jk clean`
+removes it.
 
 ```bash
 cd my-maven-repo          # pom.xml, src/main/java, src/test/java — no jk.toml
@@ -142,11 +144,22 @@ policy `jk import` writes). The results file's header says which mode ran — `m
 no jk.toml (effective POM, built in place)` — so an agent reading `target/jk-results.md` knows the
 manifest it should edit is the POM.
 
+A reactor — a POM with `<modules>`, at the top level or in a profile — builds as a workspace.
+The root's shadow lists the modules Maven would build here as `[workspace] modules`, every leaf
+gets its own shadow under its `target/jk/shadow/` with dependencies on siblings as workspace
+edges, and the one lock lives beside the root's shadow. `jk build` at the root builds the whole
+graph; in a leaf it builds that module and what it depends on, exactly as in a `jk.toml`
+workspace. Nested aggregators belong to the outermost root; a module listed only by a profile
+Maven does not activate on this machine is not built.
+
 What the import report would grade Tier 3 (a `<build><extensions>` entry other than os-maven-plugin, a `war` packaging, a
 `system`-scoped dependency, a parent no repository serves) is not an error here: the build after
 a POM change reports each row once, under Warnings, with the remedy — `jk import pom.xml` writes
-a `jk.toml` you can edit. A reactor root (a POM with `<modules>`, at the top level or in a
-profile) is refused with the same remedy: a multi-module build becomes a workspace by import.
+a `jk.toml` you can edit.
+
+The manifest in this mode is the POM, so the commands that edit `jk.toml` — `jk add`, `jk remove`,
+`jk update` and the `jk_deps` / `jk_manifest` / `jk_update` MCP tools — refuse a directory built
+this way and name the two ways forward: `jk import pom.xml` to own a `jk.toml`, or edit the POM.
 
 ### Where import stands on real repositories
 

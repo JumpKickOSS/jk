@@ -33,6 +33,7 @@ public final class McpUpdate {
     public static Map<String, Object> run(String dir, List<String> deps, boolean major, boolean apply) {
         Path root = PathUtil.resolveUserPath(dir);
         Map<String, Object> out = new LinkedHashMap<>();
+        if (McpManifest.refuseShadowed(root.resolve(ManifestPaths.MANIFEST), out)) return out;
         try {
             Path cache = JkDirs.cache();
             Session session = Session.defaults().withWorkingDir(root).withCacheDir(cache);
