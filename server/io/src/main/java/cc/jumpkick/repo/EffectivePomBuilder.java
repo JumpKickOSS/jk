@@ -263,15 +263,14 @@ public final class EffectivePomBuilder {
             throw new PomParseException("cannot determine effective groupId/version for " + child.artifactId());
         }
 
-        // 2. Properties — host platform words first, parent next, child overrides. Implicit
-        // project.* always come from child.
+        // 2. Properties — host platform words first, parent next, child overrides. The implicit
+        // project.* and project.parent.* always come from the child: Maven interpolates an inherited
+        // model in the child's context, so a parent's managed version spelled
+        // ${project.parent.version} values to the version of the parent the child names.
         Map<String, String> props = new LinkedHashMap<>(HostClassifiers.properties());
         if (parent != null) props.putAll(parent.properties());
         props.putAll(child.properties());
-        props.put("project.groupId", groupId);
-        props.put("project.artifactId", child.artifactId());
-        props.put("project.version", version);
-        props.put("project.packaging", child.packaging());
+        PomParser.putImplicitProperties(props, groupId, child.artifactId(), version, child.packaging(), child.parent());
 
         // 3. Managed deps, with Maven's precedence: entries the chain declares itself (parent
         // first, then the child; later wins) beat anything an import supplies, and imports fill
@@ -358,10 +357,8 @@ public final class EffectivePomBuilder {
         Map<String, String> retainedProps = props;
         if (!"pom".equalsIgnoreCase(child.packaging())) {
             retainedProps = new LinkedHashMap<>(child.properties());
-            retainedProps.put("project.groupId", groupId);
-            retainedProps.put("project.artifactId", child.artifactId());
-            retainedProps.put("project.version", version);
-            retainedProps.put("project.packaging", child.packaging());
+            PomParser.putImplicitProperties(
+                    retainedProps, groupId, child.artifactId(), version, child.packaging(), child.parent());
         }
 
         // A relocation belongs to the POM that declares it — it is not inherited from a parent.
