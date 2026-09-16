@@ -276,9 +276,14 @@ final class LauncherPath {
         }
     }
 
+    /**
+     * One header line the engine reads back — {@code jk-test-runner: test discovery failed:
+     * <exception class>: <message>} — then the classpath root and the cause chain.
+     */
     private static void reportDiscoveryFailure(Path scanClasspath, RuntimeException e) {
-        System.err.println("jk-test-runner: test discovery failed under " + scanClasspath + ": "
-                + e.getClass().getSimpleName() + ": " + e.getMessage());
+        System.err.println(
+                "jk-test-runner: test discovery failed: " + e.getClass().getName() + ": " + e.getMessage());
+        System.err.println("  under " + scanClasspath);
         Throwable c = e.getCause();
         int depth = 0;
         while (c != null && depth++ < 6) {

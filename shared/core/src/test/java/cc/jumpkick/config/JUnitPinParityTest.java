@@ -40,7 +40,9 @@ import org.junit.jupiter.api.Test;
  * <p>Not in scope: coordinate strings used as arbitrary fixture data — mock-repo seeds
  * ({@code serveLeaf}, {@code seedArtifact}), parser and editor tests, solver fixtures. Those never
  * reach a repository, so their version is a label rather than a pin, and forcing them to move with
- * the train would be churn with no property behind it.
+ * the train would be churn with no property behind it. Nor a pin that is the point of its fixture:
+ * a manifest line that provokes a version conflict says so with a trailing {@code # off the train:}
+ * comment, and the guard leaves that one pin alone.
  */
 class JUnitPinParityTest {
 
@@ -49,6 +51,9 @@ class JUnitPinParityTest {
     /** The JUnit train's coordinates, as a fixture manifest spells them. */
     private static final Pattern PIN = Pattern.compile(
             "name = \"junit-(?:jupiter|platform-launcher|vintage-engine)\", version = \"=?([0-9][^\"]*)\"");
+
+    /** A pin the fixture wants wrong, said on its own line: {@code … }  # off the train: why}. */
+    private static final String OFF_THE_TRAIN = "# off the train:";
 
     /** {@code org.junit.*} artifacts in the lock, with the version each resolved to. */
     private static final Pattern LOCKED = Pattern.compile(
@@ -80,6 +85,7 @@ class JUnitPinParityTest {
             String src = Files.readString(java);
             Matcher m = PIN.matcher(src);
             while (m.find()) {
+                if (restOfLine(src, m.end()).contains(OFF_THE_TRAIN)) continue;
                 pins++;
                 if (!expected.equals(m.group(1))) {
                     wrong.add("  " + REPO.relativize(java) + ": pins " + m.group(1));
@@ -95,6 +101,11 @@ class JUnitPinParityTest {
                                 + " deliberately and carry the fixtures with it; do not hand-edit one pin.%n%s",
                         expected, String.join("\n", wrong))
                 .isEmpty();
+    }
+
+    private static String restOfLine(String src, int from) {
+        int nl = src.indexOf('\n', from);
+        return nl < 0 ? src.substring(from) : src.substring(from, nl);
     }
 
     /**

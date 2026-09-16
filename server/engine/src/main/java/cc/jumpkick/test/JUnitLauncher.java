@@ -493,7 +493,7 @@ public final class JUnitLauncher {
         } else if (wanted == 0) {
             // Discover once so auto can size the pool; reuse the list when W>1.
             Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
-            if (discovery.crashed()) return discovery.failure(moduleLabel).withWorkers(1);
+            if (discovery.crashed()) return discovery.verdict(moduleLabel).withWorkers(1);
             preDiscovered = discovery.classes();
             resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
         } else if (wanted > 1) {
@@ -580,7 +580,7 @@ public final class JUnitLauncher {
             classes = preDiscovered;
         } else {
             Discovery discovery = discoverClasses(javaBinary, classpath, testClassesDir, listener);
-            if (discovery.crashed()) return discovery.failure(moduleLabel);
+            if (discovery.crashed()) return discovery.verdict(moduleLabel);
             classes = discovery.classes();
         }
         if (classes.isEmpty()) {
@@ -594,7 +594,7 @@ public final class JUnitLauncher {
         List<String> serialClasses = List.of();
         if (!serialTags.isEmpty()) {
             Discovery view = discoverWithExtraExcludes(javaBinary, classpath, testClassesDir, serialTags);
-            if (view.crashed()) return view.failure(moduleLabel);
+            if (view.crashed()) return view.verdict(moduleLabel);
             Set<String> parallelView = new HashSet<>(view.classes());
             List<String> par = new ArrayList<>();
             List<String> ser = new ArrayList<>();

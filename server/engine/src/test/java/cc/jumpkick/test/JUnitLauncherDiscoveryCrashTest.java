@@ -2,9 +2,9 @@
 package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -16,8 +16,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * With more than one worker the launcher lists the suite's classes in a discovery JVM of its own.
  * A discovery JVM that dies before it names a class — a bad flag, a corrupt runner jar, a boot OOM
- * — has said nothing about the tests, and nothing is not a green suite: the run must fail the same
- * way a crashed pool worker fails it, or the build stores a green stamp for tests that never ran.
+ * — has said nothing about the tests, and nothing is not a green suite: the run fails as a launcher
+ * failure, the way a crashed pool worker fails it, or the build stores a green stamp for tests that
+ * never ran.
  */
 @Tag("integration")
 class JUnitLauncherDiscoveryCrashTest {
@@ -34,19 +35,17 @@ class JUnitLauncherDiscoveryCrashTest {
         Path classes = Files.createDirectories(dir.resolve("classes"));
         Path cache = Files.createDirectories(dir.resolve("cache"));
 
-        TestSummary result = new JUnitLauncher()
-                .withModuleLabel("ex:m")
-                .run(javaHome, classes, List.of(), cache, 2, Map.of(), TestProgressListener.noop());
+        JUnitLauncher launcher = new JUnitLauncher().withModuleLabel("ex:m");
 
-        assertThat(result.allPassed())
-                .as("a JVM that named no class is not a passing suite")
-                .isFalse();
-        assertThat(result.total()).isEqualTo(1);
-        assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.module()).isEqualTo("ex:m");
-            assertThat(f.method()).isEqualTo("(test run)");
-            assertThat(f.message()).contains("exited 3");
-            assertThat(f.stack()).contains("could not create the Java Virtual Machine");
-        });
+        assertThatThrownBy(() ->
+                        launcher.run(javaHome, classes, List.of(), cache, 2, Map.of(), TestProgressListener.noop()))
+                .as("a JVM that named no class is a launcher failure, not a passing suite")
+                .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
+                    assertThat(f.moduleLabel()).isEqualTo("ex:m");
+                    assertThat(f.phase()).isEqualTo("test discovery");
+                    assertThat(f.exit()).isEqualTo(3);
+                    assertThat(f.getMessage()).contains("test discovery exited 3 before any test ran");
+                    assertThat(f.output()).contains("could not create the Java Virtual Machine");
+                });
     }
 }

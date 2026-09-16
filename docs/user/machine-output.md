@@ -38,6 +38,15 @@ claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an I
 (`jk history`, `GET /api/history`, `jk_history`) and on the `session-start` line of
 `details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked).
 
+A step that failed without a diagnostic of its own is one row of `## Failed steps`; a step that
+explained itself is also a `## Failures` entry headed `<step> — <module>`, its message fenced, then
+its output. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
+launcher missing from the classpath — is that shape with code `test-launcher`: the exit, the
+exception and engine the runner named, the two conflicting JUnit coordinates when the lock names
+them, and the fix (`jk why <coordinate>`), with the fork's output as the fenced block. It is never
+counted as a red test, so there is no `Tests:` line for it. MCP `jk_diagnostics` returns it as one
+row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-launcher-cannot-start).
+
 The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
 There is no separate `test-results.md`. MCP: **`jk_results`** and resource
 `jk://runs/latest/results`. After a test run, prefer this file over `--all` guesswork:
