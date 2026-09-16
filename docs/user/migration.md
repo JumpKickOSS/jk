@@ -286,6 +286,7 @@ relates to the Maven one.
 | native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main` | approximate |
 | maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
 | antlr4-maven-plugin | 5 | `[antlr]` (planned generator preset) | manual |
+| localizer-maven-plugin | 1 | Tier-3 row naming the `Messages` classes it generates from `Messages.properties` bundles and the output root, which no `extra-src` names (the plugin has a mojo and an Ant task, no `main` a `[generate]` entry could run); generate once with `jk mvn generate-sources` and check the classes in under a source root of their own | none |
 | openapi-generator-maven-plugin | 4 | `[openapi]`: `<inputSpec>` → `spec` (an HTTP URL is fetched once into `api/<file>` beside the manifest, a row says so), `<generatorName>` → `generator`, the `<modelPackage>` root (else the api or invoker package) → `package` with `<apiPackage>` / `<modelPackage>` / `<invokerPackage>` the root does not derive → `api-package` / `model-package` / `invoker-package`, `<configOptions>` / `<additionalProperties>` → `options`, the plugin version → `version`; `<packageName>`, a second `generate` execution and any other option → row | approximate |
 | any other `<build><extensions>` entry | 4 | Tier-3 row naming the coordinate and, for build-reporter-maven-extension, gitflow-incremental-builder, wagon-ssh and archetype-packaging, what it does under Maven | none |
 

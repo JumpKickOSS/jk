@@ -8,6 +8,7 @@ import cc.jumpkick.model.SourcesMode;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
@@ -38,8 +39,11 @@ final class SourceTreePlugins {
 
     private SourceTreePlugins() {}
 
-    /** {@code generatorOutputs} are the module-relative directories the module's generator steps fill. */
-    static SourceTree map(EffectiveModel em, List<String> generatorOutputs, ImportReport.Builder report) {
+    /**
+     * {@code generatorOutputs} are the module-relative directories the module's generators fill,
+     * each with what an {@code add-source} root inside it is.
+     */
+    static SourceTree map(EffectiveModel em, Map<String, String> generatorOutputs, ImportReport.Builder report) {
         Model model = em.model();
         List<String> extraSrc = new ArrayList<>();
         List<String> testExtraSrc = new ArrayList<>();
@@ -89,7 +93,7 @@ final class SourceTreePlugins {
     private static void addSourceRoots(
             Plugin helper,
             @Nullable Path baseDir,
-            List<String> generatorOutputs,
+            Map<String, String> generatorOutputs,
             List<String> extraSrc,
             List<String> testExtraSrc,
             ImportReport.Builder report) {
@@ -112,10 +116,10 @@ final class SourceTreePlugins {
 
     /** {@code dirs} without the ones inside a generator's output, each of those being a row. */
     private static List<String> ownRoots(
-            List<String> dirs, List<String> generatorOutputs, ImportReport.Builder report) {
+            List<String> dirs, Map<String, String> generatorOutputs, ImportReport.Builder report) {
         List<String> own = new ArrayList<>();
         for (String dir : dirs) {
-            String output = generatorOutputs.stream()
+            String output = generatorOutputs.keySet().stream()
                     .filter(root -> dir.equals(root) || dir.startsWith(root + "/"))
                     .findFirst()
                     .orElse(null);
@@ -123,8 +127,7 @@ final class SourceTreePlugins {
                 own.add(dir);
                 continue;
             }
-            report.warning("`build-helper-maven-plugin` adds `" + dir + "`, the OpenAPI generator's output; `[openapi]`"
-                    + " folds the generated sources into the compile itself, so no `extra-src` root is written.");
+            report.warning("`build-helper-maven-plugin` adds `" + dir + "`, " + generatorOutputs.get(output) + ".");
         }
         return own;
     }

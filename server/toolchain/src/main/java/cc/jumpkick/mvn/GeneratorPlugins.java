@@ -8,6 +8,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,10 +37,15 @@ final class GeneratorPlugins {
 
     static final String OPENAPI = "openapi-generator-maven-plugin";
 
-    /** The generator tables a POM's plugins add, and the module-relative output roots they fill. */
-    record Generators(@Nullable PluginConfig openapi, List<String> outputRoots) {
-        static final Generators NONE = new Generators(null, List.of());
-    }
+    /**
+     * The generator tables a POM's plugins add, and the module-relative output roots the POM's
+     * generators fill, each with what an {@code add-source} root inside it is (the build-helper row).
+     */
+    record Generators(@Nullable PluginConfig openapi, Map<String, String> outputRoots) {}
+
+    /** What an {@code add-source} root inside the OpenAPI output is, for the build-helper row. */
+    private static final String OPENAPI_ADD_SOURCE_ROW = "the OpenAPI generator's output; `[openapi]` folds the"
+            + " generated sources into the compile itself, so no `extra-src` root is written";
 
     /** The {@code <configuration>} children the preset's keys cover; anything else is a row. */
     private static final Set<String> COVERED = Set.of(
@@ -58,16 +64,22 @@ final class GeneratorPlugins {
     private GeneratorPlugins() {}
 
     static Generators map(Model model, PomImporter.RemoteFile remote, ImportReport.Builder report) {
+        Map<String, String> outputRoots = new LinkedHashMap<>();
+        PluginConfig openapi = null;
         Optional<Plugin> plugin = PluginFacts.plugin(model, OPENAPI);
-        if (plugin.isEmpty()) return Generators.NONE;
-        Path baseDir = model.getProjectDirectory() == null
-                ? null
-                : model.getProjectDirectory().toPath();
-        List<Xpp3Dom> configs = generateConfigs(plugin.get(), report);
-        String output = value(configs, "output");
-        String outputRoot = output == null ? DEFAULT_OUTPUT : SourceTreePlugins.moduleRelative(output, baseDir);
-        PluginConfig openapi = mapOpenApi(plugin.get(), configs, baseDir, remote, report);
-        return new Generators(openapi, List.of(outputRoot));
+        if (plugin.isPresent()) {
+            Path baseDir = model.getProjectDirectory() == null
+                    ? null
+                    : model.getProjectDirectory().toPath();
+            List<Xpp3Dom> configs = generateConfigs(plugin.get(), report);
+            String output = value(configs, "output");
+            String outputRoot = output == null ? DEFAULT_OUTPUT : SourceTreePlugins.moduleRelative(output, baseDir);
+            outputRoots.put(outputRoot, OPENAPI_ADD_SOURCE_ROW);
+            openapi = mapOpenApi(plugin.get(), configs, baseDir, remote, report);
+        }
+        LocalizerPlugin.outputRoot(model, report)
+                .ifPresent(root -> outputRoots.put(root, LocalizerPlugin.ADD_SOURCE_ROW));
+        return new Generators(openapi, Collections.unmodifiableMap(outputRoots));
     }
 
     /**

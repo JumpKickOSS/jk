@@ -207,7 +207,7 @@ public final class PomImporter {
         EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
         if (leaves.isEmpty() && found.boms().isEmpty()) reportInactiveModules(rootModel, report);
-        SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, List.of(), report);
+        SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, Map.of(), report);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
         warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true);
         String rootMainClass = PluginFacts.mainClass(rootModel.model());
