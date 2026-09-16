@@ -57,6 +57,19 @@ final class TestLauncherReport {
                     .append(" engine could not start on this test classpath — `jk why ")
                     .append(engineCoordinate(engine))
                     .append("` shows the line it came from; every JUnit artifact must sit on one version.");
+        } else if (e.outOfMemory()) {
+            sb.append("\n\nFix: the ")
+                    .append(e.phase())
+                    .append(" JVM ran out of memory (")
+                    .append(e.headline())
+                    .append(") before it ran a test; the frames above name the framework that filled it — a test"
+                            + " framework that starts the application while classes are still being listed. Raise"
+                            + " the limit with `[test] jvm-args` (`-XX:MaxMetaspaceSize=1g`, `-Xmx…`), which the"
+                            + " discovery JVM honours too.");
+        } else if (!e.rootCause().isEmpty()) {
+            sb.append("\n\nFix: the runner did not get to report; the failure is the framework's own — `")
+                    .append(e.rootCause())
+                    .append("` — and the frames above name where. Rerun with --verbose for the live stream.");
         } else {
             sb.append("\n\nFix: the runner's full output is above; rerun with --verbose for the live stream.");
         }

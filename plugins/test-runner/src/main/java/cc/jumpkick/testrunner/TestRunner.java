@@ -72,17 +72,23 @@ public final class TestRunner implements Plugin {
                         + "(Spring Boot: spring-boot-starter-test; bare projects: junit-jupiter).");
                 return Exit.CONFIG;
             }
-            System.err.println("jk-test-runner: " + e.getClass().getName() + ": " + e.getMessage());
+            String header = "jk-test-runner: " + e.getClass().getName() + ": " + e.getMessage();
+            System.err.println(header);
             e.printStackTrace(System.err);
+            System.err.println(header);
             return Exit.SOFTWARE;
         } catch (Throwable t) {
-            System.err.println("jk-test-runner: " + t.getClass().getName() + ": " + t.getMessage());
+            String header = "jk-test-runner: " + t.getClass().getName() + ": " + t.getMessage();
+            System.err.println(header);
             if (String.valueOf(t.getMessage()).contains("without at least one TestEngine")) {
                 System.err.println("  No JUnit Platform engine is on the test classpath. Declare the test framework"
                         + " under [test-dependencies] (junit-jupiter; junit:junit brings the Vintage engine"
                         + " with it) and re-run `jk lock`.");
             }
             t.printStackTrace(System.err);
+            // The engine keeps a bounded head and tail of this stream: the header goes out again
+            // after the trace so the last lines name the failure however long the trace ran.
+            System.err.println(header);
             return Exit.SOFTWARE;
         }
     }
