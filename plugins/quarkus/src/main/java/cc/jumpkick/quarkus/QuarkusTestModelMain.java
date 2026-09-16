@@ -2,6 +2,7 @@
 package cc.jumpkick.quarkus;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.model.command.Exit;
 import io.quarkus.bootstrap.app.ApplicationModelSerializer;
 import io.quarkus.bootstrap.model.ApplicationModel;
@@ -77,11 +78,13 @@ public final class QuarkusTestModelMain {
     }
 
     /**
-     * The module as Quarkus's workspace sees it: the module directory, its build directory (the
-     * one holding the {@code classes} tree {@code classesDir} sits in), and the main source set
-     * whose output is {@code classesDir} — the only class tree the model roots. The source
-     * directories are named when they exist under the conventional layout; the bootstrap reads
-     * output trees, not sources, to load a test.
+     * The module as Quarkus's workspace sees it: the module directory, {@code jk.toml} as its build
+     * file, its build directory (the one holding the {@code classes} tree {@code classesDir} sits
+     * in), and the main source set whose output is {@code classesDir} — the only class tree the
+     * model roots. The source directories are named when they exist under the conventional
+     * layout; the bootstrap reads output trees, not sources, to load a test. The build file is
+     * load-bearing: the serialized module carries its build files only when there is one, and the
+     * reader requires the list.
      */
     static WorkspaceModule workspaceModule(
             Path moduleDir, Path classesDir, String group, String artifact, String version) {
@@ -104,6 +107,7 @@ public final class QuarkusTestModelMain {
         return WorkspaceModule.builder()
                 .setModuleId(WorkspaceModuleId.of(group, artifact, version))
                 .setModuleDir(moduleDir)
+                .setBuildFile(moduleDir.resolve(ManifestNames.MANIFEST))
                 .setBuildDir(buildDirOf(classesDir, moduleDir))
                 .addArtifactSources(new DefaultArtifactSources(ArtifactSources.MAIN, sources, resources))
                 .build();
