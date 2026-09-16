@@ -1,7 +1,8 @@
 # Why JumpKick
 
 How to *use* JumpKick: [manual](manual.md) · [getting started](getting-started.md) ·
-[agents](agents.md). This page is the product bet, not a command reference.
+[agents](agents.md). This page is the product bet, not a command reference. The work that
+makes the bet true before 1.0 is ordered in [the 1.0 plan](../contributors/plan-1.0.md).
 
 **Audience:** Maven or Gradle users evaluating a switch, and anyone building JVM software
 with coding agents (Grok, Claude, Codex, …).
@@ -13,9 +14,12 @@ with coding agents (Grok, Claude, Codex, …).
 > **JumpKick is the JVM build tool that coding agents can actually drive — and that humans
 > enjoy enough to keep.**
 
-Wall-clock parity with a tuned Gradle 9.x build is hygiene, not the conversion claim.
+Wall-clock parity with a tuned Gradle 9.x build is hygiene, not the conversion claim, and it
+is a claim we owe a table for (see [the 1.0 plan](../contributors/plan-1.0.md), epic 6).
 The reason to abandon Maven or Gradle is that the **edit → build → diagnose → fix →
-rebuild** loop gets shorter for agents and for humans who work with agents.
+rebuild** loop gets shorter for agents and for humans who work with agents. That is the
+**inner loop** of a developer's day, and it outranks CI lanes, nightly profiles and release
+automation in every priority call before 1.0.
 
 That loop is the product. Features matter insofar as they shorten a step, reduce retries,
 or remove a tool-switch.
@@ -38,6 +42,8 @@ or remove a tool-switch.
 | **Stabilize the environment** | No turns burned on `JAVA_HOME`, wrappers, or bootstrap scripts |
 | **Enter the ecosystem** | Import/export so migration time counts in cycle time |
 | **Shared reality** | One build model; TTY, web UI, and MCP show the same facts |
+| **Supervise the agent** | The human watching an agent sees what it ran, why it failed, what changed between attempts — the web dashboard's job |
+| **Try it on the real project** | An existing `pom.xml` gets the loop before any manifest migration |
 
 **Human cycle time** is that loop with better aesthetics and less ceremony.
 **Agent cycle time** is the same loop with structured I/O and safe mutation.
@@ -57,28 +63,34 @@ Think in **layers of the switch decision**, not a flat checklist.
 | **1** | **Agent-native results + MCP** (`jk-results.md`, diagnostics, `jk manual`, MCP tools) | Agents stop scraping logs. Failures become structured, token-cheap, re-enterable. This is the unique moat vs Maven *and* Gradle. |
 | **2** | **Declarative TOML + surgical edits** (`jk.toml`, `jk add`/`remove`, MCP `jk_deps` / `jk_manifest`) | Agents and humans share one small surface. Mutation is cheap and reviewable. |
 | **3** | **Lockfile-as-law + PubGrub diagnostics** (`jk-lock.toml`, `why`, readable conflicts) | Removes overnight CI drift and “agent guessed a version.” Predictability is what Maven users actually loved. |
-| **4** | **Named test rungs** (unit inner loop · `--guard` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. Maven Surefire/Failsafe and Gradle `sourceSets` have no such voice. |
+| **4** | **Works on the Maven project you already have** (`jk mvn` with structured results; effective-POM import; a jk loop over an unmodified `pom.xml`) | Two thirds of the market is Maven. The loop has to arrive before the migration, or the evaluation ends at the fidelity report. |
+| **5** | **Named test rungs** (unit inner loop · `--guard` before share · `--all` nightly) | Agents stop running Playwright on every assertion fix *and* stop shipping wiring bugs the default suite never saw. Results disclose what was skipped. |
 
 Alone, each is nice. Together they make the agent loop *possible* — and keep the execute step from destroying it.
+The ranking is a claim until the **turns-to-green** table exists (below); building that table is a
+Tier 0 item in its own right.
 
 ### Tier 1 — Prove it in the first ten minutes
 
 | Rank | Feature | Role |
 |------|---------|------|
-| **5** | **Action cache + CAS + warm engine (low RSS)** | Shorter *repeated* cycles — not “we beat Gradle by 8%.” |
-| **6** | **Beautiful CLI + accurate ETA** | Human trust on long runs; progress/ETA also exist as machine facts. |
-| **7** | **Built-in format** | Closes the agent edit loop without a second toolchain. |
-| **8** | **Templates / `jk new`** | Time-to-first-success for humans and agents scaffolding greenfield work. |
+| **6** | **IntelliJ that just works** (live project model, gutter through jk, Marketplace listing) | The first ten seconds of every human evaluation. Generated project files are not this. |
+| **7** | **Web dashboard as the supervisor's view** | The human watching an agent sees trigger, session, per-attempt change set, failure and time. Neither incumbent nor the agent harness shows this. |
+| **8** | **Action cache + CAS + warm engine (low RSS)** | Shorter *repeated* cycles — not “we beat Gradle by 8%.” |
+| **9** | **Beautiful CLI + accurate ETA** | Human trust on long runs; progress/ETA also exist as machine facts. |
+| **10** | **Built-in format** | Closes the agent edit loop without a second toolchain. |
+| **11** | **Templates / `jk new`** | Time-to-first-success for humans and agents scaffolding greenfield work. |
 
 ### Tier 2 — Remove the reason to stay
 
 | Rank | Feature | Role |
 |------|---------|------|
-| **9** | **Maven import/export + `~/.m2` compatibility** | Lowers switching cost for the majority Maven camp. |
-| **10** | **Gradle import/export (best-effort) + `jk gradle` / `jk mvn`** | Escape hatch so migration is not all-or-nothing. |
-| **11** | **Integrated JDK / shell activation** | Agents and humans stop fighting `JAVA_HOME`. |
-| **12** | **`jk update` / outdated** | Stay current by design; upgrades are a real resolve step. |
-| **13** | **`jkx` / tool run** | One surface for ephemeral JVM tools (npx/uvx/JBang-shaped). |
+| **12** | **Daily-loop batteries** (coverage in results, sources + javadoc jars, Central Portal publish, code generation, lint as a cached step, TestNG) | Batteries-included is the strategy; the next battery is the step most services touch every day, not the most impressive one. |
+| **13** | **Plugin SDK on Maven Central** | Batteries without an open socket is Maven without plugins. |
+| **14** | **Gradle import (Tooling API) + `jk gradle`** | Escape hatch so migration is not all-or-nothing. |
+| **15** | **Integrated JDK / shell activation** | Agents and humans stop fighting `JAVA_HOME`. |
+| **16** | **`jk update` / outdated** | Stay current by design; upgrades are a real resolve step. |
+| **17** | **`jkx` / tool run** | One surface for ephemeral JVM tools (npx/uvx/JBang-shaped). |
 
 ### Tier 3 — Seal the deal after they have felt the loop
 
@@ -86,14 +98,15 @@ These impress on a feature matrix and retain power users; they rarely *cause* th
 
 | Rank | Feature | Notes |
 |------|---------|-------|
-| **14** | Web UI | Supervisory mirror of the same model; secondary to MCP for conversion. |
-| **15** | Supply chain / SBOM / audit / CVE | Strong “enterprise yes,” weak “try tonight.” |
-| **16** | OCI images | Ship path; not day-one abandon reason. |
-| **17** | Git-as-dependency / git modules | Power-user depth after trust is earned. |
-| **18** | Native-image / deep framework support | Keep them; do not lead with them. |
+| **18** | Supply chain / SBOM / audit / CVE | Strong “enterprise yes,” weak “try tonight.” |
+| **19** | OCI images | Ship path; not day-one abandon reason. |
+| **20** | Git-as-dependency / git modules | Power-user depth after trust is earned. |
+| **21** | Native-image / deep framework support | Keep them; do not lead with them. |
+| **22** | Contrib batteries: Android, Grails, Scala 3 in mixed modules | Best-effort by label. Android is not AGP parity; Grails tracks a milestone; Scala compiles through Zinc and is described exactly that way. |
 
 **Raw speed vs Gradle** is a **credibility footnote** beside this list: competitive on warm
-builds; the win is fewer failed cycles and less agent thrash.
+builds; the win is fewer failed cycles and less agent thrash. The footnote still needs its
+table: jk, Gradle and Maven columns on a public project, peak RSS included.
 
 ---
 
@@ -278,11 +291,22 @@ If that number does not win, polish the Tier 0 surfaces until it does. Feature c
 not save it.
 
 Honesty today: the skeleton is real (`jk manual`, results, MCP, TOML edits, lockfile,
-cache, **directory suites** so `jk test` is already the unit rung). The named `--guard`
-bar, guard-script stem, results Selection block, and MCP `rung` are the remaining
-execute-step work (tracked in KanArtist). The north star becomes *true* when failure
-coverage, recipe reliability, **cheap default tests**, and measured turns-to-green beat
-the incumbents — not when the README says so.
+cache, **directory suites** so `jk test` is already the unit rung, the named `--guard` bar).
+What is **not** yet real, and is ordered in [the 1.0 plan](../contributors/plan-1.0.md):
+
+- **Turns-to-green is unmeasured.** No scenario corpus, no harness, no table. The comparator
+  will be Maven and Gradle *wrapped* with a results file and MCP tools, because that is the
+  cheapest thing an incumbent could ship.
+- **Maven import is shallow.** Only the compiler plugin maps; parents, profiles, resource
+  filtering and every other plugin do not. `jk mvn` gives an agent nothing structured.
+- **IDE support is generated files.** The IntelliJ plugin is not on the Marketplace and does not
+  own the project model.
+- **Speed and memory are claims.** The wall harness compares jk with jk; the 256 MiB is heap, not
+  RSS, and worker heaps have no ceiling.
+
+The north star becomes *true* when measured turns-to-green beat the wrapped incumbents, the
+fifty-repo Maven corpus builds, and IntelliJ opens a `jk.toml` workspace with no generated
+file — not when the README says so.
 
 ---
 
@@ -303,6 +327,7 @@ build enforces it, and an agent reads the rule instead of a reviewer re-typing i
 
 ## Related
 
+- [The 1.0 plan](../contributors/plan-1.0.md) — the inner-loop priorities this page depends on
 - [Manual](manual.md)
 - [Getting started](getting-started.md)
 - [Agents](agents.md)

@@ -8,6 +8,12 @@ jk web --no-open       # print only
 The resident engine serves a small dashboard (thin renderer; the engine owns all build
 logic). `jk engine status` also prints the authenticated URL.
 
+The dashboard is the **supervisor's view**. When an agent drives the builds, the human
+watching has no terminal of their own to read; this page shows what ran, why it failed and
+how long it took, from the same facts as `target/jk-results.md` and MCP. Trigger and session
+per run, and a per-attempt view of what changed between runs, are the dashboard's items in
+[the 1.0 plan](../contributors/plan-1.0.md).
+
 The link ends in `#t=<token>`. The page stores the token in `sessionStorage` /
 `localStorage` and scrubs the fragment. Every `/api/*` call sends
 `Authorization: Bearer <token>` — including loopback. Static shell assets stay open so
