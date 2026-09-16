@@ -298,13 +298,36 @@ public final class ZincJavaCompiler {
             }
             return new Result(false, diags, javac == null ? List.of() : javac.compiledSources());
         } catch (RuntimeException e) {
-            // The class name is deliberate here and not in the IOException arm: an unexpected
-            // RuntimeException's type is the most useful thing about it.
-            String msg = e.getMessage() == null
-                    ? e.getClass().getName()
-                    : e.getClass().getName() + ": " + e.getMessage();
-            return new Result(false, List.of(new Diag("ERROR", null, 0, 0, msg)), List.of());
+            return new Result(false, List.of(new Diag("ERROR", null, 0, 0, crashed(e))), List.of());
         }
+    }
+
+    /** Frames of the compiler's own crash a diagnostic carries: enough to name the code that threw. */
+    static final int CRASH_FRAMES = 12;
+
+    /**
+     * An unexpected exception as a compile diagnostic: its class and message, each cause's, and the
+     * innermost cause's top frames. The type is the most useful thing about such a failure and the
+     * frames say whose code threw — javac's, a plugin's, a processor's or this worker's — which a
+     * bare class name cannot.
+     */
+    static String crashed(Throwable e) {
+        StringBuilder sb = new StringBuilder("the compiler worker failed: ");
+        Throwable t = e;
+        while (true) {
+            sb.append(t.getClass().getName());
+            if (t.getMessage() != null) sb.append(": ").append(t.getMessage());
+            if (t.getCause() == null || t.getCause() == t) break;
+            sb.append("\n  caused by ");
+            t = t.getCause();
+        }
+        StackTraceElement[] frames = t.getStackTrace();
+        for (int i = 0; i < Math.min(frames.length, CRASH_FRAMES); i++) {
+            sb.append("\n\tat ").append(frames[i]);
+        }
+        if (frames.length > CRASH_FRAMES)
+            sb.append("\n\t... ").append(frames.length - CRASH_FRAMES).append(" more");
+        return sb.toString();
     }
 
     /** Remove every {@code .class} file under {@code dir} (used before an analysis-less full compile). */
