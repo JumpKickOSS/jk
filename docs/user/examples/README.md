@@ -12,6 +12,7 @@ Small in-tree samples used from the user docs. Larger adopter scenarios live in
 | [workspace-showcase](workspace-showcase/) | Tiny two-module workspace |
 | [vite-sidecar](vite-sidecar/) | `jk dev` running a Vite dev server beside the JVM (`[dev.sidecars]`) |
 | [third-party-plugin](third-party-plugin/) | A build plugin compiled against the published `cc.jumpkick:jk-plugin-sdk` coordinate |
+| [openapi-spring](openapi-spring/) | `[openapi]` generating a Spring interface from a contract, implemented by a Boot controller |
 
 Each sample commits its `jk-lock.toml` (`vite-sidecar` its `web/package-lock.json` too), and the nightly builds every sample and fails if a
 build rewrote its lock — lockfile-as-law, demonstrated. A sample that uses a first-party plugin

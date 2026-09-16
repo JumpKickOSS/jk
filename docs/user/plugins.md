@@ -5,7 +5,7 @@ A **plugin** teaches JumpKick a new `jk.toml` table (`[spring-boot]`, `[quarkus]
 *what*; JumpKick owns *when* and whether work can be skipped (action cache).
 
 First-party plugins ship with JumpKick (Spring Boot, Quarkus, Grails, Micronaut, Android,
-protobuf, formatter, test-runner, publisher, image-builder, minified, auditor, …).
+protobuf, generator, openapi, formatter, test-runner, publisher, image-builder, minified, auditor, …).
 Enable them by using their table and/or a [template](templates.md).
 
 ## Batteries and their tiers
@@ -30,16 +30,19 @@ register.
 | spring-boot | `[spring-boot]`: Boot jar, platform BOM, AOT step | core | the largest server segment |
 | quarkus | `[quarkus]`: augmentation, fast-jar, native via Quarkus | core | second server segment |
 | micronaut | `[micronaut]`: platform BOM, AOT | core | third server segment; Test Resources is not part of it before 1.0 |
-| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen | core | the one generator jk owns today |
+| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen | core | the native-binary generator |
+| generator | `[generate.<name>]`: any JVM code generator as a cached generate-stage step | core | one worker behind every generator table |
+| openapi | `[openapi]`: OpenAPI Generator over a contract, interface-only Spring by default | core | most Spring services ship a contract |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
 | Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | compiles; no cross-building, Scala.js/Native or sbt parity |
 
 The next core battery is whichever step most Spring and Kotlin services touch every day —
-coverage in the results file, sources and javadoc jars, Central Portal publishing, code
-generation, lint as a cached step — in the order set by [the 1.0 plan](../contributors/plan-1.0.md).
+coverage in the results file, sources and javadoc jars, Central Portal publishing, lint as a
+cached step — in the order set by [the 1.0 plan](../contributors/plan-1.0.md).
 
-Framework how-tos: [Frameworks](frameworks.md). Format: [Format](format.md).
+Framework how-tos: [Frameworks](frameworks.md). Generators: [Generate](generate.md). Format:
+[Format](format.md).
 
 ## Third-party and vendored plugins
 
