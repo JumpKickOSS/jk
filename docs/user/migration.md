@@ -73,6 +73,32 @@ generated `jk.toml`. Making an existing Maven project work under jk — plugin-a
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
+### Where import stands on real repositories
+
+The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/corpus/maven-top20)
+in jk-examples clones the twenty most-starred GitHub repositories that build with Maven on Java 17
+or newer and drives Maven and jk through one protocol: import, lock, build, test, and the same
+cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
+lowers a count is a regression.
+
+| Count (of 20) | jk 0.13.7 | main, 2026-09-16 |
+|---|---:|---:|
+| import with no Tier-3 row | 15 | 13 |
+| `jk lock` succeeds | 2 | 6 |
+| `jk build --skip-tests` compiles something | 1 | 3 |
+| `jk test` runs and passes | 0 | 0 |
+
+The lock and build counts moved because the effective-POM import resolved every managed version;
+the import count fell because the same import now reports a parent or BOM it cannot fetch as a
+Tier-3 row where 0.13.7 wrote `=unresolved` and failed later. The one repository that runs end to
+end, TheAlgorithms/Java, runs its 9,745 tests in 13 s under jk against 37 s under Maven, with one
+jk-only failure (a recursive test that needs the platform default thread stack). The walls that
+stop the other nineteen are named in the corpus's `tier3-reasons.md`, each with its ticket: a
+project pin refused against a transitive's lower bound that Maven's nearest-wins would accept,
+reactor siblings fetched as artifacts, CI-friendly `${revision}` versions, nested aggregators, a
+Lombok on the classpath that never ran as a processor, and a lenient javadoc that still failed a
+build.
+
 ### Which Maven plugins import, and how well
 
 Counted across 66 public repositories cloned for the Maven corpus and the agent-loop corpus on
