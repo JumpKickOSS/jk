@@ -128,15 +128,23 @@ class ThirdPartyPluginExampleTest {
                     .anyMatch(n -> n.endsWith(".jk-plugin.toml"));
         }
         assertThat(run("trust", "plugin", "path:hello")).isEqualTo(0);
-        assertThat(run("build", "-C", app.toString(), "--skip-tests")).isEqualTo(0);
+        buildGreen(app, "first build");
         assertThat(app.resolve("target/lib/app-0.1.0.jar")).exists();
         // The plugin's [[contribute.compiler-args]] adds -parameters: the consumer's compile step
         // honours a path-pinned plugin's javac contribution, on the first build and on the cached
         // second one alike.
         Path appClass = app.resolve("target/classes/main/app/App.class");
         assertThat(carriesMethodParameters(appClass)).as("first build").isTrue();
-        assertThat(run("build", "-C", app.toString(), "--skip-tests")).isEqualTo(0);
+        buildGreen(app, "second build");
         assertThat(carriesMethodParameters(appClass)).as("second build").isTrue();
+    }
+
+    /** {@code jk build --skip-tests} of {@code app}, its output the message when the exit is not 0. */
+    private static void buildGreen(Path app, String which) throws Exception {
+        int[] exit = new int[1];
+        Capture.Streams streams = Capture.both(
+                (Runnable) () -> exit[0] = run("build", "--no-ansi", "-C", app.toString(), "--skip-tests"));
+        assertThat(exit[0]).as(which + ":\n" + streams.out() + streams.err()).isEqualTo(0);
     }
 
     /** javac writes the {@code MethodParameters} attribute only under {@code -parameters}. */
