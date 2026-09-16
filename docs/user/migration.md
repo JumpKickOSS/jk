@@ -110,12 +110,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | main, 2026-09-16, run 2 | main, 2026-09-16, run 3 |
-|---|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 |
-| `jk lock` succeeds | 2 | 6 | 6 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 |
-| `jk test` runs and passes | 0 | 0 | 0 |
+| Count (of 20) | jk 0.13.7 | main, run 2 | main, run 3 | main, run 4 |
+|---|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -123,12 +123,16 @@ Tier-3 row where 0.13.7 wrote `=unresolved` and failed later. Run 3 lowered it a
 reason: the packaging mapping now names a `war` module (apollo, java-design-patterns) as a Tier-3
 row instead of importing it as a jar that Maven would never have built that way. An import count
 that falls because a silent mismatch became a named one is the ratchet working; a count that falls
-because a repository stopped importing is not. The one repository that runs end to
-end, TheAlgorithms/Java, runs its 9,745 tests in 13 s under jk against 37 s under Maven, with one
-jk-only failure (a recursive test that needs the platform default thread stack). The walls that
-stop the other nineteen are named in the corpus's `tier3-reasons.md`, each with its ticket: a
-Lombok on the classpath that never ran as a processor, and a lenient javadoc that still failed a
-build.
+because a repository stopped importing is not. Run 4 (main 12de60df5, all of 2026-09-16) is the
+first with a repository green end to end: TheAlgorithms/Java runs and passes its 9,745 tests under
+jk, in 13 s against 37 s under Maven, once the test JVM kept the platform default thread stack.
+Its lock and build counts fell for a reason the table cannot show: run 3 imported dataease as one
+module of fifteen and neo4j as three of 181, and locked those fragments; run 4 imports the whole
+reactor of each (nested aggregators, CI-friendly versions, sibling edges) and the full graph hits
+two walls the fragments never reached. Both are tickets: two imported BOMs managing one artifact,
+where Maven takes the first-declared import and jk still refuses (seven repositories); and a
+workspace module's exact pin losing to a transitive's floor under the nearest policy (neo4j,
+analysis-ik). The other walls are named in the corpus's `tier3-reasons.md`, each with its ticket.
 
 ### Which Maven plugins import, and how well
 
