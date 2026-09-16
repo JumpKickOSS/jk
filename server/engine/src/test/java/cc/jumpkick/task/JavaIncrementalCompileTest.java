@@ -9,6 +9,7 @@ import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.compile.JavacFixture;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -157,6 +158,51 @@ class JavaIncrementalCompileTest {
         assertThat(p.classExists("a/B.class")).isFalse();
         assertThat(p.classExists("a/A.class")).isTrue();
         assertThat(p.classExists("a/C.class")).isTrue();
+    }
+
+    /**
+     * An edit that lands after the key hashed a source and before the worker returned: the classes
+     * on disk may come from either version, so the compile is not recorded and the next build
+     * compiles the module again — even when the file is put back to the bytes the key named.
+     */
+    @Test
+    void a_source_edited_while_the_compile_ran_is_recompiled_by_the_next_build(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        String original = "package a; public class B { public String greet() { return \"hi\"; } }";
+        p.write("a/B.java", original);
+        p.write("a/A.java", "package a; public class A { public String use() { return new B().greet(); } }");
+        Run first = p.buildEditingDuringCompile(
+                "a/B.java",
+                "package a; public class B { public String greet() { return \"hi\"; } public void bye() {} }");
+        assertThat(first.outcome).isEqualTo("compiled");
+        assertThat(first.moved).containsExactly("a/B.java");
+        assertThat(p.actionCache.lastFor("compile-main"))
+                .as("no record under a key the bytes moved from")
+                .isEmpty();
+
+        Run second = p.build();
+        assertThat(second.outcome).isEqualTo("compiled");
+        assertThat(second.compiledSources())
+                .as("a whole compile from what is on disk")
+                .contains("a/A.java", "a/B.java");
+        assertThat(second.moved).isEmpty();
+        assertThat(p.actionCache.lastFor("compile-main")).isPresent();
+        assertThat(p.build().outcome).startsWith("cache-hit");
+    }
+
+    @Test
+    void a_source_put_back_after_a_mid_compile_edit_is_still_recompiled(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        String original = "package a; public class B { public static final int X = 1; }";
+        p.write("a/B.java", original);
+        p.write("a/A.java", "package a; public class A { public static int v() { return B.X; } }");
+        p.buildEditingDuringCompile("a/B.java", "package a; public class B { public static final int X = 2; }");
+
+        p.write("a/B.java", original);
+        Run r = p.build();
+        assertThat(r.outcome).isEqualTo("compiled");
+        assertThat(r.compiledSources()).contains("a/A.java", "a/B.java");
+        assertThat(invokeStaticInt(p.out, "a.A", "v")).isEqualTo(1);
     }
 
     // ----predict dirty-reason strings for explain ----------------
@@ -328,7 +374,23 @@ class JavaIncrementalCompileTest {
             if (requireSuccess) {
                 assertThat(result.success()).as("compile succeeded").isTrue();
             }
-            return new Run(result.outcome(), relSources(result.compiledSources()));
+            return new Run(result.outcome(), relSources(result.compiledSources()), relSources(result.movedSources()));
+        }
+
+        /** Build with {@code rel} rewritten to {@code body} once the key is taken and before the worker runs. */
+        Run buildEditingDuringCompile(String rel, String body) throws IOException {
+            JavaCompile.beforeFork = () -> {
+                try {
+                    write(rel, body);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            };
+            try {
+                return build();
+            } finally {
+                JavaCompile.beforeFork = () -> {};
+            }
         }
 
         /** Build through the persist seam ({@code useCache}/{@code persist} as given). */
@@ -347,7 +409,7 @@ class JavaIncrementalCompileTest {
                     root.resolve("gen"),
                     WorkerEnv.strict());
             assertThat(result.success()).as("compile succeeded").isTrue();
-            return new Run(result.outcome(), relSources(result.compiledSources()));
+            return new Run(result.outcome(), relSources(result.compiledSources()), relSources(result.movedSources()));
         }
 
         JavaCompile.Prediction predict() throws IOException {
@@ -403,7 +465,7 @@ class JavaIncrementalCompileTest {
         }
     }
 
-    private record Run(String outcome, Set<String> compiled) {
+    private record Run(String outcome, Set<String> compiled, Set<String> moved) {
         Set<String> compiledSources() {
             return compiled;
         }

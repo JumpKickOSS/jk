@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.compile.GroovycInputs;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincInputs;
 import cc.jumpkick.compile.KotlincRequest;
@@ -12,6 +13,7 @@ import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Action-cache front for the secondary-language compiles (Kotlin, Groovy): a whole-input
@@ -32,12 +35,21 @@ public final class LangCompile {
 
     private LangCompile() {}
 
-    /** Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each. */
+    /**
+     * Outcome of a {@link #run}. {@code diagnostics} are the worker's, one entry each. {@code
+     * movedSources} are the sources whose bytes changed between the key and the worker's return:
+     * the compile is not recorded and the next build recompiles them.
+     */
     public record Result(
-            boolean success, String outcome, String actionKey, List<CompileResult.Diagnostic> diagnostics) {
+            boolean success,
+            String outcome,
+            String actionKey,
+            List<CompileResult.Diagnostic> diagnostics,
+            List<Path> movedSources) {
 
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+            movedSources = movedSources == null ? List.of() : List.copyOf(movedSources);
         }
 
         /** True when an existing record satisfied the request (no compile ran). */
@@ -117,7 +129,25 @@ public final class LangCompile {
                 actionCache,
                 // Recorded for why-rebuilt: the tokens are memoized by the key above, so a lookup each.
                 () -> ActionKey.kotlincInputs(request, snapshotter),
+                snapshot -> movedKotlinInputs(request, snapshot),
+                workingDir,
                 () -> WorkerCompileDriver.compile(request, env));
+    }
+
+    /**
+     * The Kotlin sources whose bytes, and the Java sources whose declarations, differ from the
+     * snapshot the key was taken from — what an edit landing while kotlinc ran looks like.
+     */
+    private static List<Path> movedKotlinInputs(KotlincRequest request, Map<String, String> snapshot)
+            throws IOException {
+        List<Path> moved = new ArrayList<>(ActionKey.changedSources(request.sources(), snapshot));
+        List<Path> javaSources = KotlincInputs.javaSources(request);
+        if (javaSources.isEmpty()) return moved;
+        Map<Path, String> digests = JavaSourceApi.digests(javaSources);
+        for (Path src : javaSources) {
+            if (!Objects.equals(digests.get(src), snapshot.get("java-api:" + src))) moved.add(src);
+        }
+        return moved;
     }
 
     /**
@@ -177,12 +207,18 @@ public final class LangCompile {
                 cas,
                 actionCache,
                 () -> ActionKey.snapshotInputs(request),
+                snapshot -> ActionKey.changedSources(GroovycInputs.compileSet(request), snapshot),
+                null,
                 () -> WorkerCompileDriver.compile(request, env));
     }
 
     /**
-     * The shared post-hygiene fold: prewrite the CAS while the worker runs, then judge and store.
-     * {@code inputs} is what the record remembers of the request, for {@code jk why-rebuilt}.
+     * The shared post-hygiene fold: snapshot the inputs the key hashed, prewrite the CAS while
+     * the worker runs, then judge and store. {@code inputs} is what the record remembers of the
+     * request, for {@code jk why-rebuilt}; {@code moved} names the sources whose bytes differ from
+     * that snapshot once the worker has returned. A compile with a moved source is not recorded —
+     * the key names bytes the worker may not have read — and {@code stateDir}, the incremental
+     * state that would pair the earlier hash with the later classes, is dropped.
      */
     private static Result forkAndStore(
             String taskId,
@@ -193,8 +229,11 @@ public final class LangCompile {
             Cas cas,
             ActionCache actionCache,
             Inputs inputs,
+            Moved moved,
+            @Nullable Path stateDir,
             Supplier<CompileResult> fork)
             throws IOException {
+        Map<String, String> snapshot = inputs.snapshot();
         // Stream the worker's output dir into the CAS as it's produced, then
         // snapshot the whole dir for the record.
         Files.createDirectories(outputDir);
@@ -207,29 +246,40 @@ public final class LangCompile {
             outputs = prewriter.finish();
         }
         if (!cr.success()) {
-            return new Result(false, "errors", key, cr.diagnostics());
+            return new Result(false, "errors", key, cr.diagnostics(), List.of());
         }
         // Never cache a zero-output "success" for a non-empty source set: a compiler convinced
         // nothing changed (stale incremental state) can report success over an empty output
         // dir, and caching that poisons every later run under the same key.
         if (outputs.isEmpty() && !noSources) {
-            return new Result(true, "compiled-no-outputs", key, cr.diagnostics());
+            return new Result(true, "compiled-no-outputs", key, cr.diagnostics(), List.of());
+        }
+        List<Path> movedSources = moved.since(snapshot);
+        if (!movedSources.isEmpty()) {
+            if (stateDir != null && Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+            return new Result(true, "compiled", key, cr.diagnostics(), movedSources);
         }
         // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
         // the next non-rebuild explain sees CACHE_HIT (same as JavaCompile). Only
         // ephemeral (verify-scratch) runs skip the write — their keys never recur.
-        if (persist) actionCache.storeWithOutputs(taskId, key, inputs.snapshot(), outputs);
-        return new Result(true, "compiled", key, cr.diagnostics());
+        if (persist) actionCache.storeWithOutputs(taskId, key, snapshot, outputs);
+        return new Result(true, "compiled", key, cr.diagnostics(), List.of());
     }
 
-    /** The inputs a stored record carries for {@code jk why-rebuilt}; computed only when a record is written. */
+    /** The inputs a stored record carries for {@code jk why-rebuilt}, taken before the worker reads a source. */
     @FunctionalInterface
     private interface Inputs {
         Map<String, String> snapshot() throws IOException;
     }
 
+    /** The sources whose bytes differ from a snapshot, asked once the worker has returned. */
+    @FunctionalInterface
+    private interface Moved {
+        List<Path> since(Map<String, String> snapshot) throws IOException;
+    }
+
     private static Result cacheHit(String key) {
-        return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of());
+        return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of());
     }
 
     /**

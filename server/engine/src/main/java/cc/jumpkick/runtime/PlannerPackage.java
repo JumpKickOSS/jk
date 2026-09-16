@@ -240,7 +240,8 @@ public final class PlannerPackage {
                     Path javaOut = classes; // javac always writes to java/main/
                     List<Path> sources = ctx.require(JAVA_SOURCES);
                     // The classpath lines and option digest compile-java checked — the ones its
-                    // action key hashed — so the next check compares like with like.
+                    // action key hashed — so the next check compares like with like; the stamp's
+                    // instant is the clock before that compile read its first source.
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     FreshnessStamp.write(
                             javaOut,
@@ -250,7 +251,8 @@ public final class PlannerPackage {
                             sources,
                             FreshnessStamp.ClasspathTokens.of(ctx.require(JAVA_STAMP_TOKENS)),
                             ctx.require(RELEASE),
-                            ctx.require(JAVA_STAMP_DIGEST));
+                            ctx.require(JAVA_STAMP_DIGEST),
+                            ctx.require(JAVA_STAMP_CLOCK));
                     ctx.progress(1);
                 })
                 .build();
@@ -295,7 +297,8 @@ public final class PlannerPackage {
                             freshInputs,
                             FreshnessStamp.ClasspathTokens.of(ctx.require(KOTLIN_STAMP_TOKENS)),
                             ctx.require(RELEASE),
-                            ctx.require(KOTLIN_STAMP_DIGEST));
+                            ctx.require(KOTLIN_STAMP_DIGEST),
+                            ctx.require(KOTLIN_STAMP_CLOCK));
                     ctx.progress(1);
                 })
                 .build();
@@ -331,7 +334,8 @@ public final class PlannerPackage {
                             freshInputs,
                             FreshnessStamp.ClasspathTokens.of(ctx.require(GROOVY_STAMP_TOKENS)),
                             ctx.require(RELEASE),
-                            ctx.require(GROOVY_STAMP_DIGEST));
+                            ctx.require(GROOVY_STAMP_DIGEST),
+                            ctx.require(GROOVY_STAMP_CLOCK));
                     ctx.progress(1);
                 })
                 .build();

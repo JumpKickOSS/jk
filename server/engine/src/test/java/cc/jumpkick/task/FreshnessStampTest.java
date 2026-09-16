@@ -375,6 +375,44 @@ class FreshnessStampTest {
                 .isNotEqualTo(ab);
     }
 
+    /**
+     * A stamp records the producer's read clock, not the write: a source edited between the two
+     * (while the compiler ran) is stale on the next check, and one edited before the read clock
+     * is what the compiler read and stays fresh.
+     */
+    @Test
+    void source_edited_after_the_read_clock_is_not_fresh(@TempDir Path tempDir) throws IOException {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Path settled = writeFile(tempDir.resolve("A.java"), "class A {}");
+        Path edited = writeFile(tempDir.resolve("B.java"), "class B {}");
+        long readClock = FreshnessStamp.clockNow(classes);
+        Files.setLastModifiedTime(settled, FileTime.fromMillis(readClock - 60_000));
+        // Landed while the compile ran: at the read clock, before the stamp is written.
+        Files.setLastModifiedTime(edited, FileTime.fromMillis(readClock));
+        List<Path> sources = List.of(settled, edited);
+        FreshnessStamp.write(
+                classes, BuildStamps.JAVA, "compile-main", "key123", sources, List.of(), RELEASE, DIGEST, readClock);
+
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, sources, List.of(), RELEASE, DIGEST))
+                .isFalse();
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(settled), List.of(), RELEASE, DIGEST))
+                .as("a different source set never matches")
+                .isFalse();
+
+        FreshnessStamp.write(
+                classes,
+                BuildStamps.JAVA,
+                "compile-main",
+                "key123",
+                List.of(settled),
+                List.of(),
+                RELEASE,
+                DIGEST,
+                readClock);
+        assertThat(FreshnessStamp.isFresh(classes, BuildStamps.JAVA, List.of(settled), List.of(), RELEASE, DIGEST))
+                .isTrue();
+    }
+
     private static Path writeFile(Path file, String body) throws IOException {
         Files.writeString(file, body);
         return file;

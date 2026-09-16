@@ -36,6 +36,12 @@ import org.jspecify.annotations.Nullable;
  * jar rewrite the key ignores and moves on exactly the changes that move the key; no mtime is
  * consulted for those entries. A producer picks one spelling and checks with the same one.
  *
+ * <p>A stamp's instant is the filesystem clock when its producer began reading inputs ({@link
+ * #clockNow}), not when the stamp was written: a source edited while the compiler ran carries an
+ * mtime at or after that instant and reads stale on the next check, so the classes compiled from
+ * its earlier bytes are never vouched for. Recording the write instant would let such an edit
+ * hide behind the stamp until the file was touched again.
+ *
  * <p>The stamp names and the predicate that recognises them live on the host leaf instead, where
  * the forked plugin workers that must keep stamps out of their archives can reach them.
  */
@@ -216,7 +222,29 @@ public final class FreshnessStamp {
         return Hashing.sha256Hex(String.join("\n", parts));
     }
 
-    /** Record inputs that produced {@code outputDir} so the next build can short-circuit. */
+    /**
+     * The filesystem clock under {@code dir}, in millis, read through a file created there and
+     * removed again. A producer takes it before it reads its first input and hands it to {@link
+     * #write} as the stamp's instant. The filesystem's clock rather than {@code
+     * currentTimeMillis}: input mtimes come from the former, which can lag the latter by a tick,
+     * and an edit in that lag window would otherwise read fresh.
+     */
+    public static long clockNow(Path dir) throws IOException {
+        Files.createDirectories(dir);
+        Path probe = Files.createTempFile(dir, ".clock", "");
+        try {
+            return Files.getLastModifiedTime(probe).toMillis();
+        } finally {
+            Files.deleteIfExists(probe);
+        }
+    }
+
+    /**
+     * Record inputs that produced {@code outputDir} so the next build can short-circuit. The
+     * stamp's instant is the write itself: for a producer whose inputs were read at some earlier
+     * instant, pass that instant through {@link #write(Path, String, String, String, List, List,
+     * int, String, long)}.
+     */
     public static void write(
             Path outputDir,
             String stampName,
@@ -227,7 +255,36 @@ public final class FreshnessStamp {
             int release,
             String optionsDigest)
             throws IOException {
-        write(outputDir, stampName, taskId, actionKey, sources, classpath, List.of(), release, optionsDigest);
+        write(outputDir, stampName, taskId, actionKey, sources, classpath, release, optionsDigest, Long.MAX_VALUE);
+    }
+
+    /**
+     * As {@link #write(Path, String, String, String, List, List, int, String)} with {@code
+     * readClock}, the {@link #clockNow} instant before the producer read its first input; the
+     * stamp records the earlier of it and the write, so an input edited at or after it is stale.
+     */
+    public static void write(
+            Path outputDir,
+            String stampName,
+            String taskId,
+            String actionKey,
+            List<Path> sources,
+            List<Path> classpath,
+            int release,
+            String optionsDigest,
+            long readClock)
+            throws IOException {
+        write(
+                outputDir,
+                stampName,
+                taskId,
+                actionKey,
+                sources,
+                classpath,
+                List.of(),
+                release,
+                optionsDigest,
+                readClock);
     }
 
     /** As {@link #write(Path, String, String, String, List, List, int, String)} with the classpath spelled as tokens. */
@@ -241,7 +298,35 @@ public final class FreshnessStamp {
             int release,
             String optionsDigest)
             throws IOException {
-        write(outputDir, stampName, taskId, actionKey, sources, List.of(), classpath.lines(), release, optionsDigest);
+        write(outputDir, stampName, taskId, actionKey, sources, classpath, release, optionsDigest, Long.MAX_VALUE);
+    }
+
+    /**
+     * As {@link #write(Path, String, String, String, List, ClasspathTokens, int, String)} with
+     * {@code readClock}, the {@link #clockNow} instant before the producer read its first input.
+     */
+    public static void write(
+            Path outputDir,
+            String stampName,
+            String taskId,
+            String actionKey,
+            List<Path> sources,
+            ClasspathTokens classpath,
+            int release,
+            String optionsDigest,
+            long readClock)
+            throws IOException {
+        write(
+                outputDir,
+                stampName,
+                taskId,
+                actionKey,
+                sources,
+                List.of(),
+                classpath.lines(),
+                release,
+                optionsDigest,
+                readClock);
     }
 
     private static void write(
@@ -253,18 +338,21 @@ public final class FreshnessStamp {
             List<Path> classpath,
             List<String> classpathTokens,
             int release,
-            String optionsDigest)
+            String optionsDigest,
+            long readClock)
             throws IOException {
         Files.createDirectories(outputDir);
         // Same-clock stamping: isFresh compares stampMillis against input mtimes, which come
         // from the filesystem's coarse clock — and that clock can LAG currentTimeMillis by a
         // tick. Recording wall-clock millis let an input edited in the lag window carry
         // mtime < stampMillis and read as fresh (a silently stale build). Probe the fs clock
-        // through the stamp file itself; recording at-or-before the final content write only
-        // errs toward staleness, which the action cache resolves correctly.
+        // through the stamp file itself, and take the producer's read clock when it is earlier:
+        // recording at-or-before the first input read only errs toward staleness, which the
+        // action cache resolves correctly.
         Path stampFile = outputDir.resolve(stampName);
         Files.writeString(stampFile, "", StandardCharsets.UTF_8);
-        long stampMillis = Files.getLastModifiedTime(stampFile).toMillis();
+        long stampMillis =
+                Math.min(readClock, Files.getLastModifiedTime(stampFile).toMillis());
         StringBuilder sb = new StringBuilder();
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');

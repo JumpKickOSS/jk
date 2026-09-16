@@ -700,6 +700,7 @@ public final class TestSupport {
                 gen,
                 env);
         ctx.waited(Duration.ofMillis(r.waitMillis()));
+        PlannerCompile.warnMovedSources(ctx, r.movedSources());
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.

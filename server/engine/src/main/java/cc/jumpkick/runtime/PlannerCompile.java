@@ -480,6 +480,9 @@ public final class PlannerCompile {
         Path javaStateDir = ActionTree.INCREMENTAL_JAVA
                 .under(CacheTree.ACTIONS.under(in.cache()))
                 .resolve(taskId);
+        // The stamp's instant: before the first source is hashed, so an edit landing while the
+        // compile runs is stale on the next build instead of vouched for by a later stamp.
+        ctx.put(JAVA_STAMP_CLOCK, FreshnessStamp.clockNow(javaOut));
         if (!rerun) reweightForActionCache(ctx, cx.actionCache(), taskId, request, sources.size());
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations");
         Files.createDirectories(genDir);
@@ -506,11 +509,30 @@ public final class PlannerCompile {
         ctx.put(ACTION_KEY, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
         reportJavacResult(ctx, request, r);
+        warnMovedSources(ctx, r.movedSources());
         ctx.put(BUILD_OUTCOME, r.outcome());
         ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
         advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);
         ctx.progress(sources.size());
+    }
+
+    /**
+     * A source edited while its compiler ran is named in the report: the classes may come from
+     * either version, so the compile is not recorded and the next build compiles the module again.
+     */
+    static void warnMovedSources(TaskContext ctx, List<Path> moved) {
+        if (moved.isEmpty()) return;
+        StringBuilder names = new StringBuilder();
+        for (Path p : moved) {
+            if (names.length() > 0) names.append(", ");
+            names.append(p.getFileName());
+        }
+        ctx.warn(
+                "sources-moved",
+                (moved.size() == 1 ? "a source" : moved.size() + " sources")
+                        + " changed while the compile ran (" + names
+                        + "); the compile is not cached and the next build recompiles the module");
     }
 
     /**
@@ -775,6 +797,7 @@ public final class PlannerCompile {
                         return;
                     }
                     ctx.label("compiling " + ktSources.size() + " Kotlin sources");
+                    ctx.put(KOTLIN_STAMP_CLOCK, FreshnessStamp.clockNow(classes));
                     LangCompile.Result kr = compileKotlinSources(ctx, in, actionCache, taskId, worker);
                     if (!kr.success()) {
                         PlannerSupport.forwardWorkerDiagnostics(
@@ -785,6 +808,7 @@ public final class PlannerCompile {
                         ctx.label("cache hit " + kr.actionKey().substring(0, 8));
                         ctx.cached();
                     }
+                    warnMovedSources(ctx, kr.movedSources());
                     // Kotlin-only: publish straight into the classes dir. Mixed:
                     // leave it in ktOut for `assemble-classes` to merge after javac.
                     if (!mixedWithJava) {
@@ -904,6 +928,7 @@ public final class PlannerCompile {
                         return;
                     }
                     ctx.label("compiling " + gvSources.size() + " Groovy sources");
+                    ctx.put(GROOVY_STAMP_CLOCK, FreshnessStamp.clockNow(classes));
                     String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, classes);
                     LangCompile.Result gr = compileGroovySources(ctx, in, actionCache, request, taskId);
                     if (!gr.success()) {
@@ -915,6 +940,7 @@ public final class PlannerCompile {
                         ctx.label("cache hit " + gr.actionKey().substring(0, 8));
                         ctx.cached();
                     }
+                    warnMovedSources(ctx, gr.movedSources());
                     // Groovy-only: publish straight into the classes dir. Mixed:
                     // leave it in gvOut for `assemble-classes` to merge after javac.
                     if (!mixedGroovy) {
