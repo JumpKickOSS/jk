@@ -134,8 +134,8 @@ public final class LockfileReader {
         String generatedBy = requireString(result, "generated-by");
         String resolutionAlgorithm = requireString(result, "resolution-algorithm");
         // Toolchain pins live in [jdk] / [graal] tables (not the deleted top-level jdk = string).
-        Lockfile.JdkPin jdk = toPin(tableOrFail(result, "jdk", origin), "jdk", Lockfile.JdkPin::new);
-        Lockfile.GraalPin graal = toPin(tableOrFail(result, "graal", origin), "graal", Lockfile.GraalPin::new);
+        JdkPin jdk = toPin(tableOrFail(result, "jdk", origin), "jdk", JdkPin::new);
+        GraalPin graal = toPin(tableOrFail(result, "graal", origin), "graal", GraalPin::new);
         // The jk floor: minimum jk able to run this lock. It never blocks a newer jk. Distinct from [jdk].
         String jkMin = result.getString("jk-min");
         if (jkMin != null && jkMin.isBlank()) jkMin = null;
@@ -165,7 +165,7 @@ public final class LockfileReader {
             }
         }
 
-        List<Lockfile.ModuleEntry> modules = new ArrayList<>();
+        List<ModuleEntry> modules = new ArrayList<>();
         TomlArray moduleArray = result.getArray("module");
         if (moduleArray != null) {
             for (int i = 0; i < moduleArray.size(); i++) {
@@ -187,7 +187,7 @@ public final class LockfileReader {
                         m2Table != null && m2Table.contains("integration") ? m2Table.getBoolean("integration") : null;
                 Boolean m2install =
                         m2Table != null && m2Table.contains("install") ? m2Table.getBoolean("install") : null;
-                modules.add(new Lockfile.ModuleEntry(
+                modules.add(new ModuleEntry(
                         path,
                         group,
                         name,
@@ -255,17 +255,17 @@ public final class LockfileReader {
                     + " suggestion or a pin — re-run `jk lock` to restate it as suggested-*/required-*");
         }
         T pin = factory.of(
-                Lockfile.blankToEmpty(table.getString("suggested-vendor")),
-                Lockfile.blankToEmpty(table.getString("suggested-version")),
-                Lockfile.blankToEmpty(table.getString("required-vendor")),
-                Lockfile.blankToEmpty(table.getString("required-version")));
-        if (((Lockfile.ToolchainPin) pin).isEmpty()) {
+                ToolchainPin.blankToEmpty(table.getString("suggested-vendor")),
+                ToolchainPin.blankToEmpty(table.getString("suggested-version")),
+                ToolchainPin.blankToEmpty(table.getString("required-vendor")),
+                ToolchainPin.blankToEmpty(table.getString("required-version")));
+        if (((ToolchainPin) pin).isEmpty()) {
             throw new IllegalArgumentException("[" + section + "] names no vendor or version — omit the table instead");
         }
         return pin;
     }
 
-    /** The four-argument constructor shared by {@link Lockfile.JdkPin} and {@link Lockfile.GraalPin}. */
+    /** The four-argument constructor shared by {@link JdkPin} and {@link GraalPin}. */
     private interface Pins<T> {
         T of(String suggestedVendor, String suggestedVersion, String requiredVendor, String requiredVersion);
     }

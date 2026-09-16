@@ -29,19 +29,19 @@ public record ToolchainPins(Lockfile.@Nullable JdkPin jdk, Lockfile.@Nullable Gr
             keys[FIELDS.length + i] = "graal." + FIELDS[i];
         }
         TomlScan scan = TomlScan.scanScalarHead(lockPath, keys);
-        return new ToolchainPins(pin(scan, "jdk", Lockfile.JdkPin::new), pin(scan, "graal", Lockfile.GraalPin::new));
+        return new ToolchainPins(pin(scan, "jdk", JdkPin::new), pin(scan, "graal", GraalPin::new));
     }
 
-    private static <T extends Lockfile.ToolchainPin> @Nullable T pin(TomlScan scan, String table, Pins<T> factory) {
+    private static <T extends ToolchainPin> @Nullable T pin(TomlScan scan, String table, Pins<T> factory) {
         T pin = factory.of(
-                Lockfile.blankToEmpty(scan.get(table + ".suggested-vendor")),
-                Lockfile.blankToEmpty(scan.get(table + ".suggested-version")),
-                Lockfile.blankToEmpty(scan.get(table + ".required-vendor")),
-                Lockfile.blankToEmpty(scan.get(table + ".required-version")));
+                ToolchainPin.blankToEmpty(scan.get(table + ".suggested-vendor")),
+                ToolchainPin.blankToEmpty(scan.get(table + ".suggested-version")),
+                ToolchainPin.blankToEmpty(scan.get(table + ".required-vendor")),
+                ToolchainPin.blankToEmpty(scan.get(table + ".required-version")));
         return pin.isEmpty() ? null : pin;
     }
 
-    /** The four-argument constructor shared by {@link Lockfile.JdkPin} and {@link Lockfile.GraalPin}. */
+    /** The four-argument constructor shared by {@link JdkPin} and {@link GraalPin}. */
     private interface Pins<T> {
         T of(String suggestedVendor, String suggestedVersion, String requiredVendor, String requiredVersion);
     }

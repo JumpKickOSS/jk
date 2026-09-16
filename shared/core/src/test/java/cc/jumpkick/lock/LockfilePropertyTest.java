@@ -69,10 +69,10 @@ class LockfilePropertyTest {
     Arbitrary<Lockfile> lockfiles() {
         Arbitrary<List<Lockfile.Artifact>> arts =
                 artifacts().list().ofMaxSize(6).map(LockfilePropertyTest::dedupeByName);
-        Arbitrary<Lockfile.JdkPin> jdk = Arbitraries.of(
-                new Lockfile.JdkPin("temurin", "25.0.4", "", ""),
-                new Lockfile.JdkPin("", "", "corretto", "21.0.5"),
-                new Lockfile.JdkPin("temurin", "25", "temurin", ""));
+        Arbitrary<JdkPin> jdk = Arbitraries.of(
+                new JdkPin("temurin", "25.0.4", "", ""),
+                new JdkPin("", "", "corretto", "21.0.5"),
+                new JdkPin("temurin", "25", "temurin", ""));
         Arbitrary<@Nullable String> kotlin = Arbitraries.of("2.4.10", "2.3.0").injectNull(0.6);
         Arbitrary<@Nullable String> jkMin = Arbitraries.of("0.12.0", "0.13.0").injectNull(0.5);
         Arbitrary<@Nullable String> digest = hex(64).injectNull(0.5);

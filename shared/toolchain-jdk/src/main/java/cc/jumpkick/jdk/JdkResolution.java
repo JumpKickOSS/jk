@@ -2,7 +2,7 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.discovery.ToolHealth;
-import cc.jumpkick.lock.Lockfile.JdkPin;
+import cc.jumpkick.lock.JdkPin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

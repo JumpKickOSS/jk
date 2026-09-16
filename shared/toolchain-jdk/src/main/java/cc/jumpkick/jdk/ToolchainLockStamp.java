@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.lock.GraalPin;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.ToolchainSpec;
 import java.nio.file.Path;
@@ -46,10 +48,10 @@ public final class ToolchainLockStamp {
         List<JdkHit> hits = registry.listHits();
         JdkHit javaHit = LockPinMatch.hitFor(javaHome, hits).orElse(null);
 
-        Lockfile.JdkPin jdkPin = LockPinMatch.jdkPin(jdk, javaHit, previous == null ? null : previous.jdk());
+        JdkPin jdkPin = LockPinMatch.jdkPin(jdk, javaHit, previous == null ? null : previous.jdk());
         if (!jdkPin.isEmpty()) lock = lock.withJdk(jdkPin);
 
-        Lockfile.GraalPin prevGraal = previous == null ? null : previous.graal();
+        GraalPin prevGraal = previous == null ? null : previous.graal();
         if (javaHit != null && DefaultGraalPolicy.isGraal(javaHit)) {
             return withGraal(lock, LockPinMatch.graalPin(graal, javaHit, prevGraal));
         }
@@ -60,7 +62,7 @@ public final class ToolchainLockStamp {
         return lock;
     }
 
-    private static Lockfile withGraal(Lockfile lock, Lockfile.GraalPin pin) {
+    private static Lockfile withGraal(Lockfile lock, GraalPin pin) {
         return pin.isEmpty() ? lock : lock.withGraal(pin);
     }
 }

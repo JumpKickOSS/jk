@@ -3,7 +3,7 @@ package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.model.ToolchainSpec;
 import java.nio.file.Path;
 import java.util.List;
@@ -50,7 +50,7 @@ class LockPinMatchTest {
         JdkHit older = hit("25.0.3", JdkVendor.TEMURIN);
         JdkHit exact = hit("25.0.4", JdkVendor.TEMURIN);
         JdkHit newer = hit("25.1.0", JdkVendor.TEMURIN);
-        Lockfile.JdkPin pin = new Lockfile.JdkPin("", "", "", "25.0.4");
+        JdkPin pin = new JdkPin("", "", "", "25.0.4");
         assertThat(LockPinMatch.choose(List.of(older, newer), pin)).isEmpty();
         assertThat(LockPinMatch.choose(List.of(older, exact, newer), pin)).contains(exact);
     }
@@ -59,7 +59,7 @@ class LockPinMatchTest {
     void a_required_vendor_admits_no_other_vendor() {
         JdkHit corretto = hit("25.0.9", JdkVendor.CORRETTO);
         JdkHit temurin = hit("25.0.4", JdkVendor.TEMURIN);
-        Lockfile.JdkPin pin = new Lockfile.JdkPin("", "25", "temurin", "");
+        JdkPin pin = new JdkPin("", "25", "temurin", "");
         assertThat(LockPinMatch.choose(List.of(corretto), pin)).isEmpty();
         assertThat(LockPinMatch.choose(List.of(corretto, temurin), pin)).contains(temurin);
     }
@@ -113,25 +113,25 @@ class LockPinMatchTest {
 
     @Test
     void unknown_vendor_suggestion_is_not_an_install_spec() {
-        Lockfile.JdkPin poison = Lockfile.JdkPin.suggested("nosuchvendor", "99");
+        JdkPin poison = JdkPin.suggested("nosuchvendor", "99");
         assertThat(LockPinMatch.knownVendorId("nosuchvendor")).isFalse();
         assertThat(LockPinMatch.knownVendorId("temurin")).isTrue();
         assertThat(LockPinMatch.suggestionIsInstallable(poison)).isFalse();
-        assertThat(LockPinMatch.suggestionIsInstallable(Lockfile.JdkPin.suggested("temurin", "26.0.1")))
+        assertThat(LockPinMatch.suggestionIsInstallable(JdkPin.suggested("temurin", "26.0.1")))
                 .isTrue();
-        assertThat(LockPinMatch.suggestionIsInstallable(Lockfile.JdkPin.suggested("", "25")))
+        assertThat(LockPinMatch.suggestionIsInstallable(JdkPin.suggested("", "25")))
                 .isTrue();
-        assertThat(LockPinMatch.suggestionIsInstallable(new Lockfile.JdkPin("", "", "temurin", "25.0.4")))
+        assertThat(LockPinMatch.suggestionIsInstallable(new JdkPin("", "", "temurin", "25.0.4")))
                 .isFalse();
     }
 
     @Test
     void dropped_manifest_pin_does_not_copy_an_unknown_vendor_suggestion() {
         JdkHit temurin = hit("25.0.4", JdkVendor.TEMURIN);
-        Lockfile.JdkPin poison = Lockfile.JdkPin.suggested("nosuchvendor", "99");
+        JdkPin poison = JdkPin.suggested("nosuchvendor", "99");
         assertThat(LockPinMatch.jdkPin(ToolchainSpec.NONE, temurin, poison))
-                .isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
-        Lockfile.JdkPin colleague = Lockfile.JdkPin.suggested("corretto", "25.0.1");
+                .isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
+        JdkPin colleague = JdkPin.suggested("corretto", "25.0.1");
         assertThat(LockPinMatch.jdkPin(ToolchainSpec.NONE, temurin, colleague)).isEqualTo(colleague);
     }
 

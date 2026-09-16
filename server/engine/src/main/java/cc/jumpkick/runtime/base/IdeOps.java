@@ -19,6 +19,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.jdk.StableJdkPointer;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -299,7 +300,7 @@ public final class IdeOps {
                 ? module.project().jdkMajor()
                 : module.project().javaRelease();
         int level = declared;
-        Lockfile.JdkPin lockJdk = readLockJdk(moduleDir);
+        JdkPin lockJdk = readLockJdk(moduleDir);
         Integer pinMajor = lockJdk == null ? null : JdkKeywords.leadingMajor(lockJdk.version());
         // The lock governing a member is the WORKSPACE lock, one table for every module. It names
         // the toolchain jk resolved for the build, so it fills in a level the module never declared

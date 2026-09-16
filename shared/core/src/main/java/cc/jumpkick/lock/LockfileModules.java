@@ -16,7 +16,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Captures resolved first-party project identity into {@link Lockfile.ModuleEntry} rows for
+ * Captures resolved first-party project identity into {@link ModuleEntry} rows for
  * {@code jk-lock.toml}. Inheritance ({@code *.workspace = true}) is already applied by
  * {@link WorkspaceLoader} before capture, so the lock always stores concrete values.
  */
@@ -41,7 +41,7 @@ public final class LockfileModules {
      * Resolved module pins for {@code projectDir}. Workspace → root {@code "."} plus each member
      * path; standalone → a single {@code "."} row.
      */
-    public static List<Lockfile.ModuleEntry> capture(Path projectDir) throws IOException {
+    public static List<ModuleEntry> capture(Path projectDir) throws IOException {
         Path dir = projectDir.toAbsolutePath().normalize();
         Path toml = ManifestPaths.manifestIn(dir);
         if (!Files.isRegularFile(toml)) return List.of();
@@ -65,8 +65,8 @@ public final class LockfileModules {
         return List.of(fromProject(".", parsed.project()));
     }
 
-    private static List<Lockfile.ModuleEntry> captureWorkspace(Path rootDir, JkBuild root) throws IOException {
-        List<Lockfile.ModuleEntry> out = new ArrayList<>();
+    private static List<ModuleEntry> captureWorkspace(Path rootDir, JkBuild root) throws IOException {
+        List<ModuleEntry> out = new ArrayList<>();
         out.add(fromProject(".", root.project()));
         Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(rootDir, root);
         for (var e : modules.entrySet()) {
@@ -78,14 +78,14 @@ public final class LockfileModules {
     }
 
     /** Build a lock pin from an already-resolved project (no pending workspace inherits). */
-    public static Lockfile.ModuleEntry fromProject(String path, Project p) {
+    public static ModuleEntry fromProject(String path, Project p) {
         String sources =
                 switch (p.sourcesMode()) {
                     case DISABLED -> null;
                     case PUBLISH -> "publish";
                     case ALWAYS -> "always";
                 };
-        return new Lockfile.ModuleEntry(
+        return new ModuleEntry(
                 path,
                 p.group(),
                 p.name(),

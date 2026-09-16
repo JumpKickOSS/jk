@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.lock.GraalPin;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.ToolchainPin;
 import cc.jumpkick.model.ToolchainSpec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -102,7 +105,7 @@ public final class LockPinMatch {
     }
 
     /** Best installed hit satisfying {@code pin}, or empty when nothing does and jk must install. */
-    public static Optional<JdkHit> choose(List<JdkHit> installed, Lockfile.ToolchainPin pin) {
+    public static Optional<JdkHit> choose(List<JdkHit> installed, ToolchainPin pin) {
         if (installed == null || pin == null || pin.isEmpty()) return Optional.empty();
         List<JdkHit> ok = new ArrayList<>();
         for (JdkHit h : installed) {
@@ -111,8 +114,8 @@ public final class LockPinMatch {
         return rank(ok, pin.vendor(), pin.version());
     }
 
-    /** {@link #choose(List, Lockfile.ToolchainPin)} restricted to GraalVM hits. */
-    public static Optional<JdkHit> chooseGraal(List<JdkHit> installed, Lockfile.ToolchainPin pin) {
+    /** {@link #choose(List, ToolchainPin)} restricted to GraalVM hits. */
+    public static Optional<JdkHit> chooseGraal(List<JdkHit> installed, ToolchainPin pin) {
         if (installed == null) return Optional.empty();
         List<JdkHit> graals = new ArrayList<>();
         for (JdkHit h : installed) {
@@ -122,7 +125,7 @@ public final class LockPinMatch {
     }
 
     /** True when {@code hit} meets every requirement the pin states, and clears its suggested floor. */
-    public static boolean satisfies(JdkHit hit, Lockfile.ToolchainPin pin) {
+    public static boolean satisfies(JdkHit hit, ToolchainPin pin) {
         if (hit == null) return false;
         if (!pin.requiredVendor().isEmpty() && !vendorMatches(hit.vendor(), pin.requiredVendor())) {
             return false;
@@ -153,17 +156,17 @@ public final class LockPinMatch {
     }
 
     /** The {@code [jdk]} table for {@code spec}, with blanks filled from the JDK that resolved. */
-    public static Lockfile.JdkPin jdkPin(
+    public static JdkPin jdkPin(
             @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
         String[] f = fields(spec, hit, previous);
-        return new Lockfile.JdkPin(f[0], f[1], f[2], f[3]);
+        return new JdkPin(f[0], f[1], f[2], f[3]);
     }
 
     /** The {@code [graal]} table for {@code spec}, with blanks filled from the GraalVM that resolved. */
-    public static Lockfile.GraalPin graalPin(
+    public static GraalPin graalPin(
             @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
         String[] f = fields(spec, hit, previous);
-        return new Lockfile.GraalPin(f[0], f[1], f[2], f[3]);
+        return new GraalPin(f[0], f[1], f[2], f[3]);
     }
 
     /**
@@ -226,7 +229,7 @@ public final class LockPinMatch {
     }
 
     /** Catalog/install spec for an unsatisfied pin. */
-    public static String installSpec(Lockfile.ToolchainPin pin) {
+    public static String installSpec(ToolchainPin pin) {
         if (!pin.requiredVersion().isEmpty()) {
             String v = pin.requiredVersion();
             return pin.vendor().isEmpty() ? v : pin.vendor() + "-" + v;
