@@ -150,6 +150,63 @@ class PomPluginImportTest {
         assertThat(messages(result)).noneMatch(m -> m.contains("javadoc"));
     }
 
+    /** {@code <doclint>none</doclint>} is the plugin turning doclint off: the lenient default, not strict. */
+    @Test
+    void a_javadoc_plugin_with_doclint_none_stays_lenient(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.12.0</version>
+                    <executions><execution>
+                      <phase>package</phase>
+                      <goals><goal>jar</goal></goals>
+                      <configuration><doclint>none</doclint></configuration>
+                    </execution></executions>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().project().javadocMode()).isEqualTo(JavadocMode.LENIENT);
+        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("javadoc");
+    }
+
+    @Test
+    void a_javadoc_plugin_that_keeps_doclint_on_is_strict_unless_it_never_fails(@TempDir Path tempDir)
+            throws Exception {
+        String pom = """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.12.0</version>
+                    <configuration>%s</configuration>
+                  </plugin></plugins></build>
+                </project>
+                """;
+        assertThat(importXml(tempDir.resolve("all"), pom.formatted("<doclint>all,-missing</doclint>"))
+                        .jkBuild()
+                        .project()
+                        .javadocMode())
+                .isEqualTo(JavadocMode.STRICT);
+        assertThat(importXml(
+                                tempDir.resolve("off"),
+                                pom.formatted("<doclint>all</doclint><failOnError>false</failOnError>"))
+                        .jkBuild()
+                        .project()
+                        .javadocMode())
+                .as("failOnError=false: doclint findings are printed, the build never fails on them")
+                .isEqualTo(JavadocMode.LENIENT);
+    }
+
     @Test
     void compiler_switches_become_javac_flags_once(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = importXml(tempDir, """

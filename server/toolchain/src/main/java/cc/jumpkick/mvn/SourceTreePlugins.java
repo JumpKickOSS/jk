@@ -21,8 +21,8 @@ import org.jspecify.annotations.Nullable;
  * {@code add-source} / {@code add-test-source} become {@code [build] extra-src} / {@code [test]
  * extra-src}; {@code maven-source-plugin} is {@code sources = "always"}, the sources jar Maven built
  * on every package; {@code maven-javadoc-plugin} is satisfied by the javadoc jar a library ships by
- * default, and becomes {@code javadoc = "strict"} when its configuration turns doclint on or fails
- * on error. Resource filtering has no jk equivalent, so a filtered directory is a report row, as is
+ * default, and becomes {@code javadoc = "strict"} when its configuration keeps doclint on and fails
+ * on error — {@code <doclint>none</doclint>} turns doclint off, so that plugin stays lenient. Resource filtering has no jk equivalent, so a filtered directory is a report row, as is
  * a resource directory outside the fixed layout. Everything else under {@code <build><plugins>}
  * gets the generic row.
  */
@@ -57,14 +57,22 @@ final class SourceTreePlugins {
         return new SourceTree(extraSrc, testExtraSrc, sources, javadoc);
     }
 
-    /** {@code <failOnError>true</failOnError>} or any {@code <doclint>} setting: the plugin was told to fail on a malformed comment. */
+    /**
+     * Whether the plugin was told to fail the build on a malformed comment: {@code <doclint>} set to
+     * anything but {@code none}, or {@code <failOnError>true</failOnError>}. An explicit
+     * {@code <failOnError>false</failOnError>} is lenient whatever doclint says, and
+     * {@code <doclint>none</doclint>} is the plugin turning doclint off, which is jk's default.
+     */
     private static boolean failsOnDoclint(Plugin javadoc) {
+        boolean strict = false;
         for (Xpp3Dom config : PluginFacts.configurations(javadoc)) {
             String failOnError = PluginFacts.usable(text(config.getChild("failOnError")));
-            if (failOnError != null && EnvValues.parseBool(failOnError).orElse(false)) return true;
-            if (config.getChild("doclint") != null) return true;
+            if (failOnError != null && !EnvValues.parseBool(failOnError).orElse(true)) return false;
+            if (failOnError != null && EnvValues.parseBool(failOnError).orElse(false)) strict = true;
+            String doclint = PluginFacts.usable(text(config.getChild("doclint")));
+            if (doclint != null && !"none".equalsIgnoreCase(doclint.trim())) strict = true;
         }
-        return false;
+        return strict;
     }
 
     private static @Nullable String text(@Nullable Xpp3Dom node) {

@@ -213,7 +213,7 @@ relates to the Maven one.
 | maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<argLine>` (minus `${argLine}` and the JaCoCo agent) → `[test] jvm-args`; `<systemPropertyVariables>` / `<systemProperties>` → `[test] system-properties`; `<includes>` / `<excludes>` and `skipTests` → rows (`--class`, `--skip-tests`) | exact |
 | maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` and the `<parameters>`, `<enablePreview>`, `<failOnWarning>` switches → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]`; without that element, Lombok, MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared as plain dependencies → `[processor-dependencies]` too | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
-| maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` / `<doclint>` → `javadoc = "strict"` | exact |
+| maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` or a `<doclint>` other than `none` → `javadoc = "strict"`; `<doclint>none` or `<failOnError>false` stays lenient | exact |
 | maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |
 | maven-resources-plugin | 19 | nothing to map for the fixed layout; a filtered or non-standard `<resource>` directory is a row | approximate |
 | jacoco-maven-plugin | 17 | `jk test --coverage` is a run flag, not a manifest key → row | manual |
