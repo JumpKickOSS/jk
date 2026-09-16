@@ -3,12 +3,16 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
@@ -19,7 +23,10 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Renders a {@link JkBuild} as name-as-key {@code jk.toml}. Dep keys within a scope are alphabetized.
+ * Renders a {@link JkBuild} as name-as-key {@code jk.toml}: the project block, plugin tables,
+ * application / native / manifest, the workspace, {@code [build]} / {@code [test]} source roots,
+ * {@code [javac]}, profiles, features, repositories and the dependency tables. Dep keys within a
+ * scope are alphabetized; a table whose every value is its default is not written.
  */
 public final class JkBuildRenderer {
 
@@ -34,9 +41,81 @@ public final class JkBuildRenderer {
         renderNative(sb, jkBuild.nativeConfigOpt().orElse(null));
         renderManifest(sb, jkBuild.manifest());
         renderWorkspace(sb, jkBuild);
+        renderBuild(sb, jkBuild.build());
+        renderJavac(sb, jkBuild.build().javac());
+        renderProfiles(sb, jkBuild);
+        renderFeatures(sb, jkBuild);
         renderRepositories(sb, jkBuild.repositories());
         renderDependencies(sb, jkBuild);
         return sb.toString();
+    }
+
+    /** {@code [build] extra-src} and {@code [test] extra-src} — the source roots beyond the layout's own. */
+    private static void renderBuild(StringBuilder sb, JkBuild.Build build) {
+        if (!build.extraSrc().isEmpty()) {
+            sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
+        }
+        if (!build.testExtraSrc().isEmpty()) {
+            sb.append("\n[test]\nextra-src = ")
+                    .append(list(build.testExtraSrc()))
+                    .append('\n');
+        }
+    }
+
+    /** {@code [javac]} — plugin names with their options, then verbatim args. */
+    private static void renderJavac(StringBuilder sb, JavacConfig javac) {
+        if (javac.isEmpty()) return;
+        sb.append("\n[javac]\n");
+        if (!javac.args().isEmpty())
+            sb.append("args = ").append(list(javac.args())).append('\n');
+        javac.plugins().forEach((name, options) -> {
+            sb.append("\n[javac.plugins.").append(safeKey(name)).append("]\n");
+            if (!options.isEmpty())
+                sb.append("options = ").append(list(options)).append('\n');
+        });
+    }
+
+    /** One {@code [profiles.<name>]} per profile: {@code javac}, {@code jvm-args}, tag filters when set. */
+    private static void renderProfiles(StringBuilder sb, JkBuild jkBuild) {
+        for (Profile p : jkBuild.profiles().byName().values()) {
+            sb.append("\n[profiles.").append(safeKey(p.name())).append("]\n");
+            if (p.inherits() != null)
+                sb.append("inherits = ").append(quote(p.inherits())).append('\n');
+            if (!p.javacArgs().isEmpty())
+                sb.append("javac = ").append(list(p.javacArgs())).append('\n');
+            if (!p.jvmArgs().isEmpty())
+                sb.append("jvm-args = ").append(list(p.jvmArgs())).append('\n');
+            if (p.includeTagsSet())
+                sb.append("include-tags = ").append(list(p.includeTags())).append('\n');
+            if (p.excludeTagsSet())
+                sb.append("exclude-tags = ").append(list(p.excludeTags())).append('\n');
+        }
+    }
+
+    /** {@code [features] default} when there is a default list, then one {@code [features.<name>]} per feature. */
+    private static void renderFeatures(StringBuilder sb, JkBuild jkBuild) {
+        var features = jkBuild.features();
+        if (!features.defaults().isEmpty()) {
+            sb.append("\n[features]\ndefault = ")
+                    .append(list(features.defaults()))
+                    .append('\n');
+        }
+        for (Feature f : features.byName().values()) {
+            sb.append("\n[features.").append(safeKey(f.name())).append("]\n");
+            if (!f.deps().isEmpty()) sb.append("deps = ").append(list(f.deps())).append('\n');
+            if (!f.features().isEmpty())
+                sb.append("features = ").append(list(f.features())).append('\n');
+        }
+    }
+
+    /** A TOML array of quoted strings. */
+    private static String list(List<String> values) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(quote(values.get(i)));
+        }
+        return sb.append(']').toString();
     }
 
     /** {@code [manifest]} table — custom jar-manifest attributes, in insertion order. */
@@ -61,6 +140,11 @@ public final class JkBuildRenderer {
         }
         if (p.jdk() != null) {
             sb.append("jdk      = ").append(quote(p.jdk())).append('\n');
+        }
+        if (p.sourcesMode() == SourcesMode.ALWAYS) {
+            sb.append("sources  = \"always\"\n");
+        } else if (p.sourcesMode() == SourcesMode.PUBLISH) {
+            sb.append("sources  = true\n");
         }
         if (p.isKotlin()) {
             sb.append("kotlin   = ")
@@ -222,14 +306,15 @@ public final class JkBuildRenderer {
     /** One dependency line: workspace flag, git table, or versioned table. */
     private static String renderEntry(Dependency d) {
         if (d.isWorkspace()) {
-            // Shorthand only for the default main kind; kind=tests needs a table form.
-            if (d.kind() == DependencyKind.MAIN) {
+            // Shorthand only for the default main kind; kind=tests and optional need the table form.
+            if (d.kind() == DependencyKind.MAIN && !d.optional()) {
                 return safeKey(d.library()) + ".workspace = true";
             }
-            return safeKey(d.library())
-                    + " = { workspace = true, kind = "
-                    + quote(d.kind().toml())
-                    + " }";
+            StringBuilder ws = new StringBuilder(safeKey(d.library())).append(" = { workspace = true");
+            if (d.kind() != DependencyKind.MAIN)
+                ws.append(", kind = ").append(quote(d.kind().toml()));
+            if (d.optional()) ws.append(", optional = true");
+            return ws.append(" }").toString();
         }
         StringBuilder sb = new StringBuilder();
         sb.append(safeKey(d.library())).append(" = { ");
@@ -260,6 +345,7 @@ public final class JkBuildRenderer {
                 sb.append(", kind = ").append(quote(d.kind().toml()));
             }
         }
+        if (d.optional()) sb.append(", optional = true");
         sb.append(" }");
         return sb.toString();
     }

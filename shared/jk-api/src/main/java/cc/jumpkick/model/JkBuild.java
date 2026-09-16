@@ -874,6 +874,14 @@ public record JkBuild(
             return with(f -> f.extraSrc = all);
         }
 
+        /** Append {@code dirs} to {@code [test] extra-src}. */
+        public Build withTestExtraSrc(List<String> dirs) {
+            if (dirs.isEmpty()) return this;
+            var all = new ArrayList<>(testExtraSrc);
+            all.addAll(dirs);
+            return with(f -> f.testExtraSrc = all);
+        }
+
         public Build withPlatformPolicy(PlatformPolicy policy) {
             return with(f -> f.platformPolicy = policy == null ? PlatformPolicy.ENFORCED : policy);
         }
