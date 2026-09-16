@@ -767,7 +767,8 @@ final class ModuleForecast {
                     lockFile,
                     testRt,
                     new TestStamp.CompileTestKeys(compileTestKey, compileTestKotlinKey, compileTestGroovyKey),
-                    restored.identity());
+                    restored.identity(),
+                    profileName);
             Perf.end("  test-stamp-key", ts);
             Optional<ActionCache.ActionRecord> marker =
                     stampKey == null ? Optional.empty() : TaskForecaster.presentRecord(actionCache, stampKey);

@@ -169,8 +169,11 @@ exclude-tags = ["slow", "network", "bench"]
 | Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear) |
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
-`--exclude-tags ""` is the CLI form of a clear. Suites and tags are part of the test
-stamp: changing selection re-runs tests even if sources are unchanged. A failed suite is never
+`--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
+jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning, and the
+step prints them as `test jvm-args (profile): …`; its `javac` list reaches the compiler the same
+way ([Projects](projects.md#features-profiles-variants)). Suites, tags and profile JVM args are
+part of the test stamp: changing any of them re-runs tests even if sources are unchanged. A failed suite is never
 skipped: it leaves a red marker under the same stamp, so the next run executes it again and
 `jk explain` prices it as a suite rather than as a stale stamp.
 

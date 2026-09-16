@@ -35,12 +35,14 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.GroovyToolResolver;
@@ -770,6 +772,13 @@ public final class PlannerSupport {
     /** As above with the plugin jars read through {@code identity} — see {@link #runTestsStampKey}. */
     public static List<String> testStampExtras(Path dir, JkBuild project, ClasspathFingerprint.EntryIdentity identity)
             throws IOException {
+        return testStampExtras(dir, project, null, identity);
+    }
+
+    /** As above under the named profile ({@code null} = the auto-selected one), as the live run keys it. */
+    public static List<String> testStampExtras(
+            Path dir, JkBuild project, @Nullable String profileName, ClasspathFingerprint.EntryIdentity identity)
+            throws IOException {
         // The SESSION selection, not DEFAULT: the forecast must key run-tests exactly like the
         // live run (PlannerTest feeds in.session().testSelection()), or a widened build
         // (`jk build --all`) forecasts "tests cached" off the unit-tier marker and the whole
@@ -778,8 +787,15 @@ public final class PlannerSupport {
                 testStampWorkerJars(dir, project),
                 effectiveSelection(SessionContext.current().testSelection(), dir),
                 project.build(),
+                profileJvmArgs(project, profileName),
                 dir,
                 identity);
+    }
+
+    /** The active profile's {@code jvm-args} for the forked test JVM; empty when no profile applies. */
+    static List<String> profileJvmArgs(JkBuild project, @Nullable String profileName) {
+        Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
+        return profile == null ? List.of() : profile.jvmArgs();
     }
 
     /** Lock + workspace sibling classpath the forecast uses for compile-test. */
@@ -875,6 +891,32 @@ public final class PlannerSupport {
             TestStamp.CompileTestKeys compileTestKeys,
             ClasspathFingerprint.EntryIdentity identity)
             throws IOException {
+        return runTestsStampKey(
+                dir,
+                project,
+                compact,
+                mainClasses,
+                mainClassesFingerprint,
+                lockFile,
+                testRuntimeCp,
+                compileTestKeys,
+                identity,
+                null);
+    }
+
+    /** As above under the named profile, whose {@code jvm-args} are a run-tests input. */
+    public static @Nullable String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            @Nullable String mainClassesFingerprint,
+            Path lockFile,
+            List<Path> testRuntimeCp,
+            TestStamp.CompileTestKeys compileTestKeys,
+            ClasspathFingerprint.EntryIdentity identity,
+            @Nullable String profileName)
+            throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
         // forecast's source list must cover the same files the live run stamps.
@@ -887,7 +929,8 @@ public final class PlannerSupport {
                 PlannerTest.TestSources.collect(project, dir, compact, suites).all();
         BuildLayout layout = BuildLayout.of(dir, project);
         List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
-        List<String> stampExtras = TestStamp.withCompileTest(testStampExtras(dir, project, identity), compileTestKeys);
+        List<String> stampExtras =
+                TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);
         List<Path> stampRes = ModuleLayout.suiteResourceDirs(dir, compact, suites);
         String key = TestStamp.computeKey(
                 stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampRt, stampExtras, identity);
@@ -929,10 +972,11 @@ public final class PlannerSupport {
             Map<String, String> workerJars,
             TestSelection selection,
             JkBuild.Build build,
+            List<String> jvmArgs,
             Path moduleDir,
             ClasspathFingerprint.EntryIdentity identity) {
         EnvLookup lookup = BuildEnv.lookupFor(Objects.requireNonNull(moduleDir, "moduleDir"));
-        return testStampExtras(workerJars, selection, build, SecretRedactor.from(lookup), lookup, identity);
+        return testStampExtras(workerJars, selection, build, jvmArgs, SecretRedactor.from(lookup), lookup, identity);
     }
 
     /**
@@ -943,6 +987,7 @@ public final class PlannerSupport {
             Map<String, String> workerJars,
             TestSelection selection,
             JkBuild.Build build,
+            List<String> jvmArgs,
             SecretRedactor redactor,
             EnvLookup lookup,
             ClasspathFingerprint.EntryIdentity identity) {
@@ -952,6 +997,8 @@ public final class PlannerSupport {
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // Whether the suite JVM ran with -ea decides what an `assert` did.
         extras.add("assertions:" + build.testAssertions());
+        // A profile's JVM flags change what the suite sees (-D properties, heap), so they retest.
+        if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
         // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,
         // a .env-sourced value is hashed, and an unset ${VAR} fails here exactly as it fails at
