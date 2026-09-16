@@ -50,13 +50,10 @@ public final class OfficialTemplatesFreshen {
      */
     public static void refreshQuiet(Consumer<String> log) {
         if (log == null) log = s -> {};
-        // Hygiene freshens stand down once the store was wiped — a clone landing after the wipe
-        // recreates the store the nuke reported gone. refreshNow (a real user action) still runs.
-        if (StoreWriteGate.wipedSinceStart()) return;
         try {
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
             if (!markAttempt(parse(officialRef(cfg)).cacheKey(), System.nanoTime())) return;
-            refresh(cfg, log);
+            refresh(cfg, log, true);
         } catch (Throwable t) {
             log.accept(skipped(t));
         }
@@ -71,7 +68,7 @@ public final class OfficialTemplatesFreshen {
     public static void refreshNow(Consumer<String> log) {
         if (log == null) log = s -> {};
         try {
-            refresh(JkTemplatesConfig.resolve(), log);
+            refresh(JkTemplatesConfig.resolve(), log, false);
         } catch (Throwable t) {
             log.accept(skipped(t));
         }
@@ -116,10 +113,17 @@ public final class OfficialTemplatesFreshen {
      * Freshen the official catalog plus every {@code [templates.sources]} entry. Each source is
      * independent: one failing clone (auth, typo, offline mirror) must not block the others, so
      * the first failure is rethrown only after every ref got its attempt.
+     *
+     * @param hygiene a background freshen (maintenance cycle, engine-start warmup), which stands
+     *     down once the store was wiped in this process: a clone landing after the wipe recreates
+     *     the store the nuke reported gone. Judged under the gate, so a wipe that took the gate
+     *     while this call was on its way is seen and not cloned over. A user action ({@code jk
+     *     new}) passes {@code false} and repopulates on demand.
      */
-    static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
+    static void refresh(JkTemplatesConfig config, Consumer<String> log, boolean hygiene) throws IOException {
         // Clones land inside the store — a wipe must not overlap the git subprocess.
         try (var held = StoreWriteGate.write()) {
+            if (hygiene && StoreWriteGate.wipedSinceStart()) return;
             JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
             Path cacheRoot = JkDirs.templates();
             Files.createDirectories(cacheRoot);
