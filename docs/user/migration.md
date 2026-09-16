@@ -106,6 +106,34 @@ written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that l
 profiles Maven would not activate here is a Tier-3 row, and a workspace whose modules have no
 source tree fails `jk build` with a one-line `built nothing` reason instead of finishing green.
 
+### Building a Maven repository without importing
+
+`jk build`, `jk test` and `jk explain` run in a directory that has a `pom.xml` and no `jk.toml`.
+The project model is Maven's effective POM — parents flattened, managed versions applied,
+properties interpolated — imported exactly as `jk import` imports it and rendered as a *shadow*
+manifest at `target/jk/shadow/jk.toml`, with the lock beside it at `target/jk/shadow/jk-lock.toml`.
+Nothing is written into the repository: no `jk.toml`, no `jk-lock.toml`. The shadow is a build
+artefact, rendered again whenever the POM's bytes change and gone with `jk clean`.
+
+```bash
+cd my-maven-repo          # pom.xml, src/main/java, src/test/java — no jk.toml
+jk build --skip-tests     # compiles into target/classes/main
+jk test                   # runs the JUnit suite; target/jk-results.md
+jk explain                # the same steps a jk.toml module gets
+```
+
+Resolution follows the POM: a bare version is an exact pin, a BOM import is an enforced platform,
+and the POM's direct versions win over transitive requests (`[resolve] pins = "nearest"`, the
+policy `jk import` writes). The results file's header says which mode ran — `manifest: pom.xml,
+no jk.toml (effective POM, built in place)` — so an agent reading `target/jk-results.md` knows the
+manifest it should edit is the POM.
+
+What the import report would grade Tier 3 (a `<build><extensions>` block, a `war` packaging, a
+`system`-scoped dependency, a parent no repository serves) is not an error here: the build after
+a POM change reports each row once, under Warnings, with the remedy — `jk import pom.xml` writes
+a `jk.toml` you can edit. A reactor root (a POM with `<modules>`, at the top level or in a
+profile) is refused with the same remedy: a multi-module build becomes a workspace by import.
+
 ### Where import stands on real repositories
 
 The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/corpus/maven-top20)
