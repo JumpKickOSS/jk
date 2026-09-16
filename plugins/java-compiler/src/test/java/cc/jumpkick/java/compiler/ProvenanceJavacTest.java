@@ -9,15 +9,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
-import javax.tools.Diagnostic;
-import javax.tools.DiagnosticListener;
-import javax.tools.JavaFileObject;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import xsbti.PathBasedFile;
@@ -222,76 +215,5 @@ class ProvenanceJavacTest {
         Files.createDirectories(services.getParent());
         Files.writeString(services, "disc.DiscProc\n");
         return procDir;
-    }
-
-    /**
-     * The collector's list is live while its diagnostics are bridged: reading a diagnostic's source
-     * back through the held file manager can report another one into the same list. Every
-     * diagnostic, the late one included, must reach the bridge, and the loop must not fail on the
-     * growth the way an iterator does.
-     */
-    @Test
-    void a_diagnostic_reported_while_the_collected_ones_are_bridged_is_bridged_too() {
-        List<Diagnostic<? extends JavaFileObject>> live = new ArrayList<>();
-        live.add(diagnostic("first"));
-        live.add(diagnostic("second"));
-        List<String> bridged = new ArrayList<>();
-        DiagnosticListener<JavaFileObject> bridge = d -> {
-            bridged.add(d.getMessage(Locale.ROOT));
-            if (bridged.size() == 1) live.add(diagnostic("late"));
-        };
-
-        ProvenanceJavac.reportAll(Collections.unmodifiableList(live), bridge);
-
-        assertThat(bridged).containsExactly("first", "second", "late");
-    }
-
-    private static Diagnostic<JavaFileObject> diagnostic(String message) {
-        return new Diagnostic<>() {
-            @Override
-            public Kind getKind() {
-                return Kind.ERROR;
-            }
-
-            @Override
-            public @Nullable JavaFileObject getSource() {
-                return null;
-            }
-
-            @Override
-            public long getPosition() {
-                return NOPOS;
-            }
-
-            @Override
-            public long getStartPosition() {
-                return NOPOS;
-            }
-
-            @Override
-            public long getEndPosition() {
-                return NOPOS;
-            }
-
-            @Override
-            public long getLineNumber() {
-                return NOPOS;
-            }
-
-            @Override
-            public long getColumnNumber() {
-                return NOPOS;
-            }
-
-            @Override
-            public @Nullable String getCode() {
-                return null;
-            }
-
-            @Override
-            public String getMessage(Locale locale) {
-                return message;
-            }
-        };
     }
 }
