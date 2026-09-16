@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.base.ChromeTimeline;
 import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.test.CancelledShortfall;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -588,15 +589,23 @@ public final class BuildAccumulator {
         publish = p;
     }
 
+    /**
+     * Fold one suite's counts into the record. Only tests count: the shortfall row a stopped run
+     * carries ({@link CancelledShortfall#rows}) fails the step but is no test, so it leaves
+     * {@code total} and {@code failed} here.
+     */
     public synchronized void addTests(TestSummary t) {
         if (t == null) return;
         anyFact = true;
+        long shortfall = CancelledShortfall.rows(t.failures());
+        long total = t.total() - shortfall;
+        long failed = t.failed() - shortfall;
         tests = tests == null
-                ? new BuildRecord.Tests(t.total(), t.succeeded(), t.failed(), t.skipped())
+                ? new BuildRecord.Tests(total, t.succeeded(), failed, t.skipped())
                 : new BuildRecord.Tests(
-                        tests.total() + t.total(),
+                        tests.total() + total,
                         tests.succeeded() + t.succeeded(),
-                        tests.failed() + t.failed(),
+                        tests.failed() + failed,
                         tests.skipped() + t.skipped());
     }
 
