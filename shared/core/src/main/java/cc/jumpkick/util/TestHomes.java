@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -35,10 +35,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * is <b>warm on purpose</b> — it holds a fetched store, and a per-run home would re-download every
  * dependency on every {@code jk test}.
  *
- * <p><b>Cleanup.</b> Warm is not unbounded. {@link #prepare} stamps the slot it hands out, and the
- * first call in a JVM reaps every slot not stamped within {@link #KEEP_DAYS} days, then the least
- * recently stamped slots until the root fits {@link #KEEP_BYTES} — before the run, so a project that
- * was deleted or renamed cannot leave one behind for ever. A launch marks every slot it reads with
+ * <p><b>Cleanup.</b> Warm is not unbounded. {@link #prepare} stamps the slot it hands out, and every
+ * launch reaps every slot not stamped within {@link #KEEP_DAYS} days, then the least recently
+ * stamped slots until the root fits {@link #KEEP_BYTES} — before the run, so a project that was
+ * deleted or renamed cannot leave one behind for ever, and a root that several agents' engines
+ * share reaches a steady state within one launch of a slot going stale. The pass is cheap where it
+ * can be: a launch within {@link #REAP_EVERY_MILLIS} of a pass that removed nothing and left the
+ * root under the cap skips its own. A launch marks every slot it reads with
  * a hold ({@link #hold}: a file under {@code .holds} naming its pid and start time, released when
  * the suite exits), and the reaper never removes a held slot — several gates share one machine and
  * one of them launching must not pull the dependency jars out from under another. A hold whose
@@ -75,7 +78,20 @@ public final class TestHomes {
     /** {@code <slot>/.holds/<pid>-<n>}, body {@code <pid> <start epoch millis>}: one per live launch. */
     private static final String HOLDS = ".holds";
 
-    private static final AtomicBoolean REAPED = new AtomicBoolean();
+    /** A launch this soon after a pass that found nothing to reap, under the cap, skips its own. */
+    static final long REAP_EVERY_MILLIS = 10L * 60 * 1000;
+
+    /** What one reap of a root found: when it ran, the bytes it left, how many slots it removed. */
+    record Pass(long atMillis, long bytes, int removed) {
+        /** True when the root is settled: nothing went and what stayed fits the cap. */
+        boolean quiet(long capBytes) {
+            return removed == 0 && bytes <= capBytes;
+        }
+    }
+
+    /** The last pass over each root; keyed by root because {@code JK_HOME} moves it. */
+    private static final ConcurrentHashMap<Path, Pass> PASSES = new ConcurrentHashMap<>();
+
     private static final AtomicLong HOLD_SEQ = new AtomicLong();
 
     private TestHomes() {}
@@ -105,7 +121,7 @@ public final class TestHomes {
         return slotFor(moduleDir).resolve("home");
     }
 
-    /** {@link #pathFor} with the directory created and the slot stamped, stale slots reaped once per JVM. */
+    /** {@link #pathFor} with the directory created and the slot stamped, stale slots reaped first. */
     public static Path prepare(Path moduleDir) throws IOException {
         return prepare(moduleDir, Clock.SYSTEM);
     }
@@ -122,9 +138,9 @@ public final class TestHomes {
     }
 
     /**
-     * {@code dir}'s slot, created and stamped as in use, stale slots reaped once per JVM. The
-     * workspace's shared {@code test-m2} lives in the workspace root's slot, which holds no home: it
-     * is stamped through here so the reaper reads it as a slot in use rather than as a leftover.
+     * {@code dir}'s slot, created and stamped as in use, stale slots reaped first. The workspace's
+     * shared {@code test-m2} lives in the workspace root's slot, which holds no home: it is stamped
+     * through here so the reaper reads it as a slot in use rather than as a leftover.
      */
     public static Path prepareSlot(Path dir) throws IOException {
         return prepareSlot(dir, Clock.SYSTEM);
@@ -132,13 +148,24 @@ public final class TestHomes {
 
     /** {@link #prepareSlot(Path)} against a supplied clock. */
     public static Path prepareSlot(Path dir, Clock clock) throws IOException {
-        if (REAPED.compareAndSet(false, true)) {
-            reapStale(root(), clock.millis(), KEEP_BYTES);
-        }
+        reapIfDue(root(), clock.millis(), KEEP_BYTES);
         Path slot = slotFor(dir);
         Files.createDirectories(slot);
         stamp(slot);
         return slot;
+    }
+
+    /**
+     * Reap {@code root} unless its last pass, within {@link #REAP_EVERY_MILLIS}, was quiet: the
+     * listing and sizing of every slot is what a launch on a busy machine is spared. A pass that
+     * removed something, or left the root over the cap, is followed by a full pass at the next
+     * launch. True when a pass ran.
+     */
+    static boolean reapIfDue(Path root, long nowMillis, long capBytes) {
+        Pass last = PASSES.get(root);
+        if (last != null && nowMillis - last.atMillis() < REAP_EVERY_MILLIS && last.quiet(capBytes)) return false;
+        PASSES.put(root, reapStale(root, nowMillis, capBytes));
+        return true;
     }
 
     /**
@@ -266,10 +293,10 @@ public final class TestHomes {
      * Delete every slot whose stamp is older than {@link #KEEP_DAYS} — and every entry that carries no
      * stamp at all, since nothing else writes here — then the least recently stamped survivors until
      * the rest fit {@code capBytes}. Never a slot a live launch holds, and never one stamped within
-     * {@link #HOLD_HOURS}. Returns how many were removed. Best effort: a slot another process still
-     * has open is left for the run after this one.
+     * {@link #HOLD_HOURS}. Returns the pass: how many were removed and the bytes that stayed. Best
+     * effort: a slot another process still has open is left for the run after this one.
      */
-    static int reapStale(Path root, long nowMillis, long capBytes) {
+    static Pass reapStale(Path root, long nowMillis, long capBytes) {
         long cutoff = nowMillis - KEEP_DAYS * 24L * 60 * 60 * 1000;
         long held = nowMillis - HOLD_HOURS * 60L * 60 * 1000;
         int removed = 0;
@@ -311,7 +338,7 @@ public final class TestHomes {
                 total -= slot.bytes();
             }
         }
-        return removed;
+        return new Pass(nowMillis, total, removed);
     }
 
     private static boolean delete(Path slot) {
