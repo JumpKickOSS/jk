@@ -8,12 +8,36 @@ First-party plugins ship with JumpKick (Spring Boot, Quarkus, Grails, Micronaut,
 protobuf, formatter, test-runner, publisher, image-builder, minified, auditor, …).
 Enable them by using their table and/or a [template](templates.md).
 
-Batteries come in two tiers. **Core** batteries ship with every release and are gated by the
-self-host build. **Contrib** batteries are best-effort: Android (not AGP parity) and Grails
-(tracking a milestone) are contrib. The next core battery is whichever step most Spring and
-Kotlin services touch every day — coverage in the results file, sources and javadoc jars,
-Central Portal publishing, code generation, lint as a cached step — in the order set by
-[the 1.0 plan](../contributors/plan-1.0.md).
+## Batteries and their tiers
+
+Batteries come in two tiers. **Core** batteries ship with every release, are exercised by jk's
+own self-host build, and a regression in one blocks a release. **Contrib** batteries are
+best-effort: they ship in the same binary, their tests run, but a framework release that breaks
+one does not hold jk back, and their docs say so. Nothing moves tier silently; this table is the
+register.
+
+| Battery | Owns | Tier | Why that tier |
+|---|---|---|---|
+| java-compiler | `javac` / Zinc incremental compile, annotation processors, AOT-warmed worker | core | every build |
+| kotlin-compiler | `[kotlin]`, K2, KSP, `[[kotlin-plugins]]` | core | every Kotlin build |
+| groovy-compiler | `[groovy]`, joint compilation | core | Grails and Spock paths |
+| test-runner | JUnit Platform suites, tags, profiles, `--coverage` (JaCoCo XML) | core | every `jk test` |
+| formatter | `jk format` | core | closes the agent edit loop |
+| publisher | `jk publish`: Maven layout, GPG, Sigstore, SLSA, CycloneDX/SPDX | core | the ship path for libraries |
+| image-builder | `jk image`: OCI images, JRE base, AOT cache | core | the ship path for services |
+| auditor | `jk audit` (OSV), `jk deny` | core | supply-chain defaults |
+| minified | `[minified]`: R8 classfile-mode slim jar | core | `jk native` and image size |
+| spring-boot | `[spring-boot]`: Boot jar, platform BOM, AOT step | core | the largest server segment |
+| quarkus | `[quarkus]`: augmentation, fast-jar, native via Quarkus | core | second server segment |
+| micronaut | `[micronaut]`: platform BOM, AOT | core | third server segment; Test Resources is not part of it before 1.0 |
+| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen | core | the one generator jk owns today |
+| android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
+| grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
+| Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | compiles; no cross-building, Scala.js/Native or sbt parity |
+
+The next core battery is whichever step most Spring and Kotlin services touch every day —
+coverage in the results file, sources and javadoc jars, Central Portal publishing, code
+generation, lint as a cached step — in the order set by [the 1.0 plan](../contributors/plan-1.0.md).
 
 Framework how-tos: [Frameworks](frameworks.md). Format: [Format](format.md).
 
