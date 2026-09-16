@@ -538,6 +538,7 @@ export function seedFromHistory(cards, records) {
       if (rec.projectId && !live.projectId) live.projectId = rec.projectId;
       if (rec.trigger && !live.trigger) live.trigger = rec.trigger;
       if (rec.session && !live.session) live.session = rec.session;
+      if (rec.delta && !live.delta) live.delta = rec.delta; // what changed since the run before
       if (rec.running) live.state = 'running';
       else if (live.state === 'running') {
         // The journal says this run is over: a finish frame lost to a connect/reconnect race
@@ -610,6 +611,7 @@ export function historyCard(rec) {
     projectId: rec.projectId || null,
     trigger: rec.trigger || null,
     session: rec.session || null,
+    delta: rec.delta || null, // since the previous run from the same origin (delta.js)
     state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
     startedAtClient: null,

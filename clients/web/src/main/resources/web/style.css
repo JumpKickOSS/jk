@@ -2428,6 +2428,22 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .timeline li .badge { font-size: 10.5px; padding: 2px 7px; }
 .focused-run { margin-bottom: 14px; }
 .focused-run .card-head { margin-top: 4px; }
+/* The per-iteration strip: one line of chips, counts first; click opens the rows behind them. */
+.run-delta { margin: 6px 0 4px; }
+.run-delta-strip {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px;
+  font: inherit; font-size: 12px; color: var(--mu);
+  background: none; border: 1px solid var(--bd); border-radius: var(--r-sm);
+  padding: 3px 9px; cursor: pointer; text-align: left;
+}
+.run-delta-strip:hover, .run-delta.open .run-delta-strip { border-color: var(--cn); }
+.run-delta-since { font-variant-numeric: tabular-nums; }
+.run-delta-sep { opacity: 0.5; }
+.run-delta-chip { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.run-delta-chip.good { color: var(--ok); }
+.run-delta-chip.bad { color: var(--err); }
+.run-delta-rows { list-style: none; margin: 6px 0 0 8px; padding: 0; font-size: 11.5px; color: var(--mu); }
+.run-delta-rows li { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
 table.stats.history tr.pinnable { cursor: pointer; }
 table.stats.history tr.pinnable:hover td { background: rgba(var(--cn-rgb), 0.06); }
 table.stats.history tr.pinned td { background: rgba(var(--cn-rgb), 0.12); }
