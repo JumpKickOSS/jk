@@ -60,7 +60,7 @@ public final class OutdatedPlans {
     public static OutdatedReport compute(Path dir, Path cache, @Nullable URI repoUrl) {
         LinkedHashMap<Path, JkBuild> scopes = new LinkedHashMap<>();
         try {
-            JkBuild root = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             JkBuild effectiveRoot = LockPlans.applyWorkspaceContextIfModule(dir, root);
             scopes.put(dir, effectiveRoot);
             if (effectiveRoot.isWorkspaceRoot()) {

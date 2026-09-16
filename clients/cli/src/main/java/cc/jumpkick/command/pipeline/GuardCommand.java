@@ -79,7 +79,7 @@ public final class GuardCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.isRegularFile(ManifestPaths.manifestIn(dir))) {
             CommandWedge.printFail("Guard", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }

@@ -84,7 +84,7 @@ public final class BspCommand implements CliCommand {
     }
 
     private static int install(Path projectDir) throws Exception {
-        if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
             CommandWedge.printFail("BSP", "no jk.toml in " + PathDisplay.of(projectDir));
             return Exit.CONFIG;
         }

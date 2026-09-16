@@ -109,6 +109,9 @@ public final class PlannerSetup {
                         throw e;
                     }
                     ctx.put(PROJECT, project);
+                    // A shadowed module says once, on the build after its POM changed, what the
+                    // effective POM declares that the in-place build does not carry.
+                    for (String row : ShadowManifests.drainTier3(in.dir())) ctx.warn("pom", row);
                     BuildLayout layout = BuildLayout.of(in.dir(), project);
                     ctx.put(LAYOUT, layout);
 

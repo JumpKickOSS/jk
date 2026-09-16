@@ -31,7 +31,7 @@ public final class WorkspaceArtifacts {
         for (Path moduleDir : moduleDirs) {
             Path normalDir = moduleDir.toAbsolutePath().normalize();
             if (normalDir.equals(wsRoot)) continue;
-            Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
+            Path buildFile = ManifestPaths.manifestIn(moduleDir);
             if (!Files.exists(buildFile)) continue;
             JkBuild build;
             try {

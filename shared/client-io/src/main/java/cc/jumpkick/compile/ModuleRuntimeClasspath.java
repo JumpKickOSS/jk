@@ -127,14 +127,14 @@ public final class ModuleRuntimeClasspath {
             var rootOpt = WorkspaceLocator.findRoot(moduleDir);
             if (rootOpt.isEmpty()) return List.of();
             root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+            rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
             if (!rootManifest.isWorkspaceRoot()) return List.of();
         }
         Workspace workspace = Objects.requireNonNull(rootManifest.workspace(), "workspace root without [workspace]");
         List<JkBuild> out = new ArrayList<>();
         for (String moduleName : WorkspaceModules.expand(root, workspace.modules())) {
             Path unitDir = root.resolve(moduleName);
-            Path manifest = unitDir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(unitDir);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild unit;
             try {

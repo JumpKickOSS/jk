@@ -76,7 +76,7 @@ public final class WorkspaceLock {
         }
         try {
             if (entryDir != null) {
-                Path toml = entryDir.resolve(ManifestPaths.MANIFEST);
+                Path toml = ManifestPaths.manifestIn(entryDir);
                 if (Files.isRegularFile(toml)) {
                     JkBuild b = JkBuildParser.parseLocal(toml);
                     // Workspace root: merge is done at lock time; package count from the existing

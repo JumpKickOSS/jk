@@ -61,7 +61,7 @@ public final class FormatVerb implements HostedVerb {
         Path entryDir = Path.of(spec.dir());
         JkBuild entry;
         try {
-            entry = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+            entry = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
         } catch (Exception e) {
             throw new IllegalArgumentException("cannot parse jk.toml in " + entryDir + ": " + e.getMessage());
         }

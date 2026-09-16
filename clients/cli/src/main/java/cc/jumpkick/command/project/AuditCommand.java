@@ -73,7 +73,7 @@ public final class AuditCommand implements CliCommand {
         this.osvVulnsUrl = in.value("osv-vulns-url").map(URI::create).orElse(null);
         String severity = in.value("severity").orElse("LOW");
         Path projectDir = global.workingDir();
-        if (!Files.exists(projectDir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.exists(ManifestPaths.manifestIn(projectDir))) {
             CommandWedge.printFail("Audit", "no jk.toml in " + PathDisplay.styledRaw(projectDir));
             return Exit.CONFIG;
         }

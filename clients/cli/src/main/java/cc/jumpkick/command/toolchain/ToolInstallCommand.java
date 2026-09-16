@@ -176,7 +176,7 @@ public final class ToolInstallCommand implements CliCommand {
 
         Path base = global.workingDir();
         if (in.positionals().isEmpty()) {
-            if (Files.isRegularFile(base.resolve(ManifestPaths.MANIFEST))) {
+            if (Files.isRegularFile(ManifestPaths.manifestIn(base))) {
                 return appInstallDelegate().runProjectInstallBuildPlan(base);
             }
             CommandWedge.printFail(
@@ -294,7 +294,7 @@ public final class ToolInstallCommand implements CliCommand {
         }
         if (classified instanceof ToolTarget.Directory dir) {
             Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
-            if (!Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
+            if (!Files.isRegularFile(ManifestPaths.manifestIn(projectDir))) {
                 CommandWedge.printFail(
                         "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project.");
                 return Exit.CONFIG;

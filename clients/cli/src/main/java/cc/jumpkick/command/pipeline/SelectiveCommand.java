@@ -344,7 +344,7 @@ public final class SelectiveCommand implements CliCommand {
     static String fingerprintModule(Path moduleDir) throws Exception {
         MessageDigest md = Hashing.newSha256();
         List<Path> files = new ArrayList<>();
-        Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(moduleDir);
         if (Files.isRegularFile(toml)) files.add(toml);
         Path src = moduleDir.resolve("src");
         if (Files.isDirectory(src)) {

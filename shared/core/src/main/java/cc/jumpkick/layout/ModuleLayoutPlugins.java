@@ -16,7 +16,7 @@ public final class ModuleLayoutPlugins {
     private ModuleLayoutPlugins() {}
 
     public static List<ModuleLayout.Root> pluginContributedRoots(Path moduleDir) {
-        Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(moduleDir);
         if (!Files.isRegularFile(toml)) return List.of();
         try {
             JkBuild build = JkBuildParser.parse(toml);

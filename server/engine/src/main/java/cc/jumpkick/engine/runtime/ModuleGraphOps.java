@@ -29,7 +29,7 @@ public final class ModuleGraphOps {
                     + String.join(" | ", ModuleDotGraph.FORMATS) + ")");
         }
         Path root = startDir.toAbsolutePath().normalize();
-        Path buildFile = root.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(root);
         try {
             JkBuild entry = JkBuildParser.parse(buildFile);
             String graph;

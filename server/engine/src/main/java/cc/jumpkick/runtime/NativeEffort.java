@@ -133,7 +133,7 @@ public final class NativeEffort {
     private static InputSplit splitInputs(Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return new InputSplit(0, 0);
         try {
-            JkBuild project = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir));
             BuildLayout layout = BuildLayout.of(moduleDir, project);
             long app = 0;
             Path mainJar = layout.mainJar();

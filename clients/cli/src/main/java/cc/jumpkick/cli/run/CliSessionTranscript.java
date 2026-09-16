@@ -243,7 +243,7 @@ public final class CliSessionTranscript {
      */
     private static String coordOf(Path dir) {
         try {
-            TomlScan scan = TomlScan.scan(dir.resolve(ManifestPaths.MANIFEST), "group", "name");
+            TomlScan scan = TomlScan.scan(ManifestPaths.manifestIn(dir), "group", "name");
             String group = scan.get("group");
             String name = scan.get("name");
             if (group != null && !group.isBlank() && name != null && !name.isBlank()) {

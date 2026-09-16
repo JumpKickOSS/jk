@@ -79,7 +79,7 @@ public final class WorkspaceLoader {
             Path dir = workspaceRoot.toAbsolutePath().normalize();
             try {
                 BasicFileAttributes attrs =
-                        Files.readAttributes(dir.resolve(ManifestPaths.MANIFEST), BasicFileAttributes.class);
+                        Files.readAttributes(ManifestPaths.manifestIn(dir), BasicFileAttributes.class);
                 return new MemoKey(
                         dir,
                         attrs.size(),
@@ -104,7 +104,7 @@ public final class WorkspaceLoader {
         List<String> bad = new ArrayList<>();
         for (String module : WorkspaceModules.expand(workspaceRoot, root.workspaceModules())) {
             Path moduleDir = workspaceRoot.resolve(module).normalize();
-            Path moduleJkToml = moduleDir.resolve(ManifestPaths.MANIFEST);
+            Path moduleJkToml = ManifestPaths.manifestIn(moduleDir);
             if (!Files.exists(moduleJkToml)) {
                 bad.add(module);
                 continue;

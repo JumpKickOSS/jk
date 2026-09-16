@@ -183,7 +183,7 @@ public final class DependencyGraphModel {
         List<Scope> scopeList = scopes == null || scopes.isEmpty() ? defaultScopes() : List.copyOf(scopes);
         List<String> scopeNames = scopeList.stream().map(Scope::canonical).toList();
         Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = root.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(toml)) {
             return Graph.empty(scopeNames, transitive);
         }
@@ -220,7 +220,7 @@ public final class DependencyGraphModel {
         try {
             Path wsRoot = WorkspaceLocator.findRoot(dir).orElse(null);
             if (wsRoot != null) {
-                JkBuild rootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+                JkBuild rootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
                 for (var e : WorkspaceLoader.loadModules(wsRoot, rootBuild).entrySet()) {
                     Path modDir = e.getKey().toAbsolutePath().normalize();
                     if (modDir.equals(dir)) continue;

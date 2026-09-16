@@ -70,7 +70,7 @@ public final class BuildLogicToml {
         if (projectDir == null) return Optional.empty();
         Path root = projectDir.toAbsolutePath().normalize();
         rejectRetiredDirs(root);
-        TomlScan scan = TomlScan.scan(root.resolve(ManifestPaths.MANIFEST), LOGIC);
+        TomlScan scan = TomlScan.scan(ManifestPaths.manifestIn(root), LOGIC);
 
         String declared = scan.get(LOGIC);
         if (declared != null && !declared.isBlank()) {

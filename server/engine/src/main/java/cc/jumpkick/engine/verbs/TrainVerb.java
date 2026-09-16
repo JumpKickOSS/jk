@@ -60,7 +60,7 @@ public final class TrainVerb implements HostedVerb {
                 Path jdksDir = jdksDirStr != null && !jdksDirStr.isBlank() ? Path.of(jdksDirStr) : null;
                 Path javaHome = Path.of(System.getProperty("java.home"));
                 BuildPlan plan = SessionContext.where(session, () -> {
-                    JkBuild module = JkBuildParser.parse(session.workingDir().resolve(ManifestPaths.MANIFEST));
+                    JkBuild module = JkBuildParser.parse(ManifestPaths.manifestIn(session.workingDir()));
                     return TrainPlans.moduleBuildPlan(
                             session.workingDir(),
                             module,

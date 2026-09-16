@@ -494,7 +494,7 @@ public final class LockPlans {
             var rootOpt = WorkspaceLocator.findRoot(dir);
             if (rootOpt.isEmpty()) return Variants.unionDependencies(project);
             Path wsRoot = rootOpt.get();
-            JkBuild wsRootBuild = JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+            JkBuild wsRootBuild = JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
             if (!wsRootBuild.isWorkspaceRoot()) return Variants.unionDependencies(project);
             var siblings = WorkspaceLoader.loadModules(wsRoot, wsRootBuild);
             return WorkspaceMerge.applyToModule(wsRootBuild, project, siblings.values());
@@ -519,12 +519,12 @@ public final class LockPlans {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
         LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
-        JkBuild root = JkBuildParser.parse(entryDir.resolve(ManifestPaths.MANIFEST));
+        JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(entryDir));
         if (root.isWorkspaceRoot()) return workspaceScope(entryDir, root);
         var rootOpt = WorkspaceLocator.findRoot(entryDir);
         if (rootOpt.isPresent()) {
             Path wsRoot = rootOpt.get();
-            return workspaceScope(wsRoot, JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST)));
+            return workspaceScope(wsRoot, JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot)));
         }
         // Standalone: variant dep overlays union here (workspace scopes union inside WorkspaceMerge).
         JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);

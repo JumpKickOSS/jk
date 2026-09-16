@@ -29,7 +29,7 @@ public final class CompilePlans {
             @Nullable String profileName,
             boolean verbose,
             @Nullable UnaryOperator<BuildPlanner.Inputs> decorate) {
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(dir);
         Path lockFile = LockPaths.lockFile(dir);
         BuildPlanner.Inputs inputs = new BuildPlanner.Inputs(
                 dir,

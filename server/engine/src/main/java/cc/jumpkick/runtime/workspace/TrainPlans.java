@@ -40,7 +40,7 @@ public final class TrainPlans {
             boolean force,
             boolean skipTests,
             boolean verbose) {
-        Path buildFile = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(moduleDir);
         Path lockFile = LockPaths.lockFile(moduleDir);
         boolean compact = ModuleLayout.isCompact(moduleDir);
         int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);
@@ -87,7 +87,7 @@ public final class TrainPlans {
                     Path moduleJdk = ctx.get(BuildPlanner.JAVA_HOME).orElse(javaHome);
                     TrainConfig config;
                     try {
-                        config = JkBuildParser.trainConfig(moduleDir.resolve(ManifestPaths.MANIFEST));
+                        config = JkBuildParser.trainConfig(ManifestPaths.manifestIn(moduleDir));
                     } catch (Exception e) {
                         throw new RuntimeException("invalid [train] config: " + e.getMessage(), e);
                     }

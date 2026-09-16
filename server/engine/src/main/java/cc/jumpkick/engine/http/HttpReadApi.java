@@ -173,7 +173,7 @@ final class HttpReadApi {
                 JsonOut.object()
                         .put("dir", dir.toString())
                         .put("parent", parent != null ? parent.toString() : null)
-                        .put("hasJkToml", Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST)))
+                        .put("hasJkToml", Files.isRegularFile(ManifestPaths.manifestIn(dir)))
                         .put("truncated", truncated)
                         .putStrings("dirs", subdirs)
                         .toString());

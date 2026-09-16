@@ -535,7 +535,7 @@ final class ModuleForecast {
 
         producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
         try {
-            var img = JkBuildParser.imageConfig(dir.resolve(ManifestPaths.MANIFEST));
+            var img = JkBuildParser.imageConfig(ManifestPaths.manifestIn(dir));
             producesImage = img.base() != null || img.registry() != null;
         } catch (Exception e) {
             Log.debug("compileGroovy: Exception ignored", e);

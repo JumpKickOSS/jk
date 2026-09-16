@@ -58,7 +58,7 @@ public final class WorkspaceResolve {
             JkBuild root;
             try {
                 // parseLocal for the root — parse() would re-enter applyWorkspace.
-                root = JkBuildParser.parseLocal(rootDir.get().resolve(ManifestPaths.MANIFEST));
+                root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(rootDir.get()));
             } catch (JkBuildParseException e) {
                 if (module.project().inheritsFromWorkspace()
                         || module.project().requiresWorkspaceRoot()
@@ -107,7 +107,7 @@ public final class WorkspaceResolve {
         try {
             var rootDir = WorkspaceLocator.findRoot(moduleDir);
             if (rootDir.isEmpty()) return Set.of();
-            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve(ManifestPaths.MANIFEST));
+            JkBuild root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(rootDir.get()));
             if (!root.isWorkspaceRoot()) return Set.of();
             Set<String> out = new LinkedHashSet<>();
             out.add(root.project().group() + ":" + root.project().name());
@@ -136,7 +136,7 @@ public final class WorkspaceResolve {
         try {
             var rootDir = WorkspaceLocator.findRoot(moduleDir);
             if (rootDir.isEmpty()) return Map.of();
-            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve(ManifestPaths.MANIFEST));
+            JkBuild root = JkBuildParser.parseLocal(ManifestPaths.manifestIn(rootDir.get()));
             if (!root.isWorkspaceRoot()) return Map.of();
             Map<String, JkBuild> out = new LinkedHashMap<>();
             index(out, root);

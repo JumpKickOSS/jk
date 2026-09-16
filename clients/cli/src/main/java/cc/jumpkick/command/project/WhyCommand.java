@@ -45,7 +45,7 @@ public final class WhyCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir();
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(dir);
         if (!Files.exists(buildFile)) {
             CommandWedge.printFail("Why", "project must have jk.toml (run `jk init` first)");
             return Exit.CONFIG;

@@ -79,7 +79,7 @@ public final class GuardFixtures {
     public static Result run(Path root, Cas cas) throws IOException {
         GuardsConfig cfg;
         try {
-            cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
         } catch (RuntimeException e) {
             cfg = GuardsConfig.ABSENT;
         }
@@ -365,7 +365,7 @@ public final class GuardFixtures {
             throws IOException {
         Path idx = work.resolve("main-guard.idx");
         FactsFormat.write(idx, slice);
-        JkBuild build = JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST));
+        JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir));
         BuildLayout layout = BuildLayout.of(moduleDir, build);
         Path lockFile = root.resolve(ManifestPaths.LOCK);
         Lockfile lock = Files.isRegularFile(lockFile) ? LockfileReader.read(lockFile) : null;
@@ -408,7 +408,7 @@ public final class GuardFixtures {
     /** The owning module's main compile classpath plus its own classes; empty when nothing is locked yet. */
     static List<Path> compileClasspath(Path root, Path moduleDir, Cas cas) throws IOException {
         List<Path> cp = new ArrayList<>();
-        Path manifest = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(moduleDir);
         if (!Files.isRegularFile(manifest)) return cp;
         JkBuild build = JkBuildParser.parse(manifest);
         cp.add(BuildLayout.of(moduleDir, build).classesDir());

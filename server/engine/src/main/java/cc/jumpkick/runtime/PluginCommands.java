@@ -51,7 +51,7 @@ public final class PluginCommands {
             String variant,
             Map<String, String> clientEnv) {
         try {
-            Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+            Path buildFile = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(buildFile)) return PluginCommandReport.notFound();
             JkBuild project = JkBuildParser.parse(buildFile);
             if (!project.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(dir, cache)) {

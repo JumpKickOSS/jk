@@ -113,7 +113,7 @@ final class PlannerGuards {
         boolean rulesFile = Files.exists(GuardsPresence.rulesFile(root));
         GuardsConfig cfg;
         try {
-            cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
         } catch (RuntimeException unparseable) {
             // parse-build reports the manifest error; the rule file alone still enables the lanes.
             cfg = GuardsConfig.ABSENT;
@@ -129,7 +129,7 @@ final class PlannerGuards {
      */
     static boolean guardSuiteSeen(Path root) {
         if (TestSuites.hasGuardSuite(root, ModuleLayout.isCompact(root))) return true;
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return false;
         try {
             JkBuild build = JkBuildParser.parse(manifest);
@@ -148,7 +148,7 @@ final class PlannerGuards {
     static boolean enabledAt(Path root) {
         if (Files.exists(GuardsPresence.rulesFile(root)) || guardSuiteSeen(root)) return true;
         try {
-            return JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST))
+            return JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root))
                     .declared();
         } catch (RuntimeException unparseable) {
             return false;
@@ -419,7 +419,7 @@ final class PlannerGuards {
                     JkBuild rootBuild = ctx.get(PROJECT).orElse(null);
                     List<String> tokens = rootBuild == null
                             ? new ArrayList<>(List.of(
-                                    GuardKeys.fileToken("manifest", g.root().resolve(ManifestPaths.MANIFEST))))
+                                    GuardKeys.fileToken("manifest", ManifestPaths.manifestIn(g.root()))))
                             : GuardKeys.modelTokens(g.root(), rootBuild);
                     EvalContext ectx =
                             new EvalContext(Lane.MODEL, g.root(), "", null, modules, noFacts(), () -> null, List::of);
@@ -776,7 +776,7 @@ final class PlannerGuards {
     /** {@code [test] coverage = true} in the module's manifest; an unparseable manifest reads as false. */
     private static boolean declaresCoverage(Path moduleDir) {
         try {
-            return JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST))
+            return JkBuildParser.parse(ManifestPaths.manifestIn(moduleDir))
                     .build()
                     .testCoverage();
         } catch (Exception e) {
@@ -943,7 +943,7 @@ final class PlannerGuards {
      */
     private static List<Path> workspaceModuleDirs(Path root, @Nullable JkBuild project) {
         if (project != null && project.workspace() != null) return moduleDirs(root, project);
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return List.of();
         try {
             return moduleDirs(root, JkBuildParser.parse(manifest));

@@ -95,7 +95,7 @@ public final class McpResources {
         if (id != null && id.isEmpty()) throw new McpError(-32602, "jk://guards/<id> needs a rule id");
         GuardsConfig cfg;
         try {
-            cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
         } catch (RuntimeException unparseable) {
             cfg = GuardsConfig.ABSENT;
         }

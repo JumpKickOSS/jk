@@ -79,7 +79,7 @@ public final class OutdatedCommand implements CliCommand {
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
-        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) {
+        if (!Files.exists(ManifestPaths.manifestIn(dir))) {
             CommandWedge.printFail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir));
             return Exit.CONFIG;
         }

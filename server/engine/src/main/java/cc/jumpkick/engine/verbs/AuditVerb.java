@@ -90,7 +90,7 @@ public final class AuditVerb implements HostedVerb {
      * the standalone project's. None when that manifest is absent (a bare lock still audits).
      */
     private static List<JkBuild.AuditIgnore> auditIgnores(Path entryDir) throws IOException {
-        Path manifest = LockPaths.lockOwnerDir(entryDir).resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(LockPaths.lockOwnerDir(entryDir));
         if (!Files.isRegularFile(manifest)) return List.of();
         return JkBuildParser.parse(manifest).build().auditIgnores();
     }

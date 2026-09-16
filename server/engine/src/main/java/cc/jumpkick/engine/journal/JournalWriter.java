@@ -88,7 +88,7 @@ public final class JournalWriter {
     /** {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout. */
     public static @Nullable String coordOf(String dir) {
         try {
-            var project = JkBuildParser.parse(Path.of(dir).resolve(ManifestPaths.MANIFEST))
+            var project = JkBuildParser.parse(ManifestPaths.manifestIn(Path.of(dir)))
                     .project();
             return project.group() + ":" + project.name();
         } catch (Exception e) {

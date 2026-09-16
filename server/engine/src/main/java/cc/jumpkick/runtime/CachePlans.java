@@ -322,7 +322,7 @@ public final class CachePlans {
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         dirs.add(here);
         try {
-            JkBuild manifest = JkBuildParser.parse(here.resolve(ManifestPaths.MANIFEST));
+            JkBuild manifest = JkBuildParser.parse(ManifestPaths.manifestIn(here));
             Path wsRoot = manifest.isWorkspaceRoot()
                     ? here
                     : WorkspaceLocator.findRoot(here).orElse(null);
@@ -334,7 +334,7 @@ public final class CachePlans {
                 }
                 dirs.add(wsRoot);
                 JkBuild root =
-                        wsRoot.equals(here) ? manifest : JkBuildParser.parse(wsRoot.resolve(ManifestPaths.MANIFEST));
+                        wsRoot.equals(here) ? manifest : JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
                 for (String module : root.workspaceOpt().map(Workspace::modules).orElse(List.of())) {
                     Path mod = wsRoot.resolve(module).normalize();
                     try {
@@ -359,7 +359,7 @@ public final class CachePlans {
         for (Path dir : moduleDirs) {
             JkBuild project;
             try {
-                project = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             } catch (Exception e) {
                 continue; // no/invalid manifest here — nothing to tag
             }

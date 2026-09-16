@@ -50,7 +50,7 @@ public record ProjectCard(
         String jdk = null;
         List<Member> members = List.of();
         try {
-            JkBuild build = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+            JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(root));
             var p = build.project();
             coord = p.group() + ":" + p.name();
             description = p.description();
@@ -80,7 +80,7 @@ public record ProjectCard(
             Path moduleDir = root.resolve(rel).normalize();
             String coord = null;
             try {
-                var p = JkBuildParser.parseLocal(moduleDir.resolve(ManifestPaths.MANIFEST))
+                var p = JkBuildParser.parseLocal(ManifestPaths.manifestIn(moduleDir))
                         .project();
                 coord = p.group() + ":" + p.name();
             } catch (Exception e) {

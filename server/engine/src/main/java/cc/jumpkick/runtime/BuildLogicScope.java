@@ -78,7 +78,7 @@ public enum BuildLogicScope {
     public static BuildLogicScope of(Path projectDir) {
         Path dir = projectDir.toAbsolutePath().normalize();
         if (WorkspaceScan.findRoot(dir).isPresent()) return MEMBER;
-        boolean declaresWorkspace = TomlScan.scan(dir.resolve(ManifestPaths.MANIFEST), "workspace.modules")
+        boolean declaresWorkspace = TomlScan.scan(ManifestPaths.manifestIn(dir), "workspace.modules")
                 .hasSection("workspace");
         if (declaresWorkspace && !CompileSupport.hasSources(dir)) return WORKSPACE_ROOT;
         return STANDALONE;

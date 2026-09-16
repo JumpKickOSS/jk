@@ -113,7 +113,7 @@ public final class ModuleDotGraph {
     public static GraphData forProjectDir(Path projectDir) {
         Objects.requireNonNull(projectDir, "projectDir");
         Path root = projectDir.toAbsolutePath().normalize();
-        Path toml = root.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(toml)) {
             return GraphData.empty(false);
         }

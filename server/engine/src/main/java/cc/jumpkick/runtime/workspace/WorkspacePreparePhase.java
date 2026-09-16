@@ -212,7 +212,7 @@ final class WorkspacePreparePhase {
             boolean forceRebuild,
             SiblingArtifacts.Gate siblings) {
         Path dir = unit.dir();
-        if (!Files.exists(dir.resolve(ManifestPaths.MANIFEST))) return null;
+        if (!Files.exists(ManifestPaths.manifestIn(dir))) return null;
         BuildPlan plan = assemblePlan(unit, request, moduleDirs, forceRebuild, jarConsumed, siblings);
         // One evaluation serves prepare and run: each step keeps its estimate and the run sizes
         // the bar from it. The run evaluates under over-reserve, so the estimate is taken under

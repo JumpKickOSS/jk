@@ -87,7 +87,7 @@ public final class StatusCommand implements CliCommand {
         CacheSnapshot cache = null;
 
         // Fresh lock before forecast / module pins — never make the user run `jk lock` for status.
-        if (!globalOnly && Files.isRegularFile(cwd.resolve(ManifestPaths.MANIFEST))) {
+        if (!globalOnly && Files.isRegularFile(ManifestPaths.manifestIn(cwd))) {
             int lockCode = EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
             if (lockCode != 0) return lockCode;
         }
@@ -442,7 +442,7 @@ public final class StatusCommand implements CliCommand {
             long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
 
     private static @Nullable ProjectSnapshot loadProject(Path cwd) {
-        Path buildFile = cwd.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(cwd);
         if (!Files.isRegularFile(buildFile)) return null;
         try {
             var info = ProjectInfos.orNull(cwd, true);

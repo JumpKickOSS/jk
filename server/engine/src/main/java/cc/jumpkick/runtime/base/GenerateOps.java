@@ -139,7 +139,7 @@ public final class GenerateOps {
 
     /** The export view: parsed root (+ workspace modules) and merged locked versions. */
     private static Loaded load(Path dir) throws IOException {
-        Path toml = dir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(dir);
         if (!Files.exists(toml)) {
             throw new IOException("no jk.toml in " + dir);
         }

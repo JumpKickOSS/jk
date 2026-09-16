@@ -309,7 +309,7 @@ public final class SyncPlans {
                     ctx.label("sync plugins");
                     Cas cas = JkStores.storeCas();
                     JkBuild build = ctx.get(BUILD).orElse(null);
-                    if (build == null) build = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                    if (build == null) build = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
                     RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
                     syncPluginEntries(ctx, dir, build, pluginEntries, repos, cas);
                     // Extract the fetched jars' manifests so the very next parse validates
@@ -486,7 +486,7 @@ public final class SyncPlans {
         if (pin == null) return;
         ctx.label("sync reachability metadata " + pin.version());
         try {
-            JkBuild project = build != null ? build : JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+            JkBuild project = build != null ? build : JkBuildParser.parse(ManifestPaths.manifestIn(dir));
             ReachabilityMetadata.ensureExtracted(
                     JkStores.store(), RepoGroupBuilder.buildFor(project, repoUrl, cas), pin);
         } catch (IOException | RuntimeException e) {
@@ -514,7 +514,7 @@ public final class SyncPlans {
 
     /** Parse {@code dir/jk.toml} if it exists and is valid; {@code null} otherwise. */
     public static @Nullable JkBuild parseBuildIfPresent(Path dir) {
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(dir);
         if (!Files.exists(buildFile)) return null;
         try {
             return JkBuildParser.parse(buildFile);

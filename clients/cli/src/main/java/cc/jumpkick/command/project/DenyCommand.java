@@ -47,7 +47,7 @@ public final class DenyCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         Path projectDir = global.workingDir();
-        Path jkBuild = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path jkBuild = ManifestPaths.manifestIn(projectDir);
         if (!Files.exists(jkBuild)) {
             CommandWedge.printFail("Deny", jkBuild + " not found.");
             return Exit.NO_INPUT;

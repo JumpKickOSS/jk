@@ -405,7 +405,7 @@ public final class TaskForecaster {
             boolean verbose,
             Set<Path> projectModules,
             boolean testOnly) {
-        Path buildFile = dir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(dir);
         Path lockFile = LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;

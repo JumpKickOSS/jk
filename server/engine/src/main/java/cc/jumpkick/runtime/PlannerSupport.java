@@ -336,11 +336,11 @@ public final class PlannerSupport {
         var rootOpt = WorkspaceLocator.findRoot(moduleDir);
         if (rootOpt.isEmpty()) return out;
         Path root = rootOpt.get();
-        JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         if (!rootManifest.isWorkspaceRoot()) return out;
         for (String module : rootManifest.workspaceModules()) {
             Path dir = root.resolve(module);
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             JkBuild sib;
             try {
@@ -520,10 +520,10 @@ public final class PlannerSupport {
         var rootOpt = WorkspaceLocator.findRoot(moduleDir);
         if (rootOpt.isEmpty()) return out;
         Path root = rootOpt.get();
-        JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         if (!rootManifest.isWorkspaceRoot()) return out;
         for (String module : rootManifest.workspaceModules()) {
-            Path manifest = root.resolve(module).resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(root.resolve(module));
             if (!Files.exists(manifest)) continue;
             JkBuild sib;
             try {
@@ -540,10 +540,10 @@ public final class PlannerSupport {
     /** The directory a sibling manifest was parsed from, found again by its declared module path. */
     private static Path siblingDir(Path moduleDir, JkBuild sibling) throws IOException {
         Path root = WorkspaceLocator.findRoot(moduleDir).orElseThrow();
-        JkBuild rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         for (String module : rootManifest.workspaceModules()) {
             Path dir = root.resolve(module);
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.exists(manifest)) continue;
             try {
                 JkBuild sib = JkBuildParser.parse(manifest);
@@ -731,7 +731,7 @@ public final class PlannerSupport {
         // be an explicit clear ([profiles.x] exclude-tags = []) and must stay empty.
         if (sel.tagsResolved()) return sel;
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        var fromToml = JkBuildParser.parseTestTags(moduleDir.resolve(ManifestPaths.MANIFEST));
+        var fromToml = JkBuildParser.parseTestTags(ManifestPaths.manifestIn(moduleDir));
         if (fromToml.isEmpty()) return sel;
         return TestSelection.of(
                 sel.suites(),
@@ -1067,7 +1067,7 @@ public final class PlannerSupport {
             var rootOpt = WorkspaceLocator.findRoot(moduleDir);
             if (rootOpt.isEmpty()) return List.of();
             root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve(ManifestPaths.MANIFEST));
+            rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
         } catch (IOException | RuntimeException e) {
             return List.of();
         }
@@ -1077,7 +1077,7 @@ public final class PlannerSupport {
         Map<Path, JkBuild> byDir = new LinkedHashMap<>();
         for (String module : rootManifest.workspaceModules()) {
             Path dir = root.resolve(module);
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild sib;
             try {

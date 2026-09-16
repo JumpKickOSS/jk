@@ -353,7 +353,7 @@ public final class TestFailureSource {
     }
 
     private static boolean isSimpleLayout(Path moduleDir) {
-        Path toml = moduleDir.resolve(ManifestPaths.MANIFEST);
+        Path toml = ManifestPaths.manifestIn(moduleDir);
         if (!Files.isRegularFile(toml)) return SourceLayout.isSimpleLayout(moduleDir);
         try {
             JkBuild b = JkBuildParser.parse(toml);

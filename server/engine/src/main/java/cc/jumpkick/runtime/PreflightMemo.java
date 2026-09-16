@@ -559,7 +559,7 @@ public final class PreflightMemo {
             List<Path> unitDirs = new ArrayList<>();
             for (UnitLine u : units) {
                 Path dir = absFromRel(root, u.rel());
-                if (!Files.isRegularFile(dir.resolve(ManifestPaths.MANIFEST))) return Optional.empty();
+                if (!Files.isRegularFile(ManifestPaths.manifestIn(dir))) return Optional.empty();
                 unitDirs.add(dir);
             }
             if (!(structureFingerprint(entryDir, unitDirs) instanceof Known structure)
@@ -573,7 +573,7 @@ public final class PreflightMemo {
                 UnitLine ul = units.get(i);
                 Path dir = unitDirs.get(i);
                 dirByRel.put(ul.rel(), dir);
-                JkBuild manifest = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                JkBuild manifest = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
                 String coord =
                         manifest.project().group() + ":" + manifest.project().name();
                 if (!coord.equals(ul.coord())) return Optional.empty(); // identity drift
@@ -641,13 +641,13 @@ public final class PreflightMemo {
             // too, or a root that grows src/ keeps hitting a graph memo without a root unit.
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
-            feedFile(md, root.resolve(ManifestPaths.MANIFEST));
+            feedFile(md, ManifestPaths.manifestIn(root));
             Path rootLock = LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
                 feed(md, relKey(root, d));
-                feedFile(md, d.resolve(ManifestPaths.MANIFEST));
+                feedFile(md, ManifestPaths.manifestIn(d));
                 // Every workspace member resolves to the single root lock — already digested
                 // above; re-reading a monorepo-sized lock once per module scaled the key cost by
                 // modules × lock size. A marker keeps the structural position; a module
@@ -698,7 +698,7 @@ public final class PreflightMemo {
             feed(md, "shape");
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, BuildIdentity.cacheKeyVersion());
-            feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
+            feedFile(md, ManifestPaths.manifestIn(moduleDir));
             feedFile(md, LockPaths.lockFile(moduleDir));
             return new Known(Hashing.hex(md.digest()));
         } catch (Exception e) {
@@ -855,7 +855,7 @@ public final class PreflightMemo {
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
             if (!guardSalt.isEmpty()) feed(md, guardSalt);
-            feedFile(md, moduleDir.resolve(ManifestPaths.MANIFEST));
+            feedFile(md, ManifestPaths.manifestIn(moduleDir));
             feedFile(md, LockPaths.lockFile(moduleDir));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).
             if (PluginModule.isWorker(moduleDir)) {

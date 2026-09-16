@@ -91,7 +91,7 @@ public final class PublishPlans {
     /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
     public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
         Path workerJar = PluginJar.PUBLISHER.locate(JkStores.storeCas());
-        Path jkBuildPath = projectDir.resolve(ManifestPaths.MANIFEST);
+        Path jkBuildPath = ManifestPaths.manifestIn(projectDir);
 
         Task parseBuild = Task.builder(TaskNames.PARSE_BUILD)
                 .ticks(1)

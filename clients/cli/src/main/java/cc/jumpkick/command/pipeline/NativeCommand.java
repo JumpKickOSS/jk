@@ -134,7 +134,7 @@ public final class NativeCommand implements CliCommand {
 
         Path startDir = global.workingDir();
         VariantSelection.install(in, startDir);
-        Path buildFile = startDir.resolve(ManifestPaths.MANIFEST);
+        Path buildFile = ManifestPaths.manifestIn(startDir);
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
 
         if (!Files.exists(buildFile)) {
@@ -288,7 +288,7 @@ public final class NativeCommand implements CliCommand {
                 hasNativeTable = !"DISABLED".equals(info.nativeMode());
             } else {
                 // Unit tests / engine-down: bootstrap [native] scan, not a plugin-schema parse.
-                var scan = TomlScan.scan(moduleDir.resolve(ManifestPaths.MANIFEST), "native.enabled");
+                var scan = TomlScan.scan(ManifestPaths.manifestIn(moduleDir), "native.enabled");
                 explicitlyDisabled = scan.hasSection("native")
                         && EnvValues.parseBool(scan.get("native.enabled"))
                                 .filter(on -> !on)

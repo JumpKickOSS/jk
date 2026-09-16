@@ -60,7 +60,7 @@ public final class WorkspacePreflightPhase {
     static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener) {
         JkBuild entryBuild;
         try {
-            entryBuild = JkBuildParser.parse(request.entryDir().resolve(ManifestPaths.MANIFEST));
+            entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(request.entryDir()));
         } catch (Exception e) {
             return completed(false, 2, List.of(Errors.text(e)));
         }

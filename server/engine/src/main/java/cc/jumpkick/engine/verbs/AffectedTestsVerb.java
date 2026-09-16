@@ -64,7 +64,7 @@ public final class AffectedTestsVerb implements HostedVerb {
                 String modules = req.modules();
                 if (modules != null && !modules.isBlank()) {
                     // -m intersects the ranked cone, exactly as it does the build cone.
-                    JkBuild entry = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                    JkBuild entry = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
                     ModuleSelection.Result sel = ModuleSelection.resolve(dir, entry, modules);
                     if (!sel.ok()) {
                         host.sendQuiet(
