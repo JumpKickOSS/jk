@@ -39,8 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class CoexistenceBuildE2eTest {
 
-    private static final String POM =
-            """
+    private static final String POM = """
             <?xml version="1.0" encoding="UTF-8"?>
             <project xmlns="http://maven.apache.org/POM/4.0.0">
               <modelVersion>4.0.0</modelVersion>
@@ -103,7 +102,8 @@ class CoexistenceBuildE2eTest {
 
         assertThat(built.errors()).isEmpty();
         assertThat(built.success()).isTrue();
-        assertThat(project.resolve("target/classes/main/com/example/Greeter.class")).exists();
+        assertThat(project.resolve("target/classes/main/com/example/Greeter.class"))
+                .exists();
         TestSummary tests = first.get(BuildPlanner.TEST_RESULT).orElseThrow();
         assertThat(tests.total()).isEqualTo(1);
         assertThat(tests.failed()).isZero();
@@ -111,7 +111,9 @@ class CoexistenceBuildE2eTest {
         // The repository is not dirtied; the lock lives beside the shadow under target/.
         assertThat(project.resolve("jk.toml")).doesNotExist();
         assertThat(project.resolve("jk-lock.toml")).doesNotExist();
-        assertThat(LockPaths.lockFile(project)).isEqualTo(shadow.resolveSibling("jk-lock.toml")).isRegularFile();
+        assertThat(LockPaths.lockFile(project))
+                .isEqualTo(shadow.resolveSibling("jk-lock.toml"))
+                .isRegularFile();
 
         // What the effective POM declares that the in-place build does not carry is one warning
         // with the remedy, on the build after the POM changed, and not again.

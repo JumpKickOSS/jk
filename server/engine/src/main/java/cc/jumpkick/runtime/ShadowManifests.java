@@ -77,8 +77,8 @@ public final class ShadowManifests {
         List<String> rows = PENDING_TIER3.remove(dir.toAbsolutePath().normalize());
         if (rows == null || rows.isEmpty()) return List.of();
         return rows.stream()
-                .map(row -> row + " — not carried by the in-place build of " + ManifestPaths.POM
-                        + "; `jk import " + ManifestPaths.POM + "` writes a jk.toml to edit")
+                .map(row -> row + " — not carried by the in-place build of " + ManifestPaths.POM + "; `jk import "
+                        + ManifestPaths.POM + "` writes a jk.toml to edit")
                 .toList();
     }
 }

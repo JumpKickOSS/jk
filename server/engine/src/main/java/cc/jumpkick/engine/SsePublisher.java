@@ -369,8 +369,8 @@ public final class SsePublisher implements SseEvents {
         if (!eventsWanted()) return;
         String coord = null;
         try {
-            var project = JkBuildParser.parse(ManifestPaths.manifestIn(Path.of(dir)))
-                    .project();
+            var project =
+                    JkBuildParser.parse(ManifestPaths.manifestIn(Path.of(dir))).project();
             coord = project.group() + ":" + project.name();
         } catch (Exception e) {
             // unparseable/missing jk.toml — the dashboard falls back to showing the dir

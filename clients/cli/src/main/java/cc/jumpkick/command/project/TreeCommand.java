@@ -212,15 +212,13 @@ public final class TreeCommand implements CliCommand {
         List<String> names = new ArrayList<>();
         if (rels.isEmpty()) {
             dirs.add(root.toString());
-            String n =
-                    TomlScan.scan(ManifestPaths.manifestIn(root), "name").get("name");
+            String n = TomlScan.scan(ManifestPaths.manifestIn(root), "name").get("name");
             names.add(n == null || n.isBlank() ? root.getFileName().toString() : n);
         } else {
             for (String rel : rels) {
                 Path d = root.resolve(rel).toAbsolutePath().normalize();
                 dirs.add(d.toString());
-                String n =
-                        TomlScan.scan(ManifestPaths.manifestIn(d), "name").get("name");
+                String n = TomlScan.scan(ManifestPaths.manifestIn(d), "name").get("name");
                 names.add(n == null || n.isBlank() ? d.getFileName().toString() : n);
             }
         }

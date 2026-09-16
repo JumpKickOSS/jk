@@ -224,7 +224,8 @@ public final class EnsureFreshLock {
         try {
             Path owner = LockPaths.lockOwnerDir(projectDir);
             if (ManifestPaths.isShadowed(projectDir)) owner = projectDir;
-            if (!ManifestPaths.describesProject(owner)) return owner.getFileName().toString();
+            if (!ManifestPaths.describesProject(owner))
+                return owner.getFileName().toString();
             var info = ProjectInfos.orNull(owner);
             if (info != null && info.error() == null) {
                 String g = info.group();

@@ -76,8 +76,8 @@ final class AlwaysNativeGraal {
 
     /** {@code dir} as an always-native module, or null when its build links no native image. */
     static @Nullable Module fromManifest(Path dir) {
-        TomlScan scan = TomlScan.scan(
-                ManifestPaths.manifestIn(dir), "application.native", "native.enabled", "native.graal");
+        TomlScan scan =
+                TomlScan.scan(ManifestPaths.manifestIn(dir), "application.native", "native.enabled", "native.graal");
         boolean always = EnvValues.parseBool(scan.get("application.native")).orElse(false)
                 || "always".equalsIgnoreCase(scan.get("native.enabled"));
         if (!always) return null;

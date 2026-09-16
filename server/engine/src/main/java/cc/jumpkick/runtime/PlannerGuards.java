@@ -148,8 +148,7 @@ final class PlannerGuards {
     static boolean enabledAt(Path root) {
         if (Files.exists(GuardsPresence.rulesFile(root)) || guardSuiteSeen(root)) return true;
         try {
-            return JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root))
-                    .declared();
+            return JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root)).declared();
         } catch (RuntimeException unparseable) {
             return false;
         }
@@ -418,8 +417,8 @@ final class PlannerGuards {
                     List<Path> modules = moduleDirs(g.root(), ctx.get(PROJECT).orElse(null));
                     JkBuild rootBuild = ctx.get(PROJECT).orElse(null);
                     List<String> tokens = rootBuild == null
-                            ? new ArrayList<>(List.of(
-                                    GuardKeys.fileToken("manifest", ManifestPaths.manifestIn(g.root()))))
+                            ? new ArrayList<>(
+                                    List.of(GuardKeys.fileToken("manifest", ManifestPaths.manifestIn(g.root()))))
                             : GuardKeys.modelTokens(g.root(), rootBuild);
                     EvalContext ectx =
                             new EvalContext(Lane.MODEL, g.root(), "", null, modules, noFacts(), () -> null, List::of);

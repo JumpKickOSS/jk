@@ -167,8 +167,7 @@ public final class ToolRunCommand implements CliCommand {
                 var peek = ProjectInfos.orNull(start);
                 if (peek != null && peek.workspaceRoot()) wsRoot = start;
                 else if (peek == null
-                        && !workspaceModules(ManifestPaths.manifestIn(start))
-                                .isEmpty()) {
+                        && !workspaceModules(ManifestPaths.manifestIn(start)).isEmpty()) {
                     wsRoot = start;
                 }
             }

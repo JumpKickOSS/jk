@@ -94,7 +94,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
         if (rootDir == null) return byName;
         for (String m : modules) {
             try {
-                JkBuild b = JkBuildParser.parse(ManifestPaths.manifestIn(rootDir.resolve(m).normalize()));
+                JkBuild b = JkBuildParser.parse(
+                        ManifestPaths.manifestIn(rootDir.resolve(m).normalize()));
                 byName.put(
                         b.project().name(),
                         b.project().group() + ":" + b.project().name());
