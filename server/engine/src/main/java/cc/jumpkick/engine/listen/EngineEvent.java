@@ -84,6 +84,8 @@ public sealed interface EngineEvent {
 
     record Preflight(String stage, int done, int total, String label) implements EngineEvent {}
 
+    record Note(String text) implements EngineEvent {}
+
     record InvocationPhase(String name, String status) implements EngineEvent {}
 
     record PlanModule(String dir, String coord, String planName, long weight, boolean fullyCached)

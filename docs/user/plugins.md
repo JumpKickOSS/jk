@@ -53,6 +53,11 @@ to Maven Central. You can still pin a **private** jar (path or Maven coordinate 
 # my-plugin = { path = "tools/my-plugin.jar", sha256 = "…" }
 ```
 
+A private jar keeps its `sha256` pin across jk upgrades: the lock's `[[plugin]]` row is the
+declaration's digest, and a jar that disagrees with it is refused. The first-party plugins that
+ship inside jk are pinned the other way round — their rows follow the running jk
+([Lockfile](lockfile.md#what-else-the-lock-pins)).
+
 The engine never classloads plugin code. Declarative `jk-plugin.toml` is applied in-process;
 any code layer runs in a **forked worker**.
 

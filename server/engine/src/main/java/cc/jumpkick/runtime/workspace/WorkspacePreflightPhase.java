@@ -8,9 +8,11 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.FirstPartyPins;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
@@ -22,6 +24,7 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -76,6 +79,7 @@ public final class WorkspacePreflightPhase {
         }
 
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
+        followFirstPartyPins(request, units, listener);
         boolean graphMemoHit = PreflightMemo.graphStructureMatches(request.entryDir(), graph);
         PreflightMemo.storeGraph(request.entryDir(), graph);
         if (graphMemoHit) Perf.note("preflight-graph-memo structure-match", "units", units.size());
@@ -142,6 +146,27 @@ public final class WorkspacePreflightPhase {
         }
         listener.onPreflight("lock", 1, 1, "Workspace lock ready");
         return Optional.empty();
+    }
+
+    /**
+     * The lock's first-party plugin rows follow the running jk ({@link FirstPartyPins}); a build
+     * that moved any says so once, for the whole workspace. A lock the plugin path cannot read is
+     * reported there, with its remedy.
+     */
+    private static void followFirstPartyPins(
+            WorkspaceRequest request, List<BuildGraph.BuildUnit> units, WorkspaceBuildListener listener) {
+        if (!request.freshenLock()) return;
+        Set<String> declared = new HashSet<>();
+        for (BuildGraph.BuildUnit unit : units) {
+            for (PluginDeclaration declaration : unit.manifest().plugins()) declared.add(declaration.coordinate());
+        }
+        List<FirstPartyPins.Repin> moved;
+        try {
+            moved = FirstPartyPins.follow(request.entryDir(), declared);
+        } catch (IOException | RuntimeException unreadable) {
+            return;
+        }
+        if (!moved.isEmpty()) listener.onNote(FirstPartyPins.describe(moved));
     }
 
     private static Forecast forecast(

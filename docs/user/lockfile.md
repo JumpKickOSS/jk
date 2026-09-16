@@ -200,15 +200,19 @@ staged and `jk lock` on a clean checkout rewrites nothing. Third-party plugins a
 keep their digest.
 
 A first-party plugin that ships inside jk (`cc.jumpkick:jk-minified`, `jk-spring-boot`,
-`jk-micronaut`, …) and a first-party rule pack (`cc.jumpkick.guards:spring`, `:quarkus`,
-`:library`, … named by `[guards] extends`) are pinned by `coordinate` and `version` alone while
-that version is a pre-release — a `0.x` or any qualifier/snapshot. The bytes published under a
-pre-release version change with every rebuild, so a digest would fix one moment of it and fail
-every committed lock on the next side-load, while the version already says which jk the project
-builds with. The trade is explicit: at a pre-release version the pin trusts the jk install (or
-the official repository) to serve that version's jar, exactly as it trusts the jk binary itself;
-a stable release is immutable, and its row carries the digest like any other plugin or pack.
-Third-party packs carry their digest at every version.
+`jk-micronaut`, …) is the running jk's own copy, and its row **follows the running jk**. The row
+records which jk the project built with — `coordinate` and `version` alone while that version is
+a pre-release (a `0.x` or any qualifier/snapshot, republished with every rebuild), plus the
+`checksum` of the shipped jar at a stable release — and it never chooses the bytes: the plugin
+that runs is the one inside the jk that is building. A build under a newer jk rewrites those rows
+in place and says so once (`jk-lock.toml: jk-micronaut 0.13.2 → 0.13.7 (first-party plugins follow
+the running jk)`); no library row moves, so a jk upgrade is never a relock. A first-party plugin a
+`[plugins]` table declares explicitly is pinned by that declaration like any vendored jar.
+
+A first-party rule pack (`cc.jumpkick.guards:spring`, `:quarkus`, `:library`, … named by
+`[guards] extends`) is pinned by `coordinate` and `version` alone while that version is a
+pre-release, and carries its digest at a stable release. Third-party plugins and packs carry their
+digest at every version.
 
 ## What an edge records
 

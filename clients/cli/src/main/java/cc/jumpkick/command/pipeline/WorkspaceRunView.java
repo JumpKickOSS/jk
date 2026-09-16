@@ -174,6 +174,12 @@ final class WorkspaceRunView {
             }
 
             @Override
+            public void onNote(String text) {
+                defer(text);
+                mirror(JsonlShape.note(text));
+            }
+
+            @Override
             public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
                 agg.applySnapshot(snap);
                 seedPlanned(snap.modulesTotal());
@@ -245,6 +251,19 @@ final class WorkspaceRunView {
      */
     WorkspaceBuildListener headless() {
         return new WorkspaceBuildListener() {
+            @Override
+            public void onNote(String text) {
+                if (toStdout) {
+                    event(JsonlShape.note(text));
+                    return;
+                }
+                // Headless blocks print as they finish; a run-level line prints where it happened.
+                synchronized (OUT_LOCK) {
+                    CliOutput.out(text);
+                }
+                mirror(JsonlShape.note(text));
+            }
+
             @Override
             public void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snap) {
                 // Engine tracker owns the aggregate rider; module listeners stay local.

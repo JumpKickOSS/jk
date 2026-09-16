@@ -8,6 +8,7 @@ import cc.jumpkick.cli.run.jsonl.JsonlEnvelope;
 import cc.jumpkick.cli.run.jsonl.LabelLine;
 import cc.jumpkick.cli.run.jsonl.ModuleFinishLine;
 import cc.jumpkick.cli.run.jsonl.ModuleStartLine;
+import cc.jumpkick.cli.run.jsonl.NoteLine;
 import cc.jumpkick.cli.run.jsonl.OutputLine;
 import cc.jumpkick.cli.run.jsonl.PlanFinishLine;
 import cc.jumpkick.cli.run.jsonl.PlanStartLine;
@@ -152,6 +153,11 @@ public final class JsonlShape {
      */
     public static String preflight(String stage, int done, int totalUnits, String label) {
         return new PreflightLine(nowMillis(), stage, done, totalUnits, label).encode();
+    }
+
+    /** One workspace-level line the user keeps, journalled for the same reason as {@link #preflight}. */
+    public static String note(String text) {
+        return new NoteLine(nowMillis(), text).encode();
     }
 
     /** ETA estimate event (ms wall). */

@@ -13,14 +13,12 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
@@ -33,9 +31,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
-import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
-import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.NaiveResolver;
@@ -876,10 +872,10 @@ public final class PluginBuild {
                     .orElseThrow(() -> new IOException("plugin " + declaration.coordinateWithVersion()
                             + " is not in the local cache — run `jk sync` first"));
         }
+        // A built-in plugin is the running jk's own copy: the lock's row for it records which jk
+        // built last (see FirstPartyPins), it does not choose the bytes.
         if (PluginTableRegistry.isBuiltIn(active.manifest().id())) {
             String worker = code(active).worker();
-            Path locked = lockedFirstPartyJar(active.moduleDir(), worker, cache);
-            if (locked != null) return locked;
             PluginJar workerJar = PluginJar.byArtifactId(worker)
                     .orElseThrow(() -> new IllegalStateException(
                             "plugin " + active.manifest().id() + " names unregistered worker " + worker));
@@ -887,103 +883,6 @@ public final class PluginBuild {
         }
         throw new IOException("plugin " + active.manifest().id()
                 + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
-    }
-
-    /**
-     * The jar the lock pinned for {@code workerArtifact}, or {@code null} when the lock has no
-     * pin for it (newer-always-wins locate applies). A pin is law in both directions: a pin
-     * whose bytes are nowhere is fetched at exactly the pinned version, and a pin that still
-     * cannot be honored is a loud error — never a silent fall-through to whatever
-     * {@code locate()} finds, which would run different bytes than the lock recorded.
-     */
-    static @Nullable Path lockedFirstPartyJar(Path moduleDir, @Nullable String workerArtifact, Path cache)
-            throws IOException {
-        Path lockFile = LockPaths.lockFile(moduleDir);
-        if (!Files.isRegularFile(lockFile)) return null;
-        Lockfile lock;
-        try {
-            lock = LockfileReader.read(lockFile);
-        } catch (Exception e) {
-            throw new IOException("cannot read " + lockFile + ": " + e.getMessage(), e);
-        }
-        String coord = "cc.jumpkick:" + workerArtifact;
-        for (var e : lock.plugins()) {
-            if (!coord.equals(e.coordinate())) continue;
-            // A workspace module has no pinned bytes: the build that produced it is the verification.
-            if (e.isWorkspace()) return null;
-            if (e.isVersionOnly()) return versionPinnedFirstPartyJar(e);
-            String hex = Objects.requireNonNull(e.sha256Hex(), "checksum");
-            var pinned = PluginDescriptorOps.pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), hex);
-            if (pinned.isPresent()) return pinned.get();
-            // A jar this jk can already point at — a `-D<worker>.plugin.jar` override, or a repo
-            // store — honors the pin when its bytes ARE the pinned bytes. That is the pin
-            // deciding, not the fall-through this method exists to prevent: `locateStored` never
-            // reaches the network, and the sha still has to match, so the lock chooses which bytes
-            // run and only where to read them is relaxed.
-            //
-            // Without it a self-hosted test JVM can never honor a pin for a plugin the same build
-            // just produced: its sandbox JK_HOME has no store to probe, `[build] test-plugin-jars`
-            // hands it the sibling jar as a -D override, and the pinned bytes are exactly that
-            // jar's — pinned from a build output that, by construction, no store has yet.
-            Path offered = PluginJar.byArtifactId(workerArtifact)
-                    .map(jar -> jar.locateStored(JkStores.storeCas()))
-                    .orElse(null);
-            if (offered != null && Files.isRegularFile(offered) && hex.equalsIgnoreCase(Hashing.sha256Hex(offered))) {
-                return offered;
-            }
-            String fetchFailure = null;
-            try {
-                PluginJar.fetchOfficial(
-                        JkStores.storeCas(),
-                        MavenLayout.artifactPath(Coordinate.ofModule(e.coordinate(), e.version())));
-                pinned = PluginDescriptorOps.pinnedLayoutJar(JkStores.storeCas(), e.coordinate(), e.version(), hex);
-                if (pinned.isPresent()) return pinned.get();
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                fetchFailure = "interrupted";
-            } catch (Exception fetchEx) {
-                fetchFailure = fetchEx.getMessage();
-            }
-            throw new IOException("jk-lock.toml pins " + coord + ":" + e.version()
-                    + " (sha256 " + hex + ") but no matching jar exists in the store"
-                    + (fetchFailure != null
-                            ? " and the official fetch failed: " + fetchFailure
-                            : " and the official repo serves different bytes")
-                    + " — run `jk lock` to re-pin against this jk");
-        }
-        return null;
-    }
-
-    /**
-     * A first-party pin that names a version and no digest. At this jk's own version the jar is
-     * the installed one and the caller's locate finds it; at another version the store, then the
-     * official repo, must have that version's jar — and a version nobody serves is as loud as a
-     * digest nobody matches.
-     */
-    private static @Nullable Path versionPinnedFirstPartyJar(Lockfile.PluginEntry pin) throws IOException {
-        if (JkVersion.VERSION.equals(pin.version())) return null;
-        Cas cas = JkStores.storeCas();
-        String rel = MavenLayout.artifactPath(Coordinate.ofModule(pin.coordinate(), pin.version()));
-        for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
-            Optional<Path> stored = store.locate(rel);
-            if (stored.isPresent()) return stored.get();
-        }
-        String fetchFailure = null;
-        try {
-            Path fetched = PluginJar.fetchOfficial(cas, rel);
-            if (fetched != null) return fetched;
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            fetchFailure = "interrupted";
-        } catch (Exception fetchEx) {
-            fetchFailure = fetchEx.getMessage();
-        }
-        throw new IOException("jk-lock.toml pins " + pin.coordinate() + ":" + pin.version()
-                + " but no jar of that version exists in the store"
-                + (fetchFailure != null
-                        ? " and the official fetch failed: " + fetchFailure
-                        : " and the official repo does not serve one")
-                + " — run `jk lock` to re-pin against this jk");
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

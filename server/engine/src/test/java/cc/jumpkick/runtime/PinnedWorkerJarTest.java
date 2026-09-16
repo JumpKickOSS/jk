@@ -2,43 +2,27 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
-import cc.jumpkick.testing.LoopbackHttp;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Lock-pinned worker jars must resolve to Maven-layout paths (which carry a reachable POM), never
- * bare CAS blobs — except path pins, whose sha-verified blob is by contract a self-contained
+ * A declared plugin's pinned jar resolves to a Maven-layout path (which carries a reachable POM),
+ * never a bare CAS blob — except path pins, whose sha-verified blob is by contract a self-contained
  * classpath.
  */
 class PinnedWorkerJarTest {
-
-    /**
-     * The official repo for the pins nobody serves: a live server with nothing on it, so a fetch
-     * is a 404 in one attempt. A closed port instead hangs to the connect timeout where loopback
-     * is relayed, and the retry ladder turned each of those fetches into a minute.
-     */
-    @RegisterExtension
-    final LoopbackHttp official = new LoopbackHttp();
 
     private static final String MODULE = "com.acme:acme-rules";
     private static final String VERSION = "1.0.0";
@@ -116,100 +100,6 @@ class PinnedWorkerJarTest {
 
         assertThat(Cas.isBlobPath(resolved)).isFalse();
         assertThat(WorkerLaunchClasspath.paths(resolved)).containsExactly(resolved);
-    }
-
-    @Test
-    void unsatisfiable_lock_pin_is_loud_not_a_silent_fallback(@TempDir Path tmp) throws Exception {
-        LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of(new Lockfile.PluginEntry(
-                                "cc.jumpkick:jk-spring-boot", "0.0.1", "sha256:" + "ee".repeat(32)))),
-                tmp.resolve("jk-lock.toml"));
-        String prior = System.getProperty("jk.official.repo.url");
-        System.setProperty("jk.official.repo.url", official.baseUrl());
-        try {
-            org.assertj.core.api.Assertions.assertThatThrownBy(
-                            () -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
-                    .isInstanceOf(IOException.class)
-                    .hasMessageContaining("pins cc.jumpkick:jk-spring-boot:0.0.1")
-                    .hasMessageContaining("run `jk lock` to re-pin");
-        } finally {
-            if (prior == null) {
-                System.clearProperty("jk.official.repo.url");
-            } else {
-                System.setProperty("jk.official.repo.url", prior);
-            }
-        }
-    }
-
-    /** The installed jk of the pinned version carries the jar; the caller's locate finds it. */
-    @Test
-    void version_only_pin_at_this_jk_version_defers_to_locate(@TempDir Path tmp) throws Exception {
-        LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of(Lockfile.PluginEntry.versionOnly("cc.jumpkick:jk-spring-boot", JkVersion.VERSION))),
-                tmp.resolve("jk-lock.toml"));
-
-        assertThat(PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
-                .isNull();
-    }
-
-    @Test
-    void version_only_pin_at_a_version_nobody_serves_is_loud(@TempDir Path tmp) throws Exception {
-        LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of(Lockfile.PluginEntry.versionOnly("cc.jumpkick:jk-spring-boot", "0.0.1"))),
-                tmp.resolve("jk-lock.toml"));
-        String prior = System.getProperty("jk.official.repo.url");
-        System.setProperty("jk.official.repo.url", official.baseUrl());
-        try {
-            assertThatThrownBy(() -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
-                    .isInstanceOf(IOException.class)
-                    .hasMessageContaining("pins cc.jumpkick:jk-spring-boot:0.0.1")
-                    .hasMessageContaining("no jar of that version")
-                    .hasMessageContaining("run `jk lock` to re-pin");
-        } finally {
-            if (prior == null) {
-                System.clearProperty("jk.official.repo.url");
-            } else {
-                System.setProperty("jk.official.repo.url", prior);
-            }
-        }
-    }
-
-    @Test
-    void worker_without_a_pin_returns_null_for_locate_fallback(@TempDir Path tmp) throws Exception {
-        LockfileWriter.write(
-                new Lockfile(
-                        Lockfile.CURRENT_VERSION,
-                        "test",
-                        Lockfile.RESOLUTION_ALGORITHM,
-                        null,
-                        null,
-                        List.of(),
-                        List.of()),
-                tmp.resolve("jk-lock.toml"));
-
-        assertThat(PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
-                .isNull();
     }
 
     private static Path writeJar(Path target) throws Exception {

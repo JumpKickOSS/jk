@@ -365,6 +365,26 @@ public record Lockfile(
                 nativeMetadata);
     }
 
+    /** This lock as written by another jk: {@code generated-by} names the writer, nothing else moves. */
+    public Lockfile withGeneratedBy(String writer) {
+        return new Lockfile(
+                version,
+                writer,
+                resolutionAlgorithm,
+                jdk,
+                graal,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata);
+    }
+
     /** This lock with a content digest of the manifests used to produce it. */
     public Lockfile withManifestsSha256(String digest) {
         return new Lockfile(

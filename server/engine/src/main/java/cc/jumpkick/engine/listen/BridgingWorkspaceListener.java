@@ -77,6 +77,11 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     }
 
     @Override
+    public void onNote(String text) {
+        sink.emit(new EngineEvent.Note(text));
+    }
+
+    @Override
     public void onWorkModel(WorkModel model) {
         if (model == null) return;
         hooks.workModel(model);
