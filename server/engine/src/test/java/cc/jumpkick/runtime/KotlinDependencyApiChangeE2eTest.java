@@ -135,9 +135,14 @@ class KotlinDependencyApiChangeE2eTest {
         Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
     }
 
+    /**
+     * Keep-going: app is admitted once lib publishes its classes, so app's failing test compile
+     * would otherwise cancel lib before it finishes packaging and leave it without an outcome.
+     */
     private static WorkspaceResult build(Path ws, Path cache, Steps steps) {
         return WorkspaceExecute.buildWorkspace(
-                new WorkspaceRequest(ws, cache, null, 0, null, false, false, 2, null, false, false), steps);
+                new WorkspaceRequest(ws, cache, null, 0, null, false, false, 2, null, false, false).withKeepGoing(true),
+                steps);
     }
 
     /** Which steps failed in which module, and what each step reported. */
