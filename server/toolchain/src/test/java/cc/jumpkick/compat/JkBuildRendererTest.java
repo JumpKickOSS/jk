@@ -21,6 +21,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import java.net.URI;
@@ -209,6 +210,23 @@ class JkBuildRendererTest {
         String out = JkBuildRenderer.render(nearest);
         assertThat(out).contains("[resolve]\npins = \"nearest\"").doesNotContain("platform =");
         assertThat(JkBuildParser.parse(out).build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+    }
+
+    @Test
+    void test_jvm_args_and_system_properties_round_trip() {
+        JkBuild model = JkBuild.builder(
+                        Project.builder("com.example", "widget", "1.0.0").build())
+                .build(JkBuild.Build.EMPTY.withTestJvm(new TestJvm(
+                        List.of("-Xmx1g", "--add-opens", "java.base/java.lang=ALL-UNNAMED"),
+                        new LinkedHashMap<>(Map.of("spring.profiles.active", "test")))))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("[test]\njvm-args = [\"-Xmx1g\", \"--add-opens\", \"java.base/java.lang=ALL-UNNAMED\"]\n"
+                        + "system-properties = { \"spring.profiles.active\" = \"test\" }\n");
+        assertThat(JkBuildParser.parse(out).build().testJvm())
+                .isEqualTo(model.build().testJvm());
     }
 
     @Test

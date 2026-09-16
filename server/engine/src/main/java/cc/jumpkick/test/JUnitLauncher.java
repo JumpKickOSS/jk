@@ -154,12 +154,12 @@ public final class JUnitLauncher {
         return this;
     }
 
-    /** {@code [profiles.<name>] jvm-args} of the active profile; empty when none applies. */
+    /** {@code [test] jvm-args}, its system properties and the active profile's {@code jvm-args}. */
     private List<String> jvmArgs = List.of();
 
     /**
-     * Extra flags for every JVM this launcher forks, after jk's own tuning so a profile's
-     * {@code -Xmx} or {@code -D} wins over the default.
+     * Extra flags for every JVM this launcher forks, after jk's own tuning so the module's or a
+     * profile's {@code -Xmx}, {@code -Xss} or {@code -D} wins over the default.
      */
     public JUnitLauncher withJvmArgs(List<String> args) {
         this.jvmArgs = args == null ? List.of() : List.copyOf(args);
@@ -186,8 +186,8 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Worker JVM flags: the heap/GC tuning, {@code -ea} unless the module opted out, the active
-     * profile's {@code jvm-args}, the {@code jk.plugin.class} selector for the runner, and any
+     * Worker JVM flags: the heap/GC tuning, {@code -ea} unless the module opted out, the test
+     * table's and the active profile's {@code jvm-args}, the {@code jk.plugin.class} selector for the runner, and any
      * {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir) {

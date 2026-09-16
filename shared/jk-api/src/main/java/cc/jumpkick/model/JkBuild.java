@@ -846,6 +846,12 @@ public record JkBuild(
              */
             List<String> testTools,
             /**
+             * {@code [test] jvm-args} and {@code [test] system-properties} — what every forked
+             * test JVM's command line carries beyond jk's own tuning. Test-scoped like {@code
+             * testEnv}, hence its home here.
+             */
+            TestJvm testJvm,
+            /**
              * {@code [dev.sidecars]} — processes {@code jk dev} runs beside the application (a
              * frontend dev server, a docs server), in manifest order. Dev-only: {@code jk run},
              * {@code jk build}, and {@code jk test} never read it, and nothing here enters an action
@@ -895,6 +901,7 @@ public record JkBuild(
                 PinPolicy.EXACT,
                 List.of(),
                 List.of(),
+                TestJvm.EMPTY,
                 List.of(),
                 null,
                 List.of(),
@@ -919,6 +926,7 @@ public record JkBuild(
             pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
             testTools = testTools == null ? List.of() : List.copyOf(testTools);
+            testJvm = testJvm == null ? TestJvm.EMPTY : testJvm;
             devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
             auditIgnores = auditIgnores == null ? List.of() : List.copyOf(auditIgnores);
             env = env == null ? EnvConfig.EMPTY : env;
@@ -988,6 +996,11 @@ public record JkBuild(
             return with(f -> f.testTools = tools);
         }
 
+        /** The same block with {@code [test] jvm-args} / {@code system-properties} set. */
+        public Build withTestJvm(TestJvm jvm) {
+            return with(f -> f.testJvm = jvm);
+        }
+
         /** The same block with {@code [dev.sidecars]} set. */
         public Build withDevSidecars(List<Sidecar> sidecars) {
             return with(f -> f.devSidecars = sidecars);
@@ -1015,9 +1028,7 @@ public record JkBuild(
 
         /** One component changed, the rest copied — the one spelling of the copy every {@code with*} shares. */
         private Build with(Consumer<BuildFields> change) {
-            BuildFields f = new BuildFields(this);
-            change.accept(f);
-            return f.build();
+            return BuildFields.with(this, change);
         }
 
         /**

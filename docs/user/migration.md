@@ -140,7 +140,7 @@ relates to the Maven one.
 | Plugin | Repos | Lands in jk as | Grade |
 |---|---:|---|---|
 | spring-boot-maven-plugin | 36 | `[spring-boot] version` at the Boot version the chain resolves (Boot jar, platform BOM); `<mainClass>` → `[application] main`; `<excludes>` and buildpack `<image>` → rows | approximate |
-| maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<includes>` / `<excludes>`, `<argLine>`, system properties and `skipTests` → rows — jk has no `[test]` key for any of them (`--class`, `[jvm] args`, `[test] env`, `--skip-tests`) | approximate |
+| maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<argLine>` (minus `${argLine}` and the JaCoCo agent) → `[test] jvm-args`; `<systemPropertyVariables>` / `<systemProperties>` → `[test] system-properties`; `<includes>` / `<excludes>` and `skipTests` → rows (`--class`, `--skip-tests`) | exact |
 | maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` and the `<parameters>`, `<enablePreview>`, `<failOnWarning>` switches → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
 | maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` / `<doclint>` → `javadoc = "strict"` | exact |
@@ -157,7 +157,7 @@ relates to the Maven one.
 | maven-checkstyle-plugin | 14 | lint step (planned battery) → row until then | manual |
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
-| maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` → row | manual |
+| maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row | manual |
 | maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; relocations, filters, other transformers and `minimizeJar` → rows | approximate |
 | kotlin-maven-plugin | 12 | `kotlin =` on the module; `test-compile`-only → mixed module | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |

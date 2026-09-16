@@ -4,7 +4,9 @@ package cc.jumpkick.config;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JkBuild;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlArray;
@@ -47,6 +49,8 @@ final class ManifestBuildTable {
         boolean testAssertions = true;
         boolean testCoverage = false;
         final List<String> testTools = new ArrayList<>();
+        final List<String> testJvmArgs = new ArrayList<>();
+        final Map<String, String> testSystemProperties = new LinkedHashMap<>();
     }
 
     /** The keys {@code [build]} may carry; {@code logic} is read by {@link BuildLogicToml}. */
@@ -224,6 +228,41 @@ final class ManifestBuildTable {
                             "[test].tools names an executable on PATH, not a path: `" + str + "`");
                 }
                 if (!s.testTools.contains(str)) s.testTools.add(str);
+            }
+        }
+        readTestJvm(test, s);
+    }
+
+    /**
+     * {@code [test] jvm-args} — flags for every forked test JVM, after jk's own tuning; {@code
+     * [test] system-properties} — one {@code -Dkey=value} each, a number or boolean rendered as its
+     * string. Both are run-tests inputs.
+     */
+    private static void readTestJvm(TomlTable test, Settings s) {
+        TomlArray jvmArgs = test.getArray("jvm-args");
+        if (jvmArgs != null) {
+            for (int i = 0; i < jvmArgs.size(); i++) {
+                Object val = jvmArgs.get(i);
+                if (!(val instanceof String str) || str.isBlank()) {
+                    throw new JkBuildParseException(
+                            "[test].jvm-args must be an array of JVM flags: jvm-args = [\"-Xmx1g\"]");
+                }
+                s.testJvmArgs.add(str.trim());
+            }
+        }
+        if (test.contains("system-properties")) {
+            if (!(test.get("system-properties") instanceof TomlTable props)) {
+                throw new JkBuildParseException("[test].system-properties must be a table of key = value:"
+                        + " system-properties = { \"spring.profiles.active\" = \"test\" }");
+            }
+            for (String key : props.keySet()) {
+                Object val = props.get(List.of(key));
+                if (val == null || val instanceof TomlTable || val instanceof TomlArray) {
+                    throw new JkBuildParseException("[test].system-properties." + key
+                            + " must be a string, number or boolean — the value the test JVM gets as -D"
+                            + key + "=…");
+                }
+                s.testSystemProperties.put(key, String.valueOf(val));
             }
         }
     }

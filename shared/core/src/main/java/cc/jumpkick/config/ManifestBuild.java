@@ -17,6 +17,7 @@ import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
+import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -315,6 +316,7 @@ public final class ManifestBuild {
                     policies.pins(),
                     List.of(),
                     List.of(),
+                    TestJvm.EMPTY,
                     List.of(),
                     null,
                     List.of(),
@@ -344,6 +346,7 @@ public final class ManifestBuild {
                 policies.pins(),
                 List.of(),
                 s.testTools,
+                new TestJvm(s.testJvmArgs, s.testSystemProperties),
                 List.of(),
                 null,
                 List.of(),

@@ -2,10 +2,23 @@
 package cc.jumpkick.model;
 
 import java.util.List;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
-/** The components of a {@link JkBuild.Build}, mutable for the length of one {@code with*} copy. */
+/**
+ * The components of a {@link JkBuild.Build}, mutable for the length of one {@link #with}: the one
+ * spelling of the copy every {@code Build.with*} shares, so a new component is added here and in
+ * the record once.
+ */
 final class BuildFields {
+
+    /** {@code b} with {@code change} applied to a mutable copy of its components. */
+    static JkBuild.Build with(JkBuild.Build b, Consumer<BuildFields> change) {
+        BuildFields f = new BuildFields(b);
+        change.accept(f);
+        return f.build();
+    }
+
     List<String> orderAfter;
     List<String> testPluginJars;
     boolean lint;
@@ -31,6 +44,7 @@ final class BuildFields {
     PinPolicy pinPolicy;
     List<EnvDecl> testEnv;
     List<String> testTools;
+    TestJvm testJvm;
     List<Sidecar> devSidecars;
 
     @Nullable
@@ -39,7 +53,7 @@ final class BuildFields {
     List<JkBuild.AuditIgnore> auditIgnores;
     EnvConfig env;
 
-    BuildFields(JkBuild.Build b) {
+    private BuildFields(JkBuild.Build b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
         lint = b.lint();
@@ -61,6 +75,7 @@ final class BuildFields {
         pinPolicy = b.pinPolicy();
         testEnv = b.testEnv();
         testTools = b.testTools();
+        testJvm = b.testJvm();
         devSidecars = b.devSidecars();
         devReady = b.devReady();
         auditIgnores = b.auditIgnores();
@@ -90,6 +105,7 @@ final class BuildFields {
                 pinPolicy,
                 testEnv,
                 testTools,
+                testJvm,
                 devSidecars,
                 devReady,
                 auditIgnores,

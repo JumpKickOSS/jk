@@ -494,14 +494,15 @@ public final class PlannerTest {
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
-                    // The active profile's jvm-args ride the fork and its stamp alike.
-                    List<String> profileJvmArgs = PlannerSupport.profileJvmArgs(projectUnderTest, in.profileName());
+                    // [test] jvm-args, system-properties and the active profile's jvm-args ride the
+                    // fork and its stamp alike.
+                    List<String> testJvmArgs = PlannerSupport.testJvmArgs(projectUnderTest, in.profileName());
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
                             testStampExtras(
                                     workerJars,
                                     effectiveSel,
                                     projectUnderTest.build(),
-                                    profileJvmArgs,
+                                    testJvmArgs,
                                     in.dir(),
                                     ClasspathFingerprint.ON_DISK),
                             compileTestKeys(ctx)));
@@ -526,7 +527,7 @@ public final class PlannerTest {
                         return; // skip — nothing changed since last green run
                     }
                     reweightForRealRun(ctx, in);
-                    noteJvmArgs(ctx, profileJvmArgs);
+                    noteJvmArgs(ctx, testJvmArgs);
                     List<Path> runtimeCp = testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
                     String moduleLabel = projectUnderTest.project().group() + ":"
                             + projectUnderTest.project().name();
@@ -559,7 +560,7 @@ public final class PlannerTest {
                                 // while the rest shard.
                                 .withSerialTags(projectUnderTest.build().testSerialTags())
                                 .withAssertions(projectUnderTest.build().testAssertions())
-                                .withJvmArgs(profileJvmArgs)
+                                .withJvmArgs(testJvmArgs)
                                 .withClassPatterns(effectiveSel.classes())
                                 .withDebug(in.session().debugJvm());
                         if (jacoco != null && coverageExec != null) {
@@ -593,9 +594,9 @@ public final class PlannerTest {
                 .build();
     }
 
-    /** The step's own line naming the profile JVM flags the fork gets; silent without a profile. */
-    private static void noteJvmArgs(TaskContext ctx, List<String> profileJvmArgs) {
-        if (!profileJvmArgs.isEmpty()) ctx.output("test jvm-args (profile): " + String.join(" ", profileJvmArgs));
+    /** The step's own line naming the flags the fork gets beyond jk's tuning; silent when there are none. */
+    private static void noteJvmArgs(TaskContext ctx, List<String> testJvmArgs) {
+        if (!testJvmArgs.isEmpty()) ctx.output("test jvm-args: " + String.join(" ", testJvmArgs));
     }
 
     /**

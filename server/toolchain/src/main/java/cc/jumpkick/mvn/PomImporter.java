@@ -114,7 +114,7 @@ public final class PomImporter {
 
     /**
      * {@code [javac] args} from {@code <compilerArgs>}; {@code [build]} / {@code [test]} extra source
-     * roots; {@code [test]} tag filters from Surefire's groups.
+     * roots; {@code [test]} tag filters, JVM flags and system properties from Surefire and Failsafe.
      */
     private static JkBuild.Build buildBlock(
             Model model, SourceTreePlugins.SourceTree sourceTree, TestPlugins.TestSettings tests) {
@@ -127,6 +127,7 @@ public final class PomImporter {
         if (!tests.includeTags().isEmpty() || !tests.excludeTags().isEmpty()) {
             build = build.withTestTags(tests.includeTags(), tests.excludeTags());
         }
+        if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
         return build;
     }
 
