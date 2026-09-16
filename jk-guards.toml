@@ -1149,3 +1149,136 @@ reason = "the .kts host outlives any one build: its reader, reaper and shutdown 
 [[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/task/CasPrewriter.java"
 reason = "polls the output directory for finished class files"
+
+# G108. A module's manifest is named through ManifestPaths.manifestIn, which answers the shadow of a
+# directory built from its pom.xml; a raw dir.resolve(ManifestPaths.MANIFEST) reads a file that is
+# not there. The sites that write a jk.toml, refuse to edit a shadowed one, or probe a written one
+# as a tree boundary are allow entries, each carrying why it wants the written file.
+[guards.manifest-reader-owner]
+kind     = "text"
+files    = ["**/src/main/java/**/*.java"]
+patterns = ['\.resolve\(ManifestPaths\.MANIFEST\)', '\.resolve\(MANIFEST\)']
+hit      = 'JkBuild build = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));'
+miss     = 'JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(dir));'
+instead  = "ManifestPaths.manifestIn(dir); a writer or a boundary probe is an allow entry"
+why      = "a directory built from its pom.xml has no jk.toml; manifestIn is what answers its shadow"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/cli/CommandDispatch.java"
+reason = "a plugin-declared command is offered only where a written jk.toml declares plugins; the probe is the cwd's file"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/interop/ImportCommand.java"
+reason = "names the jk.toml the import writes"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/JkEnv.java"
+reason = "the toolchain env walks up to the nearest written jk.toml and scans its jdk keys; a shadow carries none"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/pipeline/AotCachePackage.java"
+reason = "its MANIFEST is the AOT cache's own aot-cache.toml, not the module manifest"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/project/AddCommand.java"
+reason = "edits the written jk.toml and refuses a shadowed directory"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/project/NewCommand.java"
+reason = "asks whether a written jk.toml already occupies the directory it is about to scaffold"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/project/RemoveCommand.java"
+reason = "edits the written jk.toml and refuses a shadowed directory"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/project/UpdateCommand.java"
+reason = "rewrites the written jk.toml's pins and refuses a shadowed directory"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpManifest.java"
+reason = "the MCP manifest editors write the jk.toml and refuse a shadowed directory"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/http/mcp/McpUpdate.java"
+reason = "the MCP update rewrites the written jk.toml's pins and refuses a shadowed directory"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/http/WorkspaceFileAccess.java"
+reason = "the dashboard's file surface serves the written jk.toml that marks the workspace root"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/runtime/NewProjectOps.java"
+reason = "asks whether a written jk.toml already occupies the directory it is about to scaffold"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/verbs/ImportVerb.java"
+reason = "names the jk.toml the import writes"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/verbs/UpdateVerb.java"
+reason = "rewrites the written jk.toml's pins"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/GitSourceMaterializer.java"
+reason = "a git dependency's checkout is jk-built only when it carries a written jk.toml"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/InstallPlans.java"
+reason = "a git install requires the checkout to carry a written jk.toml"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/SourceProjectBuilder.java"
+reason = "a source dependency is jk-built only when it carries a written jk.toml"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/runtime/workspace/ManifestUpdates.java"
+reason = "rewrites written manifests; a shadow is rendered, never written to"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/task/PortablePath.java"
+reason = "walks up to the written jk.toml that marks a module boundary when relativizing a path"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "server/toolchain/src/main/java/cc/jumpkick/compat/ProjectImport.java"
+reason = "names the module jk.toml files the import writes"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/ConfigSources.java"
+reason = "walks up to the nearest written jk.toml as a config layer"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/WorkspaceModules.java"
+reason = "a module glob expands to the directories that hold a written jk.toml"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/WorkspaceScan.java"
+reason = "the boundary scan that decides which tree a directory belongs to; its POM twin is PomReactorScan"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/layout/InputTrees.java"
+reason = "a tree walk stops at a nested module's written jk.toml"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/library/LibraryCatalog.java"
+reason = "walks up to the written jk.toml beside the catalog"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/lock/LockManifestDigest.java"
+reason = "a path dependency's written manifest feeds the lock digest"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/lock/LockPaths.java"
+reason = "decides the lock owner; the shadowed branch is answered before the written file is asked about"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/lock/ManifestPaths.java"
+reason = "the owner: manifestIn is written here"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/plugin/manifest/PluginTableRegistry.java"
+reason = "recognises jk's own checkout, which carries a written jk.toml by definition"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/scaffold/NewScaffolder.java"
+reason = "names the jk.toml the scaffold writes"

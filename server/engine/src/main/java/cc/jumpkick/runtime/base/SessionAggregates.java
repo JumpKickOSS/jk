@@ -89,7 +89,7 @@ public final class SessionAggregates {
     private static Memo memo() {
         Path builds = JkDirs.builds();
         Path work = sessionWorkingDir();
-        Path project = work != null && Files.isRegularFile(work.resolve(ManifestPaths.MANIFEST)) ? work : null;
+        Path project = work != null && ManifestPaths.describesProject(work) ? work : null;
         Key key = new Key(builds, project);
         synchronized (MEMOS) {
             Memo memo = MEMOS.get(key);

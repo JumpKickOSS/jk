@@ -46,10 +46,10 @@ final class DependEvaluator implements Evaluator {
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
         List<Manifest> manifests = new ArrayList<>();
-        Path rootManifest = ctx.root().resolve(ManifestPaths.MANIFEST);
+        Path rootManifest = ManifestPaths.manifestIn(ctx.root());
         if (Files.isRegularFile(rootManifest)) manifests.add(manifest("", JkBuildParser.parse(rootManifest)));
         for (Path m : ctx.modules()) {
-            Path f = m.resolve(ManifestPaths.MANIFEST);
+            Path f = ManifestPaths.manifestIn(m);
             if (Files.isRegularFile(f))
                 manifests.add(manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parse(f)));
         }

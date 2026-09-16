@@ -970,6 +970,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G105 | the tree's `jk-lock.toml` requires (`jk-min`) a jk newer than the release `.jk/ci-bootstrap-version` pins — the only jk that builds this tree from nothing refuses the tree; the lock schema itself is G86's | lock and pin text read; a fixture proves the bite | guard test `bootstrap-pin-reads-tree` |
 | G106 | a Gradle `version = "…"` pin in the bootstrap build, or `JkVersion.VERSION`, that is not the root `jk.toml` version — the first client the bootstrap produces refuses the engine jar it just built, and the worker shelf is staged under a version no client asks for — or a `gradle/libs.versions.toml` library at a version other than the one `jk-lock.toml` resolves for the same coordinate, a bootstrap compiled against a library the gate never sees | parity over the manifest, `JkVersion.java`, every bootstrap `*.gradle.kts`, the catalog and the lock; one named exemption, the plugin SDK's script, which owns the SDK's independent version line; self-fail when the catalog and the lock share no coordinate; a tree fixture proves the bite | guard test `gradle-bootstrap-parity` |
 | G107 | an `http://127.0.0.1:<privileged port>/` (or `localhost`, `[::1]`) literal — a failure-path test that dials a closed port, refused instantly on a bare host and hung to the 10 s connect timeout where loopback is relayed, which the retry ladder turns into a minute per fetch; `DeadEndpoint` drops the connection on every OS, `LoopbackHttp` with nothing served is a 404, a `file:` URI is a repo never dialed | text, no match tree-wide | `no-closed-port-endpoints` (text) |
+| G108 | a module's manifest named as `dir.resolve(ManifestPaths.MANIFEST)` in main code outside the sites that write a `jk.toml`, refuse to edit a shadowed one, or probe a written one as a tree boundary — a directory built from its `pom.xml` has no `jk.toml`, and only `ManifestPaths.manifestIn` answers its shadow; fifteen readers in the guard, resolver, publisher and engine had the raw spelling when the rule was measured | ban; allow entries, each carrying why the site wants the written file, and a stale entry is red | `manifest-reader-owner` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1022,6 +1023,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | json-concat-ratchet | metric | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
 | lock-version-is-one | text | the lockfile schema is version 1 until 1.0 |
 | manifest-names | vocabulary | a file jk owns is named once, in ManifestNames |
+| manifest-reader-owner | text | a directory built from its pom.xml has no jk.toml; manifestIn is what answers its shadow |
 | method-size | metric | a member that no longer fits a screen no longer fits a reviewer |
 | named-exit-codes | text | an exit code is the one integer a user's script sees, and a bare one is a meaning nobody wrote down |
 | no-agent-trailers | commit | attribution trailers are noise in blame |

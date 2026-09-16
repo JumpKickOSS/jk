@@ -53,10 +53,10 @@ final class ToolchainEvaluator implements Evaluator {
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) throws IOException {
         List<Manifest> manifests = new ArrayList<>();
-        Path rootManifest = ctx.root().resolve(ManifestPaths.MANIFEST);
+        Path rootManifest = ManifestPaths.manifestIn(ctx.root());
         if (Files.isRegularFile(rootManifest)) manifests.add(new Manifest("", JkBuildParser.parse(rootManifest)));
         for (Path m : ctx.modules()) {
-            Path f = m.resolve(ManifestPaths.MANIFEST);
+            Path f = ManifestPaths.manifestIn(m);
             if (Files.isRegularFile(f) && !f.equals(rootManifest)) {
                 // The member as written, not as inherited: what the root says is judged once, at the root.
                 manifests.add(new Manifest(WorkspaceModel.rel(ctx.root(), m), JkBuildParser.parseLocal(f)));
