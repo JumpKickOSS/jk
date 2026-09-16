@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""A minimal MCP server over the wrapper's output: stdio, JSON-RPC 2.0, newline-delimited.
+
+Tools mirror the jk pair an agent reaches for first: `results` returns the latest
+`target/jk-results.md` and `diagnostics` returns the parsed errors and failing tests from
+`target/jk-diagnostics.json`. Bind the project with `--dir`; both files are whatever the last
+`mvn-results` / `gradle-results` run wrote there.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+PROTOCOL_VERSION = "2025-06-18"
+
+TOOLS = [
+    {
+        "name": "results",
+        "description": (
+            "High-level markdown for the last Maven or Gradle run (same shape as jk's "
+            "target/jk-results.md): outcome, why it failed, tests, compiler errors with "
+            "file:line:col, failed steps. Start here."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "diagnostics",
+        "description": (
+            "Structured compiler and test failures from the last run: each diagnostic with "
+            "task, module, file, line, col and message; each failing test with class, name, "
+            "message and stack; the failed steps."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "severity": {
+                    "type": "string",
+                    "enum": ["error", "warning", "all"],
+                    "description": "Which diagnostics to include; default error.",
+                }
+            },
+            "additionalProperties": False,
+        },
+    },
+]
+
+
+def read_text(path: Path) -> str | None:
+    return path.read_text(encoding="utf-8", errors="replace") if path.exists() else None
+
+
+def call_tool(target: Path, name: str, args: dict) -> dict:
+    if name == "results":
+        text = read_text(target / "jk-results.md")
+        if text is None:
+            return error_result("no results yet — run mvn-results or gradle-results first")
+        return {"content": [{"type": "text", "text": text}]}
+    if name == "diagnostics":
+        text = read_text(target / "jk-diagnostics.json")
+        if text is None:
+            return error_result("no diagnostics yet — run mvn-results or gradle-results first")
+        data = json.loads(text)
+        severity = args.get("severity", "error")
+        if severity != "all":
+            data["diagnostics"] = [d for d in data["diagnostics"] if d["severity"] == severity]
+        return {"content": [{"type": "text", "text": json.dumps(data, indent=1)}]}
+    return error_result(f"unknown tool: {name}")
+
+
+def error_result(message: str) -> dict:
+    return {"content": [{"type": "text", "text": message}], "isError": True}
+
+
+def handle(target: Path, req: dict) -> dict | None:
+    method = req.get("method")
+    rid = req.get("id")
+    if method == "initialize":
+        return reply(rid, {
+            "protocolVersion": PROTOCOL_VERSION,
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": "results-mcp", "version": "1"},
+        })
+    if method == "ping":
+        return reply(rid, {})
+    if method == "tools/list":
+        return reply(rid, {"tools": TOOLS})
+    if method == "tools/call":
+        params = req.get("params") or {}
+        return reply(rid, call_tool(target, params.get("name", ""), params.get("arguments") or {}))
+    if method and method.startswith("notifications/"):
+        return None
+    if rid is None:
+        return None
+    return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"method not found: {method}"}}
+
+
+def reply(rid, result: dict) -> dict:
+    return {"jsonrpc": "2.0", "id": rid, "result": result}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument("--dir", default=".", help="project directory whose target/ holds the wrapper's output")
+    ns = ap.parse_args()
+    target = Path(ns.dir).resolve() / "target"
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError:
+            out = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
+        else:
+            out = handle(target, req)
+        if out is not None:
+            sys.stdout.write(json.dumps(out) + "\n")
+            sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

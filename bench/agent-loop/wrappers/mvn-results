@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Run Maven through `jk mvn` and write `target/jk-results.md` in jk's shape. Arguments are Maven's; default goal `test`."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import toolrun
+
+sys.exit(toolrun.main("mvn", sys.argv[1:]))
