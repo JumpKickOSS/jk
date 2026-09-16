@@ -13,7 +13,8 @@ jk export idea | vscode
 jk export bom                  # freeze lock as a Maven BOM — see Platforms
 ```
 
-Everything after `jk mvn` / `jk gradle` belongs to the tool — `jk mvn -v` prints Maven's
+Everything after `jk mvn` / `jk gradle` belongs to the tool, `-Dkey=value` properties included —
+`jk mvn -Drevision=1.2.3 -Dtest=FooTest verify` reaches Maven with both, `jk mvn -v` prints Maven's
 version, `jk gradle -q build` keeps Gradle quiet, `jk mvn -C install` is Maven's strict-checksums
 flag followed by a goal. jk's global flags go before the command name (`jk -q mvn package`,
 `jk -C app gradle build`).
@@ -114,7 +115,7 @@ relates to the Maven one.
 |---|---:|---|---|
 | spring-boot-maven-plugin | 36 | `[spring-boot] version` at the Boot version the chain resolves (Boot jar, platform BOM); `<mainClass>` → `[application] main`; `<excludes>` and buildpack `<image>` → rows | approximate |
 | maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<includes>` / `<excludes>`, `<argLine>`, system properties and `skipTests` → rows — jk has no `[test]` key for any of them (`--class`, `[jvm] args`, `[test] env`, `--skip-tests`) | approximate |
-| maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
+| maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` and the `<parameters>`, `<enablePreview>`, `<failOnWarning>` switches → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
 | maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` / `<doclint>` → `javadoc = "strict"` | exact |
 | maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |

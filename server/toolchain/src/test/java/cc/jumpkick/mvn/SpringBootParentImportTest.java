@@ -67,6 +67,9 @@ class SpringBootParentImportTest {
 
         assertThat(JkBuildRenderer.render(build)).doesNotContain("${").doesNotContain("unresolved");
         assertThat(build.project().java()).isEqualTo(17);
+        assertThat(build.build().javac().args())
+                .as("the Boot parent's <parameters>true</parameters> is the flag the MVC tests bind by")
+                .contains("-parameters");
         assertThat(build.dependencies().of(Scope.MAIN))
                 .extracting(d -> d.module() + "=" + d.version().raw())
                 .containsExactly("org.springframework.boot:spring-boot-starter-web=" + BOOT);

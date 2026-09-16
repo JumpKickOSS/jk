@@ -57,6 +57,11 @@ final class PluginFacts {
     };
     private static final String[] COMPILER_CONFIG = {"release", "target", "source"};
     private static final String[] MAIN_CLASS_PROPERTIES = {"start-class", "exec.mainClass", "main.class", "mainClass"};
+    /** Compiler plugin switches and the javac flag each one means. */
+    private static final Map<String, String> COMPILER_SWITCHES = Map.of(
+            "parameters", "-parameters",
+            "enablePreview", "--enable-preview",
+            "failOnWarning", "-Werror");
     /** javac options that take the following token as their value and that {@code java =} already states. */
     private static final Set<String> LEVEL_OPTIONS = Set.of("--release", "-source", "-target", "--source", "--target");
 
@@ -105,8 +110,22 @@ final class PluginFacts {
         if (compiler.isEmpty()) return args;
         for (Xpp3Dom config : configurations(compiler.get())) {
             collectCompilerArgs(config, args);
+            collectCompilerSwitches(config, args);
         }
         return args;
+    }
+
+    /**
+     * The compiler plugin's own boolean switches that stand for a javac flag: {@code <parameters>}
+     * (set by the Spring Boot parent), {@code <enablePreview>} and {@code <failOnWarning>}. Each
+     * lands once, whether the POM spelled it as a switch, in {@code <compilerArgs>}, or both.
+     */
+    static void collectCompilerSwitches(Xpp3Dom config, List<String> args) {
+        for (Map.Entry<String, String> e : COMPILER_SWITCHES.entrySet()) {
+            if ("true".equalsIgnoreCase(usable(text(config.getChild(e.getKey())))) && !args.contains(e.getValue())) {
+                args.add(e.getValue());
+            }
+        }
     }
 
     static void collectCompilerArgs(Xpp3Dom config, List<String> args) {
