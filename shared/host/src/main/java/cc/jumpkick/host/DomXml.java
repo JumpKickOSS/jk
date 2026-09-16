@@ -5,6 +5,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +29,10 @@ import org.xml.sax.SAXException;
  * {@code AndroidManifest.xml}, Google's SDK feed. All of it is attacker-influenceable, so all of it
  * is parsed with the same XXE posture: {@linkplain XMLConstants#FEATURE_SECURE_PROCESSING secure
  * processing}, a DOCTYPE rejected outright, both external-entity features off, no external DTD, and
- * no entity-reference expansion.
+ * no entity-reference expansion. The one leniency is Maven's: the HTML character entities its POM
+ * reader accepts undeclared are rewritten by {@link XmlEntities} to numeric references before the
+ * parser sees them, so a legacy Central POM naming {@code Laugst&oslash;l} reads here as it reads
+ * there without a declaration ever being honoured.
  *
  * <p>That posture is enforceable only because it is owned. Round 3 found seven files each building
  * their own {@code DocumentBuilderFactory} at four different hardening levels, the weakest with one
@@ -55,7 +59,7 @@ public final class DomXml {
 
     /** Parse untrusted XML bytes, honouring the document's own encoding declaration. */
     public static Document parse(byte[] xml) throws IOException {
-        return parse(new InputSource(new ByteArrayInputStream(xml)));
+        return parse(new InputSource(new ByteArrayInputStream(XmlEntities.numeric(xml))));
     }
 
     /**
@@ -63,21 +67,19 @@ public final class DomXml {
      * declaration is ignored rather than applied a second time.
      */
     public static Document parse(String xml) throws IOException {
-        return parse(new InputSource(new StringReader(xml)));
+        return parse(new InputSource(new StringReader(XmlEntities.numeric(xml))));
     }
 
-    /** Parse an untrusted XML stream. The caller owns the stream and closes it. */
+    /** Parse an untrusted XML stream, read to its end. The caller owns the stream and closes it. */
     public static Document parse(InputStream xml) throws IOException {
-        return parse(new InputSource(xml));
+        return parse(xml.readAllBytes());
     }
 
     /** Parse an untrusted XML file. Its path becomes the system id, so parse errors name it. */
     public static Document parse(Path xml) throws IOException {
-        try {
-            return builder().parse(xml.toFile());
-        } catch (SAXException e) {
-            throw new IOException(e.getMessage(), e);
-        }
+        InputSource source = new InputSource(new ByteArrayInputStream(XmlEntities.numeric(Files.readAllBytes(xml))));
+        source.setSystemId(xml.toUri().toString());
+        return parse(source);
     }
 
     /** An empty document to build a DOM in — the write side of the same owner. */
