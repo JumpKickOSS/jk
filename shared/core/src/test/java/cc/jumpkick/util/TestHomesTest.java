@@ -4,6 +4,7 @@ package cc.jumpkick.util;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.host.time.Clock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -94,7 +95,7 @@ class TestHomesTest {
         Path home = Files.createDirectories(root.resolve("abc123abc123"));
         TestHomes.stamp(home);
 
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP))
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
                 .as("a home in use is not reaped")
                 .isZero();
         assertThat(home).isDirectory();
@@ -109,7 +110,7 @@ class TestHomesTest {
         TestHomes.stamp(stale);
         age(stale.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
 
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP))
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
                 .isEqualTo(1);
         assertThat(stale).doesNotExist();
     }
@@ -122,7 +123,7 @@ class TestHomesTest {
         Files.createDirectories(orphan.resolve("store"));
         age(orphan, Duration.ofDays(TestHomes.KEEP_DAYS + 1));
 
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP))
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
                 .isEqualTo(1);
         assertThat(orphan).doesNotExist();
     }
@@ -135,7 +136,8 @@ class TestHomesTest {
         Path newer = slotWithBytes(root, "bbbbbbbbbbbb", 100);
         age(older.resolve(".used-at"), Duration.ofDays(1));
 
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150)).isEqualTo(1);
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150).removed())
+                .isEqualTo(1);
         assertThat(older).doesNotExist();
         assertThat(newer).isDirectory();
     }
@@ -151,7 +153,8 @@ class TestHomesTest {
         Path launching = slotWithBytes(root, "bbbbbbbbbbbb", 100);
         age(running.resolve(".used-at"), Duration.ofHours(TestHomes.HOLD_HOURS - 1));
 
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150)).isZero();
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150).removed())
+                .isZero();
         assertThat(running).isDirectory();
         assertThat(launching).isDirectory();
     }
@@ -170,12 +173,14 @@ class TestHomesTest {
         age(idle.resolve(".used-at"), Duration.ofDays(2));
 
         try (TestHomes.Hold held = TestHomes.hold(running)) {
-            assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150))
+            assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150)
+                            .removed())
                     .isEqualTo(1);
             assertThat(running).isDirectory();
             assertThat(idle).doesNotExist();
         }
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 50)).isEqualTo(1);
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 50).removed())
+                .isEqualTo(1);
         assertThat(running).doesNotExist();
     }
 
@@ -189,7 +194,8 @@ class TestHomesTest {
         Files.writeString(holds.resolve(deadPid() + "-1"), deadPid() + " 0\n");
 
         assertThat(TestHomes.held(abandoned)).isFalse();
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 50)).isEqualTo(1);
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 50).removed())
+                .isEqualTo(1);
         assertThat(abandoned).doesNotExist();
     }
 
@@ -222,12 +228,14 @@ class TestHomesTest {
         slotWithBytes(root, "aaaaaaaaaaaa", 100);
         slotWithBytes(root, "bbbbbbbbbbbb", 100);
 
-        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 1000)).isZero();
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 1000).removed())
+                .isZero();
     }
 
     @Test
     void a_missing_root_reaps_nothing_and_does_not_throw(@TempDir Path tmp) {
-        assertThat(TestHomes.reapStale(tmp.resolve("never-created"), System.currentTimeMillis(), NO_CAP))
+        assertThat(TestHomes.reapStale(tmp.resolve("never-created"), System.currentTimeMillis(), NO_CAP)
+                        .removed())
                 .isZero();
     }
 
@@ -243,10 +251,103 @@ class TestHomesTest {
         long wellPast = Files.getLastModifiedTime(old.resolve(".used-at")).toMillis()
                 + Duration.ofDays(TestHomes.KEEP_DAYS + 5).toMillis();
 
-        assertThat(TestHomes.reapStale(root, wellPast, NO_CAP))
+        assertThat(TestHomes.reapStale(root, wellPast, NO_CAP).removed())
                 .as("a clock moved past the window reaps it; no file timestamps were touched")
                 .isEqualTo(1);
         assertThat(old).doesNotExist();
+    }
+
+    /**
+     * The reap is every launch's, not the JVM's first: a slot that goes stale while an engine lives
+     * is reaped by the next launch that is due, and a launch right after a quiet pass is spared the
+     * listing.
+     */
+    @Test
+    void every_due_launch_reaps_what_went_stale_since_the_last_quiet_pass(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.env.JK_HOME", tmp.resolve("relocated").toString());
+        try {
+            Path root = Files.createDirectories(TestHomes.root());
+            Path module = Files.createDirectories(tmp.resolve("module"));
+            long t0 = System.currentTimeMillis();
+            TestHomes.prepareSlot(module, at(t0));
+            Path stale = Files.createDirectories(root.resolve("cccccccccccc"));
+            TestHomes.stamp(stale);
+            age(stale.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
+
+            TestHomes.prepareSlot(module, at(t0 + 1000));
+            assertThat(stale)
+                    .as("a launch right after a quiet pass skips its own")
+                    .isDirectory();
+
+            TestHomes.prepareSlot(module, at(t0 + TestHomes.REAP_EVERY_MILLIS));
+            assertThat(stale)
+                    .as("the next due launch reaps it, in the same JVM")
+                    .doesNotExist();
+            assertThat(TestHomes.slotFor(module).resolve(".used-at")).isRegularFile();
+        } finally {
+            System.clearProperty("jk.env.JK_HOME");
+        }
+    }
+
+    /** A pass that removed something, or left the root over the cap, is followed by a full pass at the next launch. */
+    @Test
+    void a_pass_that_found_work_is_followed_by_another_at_the_next_launch(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        long now = System.currentTimeMillis();
+        Path first = staleSlot(root, "aaaaaaaaaaaa");
+        assertThat(TestHomes.reapIfDue(root, now, NO_CAP)).isTrue();
+        assertThat(first).doesNotExist();
+
+        Path second = staleSlot(root, "bbbbbbbbbbbb");
+        assertThat(TestHomes.reapIfDue(root, now + 1000, NO_CAP))
+                .as("the pass before removed a slot")
+                .isTrue();
+        assertThat(second).doesNotExist();
+        assertThat(TestHomes.reapIfDue(root, now + 2000, NO_CAP))
+                .as("so did the one before this")
+                .isTrue();
+
+        Path third = staleSlot(root, "cccccccccccc");
+        assertThat(TestHomes.reapIfDue(root, now + 3000, NO_CAP))
+                .as("the pass before was quiet")
+                .isFalse();
+        assertThat(third).isDirectory();
+
+        Path held = slotWithBytes(root, "dddddddddddd", 100);
+        long due = now + 2000 + TestHomes.REAP_EVERY_MILLIS;
+        assertThat(TestHomes.reapIfDue(root, due, 50))
+                .as("due again: the stale slot goes")
+                .isTrue();
+        assertThat(third).doesNotExist();
+        assertThat(held).as("stamped just now: inside the hold window").isDirectory();
+        assertThat(TestHomes.reapIfDue(root, due + 1000, 50))
+                .as("the pass before removed a slot")
+                .isTrue();
+        assertThat(TestHomes.reapIfDue(root, due + 2000, 50))
+                .as("over the cap, even when nothing can go, every launch looks again")
+                .isTrue();
+    }
+
+    private static Path staleSlot(Path root, String key) throws Exception {
+        Path slot = Files.createDirectories(root.resolve(key));
+        TestHomes.stamp(slot);
+        age(slot.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
+        return slot;
+    }
+
+    /** A clock stopped at {@code millis}. */
+    private static Clock at(long millis) {
+        return new Clock() {
+            @Override
+            public long millis() {
+                return millis;
+            }
+
+            @Override
+            public long nanos() {
+                return millis * 1_000_000L;
+            }
+        };
     }
 
     /** A pid no process has: counted down from the top of the range until the OS knows nothing by it. */
