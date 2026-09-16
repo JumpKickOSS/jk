@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -21,8 +22,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * PubGrub version solver: root deps + {@link PackageSource} → package → version map. Constraints
- * intern onto {@link VersionUniverse}/{@link AllowedSet} bitsets; budgets via {@code
- * JK_RESOLVE_MAX_DECISIONS} / {@code JK_RESOLVE_TIMEOUT_MS}.
+ * intern onto {@link VersionUniverse}/{@link AllowedSet} bitsets. Work is budgeted by decisions
+ * and steps ({@code JK_RESOLVE_MAX_DECISIONS}); time only by progress — a solve is stopped when
+ * nothing advanced for a {@link StallWatch} window ({@code JK_RESOLVE_TIMEOUT_MS}), never for
+ * being long.
  *
  * <p>When the positive constraint is an exact singleton, or the source has a soft-prefer pin that
  * already satisfies the constraint, seed a singleton {@link VersionUniverse} without calling {@link
@@ -44,9 +47,6 @@ public class PubGrubSolver {
 
     /** Default max {@link PartialSolution#decide} calls per solve (env {@code JK_RESOLVE_MAX_DECISIONS}). */
     public static final int DEFAULT_MAX_DECISIONS = 100_000;
-
-    /** Default wall-clock budget in ms per graph, sized for a cold few-hundred-module reactor; {@code 0} = unlimited (env {@code JK_RESOLVE_TIMEOUT_MS}). */
-    public static final long DEFAULT_TIMEOUT_MS = 600_000L;
 
     /**
      * Multiplier on {@code maxDecisions} for total solver steps (outer loops, propagation rounds,
@@ -109,10 +109,17 @@ public class PubGrubSolver {
 
     private final int maxDecisions;
     private final int maxSteps;
-    private final long deadlineNanos; // Long.MAX_VALUE = unlimited
 
-    private int decisionCount;
+    /** Stall window in ms; {@code 0} never stops a solve for standing still. */
+    private final long stallWindowMs;
+
+    /** Read by the stall watch's thread as well as this one. */
+    private volatile int decisionCount;
+
     private int stepCount;
+
+    /** The watch over the running {@link #solve}; null between solves. */
+    private @Nullable StallWatch watch;
 
     /**
      * Fingerprints of decision maps that already caused a conflict, each with how many clause
@@ -129,11 +136,15 @@ public class PubGrubSolver {
     private @Nullable BiConsumer<String, String> onDecision;
 
     public PubGrubSolver(PackageSource source) {
-        this(source, envMaxDecisions(), envTimeoutMs());
+        this(source, envMaxDecisions(), StallWatch.envWindowMs());
     }
 
-    /** Test / tuning seam with explicit budgets. {@code timeoutMs <= 0} means no wall-clock limit. */
-    public PubGrubSolver(PackageSource source, int maxDecisions, long timeoutMs) {
+    /**
+     * Test / tuning seam with explicit budgets. {@code stallWindowMs} is how long the solve may
+     * stand still — no decision, catalog read or POM read — before it is stopped; {@code <= 0}
+     * never stops it.
+     */
+    public PubGrubSolver(PackageSource source, int maxDecisions, long stallWindowMs) {
         this.source = Objects.requireNonNull(source, "source");
         this.solution = new PartialSolution(universes);
         if (maxDecisions <= 0) {
@@ -143,25 +154,25 @@ public class PubGrubSolver {
         // Saturate on overflow for huge maxDecisions test seams.
         long steps = (long) maxDecisions * STEPS_PER_DECISION;
         this.maxSteps = steps > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) steps;
-        this.deadlineNanos = timeoutMs <= 0 ? Long.MAX_VALUE : System.nanoTime() + timeoutMs * 1_000_000L;
+        this.stallWindowMs = Math.max(0L, stallWindowMs);
     }
 
     /**
-     * Wide modeload full advertised histories up front instead of compact
-     * lists and lazy preferred-singleton seeds. Used for the one bounded retry after an unsat
-     * verdict that involved potentially-incomplete universes — conflict resolution can derive
-     * root-level unsat from capped candidate lists without ever revisiting a decision, so the
-     * decision-time widen hooks alone cannot recover those graphs.
+     * Wide mode loads full advertised histories up front instead of compact lists and lazy
+     * preferred-singleton seeds. Used for the one bounded retry after an unsat verdict that involved
+     * potentially-incomplete universes — conflict resolution can derive root-level unsat from capped
+     * candidate lists without ever revisiting a decision, so the decision-time widen hooks alone
+     * cannot recover those graphs.
      */
-    /** Temporary resolution trace switch for the debug test. */
     private boolean wideUniverses;
 
     /**
      * What the solver is doing right now, in words a user can act on ({@code "choosing a version
      * for g:a:jar:"}); an unexpected exception is rethrown carrying it, so a bare {@code
      * NoSuchElementException} never reaches the results file without the package it happened on.
+     * The stall watch reads it from its own thread when it names what stood still.
      */
-    private String phase = "seeding the root";
+    private volatile String phase = "seeding the root";
 
     /**
      * Packages whose universe holds only versions POM edges declared, because no repository
@@ -205,16 +216,6 @@ public class PubGrubSolver {
         }
     }
 
-    private static long envTimeoutMs() {
-        String v = System.getenv("JK_RESOLVE_TIMEOUT_MS");
-        if (v == null || v.isBlank()) return DEFAULT_TIMEOUT_MS;
-        try {
-            return Long.parseLong(v.trim());
-        } catch (NumberFormatException e) {
-            return DEFAULT_TIMEOUT_MS;
-        }
-    }
-
     /**
      * @param rootPkg name of the root project (e.g. {@code com.example:widget})
      * @param rootVersion version of the root project
@@ -246,6 +247,10 @@ public class PubGrubSolver {
         noteDecision(rootPkg, rootVersion);
 
         String next = rootPkg;
+        StallWatch stalls =
+                new StallWatch(Clock.SYSTEM, stallWindowMs, () -> decisionCount + source.readsCompleted(), () -> phase);
+        this.watch = stalls;
+        stalls.start(Thread.currentThread());
         try {
             while (next != null) {
                 checkBudget();
@@ -254,8 +259,16 @@ public class PubGrubSolver {
             }
         } catch (UnsatisfiableException e) {
             throw e;
+        } catch (IOException | InterruptedException e) {
+            // The watch interrupts a solver parked in a read; the read surfaces that as either.
+            if (stalls.tripped()) throwBudget(stalls.stall());
+            throw e;
         } catch (RuntimeException e) {
+            if (stalls.tripped()) throwBudget(stalls.stall());
             throw new IllegalStateException("dependency resolution failed while " + phase + ": " + e, e);
+        } finally {
+            stalls.stop();
+            this.watch = null;
         }
         if (ResolveProfile.on()) {
             ResolveProfile.solve(System.nanoTime() - solveT0);
@@ -276,9 +289,8 @@ public class PubGrubSolver {
         if (decisionCount > maxDecisions) {
             throwBudget("exceeded max decisions (" + maxDecisions + "); set JK_RESOLVE_MAX_DECISIONS to raise");
         }
-        if (deadlineNanos != Long.MAX_VALUE && System.nanoTime() > deadlineNanos) {
-            throwBudget("exceeded resolve time budget; set JK_RESOLVE_TIMEOUT_MS to raise (0 = unlimited)");
-        }
+        StallWatch stalls = watch;
+        if (stalls != null && stalls.tripped()) throwBudget(stalls.stall());
     }
 
     private void throwBudget(String reason) {

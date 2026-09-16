@@ -80,6 +80,15 @@ public interface PackageSource {
     default void quiesce() {}
 
     /**
+     * How many version catalog and POM reads this source has completed so far, speculative ones
+     * included. The solver's stall watch samples it: a solve parked on a read is alive while this
+     * moves. Default: nothing counted.
+     */
+    default long readsCompleted() {
+        return 0L;
+    }
+
+    /**
      * @return dependency edges of {@code (pkg, version)} as {@link Term}s. A positive Term gives a
      * downstream package and the version range the parent requires of it. A negative Term is a
      * constraint: the package is absent or within the term's complement — it bounds a package
