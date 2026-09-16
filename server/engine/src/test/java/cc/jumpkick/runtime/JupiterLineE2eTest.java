@@ -46,7 +46,7 @@ class JupiterLineE2eTest {
                 java    = 25
 
                 [test-dependencies]
-                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "5.9.0" }
+                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "5.9.0" }  # off the train: an old Jupiter line is the point of this fixture
                 """ + REPOSITORIES);
         Path test = Files.createDirectories(project.resolve("test/src/com/example"));
         Files.writeString(test.resolve("OldTest.java"), """
