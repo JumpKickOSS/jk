@@ -333,8 +333,7 @@ public final class CachePlans {
                     wsRoot = wsRoot.toAbsolutePath().normalize();
                 }
                 dirs.add(wsRoot);
-                JkBuild root =
-                        wsRoot.equals(here) ? manifest : JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
+                JkBuild root = wsRoot.equals(here) ? manifest : JkBuildParser.parse(ManifestPaths.manifestIn(wsRoot));
                 for (String module : root.workspaceOpt().map(Workspace::modules).orElse(List.of())) {
                     Path mod = wsRoot.resolve(module).normalize();
                     try {

@@ -57,8 +57,7 @@ public final class GuardCommitMsgVerb implements HostedVerb {
                 GuardCommitMsgRequest req = GuardCommitMsgRequest.decode(requestLine);
                 Path dir = Path.of(Objects.requireNonNull(req.dir(), "dir"));
                 Path root = WorkspaceScan.findRoot(dir).orElse(dir);
-                LoadResult load =
-                        GuardRules.load(root, JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root)));
+                LoadResult load = GuardRules.load(root, JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root)));
                 if (load.hasErrors()) {
                     StringBuilder sb = new StringBuilder("jk-guards.toml did not load; no commit rule ran\n");
                     for (LoadError e : load.errors())

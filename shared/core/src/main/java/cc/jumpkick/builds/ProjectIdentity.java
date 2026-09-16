@@ -271,8 +271,7 @@ public record ProjectIdentity(
      * keeps {@link cc.jumpkick.config.JkBuildParser} — and tomlj with it — off the native image.
      */
     private static Optional<String> explicitId(Path projectDir) {
-        String id =
-                TomlScan.scan(ManifestPaths.manifestIn(projectDir), "id").get("id");
+        String id = TomlScan.scan(ManifestPaths.manifestIn(projectDir), "id").get("id");
         if (id == null || id.isBlank()) return Optional.empty();
         return Optional.of(normalizeId(id));
     }
