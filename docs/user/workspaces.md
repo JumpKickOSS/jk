@@ -73,6 +73,14 @@ widget-core = { workspace = true, fixtures = true }
 `fixtures = true` does not imply `kind = "tests"` and is illegal outside test scopes. The
 output is `{target}/test-fixtures/classes/` — it never enters a POM.
 
+## Nothing to build
+
+A workspace that declares no modules, or whose every module has no source tree, no extra
+source root and no build logic, fails `jk build` and `jk test` with exit 2 and a one-line
+`built nothing` reason naming the modules. A green build that compiled nothing would read as
+a passing build; jk does not report one. A module selection (`-m`) is judged by the selection
+alone.
+
 ## Select modules
 
 From a **module directory**, `jk build` / `jk test` is that module plus upstream
