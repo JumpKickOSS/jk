@@ -36,6 +36,33 @@ class TestLauncherReportTest {
     }
 
     @Test
+    void a_class_discovery_could_not_load_names_the_class_the_root_cause_and_the_frames() {
+        String out =
+                "jk-test-runner: test discovery failed: 1 class could not be loaded during discovery: com.acme.OrdersIT\n"
+                        + "  under /ws/app/target/classes/test\n"
+                        + "  class: com.acme.OrdersIT\n"
+                        + "  caused by: java.lang.NoClassDefFoundError: com/acme/Base\n"
+                        + "    at java.base/java.lang.ClassLoader.defineClass1(Native Method)\n"
+                        + "    at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1027)\n"
+                        + "  caused by: java.lang.ClassNotFoundException: com.acme.Base\n"
+                        + "    at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)\n";
+        String message = TestLauncherReport.message(TestLauncherFailure.discovery("g:app", 70, out), null);
+
+        assertThat(message)
+                .startsWith("test discovery exited 70 before any test ran"
+                        + " — 1 class could not be loaded during discovery: com.acme.OrdersIT\n"
+                        + "caused by: java.lang.NoClassDefFoundError: com/acme/Base\n"
+                        + "caused by: java.lang.ClassNotFoundException: com.acme.Base\n"
+                        + "    at java.base/java.lang.ClassLoader.defineClass1(Native Method)\n"
+                        + "    at java.base/java.lang.ClassLoader.defineClass(ClassLoader.java:1027)");
+        assertThat(message)
+                .contains("Fix: the test JVM could not load the class com.acme.OrdersIT"
+                        + " — `java.lang.ClassNotFoundException: com.acme.Base`")
+                .contains("@QuarkusTest")
+                .doesNotContain("the failure is the framework's own");
+    }
+
+    @Test
     void a_jvm_that_printed_nothing_usable_keeps_the_generic_fix() {
         String message = TestLauncherReport.message(
                 TestLauncherFailure.runner("g:app", 1, "Error: could not create the Java Virtual Machine"), null);

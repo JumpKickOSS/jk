@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.model.command.Exit;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -72,6 +73,8 @@ final class LauncherPath {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
         applyTagFilters(b, includeTags, excludeTags);
+        DiscoveryFailures dropped = new DiscoveryFailures(scanClasspath, filter);
+        b.listeners(dropped);
 
         LauncherDiscoveryRequest request = b.build();
         Launcher launcher = LauncherFactory.create();
@@ -84,6 +87,9 @@ final class LauncherPath {
             reportDiscoveryFailure(scanClasspath, e);
             throw e;
         }
+        // A class discovery dropped is a suite that cannot run as written: fail before executing,
+        // so the engine sees the header and no event, never a green run minus the class.
+        if (dropped.report(System.err)) return Exit.SOFTWARE;
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
         warnTagExcluded(() -> named(scanClasspath, filter), includeTags, excludeTags, plan, adapter);
@@ -93,7 +99,8 @@ final class LauncherPath {
         return adapter.hasFailures() ? 1 : 0;
     }
 
-    static void runListOnly(
+    /** Exit 0 with the plan's classes announced, or {@link Exit#SOFTWARE} after a discovery failure was printed. */
+    static int runListOnly(
             Path scanClasspath,
             @Nullable String filter,
             List<String> includeTags,
@@ -107,6 +114,8 @@ final class LauncherPath {
             b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
         applyTagFilters(b, includeTags, excludeTags);
+        DiscoveryFailures dropped = new DiscoveryFailures(scanClasspath, filter);
+        b.listeners(dropped);
         TestPlan plan;
         try {
             plan = LauncherFactory.create().discover(b.build());
@@ -114,9 +123,12 @@ final class LauncherPath {
             reportDiscoveryFailure(scanClasspath, e);
             throw e;
         }
+        // Printed before any class is announced: a list the engine cannot trust is no list.
+        if (dropped.report(System.err)) return Exit.SOFTWARE;
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
         warnTagExcluded(() -> named(scanClasspath, filter), includeTags, excludeTags, plan, adapter);
+        return 0;
     }
 
     /**
@@ -232,8 +244,8 @@ final class LauncherPath {
 
     /**
      * A plan with no test where test classes exist is a run that would report success having run
-     * nothing: an engine the Platform dropped, a framework SPI (Quarkus {@code FacadeClassLoader})
-     * that failed to load the classes. Judged against a second discovery without the tag filters,
+     * nothing: an engine the Platform dropped, a class filter that admits no test. A class the
+     * loader could not produce is reported before this by {@link DiscoveryFailures}. Judged against a second discovery without the tag filters,
      * so a plan the filters emptied stays what it is — a tier with nothing in it. Not under a
      * class filter: in a workspace every module but the one holding the named class is empty, and
      * the engine judges an unmatched {@code --class} across the run.

@@ -54,8 +54,7 @@ public final class TestRunner implements Plugin {
 
         try (var writer = new JsonEventWriter(out)) {
             if (parsed.listOnly) {
-                runListOnly(parsed, writer);
-                return 0;
+                return runListOnly(parsed, writer);
             } else if (parsed.pull) {
                 return runPullMode(parsed, writer);
             } else {
@@ -98,8 +97,8 @@ public final class TestRunner implements Plugin {
                 args.scanClasspath, args.filter, args.includeTags, args.excludeTags, args.workerId, writer);
     }
 
-    private static void runListOnly(Args args, EventWriter writer) {
-        LauncherPath.runListOnly(
+    private static int runListOnly(Args args, EventWriter writer) {
+        return LauncherPath.runListOnly(
                 args.scanClasspath, args.filter, args.includeTags, args.excludeTags, args.workerId, writer);
     }
 
