@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -23,12 +22,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Regression guard for the compile-test annotation-processor wiring (the bug where {@code jk}'s
- * test compilation never ran declared processors). {@link TestSupport#compileWithCache} must put
- * the processor path on the request — modern javac (JDK 23+) only runs processors named by {@code
- * -processorpath}, not ones merely on the classpath. The fixture uses a source-generating
+ * The compile-test annotation-processor wiring: {@link TestSupport#compileWithCache} hands javac
+ * the declared processor path, and when none is declared it hands javac the processors the test
+ * classpath registers, exactly as compile-main does. The fixture uses a source-generating
  * processor: a test source annotated with {@code @gen.Gen} references the generated {@code
- * <Type>Gen} type, so if the processor doesn't run the symbol is missing and the compile fails.
+ * <Type>Gen} type, so if the processor does not run the symbol is missing and the compile fails.
  */
 class CompileTestProcessorTest {
 
@@ -66,25 +64,45 @@ class CompileTestProcessorTest {
     }
 
     @Test
-    void processorDoesNotRun_whenProcessorPathOmitted(@TempDir Path dir) throws Exception {
-        // The exact pre-fix behavior: the processor jar is on the classpath but NOT the
-        // processor path. JDK 23+ won't auto-run classpath processors, so WidgetTestGen
-        // is never generated and the test source fails to compile. (Older javac would
-        // auto-run it, so the assertion is meaningful only on 23+.)
-        assumeTrue(Runtime.version().feature() >= 23, "javac classpath AP auto-run removed in 23");
-
+    void classpathProcessorRuns_whenNoProcessorPathIsDeclared(@TempDir Path dir) throws Exception {
+        // The processor is registered on the test classpath and nothing is declared: the request
+        // builder discovers it, so WidgetTestGen is generated and the test source compiles.
         Path procDir = sourceGenProcessor(dir);
         Path testSrc = dir.resolve("test").resolve("src");
         write(testSrc, "app/WidgetTest.java", TEST_SRC);
         Path out = dir.resolve("out");
 
-        boolean ok = TestSupport.compileWithCache(
+        boolean ok = compile(dir, testSrc, List.of(procDir), List.of(), out);
+
+        assertThat(ok).isTrue();
+        assertThat(out.resolve("app/WidgetTestGen.class")).isRegularFile();
+    }
+
+    @Test
+    void declaredProcessorPathShadowsClasspathProcessor(@TempDir Path dir) throws Exception {
+        // A declared processor path that names something else is searched alone: the classpath's
+        // processor stays silent, WidgetTestGen is never generated and the compile fails.
+        Path procDir = sourceGenProcessor(dir);
+        Path silent = Files.createDirectories(dir.resolve("silent"));
+        Path testSrc = dir.resolve("test").resolve("src");
+        write(testSrc, "app/WidgetTest.java", TEST_SRC);
+        Path out = dir.resolve("out");
+
+        boolean ok = compile(dir, testSrc, List.of(procDir), List.of(silent), out);
+
+        assertThat(ok).isFalse();
+        assertThat(out.resolve("app/WidgetTestGen.class")).doesNotExist();
+    }
+
+    private static boolean compile(Path dir, Path testSrc, List<Path> classpath, List<Path> processorPath, Path out)
+            throws Exception {
+        return TestSupport.compileWithCache(
                 new NoopContext(),
                 "compile-test",
                 new PlannerCompile.TestCompile(
                         CompileSupport.collectJavaSources(testSrc),
-                        List.of(procDir),
-                        List.of(), // NO processor path — the regression
+                        classpath,
+                        processorPath,
                         out,
                         21,
                         List.of(),
@@ -95,9 +113,6 @@ class CompileTestProcessorTest {
                 new Cas(dir.resolve("cas")),
                 dir.resolve("cache"),
                 WorkerEnv.strict());
-
-        assertThat(ok).isFalse();
-        assertThat(out.resolve("app/WidgetTestGen.class")).doesNotExist();
     }
 
     // ---- fixtures ---------------------------------------------------------
