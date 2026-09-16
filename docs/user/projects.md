@@ -51,6 +51,8 @@ their plugins.
 | `groovy` | Groovy compiler version — **5+** (Groovy modules) |
 | `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — `"3.8.4"` holds both, an opt-in `"^3.8"` moves compiler and library together (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |
+| `sources` | Sources jar: a library (no `[application]`) builds it always; `true` = `jk publish` assembles it for an application; `"always"` = `jk build` writes it for any module — [Packaging](packaging.md#library-artefacts-sources-and-javadoc-jars) |
+| `javadoc` | Javadoc jar for a library: default lenient (doclint off, warnings in the results); `"strict"` fails on doclint errors; `false` skips it |
 | `[m2] integration` | Use the Maven local repository as the primary third-party jar store (default **true**). `false` hosts those jars only under `JK_STORE_DIR/repos/<origin-id>/` (one tree per repository origin — [Repositories](repositories.md#store-layout-one-tree-per-origin)). First-party workers always stay in `repos/jk-local`. Machine override: `JK_M2_INTEGRATION=false` or user-config `[m2] integration = false`. |
 | `[m2] install` | Write `jk install` artifacts into the Maven local repository (default **true**). Independent of `integration`: `[m2] install = false` keeps `jk install` under `repos/jk-local` even when third-party jars still come from `~/.m2`. Machine override: `JK_M2_INSTALL=false` or user-config `[m2] install = false`. |
 
@@ -129,7 +131,8 @@ assembly = true                # also write `-all.jar`
 # native   = true              # native-image on jk build / jk install
 ```
 
-Packaging matrix: [Packaging](packaging.md).
+Absent `[application]` means **library**: `jk build` also writes the `-sources.jar` and
+`-javadoc.jar` Maven Central requires. Packaging matrix: [Packaging](packaging.md).
 
 ## Features, profiles, variants
 
