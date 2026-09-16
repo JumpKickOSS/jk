@@ -7,6 +7,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.base.PublishPlans;
@@ -19,6 +20,7 @@ import java.io.BufferedWriter;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
@@ -82,8 +84,18 @@ public final class PublishVerb implements HostedVerb {
                         null,
                         null,
                         false,
-                        false)
+                        false,
+                        false,
+                        null)
                 .encode();
+    }
+
+    /** The publishing type as the CLI spells it: {@code user-managed} unless the request said {@code automatic}. */
+    private static String publishingType(PublishPlans.Request req) {
+        String type = req.publishingType();
+        return type == null || type.isBlank()
+                ? "user-managed"
+                : type.toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
     @Override
@@ -122,19 +134,42 @@ public final class PublishVerb implements HostedVerb {
                         body.sigstore(),
                         body.slsa(),
                         body.sbom(),
-                        credential);
+                        credential,
+                        body.central(),
+                        body.publishingType());
                 Session session = ProtoSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 BuildPlan plan = PublishPlans.publishBuildPlan(entryDir, cache, req);
-                return host.streamSinglePlan(
-                        plan,
-                        session,
-                        writer,
-                        result -> ProtoEvents.planFinishPublish(
-                                dir,
-                                result.success(),
-                                plan.get(PublishPlans.FILES).orElse(-1),
-                                plan.get(PublishPlans.WRITTEN).orElse(List.of())));
+                long rid = host.currentRequestId();
+                return host.streamSinglePlan(plan, session, writer, result -> {
+                    PublishPlans.Deployment deployment =
+                            plan.get(PublishPlans.DEPLOYMENT).orElse(null);
+                    List<String> bundle = plan.get(PublishPlans.BUNDLE).orElse(List.of());
+                    int files = plan.get(PublishPlans.FILES).orElse(-1);
+                    // The results file gets the same facts the wire carries: where the run sent
+                    // what, and the Portal's verdict with every error it listed.
+                    host.accPublish(
+                            rid,
+                            new BuildRecord.Publish(
+                                    req.central()
+                                            ? "Central Portal (" + publishingType(req) + ")"
+                                            : String.valueOf(req.repoUrl()),
+                                    Math.max(files, 0),
+                                    req.dryRun(),
+                                    deployment == null ? null : deployment.id(),
+                                    deployment == null ? null : deployment.state(),
+                                    deployment == null ? List.of() : deployment.errors(),
+                                    bundle));
+                    return ProtoEvents.planFinishPublish(
+                            dir,
+                            result.success(),
+                            files,
+                            plan.get(PublishPlans.WRITTEN).orElse(List.of()),
+                            deployment == null ? null : deployment.id(),
+                            deployment == null ? null : deployment.state(),
+                            deployment == null ? List.of() : deployment.errors(),
+                            bundle);
+                });
             } catch (Exception e) {
                 host.sendQuiet(writer, host.requestFailedLine(null, e));
                 return JobOutcome.failed(Exit.FAILURE);

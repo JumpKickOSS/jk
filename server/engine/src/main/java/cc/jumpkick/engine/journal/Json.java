@@ -121,6 +121,21 @@ final class Json {
             o.put("io", io);
         }
 
+        if (r.publish() != null) {
+            Map<String, Object> pub = new LinkedHashMap<>();
+            pub.put("destination", r.publish().destination());
+            pub.put("files", r.publish().files());
+            pub.put("dryRun", r.publish().dryRun());
+            if (r.publish().deploymentId() != null)
+                pub.put("deploymentId", r.publish().deploymentId());
+            if (r.publish().deploymentState() != null)
+                pub.put("deploymentState", r.publish().deploymentState());
+            if (!r.publish().deploymentErrors().isEmpty())
+                pub.put("deploymentErrors", r.publish().deploymentErrors());
+            if (!r.publish().bundle().isEmpty()) pub.put("bundle", r.publish().bundle());
+            o.put("publish", pub);
+        }
+
         return MiniJson.writePretty(o);
     }
 
@@ -183,6 +198,19 @@ final class Json {
             io = new BuildRecord.Io(lng(i, "remoteUp"), lng(i, "remoteDown"), lng(i, "localUp"), lng(i, "localDown"));
         }
 
+        BuildRecord.Publish publish = null;
+        if (o.get("publish") instanceof Map<?, ?> pm) {
+            Map<String, Object> pub = (Map<String, Object>) pm;
+            publish = new BuildRecord.Publish(
+                    text(pub, "destination"),
+                    (int) lng(pub, "files"),
+                    bool(pub, "dryRun"),
+                    str(pub, "deploymentId"),
+                    str(pub, "deploymentState"),
+                    strList(pub, "deploymentErrors"),
+                    strList(pub, "bundle"));
+        }
+
         List<BuildRecord.Diag> diagnostics = new ArrayList<>();
         for (Object e : arr(o, "diagnostics")) {
             Map<String, Object> dm = (Map<String, Object>) e;
@@ -232,7 +260,8 @@ final class Json {
                 benefit,
                 bool(o, "running"),
                 io,
-                lng(o, "requestId"));
+                lng(o, "requestId"),
+                publish);
     }
 
     /**

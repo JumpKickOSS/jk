@@ -63,7 +63,8 @@ class JkResultsMarkdownTest {
                 cli.benefit(),
                 cli.running(),
                 cli.io(),
-                cli.requestId());
+                cli.requestId(),
+                null);
         String md = JkResultsMarkdown.render(mcp);
         assertThat(md)
                 .startsWith("# jk results — OK\n\n**OK** · build · `g:a` · #3 · 100ms · exit 0\n"
@@ -245,7 +246,8 @@ class JkResultsMarkdownTest {
                 null,
                 false,
                 null,
-                7L);
+                7L,
+                null);
         String md = JkResultsMarkdown.render(r);
         assertThat(md).startsWith("# jk results — CANCELLED");
         assertThat(md).contains("**exit 130**");
@@ -432,6 +434,54 @@ class JkResultsMarkdownTest {
         return new BuildRecord.Task(name, stage, status, ms, 0L);
     }
 
+    @Test
+    void a_publish_run_reports_its_target_deployment_and_every_validation_error() {
+        BuildRecord base = record(false, List.of(), List.of(), List.of(task("publish", "publish", "FAIL", 900)));
+        BuildRecord r = new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                base.schema(),
+                "publish",
+                base.dir(),
+                base.coord(),
+                base.projectId(),
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                base.cancelled(),
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                base.modules(),
+                base.steps(),
+                base.diagnostics(),
+                base.trigger(),
+                base.session(),
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io(),
+                base.requestId(),
+                new BuildRecord.Publish(
+                        "Central Portal (user-managed)",
+                        16,
+                        false,
+                        "28570f16-da32-4c14-bd2e-c1acc0782365",
+                        "FAILED",
+                        List.of("Missing signature for file: widget-1.0.0.pom", "Javadocs must be provided"),
+                        List.of(
+                                "com/example/widget/1.0.0/widget-1.0.0.jar",
+                                "com/example/widget/1.0.0/widget-1.0.0.jar.asc")));
+        String md = JkResultsMarkdown.render(r);
+        assertThat(md)
+                .contains("## Publish\n\n- destination: Central Portal (user-managed)\n- files: 16\n"
+                        + "- deployment: `28570f16-da32-4c14-bd2e-c1acc0782365` · **FAILED**\n"
+                        + "- validation errors:\n  - Missing signature for file: widget-1.0.0.pom\n  - Javadocs must be provided\n"
+                        + "- bundle (2 entries):\n  - `com/example/widget/1.0.0/widget-1.0.0.jar`\n");
+        assertThat(JkResultsMarkdown.render(base)).doesNotContain("## Publish");
+    }
+
     private static BuildRecord record(
             boolean success,
             List<BuildRecord.Module> modules,
@@ -471,6 +521,7 @@ class JkResultsMarkdownTest {
                 null,
                 false,
                 null,
-                0L);
+                0L,
+                null);
     }
 }

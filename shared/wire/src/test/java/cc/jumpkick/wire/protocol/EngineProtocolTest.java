@@ -493,7 +493,9 @@ class EngineProtocolTest {
                         "hunter2",
                         null,
                         true,
-                        false)
+                        false,
+                        false,
+                        null)
                 .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.PUBLISH_REQUEST);
         // A publish uploads to someone else's server: the offline decision rides the request so

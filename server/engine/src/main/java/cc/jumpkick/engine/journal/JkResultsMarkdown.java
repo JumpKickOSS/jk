@@ -96,6 +96,7 @@ public final class JkResultsMarkdown {
         appendFailures(sb, record, !tests.isEmpty());
         appendGuards(sb, record);
         JkResultsTestsSection.append(sb, record, tests);
+        appendPublish(sb, record);
         appendDeliverables(sb, record);
         appendFailedSteps(sb, record);
         appendWarnings(sb, record);
@@ -439,6 +440,43 @@ public final class JkResultsMarkdown {
         String one = firstLine(msg);
         String thrown = some(d.exceptionClass());
         return thrown != null && one.equals(thrown);
+    }
+
+    /**
+     * What a publish run sent where: the destination, the file count, and for a Central Portal
+     * deployment its id, the state the poll ended in and every validation error — the facts a
+     * release engineer needs in front of them when the Portal says no.
+     */
+    private static void appendPublish(StringBuilder sb, BuildRecord r) {
+        BuildRecord.Publish p = r.publish();
+        if (p == null) return;
+        sb.append("## Publish\n\n");
+        sb.append("- destination: ")
+                .append(p.destination())
+                .append(p.dryRun() ? " (dry run)" : "")
+                .append('\n');
+        sb.append("- files: ").append(p.files()).append('\n');
+        if (p.deploymentId() != null) {
+            sb.append("- deployment: `").append(p.deploymentId()).append('`');
+            if (p.deploymentState() != null)
+                sb.append(" · **").append(p.deploymentState()).append("**");
+            sb.append('\n');
+        } else if (p.deploymentState() != null) {
+            sb.append("- state: **").append(p.deploymentState()).append("**\n");
+        }
+        if (!p.deploymentErrors().isEmpty()) {
+            sb.append("- validation errors:\n");
+            for (String error : p.deploymentErrors()) {
+                sb.append("  - ")
+                        .append(clipOneLine(error.strip(), MAX_MESSAGE_CHARS))
+                        .append('\n');
+            }
+        }
+        if (!p.bundle().isEmpty()) {
+            sb.append("- bundle (").append(p.bundle().size()).append(" entries):\n");
+            for (String entry : p.bundle()) sb.append("  - `").append(entry).append("`\n");
+        }
+        sb.append('\n');
     }
 
     private static void appendDeliverables(StringBuilder sb, BuildRecord r) {

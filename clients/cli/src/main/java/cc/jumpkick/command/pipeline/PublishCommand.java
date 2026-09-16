@@ -15,6 +15,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -38,6 +39,12 @@ import org.jspecify.annotations.Nullable;
  * {@code jk publish} — assemble, sign, and upload Maven artifacts (engine-hosted worker).
  * Credentials and GPG passphrase are resolved client-side and passed on the request. SNAPSHOTs
  * require {@code --allow-snapshot}.
+ *
+ * <p>{@code --central} switches the target to the Sonatype Central Portal: one signed bundle of
+ * jar, POM, sources and javadoc jars uploaded to the Portal's API, then polled to its verdict. The
+ * token comes from the {@code central} credential ({@code jk repo login central --url
+ * https://central.sonatype.com}, or {@code JK_REPO_CENTRAL_*}); {@code --repo-url} names another
+ * Portal; a dry run writes the bundle under {@code target/publish/} and lists it.
  */
 public final class PublishCommand implements CliCommand {
 
@@ -55,6 +62,8 @@ public final class PublishCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new ArrayList<Opt>(List.of(
                 Opt.value("<url>", "Target Maven repository URL (none on --dry-run).", "--repo-url"),
+                Opt.flag("Signed bundle to the Sonatype Central Portal.", "--central"),
+                Opt.value("<type>", "Central: user-managed (default) or automatic.", "--publishing-type"),
                 Opt.value("<user>", "HTTP Basic username (PUBLISH_USER env).", "--user"),
                 Opt.value("<pass>", "HTTP Basic password (PUBLISH_PASSWORD env).", "--password"),
                 Opt.value("<REGION>", "Object-store region for s3:// / gs://.", "--region"),
@@ -103,6 +112,11 @@ public final class PublishCommand implements CliCommand {
     boolean sigstore;
     boolean slsa;
     boolean sbom;
+    boolean central;
+
+    @Nullable
+    String publishingType;
+
     GlobalOptions global;
 
     @Override
@@ -121,6 +135,8 @@ public final class PublishCommand implements CliCommand {
         this.sigstore = in.isSet("sigstore");
         this.slsa = in.isSet("slsa");
         this.sbom = in.isSet("sbom");
+        this.central = in.isSet(RepositorySpec.CENTRAL);
+        this.publishingType = in.value("publishing-type").orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path projectDir = global.workingDir();
@@ -130,14 +146,8 @@ public final class PublishCommand implements CliCommand {
             CommandWedge.printFail("Publish", jkBuildPath + " not found.");
             return Exit.NO_INPUT;
         }
-        if (sign && keyFile == null) {
-            CommandWedge.printFail("Publish", "--sign requires --key-file <path>.");
-            return Exit.USAGE;
-        }
-        if (repoUrl == null && !dryRun) {
-            CommandWedge.printFail("Publish", "--repo-url <url> is required; only a --dry-run publishes nowhere.");
-            return Exit.USAGE;
-        }
+        int usage = checkOptions();
+        if (usage != 0) return usage;
         Path cache = JkDirs.cache();
 
         // Project facts via PROJECT_INFO; inline repo credential is a deliberate client-side
@@ -165,7 +175,9 @@ public final class PublishCommand implements CliCommand {
         // repository has nothing to authenticate to.
         RepoCredential cred;
         try {
-            cred = repoUrl == null ? RepoCredential.ANONYMOUS : resolvePublishCredential(jkBuildPath);
+            cred = repoUrl == null || (central && dryRun)
+                    ? RepoCredential.ANONYMOUS
+                    : central ? resolveCentralCredential() : resolvePublishCredential(jkBuildPath);
         } catch (RuntimeException e) {
             CommandWedge.printFail("Publish", e.getMessage());
             return Exit.CONFIG;
@@ -174,7 +186,6 @@ public final class PublishCommand implements CliCommand {
 
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
         BuildPlanResult result;
-        int files;
         EngineRequests.PublishOutcome outcome;
         try {
             outcome = EngineClient.runPublish(
@@ -195,32 +206,99 @@ public final class PublishCommand implements CliCommand {
                             sbom,
                             cred,
                             global.offline,
-                            global.verbose),
+                            global.verbose,
+                            central,
+                            publishingType),
                     steps -> BuildPlanConsole.chooseConsoleListener("publish", steps, mode));
         } catch (IOException e) {
             CommandWedge.printFail("Publish", e.getMessage());
             return Exit.SOFTWARE;
         }
         result = outcome.result();
-        files = outcome.files();
 
         if (!result.success()) {
             for (BuildPlanResult.Diagnostic d : result.errors()) {
                 if ("snapshot".equals(d.code())) return Exit.DATA_ERR;
                 if ("missing-jar".equals(d.code())) return Exit.NO_INPUT;
             }
+            // A deployment the Portal refused is the one failure with facts of its own to print:
+            // the id to look up and every validation error, beside the diagnostics already shown.
+            if (outcome.deploymentId() != null && !global.outputIsJson()) {
+                CliOutput.err(
+                        "Central Portal deployment " + outcome.deploymentId() + " · " + outcome.deploymentState());
+                for (String error : outcome.deploymentErrors()) CliOutput.err("  - " + error);
+            }
             return 1;
         }
 
-        // The documents the run left under target/ (the SBOMs), by path, so a release script or
-        // a reader takes them from here without an upload. Workspace-relative like every other
-        // path jk prints: a member's target/ sits under the root, outside the member's own dir.
+        report(info, outcome, projectDir);
+        return 0;
+    }
+
+    /** The flag combinations that cannot publish anywhere, refused with the flag that fixes them; {@code 0} when the set is coherent. */
+    private int checkOptions() {
+        if (sign && keyFile == null) {
+            CommandWedge.printFail("Publish", "--sign requires --key-file <path>.");
+            return Exit.USAGE;
+        }
+        if (publishingType != null && !central) {
+            CommandWedge.printFail("Publish", "--publishing-type applies to --central only.");
+            return Exit.USAGE;
+        }
+        if (central) {
+            // Central validates a signature on every file, so a bundle without one is refused
+            // here, before anything is assembled, with the flags that make it valid.
+            if (!sign) {
+                CommandWedge.printFail("Publish", CENTRAL_SIGNING_REQUIRED);
+                return Exit.USAGE;
+            }
+            if (sigstore) {
+                CommandWedge.printFail("Publish", "--central takes GPG signatures only; drop --sigstore.");
+                return Exit.USAGE;
+            }
+            try {
+                publishingType = publishingType == null ? null : publishingType.trim();
+                if (publishingType != null
+                        && !"automatic".equalsIgnoreCase(publishingType)
+                        && !"user-managed".equalsIgnoreCase(publishingType)) {
+                    throw new IllegalArgumentException(
+                            "--publishing-type must be user-managed or automatic, got: " + publishingType);
+                }
+            } catch (IllegalArgumentException e) {
+                CommandWedge.printFail("Publish", e.getMessage());
+                return Exit.USAGE;
+            }
+            if (repoUrl == null) repoUrl = CENTRAL_PORTAL;
+        } else if (repoUrl == null && !dryRun) {
+            CommandWedge.printFail("Publish", "--repo-url <url> is required; only a --dry-run publishes nowhere.");
+            return Exit.USAGE;
+        }
+        return 0;
+    }
+
+    /**
+     * The success lines: the coordinate and where it went, the Portal deployment when there is
+     * one, the documents the run left under target/ (the SBOMs, a Central bundle) by path, and on
+     * a dry run the bundle's entries. Paths are workspace-relative like every other path jk
+     * prints: a member's target/ sits under the root, outside the member's own dir.
+     */
+    private void report(ProjectInfo info, EngineRequests.PublishOutcome outcome, Path projectDir) throws IOException {
         Path workspaceRoot = WorkspaceLocator.findRoot(projectDir).orElse(projectDir);
         if (!global.outputIsJson()) {
-            String summary = dryRun ? "(dry-run)" : "(" + files + " files)";
-            CliOutput.out("Published " + Coords.gav(info.group(), info.name(), info.version()) + " " + summary);
+            String summary = dryRun ? "(dry-run)" : "(" + outcome.files() + " files)";
+            String where = central ? " to the Central Portal " : " ";
+            CliOutput.out("Published " + Coords.gav(info.group(), info.name(), info.version()) + where + summary);
+            if (outcome.deploymentId() != null) {
+                CliOutput.out("  deployment " + outcome.deploymentId() + " · " + outcome.deploymentState()
+                        + ("VALIDATED".equals(outcome.deploymentState())
+                                ? " — release it from the Portal, or publish with --publishing-type automatic"
+                                : ""));
+            }
             for (String written : outcome.written()) {
                 CliOutput.out("  wrote " + displayPath(Path.of(written), workspaceRoot, projectDir));
+            }
+            if (dryRun) {
+                for (String entry : outcome.bundle()) CliOutput.out("    " + entry);
             }
         } else {
             for (String written : outcome.written()) {
@@ -231,7 +309,6 @@ public final class PublishCommand implements CliCommand {
                         .encode());
             }
         }
-        return 0;
     }
 
     /**
@@ -245,6 +322,40 @@ public final class PublishCommand implements CliCommand {
         Path proj = projectDir.toAbsolutePath().normalize();
         Path shown = p.startsWith(ws) ? ws.relativize(p) : p.startsWith(proj) ? proj.relativize(p) : p;
         return shown.toString().replace(shown.getFileSystem().getSeparator(), "/");
+    }
+
+    /** The production Portal; {@code --repo-url} with {@code --central} names another one (a stub, a mirror). */
+    static final URI CENTRAL_PORTAL = URI.create("https://central.sonatype.com/");
+
+    /** The credential id the Portal token lives under — the repository's own name — in the store and the {@code JK_REPO_<ID>_*} variables. */
+    static final String CENTRAL_CREDENTIAL = RepositorySpec.CENTRAL;
+
+    static final String CENTRAL_SIGNING_REQUIRED =
+            "Maven Central requires a GPG signature on every file: pass --sign --key-file <secret-key.asc>"
+                    + " (the passphrase via --key-passphrase or JK_GPG_PASSPHRASE).";
+
+    /**
+     * The Portal's user token: {@code --user}/{@code --password} (or {@code PUBLISH_USER} /
+     * {@code PUBLISH_PASSWORD}) as the token's name and password, else whatever is stored for the
+     * {@code central} id and bound to the Portal's origin. The worker encodes a name/password pair
+     * the way the Portal documents and sends a stored bearer token as it is.
+     */
+    private RepoCredential resolveCentralCredential() {
+        String user = username != null ? username : System.getenv("PUBLISH_USER");
+        if (user != null && !user.isBlank()) {
+            String pass = password != null ? password : System.getenv("PUBLISH_PASSWORD");
+            return new RepoCredential.Basic(user, pass == null ? "" : pass);
+        }
+        URI portal = Objects.requireNonNull(repoUrl, "--central names the Portal");
+        RepoCredential cred = new RepoCredentialResolver().resolve(CENTRAL_CREDENTIAL, portal, Optional.empty());
+        if (cred.isAnonymous()) {
+            throw new IllegalStateException("no Central Portal token: run `jk repo login " + CENTRAL_CREDENTIAL
+                    + " --url " + portal + " --username <token-name>` with the token's password on stdin, or export"
+                    + " JK_REPO_CENTRAL_USERNAME + JK_REPO_CENTRAL_PASSWORD with JK_REPO_CENTRAL_HOST="
+                    + portal.getHost()
+                    + " (a user token from https://central.sonatype.com/account).");
+        }
+        return cred;
     }
 
     private RepoCredential resolvePublishCredential(Path jkBuildPath) {

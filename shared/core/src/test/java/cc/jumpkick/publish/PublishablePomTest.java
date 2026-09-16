@@ -9,6 +9,7 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -129,13 +130,13 @@ class PublishablePomTest {
 
     @Test
     void metadata_block_renders_license_developer_scm() {
-        var meta = new PublishablePom.Metadata(
+        var meta = new PomMetadata(
                 "widget",
                 "A widget",
                 "https://example.com/widget",
-                List.of(new PublishablePom.License("Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0")),
-                List.of(new PublishablePom.Developer("bsant", "Bryan Sant", "bsant@example.com")),
-                new PublishablePom.Scm("https://github.com/example/widget", null, null));
+                List.of(new PomMetadata.License("Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0")),
+                List.of(new PomMetadata.Developer("bsant", "Bryan Sant", "bsant@example.com")),
+                new PomMetadata.Scm("https://github.com/example/widget", null, null));
 
         String xml = PublishablePom.render(
                         new JkBuild(new Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty()),
@@ -170,7 +171,7 @@ class PublishablePomTest {
                 .java(21)
                 .description("from jk.toml")
                 .build();
-        var meta = new PublishablePom.Metadata(null, "from publish call", null, List.of(), List.of(), null);
+        var meta = new PomMetadata(null, "from publish call", null, List.of(), List.of(), null);
         String xml = PublishablePom.render(new JkBuild(p, JkBuild.Dependencies.empty()), meta)
                 .xml();
         assertThat(xml).contains("<description>from publish call</description>");

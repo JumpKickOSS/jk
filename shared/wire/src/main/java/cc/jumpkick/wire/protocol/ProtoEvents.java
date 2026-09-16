@@ -352,6 +352,21 @@ public final class ProtoEvents {
         return new PlanFinishPublishEvent(dir, success, files, written).encode();
     }
 
+    /** As {@link #planFinishPublish(String, boolean, int, List)} with the Central Portal deployment facts. */
+    public static String planFinishPublish(
+            String dir,
+            boolean success,
+            int files,
+            List<String> written,
+            @Nullable String deploymentId,
+            @Nullable String deploymentState,
+            List<String> deploymentErrors,
+            List<String> bundle) {
+        return new PlanFinishPublishEvent(
+                        dir, success, files, written, deploymentId, deploymentState, deploymentErrors, bundle)
+                .encode();
+    }
+
     public static String planFinishImport(
             String dir, boolean success, int exitCode, int warnings, @Nullable String error, @Nullable String diag) {
         return new PlanFinishImportEvent(dir, success, exitCode, warnings, error, diag).encode();

@@ -8,6 +8,8 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.http.OfflineException;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.SourceLayout;
@@ -102,7 +104,20 @@ public final class Publisher implements Plugin, PublishExtension {
             if (!result.written().isEmpty())
                 fields.put(
                         "written", result.written().stream().map(Path::toString).toList());
+            if (!result.bundle().isEmpty()) fields.put("bundle", result.bundle());
+            PublishResult.Deployment deployment = result.deployment();
+            if (deployment != null) {
+                fields.put("deploymentId", deployment.id());
+                fields.put("deploymentState", deployment.state());
+                if (!deployment.errors().isEmpty()) fields.put("deploymentErrors", deployment.errors());
+            }
+            // The facts go out before the verdict: a rejected deployment is a failure whose id and
+            // every validation error the caller still has to write down.
             out.emit(PluginReply.result(fields));
+            if (deployment != null && "FAILED".equals(deployment.state())) {
+                out.emit(PluginReply.error("publish", rejected(deployment)));
+                return 1;
+            }
             return 0;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -135,30 +150,15 @@ public final class Publisher implements Plugin, PublishExtension {
         artifacts.add(new MavenPublisher.Artifact(".jar", jarBytes));
         ctx.label("artifact " + jar.getFileName() + " (" + jarBytes.length + " bytes)");
 
-        PublishablePom.Pom pom = PublishablePom.render(
-                project, PublishablePom.Metadata.empty(), WorkspaceResolve.siblingCoordinates(projectDir));
+        PublishablePom.Pom pom = PublishablePom.render(project, null, WorkspaceResolve.siblingCoordinates(projectDir));
         byte[] pomBytes = pom.xml().getBytes(StandardCharsets.UTF_8);
         artifacts.add(new MavenPublisher.Artifact(".pom", pomBytes));
         ctx.label(
                 "artifact " + project.project().name() + "-" + project.project().version() + ".pom");
 
-        if (project.project().sourcesMode().publishSources()) {
-            byte[] sourcesBytes;
-            BuildLayout layout = BuildLayout.of(projectDir, project);
-            Path onDisk = layout.sourcesJar();
-            if (Files.isRegularFile(onDisk)) {
-                sourcesBytes = Files.readAllBytes(onDisk);
-            } else {
-                boolean compact = SourceLayout.isSimpleLayout(project.project(), projectDir);
-                List<Path> sourceRoots = compact
-                        ? List.of(projectDir.resolve("src"))
-                        : List.of(projectDir.resolve("src/main/java"), projectDir.resolve("src/main/kotlin"));
-                sourcesBytes = SourcesJar.build(sourceRoots);
-            }
-            artifacts.add(new MavenPublisher.Artifact("-sources.jar", sourcesBytes));
-            ctx.label("artifact " + project.project().name() + "-"
-                    + project.project().version() + "-sources.jar");
-        }
+        BuildLayout layout = BuildLayout.of(projectDir, project);
+        boolean central = c.bool("centralPortal", false);
+        libraryArtifacts(ctx, project, projectDir, layout, central, artifacts);
 
         if (c.bool("slsa", false)) {
             String jarFilename = jar.getFileName().toString();
@@ -186,6 +186,8 @@ public final class Publisher implements Plugin, PublishExtension {
 
         List<Path> written = new ArrayList<>();
         if (c.bool("sbom", false)) sbom(ctx, projectDir, project, artifacts, written);
+
+        if (central) return publishCentral(ctx, c, project, layout, artifacts, written);
 
         if (c.bool("dryRun", false)) {
             return PublishResult.dryRun(artifacts.size()).withWritten(written);
@@ -247,6 +249,139 @@ public final class Publisher implements Plugin, PublishExtension {
                 }
             }
         }
+    }
+
+    /**
+     * The library artefacts {@code jk package} wrote ride along whenever they are on disk; a
+     * project that asked for a sources jar it did not build gets one assembled here. Central needs
+     * both jars and the {@code [publish]} metadata, and is refused with the fix before anything is
+     * signed.
+     */
+    private static void libraryArtifacts(
+            PublishContext ctx,
+            JkBuild project,
+            Path projectDir,
+            BuildLayout layout,
+            boolean central,
+            List<MavenPublisher.Artifact> artifacts)
+            throws IOException {
+        Path sourcesOnDisk = layout.sourcesJar();
+        if (Files.isRegularFile(sourcesOnDisk)) {
+            artifacts.add(new MavenPublisher.Artifact("-sources.jar", Files.readAllBytes(sourcesOnDisk)));
+            ctx.label("artifact " + sourcesOnDisk.getFileName());
+        } else if (project.project().sourcesMode().publishSources() && !central) {
+            boolean compact = SourceLayout.isSimpleLayout(project.project(), projectDir);
+            List<Path> sourceRoots = compact
+                    ? List.of(projectDir.resolve("src"))
+                    : List.of(projectDir.resolve("src/main/java"), projectDir.resolve("src/main/kotlin"));
+            artifacts.add(new MavenPublisher.Artifact("-sources.jar", SourcesJar.build(sourceRoots)));
+            ctx.label("artifact " + project.project().name() + "-"
+                    + project.project().version() + "-sources.jar");
+        }
+        Path javadocOnDisk = layout.javadocJar();
+        if (Files.isRegularFile(javadocOnDisk)) {
+            artifacts.add(new MavenPublisher.Artifact("-javadoc.jar", Files.readAllBytes(javadocOnDisk)));
+            ctx.label("artifact " + javadocOnDisk.getFileName());
+        }
+        if (!central) return;
+        List<String> missing = new ArrayList<>();
+        if (!Files.isRegularFile(sourcesOnDisk)) missing.add(sourcesOnDisk.toString());
+        if (!Files.isRegularFile(javadocOnDisk)) missing.add(javadocOnDisk.toString());
+        if (!missing.isEmpty()) {
+            throw new IOException("Maven Central requires the sources and javadoc jars beside the jar, and the build"
+                    + " has not written them: " + String.join(", ", missing)
+                    + " — run `jk build` (a library packages both; an application needs `sources = \"always\"`).");
+        }
+        List<String> gaps = project.pomMetadata().centralGaps(project.project().description());
+        if (!gaps.isEmpty()) {
+            throw new IOException("Maven Central requires POM metadata this manifest lacks: " + String.join(", ", gaps)
+                    + ". Add a [publish] table to jk.toml (or the workspace root):\n" + PUBLISH_TABLE_EXAMPLE);
+        }
+    }
+
+    /** The fix a refusal prints when the manifest carries no Central-grade metadata. */
+    static final String PUBLISH_TABLE_EXAMPLE = """
+            [publish]
+            url = "https://example.com/widget"
+            licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
+            developers = [{ id = "ada", name = "Ada Lovelace", email = "ada@example.com" }]
+            scm = { url = "https://github.com/example/widget", connection = "scm:git:https://github.com/example/widget.git", developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
+            """;
+
+    /** The fix a refusal prints when Central is asked for without a signing key. */
+    public static final String SIGNING_REQUIRED =
+            "Maven Central requires a GPG signature on every file: pass --sign --key-file <secret-key.asc>"
+                    + " (the passphrase via --key-passphrase or JK_GPG_PASSPHRASE).";
+
+    /**
+     * The Central Portal flow: sign every artifact into one {@link CentralBundle}, upload it, and
+     * poll the deployment to its verdict. A dry run writes the bundle under the module's {@code
+     * target/publish/} and lists its entries instead.
+     */
+    private static PublishResult publishCentral(
+            PublishContext ctx,
+            PluginConfig c,
+            JkBuild project,
+            BuildLayout layout,
+            List<MavenPublisher.Artifact> artifacts,
+            List<Path> written)
+            throws IOException, InterruptedException {
+        if (!c.bool("signGpg", false)) throw new IOException(SIGNING_REQUIRED);
+        GpgSigner gpg = GpgSigner.fromKeyFile(
+                Path.of(c.string("gpgKeyFile")),
+                ctx.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]));
+        CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg);
+        for (String entry : bundle.entries()) ctx.label("bundle " + entry);
+
+        if (c.bool("dryRun", false)) {
+            Path zip = Files.createDirectories(layout.moduleTargetDir().resolve("publish"))
+                    .resolve("central-bundle.zip");
+            Files.write(zip, bundle.zip());
+            written.add(zip);
+            ctx.label("wrote " + zip);
+            return PublishResult.dryRun(artifacts.size()).withWritten(written).withBundle(bundle.entries());
+        }
+
+        URI portalUrl = URI.create(c.stringOpt("repoUrl").orElse(CentralPortal.DEFAULT_URL.toString()));
+        if (ctx.offline()) throw new OfflineException(portalUrl);
+        CentralPortal.PublishingType type =
+                CentralPortal.PublishingType.parse(c.stringOpt("publishingType").orElse(null));
+        RepoCredential cred =
+                switch (c.string("repoAuthType").toLowerCase(Locale.ROOT)) {
+                    case "basic" ->
+                        new RepoCredential.Basic(
+                                ctx.secret("repoUser").orElse(""),
+                                ctx.secret("repoPass").orElse(""));
+                    case "bearer" ->
+                        new RepoCredential.Bearer(ctx.secret("repoToken").orElse(""));
+                    default -> new RepoCredential.Anonymous();
+                };
+        CentralPortal portal = new CentralPortal(portalUrl, cred, new Http());
+        String name = project.project().name() + "-" + project.project().version();
+        String id = portal.upload(bundle.zip(), name, type);
+        ctx.label("upload " + name + ".zip (" + bundle.zip().length + " bytes) → deployment " + id);
+        CentralPortal.Status status =
+                portal.awaitTerminal(id, type, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
+        ctx.label("deployment " + id + " " + status.state());
+        for (String error : status.errors()) ctx.label("  " + error);
+        return PublishResult.uploaded(bundle.entries().size(), bundle.zip().length)
+                .withWritten(written)
+                .withBundle(bundle.entries())
+                .withDeployment(new PublishResult.Deployment(id, status.state(), status.errors()));
+    }
+
+    /** The one-line verdict for a deployment the Portal refused, every error on its own line. */
+    static String rejected(PublishResult.Deployment deployment) {
+        StringBuilder sb = new StringBuilder("Central Portal rejected deployment ")
+                .append(deployment.id())
+                .append(" (")
+                .append(deployment.state())
+                .append(")");
+        if (deployment.errors().isEmpty())
+            return sb.append(": the Portal listed no errors").toString();
+        sb.append(":");
+        for (String error : deployment.errors()) sb.append("\n  - ").append(error);
+        return sb.toString();
     }
 
     /**

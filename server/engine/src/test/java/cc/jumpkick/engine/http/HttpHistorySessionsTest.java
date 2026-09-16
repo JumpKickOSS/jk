@@ -91,7 +91,8 @@ class HttpHistorySessionsTest extends HttpEngineServerHarness {
                 null,
                 false,
                 null,
-                buildNumber);
+                buildNumber,
+                null);
         assertThat(journal.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
     }
 }

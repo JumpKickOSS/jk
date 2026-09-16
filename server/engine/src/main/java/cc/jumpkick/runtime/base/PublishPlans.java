@@ -62,7 +62,16 @@ public final class PublishPlans {
             boolean sigstore,
             boolean slsa,
             boolean sbom,
-            RepoCredential credential) {}
+            RepoCredential credential,
+            boolean central,
+            @Nullable String publishingType) {}
+
+    /** A Central Portal deployment as the worker reported it: id, final state, validation errors. */
+    public record Deployment(String id, String state, List<String> errors) {
+        public Deployment {
+            errors = List.copyOf(errors);
+        }
+    }
 
     public static final BuildPlanKey<JkBuild> PROJECT = BuildPlanKey.scalar("project", JkBuild.class);
     public static final BuildPlanKey<Path> JAR = BuildPlanKey.scalar("jar", Path.class);
@@ -70,8 +79,14 @@ public final class PublishPlans {
     /** The plugin's uploaded-file count (0 for {@code --dry-run}), populated by the publish step. */
     public static final BuildPlanKey<Integer> FILES = BuildPlanKey.scalar("pub-files", Integer.class);
 
-    /** The files the plugin wrote under the module's target/ (the SBOM documents), for the client to name. */
+    /** The files the plugin wrote under the module's target/ (the SBOM documents, a Central bundle), for the client to name. */
     public static final BuildPlanKey<List<String>> WRITTEN = BuildPlanKey.list("pub-written", String.class);
+
+    /** The entries of the Central bundle the worker assembled; empty for a plain repository publish. */
+    public static final BuildPlanKey<List<String>> BUNDLE = BuildPlanKey.list("pub-bundle", String.class);
+
+    /** The Central Portal deployment the run ended on; absent for a plain repository publish and a dry run. */
+    public static final BuildPlanKey<Deployment> DEPLOYMENT = BuildPlanKey.scalar("pub-deployment", Deployment.class);
 
     /** Build the publish plan for {@code projectDir}. Locates the plugin jar eagerly (fail fast, with side-load hints). */
     public static BuildPlan publishBuildPlan(Path projectDir, Path cache, Request req) {
@@ -129,28 +144,49 @@ public final class PublishPlans {
                 .ticks(1)
                 .execute(ctx -> {
                     Path jar = ctx.require(JAR);
-                    ctx.label(req.dryRun() ? "dry-run — assembling publish bundle" : "publish to " + req.repoUrl());
+                    ctx.label(
+                            req.dryRun()
+                                    ? "dry-run — assembling publish bundle"
+                                    : req.central() ? "publish to the Central Portal" : "publish to " + req.repoUrl());
+                    WorkerOutcome out;
                     try {
-                        WorkerOutcome out = runWorker(workerJar, projectDir, jar, req);
-                        ctx.put(FILES, out.files());
-                        ctx.put(WRITTEN, out.written());
+                        out = runWorker(workerJar, projectDir, jar, req);
                     } catch (RuntimeException e) {
                         ctx.error("publish", Errors.text(e));
                         throw e;
+                    }
+                    // The facts land before the verdict: a deployment the Portal refused still has
+                    // an id and errors the results file must carry.
+                    ctx.put(FILES, out.files());
+                    ctx.put(WRITTEN, out.written());
+                    ctx.put(BUNDLE, out.bundle());
+                    if (out.deployment() != null) ctx.put(DEPLOYMENT, out.deployment());
+                    if (out.error() != null) {
+                        ctx.error("publish", out.error());
+                        throw new RuntimeException(out.error());
                     }
                     ctx.progress(1);
                 })
                 .build();
 
         return BuildPlan.builder("publish")
-                .stateKeys(PROJECT, JAR, FILES, WRITTEN)
+                .stateKeys(PROJECT, JAR, FILES, WRITTEN, BUNDLE, DEPLOYMENT)
                 .addTask(parseBuild)
                 .addTask(publish)
                 .build();
     }
 
-    /** What the worker reported: the uploaded-file count and the files it wrote under target/. */
-    private record WorkerOutcome(int files, List<String> written) {}
+    /**
+     * What the worker reported: the uploaded-file count, the files it wrote under target/, the
+     * Central bundle entries and deployment when there were any, and — when it exited non-zero
+     * after reporting them — its error. A worker that died before any result is a thrown failure.
+     */
+    private record WorkerOutcome(
+            int files,
+            List<String> written,
+            List<String> bundle,
+            @Nullable Deployment deployment,
+            @Nullable String error) {}
 
     /** Fork the {@code jk-publisher} plugin; returns what it reported. */
     private static WorkerOutcome runWorker(Path workerJar, Path projectDir, Path jar, Request req) {
@@ -158,13 +194,25 @@ public final class PublishPlans {
             Path spec = writeSpec(projectDir, jar, req);
             try {
                 int[] files = {0};
+                boolean[] reported = {false};
                 List<String> written = new ArrayList<>();
+                List<String> bundle = new ArrayList<>();
+                @Nullable Deployment[] deployment = {null};
                 @Nullable String[] error = {null};
                 StringBuilder workerDiag = new StringBuilder();
                 int exit = new PluginClient("##JKPU:")
                         .on(PluginProtocol.RESULT, json -> {
+                            reported[0] = true;
                             files[0] = Jsonl.intValue(json, "files", 0);
                             written.addAll(Jsonl.strArray(json, "written"));
+                            bundle.addAll(Jsonl.strArray(json, "bundle"));
+                            String id = Jsonl.str(json, "deploymentId");
+                            if (id != null) {
+                                deployment[0] = new Deployment(
+                                        id,
+                                        String.valueOf(Jsonl.str(json, "deploymentState")),
+                                        Jsonl.strArray(json, "deploymentErrors"));
+                            }
                             // The worker knows what it PUT (body lengths); the run's ledger shows it
                             // as remote-up on the dashboard.
                             SessionContext.current().io().remoteUp(Jsonl.longValue(json, "bytes", 0L));
@@ -175,12 +223,14 @@ public final class PublishPlans {
                 if (exit != 0) {
                     String diag =
                             workerDiag.length() > 0 ? workerDiag.toString().trim() : null;
-                    throw new RuntimeException("publish worker failed"
+                    String message = "publish worker failed"
                             + (error[0] != null
                                     ? ": " + error[0]
-                                    : diag != null ? ": " + diag : " (exit " + exit + ")"));
+                                    : diag != null ? ": " + diag : " (exit " + exit + ")");
+                    if (!reported[0]) throw new RuntimeException(message);
+                    return new WorkerOutcome(files[0], written, bundle, deployment[0], message);
                 }
-                return new WorkerOutcome(files[0], written);
+                return new WorkerOutcome(files[0], written, bundle, deployment[0], null);
             } finally {
                 Files.deleteIfExists(spec);
             }
@@ -198,7 +248,9 @@ public final class PublishPlans {
                 .configBool("dryRun", req.dryRun())
                 .configBool("slsa", req.slsa())
                 .configBool("sbom", req.sbom())
-                .configBool("signSigstore", req.sigstore());
+                .configBool("signSigstore", req.sigstore())
+                .configBool("centralPortal", req.central());
+        if (req.publishingType() != null) sw.configString("publishingType", req.publishingType());
 
         // Credential (resolved client-side so neither the engine nor the plugin needs env/keychain access).
         if (req.credential() instanceof RepoCredential.Basic b) {

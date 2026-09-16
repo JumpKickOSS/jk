@@ -7,6 +7,7 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -46,6 +47,14 @@ public interface VerbHost {
     boolean effectiveCancelled(long rid, boolean tokenCancelled);
 
     void accTests(long rid, @Nullable TestSummary tests);
+
+    /** The request this verb is serving, for the journal hooks; {@code 0} outside a hosted request. */
+    default long currentRequestId() {
+        return 0L;
+    }
+
+    /** File what a publish run sent where on the request's journal row. */
+    default void accPublish(long rid, BuildRecord.@Nullable Publish publish) {}
 
     /** One module's outcome, for a verb that journals a run another tool performed. */
     default void accModule(long rid, ModuleOutcome outcome) {

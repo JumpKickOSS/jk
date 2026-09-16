@@ -128,6 +128,11 @@ public final class JournalWriter {
         if (a != null) a.addTask(dir, step, phase, status, millis, waitMillis);
     }
 
+    public void accPublish(long requestId, BuildRecord.@Nullable Publish publish) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null && publish != null) a.addPublish(publish);
+    }
+
     public void accTests(long requestId, @Nullable TestSummary tests) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null && tests != null) a.addTests(tests);

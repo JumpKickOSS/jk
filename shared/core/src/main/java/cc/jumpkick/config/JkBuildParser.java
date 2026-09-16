@@ -12,6 +12,7 @@ import cc.jumpkick.model.GuardsConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
@@ -384,6 +385,7 @@ public final class JkBuildParser {
         if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
+        PomMetadata publish = ManifestTables.parsePublish(result).orElse(null);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
         // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
@@ -405,7 +407,8 @@ public final class JkBuildParser {
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** The {@link Scope} whose toml section is {@code name}, or null. */

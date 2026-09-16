@@ -162,16 +162,25 @@ final class EngineHosted {
                                 pass,
                                 token,
                                 req.offline(),
-                                req.verbose())
+                                req.verbose(),
+                                req.central(),
+                                req.publishingType())
                         .encode(),
                 "publish",
                 listenerFactory,
                 (type, line) -> {});
         // An absent file count is unknown (-1) here, where the record reads 0.
         if (!Jsonl.has(finish.finishLine(), "publishFiles"))
-            return new EngineRequests.PublishOutcome(finish.result(), -1, List.of());
+            return new EngineRequests.PublishOutcome(finish.result(), -1, List.of(), List.of(), null, null, List.of());
         PlanFinishPublishEvent event = PlanFinishPublishEvent.decode(finish.finishLine());
-        return new EngineRequests.PublishOutcome(finish.result(), event.files(), event.written());
+        return new EngineRequests.PublishOutcome(
+                finish.result(),
+                event.files(),
+                event.written(),
+                event.bundle(),
+                event.deploymentId(),
+                event.deploymentState(),
+                event.deploymentErrors());
     }
 
     /**

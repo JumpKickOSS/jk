@@ -5,6 +5,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -25,74 +26,48 @@ public final class PublishablePom {
 
     public record Pom(String xml) {}
 
-    public record Metadata(
-            @Nullable String name,
-            @Nullable String description,
-            @Nullable String url,
-            List<License> licenses,
-            List<Developer> developers,
-            @Nullable Scm scm) {
-        public Metadata {
-            licenses = licenses == null ? List.of() : List.copyOf(licenses);
-            developers = developers == null ? List.of() : List.copyOf(developers);
-        }
-
-        public static Metadata empty() {
-            return new Metadata(null, null, null, List.of(), List.of(), null);
-        }
-    }
-
-    public record License(String name, @Nullable String url) {
-        public License {
-            Objects.requireNonNull(name, "name");
-        }
-    }
-
-    public record Developer(
-            String id, @Nullable String name, @Nullable String email) {
-        public Developer {
-            Objects.requireNonNull(id, "id");
-        }
-    }
-
-    public record Scm(
-            @Nullable String url,
-            @Nullable String connection,
-            @Nullable String developerConnection) {}
-
     private PublishablePom() {}
 
-    public static Pom render(JkBuild jkBuild, @Nullable Metadata meta) {
+    /** With the manifest's own {@code [publish]} table as the metadata. */
+    public static Pom render(JkBuild jkBuild) {
+        return render(jkBuild, null, Set.of());
+    }
+
+    /**
+     * {@code meta} overrides the manifest's {@code [publish]} table; {@code null} means the table
+     * itself, so every renderer writes the metadata the project declared.
+     */
+    public static Pom render(JkBuild jkBuild, @Nullable PomMetadata meta) {
         return render(jkBuild, meta, Set.of());
     }
 
     /**
-     * As {@link #render(JkBuild, Metadata)}, with the workspace's sibling coordinates
+     * As {@link #render(JkBuild, PomMetadata)}, with the workspace's sibling coordinates
      * ({@code group:artifact}, see {@code WorkspaceResolve.siblingCoordinates}). A tests-kind edge
      * to a sibling would publish as {@code <type>test-jar</type><classifier>tests</classifier>}
      * against an artifact jk never produces (there is no test-jar packaging task), so those edges
      * are omitted; tests-kind edges to external coordinates are kept — their test-jars exist
      * upstream.
      */
-    public static Pom render(JkBuild jkBuild, @Nullable Metadata meta, @Nullable Set<String> workspaceSiblings) {
+    public static Pom render(JkBuild jkBuild, @Nullable PomMetadata meta, @Nullable Set<String> workspaceSiblings) {
         return render(jkBuild, meta, workspaceSiblings, Map.of());
     }
 
     /**
-     * As {@link #render(JkBuild, Metadata, Set)}, pinning {@code &lt;version&gt;} from {@code locked}
+     * As {@link #render(JkBuild, PomMetadata, Set)}, pinning {@code &lt;version&gt;} from {@code locked}
      * ({@code group:artifact} or package key → exact version) when present so a locally installed
      * POM can rebuild a runtime classpath without re-resolving ranges.
      */
     public static Pom render(
             JkBuild jkBuild,
-            @Nullable Metadata meta,
+            @Nullable PomMetadata meta,
             @Nullable Set<String> workspaceSiblings,
             @Nullable Map<String, String> locked) {
         return render(jkBuild, meta, workspaceSiblings, locked, List.of());
     }
 
     /**
-     * As {@link #render(JkBuild, Metadata, Set, Map)}, with {@code closure} — the module's locked
+     * As {@link #render(JkBuild, PomMetadata, Set, Map)}, with {@code closure} — the module's locked
      * runtime closure, direct and transitive — written under {@code <dependencyManagement>} as
      * exact managed versions. {@code locked} pins what the POM declares; {@code closure} pins what
      * those declarations pull in, so a classpath rebuilt from the POM by a Maven-style walk takes
@@ -101,12 +76,12 @@ public final class PublishablePom {
      */
     public static Pom render(
             JkBuild jkBuild,
-            @Nullable Metadata meta,
+            @Nullable PomMetadata meta,
             @Nullable Set<String> workspaceSiblings,
             @Nullable Map<String, String> locked,
             @Nullable Collection<Coordinate> closure) {
         Objects.requireNonNull(jkBuild, "jkBuild");
-        if (meta == null) meta = Metadata.empty();
+        if (meta == null) meta = jkBuild.pomMetadata();
         if (workspaceSiblings == null) workspaceSiblings = Set.of();
         if (locked == null) locked = Map.of();
         if (closure == null) closure = List.of();
@@ -120,8 +95,11 @@ public final class PublishablePom {
         sb.append("  <version>").append(PomXml.escape(p.version())).append("</version>\n");
         sb.append("  <packaging>jar</packaging>\n");
 
-        if (meta.name() != null)
-            sb.append("  <name>").append(PomXml.escape(meta.name())).append("</name>\n");
+        // A declared [publish] table means a release-grade POM, and Central requires <name>: the
+        // artifact id stands in when the table names nothing better. No table, no <name> — the
+        // bytes of every POM published without one stay as they are.
+        String name = meta.name() != null ? meta.name() : meta.isEmpty() ? null : p.name();
+        if (name != null) sb.append("  <name>").append(PomXml.escape(name)).append("</name>\n");
         // Metadata wins over project.description; fall back to the project's
         // description so `jk publish` carries the manifest's description into
         // the POM without forcing every caller to thread it through Metadata.
@@ -145,10 +123,10 @@ public final class PublishablePom {
         return new Pom(sb.toString());
     }
 
-    private static void appendLicenses(StringBuilder sb, List<License> licenses) {
+    private static void appendLicenses(StringBuilder sb, List<PomMetadata.License> licenses) {
         if (licenses.isEmpty()) return;
         sb.append("  <licenses>\n");
-        for (License l : licenses) {
+        for (PomMetadata.License l : licenses) {
             sb.append("    <license>\n");
             sb.append("      <name>").append(PomXml.escape(l.name())).append("</name>\n");
             if (l.url() != null) {
@@ -159,10 +137,10 @@ public final class PublishablePom {
         sb.append("  </licenses>\n");
     }
 
-    private static void appendDevelopers(StringBuilder sb, List<Developer> developers) {
+    private static void appendDevelopers(StringBuilder sb, List<PomMetadata.Developer> developers) {
         if (developers.isEmpty()) return;
         sb.append("  <developers>\n");
-        for (Developer d : developers) {
+        for (PomMetadata.Developer d : developers) {
             sb.append("    <developer>\n");
             sb.append("      <id>").append(PomXml.escape(d.id())).append("</id>\n");
             if (d.name() != null) {
@@ -176,7 +154,7 @@ public final class PublishablePom {
         sb.append("  </developers>\n");
     }
 
-    private static void appendScm(StringBuilder sb, @Nullable Scm scm) {
+    private static void appendScm(StringBuilder sb, PomMetadata.@Nullable Scm scm) {
         if (scm == null) return;
         sb.append("  <scm>\n");
         if (scm.url() != null)

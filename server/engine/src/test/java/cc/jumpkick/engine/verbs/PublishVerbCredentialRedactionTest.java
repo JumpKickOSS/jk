@@ -94,7 +94,9 @@ class PublishVerbCredentialRedactionTest {
                         null,
                         token,
                         false,
-                        false)
+                        false,
+                        false,
+                        null)
                 .encode();
     }
 
@@ -148,7 +150,9 @@ class PublishVerbCredentialRedactionTest {
                         PASSWORD,
                         null,
                         false,
-                        false)
+                        false,
+                        false,
+                        null)
                 .encode();
 
         new PublishVerb(host).run(request, Session.CancelToken.NONE, null);

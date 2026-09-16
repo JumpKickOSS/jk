@@ -83,6 +83,7 @@ public final class ManifestBuild {
                 "env",
                 "m2",
                 "install",
+                "publish",
                 "guards"));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
         return Set.copyOf(out);
