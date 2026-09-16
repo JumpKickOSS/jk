@@ -22,6 +22,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Profile;
@@ -131,7 +132,7 @@ public final class PlannerSetup {
                                     result.error() != null ? result.error() : "dependency resolution failed");
                             throw new RuntimeException("lock failed");
                         }
-                        ctx.put(LOCKFILE, Objects.requireNonNull(result.lockfile(), "lockfile"));
+                        ctx.put(LOCKFILE, memberView(in, Objects.requireNonNull(result.lockfile(), "lockfile")));
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
                         ctx.label("jk.toml changed — updating lock");
                         Lockfile existing = LockfileReader.read(in.lockFile());
@@ -145,9 +146,9 @@ public final class PlannerSetup {
                                 true,
                                 ResolveObserver.NOOP,
                                 ctx::output);
-                        ctx.put(LOCKFILE, updated != null ? updated : existing);
+                        ctx.put(LOCKFILE, memberView(in, updated != null ? updated : existing));
                     } else {
-                        ctx.put(LOCKFILE, followFirstPartyPins(in, project, ctx));
+                        ctx.put(LOCKFILE, memberView(in, followFirstPartyPins(in, project, ctx)));
                     }
 
                     Lockfile lock = ctx.require(LOCKFILE);
@@ -503,6 +504,15 @@ public final class PlannerSetup {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * The workspace lock as this module reads it: a member's partition rows in place of the
+     * workspace's for the coordinates it disagrees on ({@link Lockfile#forMember}). A standalone
+     * project, or the workspace root itself, reads the lock as written.
+     */
+    static Lockfile memberView(BuildPlanner.Inputs in, Lockfile lock) {
+        return MemberRows.view(lock, in.lockDir(), in.dir());
     }
 
     /**

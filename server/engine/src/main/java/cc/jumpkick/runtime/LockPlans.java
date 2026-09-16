@@ -18,6 +18,7 @@ import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.run.BuildPlan;
@@ -538,6 +539,31 @@ public final class LockPlans {
         // Standalone: variant dep overlays union here (workspace scopes union inside WorkspaceMerge).
         JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);
         return new LockScope(entryDir, effective, coordLabel(effective, entryDir), false, 0);
+    }
+
+    /**
+     * The members behind a workspace's merged manifest, each as the lock solves it on its own:
+     * placeholders resolved, sibling externals and platform tables folded in, keyed by its
+     * {@code [[module]]} path. Empty for a standalone project.
+     */
+    public static List<LockOrchestrator.Member> memberManifests(Path lockDir, JkBuild effective) {
+        if (!effective.isWorkspaceRoot()) return List.of();
+        try {
+            JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(lockDir));
+            if (!rootManifest.isWorkspaceRoot()) return List.of();
+            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(lockDir, rootManifest);
+            List<LockOrchestrator.Member> out = new ArrayList<>(modules.size());
+            for (Map.Entry<Path, JkBuild> entry : modules.entrySet()) {
+                String rel = lockDir.relativize(entry.getKey()).toString().replace('\\', '/');
+                if (rel.isEmpty()) rel = ".";
+                out.add(new LockOrchestrator.Member(
+                        rel, WorkspaceMerge.applyToModule(rootManifest, entry.getValue(), modules.values())));
+            }
+            return out;
+        } catch (IOException | RuntimeException e) {
+            Log.debug("memberManifests: members unreadable, the merged solve stands alone", e);
+            return List.of();
+        }
     }
 
     private static LockScope workspaceScope(Path wsRoot, JkBuild rootManifest) throws IOException {

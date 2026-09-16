@@ -30,6 +30,8 @@ public record WhyReport(
         @Nullable String error,
         List<String> matchNames,
         List<String> matchVersions,
+        /** Per match, the workspace members whose classpath reads that row, comma-joined; {@code ""} for the workspace's row. */
+        List<String> matchMembers,
         List<String> pathOwners,
         List<String> paths,
         List<String> pathSelectors,
@@ -42,7 +44,7 @@ public record WhyReport(
     public static final String EXCLUSION_FIELD_SEPARATOR = "\t";
 
     public static WhyReport error(String message) {
-        return new WhyReport(message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        return new WhyReport(message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */
@@ -55,11 +57,18 @@ public record WhyReport(
                 .string("error", error)
                 .array("matchNames", matchNames)
                 .array("matchVersions", matchVersions)
+                .array("matchMembers", matchMembers)
                 .array("pathOwners", pathOwners)
                 .array("paths", paths)
                 .array("pathSelectors", pathSelectors)
                 .array("exclusions", exclusions)
                 .finish();
+    }
+
+    /** The members that read match {@code index}; empty for the workspace's row. */
+    public List<String> membersOf(int index) {
+        if (index >= matchMembers.size() || matchMembers.get(index).isEmpty()) return List.of();
+        return List.of(matchMembers.get(index).split(","));
     }
 
     /** The per-step selectors of path {@code index}, {@code ""} where none is known; empty when the wire had none. */
@@ -83,6 +92,8 @@ public record WhyReport(
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("name", matchNames.get(i));
             row.put("version", i < matchVersions.size() ? matchVersions.get(i) : "");
+            String members = i < matchMembers.size() ? matchMembers.get(i) : "";
+            row.put("members", members.isEmpty() ? List.of() : List.of(members.split(",")));
             List<String> mine = new ArrayList<>();
             List<List<String>> declared = new ArrayList<>();
             String idx = Integer.toString(i);
@@ -114,6 +125,7 @@ public record WhyReport(
                 Jsonl.str(line, "error"),
                 Jsonl.strArray(line, "matchNames"),
                 Jsonl.strArray(line, "matchVersions"),
+                Jsonl.strArray(line, "matchMembers"),
                 Jsonl.strArray(line, "pathOwners"),
                 Jsonl.strArray(line, "paths"),
                 Jsonl.strArray(line, "pathSelectors"),

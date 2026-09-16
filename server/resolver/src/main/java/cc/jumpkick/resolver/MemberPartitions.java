@@ -22,8 +22,10 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The rows a workspace member reads instead of the merged solve's. The merged manifest is solved
@@ -117,8 +119,9 @@ final class MemberPartitions {
         List<Lockfile.Artifact> rows = new ArrayList<>(merged.artifacts());
         for (Map.Entry<String, Lockfile.Artifact> e : partitions.entrySet()) {
             Lockfile.Artifact row = e.getValue()
-                    .withScopes(new ArrayList<>(partitionScopes.get(e.getKey()).keySet()))
-                    .withMembers(new ArrayList<>(partitionMembers.get(e.getKey())));
+                    .withScopes(new ArrayList<>(Objects.requireNonNull(partitionScopes.get(e.getKey()))
+                            .keySet()))
+                    .withMembers(new ArrayList<>(Objects.requireNonNull(partitionMembers.get(e.getKey()))));
             rows.add(row);
         }
         return merged.withArtifacts(rows);
@@ -162,7 +165,8 @@ final class MemberPartitions {
     }
 
     /** True when the member's own root or any edge inside its closure asks for {@code key} at something other than {@code version}. */
-    private boolean edgeDeclaresAnother(String key, String version, Set<String> closure, String rootSelector) {
+    private boolean edgeDeclaresAnother(
+            String key, String version, Set<String> closure, @Nullable String rootSelector) {
         if (rootSelector != null && !rootSelector.equals(version) && !rootSelector.equals("=" + version)) return true;
         String ref = key + "@" + version;
         for (String parentKey : closure) {

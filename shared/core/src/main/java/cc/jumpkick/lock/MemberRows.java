@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,6 +34,19 @@ public final class MemberRows {
             if (!row.isPartition()) out.add(row);
         }
         return out;
+    }
+
+    /**
+     * {@code lock} as the module at {@code moduleDir} reads it: narrowed to that member's rows when
+     * the lock is a workspace's under {@code lockDir} and the module is one of its members, the
+     * lock itself when the module is the lock's own directory or the lock carries no partition.
+     */
+    public static Lockfile view(Lockfile lock, Path lockDir, Path moduleDir) {
+        if (!anyPartition(lock.artifacts())) return lock;
+        Path root = lockDir.toAbsolutePath().normalize();
+        Path module = moduleDir.toAbsolutePath().normalize();
+        if (root.equals(module) || !module.startsWith(root)) return lock;
+        return lock.forMember(root.relativize(module).toString().replace('\\', '/'));
     }
 
     /** True when any row of {@code artifacts} is a member partition. */
