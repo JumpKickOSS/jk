@@ -38,6 +38,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>This class is the method table and nothing else. Framing is {@link McpRpc}, the tool set is
  * {@link McpTools#standard()}, and every collaborator a tool reaches hangs off {@link McpContext}.
+ * {@code tools/list} answers the loop set by default ({@link McpTools#LOOP} plus {@code jk_tools});
+ * {@link #surface} widens it to every tool.
  */
 public final class McpHandler {
 
@@ -48,6 +50,9 @@ public final class McpHandler {
 
     private final McpContext ctx;
     private final McpTools tools = McpTools.standard();
+
+    /** Which rows {@code tools/list} answers; the loop set unless the machine config opted into all. */
+    private volatile McpTools.Surface surface = McpTools.Surface.LOOP;
 
     /** The minimum wiring: no progress tokens, no live-run feed, no admission yield. */
     public McpHandler(
@@ -105,6 +110,11 @@ public final class McpHandler {
     /** Wire the authenticated dashboard link for a checkout dir, what {@code jk_run} answers as {@code dashboard}. */
     public void dashboardLink(Function<String, @Nullable String> link) {
         if (link != null) ctx.dashboardLink(link);
+    }
+
+    /** Serve the whole registry on {@code tools/list} ({@code [mcp] tools = "all"}) instead of the loop set. */
+    public void surface(McpTools.Surface surface) {
+        this.surface = surface;
     }
 
     /** Shrink the journal-write settle budget; tests only. */
@@ -167,7 +177,7 @@ public final class McpHandler {
         return switch (method) {
             case "notifications/initialized", "initialized" -> null; // notification
             case "ping" -> Map.of();
-            case "tools/list" -> tools.listing();
+            case "tools/list" -> tools.listing(surface);
             case "tools/call" -> tools.call(ctx, params, connection);
             case "resources/list" -> McpResources.list();
             case "resources/read" -> McpResources.read(ctx, params);

@@ -39,6 +39,12 @@ public interface McpTool {
             this(name, description, inputSchema, null);
         }
 
+        /** The description up to its first sentence end — what a catalog row shows. */
+        public String oneLiner() {
+            int end = description.indexOf(". ");
+            return end < 0 ? description : description.substring(0, end + 1);
+        }
+
         /** The {@code tools/list} row. */
         Map<String, Object> listed() {
             Map<String, Object> t = new LinkedHashMap<>();

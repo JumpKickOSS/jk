@@ -72,7 +72,7 @@ class HttpApiAuthTest extends HttpEngineServerHarness {
     void disabled_mcp_is_404_while_web_surfaces_still_serve() throws Exception {
         Path noMcpToken = stateDir.resolve("nomcp.http-token");
         HttpEngineServer noMcp = new HttpEngineServer(
-                httpConfig("127.0.0.1", 0, 16, new JkHttpConfig.Mcp(false, 16)),
+                httpConfig("127.0.0.1", 0, 16, new JkHttpConfig.Mcp(false, 16, "loop")),
                 webRoot,
                 noMcpToken,
                 stateDir.resolve("nomcp.log"),

@@ -4,11 +4,13 @@ package cc.jumpkick.engine.http.mcp;
 import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -50,6 +52,36 @@ class McpDocParityTest {
                 .containsExactlyInAnyOrderElementsOf(McpTools.standard().names());
     }
 
+    /**
+     * The playbook's {@code ## MCP tools} table is the default {@code tools/list} in prose: same
+     * names, same one-sentence descriptions, byte for byte. A card that says one thing while the
+     * manual says another is two playbooks for one loop.
+     */
+    @Test
+    void manual_tool_table_is_the_default_list_verbatim() {
+        Map<String, String> manual = new LinkedHashMap<>();
+        for (String line : manualSection("MCP tools")) {
+            if (!line.startsWith("|")) continue;
+            String[] cells = line.split("\\|");
+            if (cells.length < 3) continue;
+            Matcher m = TOOL_CELL.matcher(cells[1]);
+            if (m.find()) manual.put(m.group(1), cells[2].trim());
+        }
+        assertThat(manual)
+                .as("tool rows parsed from the playbook's MCP tools table")
+                .isNotEmpty();
+        McpTools tools = McpTools.standard();
+        assertThat(manual.keySet())
+                .as("playbook MCP tools table vs the default tools/list")
+                .containsExactlyElementsOf(tools.loopNames());
+        for (Map<String, Object> row : objects(tools.listing(McpTools.Surface.LOOP), "tools")) {
+            String name = String.valueOf(row.get("name"));
+            assertThat(manual.get(name))
+                    .as("%s: playbook row vs served card", name)
+                    .isEqualTo(row.get("description"));
+        }
+    }
+
     @Test
     void doc_resource_table_matches_the_registry() throws IOException {
         Set<String> doc = firstCellNames(section("Resources"), RESOURCE_CELL);
@@ -88,6 +120,18 @@ class McpDocParityTest {
             while (m.find()) names.add(m.group(1));
         }
         return names;
+    }
+
+    /** The lines of one {@code ## <name>} section of the served playbook, exclusive of the next heading. */
+    private static List<String> manualSection(String name) {
+        List<String> out = new ArrayList<>();
+        boolean in = false;
+        for (String line : JkManual.markdown().split("\n")) {
+            if (line.startsWith("## ")) in = line.equals("## " + name);
+            else if (in) out.add(line);
+        }
+        assertThat(out).as("section `## %s` in the playbook", name).isNotEmpty();
+        return out;
     }
 
     /** The lines of one {@code ## <name>} section of the doc, exclusive of the next heading. */

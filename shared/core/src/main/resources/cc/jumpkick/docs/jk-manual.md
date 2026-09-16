@@ -80,7 +80,8 @@ artifacts — JumpKick does not invent a parallel ecosystem.
 
 ## Everyday recipes (CLI and MCP)
 
-Bind once on MCP (`jk_bind` with the project directory), then omit `dir`.
+On MCP, pass `dir` (the project root) on your first call — that binds the connection, and later
+calls may omit it. Tools outside the default list ([MCP tools](#mcp-tools)) are one `jk_tools` call away.
 
 | Goal | CLI | MCP |
 |------|-----|-----|
@@ -113,6 +114,51 @@ Bind once on MCP (`jk_bind` with the project directory), then omit `dir`.
 
 Publish: **CLI only** for real uploads. MCP `jk_publish` / `jk_run kind=publish` is always a **dry-run**.
 
+### CLI loop without MCP
+
+```bash
+jk test
+# read/grep — do not shell out for this if you have file tools:
+#   target/jk-results.md
+jk format
+jk test
+```
+
+## MCP tools
+
+The default `tools/list` is the fix-and-rerun loop. Each row is that tool's card, verbatim.
+
+| Tool | What it does |
+|------|--------------|
+| **`jk_run`** | Run a jk job (kind, default build) and wait for it; then read jk_results. |
+| **`jk_results`** | Markdown report of the last run: what failed and where. |
+| **`jk_diagnostics`** | Structured compiler and test failures of the last failed run. |
+| **`jk_deps`** | Add or remove jk.toml dependencies (group:artifact[:version]); apply=false previews. |
+| **`jk_manifest`** | Set java=N (the language level, not a JDK) in jk.toml; apply=false previews. |
+| **`jk_manual`** | The jk playbook (markdown): read it before editing jk.toml. |
+| **`jk_bind`** | Set or switch the project dir later calls default to. |
+| **`jk_tools`** | List every other jk tool (action=list), or call one by name (action=call). |
+
+`dir` is the project root, absolute. An unbound connection is bound by the first call that carries
+`dir` — that one result says `bound <dir>` — and later calls may omit it. `jk_bind` switches.
+
+Arguments the cards leave out, all optional. `jk_run`: `wait` defaults true and `timeout_s` caps
+the wait (default 600, max 3600); `deadline_s` caps the job's wall time (the engine cancels past it;
+default 1 hour, `0` = none); `modules` and `suites` select; `include_tags`, `exclude_tags`,
+`skip_tests` filter; `kind=test` is the unit suite unless `suites` says otherwise; `kind=publish`
+is always a dry-run. `jk_results`: `run` is a history id (default: the last run); the same
+markdown is `target/jk-results.md`. `jk_diagnostics`: `run` is a history id (default: the last
+failed run); `severity` is `error` or `warning`; `module` filters by dir substring; `unique`
+(default true) collapses repeats; `limit` (default 20) and `next` page. `jk_deps`: `scope` is
+`main|test|runtime|provided|processor`; a coordinate with no version pins the newest stable.
+
+Every other tool — `jk_why`, `jk_explain`, `jk_graph`, `jk_history`, `jk_details`, `jk_status`,
+`jk_job`, `jk_outdated`, `jk_update`, `jk_workspace`, `jk_new`, `jk_jdk`, `jk_disk`, `jk_doctor`,
+`jk_config`, `jk_export`, `jk_ide`, `jk_import`, `jk_install`, `jk_publish`, … — is served but not
+listed: `jk_tools action=list` names each with a one-liner, and
+`jk_tools action=call name=jk_why arguments={…}` calls one. To list every card instead, set
+`[mcp] tools = "all"` in `~/.jk/config.toml` (or `JK_MCP_TOOLS=all`) and restart the engine.
+
 ### MCP connect
 
 MCP is **on by default** when the engine HTTP server is on (loopback, bearer token).
@@ -123,27 +169,16 @@ jk engine status          # prints MCP URL + token; JSON includes mcpUrl
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"tools/call",
- "params":{"name":"jk_bind","arguments":{"dir":"/path/to/project"}}}
+ "params":{"name":"jk_run","arguments":{"kind":"test","dir":"/path/to/project"}}}
 
 {"jsonrpc":"2.0","id":2,"method":"tools/call",
- "params":{"name":"jk_run","arguments":{"kind":"test","wait":true}}}
-
-{"jsonrpc":"2.0","id":3,"method":"tools/call",
  "params":{"name":"jk_results","arguments":{}}}
 ```
 
+The first call's `dir` bound the connection; the second call inherits it.
+
 Live progress: `GET {mcpUrl}?jid=N` with `Accept: text/event-stream` and the same bearer token.
 Catalog prompts include `fix-failing-build` and `learn-jumpkick`.
-
-### CLI loop without MCP
-
-```bash
-jk test
-# read/grep — do not shell out for this if you have file tools:
-#   target/jk-results.md
-jk format
-jk test
-```
 
 ---
 
@@ -259,7 +294,7 @@ directories (`src/integration/…` or `integration/src/`).
    JUnit XML for CI: `target/reports/test-results/`.
 3. Edit sources. `jk format`.
 4. `jk test` or `jk build` (MCP `jk_run kind=test|build wait=true`).
-5. If stalled: `jk jobs` / `jk cancel` (MCP `jk_status` + `jk_job cancel`).
+5. If stalled: `jk jobs` / `jk cancel` (MCP `jk_status` + `jk_job cancel`, through `jk_tools`).
 6. Still stuck: `jk explain` (why rebuild?), `jk doctor` (host), `jk engine status`.
 
 Need the live event stream? `jk test --output json` or `jk results --details`.

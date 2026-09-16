@@ -48,9 +48,9 @@ def mcp_server_config(tool: str, sandbox: Path) -> dict:
 def open_mcp(tool: str, sandbox: Path) -> McpClient:
     cfg = mcp_server_config(tool, sandbox)
     if cfg["type"] == "http":
-        client = HttpMcp(cfg["url"], cfg["headers"]["Authorization"].removeprefix("Bearer "))
-        client.call("jk_bind", {"dir": str(sandbox)})
-        return client
+        # No bind turn: the first jk call that carries dir binds this connection, and every call
+        # here carries it anyway.
+        return HttpMcp(cfg["url"], cfg["headers"]["Authorization"].removeprefix("Bearer "))
     return StdioMcp([cfg["command"], *cfg["args"]], cwd=sandbox)
 
 
@@ -74,8 +74,8 @@ class Session:
         return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
 
     def scoped(self, args: dict) -> dict:
-        # jk_bind's default dir is engine-wide, not per session: two agents on one engine clobber
-        # each other's binding, so every jk call names its dir.
+        # Every jk call names its dir: the sandbox is the fact under test, and a named dir never
+        # depends on what this connection happens to be bound to.
         return {**args, "dir": str(self.sandbox)} if self.tool == "jk" else args
 
     def results(self) -> str:

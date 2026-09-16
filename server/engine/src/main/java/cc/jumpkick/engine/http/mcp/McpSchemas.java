@@ -12,9 +12,12 @@ import java.util.Map;
  */
 public final class McpSchemas {
 
-    /** Read-only tools agents should prefer for diagnosis (jk_results / jk_details / jk_manual). */
-    public static final Map<String, Object> READ_ONLY =
-            Map.of("readOnlyHint", true, "idempotentHint", true, "openWorldHint", false);
+    /**
+     * Read-only tools agents should prefer for diagnosis (jk_results / jk_details / jk_manual).
+     * The one hint hosts act on — a read-only tool needs no permission prompt; the idempotent and
+     * open-world hints would cost every card bytes no client reads.
+     */
+    public static final Map<String, Object> READ_ONLY = Map.of("readOnlyHint", true);
 
     /** A checkout that must contain a {@code jk.toml} — the tools that act on a whole workspace. */
     public static final String WORKSPACE_ROOT = "Project/workspace root (jk.toml): absolute, ~/…, or home-relative";
@@ -53,6 +56,16 @@ public final class McpSchemas {
 
     public static Map<String, Object> string(String description) {
         return Map.of("type", "string", "description", description);
+    }
+
+    /** A string drawn from a closed set — an {@code enum}, which says more per byte than prose. */
+    public static Map<String, Object> oneOf(String... values) {
+        return Map.of("type", "string", "enum", List.of(values));
+    }
+
+    /** A free-form object, for arguments this schema forwards rather than reads. */
+    public static Map<String, Object> anyObject() {
+        return Map.of("type", "object");
     }
 
     public static Map<String, Object> integer() {

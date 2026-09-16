@@ -125,12 +125,12 @@ public final class McpJobRuns {
         McpContext ctx = in.ctx();
         String action = in.action("get").toLowerCase(Locale.ROOT);
         Long jid = in.num("jid");
-        if ("cancel".equals(action) && jid == null && ctx.session().dir() == null) {
+        if ("cancel".equals(action) && jid == null && in.dir() == null) {
             // Unbound sessions must name their victim: "latest live job" across every dir could
             // kill another client's build.
             throw new McpError(-32602, "jk_job cancel requires jid (or jk_bind first)");
         }
-        if (jid == null) jid = McpVitals.latestLiveJid(ctx, ctx.session().dir());
+        if (jid == null) jid = McpVitals.latestLiveJid(ctx, in.dir());
         if ("cancel".equals(action)) {
             if (jid == null) throw new McpError(-32602, "no live job to cancel");
             // No note: this jid came from the live set, so a miss is a race, not a typo.

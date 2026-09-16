@@ -191,6 +191,7 @@ Only files present under the root are overridden; anything missing still falls t
 | `[http] max-event-streams` | `JK_HTTP_MAX_EVENT_STREAMS` | `16` (min `1`) | Web-UI SSE budget (`GET /api/events`) |
 | `[mcp] enabled` | `JK_MCP_ENABLED` | `true` | MCP surface toggle — `false` 404s `/mcp`; the HTTP server and dashboard stay up |
 | `[mcp] max-event-streams` | `JK_MCP_MAX_EVENT_STREAMS` | `16` (min `1`) | MCP SSE budget (`GET /mcp` event streams) |
+| `[mcp] tools` | `JK_MCP_TOOLS` | `loop` | Which cards `tools/list` serves: `loop` (the fix-and-rerun set plus `jk_tools`) or `all`; every tool stays callable |
 
 `[http] enabled = false` still disables the whole server, MCP included.
 

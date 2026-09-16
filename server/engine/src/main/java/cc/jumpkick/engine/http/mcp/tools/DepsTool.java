@@ -19,15 +19,14 @@ public final class DepsTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_deps",
-                "Preview/apply surgical dependency edits (group:artifact[:version]; no version pins the"
-                        + " newest stable). apply=false by default.",
+                "Add or remove jk.toml dependencies (group:artifact[:version]); apply=false previews.",
                 McpSchemas.object(Map.of(
                         "action",
-                        McpSchemas.string("add | remove"),
+                        McpSchemas.oneOf("add", "remove"),
                         "coords",
                         McpSchemas.strings(),
                         "scope",
-                        McpSchemas.string("main|test|runtime|provided|processor"),
+                        McpSchemas.string(),
                         "apply",
                         McpSchemas.bool(),
                         "dir",

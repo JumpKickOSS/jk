@@ -7,39 +7,42 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_run} — the general job verb every other job tool is an alias of. */
+/**
+ * {@code jk_run} — the general job verb every other job tool is an alias of. The card lists the
+ * loop's arguments; {@code modules}, {@code suites}, {@code include_tags}, {@code exclude_tags},
+ * {@code skip_tests} and {@code deadline_s} are read too and the playbook's MCP page spells them
+ * out.
+ */
 public final class RunTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "jk_run",
-                "Start a job (build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import; publish is always a dry-run — credentialed uploads are CLI-only; guard runs every house-rule lane, see jk://guards). "
-                        + "wait defaults true. dir optional after jk_bind. Aliases: jk_build/jk_test/jk_lock.",
-                McpSchemas.object(
-                        Map.of(
-                                "kind",
-                                McpSchemas.string(
-                                        "build|test|guard|lock|update|format|native|image|assemble|compile|clean|publish|install|import"),
-                                "dir",
-                                McpSchemas.string(McpSchemas.BOUND_ROOT),
-                                "modules",
-                                McpSchemas.strings("Module names/globs"),
-                                "include_tags",
-                                McpSchemas.strings(),
-                                "exclude_tags",
-                                McpSchemas.strings(),
-                                "suites",
-                                McpSchemas.strings(),
-                                "skip_tests",
-                                McpSchemas.bool(),
-                                "wait",
-                                McpSchemas.bool("Block until finish (default true)"),
-                                "timeout_s",
-                                McpSchemas.integer("Wait timeout seconds (default 600, max 3600)"),
-                                "deadline_s",
-                                McpSchemas.integer(
-                                        "Job wall deadline in seconds; the engine cancels the job past it (default: the engine's detached-deadline-ms, 1 hour; 0 = none)"))));
+                "Run a jk job (kind, default build) and wait for it; then read jk_results.",
+                McpSchemas.object(Map.of(
+                        "kind",
+                        McpSchemas.oneOf(
+                                "build",
+                                "test",
+                                "guard",
+                                "format",
+                                "lock",
+                                "update",
+                                "compile",
+                                "clean",
+                                "assemble",
+                                "native",
+                                "image",
+                                "publish",
+                                "install",
+                                "import"),
+                        "dir",
+                        McpSchemas.string(),
+                        "wait",
+                        McpSchemas.bool(),
+                        "timeout_s",
+                        McpSchemas.integer())));
     }
 
     @Override

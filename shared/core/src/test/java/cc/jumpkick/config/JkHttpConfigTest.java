@@ -302,6 +302,32 @@ class JkHttpConfigTest {
     }
 
     @Test
+    void mcp_tools_defaults_to_the_loop_set_and_reads_all(@TempDir Path tempDir) throws IOException {
+        assertThat(JkHttpConfig.Mcp.DEFAULTS.tools()).isEqualTo("loop");
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[mcp]\ntools = \"all\"\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().tools()).isEqualTo("all");
+        Files.writeString(toml, "[mcp]\ntools = \"everything\"\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().tools()).isEqualTo("loop");
+    }
+
+    @Test
+    void env_mcp_tools_wins_over_file(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[mcp]\ntools = \"loop\"\n");
+        assertThat(JkHttpConfig.resolve(toml, Map.of("JK_MCP_TOOLS", "all")::get)
+                        .orElseThrow()
+                        .mcp()
+                        .tools())
+                .isEqualTo("all");
+        assertThat(JkHttpConfig.resolve(toml, Map.of("JK_MCP_TOOLS", "none")::get)
+                        .orElseThrow()
+                        .mcp()
+                        .tools())
+                .isEqualTo("loop");
+    }
+
+    @Test
     void mcp_disable_does_not_disable_http(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, "[mcp]\nenabled = false\n");

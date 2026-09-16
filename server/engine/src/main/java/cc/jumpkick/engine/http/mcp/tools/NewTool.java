@@ -86,7 +86,7 @@ public final class NewTool implements McpTool {
     private static String parentDir(McpCall in) {
         String parent = in.str("parentDir");
         if (parent != null && !parent.isBlank()) return parent;
-        String bound = in.ctx().session().dir();
+        String bound = in.dir();
         if (bound != null && !bound.isBlank()) {
             Path p = Path.of(bound).getParent();
             if (p != null) return p.toString();

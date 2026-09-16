@@ -41,12 +41,12 @@ The engine hosts MCP at `POST {httpUrl}/mcp` (token required). `jk engine status
 
 Recommended loop:
 
-1. `jk_bind` with the project directory.
-2. `jk_results` (same markdown as `jk results` / `target/jk-results.md`) or `jk_diagnostics`
+1. `jk_results` with `dir` = the project directory (that first `dir` binds the connection; later
+   calls may omit it). Same markdown as `jk results` / `target/jk-results.md`. Or `jk_diagnostics`
    (structured compiler/test failures).
 3. Edit sources.
 4. `jk_run` with `kind=build` or `kind=test` (`wait` defaults true).
-5. If stalled: `jk_status`, then `jk_job` `cancel`.
+5. If stalled: `jk_status`, then `jk_job` `cancel` — both through `jk_tools action=call`.
 
 Do not dump full journal records. Open `jk_details` only when you need the raw
 `details.jsonl` transcript.

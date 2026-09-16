@@ -11,15 +11,18 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.List;
 import java.util.Map;
 
-/** {@code jk_bind} — set the session's default workspace and answer with its project card. */
+/**
+ * {@code jk_bind} — set the connection's default project dir and answer with its project card.
+ * The explicit form; an unbound connection's first call that carries {@code dir} binds by itself.
+ */
 public final class BindTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "jk_bind",
-                "Set the default workspace for later tools (omit dir after this). Returns a project card.",
-                McpSchemas.object(Map.of("dir", McpSchemas.string(McpSchemas.WORKSPACE_ROOT)), List.of("dir")));
+                "Set or switch the project dir later calls default to.",
+                McpSchemas.object(Map.of("dir", McpSchemas.string()), List.of("dir")));
     }
 
     @Override
@@ -32,6 +35,9 @@ public final class BindTool implements McpTool {
         } catch (RuntimeException e) {
             throw new McpError(-32602, "invalid dir: " + e.getMessage());
         }
+        // The connection's own bind wins for its later calls; the process-wide one is what an
+        // anonymous client and the jk:// resources fall back to.
+        if (in.connection() != null) in.connection().bind(abs);
         in.ctx().session().bind(abs);
         Map<String, Object> card = McpProjectCards.card(abs, in.ctx().history());
         Map<String, Object> env = McpEnvelope.of("project", card, false, null, "jk_history for recent runs");
