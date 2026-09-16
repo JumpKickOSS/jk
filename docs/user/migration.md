@@ -73,9 +73,11 @@ toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inactive profiles lan
 generated `jk.toml`.
 
 **A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
-version as an exact pin and sets `[resolve] pins = "nearest"`, so the lock resolves a pinned module
-the way Maven's nearest-wins did: the project's pin is the version, and a transitive POM's range on
-that module is reported, not enforced. `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
+version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a
+workspace lock reads the root's), so the lock resolves a pinned module the way Maven's nearest-wins
+did: the project's pin is the version, and a transitive POM's range on that module — a plain
+version or an open floor such as `[2.0.18,)`, declared by a dependency of the same module or of
+any sibling — is reported, not enforced. `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
 the POM's own `2.0.1` wins, the lock edge reads `jakarta.inject-api@2.0.1 <- 2.0.1.MR`, and
 `jk lock` prints one warning per overridden range so the divergence from what the library asked for
 is on record. A `jk.toml` written by hand keeps the default, `pins = "exact"`, under which the same

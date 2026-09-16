@@ -13,6 +13,8 @@ import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.Workspace;
+import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
@@ -31,12 +33,15 @@ import org.junit.jupiter.api.io.TempDir;
  * A project pins {@code jakarta.inject-api 2.0.1}; its dependency {@code cryptofs 2.10.0} declares
  * {@code 2.0.1.MR}, a floor the pin sits below. Under the default policy that is a conflict the lock
  * refuses; under {@code [resolve] pins = "nearest"} the pin wins as it does under Maven, the lock
- * edge still carries what cryptofs asked for, and the observer hears one override.
+ * edge still carries what cryptofs asked for, and the observer hears one override. The same holds
+ * across a workspace, where the pin sits in one member and the floor arrives through another
+ * member's dependency as an open range.
  */
 class NearestPinsLockTest {
 
     private static final String INJECT_API = "jakarta.inject:jakarta.inject-api:jar:";
     private static final String CRYPTOFS = "org.cryptomator:cryptofs:jar:";
+    private static final String SHIRO_LANG = "org.apache.shiro:shiro-lang:jar:";
 
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
@@ -66,6 +71,17 @@ class NearestPinsLockTest {
                   </dependencies>
                 </project>
                 """);
+        upstream.metadata("org.apache.shiro", "shiro-lang", "3.0.0");
+        upstream.pom("org.apache.shiro", "shiro-lang", "3.0.0", """
+                <project>
+                  <groupId>org.apache.shiro</groupId><artifactId>shiro-lang</artifactId><version>3.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>jakarta.inject</groupId><artifactId>jakarta.inject-api</artifactId><version>[2.0.1.MR,)</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
     }
 
     @Test
@@ -78,18 +94,7 @@ class NearestPinsLockTest {
     @Test
     void a_nearest_pin_wins_and_the_lock_says_what_was_asked(@TempDir Path tempDir) throws Exception {
         List<String> overrides = new ArrayList<>();
-        ResolveObserver observer = new ResolveObserver() {
-            @Override
-            public void onTotal(int total) {}
-
-            @Override
-            public void onPackage(String module, String version) {}
-
-            @Override
-            public void onOverride(String line) {
-                overrides.add(line);
-            }
-        };
+        ResolveObserver observer = recording(overrides);
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
                 .withPinPolicy(PinPolicy.NEAREST)
@@ -110,7 +115,51 @@ class NearestPinsLockTest {
     @Test
     void a_pin_a_transitive_already_accepts_is_no_override(@TempDir Path tempDir) throws Exception {
         List<String> overrides = new ArrayList<>();
-        ResolveObserver observer = new ResolveObserver() {
+        ResolveObserver observer = recording(overrides);
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .lock(project("2.0.1.MR"), "test", List.of(), true, observer);
+
+        assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1.MR");
+        assertThat(overrides).isEmpty();
+    }
+
+    /**
+     * The workspace lock is the root's policy applied to every member's roots: the pin one member
+     * declares wins over the open floor a sibling's dependency declares, and the sibling's row
+     * says what it asked for.
+     */
+    @Test
+    void a_members_pin_wins_over_a_siblings_open_floor_across_the_workspace(@TempDir Path tempDir) throws Exception {
+        JkBuild root = JkBuild.builder(new Project("org.neo4j", "parent", "1.0", 25))
+                .workspace(new Workspace(List.of("server", "security")))
+                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build();
+        JkBuild server =
+                member("server", new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1")));
+        JkBuild security =
+                member("security", new Dependency("org.apache.shiro:shiro-lang", VersionSelector.parse("=3.0.0")));
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(server, security));
+        List<String> overrides = new ArrayList<>();
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withPinPolicy(merged.build().pinPolicy())
+                .lock(merged, "test", List.of(), true, recording(overrides));
+
+        assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1");
+        Lockfile.Artifact shiro = row(lock, SHIRO_LANG);
+        assertThat(shiro.deps()).contains(INJECT_API + "@2.0.1");
+        assertThat(shiro.declaredFor(INJECT_API + "@2.0.1")).isEqualTo("[2.0.1.MR,)");
+        assertThat(overrides).hasSize(1);
+        assertThat(overrides.getFirst())
+                .contains("jakarta.inject:jakarta.inject-api 2.0.1")
+                .contains("org.apache.shiro:shiro-lang 3.0.0")
+                .contains("2.0.1.MR");
+    }
+
+    private static ResolveObserver recording(List<String> overrides) {
+        return new ResolveObserver() {
             @Override
             public void onTotal(int total) {}
 
@@ -122,13 +171,12 @@ class NearestPinsLockTest {
                 overrides.add(line);
             }
         };
+    }
 
-        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
-                .withPinPolicy(PinPolicy.NEAREST)
-                .lock(project("2.0.1.MR"), "test", List.of(), true, observer);
-
-        assertThat(row(lock, INJECT_API).version()).isEqualTo("2.0.1.MR");
-        assertThat(overrides).isEmpty();
+    private static JkBuild member(String name, Dependency dependency) {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(dependency));
+        return new JkBuild(new Project("org.neo4j", name, "1.0", 25), new JkBuild.Dependencies(byScope));
     }
 
     private static JkBuild project() {

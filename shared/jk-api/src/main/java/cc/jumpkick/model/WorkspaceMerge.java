@@ -171,6 +171,12 @@ public final class WorkspaceMerge {
         return out.build();
     }
 
+    /**
+     * The one manifest a workspace lock resolves: the root's dependencies, then every member's, in
+     * {@code [workspace] modules} order and each in declaration order, one row per package (the
+     * first declaration wins). The root's {@code [resolve]} table travels with it — a workspace's
+     * pin and platform policies are the root's.
+     */
     public static JkBuild merge(JkBuild root, Collection<JkBuild> modules) {
         if (modules.isEmpty()) return Variants.unionDependencies(root);
 
@@ -226,6 +232,7 @@ public final class WorkspaceMerge {
                 .plugins(root.plugins())
                 .application(root.applicationOpt().orElse(null))
                 .nativeConfig(root.nativeConfigOpt().orElse(null))
+                .build(root.build())
                 .build();
     }
 
