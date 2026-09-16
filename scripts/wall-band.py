@@ -38,13 +38,24 @@ HEADER = """# wall-baseline.toml — the ratchet behind the scheduled dogfood wa
 # this file has never seen is added at its measured median, so the first run seeds it. Re-baseline
 # after an intentional change by editing the line and saying why in the commit; the ratchet never
 # raises a line by itself.
+#
+# Below the ratchet tables sits the three-tool wall section, `[[wall.<tool>.<scenario>]]`, banked by
+# bench/wall/measure --bank and rendered into docs/user/performance.md. The ratchet reads past it
+# and writes it back untouched.
 """
+WALL_MARK = "# The three-tool table behind docs/user/performance.md"
+
+
+def split_wall(text):
+    """The ratchet's own tables and, after them, the wall section bench/wall/measure owns."""
+    at = text.find(WALL_MARK)
+    return (text, "") if at < 0 else (text[:at], text[at:])
 
 
 def parse_baseline(text):
     tables = {}
     current = None
-    for raw in text.splitlines():
+    for raw in split_wall(text)[0].splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -61,7 +72,7 @@ def parse_baseline(text):
     return tables
 
 
-def render(tables):
+def render(tables, wall=""):
     out = [HEADER.rstrip("\n"), ""]
     for (row, side) in sorted(tables):
         t = tables[(row, side)]
@@ -70,6 +81,9 @@ def render(tables):
         out.append(f"date = \"{t['date']}\"")
         out.append(f"runs = {int(t['runs'])}")
         out.append(f"commit = \"{t.get('commit', '')}\"")
+        out.append("")
+    if wall:
+        out.append(wall.rstrip("\n"))
         out.append("")
     return "\n".join(out)
 
@@ -135,6 +149,11 @@ def selftest():
     assert not fails2 and nxt2[("noop", "jk")]["median-s"] == 1.80 and nxt2[("noop", "jk-guards")]["median-s"] == 9.0, (banked2, nxt2)
     # the rendered file reads back identically
     assert parse_baseline(render(nxt2)) == parse_baseline(render(parse_baseline(render(nxt2))))
+    # the wall section rides along untouched and never reaches the ratchet's tables
+    wall = WALL_MARK + "\n\n[[wall.jk.noop]]\nmedian-s = 0.20\nhost = \"x\"\n"
+    with_wall = render(nxt2, wall)
+    assert parse_baseline(with_wall) == parse_baseline(render(nxt2)), "wall entries are not ratchet subjects"
+    assert split_wall(with_wall)[1].rstrip("\n") == wall.rstrip("\n"), split_wall(with_wall)[1]
     print("wall-band selftest ok")
 
 
@@ -161,14 +180,16 @@ def main(argv):
     if not rows_path.is_file():
         print(f"wall-band: no measurement at {rows_path} — nothing to judge")
         return 1
-    baseline = parse_baseline(baseline_path.read_text()) if baseline_path.is_file() else {}
+    baseline_text = baseline_path.read_text() if baseline_path.is_file() else ""
+    baseline = parse_baseline(baseline_text)
+    wall = split_wall(baseline_text)[1]
     measured = measurements(rows_path.read_text())
     if not measured:
         print("wall-band: the measurement has no timed rows — nothing to judge")
         return 1
     nxt, failures, banked = judge(baseline, measured, band, improve, commit=commit)
     if banked or not baseline_path.is_file():
-        baseline_path.write_text(render(nxt))
+        baseline_path.write_text(render(nxt, wall))
         print("wall-baseline.toml rewritten: " + ("; ".join(banked) or "seeded") + " — commit it")
     for m in sorted(measured):
         print(f"  {m[0]}.{m[1]}: {measured[m][0]:.2f} s (n={measured[m][1]})")

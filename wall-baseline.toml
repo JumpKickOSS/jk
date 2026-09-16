@@ -12,3 +12,7 @@
 # this file has never seen is added at its measured median, so the first run seeds it. Re-baseline
 # after an intentional change by editing the line and saying why in the commit; the ratchet never
 # raises a line by itself.
+#
+# Below the ratchet tables sits the three-tool wall section, `[[wall.<tool>.<scenario>]]`, banked by
+# bench/wall/measure --bank and rendered into docs/user/performance.md. The ratchet reads past it
+# and writes it back untouched.

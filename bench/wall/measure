@@ -1,0 +1,552 @@
+#!/usr/bin/env python3
+"""Wall and peak memory of jk, Gradle and Maven on one pinned public Spring Boot project.
+
+    bench/wall/measure                         # every tool, every scenario, five timed runs each
+    bench/wall/measure --tool jk --scenario edit --runs 3
+    bench/wall/measure --bank                  # measure, then rewrite the [[wall.*]] tail of wall-baseline.toml
+    bench/wall/measure --render                # the docs tables from wall-baseline.toml, nothing measured
+
+The project is spring-projects/spring-petclinic at the commit in PROJECT: one module, a pom.xml
+and a build.gradle from the same authors, green under all three tools. Every tool gets its own
+working copy under $WALL_HOME (default ~/src/scratch/wall), built from the clone once and then
+reused, so a rerun measures and never re-provisions.
+
+Each tool does the same work: compile the main sources, copy resources, write the plain jar. The
+repository's own Gradle and Maven builds also run checkstyle, Spring Javaformat, an SBOM, Boot AOT
+and Boot repackaging; those are switched off by task selection (Gradle) and skip properties (Maven)
+so the row measures the build tool, not the plugins jk has no counterpart for. README.md spells
+out every command.
+
+Scenarios (tests are skipped in every wall row; `test` is its own row):
+  clean    outputs gone and the tool's output cache empty for this project; the engine or daemon
+           and the dependency caches stay warm — the cost of a first build on a warm machine
+  rebuild  outputs gone, the tool's cache allowed: jk restores from its action cache, Gradle from
+           its build cache, Maven recompiles because it has no cache
+  noop     nothing changed
+  edit     one leaf source file really edited (a unique comment line; jk keys on content, so a
+           touch would measure a no-op), restored after each run
+  test     the whole suite, forced to run: `jk test -r`, `gradle test --rerun`, `mvn test`
+
+Every timed run samples /proc every 200 ms and sums the RSS of the tool's process tree: the
+command's descendants plus, for jk, the resident engine and its workers, and for Gradle the daemon
+and its workers. Peak of that sum is the memory column. RSS double-counts pages shared between
+JVMs, so the number is an upper bound and the same upper bound for every tool.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import platform
+import re
+import shutil
+import statistics
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+JK_TREE = HERE.parent.parent
+BASELINE = JK_TREE / "wall-baseline.toml"
+DOCS = [JK_TREE / "docs" / "user" / "performance.md", JK_TREE / "docs" / "user" / "why.md"]
+WALL_HOME = Path(os.environ.get("WALL_HOME", Path.home() / "src" / "scratch" / "wall"))
+JK = os.environ.get("JK_BIN") or str(Path.home() / ".jk" / "bin" / "jk")
+
+PROJECT = {
+    "name": "spring-petclinic",
+    "source": "https://github.com/spring-projects/spring-petclinic",
+    "commit": "818c4136ea971c21674525f9053de0d9c7ad8cfe",
+    # A controller nothing else imports: the edit row recompiles one file and repackages.
+    "edit": "src/main/java/org/springframework/samples/petclinic/system/WelcomeController.java",
+    # Needs `docker compose config --format=json`, which podman-compose cannot answer; red under all
+    # three tools on a host without Docker proper, so the class leaves every copy.
+    "drop": ["src/test/java/org/springframework/samples/petclinic/PostgresIntegrationTests.java"],
+}
+
+TOOLS = ("jk", "gradle", "maven")
+SCENARIOS = ("clean", "rebuild", "noop", "edit", "test")
+INTERVAL_S = 0.2
+EDIT_MARK = "// wall harness edit"
+WALL_MARK = "# The three-tool table behind docs/user/performance.md, banked by bench/wall/measure --bank:"
+
+MAVEN_OFF = [
+    "-Dcheckstyle.skip", "-Dspring-javaformat.skip", "-Denforcer.skip", "-Dmaven.gitcommitid.skip",
+    "-Dcyclonedx.skip", "-Dspring-boot.repackage.skip", "-Djacoco.skip",
+]
+GRADLE_ON = ["--configuration-cache", "--build-cache", "-q", "--console=plain", "-I", str(HERE / "wall.init.gradle")]
+
+
+# --------------------------------------------------------------------------- process tree sampling
+
+def scan_procs() -> dict[int, tuple[int, int]]:
+    """pid -> (ppid, rss bytes) for every process, from /proc/<pid>/stat."""
+    page = os.sysconf("SC_PAGE_SIZE")
+    out = {}
+    for entry in os.scandir("/proc"):
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry.name}/stat", encoding="ascii", errors="replace") as fh:
+                stat = fh.read()
+        except OSError:
+            continue
+        # comm sits in parentheses and may hold spaces; the fields after it are fixed.
+        tail = stat.rsplit(")", 1)[1].split()
+        out[int(entry.name)] = (int(tail[1]), int(tail[21]) * page)
+    return out
+
+
+_CMDLINES: dict[int, str] = {}
+
+
+def cmdline(pid: int) -> str:
+    if pid not in _CMDLINES:
+        try:
+            _CMDLINES[pid] = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        except OSError:
+            _CMDLINES[pid] = ""
+    return _CMDLINES[pid]
+
+
+def engine_pids() -> set[int]:
+    """The resident jk engines: the pid files under the state root, checked against /proc."""
+    pids = set()
+    for pid_file in (Path.home() / ".jk" / "state" / "engine").glob("*.pid"):
+        try:
+            pid = int(pid_file.read_text().strip().split()[0])
+        except (OSError, ValueError, IndexError):
+            continue
+        if Path(f"/proc/{pid}").exists():
+            pids.add(pid)
+    return pids
+
+
+def resident_roots(tool: str, procs: dict[int, tuple[int, int]]) -> set[int]:
+    """Processes the command does not own but the tool's memory bill includes."""
+    if tool == "jk":
+        return engine_pids() | {pid for pid in procs if "jk-engine" in cmdline(pid) and "java" in cmdline(pid)[:200]}
+    if tool == "gradle":
+        # Only daemons of the harness's own Gradle home: another checkout's daemon is not this bill.
+        return {pid for pid in procs
+                if "org.gradle.launcher.daemon.bootstrap.GradleDaemon" in cmdline(pid) and str(gradle_home()) in cmdline(pid)}
+    return set()
+
+
+def tree_rss(roots: set[int], procs: dict[int, tuple[int, int]]) -> int:
+    children: dict[int, list[int]] = {}
+    for pid, (ppid, _) in procs.items():
+        children.setdefault(ppid, []).append(pid)
+    seen, stack = set(), list(roots)
+    while stack:
+        pid = stack.pop()
+        if pid in seen or pid not in procs:
+            continue
+        seen.add(pid)
+        stack.extend(children.get(pid, []))
+    return sum(procs[pid][1] for pid in seen)
+
+
+class Sampler(threading.Thread):
+    """Peak summed RSS of the command's tree plus the tool's residents, sampled every INTERVAL_S."""
+
+    def __init__(self, tool: str, root_pid: int):
+        super().__init__(daemon=True)
+        self.tool, self.root_pid = tool, root_pid
+        self.peak = 0
+        self.resident_start = 0
+        self._stop = threading.Event()
+
+    def run(self) -> None:
+        first = True
+        while not self._stop.is_set():
+            procs = scan_procs()
+            residents = resident_roots(self.tool, procs)
+            if first:
+                self.resident_start = tree_rss(residents, procs)
+                first = False
+            self.peak = max(self.peak, tree_rss(residents | {self.root_pid}, procs))
+            self._stop.wait(INTERVAL_S)
+
+    def stop(self) -> None:
+        self._stop.set()
+        self.join()
+
+
+# --------------------------------------------------------------------------- shell plumbing
+
+def sh(cmd: list[str], cwd: Path, log: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    full_env = tool_env(cmd)
+    res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=full_env)
+    if log:
+        with open(log, "a", encoding="utf-8") as fh:
+            fh.write(f"$ {' '.join(cmd)}\n{res.stdout}{res.stderr}\n[exit {res.returncode}]\n\n")
+    if check and res.returncode != 0:
+        raise SystemExit(f"{' '.join(cmd)} failed in {cwd} (exit {res.returncode}):\n{res.stdout[-3000:]}{res.stderr[-3000:]}")
+    return res
+
+
+def tool_env(cmd: list[str]) -> dict[str, str]:
+    """Gradle runs in the harness's own user home; every other tool inherits the shell's environment."""
+    return dict(os.environ, GRADLE_USER_HOME=str(gradle_home())) if cmd and cmd[0] == "./gradlew" else dict(os.environ)
+
+
+def timed(tool: str, cmd: list[str], cwd: Path, log: Path) -> tuple[float, int, int, int]:
+    """(wall seconds, exit status, peak tree RSS bytes, resident RSS at start)."""
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(f"$ {' '.join(cmd)}\n")
+        fh.flush()
+        t0 = time.monotonic()
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=fh, stderr=subprocess.STDOUT, env=tool_env(cmd))
+        sampler = Sampler(tool, proc.pid)
+        sampler.start()
+        rc = proc.wait()
+        wall = time.monotonic() - t0
+        sampler.stop()
+        fh.write(f"[exit {rc}, {wall:.2f} s, peak tree rss {sampler.peak >> 20} MiB]\n\n")
+    return wall, rc, sampler.peak, sampler.resident_start
+
+
+def engine_live_jobs() -> int | None:
+    res = subprocess.run([JK, "engine", "status", "--no-ansi"], capture_output=True, text=True)
+    m = re.search(r"Live Jobs\W+(\d+)", res.stdout)
+    return int(m.group(1)) if m else None
+
+
+def wait_idle(budget_s: float) -> tuple[int | None, float]:
+    """Wait until the shared engine has no live job (another gate may be using it), then report."""
+    deadline = time.monotonic() + budget_s
+    live = engine_live_jobs()
+    while live and time.monotonic() < deadline:
+        print(f"  engine has {live} live job(s); waiting for it to idle", file=sys.stderr)
+        time.sleep(15)
+        live = engine_live_jobs()
+    return live, os.getloadavg()[0]
+
+
+# --------------------------------------------------------------------------- working copies
+
+def clone() -> Path:
+    repo = WALL_HOME / "repos" / PROJECT["name"]
+    if not (repo / ".git").is_dir():
+        repo.parent.mkdir(parents=True, exist_ok=True)
+        sh(["git", "clone", "-q", PROJECT["source"], str(repo)], cwd=WALL_HOME)
+    head = sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
+    if head != PROJECT["commit"]:
+        sh(["git", "fetch", "-q", "origin"], cwd=repo, check=False)
+        sh(["git", "checkout", "-q", PROJECT["commit"]], cwd=repo)
+    return repo
+
+
+def working_copy(tool: str, repo: Path, log: Path) -> Path:
+    """The tool's copy of the pinned tree, provisioned once: dependencies fetched, one build green."""
+    work = WALL_HOME / "work" / tool
+    if (work / ".wall-ready").is_file():
+        return work
+    shutil.rmtree(work, ignore_errors=True)
+    work.parent.mkdir(parents=True, exist_ok=True)
+    sh(["git", "clone", "-q", "--shared", str(repo), str(work)], cwd=WALL_HOME)
+    sh(["git", "checkout", "-q", PROJECT["commit"]], cwd=work)
+    for rel in PROJECT["drop"]:
+        (work / rel).unlink()
+    if tool == "jk":
+        for stray in ("pom.xml", "build.gradle", "settings.gradle", "gradlew", "gradlew.bat", "mvnw", "mvnw.cmd", "gradle"):
+            path = work / stray
+            shutil.rmtree(path) if path.is_dir() else path.unlink(missing_ok=True)
+        for name in ("jk.toml", "jk-lock.toml"):
+            shutil.copy(HERE / PROJECT["name"] / name, work / name)
+        sh([JK, "build", "--skip-tests", "--no-ansi"], cwd=work, log=log)
+    elif tool == "gradle":
+        sh(["./gradlew"] + gradle_tasks("build") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"], cwd=work, log=log)
+    else:
+        sh([JK, "mvn", "-q"] + MAVEN_OFF + ["-Dmaven.test.skip", "package"], cwd=work, log=log)
+    (work / ".wall-ready").write_text(PROJECT["commit"] + "\n")
+    return work
+
+
+def gradle_cache() -> Path:
+    path = WALL_HOME / "gradle-build-cache"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def gradle_home() -> Path:
+    """A Gradle user home of the harness's own, so its daemons are the only ones on the memory bill.
+
+    Dependency and wrapper downloads land here once; ~/.gradle is never touched."""
+    path = WALL_HOME / "gradle-home"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+
+def gradle_tasks(kind: str) -> list[str]:
+    return ["test", "--rerun"] if kind == "test" else ["classes", "jar"]
+
+
+def tool_version(tool: str, work: Path) -> str:
+    if tool == "jk":
+        return sh([JK, "--version"], cwd=work).stdout.strip()
+    if tool == "gradle":
+        m = re.search(r"gradle-([\d.]+)-", (work / "gradle/wrapper/gradle-wrapper.properties").read_text())
+        return f"Gradle {m.group(1)} (the repository's wrapper)" if m else "Gradle (wrapper)"
+    out = sh([JK, "mvn", "-v"], cwd=work, check=False).stdout
+    m = re.search(r"Apache Maven ([\d.]+)", out)
+    return f"Maven {m.group(1)} via jk mvn" if m else "Maven via jk mvn"
+
+
+# --------------------------------------------------------------------------- the scenarios
+
+def build_cmd(tool: str, redo: bool = False) -> list[str]:
+    if tool == "jk":
+        return [JK, "build", "--skip-tests", "--no-ansi"] + (["-r"] if redo else [])
+    if tool == "gradle":
+        return ["./gradlew"] + gradle_tasks("build") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"]
+    return [JK, "mvn", "-q", "-o"] + MAVEN_OFF + ["-Dmaven.test.skip", "package"]
+
+
+def test_cmd(tool: str) -> list[str]:
+    if tool == "jk":
+        return [JK, "test", "-r", "--no-ansi"]
+    if tool == "gradle":
+        return ["./gradlew"] + gradle_tasks("test") + GRADLE_ON + [f"-Dwall.build-cache={gradle_cache()}"]
+    return [JK, "mvn", "-q", "-o"] + MAVEN_OFF + ["test"]
+
+
+def wipe_outputs(tool: str, work: Path, log: Path, cache_too: bool) -> None:
+    """Untimed: the outputs go; with cache_too the tool's output cache for this project goes with them."""
+    if tool == "jk":
+        sh([JK, "clean", "--no-ansi"], cwd=work, log=log)
+    elif tool == "gradle":
+        shutil.rmtree(work / "build", ignore_errors=True)
+        if cache_too:
+            shutil.rmtree(work / ".gradle" / "configuration-cache", ignore_errors=True)
+            shutil.rmtree(gradle_cache(), ignore_errors=True)
+            gradle_cache()
+    else:
+        shutil.rmtree(work / "target", ignore_errors=True)
+
+
+def edit(work: Path, tag: str) -> None:
+    path = work / PROJECT["edit"]
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(f"\n{EDIT_MARK} {tag}\n")
+
+
+def unedit(work: Path) -> None:
+    sh(["git", "checkout", "-q", "--", PROJECT["edit"]], cwd=work)
+
+
+def measure(tool: str, scenario: str, work: Path, runs: int, log: Path) -> dict:
+    """One row: `runs` timed runs of the scenario; the wall list, its median and p90, the RSS peak."""
+    walls, peaks, residents, failures = [], [], [], 0
+    for i in range(1, runs + 1):
+        if scenario == "clean":
+            wipe_outputs(tool, work, log, cache_too=True)
+            cmd = build_cmd(tool, redo=True)
+        elif scenario == "rebuild":
+            if i == 1:
+                timed(tool, build_cmd(tool), work, log)   # prime the cache the row restores from
+            wipe_outputs(tool, work, log, cache_too=False)
+            cmd = build_cmd(tool)
+        elif scenario == "noop":
+            if i == 1:
+                timed(tool, build_cmd(tool), work, log)   # the build the no-op repeats
+            cmd = build_cmd(tool)
+        elif scenario == "edit":
+            if i == 1:
+                timed(tool, build_cmd(tool), work, log)   # the edit lands on a built tree
+            edit(work, f"{dt.datetime.now():%Y%m%d%H%M%S}-{i}")
+            cmd = build_cmd(tool)
+        else:
+            cmd = test_cmd(tool)
+        wall, rc, peak, resident = timed(tool, cmd, work, log)
+        if scenario == "edit":
+            unedit(work)
+        status = "ok" if rc == 0 else f"FAILED exit {rc}"
+        print(f"  {tool:<7}{scenario:<9}run {i}: {wall:7.2f} s  peak tree rss {peak >> 20:5d} MiB  {status}", file=sys.stderr)
+        if rc != 0:
+            failures += 1
+            continue
+        walls.append(round(wall, 2))
+        peaks.append(peak)
+        residents.append(resident)
+    row = {"tool": tool, "scenario": scenario, "runs": len(walls), "failures": failures,
+           "command": " ".join(as_typed(c) for c in cmd), "walls_s": walls}
+    if walls:
+        ordered = sorted(walls)
+        row["median_s"] = round(statistics.median(walls), 2)
+        row["p90_s"] = ordered[max(0, -(-9 * len(ordered) // 10) - 1)]
+        row["peak_rss_mb"] = max(peaks) >> 20
+        row["resident_rss_mb"] = max(residents) >> 20
+    return row
+
+
+def as_typed(part: str) -> str:
+    """The command as a reader types it: the jk binary and the init script by name, not by path."""
+    if part == JK:
+        return "jk"
+    if part.startswith(str(HERE)):
+        return "bench/wall/" + part[len(str(HERE)) + 1:]
+    if part.startswith("-Dwall.build-cache="):
+        return "-Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+    return part
+
+
+# --------------------------------------------------------------------------- host, banking, rendering
+
+def host_line() -> str:
+    cpu = "unknown cpu"
+    for line in Path("/proc/cpuinfo").read_text().splitlines():
+        if line.startswith("model name"):
+            cpu = line.split(":", 1)[1].strip()
+            break
+    mem = next((int(l.split()[1]) // 1048576 for l in Path("/proc/meminfo").read_text().splitlines() if l.startswith("MemTotal")), 0)
+    return f"{cpu}, {os.cpu_count()} threads, {mem} GB, {platform.system()} {platform.release()}"
+
+
+def jk_commit() -> str:
+    res = subprocess.run(["git", "-C", str(JK_TREE), "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
+    return res.stdout.strip() or "unknown"
+
+
+def toml_str(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def bank(rows: list[dict], versions: dict[str, str], load: str) -> None:
+    """Rewrite the [[wall.*]] tail of wall-baseline.toml from this run; the ratchet tables above it stay."""
+    text = BASELINE.read_text() if BASELINE.is_file() else ""
+    head = text.split("\n" + WALL_MARK, 1)[0].rstrip("\n") + "\n"
+    out = [head, "", WALL_MARK]
+    out.append("# one entry per tool and scenario, from the run named by its date, commit and host.")
+    today = dt.date.today().isoformat()
+    for row in rows:
+        if "median_s" not in row:
+            continue
+        out.append("")
+        out.append(f"[[wall.{row['tool']}.{row['scenario']}]]")
+        out.append(f"median-s = {row['median_s']:.2f}")
+        out.append(f"p90-s = {row['p90_s']:.2f}")
+        out.append(f"peak-rss-mb = {row['peak_rss_mb']}")
+        out.append(f"runs = {row['runs']}")
+        out.append(f"date = {toml_str(today)}")
+        out.append(f"commit = {toml_str(jk_commit())}")
+        out.append(f"host = {toml_str(host_line())}")
+        out.append(f"project = {toml_str(PROJECT['source'].split('github.com/')[1] + '@' + PROJECT['commit'][:9])}")
+        out.append(f"tool-version = {toml_str(versions[row['tool']])}")
+        out.append(f"command = {toml_str(row['command'])}")
+        out.append(f"load = {toml_str(load)}")
+    BASELINE.write_text("\n".join(out) + "\n")
+    print(f"banked {sum('median_s' in r for r in rows)} entries into {BASELINE}", file=sys.stderr)
+
+
+def banked() -> dict[tuple[str, str], dict]:
+    import tomllib
+    data = tomllib.loads(BASELINE.read_text()).get("wall", {})
+    return {(tool, scenario): entries[-1] for tool, scenarios in data.items() for scenario, entries in scenarios.items()}
+
+
+def render_table() -> str:
+    """The markdown the docs carry between the wall-table markers: walls, then peak memory, then the run."""
+    entries = banked()
+    if not entries:
+        return "_No banked wall yet: run `bench/wall/measure --bank`._"
+    labels = {"clean": "Clean build", "rebuild": "Warm rebuild", "noop": "No-op", "edit": "One-file edit", "test": "Test run"}
+    names = {"jk": "jk", "gradle": "Gradle", "maven": "Maven"}
+    lines = ["| Scenario | " + " | ".join(f"{names[t]} median / p90" for t in TOOLS) + " |",
+             "|---|" + "---:|" * len(TOOLS)]
+    for scenario in SCENARIOS:
+        cells = []
+        for tool in TOOLS:
+            e = entries.get((tool, scenario))
+            cells.append(f"{e['median-s']:.2f} s / {e['p90-s']:.2f} s" if e else "—")
+        lines.append(f"| {labels[scenario]} | " + " | ".join(cells) + " |")
+    lines += ["", "| Scenario | " + " | ".join(f"{names[t]} peak RSS" for t in TOOLS) + " |", "|---|" + "---:|" * len(TOOLS)]
+    for scenario in SCENARIOS:
+        cells = []
+        for tool in TOOLS:
+            e = entries.get((tool, scenario))
+            cells.append(f"{e['peak-rss-mb']:,} MiB" if e else "—")
+        lines.append(f"| {labels[scenario]} | " + " | ".join(cells) + " |")
+    any_entry = next(iter(entries.values()))
+    versions = "; ".join(sorted({e["tool-version"] for e in entries.values()}))
+    lines += ["", f"Measured {any_entry['date']} on {any_entry['host']}; project {any_entry['project']}; "
+                  f"{versions}; jk tree at {any_entry['commit']}; {any_entry['runs']} timed runs per cell; {any_entry['load']}."]
+    return "\n".join(lines)
+
+
+def render_docs() -> None:
+    table = render_table()
+    for doc in DOCS:
+        text = doc.read_text()
+        begin, end = "<!-- wall-table:begin -->", "<!-- wall-table:end -->"
+        if begin not in text or end not in text:
+            print(f"{doc}: no wall-table markers, left alone", file=sys.stderr)
+            continue
+        pre, rest = text.split(begin, 1)
+        _, post = rest.split(end, 1)
+        doc.write_text(f"{pre}{begin}\n{table}\n{end}{post}")
+        print(f"rendered the table into {doc}", file=sys.stderr)
+    print(table)
+
+
+# --------------------------------------------------------------------------- main
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--tool", action="append", choices=TOOLS, help="measure only this tool (repeatable)")
+    ap.add_argument("--scenario", action="append", choices=SCENARIOS, help="measure only this scenario (repeatable)")
+    ap.add_argument("--runs", type=int, default=5, help="timed runs per cell (default 5)")
+    ap.add_argument("--wait-idle", type=float, default=900, help="seconds to wait for the shared engine to have no live job (default 900)")
+    ap.add_argument("--bank", action="store_true", help="rewrite the [[wall.*]] tail of wall-baseline.toml and the docs tables")
+    ap.add_argument("--render", action="store_true", help="only render the docs tables from wall-baseline.toml")
+    args = ap.parse_args()
+    if args.render:
+        render_docs()
+        return 0
+
+    tools = args.tool or list(TOOLS)
+    scenarios = args.scenario or list(SCENARIOS)
+    if args.bank and (args.tool or args.scenario):
+        raise SystemExit("--bank banks a whole run: drop --tool and --scenario")
+    out_dir = WALL_HOME / "results" / f"{dt.datetime.now():%Y-%m-%dT%H%M%S}"
+    out_dir.mkdir(parents=True)
+    log = out_dir / "setup.log"
+    repo = clone()
+    works = {tool: working_copy(tool, repo, log) for tool in tools}
+    versions = {tool: tool_version(tool, works[tool]) for tool in tools}
+
+    live, load1 = wait_idle(args.wait_idle)
+    load = f"loadavg {load1:.1f} at start, engine live jobs {live if live is not None else '?'}"
+    print(f"host: {host_line()}\n{load}", file=sys.stderr)
+    rows = []
+    for tool in tools:
+        for scenario in scenarios:
+            row = measure(tool, scenario, works[tool], args.runs, out_dir / f"{tool}-{scenario}.log")
+            rows.append(row)
+            with open(out_dir / "rows.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, sort_keys=True) + "\n")
+    load += f", loadavg {os.getloadavg()[0]:.1f} at end"
+
+    print(f"\n{'tool':<8}{'scenario':<9}{'median':>8}{'p90':>8}{'peak rss':>10}  runs", file=sys.stderr)
+    for row in rows:
+        if "median_s" in row:
+            print(f"{row['tool']:<8}{row['scenario']:<9}{row['median_s']:>7.2f}s{row['p90_s']:>7.2f}s{row['peak_rss_mb']:>7,} MiB  {row['runs']}", file=sys.stderr)
+        else:
+            print(f"{row['tool']:<8}{row['scenario']:<9}   every run failed; see {out_dir}", file=sys.stderr)
+    print(f"rows in {out_dir / 'rows.jsonl'}, logs beside it", file=sys.stderr)
+    if any(row["failures"] for row in rows):
+        print("a run failed; nothing banked", file=sys.stderr)
+        return 1
+    if args.bank:
+        bank(rows, versions, load)
+        render_docs()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
