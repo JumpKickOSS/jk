@@ -322,10 +322,17 @@ public final class JkBuildRenderer {
         sb.append('\n');
         sb.append("[repositories]\n");
         for (RepositorySpec r : repos) {
-            sb.append(safeKey(r.name()))
-                    .append(" = ")
-                    .append(quote(r.url().toString()))
-                    .append('\n');
+            sb.append(safeKey(r.name())).append(" = ");
+            if (r.releases() && r.snapshots()) {
+                sb.append(quote(r.url().toString()));
+            } else {
+                // A policy other than Maven's default needs the table form.
+                sb.append("{ url = ").append(quote(r.url().toString()));
+                if (!r.releases()) sb.append(", releases = false");
+                if (!r.snapshots()) sb.append(", snapshots = false");
+                sb.append(" }");
+            }
+            sb.append('\n');
         }
     }
 
