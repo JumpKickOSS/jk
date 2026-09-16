@@ -146,11 +146,12 @@ final class PullWorkerPool {
                         handlerFailures.get(i).get()));
             }
         }
-        String cancelledWhy = CancelledShortfall.of(SessionCancel.cancelled(), worstExit, queue.size());
-        if (cancelledWhy != null) {
+        TestFailureInfo shortfall =
+                CancelledShortfall.row(moduleLabel, SessionCancel.cancelled(), worstExit, queue.size());
+        if (shortfall != null) {
             total += 1;
             failed += 1;
-            allFailures.add(new TestFailureInfo(moduleLabel, "", "", "(test run)", "", cancelledWhy, "", 0));
+            allFailures.add(shortfall);
         }
         return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, actualWorkers);
     }
