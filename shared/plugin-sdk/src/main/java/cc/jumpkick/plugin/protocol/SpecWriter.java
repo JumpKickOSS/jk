@@ -109,16 +109,22 @@ public final class SpecWriter {
                 .string("key", key)
                 .optionalString("entry", entry)
                 .optionalString("field", field);
-        if (v instanceof String s) lines.add(line.string("kind", "string").string("value", s).finish());
-        else if (v instanceof Boolean b) lines.add(line.string("kind", "bool").bool("value", b).finish());
-        else if (v instanceof Long l) lines.add(line.string("kind", "int").number("value", l).finish());
-        else if (v instanceof Integer i) lines.add(line.string("kind", "int").number("value", i).finish());
+        if (v instanceof String s)
+            lines.add(line.string("kind", "string").string("value", s).finish());
+        else if (v instanceof Boolean b)
+            lines.add(line.string("kind", "bool").bool("value", b).finish());
+        else if (v instanceof Long l)
+            lines.add(line.string("kind", "int").number("value", l).finish());
+        else if (v instanceof Integer i)
+            lines.add(line.string("kind", "int").number("value", i).finish());
         else if (v instanceof List<?> list) {
             List<String> strs = new ArrayList<>();
             for (Object o : list) strs.add(String.valueOf(o));
             lines.add(line.string("kind", "list").array("values", strs).finish());
         } else if (v instanceof Map<?, ?> m) {
-            lines.add(line.string("kind", "map").map("values", (Map<String, String>) m).finish());
+            lines.add(line.string("kind", "map")
+                    .map("values", (Map<String, String>) m)
+                    .finish());
         }
     }
 
