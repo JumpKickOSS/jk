@@ -359,6 +359,23 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void test_assertions_default_on_and_take_only_a_boolean() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testAssertions()).isTrue();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                assertions = false
+                """).build().testAssertions()).isFalse();
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                assertions = "off"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].assertions must be true or false");
+    }
+
+    @Test
     void parses_test_tools_as_names_on_path() {
         assertThat(JkBuildParser.parse(PROJECT).build().testTools()).isEmpty();
         assertThat(JkBuildParser.parse(PROJECT + """

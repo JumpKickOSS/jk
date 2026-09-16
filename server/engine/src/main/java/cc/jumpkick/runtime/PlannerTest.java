@@ -556,6 +556,7 @@ public final class PlannerTest {
                                 // [test] serial-tags: those classes run on one trailing worker
                                 // while the rest shard.
                                 .withSerialTags(projectUnderTest.build().testSerialTags())
+                                .withAssertions(projectUnderTest.build().testAssertions())
                                 .withClassPatterns(effectiveSel.classes())
                                 .withDebug(in.session().debugJvm());
                         if (jacoco != null && coverageExec != null) {

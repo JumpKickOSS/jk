@@ -44,6 +44,7 @@ final class ManifestBuildTable {
         Integer testWorkers;
 
         final List<String> testSerialTags = new ArrayList<>();
+        boolean testAssertions = true;
         final List<String> testTools = new ArrayList<>();
     }
 
@@ -190,6 +191,13 @@ final class ManifestBuildTable {
                     throw new JkBuildParseException("[test].serial-tags must be an array of tag strings");
                 if (!str.isBlank()) s.testSerialTags.add(str);
             }
+        }
+        // [test] assertions — -ea on every forked test JVM unless the module turns it off.
+        if (test.contains("assertions")) {
+            if (!(test.get("assertions") instanceof Boolean assertions)) {
+                throw new JkBuildParseException("[test].assertions must be true or false");
+            }
+            s.testAssertions = assertions;
         }
         // [test] tools — external executables the suite shells out to, by the bare name the tests
         // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:
