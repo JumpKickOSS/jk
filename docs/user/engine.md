@@ -99,6 +99,22 @@ dumps older than seven days between builds. Raise `[engine] max-heap-mb` (or `JK
 `jk engine stop` to apply it, or shrink what the engine holds with `jk cache prune`. Open
 the `.hprof` with any Java heap analyser.
 
+### Memory after a build
+
+An idle engine's memory returns to a floor. When the last job finishes the engine drops its
+per-build memos, runs a full collection so the heap uncommits down to its live data (SerialGC
+with a low `MaxHeapFreeRatio`), and returns freed native memory to the operating system
+(`malloc_trim`, the same operation as `jcmd <pid> System.trim_native_heap`). Thirty seconds
+of idleness later it does both again, once the harvest and the client disconnects that trail a
+job have finished, and logs one `idle trim:` line with what came back. Two settings on the
+spawn line keep the native side bounded between trims: HotSpot's periodic trim
+(`-XX:TrimNativeHeapInterval`, every 30 s) and a glibc arena cap (`MALLOC_ARENA_MAX=4`,
+inherited from the shell when it sets its own). `jk engine status` shows heap and RSS.
+
+Worker JVMs are job-scoped: compiler lanes, test runners and plugin workers exit when their
+job ends. The build-script host (`.jk/*.kts`) is the one worker that outlives a job, and it
+shuts down after ten idle minutes.
+
 ### Log
 
 The engine writes its log to `~/.jk/state/engine/<key>.log`, beside its socket and pid file.

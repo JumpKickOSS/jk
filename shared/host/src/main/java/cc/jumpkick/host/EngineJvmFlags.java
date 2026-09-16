@@ -14,10 +14,18 @@ import java.util.List;
  * ignores the mismatch, and the refusal back-off then suppresses retraining for its TTL.
  */
 public final class EngineJvmFlags {
+    /**
+     * How often HotSpot returns freed native memory to the OS ({@code malloc_trim}, glibc only; the
+     * flag is accepted and inert elsewhere). Worker I/O and jar reading malloc through glibc, whose
+     * arenas keep freed memory until trimmed; without this an idle engine sat at gigabytes of RSS
+     * over a few hundred megabytes of live data.
+     */
+    public static final int TRIM_NATIVE_HEAP_INTERVAL_MS = 30_000;
 
     /**
      * Serving-line and trainer-line shared flags: SerialGC with tight heap-return ergonomics (an
-     * idle coordinator must snap committed to ~live on its boundary GC), real IPv4 sockets for WSL
+     * idle coordinator must snap committed to ~live on its boundary GC), a periodic native-heap
+     * trim for the same reason one level down, real IPv4 sockets for WSL
      * localhost forwarding, native access for PosixDetach's setsid(2) downcall, and a JVM that
      * dies on its first {@code OutOfMemoryError} after writing a heap dump. A capped coordinator
      * that survives an OOM is a silent peer every client has to displace; one that exits is
@@ -28,6 +36,7 @@ public final class EngineJvmFlags {
             "-XX:MinHeapFreeRatio=10",
             "-XX:MaxHeapFreeRatio=25",
             "-XX:-ShrinkHeapInSteps",
+            "-XX:TrimNativeHeapInterval=" + TRIM_NATIVE_HEAP_INTERVAL_MS,
             "-XX:+ExitOnOutOfMemoryError",
             "-XX:+HeapDumpOnOutOfMemoryError",
             PreferIpv4.JVM_FLAG,

@@ -112,6 +112,16 @@ class EngineEnvironmentTest {
                 .containsOnly(
                         Map.entry("PATH", "/usr/bin"),
                         Map.entry("JK_HOME", "/home/u/.jk"),
-                        Map.entry("LC_ALL", "C.UTF-8"));
+                        Map.entry("LC_ALL", "C.UTF-8"),
+                        Map.entry("MALLOC_ARENA_MAX", EngineEnvironment.DEFAULT_MALLOC_ARENA_MAX));
+    }
+
+    @Test
+    void the_engine_gets_a_malloc_arena_cap_unless_the_shell_set_one() {
+        Map<String, String> env = new HashMap<>();
+        EngineEnvironment.seed(env, Map.of("PATH", "/usr/bin"));
+        assertThat(env).containsEntry("MALLOC_ARENA_MAX", "4");
+        EngineEnvironment.seed(env, Map.of("PATH", "/usr/bin", "MALLOC_ARENA_MAX", "1"));
+        assertThat(env).as("the shell's own cap is inherited, not overruled").containsEntry("MALLOC_ARENA_MAX", "1");
     }
 }
