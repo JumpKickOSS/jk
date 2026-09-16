@@ -67,7 +67,7 @@ timed.
 | rebuild | outputs deleted, the tool's cache kept: `jk clean`; Gradle's `build/` removed; Maven's `target/` removed | jk restoring from its action cache, Gradle from its build cache, Maven recompiling |
 | noop | nothing changed | the repeated cycle |
 | edit | one line appended to `system/WelcomeController.java`, a class nothing else imports; restored after each run | the inner loop. jk keys its cache on content, so a `touch` would measure a no-op |
-| test | nothing changed; the run is forced (`jk test -r`, `gradle test --rerun`, Maven always runs) | the whole suite: 72 tests, Testcontainers MySQL included when Docker or podman answers |
+| test | nothing changed; the run is forced (`jk test -r`, `gradle test --rerun`, Maven always runs) | the whole suite: 74 tests, Testcontainers MySQL included when Docker or podman answers |
 
 Each cell is `--runs` timed runs (default five) after one untimed priming run where the row needs
 a built tree; the table shows the median and the p90 (nearest rank).
