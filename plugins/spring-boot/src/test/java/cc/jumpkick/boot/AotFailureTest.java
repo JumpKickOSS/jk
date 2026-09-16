@@ -24,7 +24,7 @@ class AotFailureTest {
             \tat org.springframework.context.aot.ContextAotProcessor.doProcess(ContextAotProcessor.java:84)
             \tat org.springframework.boot.SpringApplicationAotProcessor.main(SpringApplicationAotProcessor.java:82)
             Caused by: java.lang.ExceptionInInitializerError
-            \tat com.google.inject.internal.cglib.reflect.$FastClass$Generator.getProtectionDomain(FastClass.java:73)
+            \tat com.google.inject.internal.cglib.reflect.$FastClass$Generator.create(FastClass.java:65)
             \tat com.ctrip.framework.apollo.spring.util.SpringInjector.getInjector(SpringInjector.java:22)
             \t... 29 more
             Caused by: java.lang.reflect.InaccessibleObjectException: Unable to make protected final java.lang.Class java.lang.ClassLoader.defineClass(java.lang.String,byte[],int,int,java.security.ProtectionDomain) throws java.lang.ClassFormatError accessible: module java.base does not "opens java.lang" to unnamed module @1b083826
