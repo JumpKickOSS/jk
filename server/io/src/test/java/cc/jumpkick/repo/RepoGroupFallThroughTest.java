@@ -73,8 +73,7 @@ class RepoGroupFallThroughTest {
     }
 
     @Test
-    void when_every_candidate_fails_the_failure_is_the_answer_not_an_empty_catalog(@TempDir Path tmp)
-            throws Exception {
+    void when_every_candidate_fails_the_failure_is_the_answer_not_an_empty_catalog(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(tmp.resolve("cas"));
         try (DeadEndpoint dead = DeadEndpoint.open()) {
             RepoGroup group = new RepoGroup(List.of(new MavenRepo("dead", dead.uri(), Http.failFast(), cas)));

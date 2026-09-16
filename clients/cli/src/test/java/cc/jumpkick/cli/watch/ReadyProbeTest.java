@@ -3,8 +3,8 @@ package cc.jumpkick.cli.watch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
