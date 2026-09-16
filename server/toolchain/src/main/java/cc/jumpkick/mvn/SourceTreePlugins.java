@@ -41,9 +41,16 @@ final class SourceTreePlugins {
 
     /**
      * {@code generatorOutputs} are the module-relative directories the module's generators fill,
-     * each with what an {@code add-source} root inside it is.
+     * each with what an {@code add-source} root inside it is. In a workspace ({@code inherited}
+     * set) the generic row for a plugin the POM inherits is counted onto the declaring POM's row
+     * rather than said at every module; the root's own go there too.
      */
-    static SourceTree map(EffectiveModel em, Map<String, String> generatorOutputs, ImportReport.Builder report) {
+    static SourceTree map(
+            EffectiveModel em,
+            Map<String, String> generatorOutputs,
+            ImportReport.Builder report,
+            @Nullable InheritedRows inherited,
+            boolean isRoot) {
         Model model = em.model();
         List<String> extraSrc = new ArrayList<>();
         List<String> testExtraSrc = new ArrayList<>();
@@ -60,7 +67,7 @@ final class SourceTreePlugins {
                 .filter(SourceTreePlugins::failsOnDoclint)
                 .map(p -> JavadocMode.STRICT)
                 .orElse(JavadocMode.LENIENT);
-        reportUnmappedPlugins(model, report);
+        reportUnmappedPlugins(em, report, inherited, isRoot);
         return new SourceTree(extraSrc, testExtraSrc, sources, javadoc);
     }
 
@@ -209,12 +216,24 @@ final class SourceTreePlugins {
     }
 
     /** Every declared plugin the import has no mapping for; the migration page says where each lands. */
-    private static void reportUnmappedPlugins(Model model, ImportReport.Builder report) {
-        for (Plugin plugin : PluginFacts.plugins(model)) {
+    private static void reportUnmappedPlugins(
+            EffectiveModel em, ImportReport.Builder report, @Nullable InheritedRows inherited, boolean isRoot) {
+        for (Plugin plugin : PluginFacts.plugins(em.model())) {
             String artifactId = plugin.getArtifactId();
             if (artifactId == null || PluginFacts.MAPPED_PLUGINS.contains(artifactId)) continue;
-            report.warning("`<plugin>" + artifactId
-                    + "</plugin>` was not imported; docs/user/migration.md lists where it lands in jk.");
+            String message = "`<plugin>" + artifactId
+                    + "</plugin>` was not imported; docs/user/migration.md lists where it lands in jk.";
+            boolean own = InheritedRows.declaresPlugin(em.raw(), artifactId, em.activeProfiles());
+            if (inherited == null || (!isRoot && own)) {
+                report.warning(message);
+            } else if (isRoot) {
+                inherited.declaredByRoot(ImportReport.Severity.WARNING, message);
+            } else {
+                inherited.inherited(
+                        inherited.declaredBy(em, raw -> InheritedRows.declaresPlugin(raw, artifactId)),
+                        ImportReport.Severity.WARNING,
+                        message);
+            }
         }
     }
 }

@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Model;
@@ -97,19 +98,22 @@ public final class PomImporter {
 
     public Result importFrom(Path pomXml) throws IOException {
         Path file = pomXml.toAbsolutePath();
-        return importModel(EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null), remote);
+        return importModel(
+                EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null), remote, null);
     }
 
     /** A POM with no file behind it (an archive's embedded pom.xml): no {@code relativePath} lookup. */
     public Result importFromBytes(byte[] xml) {
-        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote);
+        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, null);
     }
 
-    private static Result importModel(EffectiveModel em, RemoteFile remote) {
+    /** {@code inherited} collects the rows a workspace module inherits; {@code null} for a POM imported on its own. */
+    private static Result importModel(EffectiveModel em, RemoteFile remote, @Nullable InheritedRows inherited) {
         ImportReport.Builder report = ImportReport.builder();
         reportInheritanceFailure(em, report);
         GeneratorPlugins.Generators generators = GeneratorPlugins.map(em.model(), remote, report);
-        SourceTreePlugins.SourceTree sourceTree = SourceTreePlugins.map(em, generators.outputRoots(), report);
+        SourceTreePlugins.SourceTree sourceTree =
+                SourceTreePlugins.map(em, generators.outputRoots(), report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
         List<Pom.Dep> processorPaths = PluginFacts.annotationProcessorPaths(em.model());
         Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths);
@@ -119,7 +123,7 @@ public final class PomImporter {
         List<Repository> repositories = new ArrayList<>(em.model().getRepositories());
         repositories.addAll(profiles.repositories());
         List<RepositorySpec> repos = mapRepositories(repositories, report);
-        warnUnsupportedSections(em, report, /* isWorkspaceRoot= */ false);
+        warnUnsupportedSections(em, report, /* isWorkspaceRoot= */ false, inherited);
 
         String mainClass = PluginFacts.mainClass(em.model());
         TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
@@ -196,7 +200,8 @@ public final class PomImporter {
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
         if (!ReactorModules.declaresModules(rootRaw)) {
-            Result single = importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote);
+            Result single =
+                    importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote, null);
             return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report(), Set.of(rootFile));
         }
 
@@ -207,9 +212,10 @@ public final class PomImporter {
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
         List<ImportReport.Issue> moduleRows = new ArrayList<>();
         List<ShadedSiblings.Shaded> shaded = new ArrayList<>();
+        InheritedRows inherited = new InheritedRows(Objects.requireNonNull(rootFile.getParent()));
         ReactorModules.Reactor found =
                 ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report, (leaf, model) -> {
-                    Result child = importModel(model, remote);
+                    Result child = importModel(model, remote, inherited);
                     moduleBuilds.put(leaf.path(), child.jkBuild());
                     for (ImportReport.Issue issue : child.report().issues()) {
                         moduleRows.add(
@@ -222,9 +228,11 @@ public final class PomImporter {
         EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
         if (leaves.isEmpty() && found.boms().isEmpty()) reportInactiveModules(rootModel, report);
-        SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, Map.of(), report);
+        SourceTreePlugins.SourceTree rootSourceTree =
+                SourceTreePlugins.map(rootModel, Map.of(), report, inherited, true);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
-        warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true);
+        warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true, inherited);
+        inherited.flush(report);
         String rootMainClass = PluginFacts.mainClass(rootModel.model());
         JkBuild.Application rootApplication =
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
@@ -684,13 +692,14 @@ public final class PomImporter {
     // --- unsupported-section warnings ---------------------------------------
 
     private static void warnUnsupportedSections(
-            EffectiveModel em, ImportReport.Builder report, boolean isWorkspaceRoot) {
-        Model model = em.model();
-        if (!isWorkspaceRoot && !model.getModules().isEmpty()) {
-            // The workspace-import path already converted these; warn only for the single-POM path.
+            EffectiveModel em,
+            ImportReport.Builder report,
+            boolean isWorkspaceRoot,
+            @Nullable InheritedRows inherited) {
+        if (!isWorkspaceRoot && inherited == null && !em.model().getModules().isEmpty()) {
             report.warning("`<modules>` block present but this import was run in single-POM mode."
                     + " Re-run as `jk import pom.xml` from the project root to materialise a workspace.");
         }
-        BuildExtensions.report(model, report);
+        BuildExtensions.report(em, report, inherited, isWorkspaceRoot);
     }
 }
