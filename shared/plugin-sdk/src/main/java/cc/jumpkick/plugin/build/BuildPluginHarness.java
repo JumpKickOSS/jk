@@ -348,9 +348,9 @@ public final class BuildPluginHarness {
                         } else {
                             // One leaf of a nested entry: <key> → <entry> → <field>.
                             @SuppressWarnings("unchecked")
-                            Map<String, Map<String, Object>> entries = (Map<String, Map<String, Object>>)
+                            Map<String, Map<String, Object>> nested = (Map<String, Map<String, Object>>)
                                     configValues.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
-                            entries.computeIfAbsent(entry, k -> new LinkedHashMap<>())
+                            nested.computeIfAbsent(entry, k -> new LinkedHashMap<>())
                                     .put(required(Jsonl.str(line, "field"), "config.field"), configValue(line));
                         }
                     }
