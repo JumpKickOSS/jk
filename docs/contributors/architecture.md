@@ -311,6 +311,13 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   re-lock in the same engine pays none of those 404s a multi-repository walk produces; a version
   catalog miss is never remembered, and `jk outdated`, `jk update` and `--force` read catalogs
   past every memo.
+- **Materialize fan-out:** every lock row is a task on the io pool, but only `DownloadSlots.width()`
+  of them run at once — four per core, one per 4 MiB of engine heap, within [8, 64] — and a
+  task holds its slot for the row's per-repository legs, download and sidecar reads. `jk sync`
+  shares the same slots. Per host, six requests at once (`HostRateLimiter`; twenty on the Central
+  mirror). A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp in the
+  repository's store tree (`DownloadLeg`), so a row in flight costs its connection and that
+  buffer, never its payload.
 - **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
   (default 600 s per graph, sized for a cold multi-repository reactor of a few hundred modules).
   Every prop/conflict step counts toward a step budget

@@ -2,14 +2,10 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.FetchTimings;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Log;
-import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.CentralMirror;
-import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
@@ -17,19 +13,12 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -83,17 +72,8 @@ public final class MavenRepo {
     /** {@code -SNAPSHOT} versions are asked of this repository; off for every built-in remote. */
     private final boolean servesSnapshots;
 
-    /**
-     * Artifacts this run whose bytes the repository's published checksum confirmed — downloads and
-     * Maven-local adoptions alike.
-     */
-    private final AtomicInteger verifiedUpstream = new AtomicInteger();
-
-    /** Artifact downloads this run pinned without a published checksum because the repository allows it. */
-    private final AtomicInteger unverifiedAllowed = new AtomicInteger();
-
-    /** One sentence per artifact this run could verify against an {@code .md5} sidecar alone. */
-    private final Set<String> weakChecksumNotes = ConcurrentHashMap.newKeySet();
+    /** The network leg: stream under the host's permit, hash, verify against the published sidecar. */
+    private final DownloadLeg download;
 
     public MavenRepo(String name, URI baseUrl, Http http, Cas cas) {
         this(name, baseUrl, http, cas, RepoCredential.ANONYMOUS);
@@ -246,6 +226,7 @@ public final class MavenRepo {
                 ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), MavenMetadataCache.DEFAULT_TTL)
                 : null;
         this.m2 = new M2Adoption(name, isHttp(this.baseUrl) ? httpOrNull : null, repoStore, m2integration);
+        this.download = new DownloadLeg(name, this.baseUrl, transport, credential, storeDir(), allowUnverified);
     }
 
     /**
@@ -402,7 +383,7 @@ public final class MavenRepo {
      * irrelevant, and preferring the mirror spends its large concurrency budget instead of Sonatype's
      * per-IP quota.
      */
-    private enum Leg {
+    enum Leg {
         RESOLVE,
         ARTIFACT
     }
@@ -451,38 +432,27 @@ public final class MavenRepo {
             Optional<M2Adoption.Adopted> adopted = m2.tryAdopt(relativePath, uri);
             if (adopted.isPresent()) {
                 M2Adoption.Adopted a = adopted.get();
-                if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
+                if (leg == Leg.ARTIFACT) download.countVerified();
                 return new Fetched(uri, a.placed(), a.sha256(), a.size());
             }
         }
-        // Per-host cap around the NETWORK leg only. Warm mirror hits short-circuit
-        // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
-        // virtual-thread downloads + sidecar GETs) is bounded to what the host tolerates.
-        // boundary checks before host-permit acquisition and again once the permit is
-        // granted — a task that queued behind slow downloads must not start a fetch for a lock
-        // that failed while it waited. Never checked mid-download (legs finish cleanly).
-        checkAbort(abort, coord);
+        // The network leg runs under the host's permit (DownloadLeg). Warm mirror hits short-circuit
+        // above, so re-locks stay uncapped, but a cold lock's fan-out is bounded to what the host
+        // tolerates.
         // Download + placement write .put- temps into repos/<name>/ and promote them in place — a
         // store wipe must not overlap either leg, or the wiped directory holds an open temp
         // (undeletable on Windows) and the promote writes the store right back (StoreWriteGate).
         try (var held = StoreWriteGate.write()) {
-            Downloaded stored;
+            DownloadLeg.Downloaded stored;
             try {
-                stored = rateLimited(primary, () -> {
-                    checkAbort(abort, coord);
-                    return downloadAndVerify(coord, primary, relativePath, mirror, leg, expectedSha256);
-                });
+                stored = download.run(coord, primary, relativePath, mirror, leg, expectedSha256, abort);
             } catch (FetchAbortedException e) {
                 throw e;
             } catch (IOException e) {
                 // The mirror can lag or simply not carry something Central has. Falling back keeps a
                 // preference from becoming a dependency.
                 if (primary.equals(uri)) throw e;
-                checkAbort(abort, coord);
-                stored = rateLimited(uri, () -> {
-                    checkAbort(abort, coord);
-                    return downloadAndVerify(coord, uri, relativePath, mirror, leg, expectedSha256);
-                });
+                stored = download.run(coord, uri, relativePath, mirror, leg, expectedSha256, abort);
             }
             SessionContext.current().io().remoteDown(stored.size());
             RepoMisses.forget(uri);
@@ -523,66 +493,6 @@ public final class MavenRepo {
         return placed;
     }
 
-    private record Downloaded(Path path, String sha256, long size) {}
-
-    /** Per-host concurrency cap around the network leg only; file:// is not capped. */
-    private static Downloaded rateLimited(URI uri, HostRateLimiter.ThrowingSupplier<Downloaded, IOException> work)
-            throws IOException, InterruptedException {
-        String host = uri.getHost();
-        boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
-        return limitHost ? HostRateLimiter.shared().run(host, work) : work.get();
-    }
-
-    private Downloaded downloadAndVerify(
-            Coordinate coord, URI uri, String relativePath, boolean mirror, Leg leg, @Nullable String expectedSha256)
-            throws IOException, InterruptedException {
-        long t0 = Clock.SYSTEM.nanos();
-        Path shard = storeDir();
-        Files.createDirectories(shard);
-        Path tmp = Files.createTempFile(shard, ".put-", ".tmp");
-        // The sidecars travel beside the body, so the check costs no round trip of its own.
-        ChecksumSidecars sidecars = mirror ? ChecksumSidecars.start(transport, credential, uri) : null;
-        MessageDigest digest = Hashing.newSha256();
-        long size = 0;
-        try (InputStream in = transport
-                        .fetchStream(uri, credential)
-                        .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri));
-                OutputStream out = Files.newOutputStream(tmp)) {
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                digest.update(buf, 0, n);
-                out.write(buf, 0, n);
-                size += n;
-            }
-        } catch (IOException e) {
-            Files.deleteIfExists(tmp);
-            throw e;
-        }
-        String hex = Hashing.hex(digest.digest());
-        Downloaded stored = new Downloaded(tmp, hex, size);
-        long ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
-        if (sidecars != null) {
-            try {
-                verifyUpstreamChecksum(coord, sidecars, relativePath, stored, leg, expectedSha256);
-            } catch (IOException e) {
-                Files.deleteIfExists(tmp);
-                throw e;
-            }
-        }
-        // Successful VERIFIED fetch only — a download that fails its upstream checksum must not
-        // train the host fetch-duration prior.
-        if (ms > 0) {
-            try {
-                FetchTimings.record(ms);
-            } catch (RuntimeException e) {
-                // advisory
-                Log.debug("downloadAndVerify: advisory", e);
-            }
-        }
-        return stored;
-    }
-
     /**
      * If this repository's store already has a fully materialised artifact ({@code .jk} + bytes),
      * return it without network I/O.
@@ -610,67 +520,12 @@ public final class MavenRepo {
 
     /** Artifacts this run confirmed by the checksum this repository publishes (downloads and adoptions). */
     public int verifiedUpstream() {
-        return verifiedUpstream.get();
+        return download.verifiedUpstream();
     }
 
     /** Artifact downloads this run pinned with no published checksum, under {@code allow-unverified}. */
     public int unverifiedAllowed() {
-        return unverifiedAllowed.get();
-    }
-
-    /**
-     * Check the download against the lock pin when there is one — first, so bytes the lock rejects
-     * are discarded before anything places them — then against the checksum this repository
-     * publishes beside it: {@code .sha256}, else {@code .sha1}, else {@code .md5}; a mismatch fails
-     * closed, and an {@code .md5}-only match is accepted with a note ({@link #weakChecksumNotes}).
-     * With no sidecar at all the bytes are accepted only when the pin vouches for them, when the
-     * repository is on local disk, or under {@code allow-unverified = true}; otherwise the fetch is
-     * refused, because a pin taken from unverified bytes would protect every later build with a
-     * checksum of whatever arrived.
-     */
-    private void verifyUpstreamChecksum(
-            Coordinate coord,
-            ChecksumSidecars sidecars,
-            String relativePath,
-            Downloaded stored,
-            Leg leg,
-            @Nullable String expectedSha256)
-            throws IOException, InterruptedException {
-        String actualSha256 = stored.sha256();
-        if (expectedSha256 != null && !expectedSha256.equalsIgnoreCase(actualSha256)) {
-            throw new ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " (" + relativePath
-                    + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
-        }
-        Optional<ChecksumSidecars.Published> published = sidecars.strongest();
-        if (published.isPresent()) {
-            ChecksumSidecars.Algorithm algorithm = published.get().algorithm();
-            String expected = published.get().hex();
-            String actual = algorithm == ChecksumSidecars.Algorithm.SHA256
-                    ? actualSha256
-                    : Hashing.fileHex(algorithm.jca, stored.path());
-            if (!expected.equalsIgnoreCase(actual)) {
-                throw new ChecksumMismatchException("upstream checksum mismatch for " + coord + " from " + name + " ("
-                        + relativePath + "): expected " + algorithm.label + " " + expected + " but got " + actual);
-            }
-            if (algorithm == ChecksumSidecars.Algorithm.MD5) {
-                weakChecksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
-                        + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
-                        + " repository publishes; the lock pins its bytes by sha256 from here on");
-            }
-            if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
-            return;
-        }
-        // Post-lock: the pin is the authority, and it was taken when the sidecar was checked; it
-        // matched above, so a sidecar-less repository needs no further vouching.
-        if (expectedSha256 != null) return;
-        if ("file".equalsIgnoreCase(baseUrl.getScheme())) return;
-        if (!allowUnverified) {
-            throw new MissingChecksumException("no upstream checksum for " + coord + " from " + name + " ("
-                    + relativePath + "): the repository publishes no .sha256, .sha1 or .md5 sidecar, so the"
-                    + " bytes cannot be verified before they are pinned. Set allow-unverified = true on"
-                    + " [repositories." + name + "] to pin them anyway.");
-        }
-        if (leg == Leg.ARTIFACT) unverifiedAllowed.incrementAndGet();
+        return download.unverifiedAllowed();
     }
 
     /**
@@ -678,9 +533,7 @@ public final class MavenRepo {
      * the lock output carries each so the weaker digest is on record.
      */
     public List<String> weakChecksumNotes() {
-        List<String> out = new ArrayList<>(weakChecksumNotes);
-        out.sort(null);
-        return List.copyOf(out);
+        return download.weakChecksumNotes();
     }
 
     /**
@@ -740,12 +593,6 @@ public final class MavenRepo {
 
         public @Nullable Coordinate coordinate() {
             return coordinate;
-        }
-    }
-
-    private static void checkAbort(BooleanSupplier abort, Coordinate coord) throws FetchAbortedException {
-        if (abort.getAsBoolean()) {
-            throw new FetchAbortedException("fetch aborted before starting " + coord + " (lock already failed)");
         }
     }
 

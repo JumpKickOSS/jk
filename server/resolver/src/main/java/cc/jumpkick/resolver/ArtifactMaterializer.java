@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
@@ -21,11 +22,11 @@ import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Download every resolved module in parallel on the io pool and hand back lock rows in declaration
- * order, while progress ticks in completion order. First failure wins: tasks still waiting skip
- * their download instead of hammering the host for a lock that is already dead, every sibling is
- * settled before the failure propagates, abort noise loses to the root cause, and the cause keeps
- * its exception identity on the way out.
+ * Download every resolved module on the io pool, {@link DownloadSlots#width()} of them at once, and
+ * hand back lock rows in declaration order, while progress ticks in completion order. First failure
+ * wins: tasks still waiting skip their download instead of hammering the host for a lock that is
+ * already dead, every sibling is settled before the failure propagates, abort noise loses to the
+ * root cause, and the cause keeps its exception identity on the way out.
  */
 final class ArtifactMaterializer {
 
@@ -47,10 +48,13 @@ final class ArtifactMaterializer {
      * Rows for {@code ordered}, in that order. Progress ticks on completion order via a queue drained
      * on this thread so the wedge and UI stay single-threaded.
      *
-     * <p>There is deliberately no {@code HostRateLimiter} around the row assembler itself — warm
-     * re-locks serve immutable GAVs from the local mirror (no HTTP), and capping those to 6
-     * concurrent turned a ~1s CAS walk into multi-minute wall time. The per-host cap lives inside
-     * {@code MavenRepo.fetch} around the network leg only, so cold-lock fan-out stays polite.
+     * <p>Every task takes a {@link DownloadSlots} slot before it assembles its row and holds it for
+     * the row's legs — the per-repository probes, the download, its sidecar reads — so a lock of
+     * several hundred rows keeps a bounded number of connections, copy buffers and parked legs in
+     * the engine at once. Warm re-locks serve immutable GAVs from the local mirror, so a slot is
+     * cheap for them; the per-host cap around the network leg alone ({@code HostRateLimiter}, six
+     * per host) is what keeps a cold lock polite, and wrapping the whole row in it once turned a
+     * one-second store walk into minutes.
      */
     List<Lockfile.Artifact> materialize(
             List<Map.Entry<String, Resolution.ResolvedModule>> ordered, Map<String, EnumSet<Scope>> tagsByKey)
@@ -69,11 +73,16 @@ final class ArtifactMaterializer {
             inFlight.add(CompletableFuture.supplyAsync(
                             () -> {
                                 try {
-                                    if (failed.get()) {
-                                        throw new CompletionException(
-                                                new MavenRepo.FetchAbortedException("lock already failed — skipped"));
+                                    DownloadSlots.acquire();
+                                    try {
+                                        if (failed.get()) {
+                                            throw new CompletionException(new MavenRepo.FetchAbortedException(
+                                                    "lock already failed — skipped"));
+                                        }
+                                        return rows.toArtifact(e.getValue(), tags, failed::get);
+                                    } finally {
+                                        DownloadSlots.release();
                                     }
-                                    return rows.toArtifact(e.getValue(), tags, failed::get);
                                 } catch (IOException | InterruptedException ex) {
                                     throw new CompletionException(ex);
                                 }
