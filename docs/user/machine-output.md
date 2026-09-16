@@ -81,6 +81,34 @@ There is no separate `test-results.md`. MCP: **`jk_results`** and resource
 `jk://runs/latest/results`. After a test run, prefer this file over `--all` guesswork:
 default `jk test` is the unit suite; climb with `--suite`. [Test](test.md).
 
+### Since the previous run
+
+When the journal holds an earlier run from the same origin — the same trigger and session (an MCP
+connection, an IDE window; a plain `cli` run matches the `cli` runs before it) — the report
+carries a `## Since the previous run` section, counts first and bounded lists after:
+
+```markdown
+## Since the previous run
+
+_vs #12 (failed, 8.4s) · this run 6.1s (−2.3s)_
+
+- Files changed: **1** — `src/test/java/com/example/CalcTest.java`
+- Diagnostics: **0** appeared, **1** gone
+  - gone: error · run-tests · com.example.CalcTest#subtracts() · expected: <1> but was: <0>
+- Tests: **1** fixed, **0** broke, **0** new, **0** gone
+  - fixed: `com.example.CalcTest#subtracts()`
+```
+
+Files are compared by content hash between the two runs' `sources.tsv` snapshots (project tree
+minus build output, hidden and `node_modules` directories; absent when either side has none);
+diagnostics by severity, step, site and message (a changed stack trace is the same diagnostic);
+tests by `Class#display` verdict from `test-outcomes.tsv` (absent when either run recorded no
+tests). Lists show at most eight rows and say `+N more`. `- Nothing changed: same files,
+diagnostics and tests.` is a re-run of the same tree. MCP `jk_results` returns the same facts
+as `delta` ({ `previousBuildNumber`, `previousSuccess`, `previousMillis`, and per list
+`{ count, shown }` for `files`, `appeared`, `gone`, `broke`, `fixed`, `added`, `dropped` }), and
+the web dashboard renders them as the run's iteration strip ([Web dashboard](web.md)).
+
 ## Live JSONL
 
 ```bash

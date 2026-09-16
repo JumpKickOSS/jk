@@ -91,7 +91,7 @@ The whole registry:
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`jk_history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
 | **`jk_diagnostics`** | Structured compiler/test failures (`last-fail` default, or a history id); `severity`, `module`, `unique`, `limit`, `next` |
-| **`jk_results`** | High-level markdown (same as CLI `jk results` / `target/jk-results.md`) |
+| **`jk_results`** | High-level markdown (same as CLI `jk results` / `target/jk-results.md`); `delta` = what changed since this session's previous run (files, diagnostics, tests, wall) |
 | **`jk_details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results --details` dumps the full file |
 | **`jk_why`** | Why a dependency is on the graph |
 | **`jk_explain`** | Forecast next build |
