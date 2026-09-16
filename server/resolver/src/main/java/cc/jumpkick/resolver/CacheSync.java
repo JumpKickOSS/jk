@@ -9,6 +9,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.ArtifactLocator;
+import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
@@ -25,12 +26,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures every lockfile sha256 is on disk as a Maven-layout {@code *.jar} under {@code
- * repos/<origin>/}, written through to the Maven local repository when integration is on. Parallel on {@link JkThreads#io}; per-host concurrency is capped
- * inside {@link MavenRepo}. Checksum mismatches are reported, never accepted.
+ * repos/<origin>/}, written through to the Maven local repository when integration is on. Parallel
+ * on {@link JkThreads#io}, {@link DownloadSlots#width()} fetches at once; per-host concurrency is
+ * capped inside {@link MavenRepo}. Checksum mismatches are reported, never accepted.
  */
 public final class CacheSync {
 
@@ -135,10 +138,12 @@ public final class CacheSync {
             pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
         }
 
-        // Dispatch all fetches concurrently. MavenRepo rate-limits the network leg.
+        // Every fetch is dispatched; DownloadSlots bounds how many run at once and MavenRepo
+        // rate-limits the network leg per host.
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
         for (PendingFetch p : pending) {
-            CompletableFuture<FetchResult> fut = CompletableFuture.supplyAsync(() -> fetch(p), JkThreads.io());
+            CompletableFuture<FetchResult> fut =
+                    CompletableFuture.supplyAsync(() -> inSlot(() -> fetch(p)), JkThreads.io());
             // Fire the per-package callback on the fetcher's completion
             // thread so the progress bar updates as parallel fetches
             // finish, not in a single end-of-pass burst. thenAccept
@@ -200,7 +205,7 @@ public final class CacheSync {
         int fetched = 0;
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>();
         for (PendingFetch p : pending) {
-            futures.add(CompletableFuture.supplyAsync(() -> fetchSources(p), JkThreads.io()));
+            futures.add(CompletableFuture.supplyAsync(() -> inSlot(() -> fetchSources(p)), JkThreads.io()));
         }
         for (int i = 0; i < futures.size(); i++) {
             FetchResult r;
@@ -253,6 +258,21 @@ public final class CacheSync {
         default void skipped(Lockfile.Artifact pkg) {}
 
         default void failed(Lockfile.Artifact pkg, @Nullable String error) {}
+    }
+
+    /** Run one fetch inside a {@link DownloadSlots} slot, so the fan-out is bounded process-wide. */
+    private static FetchResult inSlot(Supplier<FetchResult> fetch) {
+        try {
+            DownloadSlots.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return FetchResult.failure("interrupted while waiting for a download slot");
+        }
+        try {
+            return fetch.get();
+        } finally {
+            DownloadSlots.release();
+        }
     }
 
     private static FetchResult fetch(PendingFetch p) {
