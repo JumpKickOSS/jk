@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,13 +27,17 @@ import org.jspecify.annotations.Nullable;
  * CI-friendly ones ({@code ${revision}} and friends) from the POM chain's properties, and {@code
  * ${project.groupId}}, {@code ${project.version}}, {@code ${project.parent.groupId}} and {@code
  * ${project.parent.version}} from the POM's own coordinates and {@code <parent>} block, because
- * Maven asks for a parent with the raw version and for a BOM with the interpolated one. Effective
- * models are built once per pom.xml and shared with the importer.
+ * Maven asks for a parent with the raw version and for a BOM with the interpolated one.
+ *
+ * <p>An effective model is memoised from its build until {@link #release} drops it, which the
+ * reactor walk does once a module's manifest is rendered: a parent is answered from the raw model,
+ * so only the BOMs other modules import need to stay built. The memo, not the POM tree, is what
+ * bounds the import's heap on a reactor of hundreds of modules.
  */
 final class ReactorModelResolver implements WorkspaceModelResolver {
 
-    /** One pom.xml of the reactor: its bytes, its own declarations and where it lives. */
-    private record Entry(Path pomFile, byte[] xml, Model raw) {}
+    /** One pom.xml of the reactor: its own declarations and where it lives; the bytes are read again on build. */
+    private record Entry(Path pomFile, Model raw) {}
 
     /** Bounds the climb through parents when a coordinate or property is spelled by another placeholder. */
     private static final int MAX_DEPTH = 32;
@@ -46,9 +53,9 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
         this.repositories = repositories;
     }
 
-    /** Register one pom.xml of the reactor. */
-    void add(Path pomFile, byte[] xml, Model raw) {
-        Entry entry = new Entry(pomFile.toAbsolutePath(), xml, raw.clone());
+    /** Register one pom.xml of the reactor; {@code raw} is read, never written, from here on. */
+    void add(Path pomFile, Model raw) {
+        Entry entry = new Entry(pomFile.toAbsolutePath(), raw);
         byRawGav.put(rawGav(raw), entry);
         byFile.put(entry.pomFile(), entry);
     }
@@ -71,17 +78,39 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
         return built;
     }
 
+    /**
+     * Drop a memoised effective model; a later lookup builds it again. Called once the importer is
+     * done with a module, so the memo holds only what other modules still ask for.
+     */
+    void release(Path pomFile) {
+        effective.remove(pomFile.toAbsolutePath());
+    }
+
+    /** The pom.xml files whose effective models the memo holds right now. */
+    Set<Path> retained() {
+        return Set.copyOf(effective.keySet());
+    }
+
     /** {@code null} while the entry's own build is in progress higher up the stack (a cycle). */
     private @Nullable EffectiveModel build(Entry entry) {
         EffectiveModel hit = effective.get(entry.pomFile());
         if (hit != null) return hit;
         if (!building.add(entry.pomFile())) return null;
         try {
-            EffectiveModel built = EffectiveModel.build(entry.xml(), entry.pomFile(), repositories.newCopy(), this);
+            EffectiveModel built =
+                    EffectiveModel.build(read(entry.pomFile()), entry.pomFile(), repositories.newCopy(), this);
             effective.put(entry.pomFile(), built);
             return built;
         } finally {
             building.remove(entry.pomFile());
+        }
+    }
+
+    private static byte[] read(Path pomFile) {
+        try {
+            return Files.readAllBytes(pomFile);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

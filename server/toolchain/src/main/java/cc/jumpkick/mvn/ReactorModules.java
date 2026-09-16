@@ -32,8 +32,17 @@ import org.jspecify.annotations.Nullable;
  */
 final class ReactorModules {
 
-    /** One module the workspace lists: its relative path, its pom.xml and its effective model. */
-    record Leaf(String path, Path pomFile, EffectiveModel model) {}
+    /** One module the workspace lists: its relative path, its pom.xml and its {@code group:artifact}. */
+    record Leaf(String path, Path pomFile, String ga) {}
+
+    /**
+     * Sees each module the workspace builds as the walk reaches it, with its effective model, which
+     * the reactor drops right after: whatever the import keeps of a module it takes here.
+     */
+    @FunctionalInterface
+    interface LeafVisitor {
+        void module(Leaf leaf, EffectiveModel model) throws IOException;
+    }
 
     /**
      * A pom.xml the reactor registered that is not a workspace module: an aggregator, or a module
@@ -94,15 +103,18 @@ final class ReactorModules {
     private final Path projectDir;
     private final ReactorModelResolver reactor;
     private final ImportReport.Builder report;
+    private final LeafVisitor visitor;
     private final Set<Path> registered = new LinkedHashSet<>();
     private final Map<Path, Model> raws = new HashMap<>();
     private final Map<Path, Listing> listedBy = new HashMap<>();
     private final Set<Path> walked = new HashSet<>();
 
-    private ReactorModules(Path projectDir, ReactorModelResolver reactor, ImportReport.Builder report) {
+    private ReactorModules(
+            Path projectDir, ReactorModelResolver reactor, ImportReport.Builder report, LeafVisitor visitor) {
         this.projectDir = projectDir;
         this.reactor = reactor;
         this.report = report;
+        this.visitor = visitor;
     }
 
     /** True when the POM lists modules anywhere: at the top level or inside a profile. */
@@ -118,13 +130,21 @@ final class ReactorModules {
      * Register every pom.xml of the reactor with {@code reactor}, then walk the effective models
      * from the root down. Registration follows the raw {@code <modules>} of every profile, active
      * or not, so any POM of the tree can answer as a parent or a BOM for any other; the walk
-     * follows only what Maven would build here.
+     * follows only what Maven would build here. Each module the workspace builds goes to {@code
+     * visitor} as the walk reaches it, and its effective model leaves the reactor's memo right
+     * after; an aggregator's leaves once its subtree is walked. A BOM's stays, since the modules
+     * importing it read it from the memo. The root's stays too.
      */
     static Reactor collect(
-            Path rootFile, byte[] rootXml, Model rootRaw, ReactorModelResolver reactor, ImportReport.Builder report)
+            Path rootFile,
+            byte[] rootXml,
+            Model rootRaw,
+            ReactorModelResolver reactor,
+            ImportReport.Builder report,
+            LeafVisitor visitor)
             throws IOException {
         Path projectDir = Objects.requireNonNull(rootFile.getParent());
-        ReactorModules modules = new ReactorModules(projectDir, reactor, report);
+        ReactorModules modules = new ReactorModules(projectDir, reactor, report, visitor);
         modules.register(rootFile, rootXml, rootRaw);
         Reactor found = new Reactor(new ArrayList<>(), new ArrayList<>(), new LinkedHashMap<>(), Set.of());
         modules.walked.add(rootFile);
@@ -148,7 +168,7 @@ final class ReactorModules {
     private void register(Path pomFile, byte[] xml, Model raw) throws IOException {
         if (!registered.add(pomFile)) return;
         raws.put(pomFile, raw);
-        reactor.add(pomFile, xml, raw);
+        reactor.add(pomFile, raw);
         for (String module : raw.getModules()) register(pomFile, null, module);
         for (Profile profile : raw.getProfiles()) {
             for (String module : profile.getModules()) register(pomFile, profile.getId(), module);
@@ -187,15 +207,26 @@ final class ReactorModules {
             register(childPom);
             EffectiveModel child = reactor.effective(childPom);
             Model model = child.model();
-            Leaf leaf = new Leaf(path, childPom, child);
-            if (!"pom".equals(model.getPackaging())) found.modules().add(leaf);
+            Leaf leaf = new Leaf(path, childPom, model.getGroupId() + ":" + model.getArtifactId());
+            boolean pom = "pom".equals(model.getPackaging());
             if (!model.getModules().isEmpty()) {
-                found.unbuilt().put(model.getGroupId() + ":" + model.getArtifactId(), aggregator(path, model));
+                if (!pom) visit(leaf, child, found);
+                found.unbuilt().put(leaf.ga(), aggregator(path, model));
                 walk(childPom, child, found);
-            } else if ("pom".equals(model.getPackaging())) {
-                (isBom(child.raw()) ? found.boms() : found.modules()).add(leaf);
+                reactor.release(childPom);
+            } else if (pom && isBom(child.raw())) {
+                found.boms().add(leaf);
+            } else {
+                visit(leaf, child, found);
+                reactor.release(childPom);
             }
         }
+    }
+
+    /** Hand one module the workspace builds to the visitor, in walk order. */
+    private void visit(Leaf leaf, EffectiveModel model, Reactor found) throws IOException {
+        found.modules().add(leaf);
+        visitor.module(leaf, model);
     }
 
     private static Unbuilt aggregator(String path, Model model) {

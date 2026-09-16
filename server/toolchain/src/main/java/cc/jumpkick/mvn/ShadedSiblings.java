@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.maven.model.Model;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A reactor member built by {@code maven-shade-plugin} with {@code <relocations>} publishes classes
@@ -27,14 +28,24 @@ final class ShadedSiblings {
     /** Source files whose text is read for a shaded package name. */
     private static final Set<String> SOURCE_SUFFIXES = Set.of(".java", ".kt", ".scala", ".groovy");
 
+    /** A member whose shade plugin relocates packages: what the rows need once its model is gone. */
+    record Shaded(ReactorModules.Leaf leaf, String gav, List<PackagingPlugins.Relocation> relocations) {}
+
     private ShadedSiblings() {}
 
+    /** {@code leaf} as a shaded member, or {@code null} when its model relocates nothing. */
+    static @Nullable Shaded of(ReactorModules.Leaf leaf, Model model) {
+        List<PackagingPlugins.Relocation> relocations = PackagingPlugins.relocations(model);
+        if (relocations.isEmpty()) return null;
+        String gav = model.getGroupId() + ":" + model.getArtifactId() + ":" + model.getVersion();
+        return new Shaded(leaf, gav, relocations);
+    }
+
     /** One row per shaded member whose relocated packages another member's sources name. */
-    static void report(List<ReactorModules.Leaf> leaves, ImportReport.Builder report) throws IOException {
-        for (ReactorModules.Leaf shaded : leaves) {
-            List<PackagingPlugins.Relocation> relocations =
-                    PackagingPlugins.relocations(shaded.model().model());
-            List<String> packages = relocations.stream()
+    static void report(List<ReactorModules.Leaf> leaves, List<Shaded> shadedMembers, ImportReport.Builder report)
+            throws IOException {
+        for (Shaded shaded : shadedMembers) {
+            List<String> packages = shaded.relocations().stream()
                     .map(PackagingPlugins.Relocation::shaded)
                     .filter(Objects::nonNull)
                     .filter(name -> !name.contains("/"))
@@ -42,22 +53,21 @@ final class ShadedSiblings {
             if (packages.isEmpty()) continue;
             Map<String, Integer> importers = new LinkedHashMap<>();
             for (ReactorModules.Leaf member : leaves) {
-                if (member == shaded) continue;
+                if (member.equals(shaded.leaf())) continue;
                 int files = filesNaming(Objects.requireNonNull(member.pomFile().getParent()), packages);
                 if (files > 0) importers.put(member.path(), files);
             }
             if (importers.isEmpty()) continue;
-            List<PackagingPlugins.Relocation> packageRelocations = relocations.stream()
+            List<PackagingPlugins.Relocation> packageRelocations = shaded.relocations().stream()
                     .filter(r -> r.shaded() != null && packages.contains(r.shaded()))
                     .toList();
-            report.error("[" + shaded.path() + "] " + row(shaded, packageRelocations, importers));
+            report.error("[" + shaded.leaf().path() + "] " + row(shaded, packageRelocations, importers));
         }
     }
 
     private static String row(
-            ReactorModules.Leaf shaded, List<PackagingPlugins.Relocation> relocations, Map<String, Integer> importers) {
-        Model model = shaded.model().model();
-        String gav = model.getGroupId() + ":" + model.getArtifactId() + ":" + model.getVersion();
+            Shaded shaded, List<PackagingPlugins.Relocation> relocations, Map<String, Integer> importers) {
+        String gav = shaded.gav();
         List<String> named = new ArrayList<>();
         importers.forEach((path, files) -> named.add("`" + path + "` (" + files + (files == 1 ? " file)" : " files)")));
         String rules = relocations.stream()
@@ -67,7 +77,8 @@ final class ShadedSiblings {
         return "`maven-shade-plugin` relocates " + rules + "; jk has no package relocation, so no jar this workspace"
                 + " builds carries the shaded packages, and " + String.join(", ", named)
                 + (named.size() == 1 ? " imports" : " import") + " them. Keep building this module with Maven —"
-                + " `jk mvn -pl " + shaded.path() + " install` publishes " + gav + " into `~/.m2/repository` — and"
+                + " `jk mvn -pl " + shaded.leaf().path() + " install` publishes " + gav
+                + " into `~/.m2/repository` — and"
                 + " depend on that artifact from a `file://` repository over `~/.m2/repository` in place of the"
                 + " workspace edge.";
     }

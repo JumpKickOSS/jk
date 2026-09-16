@@ -63,13 +63,12 @@ final class EffectiveModel {
         }
 
         List<Dependency> managed() {
-            DependencyManagement dm = raw.getDependencyManagement();
-            return dm == null ? List.of() : dm.getDependencies();
+            return EffectiveModel.managed(raw);
         }
     }
 
     private final Model model;
-    private final Model assembled;
+    private final List<Dependency> assembledManagement;
     private final Model raw;
     private final List<Ancestor> ancestors;
     private final List<Profile> activeProfiles;
@@ -77,13 +76,13 @@ final class EffectiveModel {
 
     private EffectiveModel(
             Model model,
-            Model assembled,
+            List<Dependency> assembledManagement,
             Model raw,
             List<Ancestor> ancestors,
             List<Profile> activeProfiles,
             @Nullable String failure) {
         this.model = model;
-        this.assembled = assembled;
+        this.assembledManagement = List.copyOf(assembledManagement);
         this.raw = raw;
         this.ancestors = List.copyOf(ancestors);
         this.activeProfiles = List.copyOf(activeProfiles);
@@ -117,20 +116,22 @@ final class EffectiveModel {
         ModelBuilder builder = new DefaultModelBuilderFactory().newInstance();
         try {
             ModelBuildingResult phaseOne = builder.build(request);
-            Model assembled = phaseOne.getEffectiveModel().clone();
+            List<Dependency> assembledManagement = managed(phaseOne.getEffectiveModel()).stream()
+                    .map(Dependency::clone)
+                    .toList();
             ModelBuildingResult result = builder.build(request, phaseOne);
             Model effective = Objects.requireNonNull(result.getEffectiveModel(), "effective model");
             String childId = result.getModelIds().getFirst();
             return new EffectiveModel(
                     effective,
-                    assembled,
+                    assembledManagement,
                     result.getRawModel(),
                     ancestors(result, reactor),
                     result.getActivePomProfiles(childId),
                     null);
         } catch (ModelBuildingException e) {
             Model own = rawModel(xml);
-            return new EffectiveModel(own, own, own, List.of(), List.of(), describe(e.getProblems()));
+            return new EffectiveModel(own, managed(own), own, List.of(), List.of(), describe(e.getProblems()));
         }
     }
 
@@ -187,9 +188,12 @@ final class EffectiveModel {
         return model;
     }
 
-    /** Inherited and interpolated, with {@code import}-scope BOMs still listed in dependencyManagement. */
-    Model assembled() {
-        return assembled;
+    /**
+     * The inherited and interpolated {@code dependencyManagement} with {@code import}-scope BOMs still
+     * listed: the phase-one table, the one piece of that model the import reads.
+     */
+    List<Dependency> assembledManagement() {
+        return assembledManagement;
     }
 
     /** The POM's own declarations, uninterpolated. */
@@ -321,8 +325,7 @@ final class EffectiveModel {
         Set<String> ownKeys = keys(ownManaged());
         List<Pom.Dep> platform = new ArrayList<>();
         Map<String, List<String>> unused = new LinkedHashMap<>();
-        DependencyManagement dm = assembled.getDependencyManagement();
-        for (Dependency m : dm == null ? List.<Dependency>of() : dm.getDependencies()) {
+        for (Dependency m : assembledManagement) {
             String key = m.getManagementKey();
             boolean own = ownKeys.contains(key);
             Optional<Ancestor> owner = own ? Optional.empty() : (isImport(m) ? importsBom() : managedBy(key));
@@ -340,7 +343,12 @@ final class EffectiveModel {
     }
 
     private List<Dependency> ownManaged() {
-        DependencyManagement dm = raw.getDependencyManagement();
+        return managed(raw);
+    }
+
+    /** A model's own {@code dependencyManagement} entries, empty without the section. */
+    private static List<Dependency> managed(@Nullable Model model) {
+        DependencyManagement dm = model == null ? null : model.getDependencyManagement();
         return dm == null ? List.of() : dm.getDependencies();
     }
 
