@@ -400,7 +400,10 @@ public final class JkBuildRenderer {
         if (d.isWorkspace()) {
             // Shorthand only for the default main kind; a group, kind=tests and optional need the table form.
             String group = d.workspaceGroup();
-            if (group == null && d.kind() == DependencyKind.MAIN && !d.optional()) {
+            if (group == null
+                    && d.kind() == DependencyKind.MAIN
+                    && !d.optional()
+                    && d.exclusions().isEmpty()) {
                 return safeKey(d.library()) + ".workspace = true";
             }
             StringBuilder ws = new StringBuilder(safeKey(d.library())).append(" = { workspace = true");
@@ -408,6 +411,7 @@ public final class JkBuildRenderer {
             if (d.kind() != DependencyKind.MAIN)
                 ws.append(", kind = ").append(quote(d.kind().toml()));
             if (d.optional()) ws.append(", optional = true");
+            if (!d.exclusions().isEmpty()) ws.append(", exclude = ").append(list(d.exclusions()));
             return ws.append(" }").toString();
         }
         StringBuilder sb = new StringBuilder();
@@ -443,6 +447,7 @@ public final class JkBuildRenderer {
             }
         }
         if (d.optional()) sb.append(", optional = true");
+        if (!d.exclusions().isEmpty()) sb.append(", exclude = ").append(list(d.exclusions()));
         sb.append(" }");
         return sb.toString();
     }

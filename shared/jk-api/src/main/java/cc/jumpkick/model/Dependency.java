@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
  * {@link #fixtures()} is a separate flag: put a sibling's fixtures output on this
  * module's test classpath. It does not imply {@link DependencyKind#TESTS}. A Maven coordinate may
  * name a {@link #classifier()} ({@code natives-linux}, {@code linux-x86_64}): the edge is then the
- * classified jar of the module, {@code g:a:jar:classifier} in the solver and the lock.
+ * classified jar of the module, {@code g:a:jar:classifier} in the solver and the lock. {@link
+ * #exclusions()} lists the coordinates pruned from the edge's subtree at lock time.
  */
 public record Dependency(
         String library,
@@ -39,7 +40,12 @@ public record Dependency(
          */
         boolean fixtures,
         /** The Maven classifier of the artifact this edge wants; {@code null} for the plain jar. */
-        @Nullable String classifier) {
+        @Nullable String classifier,
+        /**
+         * Coordinates pruned from this edge's subtree, each {@code group:artifact} or
+         * {@code group:*}; see {@link #exclusion(String)} for the grammar. Empty for most edges.
+         */
+        List<String> exclusions) {
 
     /**
      * Synthetic {@code module} for an unresolved workspace sibling, {@code workspace:<name>} or
@@ -74,6 +80,28 @@ public record Dependency(
             throw new IllegalArgumentException(
                     "dependency classifier must be a non-blank word without ':' (got: " + classifier + ")");
         }
+        exclusions = exclusions == null ? List.of() : List.copyOf(exclusions);
+        for (String exclusion : exclusions) exclusion(exclusion);
+    }
+
+    /**
+     * Validates one exclusion and returns it: {@code group:artifact}, or {@code group:*} for every
+     * artifact of a group. A wildcard group ({@code *:artifact}) is refused — Maven's
+     * {@code <groupId>*</groupId>} is not expressible — and so is a version or a third field.
+     */
+    public static String exclusion(String spelling) {
+        Objects.requireNonNull(spelling, "exclusion");
+        int colon = spelling.indexOf(':');
+        if (colon <= 0 || colon != spelling.lastIndexOf(':') || colon == spelling.length() - 1) {
+            throw new IllegalArgumentException(
+                    "exclusion must be 'group:artifact' or 'group:*' (got: " + spelling + ")");
+        }
+        String group = spelling.substring(0, colon);
+        if (group.isBlank() || group.contains("*")) {
+            throw new IllegalArgumentException(
+                    "exclusion group must be a Maven group, not a wildcard (got: " + spelling + ")");
+        }
+        return spelling;
     }
 
     /** Every component but the classifier; the edge is the plain jar. */
@@ -103,7 +131,40 @@ public record Dependency(
                 defaultFeatures,
                 kind,
                 fixtures,
-                null);
+                null,
+                List.of());
+    }
+
+    /** Every component but the exclusions; the edge prunes nothing. */
+    public Dependency(
+            String library,
+            String module,
+            VersionSelector version,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
+            boolean pinned,
+            boolean optional,
+            @Nullable PathSource pathSource,
+            List<String> requestedFeatures,
+            boolean defaultFeatures,
+            DependencyKind kind,
+            boolean fixtures,
+            @Nullable String classifier) {
+        this(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                List.of());
     }
 
     /** Defaults pathSource null, no feature selection, default-features true, kind main. */
@@ -192,7 +253,8 @@ public record Dependency(
                 defaultFeatures,
                 kind,
                 fixtures,
-                classifier);
+                classifier,
+                exclusions);
     }
 
     public Dependency withFeatures(List<String> features, boolean defaultFeatures) {
@@ -209,7 +271,8 @@ public record Dependency(
                 defaultFeatures,
                 kind,
                 fixtures,
-                classifier);
+                classifier,
+                exclusions);
     }
 
     public Dependency withKind(DependencyKind kind) {
@@ -226,7 +289,8 @@ public record Dependency(
                 defaultFeatures,
                 kind == null ? DependencyKind.MAIN : kind,
                 fixtures,
-                classifier);
+                classifier,
+                exclusions);
     }
 
     public Dependency withFixtures(boolean fixtures) {
@@ -243,7 +307,8 @@ public record Dependency(
                 defaultFeatures,
                 kind,
                 fixtures,
-                classifier);
+                classifier,
+                exclusions);
     }
 
     /** The same edge naming the classified artifact; {@code null} returns to the plain jar. */
@@ -261,7 +326,27 @@ public record Dependency(
                 defaultFeatures,
                 kind,
                 fixtures,
-                classifier);
+                classifier,
+                exclusions);
+    }
+
+    /** The same edge pruning {@code exclusions} from its subtree; each is validated by {@link #exclusion(String)}. */
+    public Dependency withExclusions(List<String> exclusions) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions == null ? List.of() : exclusions);
     }
 
     /**
