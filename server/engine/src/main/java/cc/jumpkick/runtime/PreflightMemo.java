@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.CacheTree;
@@ -21,6 +23,7 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.AtomicWrites;
@@ -226,10 +229,12 @@ public final class PreflightMemo {
             String wantSkip = skipTests ? "1" : "0";
             String wantMode = fingerprintMode();
             String wantProfile = profileHeader(profile);
+            String wantSelection = selectionHeader();
             String gotVersion = null;
             String gotSkip = null;
             String gotMode = null;
             String gotProfile = null;
+            String gotSelection = null;
             Map<String, MemoRow> rows = new LinkedHashMap<>();
             for (String line : lines) {
                 if (line.isBlank() || line.startsWith("#")) continue;
@@ -250,17 +255,35 @@ public final class PreflightMemo {
                     gotProfile = line.substring("profile=".length());
                     continue;
                 }
+                if (line.startsWith("selection=")) {
+                    gotSelection = line.substring("selection=".length());
+                    continue;
+                }
                 String[] parts = line.split("\t", 3);
                 if (parts.length != 3) return Optional.empty();
                 rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
             }
-            if (!wantVersion.equals(gotVersion) || !wantSkip.equals(gotSkip)) return Optional.empty();
-            if (gotMode != null && !wantMode.equals(gotMode)) return Optional.empty();
-            if (!wantProfile.equals(gotProfile)) return Optional.empty();
+            if (!wantVersion.equals(gotVersion) || !wantSkip.equals(gotSkip)) {
+                return miss(
+                        "header",
+                        "wantVersion",
+                        wantVersion,
+                        "gotVersion",
+                        gotVersion,
+                        "wantSkip",
+                        wantSkip,
+                        "gotSkip",
+                        gotSkip);
+            }
+            if (gotMode != null && !wantMode.equals(gotMode)) return miss("fpMode", "want", wantMode, "got", gotMode);
+            if (!wantProfile.equals(gotProfile)) return miss("profile", "want", wantProfile, "got", gotProfile);
+            if (!wantSelection.equals(gotSelection)) {
+                return miss("selection", "want", wantSelection, "got", gotSelection);
+            }
 
             Path root = entryDir.toAbsolutePath().normalize();
             List<BuildGraph.BuildUnit> units = graph.topoOrder();
-            if (units.size() != rows.size()) return Optional.empty();
+            if (units.size() != rows.size()) return miss("row-count", "units", units.size(), "rows", rows.size());
 
             Set<Path> dirty = new LinkedHashSet<>();
             Set<Path> restoreNeeded = new LinkedHashSet<>();
@@ -271,11 +294,16 @@ public final class PreflightMemo {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 String rel = relKey(root, dir);
                 MemoRow row = rows.get(rel);
-                if (row == null) return Optional.empty();
+                if (row == null) return miss("no-row", "module", rel);
                 // The same salt the stored rows carry: a guarded workspace's rows never matched a
                 // bare recomputation, so its memo missed on every build.
                 Fingerprint now = fingerprintModule(dir, skipTests, guardSaltFor(dir, saltByRoot));
-                if (!(now instanceof Known known) || !row.fp().equals(known.hex())) return Optional.empty();
+                if (!(now instanceof Known known)) {
+                    return miss("unreadable-input", "module", rel, "cause", now);
+                }
+                if (!row.fp().equals(known.hex())) {
+                    return miss("fingerprint", "module", rel, "stored", row.fp(), "now", known.hex());
+                }
                 seen.add(rel);
                 fps.put(dir, row.fp());
                 if (row.dirty()) {
@@ -293,7 +321,7 @@ public final class PreflightMemo {
                     restoreNeeded.add(dir);
                 }
             }
-            if (!seen.equals(rows.keySet())) return Optional.empty();
+            if (!seen.equals(rows.keySet())) return miss("row-set");
             return Optional.of(new DirtyMemo(dirty, fps, restoreNeeded));
         } catch (IOException e) {
             // The memo itself would not read: not a miss to hide. Every module takes the walk.
@@ -386,6 +414,7 @@ public final class PreflightMemo {
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
             sb.append("profile=").append(profileHeader(profile)).append('\n');
+            sb.append("selection=").append(selectionHeader()).append('\n');
             Set<Path> dirtyNorm = new LinkedHashSet<>();
             for (Path d : dirty) dirtyNorm.add(d.toAbsolutePath().normalize());
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
@@ -896,6 +925,20 @@ public final class PreflightMemo {
         }
     }
 
+    /**
+     * The run's suite/tag selection as a memo header. A stored clean claim covers the tests the
+     * selection that wrote it would have run, so a widened run ({@code --all}, {@code --suite},
+     * tag flags) reads a different header and misses. Keying on the selection is what lets a
+     * workspace that declares {@code [test] exclude-tags} hit at all: its selection is never
+     * {@link TestSelection#DEFAULT}, and refusing the memo whenever it differed from that zero
+     * value made every build of such a workspace pay the whole forecast walk.
+     */
+    static String selectionHeader() {
+        TestSelection selection = SessionContext.current().testSelection();
+        if (selection.equals(TestSelection.DEFAULT)) return "default";
+        return Hashing.sha256Hex(selection.toString()).substring(0, 16);
+    }
+
     static String fingerprintMode() {
         return useMtimeMode() ? "mtime" : "content";
     }
@@ -934,6 +977,18 @@ public final class PreflightMemo {
     private static void feed(MessageDigest md, String s) {
         md.update(s.getBytes(StandardCharsets.UTF_8));
         md.update((byte) 0);
+    }
+
+    /** Log why the dirty memo did not hand back a verdict, then miss. */
+    private static Optional<DirtyMemo> miss(String reason, @Nullable Object... detail) {
+        if (Perf.enabled()) {
+            Object[] all = new Object[detail.length + 2];
+            all[0] = "reason";
+            all[1] = reason;
+            System.arraycopy(detail, 0, all, 2, detail.length);
+            Perf.note("preflight-memo miss", all);
+        }
+        return Optional.empty();
     }
 
     private record MemoRow(String fp, boolean dirty) {}
