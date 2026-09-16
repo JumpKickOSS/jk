@@ -22,7 +22,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Releases](releases.md) | Versioning, install layout, RSA/SHA-256 signing |
 | [Official Maven repo](maven-repo.md) | `jumpkick.build/repo/`, exclusive groups, publish script |
 | [Engine warmup](install-optimize.md) | Worker AOT, host calibration |
-| [Self-host](self-host.md) | Dogfooding this monorepo with `jk` |
+| [Self-host](self-host.md) | Dogfooding this monorepo with `jk`; trying the tree on another project from a private home |
 | [Test suite tiers](test-suite-tiers.md) | `jk test` vs `--profile integration` vs the nightly profiles |
 | [Progress contract](progress-contract.md) | ETA / bar semantics |
 | [The 1.0 plan](plan-1.0.md) | Priority order to 1.0: the developer's inner loop first; six epics |
