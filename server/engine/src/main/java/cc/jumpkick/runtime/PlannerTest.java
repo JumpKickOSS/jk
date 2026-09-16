@@ -496,12 +496,7 @@ public final class PlannerTest {
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
-                    // The plugin steps' contributed arguments, then [test] jvm-args, system-properties
-                    // and the active profile's jvm-args ride the fork and its stamp alike — the
-                    // module's own flags come last, so they win over a framework plugin's.
-                    List<String> testJvmArgs =
-                            new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
-                    testJvmArgs.addAll(PlannerSupport.testJvmArgs(projectUnderTest, in.profileName()));
+                    List<String> testJvmArgs = testJvmArgs(ctx, in, projectUnderTest, pluginDecls);
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
                             testStampExtras(
                                     workerJars,
@@ -598,6 +593,19 @@ public final class PlannerTest {
                     recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
                 })
                 .build();
+    }
+
+    /**
+     * The plugin steps' contributed arguments, then {@code [test] jvm-args}, system-properties and
+     * the active profile's jvm-args — what rides the fork and its stamp alike. The module's own
+     * flags come last, so they win over a framework plugin's.
+     */
+    private static List<String> testJvmArgs(
+            TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, PluginBuild.@Nullable Declarations pluginDecls)
+            throws IOException {
+        List<String> args = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
+        args.addAll(PlannerSupport.testJvmArgs(project, in.profileName()));
+        return args;
     }
 
     /** The step's own line naming the flags the fork gets beyond jk's tuning; silent when there are none. */

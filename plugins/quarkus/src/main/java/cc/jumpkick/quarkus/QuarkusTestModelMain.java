@@ -77,10 +77,11 @@ public final class QuarkusTestModelMain {
     }
 
     /**
-     * The module as Quarkus's workspace sees it: the module directory, its {@code target}, and the
-     * main source set whose output is {@code classesDir} — the only class tree the model roots.
-     * The source directories are named when they exist under the conventional layout; the
-     * bootstrap reads output trees, not sources, to load a test.
+     * The module as Quarkus's workspace sees it: the module directory, its build directory (the
+     * one holding the {@code classes} tree {@code classesDir} sits in), and the main source set
+     * whose output is {@code classesDir} — the only class tree the model roots. The source
+     * directories are named when they exist under the conventional layout; the bootstrap reads
+     * output trees, not sources, to load a test.
      */
     static WorkspaceModule workspaceModule(
             Path moduleDir, Path classesDir, String group, String artifact, String version) {
@@ -103,9 +104,16 @@ public final class QuarkusTestModelMain {
         return WorkspaceModule.builder()
                 .setModuleId(WorkspaceModuleId.of(group, artifact, version))
                 .setModuleDir(moduleDir)
-                .setBuildDir(moduleDir.resolve("target"))
+                .setBuildDir(buildDirOf(classesDir, moduleDir))
                 .addArtifactSources(new DefaultArtifactSources(ArtifactSources.MAIN, sources, resources))
                 .build();
+    }
+
+    /** {@code <build>/classes/main} names {@code <build>}; a classes dir shaped otherwise falls back to the module. */
+    private static Path buildDirOf(Path classesDir, Path moduleDir) {
+        Path classes = classesDir.getParent();
+        Path build = classes == null ? null : classes.getParent();
+        return build == null ? moduleDir : build;
     }
 
     private QuarkusTestModelMain() {}

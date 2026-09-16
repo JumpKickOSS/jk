@@ -174,7 +174,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      */
     static List<String> testJvmArgs(Path model) {
         return List.of(
-                "-D" + QuarkusTestModelMain.SERIALIZED_TEST_APP_MODEL + "=" + model.toAbsolutePath().normalize(),
+                "-D" + QuarkusTestModelMain.SERIALIZED_TEST_APP_MODEL + "="
+                        + model.toAbsolutePath().normalize(),
                 "-XX:MaxMetaspaceSize=" + TEST_MAX_METASPACE);
     }
 
