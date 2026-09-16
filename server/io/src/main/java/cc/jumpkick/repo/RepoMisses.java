@@ -7,17 +7,21 @@ import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Process-wide memo of the URLs a repository answered "not found": version catalogs, POMs and
- * artifacts alike. On a multi-repository project every path is asked of each repository ahead of
- * the one that holds it, so the misses outnumber the hits, and a re-lock in the same engine would
- * pay each of them again — the positive memos answer only for what was found. A known miss is
- * answered without a request until it expires.
+ * Process-wide memo of the POM and artifact URLs a repository answered "not found". On a
+ * multi-repository project every path is asked of each repository ahead of the one that holds it,
+ * so the misses outnumber the hits, and a re-lock in the same engine would pay each of them again —
+ * the positive memos answer only for what was found. A known miss is answered without a request
+ * until it expires.
+ *
+ * <p>Version catalogs are never memoized here: a {@code maven-metadata.xml} that is absent is a
+ * coordinate nothing has been published under yet, exactly the answer that changes when something
+ * is, so a catalog miss is asked again every time and {@code jk outdated} sees the first release.
  *
  * <p>An entry lives {@link #TTL}, the window the {@code maven-metadata.xml} cache already trusts a
- * catalog for: a coordinate absent now may be published later, and the lock is already prepared to
- * see it that late. A forced session ({@code --force}, or a revalidating lock) bypasses the memo
- * and refreshes it, and {@link RepoGroup#clearProcessFetchCache()} drops it with the positive fetch
- * memos. Capped so a long-lived engine cannot retain an unbounded set of misses.
+ * catalog for: a published GAV is immutable, and the lock is already prepared to see a new one that
+ * late. A forced session ({@code --force}, or a revalidating lock) bypasses the memo and refreshes
+ * it, and {@link RepoGroup#clearProcessFetchCache()} drops it with the positive fetch memos. Capped
+ * so a long-lived engine cannot retain an unbounded set of misses.
  */
 final class RepoMisses {
 

@@ -24,6 +24,7 @@ import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.WorkspaceMerge;
+import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.VersionSelectors;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
@@ -56,8 +57,23 @@ public final class OutdatedPlans {
 
     private OutdatedPlans() {}
 
-    /** Produce the report for the project (or workspace) rooted at {@code dir}. */
+    /**
+     * Produce the report for the project (or workspace) rooted at {@code dir}. Every catalog is
+     * read fresh — past the metadata TTL, the process version-list memo and the not-found memo —
+     * because the question is what the repositories publish now, not what the last lock saw.
+     */
     public static OutdatedReport compute(Path dir, Path cache, @Nullable URI repoUrl) {
+        try {
+            return MavenMetadataCache.withForceRevalidate(() -> fresh(dir, cache, repoUrl));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return OutdatedReport.error(Errors.text(e));
+        } catch (Exception e) {
+            return OutdatedReport.error(Errors.text(e));
+        }
+    }
+
+    private static OutdatedReport fresh(Path dir, Path cache, @Nullable URI repoUrl) {
         LinkedHashMap<Path, JkBuild> scopes = new LinkedHashMap<>();
         try {
             JkBuild root = JkBuildParser.parse(ManifestPaths.manifestIn(dir));

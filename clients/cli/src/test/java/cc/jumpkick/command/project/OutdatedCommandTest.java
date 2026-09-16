@@ -176,6 +176,22 @@ class OutdatedCommandTest {
     }
 
     @Test
+    void a_version_published_after_the_lock_shows_as_latest(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1");
+        maven.registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
+        assertThat(lock(tempDir, cache)).isEqualTo(0);
+        assertThat(json(tempDir, cache)).contains("\"latest\":\"1.1\"");
+
+        // Published after the lock: the catalog on disk is within its TTL and the engine holds the
+        // list it read, and the report still has to say what the repository publishes now.
+        maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        assertThat(json(tempDir, cache)).contains("\"current\":\"1.1\"").contains("\"latest\":\"2.0\"");
+    }
+
+    @Test
     void offline_flag_prints_cache_only_note(@TempDir Path tempDir) throws Exception {
         maven.registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         Path cache = tempDir.resolve("cache");
