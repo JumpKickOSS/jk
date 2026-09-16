@@ -335,7 +335,12 @@ case " $* " in
   *" -XshowSettings:properties "*) printf '    java.home = %s\n' "$FIXTURE_JAVA_HOME" >&2; printf 'openjdk version "%s" 2025-09-16\n' "${FIXTURE_JAVA_VERSION:-25.0.1}" >&2 ;;
   *" -version "*) printf 'openjdk version "%s" 2025-09-16\n' "${FIXTURE_JAVA_VERSION:-25.0.1}" >&2 ;;
   *" --version "*) printf 'jk 1.0.0\n' ;;
-  *" self write-launcher "*) mkdir -p "$JK_HOME/bin"; printf '#!/bin/sh\nexit 0\n' >"$JK_HOME/bin/jk"; chmod +x "$JK_HOME/bin/jk" ;;
+  *" self write-launcher "*)
+    # The launcher the jar writes stands in for the installed client: it records what the
+    # installer asks of it, like the native fixture.
+    mkdir -p "$JK_HOME/bin"
+    printf '#!/bin/sh\nif [ -n "${FIXTURE_JK_LOG:-}" ]; then printf "%%s\\n" "$*" >>"$FIXTURE_JK_LOG"; fi\nexit 0\n' >"$JK_HOME/bin/jk"
+    chmod +x "$JK_HOME/bin/jk" ;;
 esac
 exit 0
 SH
@@ -402,23 +407,74 @@ grep -q "checksum mismatch for $ENGINE_JAR" "$WORK/last-install.log" || { cat "$
 printf 'PK fixture engine jar\n' >"$RELEASE/$ENGINE_JAR"
 
 # A local jar beside its engine jar installs the JVM client from the dist layout, no network; the
-# Maven spy jar beside them lands under the product lib, where `jk mvn` looks for it.
+# Maven spy jar beside them lands under the product lib, where `jk mvn` looks for it, and the
+# dist's repos/jk-local shelf (the tree's module jars) is shelved through the client.
 SPY_JAR="jk-maven-spy-1.0.0.jar"
-mkdir -p "$WORK/dist/lib"
+mkdir -p "$WORK/dist/lib" "$WORK/dist/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0"
 cp "$RELEASE/$JVM_JAR" "$WORK/dist/lib/$JVM_JAR"
 cp "$RELEASE/$ENGINE_JAR" "$WORK/dist/lib/$ENGINE_JAR"
 printf 'PK fixture spy jar\n' >"$WORK/dist/lib/$SPY_JAR"
-rm -f "$WORK/java-calls"
+printf 'PK fixture worker jar\n' >"$WORK/dist/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0/jk-test-runner-1.0.0.jar"
+printf '<project/>\n' >"$WORK/dist/repos/jk-local/cc/jumpkick/jk-test-runner/1.0.0/jk-test-runner-1.0.0.pom"
+rm -f "$WORK/java-calls" "$WORK/jk-calls"
 if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" JAVA_HOME= JK_JAVA_HOME= FIXTURE_JAVA_HOME="$WORK/jdk" FIXTURE_JAVA_LOG="$WORK/java-calls" \
-    JK_HOME="$WORK/home-jvm-local" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    FIXTURE_JK_LOG="$WORK/jk-calls" JK_HOME="$WORK/home-jvm-local" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
     bash "$WORK/install.sh" "$WORK/dist/lib/$JVM_JAR" >"$WORK/last-install.log" 2>&1 ); then
   cat "$WORK/last-install.log" >&2; echo "a local JVM client install failed" >&2; exit 1
 fi
 cmp -s "$RELEASE/$JVM_JAR" "$WORK/home-jvm-local/lib/jk/$JVM_JAR" || { echo "the local jar did not land under lib/jk" >&2; exit 1; }
 cmp -s "$WORK/dist/lib/$SPY_JAR" "$WORK/home-jvm-local/lib/$SPY_JAR" || { echo "the Maven spy jar did not land under lib/" >&2; exit 1; }
 grep -q -- "--version" "$WORK/java-calls" || { echo "a local jar was not asked its version" >&2; exit 1; }
+grep -q -- "^self materialize $WORK/home-jvm-local/bin/jk $WORK/dist/lib/$ENGINE_JAR\$" "$WORK/jk-calls" || {
+  cat "$WORK/jk-calls" >&2; echo "a local JVM client install did not materialize the engine jar beside the jar" >&2; exit 1; }
+grep -q -- "^self shelve $WORK/dist/repos\$" "$WORK/jk-calls" || {
+  cat "$WORK/jk-calls" >&2; echo "a local JVM client install did not shelve the dist's repos tree" >&2; exit 1; }
 rm -f "$WORK/bin/uname" "$WORK/bin/java" "$RELEASE/$JVM_JAR" "$RELEASE/$ENGINE_JAR"
 write_evidence
+
+# ---- the native client from a local dist --------------------------------------------------------
+#
+# `bash install.sh <dist>/jk` is how a checkout's own build is installed: the binary is copied, the
+# engine jar beside it under lib/ is materialized through the client, and the module jars under
+# repos/jk-local are shelved through the client — so the engine this install spawns launches the
+# workers built with it. Without the shelf the install says so; without the engine jar it refuses.
+cp "$RELEASE/$ARTIFACT" "$WORK/dist/jk"
+rm -f "$WORK/jk-calls"
+if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG="$WORK/jk-calls" HOME="$WORK/user-home" \
+    JK_HOME="$WORK/home-native-local" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    bash "$WORK/install.sh" "$WORK/dist/jk" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2; echo "a local native dist install failed" >&2; exit 1
+fi
+cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-native-local/bin/jk" || { echo "the local native client did not land under bin/" >&2; exit 1; }
+grep -q -- "^self materialize $WORK/home-native-local/bin/jk $WORK/dist/lib/$ENGINE_JAR\$" "$WORK/jk-calls" || {
+  cat "$WORK/jk-calls" >&2; echo "the engine jar beside the local binary was not materialized" >&2; exit 1; }
+grep -q -- "^self shelve $WORK/dist/repos\$" "$WORK/jk-calls" || {
+  cat "$WORK/jk-calls" >&2; echo "the dist's repos tree was not shelved" >&2; exit 1; }
+assert_rc_untouched "native-local"
+
+# The same dist without repos/: installed, but the missing shelf is named.
+rm -rf "$WORK/dist/repos"
+rm -f "$WORK/jk-calls"
+if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" FIXTURE_JK_LOG="$WORK/jk-calls" HOME="$WORK/user-home" \
+    JK_HOME="$WORK/home-native-noshelf" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    bash "$WORK/install.sh" "$WORK/dist/jk" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2; echo "a local dist without repos/ failed to install" >&2; exit 1
+fi
+if grep -q -- "self shelve" "$WORK/jk-calls"; then echo "a dist without repos/ ran 'jk self shelve'" >&2; exit 1; fi
+grep -qF -- "no repos/jk-local beside dist/lib: no workers shelved" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "a dist without repos/ did not name the missing shelf" >&2; exit 1; }
+
+# A binary with no engine jar beside it is refused whole: installing it would pair the tree's
+# client with the released engine.
+rm -f "$WORK/dist/lib/$ENGINE_JAR"
+if ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" HOME="$WORK/user-home" \
+    JK_HOME="$WORK/home-native-noengine" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
+    bash "$WORK/install.sh" "$WORK/dist/jk" >"$WORK/last-install.log" 2>&1 ); then
+  cat "$WORK/last-install.log" >&2; echo "a local binary without an engine jar was installed" >&2; exit 1
+fi
+grep -q -- "no jk-engine-\*.jar in $WORK/dist/lib" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "the missing engine jar was not named" >&2; exit 1; }
+rm -rf "$WORK/dist"
 
 # `curl | bash` executes whatever has arrived, so a download cut short must run nothing. Every
 # strict prefix of the installer (the full file minus its final newline is the complete script)

@@ -68,6 +68,7 @@ public final class SelfCommand extends GroupCommand {
         return List.of(
                 new UpdateSub(),
                 new MaterializeSub(),
+                new SelfShelveCommand(),
                 new WriteLauncherSub(),
                 new RetireOldEnginesSub(),
                 new SetupTerminalSub(),

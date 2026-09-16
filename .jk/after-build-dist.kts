@@ -2,13 +2,16 @@
 // jk: always
 //
 // The ship layout, assembled from what this build just produced: `target/dist/jk` beside
-// `target/dist/lib/jk-engine-<version>.jar` and `target/dist/lib/jk-<version>.jar`. That is the
-// shape `install.sh <binary>` reads — it takes the engine from `<dir-of-binary>/lib/` — so
-// `bash install.sh target/dist/jk` installs the jk this build made, engine included; and
-// `bash install.sh target/dist/lib/jk-<version>.jar` installs the JVM client, for a host with no
-// native binary.
+// `target/dist/lib/jk-engine-<version>.jar`, `target/dist/lib/jk-<version>.jar` and the shelf
+// `target/dist/repos/jk-local/` — every workspace module's thin jar and POM in Maven layout, the
+// same entries `jk install` puts under `<home>/store/repos/jk-local/`. That is the shape
+// `install.sh <binary>` reads — it takes the engine from `<dir-of-binary>/lib/` and shelves
+// `<dir-of-binary>/repos/` — so `bash install.sh target/dist/jk` installs the jk this build made,
+// engine and workers included: the engine launches the workers built beside it, never the
+// published ones of the same version. `bash install.sh target/dist/lib/jk-<version>.jar` installs
+// the JVM client the same way, for a host with no native binary.
 //
-// WHY A SCRIPT AND NOT A FEATURE. Assembling a directory out of two files this repo already
+// WHY A SCRIPT AND NOT A FEATURE. Assembling a directory out of files this repo already
 // produces is packaging, not a build-system capability, so jk grows no knob for its own ship
 // layout.
 //
@@ -27,6 +30,7 @@
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.util.Comparator
 
 val target: Path = projectDir.resolve("target")
 if (!Files.isDirectory(target)) {
@@ -51,6 +55,81 @@ if (!Files.isDirectory(target)) {
             if (m != null) return m.groupValues[1]
         }
         return null
+    }
+
+    /**
+     * The workspace members, from the manifest's `[workspace] modules` array: the set `jk install`
+     * shelves, read from the one place that lists it rather than guessed from what `target/` holds
+     * (that tree also holds test sandboxes with shelves of their own).
+     */
+    fun workspaceModules(): List<String> {
+        val manifest = projectDir.resolve("jk.toml")
+        if (!Files.isRegularFile(manifest)) return emptyList()
+        val out = ArrayList<String>()
+        var inModules = false
+        for (line in Files.readAllLines(manifest)) {
+            val t = line.substringBefore('#').trim()
+            if (!inModules) {
+                if (Regex("""^modules\s*=\s*\[""").containsMatchIn(t)) inModules = true
+                continue
+            }
+            if (t.startsWith("]")) break
+            Regex(""""([^"]+)"""").findAll(t).forEach { out.add(it.groupValues[1]) }
+        }
+        return out
+    }
+
+    /** A module's shelf entry: its thin jar and POM as the build wrote them. */
+    data class ModuleArtifacts(val group: String, val artifact: String, val jar: Path, val pom: Path)
+
+    /**
+     * The thin jar and POM of the module at [rel] for [version], or null when this build produced
+     * none. A worker writes them at its output root, a library under `lib/`; the coordinate comes
+     * from the POM, the one file that states it.
+     */
+    fun moduleArtifacts(rel: String, version: String): ModuleArtifacts? {
+        val root = target.resolve(rel)
+        for (dir in listOf(root, root.resolve("lib"))) {
+            if (!Files.isDirectory(dir)) continue
+            val pom = Files.list(dir).use { entries ->
+                entries.filter { it.fileName.toString().endsWith("-$version.pom") }
+                    .sorted()
+                    .findFirst()
+                    .orElse(null)
+            } ?: continue
+            val jar = pom.resolveSibling(pom.fileName.toString().removeSuffix(".pom") + ".jar")
+            if (!Files.isRegularFile(jar)) continue
+            val text = Files.readString(pom)
+            val group = Regex("""<groupId>\s*([^<\s]+)\s*</groupId>""").find(text)?.groupValues?.get(1) ?: continue
+            val artifact = Regex("""<artifactId>\s*([^<\s]+)\s*</artifactId>""").find(text)?.groupValues?.get(1) ?: continue
+            return ModuleArtifacts(group, artifact, jar, pom)
+        }
+        return null
+    }
+
+    /**
+     * Rewrite `dist/repos/jk-local/` from the workspace's module jars and POMs: Maven layout under
+     * the store id `jk install` shelves to, and nothing else, so an installer copies the directory
+     * as one shelf. Rewritten whole: a version bump leaves no shelf entry of the version before.
+     */
+    fun writeShelf(dist: Path, version: String): Int {
+        val repos = dist.resolve("repos")
+        if (Files.isDirectory(repos)) {
+            Files.walk(repos).use { walk ->
+                walk.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+            }
+        }
+        val shelf = repos.resolve("jk-local")
+        var shelved = 0
+        for (rel in workspaceModules()) {
+            val m = moduleArtifacts(rel, version) ?: continue
+            val dir = shelf.resolve(m.group.replace('.', '/')).resolve(m.artifact).resolve(version)
+            Files.createDirectories(dir)
+            Files.copy(m.jar, dir.resolve(m.jar.fileName), StandardCopyOption.REPLACE_EXISTING)
+            Files.copy(m.pom, dir.resolve(m.pom.fileName), StandardCopyOption.REPLACE_EXISTING)
+            shelved++
+        }
+        return shelved
     }
 
     /** The assembly jar for [version], or null when this build produced none. */
@@ -128,9 +207,11 @@ if (!Files.isDirectory(target)) {
                     println("jk dist: removed stale ${projectDir.relativize(stale)}")
                 }
             }
+            val shelved = writeShelf(dist, version)
             val shipped = listOf(clientOut, engineOut) +
                 listOfNotNull(clientJar?.let { clientJarOut }, spyJar?.let { spyJarOut })
-            println("jk dist: " + shipped.joinToString(" + ") { projectDir.relativize(it).toString() })
+            println("jk dist: " + shipped.joinToString(" + ") { projectDir.relativize(it).toString() }
+                + " + $shelved module jars under " + projectDir.relativize(dist.resolve("repos")))
             if (clientJar == null) println("jk dist: no jk-cli-$version-all.jar in target/ — no JVM client shipped")
         }
     }

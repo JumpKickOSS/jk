@@ -331,7 +331,8 @@ keep their keys and stay cached, so the one-time re-run is packaging and verdict
 
 JumpKick's ship shape is **native CLI** + **JVM engine** jar + PluginMain workers, plus the
 **JVM client** jar for hosts with no native CLI. `jk build` writes it under `target/dist/`
-(`.jk/after-build-dist.kts`), and `install.sh` installs it on a machine with no jk yet:
+(`.jk/after-build-dist.kts`), and `install.sh` installs it on a machine with no jk yet — or into
+a private home ([Try the tree on another project](#try-the-tree-on-another-project)):
 
 ```bash
 jk build --skip-tests
@@ -346,10 +347,24 @@ target/dist/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
     jk-<version>.jar         # JVM client assembly (cc.jumpkick.cli.Jk and its closure)
     jk-maven-spy-<version>.jar  # Maven core extension `jk mvn` attaches (clients/maven-spy)
+  repos/
+    jk-local/                # every workspace module's thin jar + POM, Maven layout: the shelf
+      cc/jumpkick/jk-java-compiler/<version>/jk-java-compiler-<version>.{jar,pom}
+      cc/jumpkick/guards/spring/<version>/spring-<version>.{jar,pom}
+      …
 ```
 
+`install.sh <dist>/jk` copies the binary, materializes the engine jar from `lib/` (`jk self
+materialize`) and shelves `repos/jk-local/` onto the home's `<store>/repos/jk-local/` (`jk self
+shelve`, one `.jk` memo per artifact, the materialized engine recorded as the packager). The
+engine launches its workers from that shelf and fetches a worker it lacks from jumpkick.build at
+its own version, so the shelf is what makes a dist install run the workers built beside its engine
+rather than the published ones of the same version. A dist with no `repos/` installs and says so;
+a binary with no engine jar beside it is refused.
+
 The release workflow assembles `target/dist` per platform (`scripts/assemble-release-dir.sh`);
-G75 (`ship-layout-installer-jk`) holds the installer and the dist script to one directory name.
+G75 (`ship-layout-installer-jk`) holds the installer and the dist script to the same `lib/` and
+`repos/` names.
 
 ## AOT during self-host / CI
 

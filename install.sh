@@ -492,10 +492,14 @@ main() {
   # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
   # not a second native binary). The live copy is <home>/lib/jk-engine/ — materialized below for
   # local dists and JVM installs; native download installs self-fetch it on first engine spawn.
+  # A local dist is the ship layout `jk build` writes: <dist>/jk, <dist>/lib/ and <dist>/repos/
+  # (the tree's module jars in Maven layout, shelved below).
   if [ -n "$LOCAL_FILE" ]; then
-    SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
+    SRC_DIST="$(cd "$(dirname "$LOCAL_FILE")" && pwd)"
     # The JVM client jar sits inside lib/ itself, beside the engine jar.
-    [ "$CLIENT" = "jvm" ] && SRC_LIB="$(dirname "$SRC_LIB")"
+    [ "$CLIENT" = "jvm" ] && SRC_DIST="$(dirname "$SRC_DIST")"
+    SRC_LIB="$SRC_DIST/lib"
+    SRC_REPOS="$SRC_DIST/repos"
   fi
 
   # ---- product-lib engine (docs/architecture.md "Versioning") ----------------
@@ -525,6 +529,26 @@ main() {
   if [ -n "${ENGINE_JAR:-}" ]; then
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
+  fi
+  # ---- the shelf ---------------------------------------------------------------
+  #
+  # The engine launches its workers (jk-java-compiler, jk-test-runner, …) from the home's local
+  # repository, <store>/repos/jk-local/, and fetches a worker it does not find there from
+  # jumpkick.build at its own version. A local dist carries the workers the tree built under
+  # <dist>/repos/jk-local/; shelving them here is what makes the installed engine run those
+  # instead of the published ones of the same version — the difference between testing the
+  # tree and testing the release with the tree's engine. Loud when it fails: the quiet form of
+  # this is an engine that silently runs published workers.
+  if [ -n "$LOCAL_FILE" ]; then
+    if [ -d "$SRC_REPOS/jk-local" ]; then
+      run_jk self shelve "$SRC_REPOS" >"$TMPDIR_JK/shelve.log" 2>&1 || {
+        cat "$TMPDIR_JK/shelve.log" >&2
+        die "could not shelve $SRC_REPOS into the home's local repository (jk self shelve failed);" \
+            "the installed engine would fetch the published workers of this version instead of the ones built here."
+      }
+    else
+      note "no repos/jk-local beside $(basename "$SRC_DIST")/lib: no workers shelved; the engine fetches the published ones of its version"
+    fi
   fi
   # The Maven event spy (`jk mvn` attaches it to Maven's extension path) is a plain jar under the
   # product lib, one per version; the client looks for lib/jk-maven-spy-<its version>.jar. A
