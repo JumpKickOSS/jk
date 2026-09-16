@@ -2,7 +2,9 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
@@ -81,6 +83,45 @@ class LockScopeTest {
         assertThat(scope.lockDir()).isEqualTo(tmp);
         // And never just the member's closure: the union includes the sibling-only dep.
         assertThat(depModules(scope.effective())).anyMatch(m -> m.contains("gson"));
+    }
+
+    @Test
+    void a_member_pinned_at_unresolved_is_refused_at_its_manifest_line(@TempDir Path tmp) throws Exception {
+        workspace(tmp);
+        Files.writeString(tmp.resolve("core/jk.toml"), """
+                group = "com.example"
+                name  = "core"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                gson = { group = "com.google.code.gson", name = "gson", version = "2.11.0" }
+
+                [platform-dependencies]
+                netty-bom = { group = "io.netty", version = "unresolved" }
+                """);
+
+        assertThatThrownBy(() -> LockPlans.lockScope(tmp))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining(tmp.resolve("core/jk.toml") + ":10 [platform-dependencies] netty-bom")
+                .hasMessageContaining("io.netty:netty-bom is pinned at `unresolved`");
+    }
+
+    @Test
+    void a_standalone_project_pinned_at_unresolved_is_refused_before_it_resolves(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "solo"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                guava = { group = "com.google.guava", version = "unresolved" }
+                """);
+
+        assertThatThrownBy(() -> LockPlans.lockScope(tmp))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining(tmp.resolve("jk.toml") + ":7 [dependencies] guava");
     }
 
     @Test
