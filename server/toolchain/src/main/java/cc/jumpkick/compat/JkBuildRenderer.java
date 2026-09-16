@@ -20,6 +20,7 @@ import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -343,18 +344,24 @@ public final class JkBuildRenderer {
         }) {
             List<Dependency> deps = byScope.get(scope);
             if (deps == null || deps.isEmpty()) continue;
-            // Sort by short name for determinism. The dep `name` is the
-            // user-facing manifest key; module ordering is no longer the
-            // identifier.
-            Map<String, Dependency> sorted = new TreeMap<>();
-            for (Dependency d : deps) sorted.put(d.library(), d);
-
             sb.append('\n');
             sb.append('[').append(scope.tomlSection()).append("]\n");
-            for (Dependency d : sorted.values()) {
+            for (Dependency d : ordered(scope, deps)) {
                 sb.append(renderEntry(d)).append('\n');
             }
         }
+    }
+
+    /**
+     * The rows of one scope table. {@code [platform-dependencies]} is ordered — the first BOM
+     * that manages a module wins — so it keeps declaration order; every other table sorts by the
+     * manifest key.
+     */
+    private static Collection<Dependency> ordered(Scope scope, List<Dependency> deps) {
+        if (scope == Scope.PLATFORM) return deps;
+        Map<String, Dependency> sorted = new TreeMap<>();
+        for (Dependency d : deps) sorted.put(d.library(), d);
+        return sorted.values();
     }
 
     /** One dependency line: workspace flag, git table, or versioned table. */

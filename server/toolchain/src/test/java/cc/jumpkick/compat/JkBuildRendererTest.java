@@ -414,6 +414,37 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void platform_dependencies_render_in_declaration_order_while_other_tables_sort() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.PLATFORM,
+                List.of(
+                        Dependency.of(
+                                "spring-boot-dependencies",
+                                "org.springframework.boot:spring-boot-dependencies",
+                                VersionSelector.parse("3.5.15")),
+                        Dependency.of(
+                                "knife4j-dependencies",
+                                "com.github.xiaoymin:knife4j-dependencies",
+                                VersionSelector.parse("4.5.0"))));
+        byScope.put(
+                Scope.MAIN,
+                List.of(
+                        Dependency.of("zeta", "com.example:zeta", VersionSelector.parse("1.0")),
+                        Dependency.of("alpha", "com.example:alpha", VersionSelector.parse("1.0"))));
+        JkBuild model =
+                new JkBuild(new Project("com.example", "widget", "1.0.0", 25), new JkBuild.Dependencies(byScope));
+
+        String out = JkBuildRenderer.render(model);
+
+        assertThat(out.indexOf("spring-boot-dependencies")).isLessThan(out.indexOf("knife4j-dependencies"));
+        assertThat(out.indexOf("alpha = ")).isLessThan(out.indexOf("zeta = "));
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::library)
+                .containsExactly("spring-boot-dependencies", "knife4j-dependencies");
+    }
+
+    @Test
     void output_round_trips_through_the_parser() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(Scope.MAIN, List.of(new Dependency("com.example:lib", VersionSelector.parse("1.0.0"))));
