@@ -74,6 +74,22 @@ generated `jk.toml`. Making an existing Maven project work under jk — plugin-a
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
+**A reactor imports as one workspace.** The walk follows `<modules>` the way Maven does: through
+every aggregator (a `pom`-packaged module with `<modules>` of its own is a parent and a list, not
+a module jk builds) and into the modules a profile active on this machine adds, so a reactor of
+181 POMs becomes one `[workspace]` of root-relative paths (`community/kernel`, `websocket/spi`).
+A dependency on any module of the reactor is a workspace edge — `{ workspace = true }`, with
+`kind = "tests"` for a `test-jar` — wherever the module sits and however its version is spelled,
+because siblings match by `groupId:artifactId`. A sibling answers as a parent and as an
+`import`-scope BOM before any repository is asked, so a `dependencyManagement` that imports a
+sibling BOM is applied to the declared dependencies and the BOM is not written as a `[platform]`
+entry (a workspace module is not a published BOM; the row says so). CI-friendly versions —
+`${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
+`<properties>`, which is where Maven reads them without `-D`; a placeholder no POM defines is
+written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that lives only in
+profiles Maven would not activate here is a Tier-3 row, and a workspace whose modules have no
+source tree fails `jk build` with a one-line `built nothing` reason instead of finishing green.
+
 ### Where import stands on real repositories
 
 The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/corpus/maven-top20)
@@ -99,8 +115,7 @@ because a repository stopped importing is not. The one repository that runs end 
 end, TheAlgorithms/Java, runs its 9,745 tests in 13 s under jk against 37 s under Maven, with one
 jk-only failure (a recursive test that needs the platform default thread stack). The walls that
 stop the other nineteen are named in the corpus's `tier3-reasons.md`, each with its ticket: a
-project pin refused against a transitive's lower bound that Maven's nearest-wins would accept,
-reactor siblings fetched as artifacts, CI-friendly `${revision}` versions, nested aggregators, a
+project pin refused against a transitive's lower bound that Maven's nearest-wins would accept, a
 Lombok on the classpath that never ran as a processor, and a lenient javadoc that still failed a
 build.
 
