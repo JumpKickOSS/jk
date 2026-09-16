@@ -33,8 +33,26 @@ The project page shows one run above its build history: the **newest** by defaul
 one first), so an MCP result's `dashboard` link lands on the job it just started and keeps
 following as the agent iterates. Click a history row to **pin** that run; the route carries
 the pin (`#project/<id>/run/<n>`) so a reload keeps it, and **Follow newest** returns to
-following. A per-attempt view of what changed between runs is the remaining dashboard item in
-[the 1.0 plan](../contributors/plan-1.0.md).
+following.
+
+## Since the previous run
+
+Under the run's header sits the **iteration strip**: what changed since the run before it from
+the same origin (the same MCP session or IDE window; a shell run compares against the shell run
+before it). Counts first — `since #12 · failed · 8.4s · 3 files · +0 / −2 diagnostics · tests: 1
+fixed · −2.3s` — and hovering a chip lists the rows behind it: the files whose content changed
+(`(new)` / `(gone)` for added or deleted ones), the diagnostics that appeared or went away, the
+tests that flipped (fixed, broke, new, gone). Clicking the strip opens the same rows inline. Each
+list is bounded (`+N more` past the first eight); the counts are exact. A three-attempt fix
+session reads as three runs, each strip naming what that attempt changed and whether it helped.
+
+The strip, the `## Since the previous run` section of `target/jk-results.md` and the `delta`
+field of MCP `jk_results` are one computation: the engine compares the two journal records at
+the end of the run. Files come from a content-hash snapshot of the project tree each run leaves
+in its journal entry (`sources.tsv`; build output, hidden and `node_modules` trees are skipped,
+and a checkout past 20,000 files leaves the file comparison out); tests from every test's
+outcome (`test-outcomes.tsv`). A run with no earlier run from its origin, or one whose previous
+run recorded no tests, shows the comparisons it has.
 
 The link ends in `#t=<token>`; a project link from MCP carries it as `#project/<id>?t=<token>`.
 The page stores the token in `sessionStorage` / `localStorage` and scrubs it from the address
