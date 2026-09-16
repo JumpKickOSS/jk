@@ -1,0 +1,743 @@
+#!/usr/bin/env python3
+"""Materialise one (repo × failure) of the agent-loop corpus for jk, Maven or Gradle.
+
+    scenario --list
+    scenario --clone [--repo X]
+    scenario --baseline --tool jk|mvn|gradle [--repo X]
+    scenario --tool jk|mvn|gradle --repo X --failure Y --out DIR
+    scenario --verify [--tool T] [--repo X] [--failure Y] [--jobs 2] [--report VERIFY.md]
+
+Clones, baselines and verify sandboxes live under $AGENT_LOOP_HOME (default
+/home/bsant/src/scratch/agent-loop), never inside this repository. A baseline is the pinned
+commit built green once with the given tool (for jk: imported, original build files removed,
+`jk.toml` + `jk-lock.toml` committed); a sandbox is a copy of that baseline with one failure
+injected as an uncommitted working-tree change, so `git diff` shows exactly the injection and
+`git checkout -- . && git clean -fd` reverts it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import datetime as dt
+import fnmatch
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+WRAPPERS = HERE / "wrappers"
+HOME = Path(os.environ.get("AGENT_LOOP_HOME", "/home/bsant/src/scratch/agent-loop"))
+TOOLS = ("jk", "mvn", "gradle")
+IGNORED_OUTPUTS = {"target", "build", ".gradle", ".kotlin"}
+GIT_ENV = {
+    **os.environ,
+    "GIT_AUTHOR_NAME": "agent-loop",
+    "GIT_AUTHOR_EMAIL": "agent-loop@localhost",
+    "GIT_COMMITTER_NAME": "agent-loop",
+    "GIT_COMMITTER_EMAIL": "agent-loop@localhost",
+}
+
+# What a results file says when the tool refused the dependency graph rather than the code.
+RESOLVE_PATTERN = r"(?i)cannot resolve|could not resolve|could not find|cannot be resolved|cannot find a version|version constraint|conflict"
+
+FAILURE_CLASSES = (
+    "compile-error",
+    "failing-assertion",
+    "missing-dependency",
+    "version-conflict",
+    "missing-resource",
+    "wrong-java-release",
+    "broken-annotation-processor",
+)
+
+
+# ------------------------------------------------------------------------------ config
+
+
+@dataclass
+class Repo:
+    name: str
+    source: str
+    commit: str
+    subdir: str
+    tool: str
+    build: str
+    modules: int
+    language: str
+    tools: list[str]
+    failures: dict[str, dict]
+
+    def failures_for(self, tool: str) -> list[str]:
+        return [f for f, p in self.failures.items() if tool in p.get("tools", self.tools)]
+
+
+def load_config() -> dict[str, Repo]:
+    data = tomllib.loads((HERE / "scenarios.toml").read_text(encoding="utf-8"))
+    repos: dict[str, Repo] = {}
+    for name, r in data["repos"].items():
+        failures = r.get("failures", {})
+        for cls in failures:
+            if cls not in FAILURE_CLASSES:
+                sys.exit(f"{name}: unknown failure class {cls}")
+        repos[name] = Repo(
+            name=name,
+            source=r["source"],
+            commit=r["commit"],
+            subdir=r.get("subdir", "."),
+            tool=r["tool"],
+            build=r["build"],
+            modules=r.get("modules", 1),
+            language=r.get("language", "java"),
+            tools=list(r.get("tools", TOOLS)),
+            failures=failures,
+        )
+    return repos
+
+
+# ------------------------------------------------------------------------------- shell
+
+
+def run(cmd: list[str], cwd: Path, timeout: int = 1800, env: dict | None = None) -> tuple[int, str, int]:
+    started = time.time()
+    try:
+        p = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                           errors="replace", timeout=timeout, env=env)
+        code, out = p.returncode, p.stdout
+    except subprocess.TimeoutExpired as e:
+        code, out = 124, (e.stdout or "") + f"\n[scenario] timed out after {timeout}s\n"
+    return code, out, int((time.time() - started) * 1000)
+
+
+def git(args: list[str], cwd: Path) -> str:
+    p = subprocess.run(["git", *args], cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=GIT_ENV)
+    if p.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} in {cwd}: {p.stdout.strip()}")
+    return p.stdout
+
+
+def strip_ansi(s: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]|\x1b\]8;;[^\x1b]*\x1b\\", "", s)
+
+
+def copy_tree(src: Path, dst: Path, keep_git: bool) -> None:
+    def ignore(dirpath: str, names: list[str]) -> set[str]:
+        skip = {n for n in names if n in IGNORED_OUTPUTS}
+        if not keep_git:
+            skip |= {n for n in names if n == ".git"}
+        return skip
+
+    shutil.copytree(src, dst, ignore=ignore, symlinks=True)
+
+
+# -------------------------------------------------------------------------------- clone
+
+
+def clone_dir(repo: Repo) -> Path:
+    return HOME / "repos" / repo.name
+
+
+def ensure_clone(repo: Repo) -> Path:
+    d = clone_dir(repo)
+    if (d / ".git").exists():
+        head = git(["rev-parse", "HEAD"], d).strip()
+        if head == repo.commit:
+            return d
+        shutil.rmtree(d)
+    d.mkdir(parents=True)
+    git(["init", "-q"], d)
+    git(["remote", "add", "origin", repo.source], d)
+    git(["fetch", "-q", "--depth", "1", "origin", repo.commit], d)
+    git(["checkout", "-q", "FETCH_HEAD"], d)
+    return d
+
+
+# ----------------------------------------------------------------------------- baseline
+
+
+def baseline_dir(repo: Repo, tool: str) -> Path:
+    return HOME / "baselines" / tool / repo.name
+
+
+def tool_command(tool: str) -> list[str]:
+    if tool == "jk":
+        return ["jk", "test", "--no-progress", "--no-ansi"]
+    return [str(WRAPPERS / f"{tool}-results"), "test"]
+
+
+def run_tool(sandbox: Path, tool: str, timeout: int = 1800) -> tuple[int, str, int]:
+    env = {**os.environ, "RESULTS_QUIET": "1"}
+    return run(tool_command(tool), sandbox, timeout=timeout, env=env)
+
+
+def strip_original_build(root: Path, source_tool: str) -> None:
+    if source_tool == "mvn":
+        for p in root.rglob("pom.xml"):
+            p.unlink()
+        for name in ("mvnw", "mvnw.cmd"):
+            (root / name).unlink(missing_ok=True)
+        shutil.rmtree(root / ".mvn", ignore_errors=True)
+    else:
+        for p in list(root.rglob("build.gradle")) + list(root.rglob("build.gradle.kts")):
+            p.unlink()
+        for name in ("settings.gradle", "settings.gradle.kts", "gradlew", "gradlew.bat", "gradle.properties"):
+            (root / name).unlink(missing_ok=True)
+        for name in ("gradle", "buildSrc"):
+            shutil.rmtree(root / name, ignore_errors=True)
+
+
+def ensure_baseline(repo: Repo, tool: str, rebuild: bool = False) -> Path:
+    d = baseline_dir(repo, tool)
+    marker = d / "BASELINE.json"
+    if marker.exists() and not rebuild:
+        return d
+    clone = ensure_clone(repo)
+    if d.exists():
+        shutil.rmtree(d)
+    d.parent.mkdir(parents=True, exist_ok=True)
+    copy_tree(clone / repo.subdir, d, keep_git=False)
+    log_lines: list[str] = []
+    if tool == "jk":
+        code, out, _ = run(["jk", "import", repo.build, "--no-progress", "--no-ansi"], d, timeout=600)
+        log_lines.append(out)
+        if code != 0 or not (d / "jk.toml").exists():
+            raise RuntimeError(f"{repo.name}: jk import failed (exit {code}):\n{strip_ansi(out)}")
+        strip_original_build(d, repo.tool)
+    code, out, wall = run_tool(d, tool)
+    log_lines.append(out)
+    (d.parent / f"{repo.name}.baseline.log").write_text(strip_ansi("\n".join(log_lines)), encoding="utf-8")
+    if code != 0:
+        raise RuntimeError(f"{repo.name}/{tool}: baseline is not green (exit {code}); see {d.parent / (repo.name + '.baseline.log')}")
+    if tool == "jk" and not (d / "jk-lock.toml").exists():
+        raise RuntimeError(f"{repo.name}/jk: no jk-lock.toml after the green build")
+    tests = count_tests(d / "target" / "jk-results.md")
+    ignore = d / ".gitignore"
+    existing = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
+    ignore.write_text(existing.rstrip("\n") + "\n" + "\n".join(f"/{n}/" for n in sorted(IGNORED_OUTPUTS)) + "\n", encoding="utf-8")
+    git(["init", "-q"], d)
+    git(["add", "-A"], d)
+    git(["commit", "-q", "-m", "Baseline"], d)
+    marker.write_text(json.dumps({
+        "repo": repo.name, "tool": tool, "commit": repo.commit, "wall_ms": wall, "tests": tests,
+        "date": dt.date.today().isoformat(), "jk": jk_version(),
+    }, indent=1), encoding="utf-8")
+    return d
+
+
+def count_tests(results: Path) -> int:
+    if not results.exists():
+        return 0
+    m = re.search(r"^Tests: .*?\((\d+) total\)", results.read_text(encoding="utf-8", errors="replace"), re.M)
+    return int(m.group(1)) if m else 0
+
+
+def jk_version() -> str:
+    code, out, _ = run(["jk", "--version"], Path.cwd(), timeout=60)
+    return strip_ansi(out).strip() if code == 0 else "jk"
+
+
+# -------------------------------------------------------------------------- materialise
+
+
+def materialise(repo: Repo, tool: str, failure: str | None, out: Path) -> "Expectation | None":
+    base = ensure_baseline(repo, tool)
+    if out.exists():
+        if any(out.iterdir()):
+            raise RuntimeError(f"{out} is not empty")
+        out.rmdir()
+    copy_tree(base, out, keep_git=True)
+    if failure is None:
+        return None
+    return inject(out, tool, repo, failure)
+
+
+# ------------------------------------------------------------------------------ inject
+
+
+@dataclass
+class Expectation:
+    kind: str
+    files: list[str] = field(default_factory=list)
+    line: int = 0
+    tests: list[str] = field(default_factory=list)
+    pattern: str = ""
+
+
+def inject(sandbox: Path, tool: str, repo: Repo, failure: str) -> Expectation:
+    if failure not in repo.failures:
+        raise RuntimeError(f"{repo.name} has no {failure} scenario")
+    p = repo.failures[failure]
+    if failure == "compile-error":
+        return inject_compile_error(sandbox, p)
+    if failure == "failing-assertion":
+        return inject_failing_assertion(sandbox, p)
+    if failure == "missing-resource":
+        (sandbox / p["file"]).unlink()
+        return Expectation("test", tests=list(p["tests"]))
+    if failure in ("missing-dependency", "broken-annotation-processor"):
+        remove_dependency(sandbox, tool, p)
+        return Expectation("compile", files=list(p.get("files", ["src/main/**", "src/test/**"])), pattern=p.get("pattern", ""))
+    if failure == "version-conflict":
+        add_dependency(sandbox, tool, p)
+        kind = p.get("kind", "resolve")
+        if isinstance(kind, dict):
+            kind = kind.get(tool, "resolve")
+        return Expectation(kind, files=list(p.get("files", ["src/main/**", "src/test/**"])),
+                           tests=list(p.get("tests", [])), pattern=p.get("pattern", ""))
+    if failure == "wrong-java-release":
+        set_release(sandbox, tool, p)
+        return Expectation("compile", files=list(p.get("files", ["src/main/**"])),
+                           pattern=p.get("pattern", r"not supported in -source|use -source|preview feature|invalid source release|release version|-source \d+"))
+    raise RuntimeError(f"unknown failure {failure}")
+
+
+def edit_text(path: Path, fn) -> None:
+    text = path.read_text(encoding="utf-8")
+    new = fn(text)
+    if new == text:
+        raise RuntimeError(f"{path}: the edit changed nothing")
+    path.write_text(new, encoding="utf-8")
+
+
+def inject_compile_error(sandbox: Path, p: dict) -> Expectation:
+    path = sandbox / p["file"]
+    if "find" in p:
+        text = path.read_text(encoding="utf-8")
+        if text.count(p["find"]) != 1:
+            raise RuntimeError(f"{path}: expected exactly one occurrence of {p['find']!r}")
+        line = text[: text.index(p["find"])].count("\n") + 1
+        replace = p.get("replace", p["find"].rstrip(";") if p["find"].endswith(";") else None)
+        if replace is None:
+            raise RuntimeError(f"{path}: compile-error needs `replace` when `find` does not end with ';'")
+        path.write_text(text.replace(p["find"], replace), encoding="utf-8")
+        return Expectation("compile", files=[p["file"]], line=line)
+    else:
+        line_no = int(p["line"])
+
+        def fn(text: str) -> str:
+            lines = text.split("\n")
+            line = lines[line_no - 1]
+            if not line.rstrip().endswith(";"):
+                raise RuntimeError(f"{path}:{line_no} does not end with ';': {line!r}")
+            lines[line_no - 1] = line.rstrip()[:-1]
+            return "\n".join(lines)
+        edit_text(path, fn)
+    return Expectation("compile", files=[p["file"]], line=int(p.get("line", 0)))
+
+
+def inject_failing_assertion(sandbox: Path, p: dict) -> Expectation:
+    path = sandbox / p["file"]
+
+    def fn(text: str) -> str:
+        if text.count(p["find"]) != 1:
+            raise RuntimeError(f"{path}: expected exactly one occurrence of {p['find']!r}")
+        return text.replace(p["find"], p["replace"])
+    edit_text(path, fn)
+    return Expectation("test", tests=list(p["tests"]))
+
+
+def build_file(sandbox: Path, tool: str, p: dict) -> Path:
+    if tool == "jk":
+        return sandbox / p.get("jk", "jk.toml")
+    if tool == "mvn":
+        return sandbox / p.get("pom", "pom.xml")
+    if "gradle" in p:
+        return sandbox / p["gradle"]
+    for name in ("build.gradle.kts", "build.gradle"):
+        if (sandbox / name).exists():
+            return sandbox / name
+    raise RuntimeError(f"{sandbox}: no Gradle build file")
+
+
+def remove_dependency(sandbox: Path, tool: str, p: dict) -> None:
+    artifact = p["artifact"]
+    path = build_file(sandbox, tool, p)
+
+    def fn(text: str) -> str:
+        if tool == "mvn":
+            pattern = re.compile(
+                r"\n[ \t]*<dependency>(?:(?!</dependency>).)*?<artifactId>" + re.escape(artifact)
+                + r"</artifactId>(?:(?!</dependency>).)*?</dependency>[ \t]*", re.S)
+        elif tool == "gradle":
+            pattern = re.compile(
+                r"^[ \t]*\w+(?:\s*\(|\s)\s*(?:platform\()?['\"][^'\"\n]*:" + re.escape(artifact)
+                + r"(?::[^'\"\n]*)?['\"].*\n", re.M)
+        else:
+            pattern = re.compile(
+                r"^" + re.escape(p.get("handle", artifact)) + r"\s*=.*\n|^[\w.-]+\s*=\s*\{[^\n]*name\s*=\s*\""
+                + re.escape(artifact) + r"\"[^\n]*\n", re.M)
+        new, n = pattern.subn("", text)
+        if n == 0:
+            raise RuntimeError(f"{path}: no dependency on {artifact} to remove")
+        return new
+    edit_text(path, fn)
+
+
+def add_dependency(sandbox: Path, tool: str, p: dict) -> None:
+    group, artifact, version = p["coordinate"].split(":")
+    path = build_file(sandbox, tool, p)
+
+    def fn(text: str) -> str:
+        if tool == "mvn":
+            block = (f"\n        <dependency>\n            <groupId>{group}</groupId>\n"
+                     f"            <artifactId>{artifact}</artifactId>\n            <version>{version}</version>\n"
+                     f"        </dependency>")
+            return text.replace("<dependencies>", "<dependencies>" + block, 1)
+        if tool == "gradle":
+            if path.suffix == ".kts":
+                line = f'    implementation("{group}:{artifact}") {{ version {{ strictly("{version}") }} }}\n'
+            else:
+                line = f"    implementation('{group}:{artifact}') {{ version {{ strictly '{version}' }} }}\n"
+            return re.sub(r"^dependencies\s*\{\n", lambda m: m.group(0) + line, text, count=1, flags=re.M)
+        handle = artifact if not re.search(rf"^{re.escape(artifact)}\s*=", text, re.M) else artifact + "-pin"
+        line = f'{handle} = "{group}:{artifact}:={version}"\n'
+        if "[dependencies]" in text:
+            return text.replace("[dependencies]\n", "[dependencies]\n" + line, 1)
+        return text.rstrip("\n") + "\n\n[dependencies]\n" + line
+    edit_text(path, fn)
+
+
+def set_release(sandbox: Path, tool: str, p: dict) -> None:
+    n = int(p["release"])
+    path = build_file(sandbox, tool, p)
+
+    def fn(text: str) -> str:
+        if tool == "jk":
+            new, k = re.subn(r"^java\s*=\s*\d+", f"java = {n}", text, flags=re.M)
+            if k == 0:
+                new = re.sub(r"^(jdk\s*=.*\n)", lambda m: m.group(1) + f"java = {n}\n", text, count=1, flags=re.M)
+                if new == text:
+                    new = f"java = {n}\n" + text
+            return new
+        if tool == "mvn":
+            new, k = re.subn(
+                r"<(maven\.compiler\.(?:release|source|target)|java\.version|release)>\d+</\1>",
+                lambda m: f"<{m.group(1)}>{n}</{m.group(1)}>", text)
+            if k:
+                return new
+            prop = f"\n        <maven.compiler.release>{n}</maven.compiler.release>"
+            if "<properties>" in text:
+                return text.replace("<properties>", "<properties>" + prop, 1)
+            return text.replace("<dependencies>", f"<properties>{prop}\n    </properties>\n\n    <dependencies>", 1)
+        if path.suffix == ".kts":
+            tail = f"\ntasks.withType<JavaCompile>().configureEach {{ options.release.set({n}) }}\n"
+        else:
+            tail = f"\ntasks.withType(JavaCompile).configureEach {{ options.release = {n} }}\n"
+        return text.rstrip("\n") + "\n" + tail
+    edit_text(path, fn)
+
+
+# ------------------------------------------------------------------------------ verify
+
+
+@dataclass
+class Outcome:
+    repo: str
+    failure: str
+    tool: str
+    exit_code: int
+    wall_ms: int
+    ok: bool
+    named: str
+    note: str = ""
+
+
+def section(text: str, heading: str) -> str:
+    m = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+    return m.group(1) if m else ""
+
+
+def loci(text: str) -> list[tuple[str, int]]:
+    out = []
+    for m in re.finditer(r"^`([^`\n]+?):(\d+)(?::\d+)?`$", section(text, "Failures"), re.M):
+        out.append((m.group(1), int(m.group(2))))
+    return out
+
+
+def failing_classes(text: str) -> list[str]:
+    tests = section(text, "Tests")
+    return [m.group(1) for m in re.finditer(r"^#### (\S+)", tests, re.M)]
+
+
+def matches(path: str, patterns: list[str]) -> bool:
+    for pat in patterns:
+        if fnmatch.fnmatch(path, pat) or fnmatch.fnmatch(path, "*/" + pat) or fnmatch.fnmatch(Path(path).name, Path(pat).name) and "*" not in pat:
+            return True
+    return False
+
+
+def check(expect: Expectation, exit_code: int, results: str) -> tuple[bool, str, str]:
+    if exit_code == 0:
+        return False, "", "exit 0 — the injection did not break the build"
+    if not results:
+        return False, "", "no results file"
+    found = loci(results)
+    classes = failing_classes(results)
+    if expect.pattern and not re.search(expect.pattern, results):
+        return False, "", f"results do not match /{expect.pattern}/"
+    if expect.kind == "compile":
+        if not found:
+            return False, "", "no `file:line` locus under ## Failures"
+        stray = [f for f, _ in found if not matches(f, expect.files)]
+        if stray:
+            return False, "", f"errors outside the injected files: {sorted(set(stray))[:3]}"
+        if expect.line and not any(Path(f).name == Path(expect.files[0]).name and ln == expect.line for f, ln in found):
+            return False, "", f"no locus at {Path(expect.files[0]).name}:{expect.line}; saw {found[:3]}"
+        if classes:
+            return False, "", f"failing tests reported alongside compile errors: {classes[:3]}"
+        f, ln = found[0]
+        return True, f"{f}:{ln}", ""
+    if expect.kind == "test":
+        if found:
+            return False, "", f"compile errors reported for a test failure: {found[:3]}"
+        if not classes:
+            return False, "", "no failing test named under ## Tests"
+        stray = [c for c in classes if c not in expect.tests]
+        if stray:
+            return False, "", f"unexpected failing tests: {stray[:3]}"
+        return True, ", ".join(classes), ""
+    if expect.kind == "resolve":
+        if classes:
+            return False, "", f"failing tests reported for a resolve failure: {classes[:3]}"
+        if found:
+            return False, "", f"compile errors reported for a resolve failure: {found[:3]}"
+        if not re.search(expect.pattern or RESOLVE_PATTERN, results):
+            return False, "", "results do not name a dependency-resolution failure"
+        why = re.findall(r"^- (.*)$", results.split("## Files", 1)[0], re.M)
+        return True, why[0] if why else "resolve", ""
+    return False, "", f"unknown expectation {expect.kind}"
+
+
+def revert(sandbox: Path) -> None:
+    """Back to the baseline tree with no build outputs, the state `--out` materialises.
+
+    Outputs go too: Maven skips recompilation when only the pom changed and would run the
+    previous classes against a test classpath that still carries the removed dependency.
+    """
+    git(["checkout", "-q", "--", "."], sandbox)
+    git(["clean", "-qfdx"], sandbox)
+    dirty = git(["status", "--porcelain"], sandbox).strip()
+    if dirty:
+        raise RuntimeError(f"{sandbox}: tree still dirty after revert:\n{dirty}")
+
+
+def verify_sandbox(repo: Repo, tool: str, failures: list[str], log_dir: Path) -> list[Outcome]:
+    sandbox = HOME / "verify" / tool / repo.name
+    if sandbox.exists():
+        shutil.rmtree(sandbox)
+    sandbox.parent.mkdir(parents=True, exist_ok=True)
+    materialise(repo, tool, None, sandbox)
+    outcomes: list[Outcome] = []
+    for failure in failures:
+        try:
+            expect = inject(sandbox, tool, repo, failure)
+        except Exception as e:  # a scenario that cannot be injected is a red row, not a crash
+            outcomes.append(Outcome(repo.name, failure, tool, -1, 0, False, "", f"inject: {e}"))
+            revert(sandbox)
+            continue
+        code, out, wall = run_tool(sandbox, tool)
+        (log_dir / f"{repo.name}.{failure}.{tool}.log").write_text(strip_ansi(out), encoding="utf-8")
+        results_path = sandbox / "target" / "jk-results.md"
+        results = results_path.read_text(encoding="utf-8", errors="replace") if results_path.exists() else ""
+        (log_dir / f"{repo.name}.{failure}.{tool}.results.md").write_text(results, encoding="utf-8")
+        ok, named, note = check(expect, code, results)
+        outcomes.append(Outcome(repo.name, failure, tool, code, wall, ok, named, note))
+        revert(sandbox)
+    code, out, wall = run_tool(sandbox, tool)
+    (log_dir / f"{repo.name}.green-after-revert.{tool}.log").write_text(strip_ansi(out), encoding="utf-8")
+    outcomes.append(Outcome(repo.name, "green-after-revert", tool, code, wall, code == 0, "", "" if code == 0 else f"exit {code}"))
+    return outcomes
+
+
+def verify(repos: dict[str, Repo], tools: list[str], only_repo: str | None, only_failure: str | None,
+           jobs: int, report: Path | None) -> int:
+    log_dir = HOME / "verify" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    work = []
+    for repo in repos.values():
+        if only_repo and repo.name != only_repo:
+            continue
+        for tool in tools:
+            if tool not in repo.tools:
+                continue
+            failures = [f for f in repo.failures_for(tool) if not only_failure or f == only_failure]
+            if failures:
+                work.append((repo, tool, failures))
+    outcomes: list[Outcome] = []
+    started = time.time()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = {pool.submit(verify_sandbox, repo, tool, failures, log_dir): (repo, tool) for repo, tool, failures in work}
+        for fut in concurrent.futures.as_completed(futures):
+            repo, tool = futures[fut]
+            try:
+                rows = fut.result()
+            except Exception as e:
+                rows = [Outcome(repo.name, "*", tool, -1, 0, False, "", str(e).split("\n", 1)[0])]
+            outcomes.extend(rows)
+            for row in rows:
+                mark = "ok  " if row.ok else "FAIL"
+                print(f"{mark} {row.repo:28} {row.failure:28} {row.tool:6} exit={row.exit_code:<3} {row.wall_ms / 1000:6.1f}s  {row.named or row.note}", flush=True)
+    if report and report.exists():
+        # A targeted re-run replaces its own rows and keeps the rest of the table.
+        merged = {(o.repo, o.failure, o.tool): o for o in previous_outcomes(report) if declared(repos, o)}
+        merged.update({(o.repo, o.failure, o.tool): o for o in outcomes})
+        outcomes = list(merged.values())
+    order = list(repos)
+    outcomes.sort(key=lambda o: (order.index(o.repo) if o.repo in order else len(order),
+                                 o.failure == "green-after-revert", o.failure, TOOLS.index(o.tool)))
+    text = render_report(repos, tools, outcomes, int(time.time() - started))
+    if report:
+        report.write_text(text, encoding="utf-8")
+        print(f"wrote {report}")
+    else:
+        print(text)
+    return 0 if all(o.ok for o in outcomes) else 1
+
+
+ROW = re.compile(r"^\| (?P<repo>[^|]+?) \| (?P<failure>[^|]+?) \| (?P<tool>jk|mvn|gradle) \| (?P<exit>-?\d+) \| (?P<wall>[\d.]+)s \| (?P<verdict>.*?) \| (?P<named>.*) \|$")
+
+
+def declared(repos: dict[str, Repo], o: Outcome) -> bool:
+    repo = repos.get(o.repo)
+    if repo is None or o.tool not in repo.tools:
+        return False
+    return o.failure == "green-after-revert" or o.failure in repo.failures_for(o.tool)
+
+
+def previous_outcomes(report: Path) -> list[Outcome]:
+    out: list[Outcome] = []
+    for line in report.read_text(encoding="utf-8").splitlines():
+        m = ROW.match(line)
+        if not m:
+            continue
+        ok = m.group("verdict") == "yes"
+        note = "" if ok else m.group("verdict").removeprefix("**no** — ")
+        out.append(Outcome(m.group("repo"), m.group("failure"), m.group("tool"), int(m.group("exit")),
+                           int(float(m.group("wall")) * 1000), ok, m.group("named").replace("\\|", "|"), note))
+    return out
+
+
+def render_report(repos: dict[str, Repo], tools: list[str], outcomes: list[Outcome], elapsed_s: int) -> str:
+    scenarios = [o for o in outcomes if o.failure not in ("green-after-revert", "*")]
+    greens = [o for o in outcomes if o.failure == "green-after-revert"]
+    crashes = [o for o in outcomes if o.failure == "*"]
+    ok = sum(1 for o in scenarios if o.ok)
+    lines = [
+        "# Scenario verification",
+        "",
+        f"Date: {dt.date.today().isoformat()} · {jk_version()} · tools: {', '.join(tools)} · last run {elapsed_s // 60}m {elapsed_s % 60}s",
+        "",
+        f"Every (repo × failure) is injected into a fresh copy of the tool's green baseline, the tool is run "
+        f"(`jk test`, `mvn-results test`, `gradle-results test`), and the resulting `target/jk-results.md` must "
+        f"(a) come from a non-zero exit, (b) name the injected failure — the edited file and line for a compile "
+        f"failure, the failing test class for a test failure — and (c) name nothing else. The tree is then reverted "
+        f"and checked clean, and after the last failure the tool runs once more and must be green.",
+        "",
+        f"**{ok} / {len(scenarios)} scenario runs verified**, {sum(1 for g in greens if g.ok)} / {len(greens)} sandboxes green after revert"
+        + (f", {len(crashes)} sandboxes failed to build" if crashes else "") + ".",
+        "",
+        "| Repo | Failure | Tool | Exit | Wall | Verified | Results named |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for o in outcomes:
+        verdict = "yes" if o.ok else f"**no** — {o.note}"
+        named = o.named.replace("|", "\\|")
+        lines.append(f"| {o.repo} | {o.failure} | {o.tool} | {o.exit_code} | {o.wall_ms / 1000:.1f}s | {verdict} | {named} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
+# -------------------------------------------------------------------------------- list
+
+
+def list_matrix(repos: dict[str, Repo]) -> None:
+    classes = [c for c in FAILURE_CLASSES if any(c in r.failures for r in repos.values())]
+    print("repo".ljust(28) + "tools            " + "  ".join(c[:10].ljust(10) for c in classes))
+    scenarios = runs = 0
+    for r in repos.values():
+        cells = []
+        for c in classes:
+            if c in r.failures:
+                tools = r.failures[c].get("tools", r.tools)
+                cells.append(("x" if len(tools) == len(r.tools) else "".join(t[0] for t in tools)).ljust(10))
+                scenarios += 1
+                runs += len(tools)
+            else:
+                cells.append("·".ljust(10))
+        print(f"{r.name:28}{'+'.join(r.tools):17}" + "  ".join(cells))
+    print(f"\n{len(repos)} repos · {scenarios} (repo × failure) scenarios · {runs} (scenario × tool) runs")
+
+
+# -------------------------------------------------------------------------------- main
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0], formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__.split("\n\n", 1)[1])
+    ap.add_argument("--list", action="store_true", help="print the repo × failure matrix")
+    ap.add_argument("--clone", action="store_true", help="fetch the pinned commit of every repo (or --repo)")
+    ap.add_argument("--baseline", action="store_true", help="build the green baseline for --tool (or all tools)")
+    ap.add_argument("--rebuild", action="store_true", help="with --baseline: rebuild even when one exists")
+    ap.add_argument("--verify", action="store_true", help="inject every scenario, run every tool, check the results file, revert")
+    ap.add_argument("--tool", choices=TOOLS)
+    ap.add_argument("--repo")
+    ap.add_argument("--failure", choices=FAILURE_CLASSES)
+    ap.add_argument("--out", type=Path, help="sandbox directory to materialise into (must not exist or be empty)")
+    ap.add_argument("--jobs", type=int, default=2, help="sandboxes built in parallel under --verify (default 2)")
+    ap.add_argument("--report", type=Path, help="with --verify: write the markdown table here instead of stdout")
+    ns = ap.parse_args()
+    repos = load_config()
+    if ns.repo and ns.repo not in repos:
+        sys.exit(f"unknown repo {ns.repo}; known: {', '.join(repos)}")
+    if ns.list:
+        list_matrix(repos)
+        return 0
+    if ns.clone:
+        for r in repos.values():
+            if not ns.repo or r.name == ns.repo:
+                print(f"{r.name:28} {ensure_clone(r)}")
+        return 0
+    tools = [ns.tool] if ns.tool else list(TOOLS)
+    if ns.baseline:
+        rc = 0
+        for r in repos.values():
+            if ns.repo and r.name != ns.repo:
+                continue
+            for tool in tools:
+                if tool not in r.tools:
+                    continue
+                try:
+                    d = ensure_baseline(r, tool, rebuild=ns.rebuild)
+                    info = json.loads((d / "BASELINE.json").read_text())
+                    print(f"ok   {r.name:28} {tool:6} {info['wall_ms'] / 1000:6.1f}s  {info['tests']} tests")
+                except Exception as e:
+                    rc = 1
+                    print(f"FAIL {r.name:28} {tool:6} {str(e).splitlines()[0]}")
+        return rc
+    if ns.verify:
+        return verify(repos, tools, ns.repo, ns.failure, ns.jobs, ns.report)
+    if not (ns.tool and ns.repo and ns.out):
+        ap.error("materialising needs --tool, --repo and --out (add --failure for a broken sandbox)")
+    if ns.tool not in repos[ns.repo].tools:
+        sys.exit(f"{ns.repo} has no {ns.tool} build; its tools are {', '.join(repos[ns.repo].tools)}")
+    if ns.failure and ns.tool not in repos[ns.repo].failures.get(ns.failure, {}).get("tools", repos[ns.repo].tools):
+        sys.exit(f"{ns.repo}: {ns.failure} is not defined for {ns.tool}")
+    expect = materialise(repos[ns.repo], ns.tool, ns.failure, ns.out.resolve())
+    print(f"sandbox: {ns.out.resolve()}")
+    print(f"run:     cd {ns.out.resolve()} && {' '.join(tool_command(ns.tool))}")
+    if expect:
+        print(f"expect:  {expect.kind} failure — " + (f"{expect.files[0]}:{expect.line}" if expect.line else ", ".join(expect.files or expect.tests)))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except RuntimeError as e:
+        sys.exit(f"scenario: {e}")

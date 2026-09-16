@@ -1,0 +1,445 @@
+# The agent-loop corpus: public repositories pinned by commit, each green at baseline under
+# every tool it lists, and the failures that can be injected into each. `scenario --list`
+# prints the matrix; `scenario --verify` proves it. README.md explains the selection.
+#
+# Repo fields: source, commit, subdir (project root inside the clone), tool (the build the
+# repo ships and `jk import` reads), build (that file), tools (which of jk/mvn/gradle have a
+# green baseline — mvn only where the repo also ships a pom.xml), modules, language.
+#
+# Failure tables, one per class the repo supports:
+#   compile-error        file + find (a statement ending in `;`, the `;` is removed) → that file:line
+#   failing-assertion    file + find/replace in a test + tests (classes expected to fail)
+#   missing-dependency   artifact removed from the tool's build file → compile errors in `files`
+#   missing-resource     file deleted → `tests` fail
+#   version-conflict     coordinate pinned exactly (Gradle: strictly) → `kind` per tool
+# A failure may carry `tools = [...]` to restrict itself to a subset of the repo's tools.
+
+[repos.gs-rest-service]
+source = "https://github.com/spring-guides/gs-rest-service"
+commit = "3f4cef01152596c19bc4d37939409358812b1421"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-rest-service.failures.compile-error]
+file = "src/main/java/com/example/restservice/RestServiceApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-rest-service.failures.failing-assertion]
+file = "src/test/java/com/example/restservice/GreetingControllerTests.java"
+find = 'isEqualTo("Hello, World!")'
+replace = 'isEqualTo("Hello, World?")'
+tests = ["com.example.restservice.GreetingControllerTests"]
+
+[repos.gs-rest-service.failures.missing-dependency]
+artifact = "spring-boot-starter-webmvc"
+
+[repos.gs-rest-service.failures.version-conflict]
+coordinate = "org.springframework:spring-core:6.0.0"
+kind = { jk = "resolve", gradle = "test", mvn = "test" }
+tests = ["com.example.restservice.GreetingControllerTests"]
+
+[repos.gs-spring-boot]
+source = "https://github.com/spring-guides/gs-spring-boot"
+commit = "cc0ca7c0c89513c75902de8a9afd1fc2718acf3b"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-spring-boot.failures.compile-error]
+file = "src/main/java/com/example/springboot/Application.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-spring-boot.failures.failing-assertion]
+file = "src/test/java/com/example/springboot/HelloControllerIntegrationTest.java"
+find = 'isEqualTo("Greetings from Spring Boot!")'
+replace = 'isEqualTo("Greetings from Spring!")'
+tests = ["com.example.springboot.HelloControllerIntegrationTest"]
+
+[repos.gs-spring-boot.failures.missing-dependency]
+artifact = "spring-boot-starter-webmvc"
+
+[repos.gs-spring-boot.failures.version-conflict]
+coordinate = "org.springframework:spring-core:6.0.0"
+kind = { jk = "resolve", gradle = "test", mvn = "test" }
+tests = ["com.example.springboot.HelloControllerIntegrationTest", "com.example.springboot.HelloControllerTest"]
+
+[repos.gs-accessing-data-jpa]
+source = "https://github.com/spring-guides/gs-accessing-data-jpa"
+commit = "ef48947528dba9021776282e12299e5298e66bca"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-accessing-data-jpa.failures.compile-error]
+file = "src/main/java/com/example/accessingdatajpa/AccessingDataJpaApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-accessing-data-jpa.failures.failing-assertion]
+file = "src/test/java/com/example/accessingdatajpa/CustomerRepositoryTests.java"
+find = "containsOnly(customer.getLastName())"
+replace = 'containsOnly("nobody")'
+tests = ["com.example.accessingdatajpa.CustomerRepositoryTests"]
+
+[repos.gs-accessing-data-jpa.failures.missing-dependency]
+artifact = "spring-boot-starter-data-jpa"
+
+[repos.gs-accessing-data-r2dbc]
+source = "https://github.com/spring-guides/gs-accessing-data-r2dbc"
+commit = "98c42e0f7bfa2c62a0e9ccf88e240b12e27b0328"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-accessing-data-r2dbc.failures.compile-error]
+file = "src/main/java/com/example/accessingdatar2dbc/AccessingDataR2dbcApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-accessing-data-r2dbc.failures.failing-assertion]
+file = "src/test/java/com/example/accessingdatar2dbc/CustomerRepositoryTests.java"
+find = 'isEqualTo("first")'
+replace = 'isEqualTo("First")'
+tests = ["com.example.accessingdatar2dbc.CustomerRepositoryTests"]
+
+[repos.gs-accessing-data-r2dbc.failures.missing-dependency]
+artifact = "spring-boot-starter-data-r2dbc"
+
+[repos.gs-accessing-data-r2dbc.failures.missing-resource]
+file = "src/main/resources/schema.sql"
+tests = ["com.example.accessingdatar2dbc.CustomerRepositoryTests"]
+
+[repos.gs-accessing-data-rest]
+source = "https://github.com/spring-guides/gs-accessing-data-rest"
+commit = "561c2d79bf1d8ac49db38fa85ee5acd2fc1b6a5b"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-accessing-data-rest.failures.compile-error]
+file = "src/main/java/com/example/accessingdatarest/AccessingDataRestApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-accessing-data-rest.failures.failing-assertion]
+file = "src/test/java/com/example/accessingdatarest/AccessingDataRestApplicationTests.java"
+find = 'jsonPath("$._links.people").exists()'
+replace = 'jsonPath("$._links.nobody").exists()'
+tests = ["com.example.accessingdatarest.AccessingDataRestApplicationTests"]
+
+[repos.gs-accessing-data-rest.failures.missing-dependency]
+artifact = "spring-boot-starter-data-jpa"
+
+[repos.gs-actuator-service]
+source = "https://github.com/spring-guides/gs-actuator-service"
+commit = "68f52bb7282f46aa39434199fa825d26ae180dc1"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-actuator-service.failures.compile-error]
+file = "src/main/java/com/example/actuatorservice/HelloWorldApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-actuator-service.failures.failing-assertion]
+file = "src/test/java/com/example/actuatorservice/ActuatorServiceApplicationTests.java"
+find = 'uri("/hello-world").exchange().expectStatus().isOk()'
+replace = 'uri("/hello-world").exchange().expectStatus().isNotFound()'
+tests = ["com.example.actuatorservice.ActuatorServiceApplicationTests"]
+
+[repos.gs-actuator-service.failures.missing-dependency]
+artifact = "spring-boot-starter-webmvc"
+
+[repos.gs-batch-processing]
+source = "https://github.com/spring-guides/gs-batch-processing"
+commit = "77d5a21fef8cbd8e2bb1e34c84e4a6f66ed69aba"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-batch-processing.failures.compile-error]
+file = "src/main/java/com/example/batchprocessing/BatchProcessingApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-batch-processing.failures.failing-assertion]
+file = "src/test/java/com/example/batchprocessing/BatchConfigurationTest.java"
+find = "assertEquals(ExitStatus.COMPLETED, jobExecution.getExitStatus())"
+replace = "assertEquals(ExitStatus.FAILED, jobExecution.getExitStatus())"
+tests = ["com.example.batchprocessing.BatchConfigurationTest"]
+
+[repos.gs-batch-processing.failures.missing-dependency]
+artifact = "spring-boot-starter-batch-jdbc"
+
+[repos.gs-batch-processing.failures.missing-resource]
+file = "src/main/resources/sample-data.csv"
+tests = ["com.example.batchprocessing.BatchConfigurationTest"]
+
+[repos.gs-consuming-rest]
+source = "https://github.com/spring-guides/gs-consuming-rest"
+commit = "650393739030479bdc3b045248ceea6bd3f7a51a"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-consuming-rest.failures.compile-error]
+file = "src/main/java/com/example/consumingrest/ConsumingRestApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-consuming-rest.failures.missing-dependency]
+artifact = "spring-boot-starter-restclient"
+
+[repos.gs-graphql-server]
+source = "https://github.com/spring-guides/gs-graphql-server"
+commit = "a5a5f9db0a5040db31905e9e562e5a8ffc168ae2"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle"]
+
+[repos.gs-graphql-server.failures.compile-error]
+file = "src/main/java/com/example/graphqlserver/GraphqlServerApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-graphql-server.failures.failing-assertion]
+file = "src/test/java/com/example/graphqlserver/BookControllerTests.java"
+find = '"name": "Effective Java",'
+replace = '"name": "Ineffective Java",'
+tests = ["com.example.graphqlserver.BookControllerTests"]
+
+[repos.gs-graphql-server.failures.missing-dependency]
+artifact = "spring-boot-starter-graphql"
+
+[repos.gs-graphql-server.failures.missing-resource]
+file = "src/test/resources/graphql-test/bookDetails.graphql"
+tests = ["com.example.graphqlserver.BookControllerTests"]
+
+[repos.gs-handling-form-submission]
+source = "https://github.com/spring-guides/gs-handling-form-submission"
+commit = "a3c1f1ad0a560e7d4c47b99d8ae2621f479f7d33"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle"]
+
+[repos.gs-handling-form-submission.failures.compile-error]
+file = "src/main/java/com/example/handlingformsubmission/HandlingFormSubmissionApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-handling-form-submission.failures.failing-assertion]
+file = "src/test/java/com/example/handlingformsubmission/HandlingFormSubmissionApplicationTest.java"
+find = 'containsString("Form")'
+replace = 'containsString("Forms")'
+tests = ["com.example.handlingformsubmission.HandlingFormSubmissionApplicationTest"]
+
+[repos.gs-handling-form-submission.failures.missing-dependency]
+artifact = "spring-boot-starter-web"
+
+[repos.gs-handling-form-submission.failures.missing-resource]
+file = "src/main/resources/templates/greeting.html"
+tests = ["com.example.handlingformsubmission.HandlingFormSubmissionApplicationTest"]
+
+[repos.gs-reactive-rest-service]
+source = "https://github.com/spring-guides/gs-reactive-rest-service"
+commit = "a6f4ff0c651545a14ff5d1f731fde9a8d136e4d5"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-reactive-rest-service.failures.compile-error]
+file = "src/main/java/com/example/reactivewebservice/ReactiveWebServiceApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-reactive-rest-service.failures.failing-assertion]
+file = "src/test/java/com/example/reactivewebservice/GreetingRouterTest.java"
+find = 'isEqualTo("Hello, Spring!")'
+replace = 'isEqualTo("Hello, Spring?")'
+tests = ["com.example.reactivewebservice.GreetingRouterTest"]
+
+[repos.gs-securing-web]
+source = "https://github.com/spring-guides/gs-securing-web"
+commit = "38b43f1d209b880e234b1082f49973a9e97639b4"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle"]
+
+[repos.gs-securing-web.failures.compile-error]
+file = "src/main/java/com/example/securingweb/SecuringWebApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-securing-web.failures.failing-assertion]
+file = "src/test/java/com/example/securingweb/SecuringWebApplicationTests.java"
+find = 'redirectedUrl("/login")'
+replace = 'redirectedUrl("/signin")'
+tests = ["com.example.securingweb.SecuringWebApplicationTests"]
+
+[repos.gs-securing-web.failures.missing-dependency]
+artifact = "spring-boot-starter-webmvc"
+
+[repos.gs-securing-web.failures.missing-resource]
+file = "src/main/resources/templates/home.html"
+tests = ["com.example.securingweb.SecuringWebApplicationTests"]
+
+[repos.gs-serving-web-content]
+source = "https://github.com/spring-guides/gs-serving-web-content"
+commit = "a938bc718a9a8048eb681cb7a4a60a084508cf44"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle"]
+
+[repos.gs-serving-web-content.failures.compile-error]
+file = "src/main/java/com/example/servingwebcontent/ServingWebContentApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-serving-web-content.failures.failing-assertion]
+file = "src/test/java/com/example/servingwebcontent/ServingWebContentApplicationTest.java"
+find = 'containsString("Hello, World!")'
+replace = 'containsString("Hello, Word!")'
+tests = ["com.example.servingwebcontent.ServingWebContentApplicationTest"]
+
+[repos.gs-serving-web-content.failures.missing-resource]
+file = "src/main/resources/templates/greeting.html"
+tests = ["com.example.servingwebcontent.ServingWebContentApplicationTest"]
+
+[repos.gs-testing-web]
+source = "https://github.com/spring-guides/gs-testing-web"
+commit = "0fa8dd2e860953a625d60650060e1bf6f4e2242b"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-testing-web.failures.compile-error]
+file = "src/main/java/com/example/testingweb/TestingWebApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-testing-web.failures.failing-assertion]
+file = "src/test/java/com/example/testingweb/WebMockTest.java"
+find = 'isEqualTo("Hello, Mock")'
+replace = 'isEqualTo("Hello, Mockito")'
+tests = ["com.example.testingweb.WebMockTest"]
+
+[repos.gs-uploading-files]
+source = "https://github.com/spring-guides/gs-uploading-files"
+commit = "d3f432cac961edfd39a9be157f2cdc258ed1ac65"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-uploading-files.failures.compile-error]
+file = "src/main/java/com/example/uploadingfiles/UploadingFilesApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-uploading-files.failures.failing-assertion]
+file = "src/test/java/com/example/uploadingfiles/storage/FileSystemStorageServiceTests.java"
+find = 'assertThat(service.load("foo.txt")).doesNotExist();'
+replace = 'assertThat(service.load("foo.txt")).exists();'
+tests = ["com.example.uploadingfiles.storage.FileSystemStorageServiceTests"]
+
+[repos.gs-uploading-files.failures.missing-dependency]
+artifact = "spring-boot-starter-webmvc"
+
+[repos.gs-uploading-files.failures.missing-resource]
+file = "src/main/resources/templates/uploadForm.html"
+tests = ["com.example.uploadingfiles.FileUploadTests", "com.example.uploadingfiles.FileUploadIntegrationTests"]
+tools = ["jk", "gradle"]
+
+[repos.gs-validating-form-input]
+source = "https://github.com/spring-guides/gs-validating-form-input"
+commit = "1bde007f44727f3c21a9882f1c3435ea51de95ad"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-validating-form-input.failures.compile-error]
+file = "src/main/java/com/example/validatingforminput/ValidatingFormInputApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-validating-form-input.failures.missing-dependency]
+artifact = "spring-boot-starter-validation"
+
+[repos.gs-validating-form-input.failures.missing-resource]
+file = "src/main/resources/templates/form.html"
+tests = ["com.example.validatingforminput.ApplicationMockMvcTests"]
+tools = ["jk", "gradle"]
+
+[repos.gs-rest-hateoas]
+source = "https://github.com/spring-guides/gs-rest-hateoas"
+commit = "7207301476baa8263cb1a4a18b921daed52b5762"
+subdir = "complete"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle", "mvn"]
+
+[repos.gs-rest-hateoas.failures.compile-error]
+file = "src/main/java/com/example/resthateoas/RestHateoasApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-rest-hateoas.failures.failing-assertion]
+file = "src/test/java/com/example/resthateoas/GreetingMockMvcTests.java"
+find = '.value("Hello, World!")'
+replace = '.value("Hello, World?")'
+tests = ["com.example.resthateoas.GreetingMockMvcTests"]
+
+[repos.gs-rest-hateoas.failures.missing-dependency]
+artifact = "spring-boot-starter-hateoas"
+
+[repos.gs-scheduling-tasks]
+source = "https://github.com/spring-guides/gs-scheduling-tasks"
+commit = "f60278baec6aff7d008fc364fc3cfdbadb9fa49b"
+subdir = "."
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle"]
+
+[repos.gs-scheduling-tasks.failures.compile-error]
+file = "src/main/java/com/example/schedulingtasks/SchedulingTasksApplication.java"
+find = "import org.springframework.boot.SpringApplication;"
+
+[repos.gs-scheduling-tasks.failures.failing-assertion]
+file = "src/test/java/com/example/schedulingtasks/SchedulingTasksApplicationTest.java"
+find = "assertThat(tasks).isNotNull();"
+replace = "assertThat(tasks).isNull();"
+tests = ["com.example.schedulingtasks.SchedulingTasksApplicationTest"]
+
+[repos.gs-scheduling-tasks.failures.missing-dependency]
+artifact = "spring-boot-starter"
+
+[repos.junit-starter-gradle]
+source = "https://github.com/junit-team/junit-examples"
+commit = "bb7eb03dc51dc8ea9ddebe8022e4362d0d427174"
+subdir = "junit-jupiter-starter-gradle"
+tool = "gradle"
+build = "build.gradle"
+tools = ["jk", "gradle"]
+
+[repos.junit-starter-gradle.failures.compile-error]
+file = "src/main/java/com/example/project/Calculator.java"
+find = "return a + b;"
+
+[repos.junit-starter-gradle.failures.failing-assertion]
+file = "src/test/java/com/example/project/CalculatorTests.java"
+find = 'assertEquals(2, calculator.add(1, 1), "1 + 1 should equal 2");'
+replace = 'assertEquals(3, calculator.add(1, 1), "1 + 1 should equal 2");'
+tests = ["com.example.project.CalculatorTests"]
+
+[repos.junit-starter-gradle.failures.missing-dependency]
+artifact = "junit-jupiter"
+files = ["src/test/**"]
+
+[repos.junit-starter-gradle.failures.version-conflict]
+coordinate = "org.junit.jupiter:junit-jupiter-api:5.0.0"
+# Both tools take the pin over the platform's constraint, so the conflict surfaces when the
+# JUnit engine fails to start; the results must say so, since no test can be named.
+kind = "resolve"
+pattern = "(?i)failed to discover tests|cannot create launcher|discovery exited|junit-jupiter-api|cannot resolve|version constraint"
