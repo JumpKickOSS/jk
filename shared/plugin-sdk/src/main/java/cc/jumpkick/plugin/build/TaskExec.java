@@ -94,6 +94,14 @@ public interface TaskExec {
     /** Progress label surfaced in the build UI. */
     void label(String text);
 
+    /**
+     * One located finding from the tool this step ran, reported as the step's own diagnostic:
+     * {@code severity} is {@code error} or {@code warning}; {@code file} is module-relative or
+     * absolute, null when the finding has no location; {@code line}/{@code col} are 1-based, 0 when
+     * unknown. An error diagnostic does not fail the step by itself — a failing body throws.
+     */
+    void diagnostic(String severity, @Nullable String file, int line, int col, String message);
+
     /** A {@code bin/<name>} fork off {@link #javaHome()} ({@code java}, {@code javac}, …). */
     default ToolRun tool(String bin) {
         return new ToolRun(javaHome(), bin);

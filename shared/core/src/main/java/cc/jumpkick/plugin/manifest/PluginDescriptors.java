@@ -94,7 +94,26 @@ public final class PluginDescriptors {
                     + ": [scaffold] is not supported; ship Giter8 trees under templates/<lang>/<framework>/<name>.g8/");
         }
 
-        PluginDescriptor.Contributions contributions = parseContributions(result, schema.keySet(), displayPath);
+        // [entries]: every [<table>.<name>] sub-table of the owned table is one entry of the
+        // named sub-schema — a table of things ([generate.api], [generate.grammar]) rather than a
+        // table of keys.
+        String entrySchema = null;
+        TomlTable entries = result.getTable("entries");
+        if (entries != null) {
+            entrySchema = entries.getString("schema");
+            if (entrySchema == null || !subSchemas.containsKey(entrySchema)) {
+                throw new JkBuildParseException(
+                        displayPath + ".entries requires schema = \"<name>\" naming a declared [sub-schema.<name>]");
+            }
+            if (subSchemas.get(entrySchema).containsKey(Interpolation.ENTRY_NAME)) {
+                throw new JkBuildParseException(displayPath + ".sub-schema." + entrySchema + " declares `"
+                        + Interpolation.ENTRY_NAME + "`, which is the entry's own table name (${entry.name})");
+            }
+        }
+        Set<String> entryKeys = entrySchema == null ? null : subSchemas.get(entrySchema).keySet();
+
+        PluginDescriptor.Contributions contributions =
+                parseContributions(result, schema.keySet(), entryKeys, displayPath);
         PluginDescriptor.Code code = parseCode(result, displayPath);
         PluginDescriptor.Packaging packaging = parsePackaging(result, displayPath);
         List<PluginDescriptor.GradleImport> gradleImports = parseGradleImports(result, displayPath);
@@ -109,7 +128,8 @@ public final class PluginDescriptors {
                 packaging,
                 gradleImports,
                 subSchemas,
-                subTables);
+                subTables,
+                entrySchema);
     }
 
     /** Typed schema keys from one table of {@code key = { type = "…", … }} specs. */
@@ -240,7 +260,7 @@ public final class PluginDescriptors {
     // ---- [[contribute.*]] — the declarative layer (P2) --------------------------------------
 
     private static PluginDescriptor.Contributions parseContributions(
-            TomlParseResult result, Set<String> schemaKeys, String displayPath) {
+            TomlParseResult result, Set<String> schemaKeys, @Nullable Set<String> entryKeys, String displayPath) {
         TomlTable contribute = result.getTable("contribute");
         if (contribute == null) return PluginDescriptor.Contributions.NONE;
         // Table by table, in manifest order, so the first malformed table is the one reported.
@@ -253,9 +273,9 @@ public final class PluginDescriptors {
         List<PluginDescriptor.PackagerDependency> packagerDeps =
                 parsePackagerDependencies(contribute, schemaKeys, displayPath);
         List<PluginDescriptor.StepDependency> stepDeps =
-                parseToolDependencies(contribute, "step-dependency", schemaKeys, displayPath);
+                parseToolDependencies(contribute, "step-dependency", schemaKeys, entryKeys, displayPath);
         List<PluginDescriptor.StepDependency> commandDeps =
-                parseToolDependencies(contribute, "command-dependency", schemaKeys, displayPath);
+                parseToolDependencies(contribute, "command-dependency", schemaKeys, null, displayPath);
         for (PluginDescriptor.StepDependency cd : commandDeps) {
             if (stepDeps.stream().anyMatch(sd -> sd.artifact().equals(cd.artifact()))) {
                 throw new JkBuildParseException(displayPath + ".contribute.command-dependency: `" + cd.artifact()
@@ -444,11 +464,23 @@ public final class PluginDescriptors {
      * the lane they land in differs.
      */
     private static List<PluginDescriptor.StepDependency> parseToolDependencies(
-            TomlTable contribute, String key, Set<String> schemaKeys, String displayPath) {
+            TomlTable contribute,
+            String key,
+            Set<String> schemaKeys,
+            @Nullable Set<String> manifestEntryKeys,
+            String displayPath) {
         List<PluginDescriptor.StepDependency> deps = new ArrayList<>();
         for (TomlTable t : tableArray(contribute, key, displayPath)) {
             String where = displayPath + ".contribute." + key;
+            // per-entry: one tool per [entries] sub-table, its fields reachable as ${entry.<key>}.
+            boolean perEntry = Boolean.TRUE.equals(t.getBoolean("per-entry"));
+            if (perEntry && manifestEntryKeys == null) {
+                throw new JkBuildParseException(where + ": per-entry needs an [entries] table on this manifest"
+                        + (key.equals("step-dependency") ? "" : " and applies to a [[contribute.step-dependency]] only"));
+            }
+            Set<String> entryKeys = perEntry ? manifestEntryKeys : null;
             String artifact = requireString(t, "artifact", where);
+            Interpolation.validate(artifact, schemaKeys, entryKeys, where + ".artifact");
             String coordinate = t.getString("coordinate");
             String sdkComponent = t.getString("sdk-component");
             String sdkPath = t.getString("sdk-path");
@@ -456,7 +488,7 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(where + " needs exactly one of `coordinate` (a Maven artifact) or"
                         + " `sdk-component` (a provisioned SDK component)");
             }
-            if (coordinate != null) Interpolation.validate(coordinate, schemaKeys, where);
+            if (coordinate != null) Interpolation.validate(coordinate, schemaKeys, entryKeys, where);
             if (sdkComponent != null) Interpolation.validate(sdkComponent, schemaKeys, where);
             if (sdkPath != null && sdkComponent == null) {
                 throw new JkBuildParseException(where + ": sdk-path only applies to an sdk-component entry");
@@ -467,7 +499,7 @@ public final class PluginDescriptors {
             }
             String managedBy = t.getString("managed-by");
             if (managedBy != null) {
-                Interpolation.validate(managedBy, schemaKeys, where + ".managed-by");
+                Interpolation.validate(managedBy, schemaKeys, entryKeys, where + ".managed-by");
                 if (coordinate == null) {
                     throw new JkBuildParseException(where + ": managed-by only applies to a coordinate entry");
                 }
@@ -478,7 +510,7 @@ public final class PluginDescriptors {
             }
             List<String> with = stringList(t, "with", where);
             for (String w : with) {
-                Interpolation.validate(w, schemaKeys, where + ".with");
+                Interpolation.validate(w, schemaKeys, entryKeys, where + ".with");
             }
             if (!with.isEmpty() && coordinate == null) {
                 throw new JkBuildParseException(where + ": with only applies to a coordinate entry");
@@ -488,13 +520,23 @@ public final class PluginDescriptors {
                         + " (extra roots join the same tool closure graph)");
             }
             List<String> forSteps = parseForStep(t, key, where);
+            for (String step : forSteps) Interpolation.validate(step, schemaKeys, entryKeys, where + ".for-step");
             PluginDescriptor.Condition when = parseCondition(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(where + ": classpath-has cannot gate a " + key
                         + " (tool fetches are decided from config/facts, not the resolved classpath)");
             }
             deps.add(new PluginDescriptor.StepDependency(
-                    artifact, coordinate, transitive, sdkComponent, sdkPath, managedBy, with, forSteps, when));
+                    artifact,
+                    coordinate,
+                    transitive,
+                    sdkComponent,
+                    sdkPath,
+                    managedBy,
+                    with,
+                    forSteps,
+                    perEntry,
+                    when));
         }
         return deps;
     }
@@ -622,6 +664,13 @@ public final class PluginDescriptors {
                 if (arr == null) throw new JkBuildParseException(where + ".default must be an array");
                 List<String> out = new ArrayList<>(arr.size());
                 for (int i = 0; i < arr.size(); i++) out.add(String.valueOf(arr.get(i)));
+                yield out;
+            }
+            case STRING_MAP -> {
+                TomlTable map = spec.getTable("default");
+                if (map == null) throw new JkBuildParseException(where + ".default must be an inline table");
+                Map<String, String> out = new LinkedHashMap<>();
+                for (String k : map.keySet()) out.put(k, String.valueOf(map.get(k)));
                 yield out;
             }
         };

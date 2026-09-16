@@ -889,12 +889,26 @@ public final class PluginBuild {
         return (s == null || s.isBlank()) ? null : s;
     }
 
-    /**
-     * Fork the plugin on the spec and collect its protocol lines. Throws with the
-     * plugin's own error message when it reports one (or exits non-zero without reporting).
-     */
+    /** As {@link #runWorker(Active, Path, Path, WorkerEnv, Consumer, Consumer)} with no diagnostic sink. */
     public static List<String> runWorker(
             Active active, Path cache, Path spec, WorkerEnv env, @Nullable Consumer<String> onLabel)
+            throws IOException, InterruptedException {
+        return runWorker(active, cache, spec, env, onLabel, null);
+    }
+
+    /**
+     * Fork the plugin on the spec and collect its protocol lines. Throws with the plugin's own
+     * error message when it reports one (or exits non-zero without reporting). {@code onDiagnostic}
+     * receives each {@code diagnostic} reply as it arrives — before the throw, so a failing step's
+     * located findings still reach the report.
+     */
+    public static List<String> runWorker(
+            Active active,
+            Path cache,
+            Path spec,
+            WorkerEnv env,
+            @Nullable Consumer<String> onLabel,
+            @Nullable Consumer<String> onDiagnostic)
             throws IOException, InterruptedException {
         Path jar = workerJarFor(active, cache);
         List<String> collected = new ArrayList<>();
@@ -907,6 +921,10 @@ public final class PluginBuild {
                     if (onLabel != null) onLabel.accept(Jsonl.str(line, "text"));
                 })
                 .on("error", line -> error[0] = Jsonl.str(line, "message"))
+                .on(PluginProtocol.DIAGNOSTIC, line -> {
+                    if (onDiagnostic != null) onDiagnostic.accept(line);
+                    else collected.add(line);
+                })
                 .onOther(collected::add)
                 .passthrough(line -> {
                     if (tail.size() >= 20) tail.removeFirst();

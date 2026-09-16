@@ -308,36 +308,59 @@ public final class PluginContributions {
                         manifest.id())) {
                     continue;
                 }
-                if (sd.sdkComponent() != null) {
-                    String component = Interpolation.resolve(sd.sdkComponent(), config, build.project(), null);
-                    out.add(new StepDep(
-                            sd.artifact(), null, false, component, sd.sdkPath(), null, List.of(), sd.forSteps()));
+                if (!sd.perEntry()) {
+                    out.add(toolDependency(sd, config, build.project(), manifest.id(), kind, null));
                     continue;
                 }
-                String coordinate = Interpolation.resolve(sd.coordinate(), config, build.project(), null);
-                String[] parts = coordinate.split(":");
-                if (parts.length < 3 || parts.length > 4) {
-                    throw new JkBuildParseException("[" + manifest.id() + "] " + kind + " coordinate must be"
-                            + " \"group:artifact:version[:classifier]\" — got: " + coordinate);
+                // per-entry: the one declaration, once per [<table>.<name>] entry in its scope.
+                for (var entry : config.entries().entrySet()) {
+                    out.add(toolDependency(
+                            sd,
+                            config,
+                            build.project(),
+                            manifest.id(),
+                            kind,
+                            new Interpolation.Entry(entry.getKey(), entry.getValue())));
                 }
-                String managedBy = sd.managedBy() == null
-                        ? null
-                        : Interpolation.resolve(sd.managedBy(), config, build.project(), null);
-                List<String> with = new ArrayList<>();
-                for (String w : sd.with()) {
-                    String resolved = Interpolation.resolve(w, config, build.project(), null);
-                    String[] wp = resolved.split(":");
-                    if (wp.length < 3 || wp.length > 4) {
-                        throw new JkBuildParseException("[" + manifest.id() + "] " + kind + " with entry must be"
-                                + " \"group:artifact:version[:classifier]\" — got: " + resolved);
-                    }
-                    with.add(resolved);
-                }
-                out.add(new StepDep(
-                        sd.artifact(), coordinate, sd.transitive(), null, null, managedBy, with, sd.forSteps()));
             }
         }
         return out;
+    }
+
+    /** One declaration resolved against the table (and, for a per-entry tool, one entry). */
+    private static StepDep toolDependency(
+            PluginDescriptor.StepDependency sd,
+            PluginConfig config,
+            Project project,
+            String pluginId,
+            String kind,
+            Interpolation.@Nullable Entry entry) {
+        String artifact = Interpolation.resolve(sd.artifact(), config, project, null, entry);
+        List<String> forSteps = new ArrayList<>(sd.forSteps().size());
+        for (String step : sd.forSteps()) forSteps.add(Interpolation.resolve(step, config, project, null, entry));
+        if (sd.sdkComponent() != null) {
+            String component = Interpolation.resolve(sd.sdkComponent(), config, project, null, entry);
+            return new StepDep(artifact, null, false, component, sd.sdkPath(), null, List.of(), forSteps);
+        }
+        String coordinate = Interpolation.resolve(sd.coordinate(), config, project, null, entry);
+        String[] parts = coordinate.split(":");
+        if (parts.length < 3 || parts.length > 4) {
+            throw new JkBuildParseException("[" + pluginId + "] " + kind + " coordinate must be"
+                    + " \"group:artifact:version[:classifier]\" — got: " + coordinate);
+        }
+        String managedBy =
+                sd.managedBy() == null ? null : Interpolation.resolve(sd.managedBy(), config, project, null, entry);
+        List<String> with = new ArrayList<>();
+        for (String w : sd.with()) {
+            String resolved = Interpolation.resolve(w, config, project, null, entry);
+            String[] wp = resolved.split(":");
+            if (wp.length < 3 || wp.length > 4) {
+                throw new JkBuildParseException("[" + pluginId + "] " + kind + " with entry must be"
+                        + " \"group:artifact:version[:classifier]\" — got: " + resolved);
+            }
+            with.add(resolved);
+        }
+        return new StepDep(artifact, coordinate, sd.transitive(), null, null, managedBy, with, forSteps);
     }
 
     /**

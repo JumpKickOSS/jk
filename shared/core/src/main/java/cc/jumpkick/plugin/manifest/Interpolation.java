@@ -6,6 +6,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Project;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -13,17 +14,33 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Closed {@code ${…}} interpolation for manifest contributions: {@code ${config.<key>}},
- * project/kotlin fields, {@code ${host.os}} / {@code ${host.os-arch}}. Unknown vars fail at
- * {@link #validate} (install time), not mid-build.
+ * project/kotlin fields, {@code ${host.os}} / {@code ${host.os-arch}}, and inside a
+ * {@code per-entry} tool declaration {@code ${entry.name}} / {@code ${entry.<key>}}. Unknown vars
+ * fail at {@link #validate} (install time), not mid-build.
  */
 final class Interpolation {
 
     private static final Pattern VAR = Pattern.compile("\\$\\{([^}]*)}");
 
+    /** The {@code ${entry.name}} variable: an entry's own table name, never one of its keys. */
+    static final String ENTRY_NAME = "name";
+
     private Interpolation() {}
 
-    /** Manifest-load validation: every referenced variable must exist in the closed vocabulary. */
+    /** One {@code [entries]} sub-table as a template scope: its name and its validated values. */
+    record Entry(String name, Map<String, Object> values) {}
+
+    /** As {@link #validate(String, Set, Set, String)} outside a per-entry declaration. */
     static void validate(String template, Set<String> schemaKeys, String where) {
+        validate(template, schemaKeys, null, where);
+    }
+
+    /**
+     * Manifest-load validation: every referenced variable must exist in the closed vocabulary.
+     * {@code entryKeys} is the entry schema's key set inside a {@code per-entry} declaration and
+     * null everywhere else, where {@code ${entry.…}} is an error.
+     */
+    static void validate(String template, Set<String> schemaKeys, @Nullable Set<String> entryKeys, String where) {
         Matcher m = VAR.matcher(template);
         while (m.find()) {
             String var = m.group(1);
@@ -32,6 +49,18 @@ final class Interpolation {
                 if (!schemaKeys.contains(key)) {
                     throw new JkBuildParseException(
                             where + " references ${" + var + "} but the [schema] declares no `" + key + "`");
+                }
+                continue;
+            }
+            if (var.startsWith("entry.")) {
+                String key = var.substring("entry.".length());
+                if (entryKeys == null) {
+                    throw new JkBuildParseException(where + " references ${" + var
+                            + "} outside a per-entry = true step-dependency");
+                }
+                if (!key.equals(ENTRY_NAME) && !entryKeys.contains(key)) {
+                    throw new JkBuildParseException(
+                            where + " references ${" + var + "} but the entry schema declares no `" + key + "`");
                 }
                 continue;
             }
@@ -44,8 +73,8 @@ final class Interpolation {
                         "host.os-arch" -> {}
                 default ->
                     throw new JkBuildParseException(where + " references unknown variable ${" + var
-                            + "} (known: config.<schema-key>, kotlin.version, project.group, project.name,"
-                            + " project.version, host.os, host.os-arch)");
+                            + "} (known: config.<schema-key>, entry.name, entry.<entry-key>, kotlin.version,"
+                            + " project.group, project.name, project.version, host.os, host.os-arch)");
             }
         }
     }
@@ -77,6 +106,16 @@ final class Interpolation {
      */
     static String resolve(
             @Nullable String template, PluginConfig config, Project project, @Nullable String kotlinVersion) {
+        return resolve(template, config, project, kotlinVersion, null);
+    }
+
+    /** As {@link #resolve(String, PluginConfig, Project, String)} inside one entry's scope. */
+    static String resolve(
+            @Nullable String template,
+            PluginConfig config,
+            Project project,
+            @Nullable String kotlinVersion,
+            @Nullable Entry entry) {
         Matcher m = VAR.matcher(template);
         StringBuilder out = new StringBuilder();
         while (m.find()) {
@@ -88,6 +127,15 @@ final class Interpolation {
                 if (raw == null) {
                     throw new JkBuildParseException("[" + config.id() + "] contribution needs ${" + var
                             + "} but the table leaves `" + key + "` unset");
+                }
+                value = String.valueOf(raw);
+            } else if (var.startsWith("entry.")) {
+                String key = var.substring("entry.".length());
+                Object raw = entry == null ? null : key.equals(ENTRY_NAME) ? entry.name() : entry.values().get(key);
+                if (raw == null) {
+                    throw new JkBuildParseException("[" + config.id() + "] contribution needs ${" + var + "} but "
+                            + (entry == null ? "no entry is in scope" : "[" + config.id() + "." + entry.name()
+                                    + "] leaves `" + key + "` unset"));
                 }
                 value = String.valueOf(raw);
             } else {

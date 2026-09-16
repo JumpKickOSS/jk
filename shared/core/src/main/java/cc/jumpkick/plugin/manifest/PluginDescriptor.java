@@ -25,7 +25,12 @@ public record PluginDescriptor(
         @Nullable Packaging packaging,
         List<GradleImport> gradleImports,
         Map<String, Map<String, SchemaKey>> subSchemas,
-        Map<String, SubTable> subTables) {
+        Map<String, SubTable> subTables,
+        /**
+         * The {@code [sub-schema]} every {@code [<table>.<name>]} entry validates against
+         * ({@code [entries] schema}), or null when the owned table is a table of keys only.
+         */
+        @Nullable String entrySchema) {
 
     public PluginDescriptor {
         Objects.requireNonNull(id, "id");
@@ -207,6 +212,10 @@ public record PluginDescriptor(
      *
      * <p>{@code forSteps} ({@code for-step}) names the steps or packagers that read the tool; only
      * those fetch it and key on it. Empty means every step and packager the plugin registers.
+     *
+     * <p>{@code perEntry} ({@code per-entry}) declares one tool per {@code [entries]} sub-table:
+     * {@code artifact}, {@code coordinate}, {@code with}, {@code managedBy} and {@code forSteps}
+     * are templates over {@code ${entry.name}} and {@code ${entry.<key>}}, expanded once per entry.
      */
     public record StepDependency(
             String artifact,
@@ -217,6 +226,7 @@ public record PluginDescriptor(
             @Nullable String managedBy,
             List<String> with,
             List<String> forSteps,
+            boolean perEntry,
             @Nullable Condition when) {
 
         public StepDependency {
@@ -225,7 +235,7 @@ public record PluginDescriptor(
         }
 
         public StepDependency(String artifact, @Nullable String coordinate, @Nullable Condition when) {
-            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), when);
+            this(artifact, coordinate, false, null, null, null, List.of(), List.of(), false, when);
         }
     }
 
@@ -302,7 +312,7 @@ public record PluginDescriptor(
     }
 
     /**
-     * One schema key: its type ({@code string | bool | int | string-list}), whether the table
+     * One schema key: its type ({@code string | bool | int | string-list | string-map}), whether the table
      * must declare it, and the value applied when absent ({@code null} = stay absent — the
      * tri-state pattern). {@code example} and {@code hint} feed the required-key error message
      * so schema-driven validation keeps the hand-written diagnostics' quality.
@@ -320,7 +330,9 @@ public record PluginDescriptor(
             STRING,
             BOOL,
             INT,
-            STRING_LIST;
+            STRING_LIST,
+            /** An inline table of string values ({@code options = { a = "1", b = "2" }}). */
+            STRING_MAP;
 
             public static Type parse(String raw, String where) {
                 return switch (raw) {
@@ -328,9 +340,10 @@ public record PluginDescriptor(
                     case "bool" -> BOOL;
                     case "int" -> INT;
                     case "string-list" -> STRING_LIST;
+                    case "string-map" -> STRING_MAP;
                     default ->
-                        throw new IllegalArgumentException(
-                                where + ": unknown schema type `" + raw + "` (string|bool|int|string-list)");
+                        throw new IllegalArgumentException(where + ": unknown schema type `" + raw
+                                + "` (string|bool|int|string-list|string-map)");
                 };
             }
         }
@@ -339,6 +352,11 @@ public record PluginDescriptor(
         public @Nullable Object normalizedDefault() {
             if (defaultValue instanceof List<?> l)
                 return List.copyOf(l.stream().map(String::valueOf).toList());
+            if (defaultValue instanceof Map<?, ?> m) {
+                Map<String, String> out = new LinkedHashMap<>();
+                m.forEach((k, v) -> out.put(String.valueOf(k), String.valueOf(v)));
+                return Collections.unmodifiableMap(out);
+            }
             return defaultValue;
         }
     }

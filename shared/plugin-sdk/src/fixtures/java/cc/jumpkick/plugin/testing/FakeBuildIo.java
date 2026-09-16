@@ -59,6 +59,9 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     /** Every {@link #label} the body emitted, in order — progress is part of the contract. */
     private final List<String> labels = new ArrayList<>();
 
+    /** Every {@link #diagnostic} the body reported, rendered {@code severity: file:line:col: message}. */
+    private final List<String> diagnostics = new ArrayList<>();
+
     /** Every {@link #produced} path the body declared — the packaging cache stores these. */
     private final List<Path> produced = new ArrayList<>();
 
@@ -238,6 +241,11 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
         return List.copyOf(labels);
     }
 
+    /** Diagnostics the body reported, in order, as {@code severity: file:line:col: message}. */
+    public List<String> diagnostics() {
+        return List.copyOf(diagnostics);
+    }
+
     /** Extra produced paths the body declared, in order. */
     public List<Path> produced() {
         return List.copyOf(produced);
@@ -318,6 +326,18 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     @Override
     public void label(String text) {
         labels.add(text);
+    }
+
+    @Override
+    public void diagnostic(String severity, @Nullable String file, int line, int col, String message) {
+        StringBuilder b = new StringBuilder(severity).append(": ");
+        if (file != null) {
+            b.append(file);
+            if (line > 0) b.append(':').append(line);
+            if (col > 0) b.append(':').append(col);
+            b.append(": ");
+        }
+        diagnostics.add(b.append(message).toString());
     }
 
     @Override

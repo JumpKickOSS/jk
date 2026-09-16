@@ -93,6 +93,8 @@ class SelfHostingTomlTest {
                         "plugins/quarkus",
                         "plugins/grails",
                         "plugins/protobuf",
+                        "plugins/generator",
+                        "plugins/openapi",
                         "plugins/android",
                         "plugins/micronaut");
     }

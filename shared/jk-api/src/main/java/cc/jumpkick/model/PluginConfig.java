@@ -67,4 +67,21 @@ public record PluginConfig(String id, Map<String, Object> values) {
     public long intValue(String key, long fallback) {
         return values.get(key) instanceof Long l ? l : fallback;
     }
+
+    /** A {@code string-map} key ({@code options = { a = "1" }}); empty when absent. */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> stringMap(String key) {
+        return values.get(key) instanceof Map<?, ?> m ? (Map<String, String>) m : Map.of();
+    }
+
+    /**
+     * The key the owned table's {@code [entries]} ride under: entry name → its validated values.
+     * Not a bare TOML key, so no schema key or entry name can collide with it.
+     */
+    public static final String ENTRIES = "*";
+
+    /** The {@code [<table>.<name>]} entries, in declaration order; empty when the table has none. */
+    public Map<String, Map<String, Object>> entries() {
+        return group(ENTRIES);
+    }
 }

@@ -44,6 +44,8 @@ public enum PluginJar {
     MICRONAUT("jk-micronaut", "jk.micronaut.plugin.jar"),
     ANDROID("jk-android", "jk.android.plugin.jar"),
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar"),
+    GENERATOR("jk-generator", "jk.generator.plugin.jar"),
+    OPENAPI("jk-openapi", "jk.openapi.plugin.jar"),
     MINIFIED("jk-minified", "jk.minified.plugin.jar");
 
     private final String artifactId;
