@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.discovery.JkProbe;
 import cc.jumpkick.lock.JdkPin;
-import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -250,7 +249,7 @@ class JdkResolutionTest {
     private static final class ReqBuilder {
         private final Path projectDir;
         private @Nullable String switchSpec, envSpec, projectJdkSpec;
-        private Lockfile.@Nullable JdkPin lockJdk;
+        private @Nullable JdkPin lockJdk;
         private int projectJavaRelease;
         private final Map<String, @Nullable String> env = new HashMap<>();
 

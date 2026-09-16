@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  * {@link LockfileReader} — because the lockfile can be large and callers include the per-prompt
  * shell hook. A table naming neither a vendor nor a version reads as absent.
  */
-public record ToolchainPins(Lockfile.@Nullable JdkPin jdk, Lockfile.@Nullable GraalPin graal) {
+public record ToolchainPins(@Nullable JdkPin jdk, @Nullable GraalPin graal) {
 
     public static final ToolchainPins NONE = new ToolchainPins(null, null);
 

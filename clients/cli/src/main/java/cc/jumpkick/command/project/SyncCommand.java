@@ -13,8 +13,8 @@ import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -160,7 +160,7 @@ public final class SyncCommand implements CliCommand {
      * so a corrupt lock has to fail the command, not silently drop the pin. Only an unreadable
      * file degrades to null — the freshen step just rewrote the lock, so IO here is transient.
      */
-    private static Lockfile.@Nullable JdkPin lockJdkPin(Path dir) {
+    private static @Nullable JdkPin lockJdkPin(Path dir) {
         Path lf = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lf)) return null;
         try {

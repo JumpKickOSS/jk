@@ -3,7 +3,6 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.JdkPin;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ToolchainPin;
 import cc.jumpkick.model.ToolchainSpec;
 import java.io.IOException;
@@ -156,15 +155,14 @@ public final class LockPinMatch {
     }
 
     /** The {@code [jdk]} table for {@code spec}, with blanks filled from the JDK that resolved. */
-    public static JdkPin jdkPin(
-            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
+    public static JdkPin jdkPin(@Nullable ToolchainSpec spec, @Nullable JdkHit hit, @Nullable ToolchainPin previous) {
         String[] f = fields(spec, hit, previous);
         return new JdkPin(f[0], f[1], f[2], f[3]);
     }
 
     /** The {@code [graal]} table for {@code spec}, with blanks filled from the GraalVM that resolved. */
     public static GraalPin graalPin(
-            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
+            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, @Nullable ToolchainPin previous) {
         String[] f = fields(spec, hit, previous);
         return new GraalPin(f[0], f[1], f[2], f[3]);
     }
@@ -184,7 +182,7 @@ public final class LockPinMatch {
      * the requirement has already overruled.
      */
     private static String[] fields(
-            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, Lockfile.@Nullable ToolchainPin previous) {
+            @Nullable ToolchainSpec spec, @Nullable JdkHit hit, @Nullable ToolchainPin previous) {
         ToolchainSpec s = spec == null ? ToolchainSpec.NONE : spec;
         // Manifest dropped the pin: keep a previous suggestion only when it still names
         // something installable. Copying nosuchvendor-99 would make the next build try to
@@ -213,7 +211,7 @@ public final class LockPinMatch {
      * <p>{@code required-*} pins are not suggestions; this returns {@code false} for them so
      * callers do not treat a requirement as a droppable floor.
      */
-    public static boolean suggestionIsInstallable(Lockfile.@Nullable ToolchainPin pin) {
+    public static boolean suggestionIsInstallable(@Nullable ToolchainPin pin) {
         if (pin == null || pin.isEmpty() || pin.hasRequirement()) return false;
         String vendor = pin.suggestedVendor();
         return vendor.isEmpty() || knownVendorId(vendor);
