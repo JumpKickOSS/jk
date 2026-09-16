@@ -166,22 +166,37 @@ final class ProfileMapping {
         return true;
     }
 
-    private static Pom.Dep managedVersion(Pom.Dep dep, @Nullable DependencyManagement dm) {
-        if (PluginFacts.usable(dep.version()) != null || dm == null) return dep;
+    /**
+     * The version Maven would give a profile dependency declared without one: the profile's own
+     * {@code <dependencyManagement>} first, then the POM's effective table (parents flattened, BOM
+     * imports inlined), which is what governs the dependency once the profile is active.
+     */
+    private Pom.Dep managedVersion(Pom.Dep dep, @Nullable DependencyManagement profileManagement) {
+        if (PluginFacts.usable(dep.version()) != null) return dep;
+        String version = versionManagedBy(dep, profileManagement);
+        if (version == null) version = versionManagedBy(dep, em.model().getDependencyManagement());
+        if (version == null) return dep;
+        return new Pom.Dep(
+                dep.groupId(),
+                dep.artifactId(),
+                version,
+                dep.scope(),
+                dep.optional(),
+                dep.classifier(),
+                dep.type(),
+                dep.exclusions());
+    }
+
+    private static @Nullable String versionManagedBy(Pom.Dep dep, @Nullable DependencyManagement dm) {
+        if (dm == null) return null;
         for (var m : dm.getDependencies()) {
-            if (dep.groupId().equals(m.getGroupId()) && dep.artifactId().equals(m.getArtifactId())) {
-                return new Pom.Dep(
-                        dep.groupId(),
-                        dep.artifactId(),
-                        m.getVersion(),
-                        dep.scope(),
-                        dep.optional(),
-                        dep.classifier(),
-                        dep.type(),
-                        dep.exclusions());
+            if (dep.groupId().equals(m.getGroupId())
+                    && dep.artifactId().equals(m.getArtifactId())
+                    && PluginFacts.usable(m.getVersion()) != null) {
+                return m.getVersion();
             }
         }
-        return dep;
+        return null;
     }
 
     private static boolean isPlatformConditional(Profile profile, List<Pom.Dep> deps) {

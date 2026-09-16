@@ -219,6 +219,61 @@ class PomInheritanceImportTest {
                 .anyMatch(m -> m.contains("io.netty:netty-bom") && m.contains("netty.version"));
     }
 
+    /**
+     * A published parent that declares a repository whose URL is a property nothing values (a
+     * snapshot repository behind {@code ${snapshots.url}}) still hands its managed versions down:
+     * Maven keeps such a repository until a fetch from it, so it is no reason to refuse the parent.
+     */
+    @Test
+    void a_parents_repository_with_a_placeholder_url_does_not_stop_inheritance(@TempDir Path tempDir) throws Exception {
+        http.serve(TestImporters.pomPath("org.ex", "top", "1"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.ex</groupId>
+                  <artifactId>top</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <repositories>
+                    <repository>
+                      <id>snapshots</id>
+                      <url>${snapshots.url}</url>
+                      <releases><enabled>false</enabled></releases>
+                    </repository>
+                  </repositories>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.apache.commons</groupId>
+                        <artifactId>commons-lang3</artifactId>
+                        <version>3.17.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        byte[] child = """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>org.ex</groupId><artifactId>top</artifactId><version>1</version></parent>
+                  <artifactId>leaf</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.apache.commons</groupId>
+                      <artifactId>commons-lang3</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.getBytes(StandardCharsets.UTF_8);
+
+        PomImporter.Result result = TestImporters.over(tempDir, http.base()).importFromBytes(child);
+
+        assertThat(result.report().hasErrors())
+                .as(String.join("\n", messages(result)))
+                .isFalse();
+        assertThat(versions(result.jkBuild().dependencies().of(Scope.MAIN)))
+                .containsExactly("org.apache.commons:commons-lang3=3.17.0");
+    }
+
     /** A parent no repository has is a Tier-3 row; the POM's own declarations still import. */
     @Test
     void missing_parent_is_an_error_row_not_a_crash(@TempDir Path tempDir) throws Exception {
@@ -330,6 +385,10 @@ class PomInheritanceImportTest {
                     TestImporters.pomPath("org.demo", artifact, "1.0"),
                     TestImporters.fixture("parent-chain", artifact + "-1.0.pom"));
         }
+    }
+
+    private static List<String> messages(PomImporter.Result result) {
+        return TestImporters.messages(result);
     }
 
     private static List<String> versions(List<Dependency> deps) {

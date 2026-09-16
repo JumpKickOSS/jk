@@ -94,4 +94,52 @@ class PomProfileImportTest {
                 .hasSize(1);
         assertThat(reparsed.repositories()).extracting(RepositorySpec::name).containsExactly("internal");
     }
+
+    /**
+     * A dependency an inactive profile declares without a version takes the one the POM's effective
+     * {@code dependencyManagement} supplies, a parent's table or an imported BOM included, since
+     * that is what governs it once the profile is active; {@code unresolved} is never written when
+     * the chain has the version.
+     */
+    @Test
+    void an_inactive_profiles_dependency_takes_the_version_the_poms_management_supplies(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>0.1.0</version>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.h2database</groupId>
+                        <artifactId>h2</artifactId>
+                        <version>2.3.232</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <profiles>
+                    <profile>
+                      <id>product</id>
+                      <activation><property><name>product</name></property></activation>
+                      <dependencies>
+                        <dependency>
+                          <groupId>com.h2database</groupId>
+                          <artifactId>h2</artifactId>
+                          <scope>test</scope>
+                        </dependency>
+                      </dependencies>
+                    </profile>
+                  </profiles>
+                </project>
+                """);
+
+        JkBuild build = result.jkBuild();
+        assertThat(build.dependencies().of(Scope.TEST))
+                .extracting(d -> d.module() + "=" + d.version().raw(), Dependency::optional)
+                .containsExactly(tuple("com.h2database:h2=2.3.232", true));
+        assertThat(JkBuildRenderer.render(build)).doesNotContain("unresolved");
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("`=unresolved`"));
+    }
 }

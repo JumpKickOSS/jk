@@ -120,7 +120,12 @@ A dependency on a reactor POM the workspace does not build — a `<type>pom</typ
 aggregator, or any edge to a module only an inactive profile lists — is dropped with a row naming
 the POM and its modules or its profile (and, for an aggregator with compile dependencies of its
 own, what the pom edge put on the classpath), because no repository has a reactor POM for the lock
-to fetch. CI-friendly versions —
+to fetch.
+A published parent's `<repository>` whose URL is a property nothing values (`${vertx.snapshotRepository}`
+in the Vert.x parents) is left out of the lookup the way Maven only fails on a fetch from it, so the
+parent still hands its managed versions down; and a dependency an inactive profile declares without a
+version takes the one the POM's effective `dependencyManagement` supplies, so a `[features.<id>]`
+entry is pinned like the profile would be under `-P`. CI-friendly versions —
 `${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
 `<properties>`, which is where Maven reads them without `-D`; a placeholder no POM defines is
 written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that lives only in
