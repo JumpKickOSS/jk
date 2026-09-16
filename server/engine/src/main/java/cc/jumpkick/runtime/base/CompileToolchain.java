@@ -123,8 +123,8 @@ public final class CompileToolchain {
         ToolDistribution dist = KotlinResolver.distributionFor(versionOverride);
         try {
             boolean refresh = SessionContext.current().config().forceOr(false);
-            ToolProvisioning.Result result =
-                    ToolProvisioning.provision(dist, registry, new Http(), /* noDiscover= */ false, refresh);
+            ToolProvisioning.Result result = ToolProvisioning.provision(
+                    dist, registry, new Http(), new ToolProvisioning.Policy(false, refresh, false));
             switch (result.source()) {
                 case LINKED -> notice.accept("Linked Kotlin " + dist.version() + " from " + result.detail());
                 case DOWNLOADED -> notice.accept("Installed Kotlin " + dist.version() + " from " + result.detail());

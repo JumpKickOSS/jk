@@ -128,7 +128,7 @@ class RequestJsonTest {
                 .encode();
         assertThat(single).doesNotContain("\"allSuites\"", "\"suites\"", "\"includeTags\"");
 
-        String provision = new ProvisionRequest(null, null, false, false, null, null).encode();
+        String provision = new ProvisionRequest(null, null, false, false, false, null, null).encode();
         assertThat(provision).doesNotContain("\"tool\"", "\"version\"");
     }
 

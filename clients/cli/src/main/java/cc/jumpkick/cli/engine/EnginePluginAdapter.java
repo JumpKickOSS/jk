@@ -169,7 +169,12 @@ final class EnginePluginAdapter {
             ProvisionResultEvent e = ProvisionResultEvent.decode(line);
             // An absent exit code is a failure here, where the record reads 0.
             return new HostedEvents.Provision(
-                    e.bin(), e.version(), e.source(), e.error(), Jsonl.has(line, "exit") ? e.exit() : 1);
+                    e.bin(),
+                    e.version(),
+                    e.source(),
+                    e.verification(),
+                    e.error(),
+                    Jsonl.has(line, "exit") ? e.exit() : 1);
         });
     }
 

@@ -17,11 +17,11 @@ import org.junit.jupiter.api.io.TempDir;
 class MavenResolverTest {
 
     @Test
-    void the_default_distribution_is_verified_against_the_sha512_central_publishes() {
+    void the_default_distribution_is_verified_against_the_sha512_central_publishes_then_the_sha1() {
         ToolDistribution dist = MavenResolver.defaultDistribution();
         assertThat(dist.sha256()).isNull();
-        assertThat(dist.tool().publishedChecksum()).isEqualTo(PublishedChecksum.SHA512);
-        assertThat(dist.tool().publishedChecksum().beside(dist.downloadUri()).toString())
+        assertThat(dist.tool().publishedChecksums()).containsExactly(PublishedChecksum.SHA512, PublishedChecksum.SHA1);
+        assertThat(PublishedChecksum.SHA512.beside(dist.downloadUri()).toString())
                 .startsWith("https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/")
                 .endsWith("-bin.zip.sha512");
     }

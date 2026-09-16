@@ -3,6 +3,7 @@ package cc.jumpkick.compat;
 
 import cc.jumpkick.host.Os;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -12,29 +13,30 @@ import org.jspecify.annotations.Nullable;
  * External tools for {@code jk mvn}/{@code jk gradle} passthroughs: cache slug and bin names.
  */
 public enum BuildTool {
-    MAVEN("maven", "mvn", "mvn.cmd", PublishedChecksum.SHA512),
-    GRADLE("gradle", "gradle", "gradle.bat", PublishedChecksum.SHA256),
-    KOTLIN("kotlin", "kotlinc", "kotlinc.bat", PublishedChecksum.SHA256);
+    MAVEN("maven", "mvn", "mvn.cmd", List.of(PublishedChecksum.SHA512, PublishedChecksum.SHA1)),
+    GRADLE("gradle", "gradle", "gradle.bat", List.of(PublishedChecksum.SHA256)),
+    KOTLIN("kotlin", "kotlinc", "kotlinc.bat", List.of(PublishedChecksum.SHA256));
 
     private final String slug;
     private final String posixBinary;
     private final String windowsBinary;
-    private final PublishedChecksum publishedChecksum;
+    private final List<PublishedChecksum> publishedChecksums;
 
-    BuildTool(String slug, String posixBinary, String windowsBinary, PublishedChecksum publishedChecksum) {
+    BuildTool(String slug, String posixBinary, String windowsBinary, List<PublishedChecksum> publishedChecksums) {
         this.slug = slug;
         this.posixBinary = posixBinary;
         this.windowsBinary = windowsBinary;
-        this.publishedChecksum = publishedChecksum;
+        this.publishedChecksums = publishedChecksums;
     }
 
     /**
-     * The checksum sidecar this tool's publisher puts beside each archive — Apache Maven ships
-     * {@code .sha512} on Central, Gradle and JetBrains ship {@code .sha256}. An unpinned
-     * distribution is verified against it.
+     * The checksum sidecars this tool's publisher puts beside each archive, strongest first —
+     * Apache Maven ships {@code .sha512} on Central from 3.7 on and only {@code .sha1} for the 3.6
+     * line, Gradle and JetBrains ship {@code .sha256}. An unpinned distribution is verified against
+     * the first one that is published.
      */
-    public PublishedChecksum publishedChecksum() {
-        return publishedChecksum;
+    public List<PublishedChecksum> publishedChecksums() {
+        return publishedChecksums;
     }
 
     /** Directory name under the provisioned-tools root, {@code $JK_STORE_DIR/tools/}. */

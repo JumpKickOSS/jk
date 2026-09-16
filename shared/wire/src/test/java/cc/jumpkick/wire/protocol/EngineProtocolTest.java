@@ -580,20 +580,23 @@ class EngineProtocolTest {
 
     @Test
     void provision_request_and_result_round_trip() {
-        String req = new ProvisionRequest("/proj", "/cache/tools", true, true, null, null).encode();
+        String req = new ProvisionRequest("/proj", "/cache/tools", true, true, true, null, null).encode();
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.PROVISION_REQUEST);
         // Project directory is always "dir" (never projectDir) — freeze invariant.
         assertThat(Jsonl.str(req, "dir")).isEqualTo("/proj");
         assertThat(req).doesNotContain("projectDir");
         assertThat(Jsonl.str(req, "toolsRoot")).isEqualTo("/cache/tools");
         assertThat(Jsonl.bool(req, "noDiscover", false)).isTrue();
+        assertThat(Jsonl.bool(req, "acceptUnverified", false)).isTrue();
         assertThat(Jsonl.bool(req, "gradle", false)).isTrue();
 
-        String result = ProtoEvents.provisionResult("/cache/tools/mvn/bin/mvn", "3.9.9", "DOWNLOADED", null, 0);
+        String result = ProtoEvents.provisionResult(
+                "/cache/tools/mvn/bin/mvn", "3.9.9", "DOWNLOADED", "verified against the published .sha512", null, 0);
         assertThat(EngineProtocol.typeOf(result)).isEqualTo(EngineProtocol.PROVISION_RESULT);
         assertThat(Jsonl.str(result, "bin")).isEqualTo("/cache/tools/mvn/bin/mvn");
         assertThat(Jsonl.str(result, "version")).isEqualTo("3.9.9");
         assertThat(Jsonl.str(result, "source")).isEqualTo("DOWNLOADED");
+        assertThat(Jsonl.str(result, "verification")).isEqualTo("verified against the published .sha512");
         assertThat(Jsonl.str(result, "error")).isNull();
         assertThat(Jsonl.intValue(result, "exit", -1)).isEqualTo(0);
     }
@@ -633,7 +636,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(new CompileRequest("/w", "/c", null, false, false, false, List.of()).encode(), "dir"))
                 .isEqualTo("/w");
         assertThat(Jsonl.str(buildRequest(false, false, null), "dir")).isEqualTo("/w");
-        assertThat(Jsonl.str(new ProvisionRequest("/w", "/t", false, false, null, null).encode(), "dir"))
+        assertThat(Jsonl.str(new ProvisionRequest("/w", "/t", false, false, false, null, null).encode(), "dir"))
                 .isEqualTo("/w");
         assertThat(Jsonl.str(ProtoEvents.planFinish("/w", true), "dir")).isEqualTo("/w");
     }

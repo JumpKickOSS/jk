@@ -4,8 +4,10 @@ package cc.jumpkick.command;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.PathUtil;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -145,6 +147,102 @@ class MvnGradleCommandTest {
                 .toMillis();
         assertThat(secondMtime).isEqualTo(firstMtime);
         assertThat(Files.readString(argsLog).trim()).isEqualTo("second");
+    }
+
+    /**
+     * A wrapper pinned to the 3.6 line, beside which Apache publishes only a {@code .sha1}: the
+     * download is verified against it and the {@code downloaded} line says so.
+     */
+    @Test
+    void a_wrapper_pinned_to_maven_3_6_is_verified_against_the_sha1_apache_publishes(@TempDir Path tempDir)
+            throws Exception {
+        Path projectDir = tempDir.resolve("proj");
+        Files.createDirectories(projectDir.resolve(".mvn/wrapper"));
+        Path argsLog = tempDir.resolve("argv.log");
+        byte[] zip = recordingZip("apache-maven-3.6.3", "mvn", argsLog, tempDir.resolve("env.log"));
+        maven.served().put("/apache-maven-3.6.3-bin.zip", zip);
+        maven.served()
+                .put(
+                        "/apache-maven-3.6.3-bin.zip.sha1",
+                        Hashing.hashHex("SHA-1", zip).getBytes(StandardCharsets.UTF_8));
+        Files.writeString(
+                projectDir.resolve(".mvn/wrapper/maven-wrapper.properties"),
+                "distributionUrl=" + maven.base().resolve("/apache-maven-3.6.3-bin.zip") + "\n");
+
+        int[] exit = {-1};
+        String err = Capture.stderr(() -> exit[0] = run(
+                "-C",
+                projectDir.toString(),
+                "mvn",
+                "--tools-dir",
+                tempDir.resolve("tools").toString(),
+                "--no-discover",
+                "--jdks-dir",
+                tempDir.resolve("jdks").toString(),
+                "-v"));
+        assertThat(exit[0]).isEqualTo(0);
+        assertThat(err).contains("Maven 3.6.3 downloaded · verified against the published .sha1");
+        assertThat(tempDir.resolve("tools/maven/3.6.3/bin/mvn")).exists();
+        assertThat(Files.readString(argsLog).trim()).isEqualTo("-v");
+    }
+
+    /**
+     * A distribution with no pin and no published checksum is refused with the flag that accepts
+     * it; accepting once installs it, records its digest, and a later provision with no flag is
+     * verified against that record.
+     */
+    @Test
+    void an_unverifiable_distribution_is_refused_until_accepted_once(@TempDir Path tempDir) throws Exception {
+        Path projectDir = tempDir.resolve("proj");
+        Files.createDirectories(projectDir.resolve(".mvn/wrapper"));
+        Path argsLog = tempDir.resolve("argv.log");
+        byte[] zip = recordingZip("apache-maven-3.6.3", "mvn", argsLog, tempDir.resolve("env.log"));
+        // The stub answers <path>.sha1 for anything it serves, as a Maven repository does; this
+        // impersonates a mirror that publishes nothing beside the archive.
+        maven.withoutChecksums().served().put("/apache-maven-3.6.3-bin.zip", zip);
+        Files.writeString(
+                projectDir.resolve(".mvn/wrapper/maven-wrapper.properties"),
+                "distributionUrl=" + maven.base().resolve("/apache-maven-3.6.3-bin.zip") + "\n");
+        String[] common = {
+            "-C",
+            projectDir.toString(),
+            "mvn",
+            "--tools-dir",
+            tempDir.resolve("tools").toString(),
+            "--no-discover",
+            "--jdks-dir",
+            tempDir.resolve("jdks").toString()
+        };
+
+        int[] exit = {-1};
+        String refused = Capture.stderr(() -> exit[0] = run(with(common, "-v")));
+        assertThat(exit[0]).isNotEqualTo(0);
+        assertThat(refused)
+                .contains("cannot be verified")
+                .contains("no .sha512 or .sha1 checksum")
+                .contains("--accept-unverified-tool");
+        assertThat(tempDir.resolve("tools/maven/3.6.3")).doesNotExist();
+
+        String accepted = Capture.stderr(() -> exit[0] = run(with(common, "--accept-unverified-tool", "-v")));
+        assertThat(exit[0]).isEqualTo(0);
+        assertThat(accepted)
+                .contains("Maven 3.6.3 downloaded · accepted with --accept-unverified-tool, sha256 recorded");
+        assertThat(Files.readString(argsLog).trim()).isEqualTo("-v");
+        Path record = tempDir.resolve("tools/maven/3.6.3.accepted.sha256");
+        assertThat(record).content().startsWith(Hashing.sha256Hex(zip));
+
+        // The install is gone but the acceptance stays: the re-download needs no flag.
+        PathUtil.deleteRecursively(tempDir.resolve("tools/maven/3.6.3"));
+        String again = Capture.stderr(() -> exit[0] = run(with(common, "-v")));
+        assertThat(exit[0]).isEqualTo(0);
+        assertThat(again).contains("Maven 3.6.3 downloaded · verified against the digest accepted earlier");
+    }
+
+    private static String[] with(String[] common, String... tail) {
+        String[] out = new String[common.length + tail.length];
+        System.arraycopy(common, 0, out, 0, common.length);
+        System.arraycopy(tail, 0, out, common.length, tail.length);
+        return out;
     }
 
     /**

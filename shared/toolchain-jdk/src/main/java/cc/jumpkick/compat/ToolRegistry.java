@@ -25,6 +25,16 @@ import java.util.stream.Stream;
  */
 public final class ToolRegistry {
 
+    /**
+     * The {@code jk mvn} / {@code jk gradle} option that installs an archive no checksum vouches
+     * for and records its digest ({@link #acceptedDigest}); here, on the client-safe leaf, because
+     * the CLI parses it and the engine's installer honours it.
+     */
+    public static final String ACCEPT_FLAG = "--accept-unverified-tool";
+
+    /** The environment spelling of {@link #ACCEPT_FLAG}, for a CI step that cannot edit the command. */
+    public static final String ACCEPT_ENV = "JK_ACCEPT_UNVERIFIED_TOOL";
+
     private final Path toolsRoot;
 
     public ToolRegistry(Path toolsRoot) {
@@ -38,6 +48,15 @@ public final class ToolRegistry {
     /** Installation directory for a given tool+version, whether or not it exists. */
     public Path installDir(BuildTool tool, String version) {
         return toolsRoot.resolve(tool.slug()).resolve(version);
+    }
+
+    /**
+     * Where the digest of an archive accepted without a publisher's checksum is recorded: {@code
+     * <toolsRoot>/<slug>/<version>.accepted.sha256}, beside the install directory it vouches for,
+     * so it survives a purge of that directory and the next download is verified against it.
+     */
+    public Path acceptedDigest(BuildTool tool, String version) {
+        return toolsRoot.resolve(tool.slug()).resolve(version + ".accepted.sha256");
     }
 
     public Optional<InstalledTool> find(BuildTool tool, String version) {

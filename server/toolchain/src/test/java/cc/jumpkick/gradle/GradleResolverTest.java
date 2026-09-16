@@ -19,8 +19,8 @@ class GradleResolverTest {
     void the_default_distribution_is_verified_against_the_sha256_gradle_publishes() {
         ToolDistribution dist = GradleResolver.defaultDistribution();
         assertThat(dist.sha256()).isNull();
-        assertThat(dist.tool().publishedChecksum()).isEqualTo(PublishedChecksum.SHA256);
-        assertThat(dist.tool().publishedChecksum().beside(dist.downloadUri()).toString())
+        assertThat(dist.tool().publishedChecksums()).containsExactly(PublishedChecksum.SHA256);
+        assertThat(PublishedChecksum.SHA256.beside(dist.downloadUri()).toString())
                 .startsWith("https://services.gradle.org/distributions/gradle-")
                 .endsWith("-bin.zip.sha256");
     }

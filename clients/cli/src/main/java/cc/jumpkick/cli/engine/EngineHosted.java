@@ -254,11 +254,23 @@ final class EngineHosted {
      * this terminal's stdio, which the engine deliberately never touches).
      */
     static HostedEvents.Provision provision(
-            EnginePaths.Paths paths, Path projectDir, Path toolsRoot, boolean noDiscover, boolean gradle)
+            EnginePaths.Paths paths,
+            Path projectDir,
+            Path toolsRoot,
+            boolean noDiscover,
+            boolean acceptUnverified,
+            boolean gradle)
             throws IOException {
         return EnginePluginAdapter.provision(
                 paths,
-                new ProvisionRequest(projectDir.toString(), toolsRoot.toString(), noDiscover, gradle, null, null)
+                new ProvisionRequest(
+                                projectDir.toString(),
+                                toolsRoot.toString(),
+                                noDiscover,
+                                acceptUnverified,
+                                gradle,
+                                null,
+                                null)
                         .encode());
     }
 
@@ -283,7 +295,8 @@ final class EngineHosted {
             throws IOException {
         return EnginePluginAdapter.provision(
                 paths,
-                new ProvisionRequest(toolsRoot.toString(), toolsRoot.toString(), noDiscover, false, tool, version)
+                new ProvisionRequest(
+                                toolsRoot.toString(), toolsRoot.toString(), noDiscover, false, false, tool, version)
                         .encode());
     }
 

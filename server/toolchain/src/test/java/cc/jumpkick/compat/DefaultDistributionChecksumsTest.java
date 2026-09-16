@@ -32,7 +32,7 @@ class DefaultDistributionChecksumsTest {
                 GradleResolver.defaultDistribution(),
                 KotlinResolver.defaultDistribution());
         for (ToolDistribution dist : defaults) {
-            PublishedChecksum sidecar = dist.tool().publishedChecksum();
+            PublishedChecksum sidecar = dist.tool().publishedChecksums().getFirst();
             URI uri = sidecar.beside(dist.downloadUri());
             HttpResponse<byte[]> response = http.get(uri);
             assertThat(response.statusCode()).as("%s", uri).isEqualTo(200);

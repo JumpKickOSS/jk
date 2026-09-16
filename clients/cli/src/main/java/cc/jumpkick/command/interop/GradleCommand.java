@@ -31,7 +31,7 @@ public final class GradleCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Run Gradle; only its three own options are jk's (jk --help gradle)";
+        return "Run Gradle; only its four own options are jk's (jk --help gradle)";
     }
 
     @Override
@@ -41,10 +41,7 @@ public final class GradleCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<dir>", "Override the tools install root.", "--tools-dir"),
-                CommonOpts.jdksDir(),
-                Opt.flag("Skip tool discovery.", "--no-discover"));
+        return MvnCommand.ownOptions();
     }
 
     @Override
@@ -58,6 +55,7 @@ public final class GradleCommand implements CliCommand {
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);
         boolean noDiscover = in.isSet("no-discover");
+        boolean acceptUnverified = MvnCommand.acceptUnverified(in);
         List<String> args = in.positionals();
 
         Path projectDir = directory != null
@@ -65,7 +63,7 @@ public final class GradleCommand implements CliCommand {
                 : Path.of(".").toAbsolutePath().normalize();
         Path toolsRoot = toolsDir != null ? toolsDir : JkDirs.tools();
 
-        Path gradleBin = MvnCommand.provision(projectDir, toolsRoot, noDiscover, true);
+        Path gradleBin = MvnCommand.provision(projectDir, toolsRoot, noDiscover, acceptUnverified, true);
         if (gradleBin == null) return 1;
 
         Optional<InstalledJdk> jdk = JdkResolver.forProject(projectDir, jdksDir);
