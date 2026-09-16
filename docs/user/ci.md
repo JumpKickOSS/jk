@@ -23,7 +23,7 @@ Caching only speeds the runner up.
 |------|----------------|------------------|
 | Platform **cache** | Action index + cache CAS | **Yes** |
 | Platform **store** | `repos/` + `.jk` memos | **Yes** |
-| Maven **local repo** | Third-party jars when `[m2] integration` is on | **Yes** — primary warm-fetch win |
+| Maven **local repo** | Third-party jars when `[m2] integration` is on; a digest-matching file is copied into the store instead of downloaded | **Yes** — a warm-fetch win |
 | Shared **JDKs** | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` | Project-local engine state, including **preflight memos** | **Yes** with the workspace |
 | Platform **state** runs | Run history + `jk-results.md` + `details.jsonl` | Optional |

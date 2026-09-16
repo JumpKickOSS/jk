@@ -187,7 +187,11 @@ class MavenRepoTest {
             MavenRepo.Fetched fetched = repo.fetchArtifact(coord);
 
             Path m2Jar = m2.resolve(MavenLayout.artifactPath(coord));
-            assertThat(fetched.cachePath()).isEqualTo(m2Jar);
+            // The store is what jk reads; the local repository gets Maven's copy.
+            assertThat(fetched.cachePath())
+                    .isEqualTo(RepoArtifactStore.forRepository(tempDir, "test", base)
+                            .locate(MavenLayout.artifactPath(coord))
+                            .orElseThrow());
             assertThat(m2Jar).exists();
             assertThat(Files.readAllBytes(m2Jar)).isEqualTo(jar);
             assertThat(m2Jar.resolveSibling(m2Jar.getFileName() + ".sha1")).exists();

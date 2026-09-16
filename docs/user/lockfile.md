@@ -157,8 +157,9 @@ a pre-release belong on `jk update`.
 
 `jk lock` is the trust boundary. For each POM/artifact download JumpKick:
 
-1. Streams bytes, computes SHA-256 locally, and stores a Maven-layout `*.jar` (Maven
-   local repo when `[m2] integration` is on and the slot is empty or already equal).
+1. Streams bytes, computes SHA-256 locally, and stores a Maven-layout `*.jar` under the
+   store's `repos/<origin>/` (written through to the Maven local repo too when `[m2] integration`
+   is on and the slot is empty or already equal).
 2. Fetches the repository’s published sidecar (`.sha256`, else `.sha1`, else `.md5` as the last
    resort) and **fails closed** on mismatch. An artifact only an `.md5` vouches for (Central holds
    POMs published that way, `org.jetbrains.kotlin:kotlin-bom:1.9.20` among them) is accepted, and

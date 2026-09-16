@@ -16,8 +16,14 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ArtifactLocatorTest {
 
+    /**
+     * The Maven local repository is a read-through source, never an address: a digest-matching
+     * file there is copied into the store and the store's path is the answer, so a build reads a
+     * file only jk writes and another writer of the local repository cannot move it.
+     */
     @Test
-    void prefers_digest_matching_m2_file(@TempDir Path dir) throws Exception {
+    void a_digest_matching_m2_file_is_materialized_into_the_store_and_answered_from_there(@TempDir Path dir)
+            throws Exception {
         Path store = dir.resolve("store");
         Path m2 = dir.resolve("m2");
         Lockfile.Artifact pkg = new Lockfile.Artifact(
@@ -37,62 +43,25 @@ class ArtifactLocatorTest {
                 pkg.name(), pkg.version(), pkg.source(), "sha256:" + hex, pkg.path(), pkg.scopes(), pkg.deps());
 
         ArtifactLocator locator = new ArtifactLocator(store, m2, true);
-        assertThat(locator.locate(pkg)).contains(m2Jar.toAbsolutePath().normalize());
+        Path expected =
+                store.resolve("repos/central").resolve(rel).toAbsolutePath().normalize();
+        assertThat(locator.locate(pkg)).contains(expected);
+        assertThat(expected).hasSameBinaryContentAs(m2Jar);
 
-        // : the m2 probe records its own `.m2.jk` memo, distinct from the store's `.jk`,
-        // so the two blobs don't invalidate each other's fast path.
+        // The m2 probe records its own `.m2.jk` memo, distinct from the store's `.jk`, so the two
+        // blobs do not invalidate each other's fast path.
         Path storeSidecar = ArtifactMemo.jkPath(store.resolve("repos/central"), rel);
         Path m2Sidecar = storeSidecar.resolveSibling(
                 storeSidecar.getFileName().toString().replace(".jk", ".m2.jk"));
         assertThat(m2Sidecar).exists();
-        assertThat(storeSidecar).doesNotExist();
-        // The fast path now holds: a second locate rehashes nothing but still resolves.
-        assertThat(locator.locate(pkg)).contains(m2Jar.toAbsolutePath().normalize());
-    }
-
-    /**
-     * A locator for paths jk writes down never answers with {@code ~/.m2}: a row only the mirror
-     * has is copied into the store and the store's path is the answer, so a launcher rendered over
-     * it stands when the mirror is purged and loads the bytes the store verified.
-     */
-    @Test
-    void a_store_placing_locator_materializes_a_mirror_hit_into_the_store_and_answers_from_there(@TempDir Path dir)
-            throws Exception {
-        Path store = dir.resolve("store");
-        Path m2 = dir.resolve("m2");
-        Lockfile.Artifact pkg = new Lockfile.Artifact(
-                "org.tomlj:tomlj",
-                "1.1.1",
-                "central+https://repo.maven.apache.org/maven2/",
-                "sha256:pending",
-                null,
-                List.of(Scope.MAIN),
-                List.of());
-        String rel = MavenLayout.artifactPath(pkg.coordinate());
-        Path m2Jar = m2.resolve(rel);
-        Files.createDirectories(m2Jar.getParent());
-        Files.writeString(m2Jar, "tomlj-bytes");
-        String hex = Hashing.sha256Hex(m2Jar);
-        pkg = new Lockfile.Artifact(
-                pkg.name(), pkg.version(), pkg.source(), "sha256:" + hex, pkg.path(), pkg.scopes(), pkg.deps());
-
-        ArtifactLocator placing = ArtifactLocator.placingInStore(store, m2);
-        Path expected =
-                store.resolve("repos/central").resolve(rel).toAbsolutePath().normalize();
-        assertThat(placing.locate(pkg)).contains(expected);
-        assertThat(expected).hasSameBinaryContentAs(m2Jar);
-        // The same locator with the mirror gone still answers: the store has the row now.
+        assertThat(storeSidecar).exists();
+        // The mirror gone, the store still answers: the row is jk's now.
         Files.delete(m2Jar);
-        assertThat(placing.locate(pkg)).contains(expected);
-        // The ordinary locator keeps preferring the mirror when it is there.
-        Files.createDirectories(m2Jar.getParent());
-        Files.writeString(m2Jar, "tomlj-bytes");
-        assertThat(new ArtifactLocator(store, m2, true).locate(pkg))
-                .contains(m2Jar.toAbsolutePath().normalize());
+        assertThat(locator.locate(pkg)).contains(expected);
     }
 
     @Test
-    void a_store_placing_locator_with_no_mirror_answers_from_the_store_alone(@TempDir Path dir) {
+    void a_locator_with_no_mirror_answers_from_the_store_alone(@TempDir Path dir) {
         Lockfile.Artifact pkg = new Lockfile.Artifact(
                 "org.tomlj:tomlj",
                 "1.1.1",
@@ -101,7 +70,7 @@ class ArtifactLocatorTest {
                 null,
                 List.of(Scope.MAIN),
                 List.of());
-        assertThat(ArtifactLocator.placingInStore(dir.resolve("store"), null).locate(pkg))
+        assertThat(new ArtifactLocator(dir.resolve("store"), null, true).locate(pkg))
                 .isEmpty();
     }
 

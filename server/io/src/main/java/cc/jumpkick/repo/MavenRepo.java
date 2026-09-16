@@ -37,9 +37,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One Maven-style repository: fetch into {@code repos/<name>/} (Maven layout + {@code .jk} memo).
- * When {@code m2integration} is on, a digest-matching Maven local-repo file is preferred and
- * write-through happens only if that slot is empty or already equal. Offline serves from the
- * named repo store ({@link ArtifactNotFoundException} on miss).
+ * When {@code m2integration} is on, a Maven local-repo file the repository's own checksum vouches
+ * for is adopted into the store instead of downloaded, and a download is written through to the
+ * local repository when that slot is empty or already equal — for Maven's benefit; the store is
+ * what jk reads. Offline serves from the named repo store ({@link ArtifactNotFoundException} on
+ * miss).
  */
 public final class MavenRepo {
 
@@ -513,44 +515,43 @@ public final class MavenRepo {
     }
 
     /**
-     * Put verified bytes on disk: Maven local repo when integration is on and the slot is empty or
-     * already equal; otherwise this repository's store. Never overwrites a mismatched local-repo file.
+     * Put verified bytes on disk: this repository's store, which is what every build reads, then
+     * the Maven local repository when integration is on and that slot is empty or already equal.
+     * Never overwrites a mismatched local-repo file. Returns the store's path.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
-        if (m2integration && JkM2Config.resolve().integration()) {
-            // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2.
-            Path m2Target = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
-            Optional<Path> used = writeThroughM2(m2Target, source, relativePath, sha256);
-            if (used.isPresent()) return used.get();
-        }
         repoStore.materialize(relativePath, source, sha256);
         // Fail loudly rather than returning the transient download temp as the "stored" path: a
         // swallowed store-write error (disk full, permissions) otherwise makes sync report success
         // and the later requirePresent gate throws a misleading "run jk sync -F" loop.
-        return repoStore
+        Path placed = repoStore
                 .locate(relativePath)
                 .orElseThrow(() -> new IOException(
                         "failed to store " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " at "
                                 + relativePath + " (store write failed — check disk space and permissions)"));
+        if (m2integration && JkM2Config.resolve().integration()) {
+            // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2.
+            writeThroughM2(MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath), placed);
+        }
+        return placed;
     }
 
-    private Optional<Path> writeThroughM2(Path m2Target, Path source, String relativePath, String sha256) {
+    /**
+     * Maven's copy, with the {@code .sha1} / {@code .md5} sidecars and {@code _remote.repositories}
+     * Maven expects. Best effort: a local repository that cannot be written, or that holds other
+     * bytes at this slot, costs Maven a fetch and jk nothing.
+     */
+    private void writeThroughM2(Path m2Target, Path source) {
         try {
-            if (Files.isRegularFile(m2Target)) {
-                if (!Hashing.sha256Hex(m2Target).equalsIgnoreCase(sha256)) return Optional.empty();
-                repoStore.writeMemo(relativePath, m2Target, sha256);
-                return Optional.of(m2Target);
-            }
+            if (Files.isRegularFile(m2Target)) return;
             M2CompatWriter.MavenHashes hashes = M2CompatWriter.copyToM2AndHash(source, m2Target);
             M2CompatWriter.writeMavenSidecars(m2Target, hashes.sha1(), hashes.md5());
             M2CompatWriter.writeRemoteRepositories(
                     Objects.requireNonNull(m2Target.getParent()),
                     name,
                     m2Target.getFileName().toString());
-            repoStore.writeMemo(relativePath, m2Target, sha256);
-            return Optional.of(m2Target);
-        } catch (IOException e) {
-            return Optional.empty();
+        } catch (IOException | RuntimeException e) {
+            Log.debug("writeThroughM2: the Maven local repository is a courtesy copy", e);
         }
     }
 
@@ -597,13 +598,17 @@ public final class MavenRepo {
                 }
             }
 
-            repoStore.writeMemo(relativePath, candidate, sha256);
+            // Into the store: the build reads only what the store owns, so an adopted file is a copy
+            // and the local repository keeps its own.
+            repoStore.materialize(relativePath, candidate, sha256);
+            Path placed = repoStore.locate(relativePath).orElse(null);
+            if (placed == null) return Optional.empty();
             if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
             if (SessionContext.current().config().verboseOr(false)) {
                 Log.info("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo + " confirmed by "
                         + name + ")");
             }
-            return Optional.of(new Fetched(uri, candidate, sha256, Files.size(candidate)));
+            return Optional.of(new Fetched(uri, placed, sha256, Files.size(placed)));
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
@@ -691,21 +696,6 @@ public final class MavenRepo {
      * return it without network I/O.
      */
     private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
-        if (m2integration && JkM2Config.resolve().integration()) {
-            Path m2File = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
-            Optional<String> hex = repoStore.readSha256Sidecar(relativePath);
-            if (Files.isRegularFile(m2File) && hex.isPresent()) {
-                try {
-                    if (ArtifactMemo.verify(
-                            m2File, ArtifactMemo.jkPath(storeDir(), relativePath), coord.toGav(), hex.get())) {
-                        return Optional.of(
-                                new Fetched(baseUrl.resolve(relativePath), m2File, hex.get(), Files.size(m2File)));
-                    }
-                } catch (IOException ignored) {
-                    // fall through to the named store
-                }
-            }
-        }
         Optional<Path> located = repoStore.locate(relativePath);
         if (located.isEmpty()) return Optional.empty();
         try {

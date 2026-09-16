@@ -756,10 +756,9 @@ public final class LockPipeline {
     }
 
     /**
-     * The locator the compile classpath itself will use: the Maven local repository when
-     * integration is on and no locked module opted out, then {@code repos/<name>/}. The offline
-     * gate has to answer the question the build will ask, and since Maven layout became the only
-     * dependency store a dependency jar is never a CAS blob.
+     * The locator the compile classpath itself will use: {@code repos/<origin>/}, fed from the
+     * Maven local repository when integration is on and no locked module opted out. The offline
+     * gate has to answer the question the build will ask, and a dependency jar is never a CAS blob.
      */
     private static ArtifactLocator offlineLocator(Lockfile lock, Cas cas) {
         boolean m2 = JkM2Config.resolve().integration()
