@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -32,11 +33,15 @@ public final class ProjectImport {
         }
     }
 
+    /** The flag that lets the import overwrite a {@code jk.toml} that is already there. */
+    public static final String OVERWRITE_FLAG = "--overwrite";
+
     /**
      * Convert {@code source} (a {@code pom.xml} or Gradle build file) and write {@code jk.toml}
      * files. {@code poms} resolves the parents and BOMs a POM inherits. {@code exit} 0 success,
      * {@link Exit#USAGE} a missing argument or an unrecognised source, {@link Exit#CANT_CREATE}
-     * overwrite without force, 1 IO error.
+     * when any manifest the import would write is already there and {@code force} is off — nothing
+     * is written then, the root included, so the tree is never half converted — 1 IO error.
      */
     public static Outcome run(
             PomImporter poms,
@@ -68,19 +73,20 @@ public final class ProjectImport {
                 return new Outcome(Exit.USAGE, 0, "unrecognised source: " + source.getFileName(), List.of());
             }
 
-            List<Path> wrote = new ArrayList<>();
-            Files.writeString(out, JkBuildRenderer.render(root), StandardCharsets.UTF_8);
-            wrote.add(out);
-
             Path effectiveBaseDir = baseDir != null ? baseDir : Objects.requireNonNull(source.getParent());
+            Map<Path, JkBuild> manifests = new LinkedHashMap<>();
+            manifests.put(out, root);
             for (Map.Entry<String, JkBuild> e : modules.entrySet()) {
-                Path moduleJkBuild = effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST);
-                if (Files.exists(moduleJkBuild) && !force) {
-                    return new Outcome(
-                            Exit.CANT_CREATE, 0, "would overwrite " + moduleJkBuild + " — pass --force", wrote);
-                }
-                Files.writeString(moduleJkBuild, JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
-                wrote.add(moduleJkBuild);
+                manifests.put(effectiveBaseDir.resolve(e.getKey()).resolve(ManifestPaths.MANIFEST), e.getValue());
+            }
+            if (!force) {
+                String refusal = overwriteRefusal(manifests.keySet(), effectiveBaseDir);
+                if (refusal != null) return new Outcome(Exit.CANT_CREATE, 0, refusal, List.of());
+            }
+            List<Path> wrote = new ArrayList<>();
+            for (Map.Entry<Path, JkBuild> e : manifests.entrySet()) {
+                Files.writeString(e.getKey(), JkBuildRenderer.render(e.getValue()), StandardCharsets.UTF_8);
+                wrote.add(e.getKey());
             }
 
             Path reportTarget = report;
@@ -105,5 +111,26 @@ public final class ProjectImport {
         } catch (IOException e) {
             return new Outcome(1, 0, e.getMessage(), List.of());
         }
+    }
+
+    /**
+     * The message refusing the import when any of {@code manifests} exists, naming each one
+     * relative to {@code baseDir} and the flag that overwrites them; {@code null} when none exists.
+     */
+    static @Nullable String overwriteRefusal(Collection<Path> manifests, Path baseDir) {
+        List<String> existing = new ArrayList<>();
+        for (Path manifest : manifests) {
+            if (!Files.exists(manifest)) continue;
+            Path absolute = manifest.toAbsolutePath().normalize();
+            Path base = baseDir.toAbsolutePath().normalize();
+            existing.add(
+                    absolute.startsWith(base)
+                            ? base.relativize(absolute).toString().replace('\\', '/')
+                            : absolute.toString());
+        }
+        if (existing.isEmpty()) return null;
+        return "refusing to overwrite " + (existing.size() == 1 ? "" : existing.size() + " existing manifests: ")
+                + String.join(", ", existing) + " — nothing was written; pass " + OVERWRITE_FLAG
+                + " to replace " + (existing.size() == 1 ? "it" : "them") + ".";
     }
 }

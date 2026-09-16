@@ -95,7 +95,7 @@ public final class ImportCommand implements CliCommand {
         Path target = out != null ? out : projectDir.resolve(ManifestPaths.MANIFEST);
         if (Files.exists(target) && !force) {
             CommandWedge.printFail(
-                    "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (use --force).");
+                    "Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (pass --overwrite).");
             return Exit.CANT_CREATE;
         }
 
