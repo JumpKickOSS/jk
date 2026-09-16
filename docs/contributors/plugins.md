@@ -111,8 +111,21 @@ version = { type = "string", required = true, example = "4.1.0",
 aot     = { type = "bool" }   # no default = tri-state
 ```
 
-Schema types: `string`, `bool`, `int`, `string-list`. Missing `required` keys fail parse with
-your `example` / `hint`.
+Schema types: `string`, `bool`, `int`, `string-list`, `string-map` (an inline table of strings:
+`options = { a = "1" }`). Missing `required` keys fail parse with your `example` / `hint`.
+
+A table of *things* rather than keys — `[generate.api]`, `[generate.grammar]` — declares
+`[entries]`: every `[<table>.<name>]` sub-table validates against the named `[sub-schema]` and the
+worker reads them as `config().entries()` (name → values), in declaration order.
+
+```toml
+[entries]
+schema = "generator"
+
+[sub-schema.generator]
+tool   = { type = "string", required = true }
+inputs = { type = "string-list", required = true }
+```
 
 ### Contributions
 
@@ -161,8 +174,16 @@ register under the current config (a step it adds only for release) simply match
 `[[contribute.provided-classpath]]` names its tool itself and is unaffected by scope; commands
 receive the whole lane regardless. Step-lane only — a command tool has no step to scope to.
 
-**Interpolation (closed set):** `${config.<key>}`, `${kotlin.version}`,
-`${project.group|name|version}`, `${host.os}`, `${host.os-arch}`.
+**Per-entry tools.** A `[[contribute.step-dependency]]` with `per-entry = true` is one
+declaration expanded once per `[entries]` sub-table: `artifact`, `coordinate`, `with`,
+`managed-by` and `for-step` may use `${entry.name}` (the sub-table's name) and `${entry.<key>}`
+(its validated values). The generator plugin declares `artifact = "${entry.name}"`,
+`coordinate = "${entry.tool}"`, `for-step = "generate-${entry.name}"`, so each entry's tool is
+fetched by and keyed into that entry's step alone.
+
+**Interpolation (closed set):** `${config.<key>}`, `${entry.name}` / `${entry.<key>}` (per-entry
+tools only), `${kotlin.version}`, `${project.group|name|version}`, `${host.os}`,
+`${host.os-arch}`.
 
 **Coordinate versions — bare is exact**, the same grammar as `jk.toml`. In a
 `[[contribute.step-dependency]]`, `[[contribute.command-dependency]]` or
@@ -254,6 +275,9 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   `test`, `package`, `native`, `image`, `other`).
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
+- **Diagnostics** — a body reports a located finding with `TaskExec.diagnostic(severity, file,
+  line, col, message)`; the engine forwards each as the step's warning or error (the
+  `file:line[:col]: message` header the journal parses), before a failing body's throw.
 - The worker wire keeps its legacy spellings (`run-step`, `step:` input refs, `step-output`) —
   protocol literals, not API names.
 
@@ -312,55 +336,59 @@ acme-rules = { group = "com.acme", name = "acme-rules", version = "1.0.0",
 
 Private plugins **error** if they claim a table or id already owned by a built-in plugin.
 
-## Generators (design)
+## Generators
 
-Protobuf is the only generator jk owns. Every other generator a service reaches for — OpenAPI
-Generator, jOOQ codegen, Avro, ANTLR, JAXB `xjc` — has no home: not in `jk.toml`, not in the
-build-logic hatch (no declared inputs, so no honest cache key), not in the action cache. The
-design is **one worker, many tables**.
+Protobuf runs a native binary; every JVM generator a service reaches for — OpenAPI Generator,
+jOOQ codegen, Avro, ANTLR, JAXB `xjc` — runs through **one worker, many tables**
+([user doc](../user/generate.md)).
 
 ### One worker: `[generate]`
 
-A first-party `generator` plugin owns the `[generate]` table. Each entry is a JVM tool run in the
-`generate` stage whose output is contributed to the compiler's source set, exactly the lane the
-protobuf plugin uses:
+`plugins/generator` owns `[generate]` through `[entries]`: each `[generate.<name>]` is one
+`GeneratorEntry`, one generate-stage task named `generate-<name>` whose output is contributed to
+the compiler's source set or the resources — the lane the protobuf plugin uses.
 
 ```toml
 [generate.api]
-tool     = "org.openapitools:openapi-generator-cli:7.11.0"   # coordinate or catalog name; pinned by jk lock
+tool     = "org.openapitools:openapi-generator-cli:7.11.0"   # pinned like any step-dependency
 main     = "org.openapitools.codegen.OpenAPIGenerator"       # optional; default: the jar's Main-Class
 inputs   = ["api/openapi.yaml"]                              # module-relative globs; the cache key
 args     = ["generate", "-i", "${in}", "-g", "spring", "-o", "${out}", "--package-name", "com.acme.api"]
-contributes = "sources"                                      # sources | test-sources | resources
+contributes = "sources"                                      # sources | resources
 ```
 
-- **Tool classpath** resolves through the lock like any `[[contribute.step-dependency]]`: the
-  coordinate and its transitive closure are pinned, so the same generator runs on every machine.
-- **Action key** = input file bytes + tool jar hashes + `args` + `main` + the JDK the worker runs
-  on. Unchanged inputs restore `${out}` from the CAS; the step shows in `jk explain` and in the
-  results Deliverables table like any other.
-- **Isolation**: the tool runs in a forked JVM (the generator worker), never in the engine, with
-  `${out}` as its only writable directory. `${in}` expands to the first input, `${inputs}` to all,
-  `${module.dir}` to the module root.
-- **Diagnostics**: the tool's stderr is captured; lines matching `path:line[:col]` become
-  diagnostics with a location, the rest is the step's log.
+- **Tool classpath**: a `per-entry` `[[contribute.step-dependency]]` with `transitive = true`
+  — the coordinate is the pin (bare = exact), its runtime closure is materialized into the CAS,
+  and the closure's hash is in the action key. The body receives the jar or the closure directory
+  by the entry's name and reads `Main-Class` from the jar named after the coordinate's artifact.
+- **Action key** = the inputs' glob bases (`In.projectFiles`) + the entry's config (`In.config()`,
+  which carries `args`, `main`, `tool`) + tool hashes + JDK + worker jar. Unchanged inputs restore
+  `${out}`; the step shows in `jk explain` and the results Deliverables table like any other.
+- **Isolation**: `java -cp <tool> <main> <args>` forks on the build JDK with `${out}` as its
+  working directory. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
+  the module root.
+- **Diagnostics**: the tool's output is captured; lines matching `path:line[:col]: message` go
+  through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the
+  rest is the failure message's tail.
+- **Not yet**: `contributes = "test-sources"` — the engine has no test-source contribution lane;
+  the entry is refused with that reason.
 
 ### Many tables: presets over the worker
 
-A preset is a first-party `jk-plugin.toml` with a `[schema]`, a `[[contribute.step-dependency]]`
-for the tool, and an argument template — no code of its own. It is sugar the user can read
-through: `jk explain` shows the `[generate]` entry the preset expands to.
+A preset is a first-party plugin owning its own table whose code layer builds one
+`GeneratorEntry` and registers `entry.task()` — the same body, no second worker protocol. Its
+manifest carries the schema and the tool's `[[contribute.step-dependency]]` scoped to
+`for-step = "generate-<name>"`. `jk explain` shows the step the preset expands to.
 
-| Table | Tool | Default inputs | Notes |
+| Table | Tool | Default inputs | Status |
 |---|---|---|---|
-| `[openapi]` | openapi-generator-cli | `api/*.yaml` | `generator`, `package`, `options` keys map to arguments |
-| `[jooq]` | jooq-codegen | `src/main/resources/db/*.sql` via `DDLDatabase` | a live JDBC schema is opt-in and marked uncached unless the user supplies a schema digest |
-| `[avro]` | avro-tools | `src/main/avro/**/*.avsc` | `compile schema` |
-| `[antlr]` | antlr4 | `src/main/antlr/**/*.g4` | `-package` from the module group by default |
-| `[jaxb]` | jaxb-xjc | `src/main/xsd/**/*.xsd` | `-p` package |
+| `[openapi]` | openapi-generator-cli | `api/*.yaml` | shipped (`plugins/openapi`): `generator`, `package`, `version`, `options` |
+| `[jooq]` | jooq-codegen | `src/main/resources/db/*.sql` via `DDLDatabase` | planned; a live JDBC schema is opt-in and marked uncached unless the user supplies a schema digest |
+| `[avro]` | avro-tools | `src/main/avro/**/*.avsc` | planned (`compile schema`) |
+| `[antlr]` | antlr4 | `src/main/antlr/**/*.g4` | planned (`-package` from the module group by default) |
+| `[jaxb]` | jaxb-xjc | `src/main/xsd/**/*.xsd` | planned (`-p` package) |
 
-The first preset is OpenAPI (most Spring services with a contract); jOOQ second; Avro, ANTLR and
-JAXB together. A tool with no preset still works through `[generate]`.
+A tool with no preset works through `[generate]`.
 
 ### Why not the alternatives
 
