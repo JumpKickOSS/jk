@@ -180,6 +180,10 @@ exclude-tags = ["slow", "network", "bench"]
 | Active profile (`--profile` / CI auto `ci`) | Replaces a list **only if that key is present** (including `= []` to clear) |
 | `--include-tags` / `--exclude-tags` | Fully replace that list for the run |
 
+A module whose tests all carry tags the active profile drops reports
+`0 tests (all excluded by profile <name>)` as a plain results line: that tier has no tests in the
+module, which is the expected outcome and not a warning.
+
 `--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
 jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning and after
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step
