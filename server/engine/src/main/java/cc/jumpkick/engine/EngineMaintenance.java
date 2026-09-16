@@ -165,9 +165,22 @@ public final class EngineMaintenance implements AutoCloseable {
         }
     }
 
+    /**
+     * Stop the loop and give a chore in flight the moment to end: an interrupted templates clone
+     * kills its git subprocess only when its thread gets to run the interrupt, and a JVM that
+     * exits first leaves that git writing into the store the engine was stopped to release.
+     */
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
         scheduler.shutdownNow();
+        try {
+            scheduler.awaitTermination(CLOSE_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
+
+    /** How long {@link #close()} waits for an interrupted chore to wind down. */
+    static final Duration CLOSE_GRACE = Duration.ofSeconds(3);
 }

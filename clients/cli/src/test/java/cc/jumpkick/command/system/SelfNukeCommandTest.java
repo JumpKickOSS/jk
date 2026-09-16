@@ -94,6 +94,17 @@ class SelfNukeCommandTest {
         }
     }
 
+    /**
+     * Keep the isolated home's engine off the network: its boot-time hygiene clones the official
+     * templates catalog into the store the nuke is about to delete, and a clone from GitHub on a
+     * loaded machine is a two-minute write the wipe has to wait out. A catalog that does not
+     * exist fails the clone at once, and the nuke's promise holds without a repository in reach.
+     */
+    private void keepTemplatesLocal() throws IOException {
+        Path none = isolatedHome.resolve("no-catalog-here");
+        Files.writeString(JkDirs.current().userConfigFilePath(), "[templates]\nofficial = \"" + none.toUri() + "\"\n");
+    }
+
     @org.junit.jupiter.api.AfterEach
     void restoreHome() {
         if (prevHome == null) System.clearProperty("jk.env.JK_HOME");
@@ -397,6 +408,7 @@ class SelfNukeCommandTest {
         Files.createDirectories(completions);
         Files.writeString(completions.resolve("zsh"), "#compdef jk");
 
+        keepTemplatesLocal();
         int exit = capture(() -> Jk.execute("self", "nuke", "--store", "-y"));
         assertThat(exit).isZero();
         // storage nuke: entire store, including plugin lib
@@ -447,6 +459,7 @@ class SelfNukeCommandTest {
         List<Path> tableRows = SelfNukeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
         assertThat(tableRows).contains(dirs.storeDir().toAbsolutePath().normalize());
 
+        keepTemplatesLocal();
         assertThat(capture(() -> Jk.execute("self", "nuke", "--store", "-y"))).isZero();
 
         for (Path row : tableRows) {
@@ -477,6 +490,7 @@ class SelfNukeCommandTest {
         Files.createDirectories(dirs.stateDir().resolve("aot"));
         Files.writeString(dirs.stateDir().resolve("aot/marker"), "aot");
 
+        keepTemplatesLocal();
         int exit = capture(() -> Jk.execute("self", "nuke", "--store", "--state", "-y"));
 
         assertThat(exit).isZero();

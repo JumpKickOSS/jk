@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.config.JkTemplatesConfig;
+import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,7 +18,11 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -304,6 +310,55 @@ class OfficialTemplatesFreshenTest {
                 "the uncommitted edit survived");
         assertTrue(
                 !Files.exists(enclosing.resolve(".git/shallow")), "the enclosing repository was not shallow-fetched");
+    }
+
+    /**
+     * A hygiene refresh reaches the store gate only after a wipe that holds it lets go, and by then
+     * the wipe is a fact it must honour: the store the nuke reported gone stays gone. The
+     * user-action refresh is the one that repopulates. The wipe leaves this JVM's gate marked
+     * wiped; the only reader is the hygiene path pinned here.
+     */
+    @Test
+    void a_hygiene_refresh_that_reaches_the_gate_after_a_wipe_clones_nothing_and_a_user_action_does() throws Exception {
+        Path official = tmp.resolve("official");
+        Files.createDirectories(official.resolve("java/spring/hello.g8"));
+        Files.writeString(official.resolve("java/spring/hello.g8/default.properties"), "name=hello\n");
+        git(official, "init", "-q");
+        git(official, "add", ".");
+        git(official, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "catalog");
+        String ref = official.toUri().toString();
+        JkTemplatesConfig cfg = new JkTemplatesConfig(ref, List.of());
+        Path store = tmp.resolve("store");
+        Path clone = store.resolve(JkDirs.TEMPLATES_DIR)
+                .resolve(OfficialTemplatesFreshen.parse(ref).cacheKey());
+        String prev = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> hygiene;
+            StoreWriteGate.Held wipe = StoreWriteGate.wipe();
+            try {
+                hygiene = pool.submit(() -> {
+                    OfficialTemplatesFreshen.refresh(cfg, s -> {}, true);
+                    return null;
+                });
+                assertThrows(
+                        TimeoutException.class,
+                        () -> hygiene.get(300, TimeUnit.MILLISECONDS),
+                        "a refresh waits for the wipe that holds the gate");
+            } finally {
+                wipe.close();
+            }
+            hygiene.get(30, TimeUnit.SECONDS);
+            assertTrue(!Files.exists(clone), "the hygiene refresh stood down after the wipe");
+
+            OfficialTemplatesFreshen.refresh(cfg, s -> {}, false);
+            assertTrue(Files.isDirectory(clone.resolve("java/spring/hello.g8")), "a user action repopulates");
+        } finally {
+            pool.shutdownNow();
+            if (prev == null) System.clearProperty("jk.env.JK_STORE_DIR");
+            else System.setProperty("jk.env.JK_STORE_DIR", prev);
+        }
     }
 
     private static void git(Path dir, String... args) throws Exception {
