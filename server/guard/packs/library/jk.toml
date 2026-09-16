@@ -1,4 +1,5 @@
 group = "cc.jumpkick.guards"
+javadoc = false   # a rule pack has no API to document
 name = "library"
 description = "Library house rules: locale- and charset-explicit JDK calls, @NullMarked packages, no snapshots, converged versions, a file-size ratchet."
 

@@ -1,4 +1,5 @@
 group = "cc.jumpkick.guards"
+javadoc = false   # a rule pack has no API to document
 name = "android"
 description = "Android house rules: one logging owner, no blocking sleeps, java.time, test libraries in the test scope, a file-size ratchet."
 

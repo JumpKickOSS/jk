@@ -1,4 +1,5 @@
 group = "cc.jumpkick.guards"
+javadoc = false   # a rule pack has no API to document
 name = "monorepo"
 description = "Monorepo house rules: one module per package, converged versions, no snapshots, a Java floor, a file-size ratchet."
 
