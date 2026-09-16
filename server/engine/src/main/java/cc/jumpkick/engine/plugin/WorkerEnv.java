@@ -17,6 +17,7 @@ import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -158,11 +159,11 @@ public final class WorkerEnv {
     }
 
     /**
-     * The child's complete environment: inherited names first, the request's proxy variables over
-     * the engine's, then {@link #extras()}.
+     * The child's complete environment: inherited names first, the request's proxy and display
+     * variables over the engine's, then {@link #extras()}.
      */
     public Map<String, String> environment() {
-        return compose(ENGINE.orElse(System.getenv()), BuildEnv.proxyFromRequest(), inherit, extras, Os.isWindows());
+        return compose(ENGINE.orElse(System.getenv()), BuildEnv.fromRequest(), inherit, extras, Os.isWindows());
     }
 
     /**
@@ -179,14 +180,15 @@ public final class WorkerEnv {
 
     /**
      * The pure rule: {@code engine} whole when {@code inherit}, else only its {@link #allowed} names;
-     * {@code requestProxy} — the proxy variables of the shell running {@code jk} — over those, so
-     * the worker goes where the request goes rather than where the engine's spawning shell did;
-     * {@code extras} on top in their own order. Windows variable names are case-insensitive, so
-     * there {@code Path} passes the {@code PATH} rule and lands under its own spelling.
+     * {@code request} — the proxy and display variables of the shell running {@code jk} — over
+     * those, so the worker goes where the request goes and draws where it draws rather than where
+     * the engine's spawning shell did; {@code extras} on top in their own order. Windows variable
+     * names are case-insensitive, so there {@code Path} passes the {@code PATH} rule and lands under
+     * its own spelling.
      */
     static Map<String, String> compose(
             Map<String, String> engine,
-            Map<String, String> requestProxy,
+            Map<String, String> request,
             boolean inherit,
             Map<String, String> extras,
             boolean caseInsensitive) {
@@ -194,7 +196,7 @@ public final class WorkerEnv {
         for (Map.Entry<String, String> e : engine.entrySet()) {
             if (inherit || allowed(e.getKey(), caseInsensitive)) out.put(e.getKey(), e.getValue());
         }
-        out.putAll(requestProxy);
+        out.putAll(request);
         out.putAll(extras);
         return out;
     }
@@ -204,15 +206,19 @@ public final class WorkerEnv {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
         if (key.startsWith("LC_")) return true;
         if (JK.contains(key)) return true;
-        if (caseInsensitive ? PROXY_UPPER.contains(key) : BuildEnv.PROXY.contains(key)) return true;
+        if (caseInsensitive ? SHELL_UPPER.contains(key) : SHELL.contains(key)) return true;
         return caseInsensitive ? MACHINE_UPPER.contains(key) : MACHINE.contains(key);
     }
 
     private static final Set<String> MACHINE_UPPER =
             MACHINE.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 
-    private static final Set<String> PROXY_UPPER =
-            BuildEnv.PROXY.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
+    /** The names that ride each request by exact spelling: the proxy and the display. */
+    private static final Set<String> SHELL =
+            Stream.concat(BuildEnv.PROXY.stream(), BuildEnv.DISPLAY.stream()).collect(Collectors.toUnmodifiableSet());
+
+    private static final Set<String> SHELL_UPPER =
+            SHELL.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 
     /**
      * Test seam: run {@code body} with {@code engine} standing in for this process's environment, so

@@ -84,6 +84,34 @@ class WorkerEnvTest {
                 .isFalse();
     }
 
+    /**
+     * The display is where the machine draws, so a worker gets the three display names without a
+     * manifest asking — and the request's values over the engine's, because a suite should open the
+     * display of the terminal running {@code jk test}, the one {@code xvfb-run} set, not the one of
+     * whichever shell spawned the daemon.
+     */
+    @Test
+    void the_display_variables_come_through_with_the_requests_values_over_the_engines() {
+        Map<String, String> engine = new LinkedHashMap<>(ENGINE);
+        engine.put("DISPLAY", ":0");
+        engine.put("WAYLAND_DISPLAY", "wayland-0");
+        engine.put("DESKTOP_SESSION", "gnome");
+        Map<String, String> request = Map.of("DISPLAY", ":99", "XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority");
+
+        Map<String, String> out = WorkerEnv.compose(engine, request, false, Map.of(), false);
+
+        assertThat(out)
+                .containsEntry("DISPLAY", ":99")
+                .containsEntry("XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority")
+                .as("a name the request did not carry keeps the engine's value")
+                .containsEntry("WAYLAND_DISPLAY", "wayland-0");
+        assertThat(out).as("only the three names a toolkit reads").doesNotContainKey("DESKTOP_SESSION");
+        assertThat(WorkerEnv.compose(engine, Map.of(), false, Map.of(), false))
+                .as("with nothing on the request the engine's own value passes")
+                .containsEntry("DISPLAY", ":0");
+        assertThat(WorkerEnv.allowed("XAUTHORITY", false)).isTrue();
+    }
+
     @Test
     void inherit_hands_over_the_whole_environment() {
         assertThat(WorkerEnv.compose(ENGINE, Map.of(), true, Map.of(), false))

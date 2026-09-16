@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The environment a spawned engine starts with: an allow-list of the spawning shell's, never the
@@ -31,8 +32,9 @@ final class EngineEnvironment {
      * locale and terminal; the host JDK and GraalVM fallbacks; the SSH agent the git backend authenticates
      * through; the SDK and JDK discovery roots; the display preferences shared config reads; and on
      * Windows the system roots a process needs to run anything at all. Both platforms' spellings,
-     * so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes, and the
-     * proxy variables are {@link BuildEnv#PROXY}, all matched in {@link #inherited}, less the
+     * so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes, the
+     * proxy variables are {@link BuildEnv#PROXY} and the display's {@link BuildEnv#DISPLAY}, all
+     * matched in {@link #inherited}, less the
      * {@link #PER_REQUEST} names that travel on each request. No per-user application-data
      * variable is carried: nothing the
      * engine runs needs one to start, and what reads one to discover another program's layout
@@ -120,15 +122,18 @@ final class EngineEnvironment {
         String key = caseInsensitive ? name.toUpperCase(Locale.ROOT) : name;
         if (PER_REQUEST.contains(key)) return false;
         if (key.startsWith("JK_") || key.startsWith("LC_") || key.equals(MALLOC_ARENA_MAX)) return true;
-        if (caseInsensitive ? PROXY_UPPER.contains(key) : BuildEnv.PROXY.contains(key)) return true;
+        if (caseInsensitive ? SHELL_UPPER.contains(key) : SHELL.contains(key)) return true;
         return caseInsensitive ? MACHINE_UPPER.contains(key) : MACHINE.contains(key);
     }
 
     /**
-     * The proxy variables ({@link BuildEnv#PROXY}) ride each request too, and the request's values
-     * win; the engine inherits them so a request that carries none — an older client, a shell that
-     * unset them — still has the spawning shell's to fall back on.
+     * The proxy and display variables ({@link BuildEnv#PROXY}, {@link BuildEnv#DISPLAY}) ride each
+     * request too, and the request's values win; the engine inherits them so a request that
+     * carries none — a shell that unset them — still has the spawning shell's to fall back on.
      */
-    private static final Set<String> PROXY_UPPER =
-            BuildEnv.PROXY.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
+    private static final Set<String> SHELL =
+            Stream.concat(BuildEnv.PROXY.stream(), BuildEnv.DISPLAY.stream()).collect(Collectors.toUnmodifiableSet());
+
+    private static final Set<String> SHELL_UPPER =
+            SHELL.stream().map(n -> n.toUpperCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
 }

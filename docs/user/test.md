@@ -426,6 +426,23 @@ reaches every worker JVM the module forks, compilers included; a value only the 
 here. `jk import` writes Surefire's `<argLine>` (minus the `${argLine}` placeholder and the JaCoCo
 agent) and its system properties into these keys.
 
+## A suite that needs a display
+
+The forked test JVM gets the display of the shell running `jk`: `DISPLAY`, `WAYLAND_DISPLAY` and
+`XAUTHORITY` ride every request by name, over whatever the engine's own shell had, with no `[env]`
+or `[test] env` asking ([Build § Worker environment](build.md#worker-environment-env)).
+A JavaFX or Swing suite therefore behaves as it does under Surefire and Gradle, which fork the
+whole shell: it draws on the terminal's display, and on a host without one it fails the way it
+fails there (JavaFX: `Unable to open DISPLAY`). The remedy is the same too: `xvfb-run jk test`.
+
+jk sets no `java.awt.headless`; Surefire does not either, and JavaFX does not read it. A Swing or
+AWT suite that can run without a display says so itself:
+
+```toml
+[test]
+system-properties = { "java.awt.headless" = true }
+```
+
 ## The test JVM's thread stack
 
 Every test JVM jk forks runs on the JVM's default thread stack, as Surefire's and Gradle's do, so a

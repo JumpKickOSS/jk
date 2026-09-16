@@ -184,6 +184,10 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   shell running `jk` over the engine's own ([Config § Network](config.md#network)) — a worker
   that downloads goes through the proxy this command's terminal names, and so does a test JVM,
   a credential in the proxy URL included
+- the display variables `DISPLAY` / `WAYLAND_DISPLAY` / `XAUTHORITY`, again the
+  shell running `jk` over the engine's own — a JavaFX or Swing suite opens the display of the
+  terminal that ran `jk test`, and `xvfb-run jk test` hands a headless host a virtual one
+  ([Test](test.md#a-suite-that-needs-a-display))
 - on Windows also `USERPROFILE`, `SystemRoot`, `SystemDrive`, `windir`, `PATHEXT`, `COMSPEC`,
   `NUMBER_OF_PROCESSORS`
 - the `JK_*` settings a worker reads: the product roots (`JK_HOME`, `JK_STATE_DIR`,
@@ -214,8 +218,8 @@ inherit = true   # the legacy build scripts read a dozen CI variables; listing t
 `inherit = true` hands the module's workers the engine's whole environment, secrets included.
 Write the reason beside it. `[env]` is per module and is not inherited from a workspace root.
 The engine's own environment is the shell that started it, not the one running `jk` — apart
-from the proxy variables above, a variable set for one command reaches a worker only through
-`vars` or `[test] env`.
+from the proxy and display variables above, a variable set for one command reaches a worker only
+through `vars` or `[test] env`.
 
 ## Parallelism (`-j`)
 

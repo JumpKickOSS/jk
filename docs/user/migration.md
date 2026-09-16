@@ -211,10 +211,17 @@ caveat, not a regression. Run 7 (main 39f7ad41d, the tree's own workers shelved 
 locks fourteen and compiles eight: mall, nacos and zipkin lock once the solver's version universe
 keeps older exact pins, dataease and jenkins lock once repositories carry their release and
 snapshot policy, and the walls move into the compile and test steps (a sibling package the import
-drops in nacos and jenkins, a `javax.jms` transitive in zipkin, a test JVM without
-`java.awt.headless` in cryptomator, a test that refuses jk's class directory in apollo), each a
-ticket. Its wall columns are not comparable: six gates shared the host during that run. The other
-walls are named in the corpus's `tier3-reasons.md`, each with its ticket.
+drops in nacos and jenkins, a `javax.jms` transitive in zipkin, a JavaFX suite with no display to
+open in cryptomator, a test that refuses jk's class directory in apollo), each a ticket. Its wall
+columns are not comparable: six gates shared the host during that run. The other walls are named
+in the corpus's `tier3-reasons.md`, each with its ticket.
+
+One of run 7's test walls is the repository's contract with Maven rather than something jk
+translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
+on a host with no display Maven fails it with the same `UnsupportedOperationException: Unable to
+open DISPLAY` (Surefire sets no `java.awt.headless`, and JavaFX would not read it), and the
+repository's own CI wraps Maven in `xvfb-run`. Under jk the test JVM gets the display of the shell
+running `jk test`, so `xvfb-run jk test` is the same remedy ([Test](test.md#a-suite-that-needs-a-display)).
 
 ### Which Maven plugins import, and how well
 
