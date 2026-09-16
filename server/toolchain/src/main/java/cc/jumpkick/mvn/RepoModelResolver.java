@@ -24,7 +24,6 @@ import org.apache.maven.model.Parent;
 import org.apache.maven.model.Repository;
 import org.apache.maven.model.building.FileModelSource;
 import org.apache.maven.model.building.ModelSource;
-import org.apache.maven.model.resolution.InvalidRepositoryException;
 import org.apache.maven.model.resolution.ModelResolver;
 import org.apache.maven.model.resolution.UnresolvableModelException;
 
@@ -101,15 +100,21 @@ final class RepoModelResolver implements ModelResolver {
     }
 
     @Override
-    public void addRepository(Repository repository) throws InvalidRepositoryException {
+    public void addRepository(Repository repository) {
         addRepository(repository, false);
     }
 
-    /** A {@code <repository>} of the POM under import; Central is already in the group. */
+    /**
+     * A {@code <repository>} of the POM under import or of a parent; Central is already in the
+     * group. Maven hands the URL over uninterpolated, so a published parent's snapshot repository
+     * spelled {@code ${vertx.snapshotRepository}} arrives as written: Maven itself keeps such a
+     * repository and fails only on a fetch from it, so here it is left out and the lookup goes on
+     * through the repositories that do parse.
+     */
     @Override
-    public void addRepository(Repository repository, boolean replace) throws InvalidRepositoryException {
+    public void addRepository(Repository repository, boolean replace) {
         String url = repository.getUrl();
-        if (url == null || url.isBlank() || isCentral(url)) return;
+        if (url == null || url.isBlank() || isCentral(url) || CiFriendlyVersions.hasPlaceholder(url)) return;
         String id = repository.getId() == null || repository.getId().isBlank() ? url : repository.getId();
         if (!declared.add(id)) return;
         try {
@@ -117,7 +122,7 @@ final class RepoModelResolver implements ModelResolver {
             if (repos.repos().stream().anyMatch(r -> r.baseUrl().equals(uri))) return;
             repos = repos.withReposPrepended(List.of(new MavenRepo(id, uri, http, cas)));
         } catch (URISyntaxException | IllegalArgumentException e) {
-            throw new InvalidRepositoryException(e.getMessage(), repository, e);
+            declared.remove(id);
         }
     }
 
