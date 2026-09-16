@@ -55,6 +55,8 @@ Cold first lock of the Quarkus platform is large; warm CAS re-locks are fast.
 
 ## Grails
 
+**Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
+
 Grails 8 (Apache, Spring Boot 4) on the Groovy lane:
 
 ```bash
@@ -94,6 +96,8 @@ what CI provides. The gap versus `mn:run` / `./gradlew run` with test-resources 
 one convenience: no service is started for you.
 
 ## Android
+
+**Contrib battery** (best-effort; see [Plugins](plugins.md#batteries-and-their-tiers)).
 
 First-party Android plugin for app/library modules. This is **not** AGP parity. Use `jk`
 for the JumpKick-supported Android path; keep `jk gradle` when you still need full AGP.
