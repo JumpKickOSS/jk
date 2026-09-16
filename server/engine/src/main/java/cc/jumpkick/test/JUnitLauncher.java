@@ -154,6 +154,18 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** {@code [profiles.<name>] jvm-args} of the active profile; empty when none applies. */
+    private List<String> jvmArgs = List.of();
+
+    /**
+     * Extra flags for every JVM this launcher forks, after jk's own tuning so a profile's
+     * {@code -Xmx} or {@code -D} wins over the default.
+     */
+    public JUnitLauncher withJvmArgs(List<String> args) {
+        this.jvmArgs = args == null ? List.of() : List.copyOf(args);
+        return this;
+    }
+
     String moduleLabel() {
         return moduleLabel;
     }
@@ -174,15 +186,16 @@ public final class JUnitLauncher {
     }
 
     /**
-     * Worker JVM flags: the heap/GC tuning, {@code -ea} unless the module opted out, the
-     * {@code jk.plugin.class} selector for the runner, and any {@code jk.<worker>.plugin.jar} /
-     * {@code jk.engine.jar} overrides.
+     * Worker JVM flags: the heap/GC tuning, {@code -ea} unless the module opted out, the active
+     * profile's {@code jvm-args}, the {@code jk.plugin.class} selector for the runner, and any
+     * {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(JvmOptions.workerFlags(concurrency));
         // Surefire and Gradle fork test JVMs with assertions on; a Java or Kotlin `assert` in a
         // test is a check the author wrote to run.
         if (assertions) flags.add("-ea");
+        flags.addAll(jvmArgs);
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
         // The Java half of the TMPDIR TestEnv sandboxes: @TempDir reads the property, not the
         // environment. Passed in, not read off testEnv — with W>1 it is the worker's own subdir.

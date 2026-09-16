@@ -492,11 +492,14 @@ public final class PlannerTest {
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store
                     }
+                    // The active profile's jvm-args ride the fork and its stamp alike.
+                    List<String> profileJvmArgs = PlannerSupport.profileJvmArgs(projectUnderTest, in.profileName());
                     List<String> extras = new ArrayList<>(TestStamp.withCompileTest(
                             testStampExtras(
                                     workerJars,
                                     effectiveSel,
                                     projectUnderTest.build(),
+                                    profileJvmArgs,
                                     in.dir(),
                                     ClasspathFingerprint.ON_DISK),
                             compileTestKeys(ctx)));
@@ -520,6 +523,9 @@ public final class PlannerTest {
                         return; // skip — nothing changed since last green run
                     }
                     reweightForRealRun(ctx, in);
+                    if (!profileJvmArgs.isEmpty()) {
+                        ctx.output("test jvm-args (profile): " + String.join(" ", profileJvmArgs));
+                    }
                     List<Path> runtimeCp = testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
                     String moduleLabel = projectUnderTest.project().group() + ":"
                             + projectUnderTest.project().name();
@@ -557,6 +563,7 @@ public final class PlannerTest {
                                 // while the rest shard.
                                 .withSerialTags(projectUnderTest.build().testSerialTags())
                                 .withAssertions(projectUnderTest.build().testAssertions())
+                                .withJvmArgs(profileJvmArgs)
                                 .withClassPatterns(effectiveSel.classes())
                                 .withDebug(in.session().debugJvm());
                         if (jacoco != null && coverageExec != null) {

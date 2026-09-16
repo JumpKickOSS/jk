@@ -141,8 +141,22 @@ These are **deliberately separate**:
 | Knob | Changes |
 |------|---------|
 | **Features** | *What* optional deps you have (`[features]`, `optional = true`) |
-| **Profiles** | *How* you compile (flags, JVM args, tag filters). `--profile` / auto `ci` |
+| **Profiles** | *How* you compile and test (`javac` flags, test-JVM args, tag filters). `--profile` / auto `ci` |
 | **Variants** | *Which product* you build (sources, deps, plugin config). `--variant` / `--release` |
+
+```toml
+[profiles.strict]
+javac = ["-Werror"]                 # appended to the compiler argv
+
+[profiles.probe]
+inherits = "strict"                 # parent first, then this table
+jvm-args = ["-Dprobe=1", "-Xmx1g"]  # every forked test JVM (jk test, and the test step of jk build)
+exclude-tags = ["slow"]             # replaces the [test] list when present
+```
+
+`jvm-args` are a test input: `--profile probe` re-runs a suite a plain run left green, and `jk
+explain` keys the step the same way. They do not reach `jk run` — an application's JVM flags are
+its own, not a profile's. Tag precedence and the `ci` auto-profile: [Test](test.md#tag-filters).
 
 ```toml
 [dependencies]
