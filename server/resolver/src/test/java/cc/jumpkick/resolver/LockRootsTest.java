@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +46,26 @@ class LockRootsTest {
 
         LockRoots.Declared withDb = LockRoots.partition(project, List.of("db"), true);
         assertThat(withDb.main().keySet()).containsExactly("com.foo:core:jar:", "com.foo:mysql:jar:");
+    }
+
+    @Test
+    void a_plugin_scoped_dependency_roots_no_solver_graph() throws Exception {
+        // The plugin scope is written by the lock itself (a pinned plugin's SDK floor); a
+        // dependency carrying it never reaches a solver, so the lock rows of that scope are the
+        // floor alone.
+        JkBuild project = JkBuildParser.parse(MANIFEST);
+        Map<Scope, List<Dependency>> byScope =
+                new LinkedHashMap<>(project.dependencies().byScope());
+        byScope.put(
+                Scope.PLUGIN, List.of(new Dependency("cc.jumpkick:jk-plugin-sdk", VersionSelector.parse("0.13.7"))));
+        JkBuild withPlugin = project.withDependencies(new JkBuild.Dependencies(byScope));
+
+        LockRoots.Declared declared = LockRoots.partition(withPlugin, List.of(), true);
+        assertThat(LockRoots.SCOPES).doesNotContain(Scope.PLUGIN);
+        assertThat(declared.main().keySet()).containsExactly("com.foo:core:jar:");
+        assertThat(declared.test().keySet()).doesNotContain("cc.jumpkick:jk-plugin-sdk:jar:");
+        assertThat(declared.processor()).isEmpty();
+        assertThat(declared.split().declaredCount()).isEqualTo(3);
     }
 
     @Test
