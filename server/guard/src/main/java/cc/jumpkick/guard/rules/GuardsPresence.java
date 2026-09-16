@@ -48,6 +48,6 @@ public final class GuardsPresence {
 
     /** The manifest the {@code [guards]} table is read from. */
     public static Path manifest(Path root) {
-        return root.resolve(ManifestPaths.MANIFEST);
+        return ManifestPaths.manifestIn(root);
     }
 }

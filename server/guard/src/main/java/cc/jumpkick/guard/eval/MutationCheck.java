@@ -47,7 +47,7 @@ public final class MutationCheck {
         Path root = WorkspaceScan.findRoot(dir).orElse(dir);
         GuardsConfig cfg;
         try {
-            cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+            cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
         } catch (RuntimeException unparseable) {
             cfg = GuardsConfig.ABSENT;
         }

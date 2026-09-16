@@ -45,7 +45,7 @@ public final class WorkspaceModel {
     public static WorkspaceModel of(Path root, List<Path> modules) throws IOException {
         WorkspaceModel m = new WorkspaceModel(root);
         for (Path dir : modules) {
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
             JkBuild build = parse(manifest);
             String rel = rel(root, dir);

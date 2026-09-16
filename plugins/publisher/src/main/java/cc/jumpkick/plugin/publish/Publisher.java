@@ -141,8 +141,8 @@ public final class Publisher implements Plugin, PublishExtension {
         // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
         // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
         // artifact unconsumable.
-        JkBuild project = WorkspaceResolve.applyWorkspace(
-                projectDir, JkBuildParser.parse(projectDir.resolve(ManifestPaths.MANIFEST)));
+        JkBuild project =
+                WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(ManifestPaths.manifestIn(projectDir)));
 
         // Assemble artifacts.
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();

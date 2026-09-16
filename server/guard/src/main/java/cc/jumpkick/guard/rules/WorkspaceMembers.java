@@ -16,7 +16,7 @@ final class WorkspaceMembers {
     private WorkspaceMembers() {}
 
     static List<Path> of(Path root) throws IOException {
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(root);
         List<Path> out = new ArrayList<>();
         if (!Files.isRegularFile(manifest)) return out;
         JkBuild build;

@@ -68,7 +68,7 @@ public final class TierPartition {
 
     /** The tier table the root manifest declares; {@link Table#EMPTY} when there is no manifest or no {@code [test]}. */
     public static Table table(Path root) {
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return Table.EMPTY;
         List<Tier> tiers = new ArrayList<>();
         Set<String> vocabulary = new TreeSet<>();

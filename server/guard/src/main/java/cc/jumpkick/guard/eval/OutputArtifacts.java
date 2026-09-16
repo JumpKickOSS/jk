@@ -68,7 +68,7 @@ public final class OutputArtifacts {
         else dirs.addAll(modules);
         List<Module> out = new ArrayList<>();
         for (Path dir : dirs) {
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
             String rel = WorkspaceModel.rel(root, dir);
             JkBuild build;

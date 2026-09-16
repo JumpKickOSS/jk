@@ -53,7 +53,7 @@ public final class Freezer {
         if (refusal != null) return new Result(refusal, 0, 0, 0);
         Path baselineFile = GuardsPresence.baselineFile(root);
         Baseline baseline = BaselineFile.read(baselineFile);
-        GuardsConfig cfg = JkBuildParser.guardsConfig(root.resolve(ManifestPaths.MANIFEST));
+        GuardsConfig cfg = JkBuildParser.guardsConfig(ManifestPaths.manifestIn(root));
         LoadResult load = GuardRules.load(root, cfg);
         if (load.hasErrors())
             return new Result(
@@ -160,7 +160,7 @@ public final class Freezer {
             for (Path m : modules) {
                 String rel = WorkspaceModel.rel(root, m);
                 if (!rule.applies(rel)) continue;
-                JkBuild build = JkBuildParser.parse(m.resolve(ManifestPaths.MANIFEST));
+                JkBuild build = JkBuildParser.parse(ManifestPaths.manifestIn(m));
                 BuildLayout layout = BuildLayout.of(m, build);
                 FactsIndexing.Ensured main =
                         FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));

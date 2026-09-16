@@ -46,7 +46,7 @@ public final class GuardModelSnapshot {
             if (!m.toAbsolutePath().normalize().equals(root.toAbsolutePath().normalize())) all.add(m);
         WorkspaceModel model = WorkspaceModel.of(root, modules);
         for (Path dir : all) {
-            Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+            Path manifest = ManifestPaths.manifestIn(dir);
             if (!Files.isRegularFile(manifest)) continue;
             String rel = WorkspaceModel.rel(root, dir);
             JkBuild build;

@@ -25,7 +25,7 @@ public final class WorkspaceModules {
 
     /** Memoised by the manifest's size and modification time: every lane asks, one parse answers. */
     public static List<Path> of(Path root) throws IOException {
-        Path manifest = root.resolve(ManifestPaths.MANIFEST);
+        Path manifest = ManifestPaths.manifestIn(root);
         if (!Files.isRegularFile(manifest)) return List.of();
         BasicFileAttributes a = Files.readAttributes(manifest, BasicFileAttributes.class);
         Memo m = MEMO.get(manifest);
