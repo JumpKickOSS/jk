@@ -10,6 +10,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EngineWireException;
+import cc.jumpkick.wire.protocol.MvnResultsResultEvent;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.ProvisionResultEvent;
 import cc.jumpkick.wire.runtime.HostedEvents;
@@ -164,6 +165,29 @@ final class EnginePluginAdapter {
      * download), which is fine on this blocking read.
      */
     static HostedEvents.Provision provision(EnginePaths.Paths paths, String requestLine) throws IOException {
+        return oneShot(paths, requestLine, EngineProtocol.PROVISION_RESULT, line -> {
+            ProvisionResultEvent e = ProvisionResultEvent.decode(line);
+            // An absent exit code is a failure here, where the record reads 0.
+            return new HostedEvents.Provision(
+                    e.bin(), e.version(), e.source(), e.error(), Jsonl.has(line, "exit") ? e.exit() : 1);
+        });
+    }
+
+    /** Journal a finished {@code jk mvn} run; the terminal names the report the engine wrote. */
+    static HostedEvents.MvnResults mvnResults(EnginePaths.Paths paths, String requestLine) throws IOException {
+        return oneShot(paths, requestLine, EngineProtocol.MVN_RESULTS_RESULT, line -> {
+            MvnResultsResultEvent e = MvnResultsResultEvent.decode(line);
+            return new HostedEvents.MvnResults(e.results(), e.error());
+        });
+    }
+
+    /**
+     * Send one request and decode its single terminal line of type {@code terminalType}. The
+     * session envelope rides the line like every hosted request's.
+     */
+    private static <T> T oneShot(
+            EnginePaths.Paths paths, String requestLine, String terminalType, Function<String, T> decode)
+            throws IOException {
         EngineClient.ensureRunning(paths, JkVersion.VERSION);
 
         try (SocketChannel ch = EngineWire.connect(EnginePaths.activeSocket(paths))) {
@@ -189,16 +213,13 @@ final class EnginePluginAdapter {
                                     ? null
                                     : SessionContext.current().graalHome().toString()));
 
-            return WireStream.pumpJob(reader, ch, (type, line) -> switch (type) {
-                case EngineProtocol.PROVISION_RESULT -> {
-                    ProvisionResultEvent e = ProvisionResultEvent.decode(line);
-                    // An absent exit code is a failure here, where the record reads 0.
-                    yield new HostedEvents.Provision(
-                            e.bin(), e.version(), e.source(), e.error(), Jsonl.has(line, "exit") ? e.exit() : 1);
+            return WireStream.pumpJob(reader, ch, (type, line) -> {
+                if (terminalType.equals(type)) return decode.apply(line);
+                if (EngineProtocol.ERROR.equals(type)) {
+                    throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                 }
-                case EngineProtocol.ERROR -> throw EngineWireException.fromJsonLine(line, "jk engine: run failed: ");
                 // Anything else is a forward-compatible no-op: ask for the next line.
-                default -> null;
+                return null;
             });
         }
     }

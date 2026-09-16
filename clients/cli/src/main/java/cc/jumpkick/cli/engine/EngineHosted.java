@@ -18,6 +18,7 @@ import cc.jumpkick.wire.protocol.GitFetchRequest;
 import cc.jumpkick.wire.protocol.ImageRequest;
 import cc.jumpkick.wire.protocol.ImportNoteEvent;
 import cc.jumpkick.wire.protocol.ImportRequest;
+import cc.jumpkick.wire.protocol.MvnResultsRequest;
 import cc.jumpkick.wire.protocol.PlanFinishCacheEvent;
 import cc.jumpkick.wire.protocol.PlanFinishFormatEvent;
 import cc.jumpkick.wire.protocol.PlanFinishGitFetchEvent;
@@ -259,6 +260,17 @@ final class EngineHosted {
                 paths,
                 new ProvisionRequest(projectDir.toString(), toolsRoot.toString(), noDiscover, gradle, null, null)
                         .encode());
+    }
+
+    /**
+     * Journal a finished {@code jk mvn} run from the spy's {@code events} file so {@code jk
+     * results} and MCP see it as they see a jk build.
+     */
+    static HostedEvents.MvnResults mvnResults(
+            EnginePaths.Paths paths, Path projectDir, Path events, int exit, long millis, String goals)
+            throws IOException {
+        return EnginePluginAdapter.mvnResults(
+                paths, new MvnResultsRequest(projectDir.toString(), events.toString(), exit, millis, goals).encode());
     }
 
     /**

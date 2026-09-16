@@ -33,6 +33,8 @@ modules = [
   "clients/cli",
   "clients/cli-terminal",
   "clients/web",
+  # A Maven core extension jk mvn attaches to the user's Maven; not a jk plugin
+  "clients/maven-spy",
   # Plugins/Workers
   "plugins/test-runner",
   "plugins/java-compiler",

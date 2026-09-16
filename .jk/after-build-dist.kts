@@ -69,6 +69,15 @@ if (!Files.isDirectory(target)) {
         return if (Files.isRegularFile(jar)) jar else null
     }
 
+    /**
+     * The Maven event spy's module jar for [version], or null when this build produced none. A
+     * thin jar on purpose: Maven supplies its API, so there is nothing to bundle.
+     */
+    fun mavenSpy(version: String): Path? {
+        val jar = target.resolve("jk-maven-spy-$version.jar")
+        return if (Files.isRegularFile(jar)) jar else null
+    }
+
     // The native client is named by [native].name, and carries .exe on Windows.
     val client: Path? = listOf("jk", "jk.exe")
         .map { target.resolve(it) }
@@ -101,6 +110,9 @@ if (!Files.isDirectory(target)) {
             val clientJar = clientAssembly(version)
             val clientJarOut = lib.resolve("jk-$version.jar")
             if (clientJar != null) Files.copy(clientJar, clientJarOut, StandardCopyOption.REPLACE_EXISTING)
+            val spyJar = mavenSpy(version)
+            val spyJarOut = lib.resolve("jk-maven-spy-$version.jar")
+            if (spyJar != null) Files.copy(spyJar, spyJarOut, StandardCopyOption.REPLACE_EXISTING)
             // The pruning half matters as much as the copying:
             // `install.sh` takes the FIRST `lib/jk-engine-*.jar` it globs, so one jar left behind
             // by an earlier version is an installer that pairs today's client with last month's
@@ -108,13 +120,14 @@ if (!Files.isDirectory(target)) {
             Files.list(lib).use { entries ->
                 entries.filter { p ->
                     val n = p.fileName.toString()
-                    n.startsWith("jk-") && n.endsWith(".jar") && p != engineOut && p != clientJarOut
+                    n.startsWith("jk-") && n.endsWith(".jar") && p != engineOut && p != clientJarOut && p != spyJarOut
                 }.forEach { stale ->
                     Files.deleteIfExists(stale)
                     println("jk dist: removed stale ${projectDir.relativize(stale)}")
                 }
             }
-            val shipped = listOf(clientOut, engineOut) + listOfNotNull(clientJar?.let { clientJarOut })
+            val shipped = listOf(clientOut, engineOut) +
+                listOfNotNull(clientJar?.let { clientJarOut }, spyJar?.let { spyJarOut })
             println("jk dist: " + shipped.joinToString(" + ") { projectDir.relativize(it).toString() })
             if (clientJar == null) println("jk dist: no jk-cli-$version-all.jar in target/ — no JVM client shipped")
         }

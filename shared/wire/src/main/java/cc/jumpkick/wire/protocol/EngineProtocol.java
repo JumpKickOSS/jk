@@ -461,6 +461,12 @@ public final class EngineProtocol {
     /** Server → client, terminal for {@link #PROVISION_REQUEST}: the provisioned tool's bin path. */
     public static final String PROVISION_RESULT = "provision-result";
 
+    /** Client → server: journal a finished {@code jk mvn} run from the spy's event file ({@code dir} is the project). */
+    public static final String MVN_RESULTS_REQUEST = "mvn-results-request";
+
+    /** Server → client, terminal for {@link #MVN_RESULTS_REQUEST}: the report path, or the failure. */
+    public static final String MVN_RESULTS_RESULT = "mvn-results-result";
+
     // ---- hosted plan commands ------------------------------------------------------------------
 
     /** Client → server: type-check ({@code jk compile}); single-plan shape. */

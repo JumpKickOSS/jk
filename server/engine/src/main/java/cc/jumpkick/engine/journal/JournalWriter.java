@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.mvn.PomCoord;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -72,12 +73,21 @@ public final class JournalWriter {
                         kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId, requestId));
     }
 
+    /** {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout. */
     public static @Nullable String coordOf(String dir) {
         try {
             var project = JkBuildParser.parse(Path.of(dir).resolve(ManifestPaths.MANIFEST))
                     .project();
             return project.group() + ":" + project.name();
         } catch (Exception e) {
+            return pomCoord(dir);
+        }
+    }
+
+    private static @Nullable String pomCoord(String dir) {
+        try {
+            return PomCoord.of(Path.of(dir));
+        } catch (RuntimeException e) {
             return null;
         }
     }

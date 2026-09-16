@@ -317,14 +317,21 @@ public final class ProjectBuilds {
         return score;
     }
 
-    /** Newest-first run directories for a project (by numeric build number). */
+    /**
+     * Newest-first run directories for a project: by numeric build number, then — for the
+     * unnumbered {@code j-<UTC stamp>-<rid>} job dirs, which all read as 0 — by name, so the
+     * latest job is the latest stamp rather than whatever order the directory listed.
+     */
     public static List<Path> listRuns(Path projectHome) {
         Path runs = projectHome.resolve(RUNS);
         if (!Files.isDirectory(runs)) return List.of();
         try (Stream<Path> s = Files.list(runs)) {
+            Comparator<Path> byName = Comparator.comparing(p -> p.getFileName().toString());
             return s.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .sorted(Comparator.comparingLong(ProjectBuilds::runNumberOf).reversed())
+                    .sorted(Comparator.comparingLong(ProjectBuilds::runNumberOf)
+                            .thenComparing(byName)
+                            .reversed())
                     .toList();
         } catch (IOException e) {
             return List.of();

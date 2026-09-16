@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.7"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "d40b620d276aa02c96a55622023c176e7c1c6cd632b7ddff5855fc8975ce4094"
+manifests-sha256 = "c9140de084b97be83e6546a1316b48213599507e4d09ebcb641e8149d63b9040"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -18,7 +18,7 @@ name     = "aopalliance:aopalliance:jar:"
 version  = "1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:0addec670fedcd3f113c5c8091d783280d23f75e3acb841b61a9cdb079376a08"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "com.android.tools.build:apksig:jar:"
@@ -262,7 +262,7 @@ name     = "com.google.code.gson:gson:jar:"
 version  = "2.14.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0 <- 2.48.0",
 ]
@@ -282,7 +282,7 @@ name     = "com.google.errorprone:error_prone_annotations:jar:"
 version  = "2.50.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:4667724877f1d37a689202da191e23efa7657c62eef93ccdac406eccfe5cdd0a"
-scopes   = ["main", "provided", "processor"]
+scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "com.google.errorprone:error_prone_check_api:jar:"
@@ -341,14 +341,14 @@ name     = "com.google.guava:failureaccess:jar:"
 version  = "1.0.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
-scopes   = ["main", "provided", "processor"]
+scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "com.google.guava:guava:jar:"
 version  = "33.7.1-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:796d8e28ac64e83a47c4c5935a8fecc4682650a04bbdead738ef0f5a3a0e6c46"
-scopes   = ["main", "provided", "processor"]
+scopes   = ["main", "provided", "test", "processor"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0 <- 2.50.0",
   "com.google.guava:failureaccess:jar:@1.0.3 <- 1.0.3",
@@ -410,7 +410,7 @@ name     = "com.google.inject:guice:jar:classes"
 version  = "5.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:142ad4475e19524d2fe3ac995b3f7cbc962fc726f2edb9dbdccc61feab9b2bf9"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "aopalliance:aopalliance:jar:@1.0 <- 1.0",
   "com.google.guava:guava:jar:@33.7.1-jre <- 30.1-jre",
@@ -1035,7 +1035,7 @@ name     = "javax.inject:javax.inject:jar:"
 version  = "1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:91c77044a50c481636c32d916fd89c9118a72195390452c81065080f957de7ff"
-scopes   = ["main", "provided", "processor"]
+scopes   = ["main", "provided", "test", "processor"]
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
@@ -1182,7 +1182,7 @@ name     = "org.apache.maven.resolver:maven-resolver-api:jar:"
 version  = "2.0.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ac3f1dca91d5089aa5b4a682d412141bc90b0a34256614e3d9e700c636555519"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "org.apache.maven.resolver:maven-resolver-connector-basic:jar:"
@@ -1202,7 +1202,7 @@ name     = "org.apache.maven.resolver:maven-resolver-impl:jar:"
 version  = "2.0.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:3fea887c9c409fbdeea39219fbac724b683bad19627da20adf542dd7f53ffbff"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22 <- 2.0.22",
   "org.apache.maven.resolver:maven-resolver-named-locks:jar:@2.0.22 <- 2.0.22",
@@ -1216,7 +1216,7 @@ name     = "org.apache.maven.resolver:maven-resolver-named-locks:jar:"
 version  = "2.0.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:87b136913c762014d0bb18ea832e6f8351889868c8a45bc62e22d4bcab77af61"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
 ]
@@ -1226,7 +1226,7 @@ name     = "org.apache.maven.resolver:maven-resolver-spi:jar:"
 version  = "2.0.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:17a1f73ef575f71eab85a16a79b7c4f13d5f48ac67c473f9d8fa9e94e18e9aed"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "com.google.code.gson:gson:jar:@2.14.0 <- 2.14.0",
   "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22 <- 2.0.22",
@@ -1269,7 +1269,7 @@ name     = "org.apache.maven.resolver:maven-resolver-util:jar:"
 version  = "2.0.22"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f3332052702d7908d06fb4605a0c4327ebd3006d004705547218710df2f9828a"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22 <- 2.0.22",
 ]
@@ -1279,7 +1279,7 @@ name     = "org.apache.maven.shared:maven-shared-utils:jar:"
 version  = "3.4.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b613357e1bad4dfc1dead801691c9460f9585fe7c6b466bc25186212d7d18487"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "commons-io:commons-io:jar:@2.22.0 <- 2.11.0",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
@@ -1355,7 +1355,7 @@ name     = "org.apache.maven:maven-artifact:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad3e8"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
 ]
@@ -1365,14 +1365,14 @@ name     = "org.apache.maven:maven-builder-support:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:02972384eae3495801565fd27abb84cfd75a8e6d2cbb1ae0c556752ebc2b1cde"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.apache.maven:maven-core:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:5d45c72e3dbfab8b68d15ad4f12777b7d9b5fe4d4adc99c3bd51fb9641fab009"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "com.google.guava:failureaccess:jar:@1.0.3 <- 1.0.3",
   "com.google.guava:guava:jar:@33.7.1-jre <- 33.6.0-jre",
@@ -1439,7 +1439,7 @@ name     = "org.apache.maven:maven-model-builder:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:002be86d1f53b36f559a0786034a17598d71087f1935f205a1f9e51d4dd124b3"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 deps = [
   "javax.inject:javax.inject:jar:@1 <- 1",
   "org.apache.maven:maven-artifact:jar:@3.9.16 <- 3.9.16",
@@ -1455,7 +1455,7 @@ name     = "org.apache.maven:maven-model:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f59d86a507c241bf17bbf050050d1b8b9c0d34d5010a7e2386c3cab7c83b93de"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
 ]
@@ -1465,7 +1465,7 @@ name     = "org.apache.maven:maven-plugin-api:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:37cb5e483e23327cf4ba18f920b45e000d20eec0428a086a5c1bd6bbdecf088c"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.apache.maven:maven-artifact:jar:@3.9.16 <- 3.9.16",
   "org.apache.maven:maven-model:jar:@3.9.16 <- 3.9.16",
@@ -1479,7 +1479,7 @@ name     = "org.apache.maven:maven-repository-metadata:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:bc3dd413b89a16b695f35a5d0496b58ea2787c30b7b6062c130d24d6d764720f"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
 ]
@@ -1489,7 +1489,7 @@ name     = "org.apache.maven:maven-resolver-provider:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:72a2d6aad3708e2c708b659b292ae9587a4d170ec88f48466290318730221118"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "javax.inject:javax.inject:jar:@1 <- 1",
   "org.apache.maven.resolver:maven-resolver-api:jar:@2.0.22 <- 1.9.27",
@@ -1507,7 +1507,7 @@ name     = "org.apache.maven:maven-settings-builder:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:226f1cbb0b4d414eff773fb151a8977837c98073e14d5963794e6cf464e6adbb"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "javax.inject:javax.inject:jar:@1 <- 1",
   "org.apache.maven:maven-builder-support:jar:@3.9.16 <- 3.9.16",
@@ -1522,7 +1522,7 @@ name     = "org.apache.maven:maven-settings:jar:"
 version  = "3.9.16"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:322ae5b23f4b7b6ce7896bd33a793143dbbbbcc16c4475e2d7eebbd8f755da92"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
 ]
@@ -1630,28 +1630,28 @@ name     = "org.codehaus.plexus:plexus-classworlds:jar:"
 version  = "2.12.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7f88ef8b83d6f2be46b12f17b982439a5ec83c566f5e2a04dad2d684e73cda94"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-component-annotations:jar:"
 version  = "2.2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:50edb93c73786e62822b4fe1336e22880fdf147191373cf5c911370e16748fcf"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-interpolation:jar:"
 version  = "1.30.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:457307267f6d2ea2582f5449df9350b86728f46c23ccd486341087ace473e9a1"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-sec-dispatcher:jar:"
 version  = "4.2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:49bcc4b481e24f38199e338e850562040acc6a34e120d734bd119c9c8c10a2fb"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 2.0.18",
 ]
@@ -1661,7 +1661,7 @@ name     = "org.codehaus.plexus:plexus-utils:jar:"
 version  = "4.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:6a2fe69e98301882bb2bb05afe36414eb82d6f7c63299cccdb2dc02b4358a968"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.codehaus.plexus:plexus-xml:jar:"
@@ -1725,7 +1725,7 @@ name     = "org.eclipse.sisu:org.eclipse.sisu.inject:jar:"
 version  = "1.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f3edea5119c91be496e3ff55948fa16c89cdbacf9c2e74bdc9fafda1a3faba20"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 deps = [
   "org.ow2.asm:asm:jar:@9.10.1 <- 9.10.1",
 ]
@@ -1735,7 +1735,7 @@ name     = "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:"
 version  = "1.1.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:7ebc52738567e0450b6857a404a147639533d35c38a5ba42e4c5ab2910c6df94"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 deps = [
   "org.codehaus.plexus:plexus-classworlds:jar:@2.12.1 <- 2.12.0",
   "org.codehaus.plexus:plexus-component-annotations:jar:@2.2.0 <- 2.2.0",
@@ -2047,7 +2047,7 @@ name     = "org.ow2.asm:asm:jar:"
 version  = "9.10.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
-scopes   = ["main", "provided"]
+scopes   = ["main", "provided", "test"]
 
 [[artifact]]
 name     = "org.pcollections:pcollections:jar:"
@@ -2466,6 +2466,14 @@ name    = "jk-cli-terminal"
 version = "0.13.7"
 java    = 25
 description = "Controlling TTY, VT style, and keys for the native CLI"
+
+[[module]]
+path    = "clients/maven-spy"
+group   = "cc.jumpkick"
+name    = "jk-maven-spy"
+version = "0.13.7"
+java    = 17
+description = "Maven core extension that records reactor events for jk mvn"
 
 [[module]]
 path    = "clients/web"

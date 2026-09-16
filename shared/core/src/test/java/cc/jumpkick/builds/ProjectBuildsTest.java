@@ -89,6 +89,15 @@ class ProjectBuildsTest {
         assertThat(runs).contains(older.runDir());
     }
 
+    @Test
+    void listRuns_orders_unnumbered_job_dirs_by_their_stamp(@TempDir Path root) throws Exception {
+        ProjectBuilds.RunDir numbered = ProjectBuilds.openRun(root, "g:a", root.resolve("a"));
+        Path runs = numbered.projectHome().resolve(ProjectBuilds.RUNS);
+        Path later = Files.createDirectories(runs.resolve("j-20260916T040909688-2"));
+        Path earlier = Files.createDirectories(runs.resolve("j-20260916T040909598-1"));
+        assertThat(ProjectBuilds.listRuns(numbered.projectHome())).containsExactly(numbered.runDir(), later, earlier);
+    }
+
     /**
      * Two engines are routinely alive at once (a draining predecessor plus its successor,
      * successor). Every allocation must be unique across processes, not just

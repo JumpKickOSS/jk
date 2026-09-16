@@ -503,6 +503,13 @@ public final class EngineClient {
         return EngineHosted.provision(paths, projectDir, toolsRoot, noDiscover, gradle);
     }
 
+    /** Journal a finished {@code jk mvn} run; see {@link EngineHosted#mvnResults}. */
+    public static HostedEvents.MvnResults mvnResults(
+            EnginePaths.Paths paths, Path projectDir, Path events, int exit, long millis, String goals)
+            throws IOException {
+        return EngineHosted.mvnResults(paths, projectDir, events, exit, millis, goals);
+    }
+
     /** Provision a named build tool at a named version, rather than the one a project asks for. */
     public static HostedEvents.Provision provisionTool(
             EnginePaths.Paths paths, String tool, String version, Path toolsRoot, boolean noDiscover)

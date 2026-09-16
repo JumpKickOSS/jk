@@ -599,6 +599,20 @@ class EngineProtocolTest {
     }
 
     @Test
+    void mvn_results_request_and_result_round_trip() {
+        String req = new MvnResultsRequest("/proj", "/tmp/jk/events.tsv", 1, 4_200L, "clean test").encode();
+        assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.MVN_RESULTS_REQUEST);
+        assertThat(Jsonl.str(req, "dir")).isEqualTo("/proj");
+        MvnResultsRequest back = MvnResultsRequest.decode(req);
+        assertThat(back).isEqualTo(new MvnResultsRequest("/proj", "/tmp/jk/events.tsv", 1, 4_200L, "clean test"));
+
+        String result = ProtoEvents.mvnResultsResult("/proj/target/jk-results.md", null);
+        assertThat(EngineProtocol.typeOf(result)).isEqualTo(EngineProtocol.MVN_RESULTS_RESULT);
+        assertThat(MvnResultsResultEvent.decode(result))
+                .isEqualTo(new MvnResultsResultEvent("/proj/target/jk-results.md", null));
+    }
+
+    @Test
     void auth_envelope_is_typed_token_not_a_raw_line() {
         String line = ProtoLifecycle.auth("secret-token");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.AUTH);

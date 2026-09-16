@@ -322,6 +322,10 @@ public final class ProtoEvents {
         return new ProvisionResultEvent(bin, version, source, error, exit).encode();
     }
 
+    public static String mvnResultsResult(@Nullable String results, @Nullable String error) {
+        return new MvnResultsResultEvent(results, error).encode();
+    }
+
     public static String planFinishFormat(String dir, boolean success, int total, int workerExit) {
         return new PlanFinishFormatEvent(dir, success, total, workerExit).encode();
     }

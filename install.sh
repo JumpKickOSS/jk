@@ -502,6 +502,16 @@ main() {
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
   fi
+  # The Maven event spy (`jk mvn` attaches it to Maven's extension path) is a plain jar under the
+  # product lib, one per version; the client looks for lib/jk-maven-spy-<its version>.jar.
+  if [ -n "$LOCAL_FILE" ]; then
+    for f in "$SRC_LIB"/jk-maven-spy-*.jar; do
+      [ -f "$f" ] || continue
+      if ! { mkdir -p "$JK_HOME_DIR/lib" && cp -f "$f" "$JK_HOME_DIR/lib/"; }; then
+        note "could not copy $(basename "$f") into $JK_HOME_DIR/lib (jk mvn will run without structured results)"
+      fi
+    done
+  fi
   if [ -n "$LOCAL_FILE" ]; then
     # Seed root-level nerd-font = "auto"; detection then runs per launch. Never fail install.
     run_jk self setup-terminal >/dev/null 2>&1 \

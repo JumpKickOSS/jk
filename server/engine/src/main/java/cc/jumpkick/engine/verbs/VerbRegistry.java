@@ -45,6 +45,7 @@ public final class VerbRegistry {
                 new ImageVerb(host),
                 new ImportVerb(host),
                 new ProvisionVerb(host),
+                new MvnResultsVerb(host),
                 new TrainVerb(host),
                 new CompileVerb(host),
                 new InstallVerb(host),

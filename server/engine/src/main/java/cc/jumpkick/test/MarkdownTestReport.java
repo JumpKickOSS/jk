@@ -82,6 +82,11 @@ public final class MarkdownTestReport {
      * No-op when nothing was recorded. Concurrent launches of the same key merge.
      */
     public synchronized void publish(String scopeKey, String label) {
+        publish(scopeKey, label, entries);
+    }
+
+    /** Fold {@code entries} recorded elsewhere (a surefire report) into the store under {@code scopeKey}. */
+    public static void publish(String scopeKey, String label, List<Entry> entries) {
         if (entries.isEmpty()) return;
         String k = scopeKey == null || scopeKey.isBlank() ? "_" : scopeKey;
         String lab = label == null ? "" : label;

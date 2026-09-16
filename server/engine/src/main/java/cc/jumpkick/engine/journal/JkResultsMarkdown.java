@@ -103,6 +103,11 @@ public final class JkResultsMarkdown {
         return sb.toString();
     }
 
+    /** A run another build tool performed and jk journaled ({@code jk mvn}). */
+    static boolean isExternalTool(@Nullable String kind) {
+        return "mvn".equals(kind);
+    }
+
     private static String outcome(BuildRecord r) {
         if (r.cancelled()) return "CANCELLED";
         return r.success() ? "OK" : "FAIL";
@@ -110,7 +115,8 @@ public final class JkResultsMarkdown {
 
     private static void appendHeadline(StringBuilder sb, BuildRecord r, String outcome) {
         sb.append("**").append(outcome).append("**");
-        if (notBlank(r.kind())) sb.append(" · ").append(r.kind());
+        boolean tool = isExternalTool(r.kind());
+        if (notBlank(r.kind()) && !tool) sb.append(" · ").append(r.kind());
         String coord = some(r.coord());
         if (coord != null) sb.append(" · `").append(coord).append('`');
         if (r.buildNumber() > 0) sb.append(" · #").append(r.buildNumber());
@@ -122,6 +128,11 @@ public final class JkResultsMarkdown {
         boolean meta = false;
         if (notBlank(r.trigger())) {
             sb.append("trigger: ").append(r.trigger());
+            meta = true;
+        }
+        if (tool) {
+            if (meta) sb.append(" · ");
+            sb.append("tool: ").append(r.kind());
             meta = true;
         }
         String commit = some(r.commit());
