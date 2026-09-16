@@ -94,9 +94,13 @@ final class DeclaredRepositories {
         return scopedFor(pkg).builder();
     }
 
-    /** One line per repository used and per repository refused, sorted. */
+    /**
+     * One line per repository used and per repository refused, and one per artifact a declared
+     * repository verified against an {@code .md5} sidecar alone, sorted.
+     */
     List<String> notes() {
         List<String> out = new ArrayList<>(notes);
+        for (MavenRepo repo : built.values()) out.addAll(repo.weakChecksumNotes());
         out.sort(null);
         return List.copyOf(out);
     }

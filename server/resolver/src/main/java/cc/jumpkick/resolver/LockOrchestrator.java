@@ -239,6 +239,7 @@ public final class LockOrchestrator {
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
             for (String line : sharedSource.declaredRepositoryNotes()) observer.onNote(line);
         }
+        for (String line : repos.weakChecksumNotes()) observer.onNote(line);
         // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
         JupiterLine.checkAligned(solved.test());
 
