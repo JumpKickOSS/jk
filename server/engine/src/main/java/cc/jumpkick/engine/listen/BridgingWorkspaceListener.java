@@ -29,6 +29,8 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     public interface Hooks {
         default void preflight(String stage, int done, int total) {}
 
+        default void preflightFailed(String stage, long millis, String reason) {}
+
         default void workModel(WorkModel model) {}
 
         default void recordWeight(String dir, long weight) {}
@@ -74,6 +76,15 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             sink.emit(new EngineEvent.InvocationPhase(inv.wireName(), status));
         }
         hooks.preflight(stage == null ? "" : stage, done, total);
+    }
+
+    /**
+     * Journal only: the reason reaches the client on the {@code workspace-finish} line, and an
+     * {@code error} line here would end the client's read before that terminal arrives.
+     */
+    @Override
+    public void onPreflightFailed(String stage, long millis, String reason) {
+        hooks.preflightFailed(stage == null ? "" : stage, millis, reason == null ? "" : reason);
     }
 
     @Override

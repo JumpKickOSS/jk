@@ -30,6 +30,14 @@ public interface WorkspaceBuildListener {
      */
     default void onNote(String text) {}
 
+    /**
+     * A preflight step of the workspace's own failed — the lock freshen whose resolve the solver
+     * refused — and the run ends on it: {@code stage} is the {@link #onPreflight} key, {@code
+     * millis} the step's wall, {@code reason} the solver's explanation verbatim. The run's failed
+     * step and its error; {@link #onWorkspaceFinish} follows with the same reason in its errors.
+     */
+    default void onPreflightFailed(String stage, long millis, String reason) {}
+
     /** The resolved modules in dependency order, each with its assembled plan + estimated weight. */
     default void onPlan(List<ModulePlan> plan) {}
 

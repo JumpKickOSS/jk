@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleOrder;
 import cc.jumpkick.config.WorkspaceCone;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
@@ -59,6 +60,11 @@ public final class WorkspacePreflightPhase {
             Optional<BuildForecasting.Preflight> forecast) {}
 
     static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener) {
+        return run(request, listener, Clock.SYSTEM);
+    }
+
+    /** {@link #run(WorkspaceRequest, WorkspaceBuildListener)} on {@code clock}, which times the lock freshen. */
+    static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener, Clock clock) {
         JkBuild entryBuild;
         try {
             entryBuild = JkBuildParser.parse(ManifestPaths.manifestIn(request.entryDir()));
@@ -66,7 +72,7 @@ public final class WorkspacePreflightPhase {
             return completed(false, 2, List.of(Errors.text(e)));
         }
 
-        Optional<Completed> lockFailure = freshenLock(request, entryBuild, listener);
+        Optional<Completed> lockFailure = freshenLock(request, entryBuild, listener, clock);
         if (lockFailure.isPresent()) return lockFailure.orElseThrow();
 
         listener.onPreflight("graph", 0, 0, "Resolving module graph…");
@@ -135,7 +141,7 @@ public final class WorkspacePreflightPhase {
     }
 
     private static Optional<Completed> freshenLock(
-            WorkspaceRequest request, JkBuild entryBuild, WorkspaceBuildListener listener) {
+            WorkspaceRequest request, JkBuild entryBuild, WorkspaceBuildListener listener, Clock clock) {
         if (!request.freshenLock()) return Optional.empty();
         Path rootLock = LockPaths.lockFile(request.entryDir());
         boolean lockStale = WorkspaceLock.workspaceLockStale(request.entryDir(), entryBuild, rootLock);
@@ -144,10 +150,12 @@ public final class WorkspacePreflightPhase {
             listener.onEtaEstimate(lockEta + EffortWeights.MS_PER_WEIGHT * 8L);
         }
         listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
+        long started = clock.nanos();
         BuildService.LockGuard guard =
                 WorkspaceLock.ensureWorkspaceLockFresh(request.entryDir(), request.cache(), lockStale);
         if (guard.status() != 0) {
             String error = guard.error() != null ? guard.error() : "dependency resolution failed";
+            listener.onPreflightFailed("lock", (clock.nanos() - started) / 1_000_000L, error);
             return Optional.of(completed(false, guard.status(), List.of(error)));
         }
         listener.onPreflight("lock", 1, 1, "Workspace lock ready");
