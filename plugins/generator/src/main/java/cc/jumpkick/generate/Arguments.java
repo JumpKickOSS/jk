@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.generate;
 
-import java.io.File;
+import cc.jumpkick.host.Classpaths;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,9 +28,7 @@ final class Arguments {
         }
 
         String joined() {
-            List<String> all = new ArrayList<>(inputs.size());
-            for (Path p : inputs) all.add(p.toString());
-            return String.join(File.pathSeparator, all);
+            return Classpaths.join(inputs);
         }
     }
 
