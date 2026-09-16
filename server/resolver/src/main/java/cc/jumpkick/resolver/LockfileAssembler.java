@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 /**
  * Fold the three resolved graphs plus the file dependencies into {@link Lockfile} rows. The same
@@ -37,22 +38,27 @@ import java.util.function.BooleanSupplier;
 final class LockfileAssembler {
 
     private final RepoGroup repos;
+    private final Function<String, RepoGroup> reposFor;
     private final KmpRedirects kmp;
     private final EffectivePomBuilder pomBuilder;
     private final PlatformConstraints constraints;
     private final Map<String, List<String>> activatedFeatures;
 
     /**
+     * @param reposFor the group a package's artifact is fetched from: {@code repos} plus the
+     *     repositories a dependency POM declared for the subtree the package was reached through
      * @param pomBuilder the one POM builder the lock shares with BOM load and the solves
      * @param activatedFeatures cross-package features activated per library module, for {@code pinnedBy}
      */
     LockfileAssembler(
             RepoGroup repos,
+            Function<String, RepoGroup> reposFor,
             KmpRedirects kmp,
             EffectivePomBuilder pomBuilder,
             PlatformConstraints constraints,
             Map<String, List<String>> activatedFeatures) {
         this.repos = repos;
+        this.reposFor = reposFor;
         this.kmp = kmp;
         this.pomBuilder = pomBuilder;
         this.constraints = constraints;
@@ -170,8 +176,9 @@ final class LockfileAssembler {
         String artifactFile = null;
         String source = fallbackSource;
         String checksum = null;
+        RepoGroup group = reposFor.apply(mod.module());
         RepoGroup.RepoFetched hit =
-                kmpAlias ? null : repos.tryFetchArtifact(coord, abort).orElse(null);
+                kmpAlias ? null : group.tryFetchArtifact(coord, abort).orElse(null);
         if (hit == null
                 && !kmpAlias
                 && (coord.type() == null || "jar".equals(coord.type()))
@@ -185,7 +192,7 @@ final class LockfileAssembler {
                     packageName = PackageId.of(coord.group(), coord.artifact(), "aar", "")
                             .key();
                     artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
-                    hit = repos.tryFetchArtifact(coord, abort).orElse(null);
+                    hit = group.tryFetchArtifact(coord, abort).orElse(null);
                 }
             } catch (Exception e) {
                 // no POM / unparseable — keep the jar coordinate

@@ -23,6 +23,9 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code hostClassified} maps a dependency's {@code group:artifact} to the {@code ${...}}
  * expression its classifier was written as, for every dependency whose classifier a {@link
  * HostClassifiers host property} filled: the classifier in {@link #dependencies} is this machine's.
+ *
+ * <p>{@code repositories} are the {@code <repositories>} this POM and its parents declare, nearest
+ * first, for the resolver to consult for this POM's dependencies and theirs.
  */
 public record EffectivePom(
         String groupId,
@@ -34,7 +37,8 @@ public record EffectivePom(
         List<Pom.Dep> managedDependencies,
         Set<String> importedManagedKeys,
         @Nullable Relocation relocation,
-        Map<String, String> hostClassified) {
+        Map<String, String> hostClassified,
+        List<Pom.Repository> repositories) {
 
     /** A POM whose managed entries are all its own and that declares no relocation. */
     public EffectivePom(
@@ -55,7 +59,8 @@ public record EffectivePom(
                 managedDependencies,
                 Set.of(),
                 null,
-                Map.of());
+                Map.of(),
+                List.of());
     }
 
     public EffectivePom {
@@ -68,5 +73,6 @@ public record EffectivePom(
         managedDependencies = List.copyOf(managedDependencies);
         importedManagedKeys = Set.copyOf(importedManagedKeys);
         hostClassified = Map.copyOf(hostClassified);
+        repositories = List.copyOf(repositories);
     }
 }

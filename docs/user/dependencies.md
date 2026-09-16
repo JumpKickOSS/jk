@@ -69,6 +69,28 @@ a transitive with no pin on it keeps the highest-declared rule either way.
 
 **Maven relocations are followed** (`distributionManagement/relocation`).
 
+### Repositories a dependency's POM declares
+
+A published POM may carry `<repositories>` of its own — apicurio's parent names JitPack for
+`com.github.everit-org.json-schema:org.everit.json.schema`. jk reads them the way Maven does,
+with one rule:
+
+- A repository a dependency POM declares (at the top level, in a parent, or in a profile Maven
+  activates with nothing on the command line — `activeByDefault`, or a `<property><name>!x</name>`
+  activation) is consulted **only for that POM's subtree**: the dependencies it declares and
+  theirs, after every repository the project declares has missed. It never answers for your own
+  declarations or for another dependency's subtree, and an [exclusive group](repositories.md#exclusive-groups-your-internals)
+  bound to a declared repository stays bound.
+- A row it serves records it in the lock's `source` (`jitpack.io+https://jitpack.io`), so
+  `jk build` and `jk sync` fetch from it without a `[repositories]` entry.
+- It is held to the trust rule a project-declared repository meets by default: https and a
+  published checksum for every artifact. A POM has no table to opt out with, so a plaintext
+  `http://` repository it declares is not used, and an artifact it publishes no checksum for fails
+  the lock naming the repository.
+- `jk lock` says so: one note per repository names it, its URL and the POM that introduced it.
+  Declaring the same URL under `[repositories]` makes it a project repository with the project's
+  order and opt-ins.
+
 ### Classifiers that follow the host
 
 Some POMs spell a platform artifact's classifier with a property a Maven build values from the

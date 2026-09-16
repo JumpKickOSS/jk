@@ -196,6 +196,25 @@ public final class MavenRepo {
                 : null;
     }
 
+    /**
+     * A repository a dependency's POM declares, over this repository's store and client: anonymous,
+     * with neither {@code allow-unverified} nor {@code allow-insecure} — a POM has no table to opt in
+     * with, so its repository is held to the rule a project-declared one meets by default.
+     */
+    public MavenRepo declaredByPom(String name, URI url) {
+        Http client = http != null ? http : new Http();
+        return new MavenRepo(
+                name,
+                url,
+                RepoTransports.forUrl(url, client),
+                cas,
+                RepoCredential.ANONYMOUS,
+                client,
+                m2integration,
+                false,
+                false);
+    }
+
     private static boolean isHttp(URI uri) {
         String scheme = uri.getScheme();
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));

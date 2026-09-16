@@ -105,6 +105,9 @@ public final class MavenPackageSource implements PackageSource {
     /** One sentence per edge whose classifier reads the running host; see {@link #hostClassifierNotes}. */
     private final Set<String> hostClassifierNotes = ConcurrentHashMap.newKeySet();
 
+    /** The repositories dependency POMs declare, granted per subtree; see {@link DeclaredRepositories}. */
+    private final DeclaredRepositories declared;
+
     /**
      * Modules to strip when expanding a package, keyed by package module id.
      *
@@ -194,6 +197,28 @@ public final class MavenPackageSource implements PackageSource {
         this.kmp = Objects.requireNonNull(kmp, "kmp");
         this.platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         this.unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
+        this.declared = new DeclaredRepositories(this.repos, this.pomBuilder);
+    }
+
+    /**
+     * The group {@code pkg}'s artifact is fetched from: the project's repositories, followed by any
+     * a dependency POM declared for the subtree {@code pkg} was reached through.
+     */
+    public RepoGroup reposFor(String pkg) {
+        return declared.reposFor(pkg);
+    }
+
+    /** The POM builder over {@link #reposFor}. */
+    public EffectivePomBuilder pomBuilderFor(String pkg) {
+        return declared.builderFor(pkg);
+    }
+
+    /**
+     * One sentence per repository a dependency POM declared and this solve consulted, naming the
+     * repository, its URL and the POM that introduced it, and one per repository refused.
+     */
+    public List<String> declaredRepositoryNotes() {
+        return declared.notes();
     }
 
     public PlatformPolicy platformPolicy() {
@@ -353,7 +378,7 @@ public final class MavenPackageSource implements PackageSource {
 
     /** Advertised versions, highest-first, BOM/lock soft-prefers front-loaded. */
     private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {
-        List<String> available = repos.availableVersions(withVersion(pkg, "any"));
+        List<String> available = declared.reposFor(pkg).availableVersions(withVersion(pkg, "any"));
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
 
@@ -553,7 +578,7 @@ public final class MavenPackageSource implements PackageSource {
         Coordinate coord = withVersion(pkg, version);
         EffectivePom pom;
         try {
-            pom = pomBuilder.build(coord);
+            pom = declared.builderFor(pkg).build(coord);
         } catch (MavenRepo.ArtifactNotFoundException e) {
             throw new VersionUnavailableException(e.getMessage());
         }
@@ -607,8 +632,28 @@ public final class MavenPackageSource implements PackageSource {
             out.add(new RawEdge(depPkg, constraintForManagedEdge(depPkg, edgeVersion), edgeExcl, declared));
         }
         List<RawEdge> immutable = List.copyOf(out);
+        grantDeclaredRepositories(pkg, pom, immutable);
         rawDepsCache.put(key, immutable);
         return immutable;
+    }
+
+    /**
+     * Hand the repositories {@code pom} makes available to every child edge, and forget what was
+     * cached for a child whose repository set grew: a version list or POM asked before the grant
+     * was answered by fewer repositories than the child now has.
+     */
+    private void grantDeclaredRepositories(String pkg, EffectivePom pom, List<RawEdge> edges) {
+        List<String> children = new ArrayList<>(edges.size());
+        for (RawEdge edge : edges) children.add(edge.depPkg());
+        for (String ga : declared.propagate(pkg, pom, children)) {
+            versionCache.keySet().removeIf(k -> ga.equals(gaOf(k)));
+            expandedVersionCache.keySet().removeIf(k -> ga.equals(gaOf(k)));
+            rawDepsCache.keySet().removeIf(k -> k.startsWith(ga + "@"));
+        }
+    }
+
+    private static String gaOf(String pkg) {
+        return PackageId.isMavenPackageKey(pkg) ? PackageId.parse(pkg).ga() : pkg;
     }
 
     /**
@@ -864,7 +909,7 @@ public final class MavenPackageSource implements PackageSource {
             // One task does both: KMP redirect then POM (POM often already warm from the parent walk).
             submitPrefetch(() -> {
                 kmp.selectionFor(pkg, pin);
-                pomBuilder.build(child);
+                declared.builderFor(pkg).build(child);
             });
         }
     }

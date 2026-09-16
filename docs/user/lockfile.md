@@ -174,6 +174,16 @@ not a silent accept. `jk repo refresh <coord>` re-fetches a coordinate on purpos
 GPG/Sigstore for *your* publishes: [Publish](publish.md). First-write-wins and
 `--offline` never networking are the store policy.
 
+## Rows a dependency's repository serves
+
+A row's `source` is the repository that served its artifact, as `<name>+<url>`. That is normally
+one of the project's `[repositories]` (or a built-in), but a dependency POM may declare a
+repository of its own for its subtree, and a row it served records it —
+`source = "jitpack.io+https://jitpack.io"` — so a later `jk build` fetches from the same origin
+without the project declaring it. The lock output names each such repository once, with the POM
+that introduced it; the trust rule is a declared repository's (https, published checksums), with
+no opt-out. See [Dependencies](dependencies.md#repositories-a-dependencys-pom-declares).
+
 ## Rows that follow the host
 
 A dependency POM may spell a classifier with a property Maven values from the machine —

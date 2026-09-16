@@ -21,9 +21,10 @@ public record Pom(
         Map<String, String> properties,
         List<Dep> dependencies,
         List<Dep> managedDependencies,
-        @Nullable Relocation relocation) {
+        @Nullable Relocation relocation,
+        List<Repository> repositories) {
 
-    /** Compatibility constructor for POMs with no {@code <distributionManagement>} redirect. */
+    /** A POM with no {@code <distributionManagement>} redirect and no {@code <repositories>}. */
     public Pom(
             String groupId,
             String artifactId,
@@ -33,7 +34,17 @@ public record Pom(
             Map<String, String> properties,
             List<Dep> dependencies,
             List<Dep> managedDependencies) {
-        this(groupId, artifactId, version, packaging, parent, properties, dependencies, managedDependencies, null);
+        this(
+                groupId,
+                artifactId,
+                version,
+                packaging,
+                parent,
+                properties,
+                dependencies,
+                managedDependencies,
+                null,
+                List.of());
     }
 
     public Pom {
@@ -44,6 +55,21 @@ public record Pom(
         properties = Map.copyOf(properties);
         dependencies = List.copyOf(dependencies);
         managedDependencies = List.copyOf(managedDependencies);
+        repositories = List.copyOf(repositories);
+    }
+
+    /**
+     * A {@code <repository>} the POM declares for its own dependencies, at the top level or in a
+     * profile Maven activates without a command line ({@code activeByDefault}, or a {@code
+     * <property><name>!x</name>} activation). Maven Central is never listed: every group has it.
+     * {@code declaredBy} is the {@code g:a:v} of the POM that wrote it, for the lock's note.
+     */
+    public record Repository(String id, String url, String declaredBy) {
+        public Repository {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(url, "url");
+            Objects.requireNonNull(declaredBy, "declaredBy");
+        }
     }
 
     /** True when groupId or version was inherited from {@code <parent>}. */

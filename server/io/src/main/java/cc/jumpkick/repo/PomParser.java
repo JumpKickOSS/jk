@@ -5,9 +5,13 @@ import static cc.jumpkick.host.DomXml.childElement;
 import static cc.jumpkick.host.DomXml.childElements;
 import static cc.jumpkick.host.DomXml.childText;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,6 +114,8 @@ public final class PomParser {
         List<Pom.Dep> managed =
                 parseDependencies(childElement(childElement(project, "dependencyManagement"), "dependencies"), ctx);
 
+        String gav = substituteOrNull(groupId, ctx) + ":" + substitute(artifactId, ctx) + ":"
+                + substituteOrNull(version, ctx);
         return new Pom(
                 substituteOrNull(groupId, ctx),
                 substitute(artifactId, ctx),
@@ -119,7 +125,75 @@ public final class PomParser {
                 properties,
                 deps,
                 managed,
-                parseRelocation(project, ctx));
+                parseRelocation(project, ctx),
+                parseRepositories(project, ctx, gav));
+    }
+
+    /**
+     * The POM's own {@code <repositories>}: the top-level list plus those of every profile Maven
+     * would activate with nothing on the command line. Central and snapshot-only repositories are
+     * left out, and an {@code <id>} defaults to the URL.
+     */
+    private static List<Pom.Repository> parseRepositories(Element project, Map<String, String> ctx, String gav) {
+        List<Pom.Repository> out = new ArrayList<>();
+        addRepositories(childElement(project, "repositories"), ctx, gav, out);
+        Element profiles = childElement(project, "profiles");
+        if (profiles != null) {
+            for (Element profile : childElements(profiles, "profile")) {
+                if (activeWithoutCommandLine(childElement(profile, "activation"))) {
+                    addRepositories(childElement(profile, "repositories"), ctx, gav, out);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * {@code <activeByDefault>true</activeByDefault>}, or a {@code <property>} whose name is
+     * negated ({@code !skipDefault}) with no value and no other condition: true on every machine
+     * that passes no {@code -D}. An OS, JDK or file condition is not judged here.
+     */
+    private static boolean activeWithoutCommandLine(@Nullable Element activation) {
+        if (activation == null) return false;
+        if (EnvValues.parseBool(childText(activation, "activeByDefault")).orElse(false)) return true;
+        Element property = childElement(activation, "property");
+        if (property == null) return false;
+        if (childElement(activation, "os") != null
+                || childElement(activation, "jdk") != null
+                || childElement(activation, "file") != null) {
+            return false;
+        }
+        String name = childText(property, "name");
+        return name != null && name.startsWith("!") && childText(property, "value") == null;
+    }
+
+    private static void addRepositories(
+            @Nullable Element repositories, Map<String, String> ctx, String gav, List<Pom.Repository> out) {
+        if (repositories == null) return;
+        for (Element repository : childElements(repositories, "repository")) {
+            if (releasesDisabled(childElement(repository, "releases"))) continue;
+            String url = substituteOrNull(childText(repository, "url"), ctx);
+            if (url == null || url.isBlank() || url.contains("${") || isCentral(url.trim())) continue;
+            String id = childText(repository, "id");
+            out.add(new Pom.Repository(id == null || id.isBlank() ? url.trim() : id.trim(), url.trim(), gav));
+        }
+    }
+
+    /** {@code <releases><enabled>false</enabled></releases>}: a snapshot-only repository, which a release lookup never asks. */
+    private static boolean releasesDisabled(@Nullable Element releases) {
+        return releases != null
+                && !EnvValues.parseBool(childText(releases, "enabled")).orElse(true);
+    }
+
+    /** Maven Central is in every group already. */
+    static boolean isCentral(String url) {
+        try {
+            String host = new URI(url).getHost();
+            return host != null
+                    && host.equalsIgnoreCase(RepositorySpec.MAVEN_CENTRAL.url().getHost());
+        } catch (URISyntaxException e) {
+            return false;
+        }
     }
 
     /** {@code <distributionManagement><relocation>} — absent for all but renamed artifacts. */
