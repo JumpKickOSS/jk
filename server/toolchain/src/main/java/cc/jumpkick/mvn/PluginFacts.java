@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.repo.Pom;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -58,10 +59,10 @@ final class PluginFacts {
     private static final String[] COMPILER_CONFIG = {"release", "target", "source"};
     private static final String[] MAIN_CLASS_PROPERTIES = {"start-class", "exec.mainClass", "main.class", "mainClass"};
     /** Compiler plugin switches and the javac flag each one means. */
-    private static final Map<String, String> COMPILER_SWITCHES = Map.of(
-            "parameters", "-parameters",
-            "enablePreview", "--enable-preview",
-            "failOnWarning", "-Werror");
+    private static final List<Map.Entry<String, String>> COMPILER_SWITCHES = List.of(
+            Map.entry("parameters", "-parameters"),
+            Map.entry("enablePreview", "--enable-preview"),
+            Map.entry("failOnWarning", "-Werror"));
     /** javac options that take the following token as their value and that {@code java =} already states. */
     private static final Set<String> LEVEL_OPTIONS = Set.of("--release", "-source", "-target", "--source", "--target");
 
@@ -121,10 +122,10 @@ final class PluginFacts {
      * lands once, whether the POM spelled it as a switch, in {@code <compilerArgs>}, or both.
      */
     static void collectCompilerSwitches(Xpp3Dom config, List<String> args) {
-        for (Map.Entry<String, String> e : COMPILER_SWITCHES.entrySet()) {
-            if ("true".equalsIgnoreCase(usable(text(config.getChild(e.getKey())))) && !args.contains(e.getValue())) {
-                args.add(e.getValue());
-            }
+        for (Map.Entry<String, String> e : COMPILER_SWITCHES) {
+            boolean on = EnvValues.parseBool(usable(text(config.getChild(e.getKey()))))
+                    .orElse(false);
+            if (on && !args.contains(e.getValue())) args.add(e.getValue());
         }
     }
 
