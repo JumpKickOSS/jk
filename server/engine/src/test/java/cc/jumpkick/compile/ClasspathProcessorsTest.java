@@ -45,12 +45,16 @@ class ClasspathProcessorsTest {
     @Test
     void a_declared_processor_path_is_searched_alone(@TempDir Path tmp) throws IOException {
         Path lombok = jar(tmp.resolve("lombok.jar"), true);
+        Path helper = jar(tmp.resolve("log4j-api.jar"), false);
         Path declared = jar(tmp.resolve("mapstruct-processor.jar"), true);
 
-        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(lombok)))
-                .as("no declaration: the classpath's processors run")
-                .containsExactly(lombok);
-        assertThat(PlannerCompile.effectiveProcessorPath(List.of(declared), List.of(lombok)))
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(helper, lombok)))
+                .as("no declaration: the whole classpath is the processor path, as javac searches it")
+                .containsExactly(helper, lombok);
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(), List.of(helper)))
+                .as("a classpath registering no processor hands javac none")
+                .isEmpty();
+        assertThat(PlannerCompile.effectiveProcessorPath(List.of(declared), List.of(helper, lombok)))
                 .as("a declaration shadows the classpath's processors")
                 .containsExactly(declared);
     }

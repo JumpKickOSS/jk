@@ -261,14 +261,17 @@ public final class PlannerCompile {
      * The processor path a compile step hands javac. A module that declares
      * {@code [processor-dependencies]} names its processors, and that path alone is searched: javac's
      * own rule for {@code -processorpath}, and what Maven does under {@code annotationProcessorPaths}.
-     * A module that declares none compiles the way javac and Maven do by default: the processors
-     * registered on its compile classpath (Lombok or MapStruct declared as a plain or provided
-     * dependency) run, found through their {@code META-INF/services} entry. The found entries ARE the
-     * request's processor path, so the worker loads them, records what they generate and the key
-     * hashes their full content — a discovered processor and a declared one are one lane downstream.
+     * A module that declares none compiles the way javac and Maven do by default: when any
+     * compile-classpath entry registers a processor through its {@code META-INF/services} entry, the
+     * whole compile classpath is the processor path, in classpath order. That is javac's own
+     * behaviour without {@code -processorpath} — the processor loads its own dependencies from the
+     * same classpath the module compiles against, so a processor whose helpers ride along as
+     * ordinary dependencies (a Log4j plugin processor, Dagger's compiler) runs. A classpath that
+     * registers no processor hands javac none, so the key hashes the classpath by ABI alone.
      */
     public static List<Path> effectiveProcessorPath(List<Path> declared, List<Path> classpath) {
-        return declared.isEmpty() ? ClasspathProcessors.discover(classpath) : declared;
+        if (!declared.isEmpty()) return declared;
+        return ClasspathProcessors.discover(classpath).isEmpty() ? List.of() : List.copyOf(classpath);
     }
 
     /**
