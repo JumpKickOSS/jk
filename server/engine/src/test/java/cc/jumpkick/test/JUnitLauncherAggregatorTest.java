@@ -446,12 +446,12 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
-    void capture_buffer_keeps_only_the_last_lines() {
+    void capture_buffer_is_bounded_and_keeps_the_first_and_the_last_lines() {
         var buf = new CaptureBuffer();
         for (int i = 0; i < 1000; i++) buf.add("line " + i);
         String text = buf.text();
-        assertThat(text).contains("line 999").doesNotContain("line 0\n");
-        assertThat(text.split("\n")).hasSizeLessThanOrEqualTo(400);
+        assertThat(text).startsWith("line 0\n").contains("line 999").doesNotContain("line 500\n");
+        assertThat(text.split("\n")).hasSizeLessThanOrEqualTo(CaptureBuffer.HEAD_LINES + CaptureBuffer.TAIL_LINES + 1);
     }
 
     /**

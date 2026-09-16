@@ -22,6 +22,13 @@ public final class TestLauncherFailure extends RuntimeException {
 
     private static final String DISCOVERY_PREFIX = "test discovery failed: ";
     private static final String CAUSE_PREFIX = "caused by: ";
+
+    /** Java's own {@code printStackTrace} cause line. */
+    private static final String JAVA_CAUSE_PREFIX = "Caused by: ";
+
+    /** HotSpot's last word under {@code -XX:+ExitOnOutOfMemoryError}, before it exits 3. */
+    private static final String JVM_OOM_PREFIX = "Terminating due to ";
+
     private static final Pattern ENGINE_ID = Pattern.compile("TestEngine with ID '([^']+)'");
     private static final Pattern CLASS_NAME = Pattern.compile("^([A-Za-z_$][\\w$]*\\.)+[A-Z][\\w$]*$");
 
@@ -66,7 +73,11 @@ public final class TestLauncherFailure extends RuntimeException {
         return output;
     }
 
-    /** The exception class the runner reported, or {@code ""} when its output names none. */
+    /**
+     * The exception class the fork named, or {@code ""} when its output names none: the runner's
+     * own header when it printed one, else the JVM's out-of-memory exit, else the first exception
+     * line of a stack trace some framework printed.
+     */
     public String exceptionClass() {
         String header = header(output);
         if (header == null) return "";
@@ -75,7 +86,7 @@ public final class TestLauncherFailure extends RuntimeException {
         return CLASS_NAME.matcher(cls).matches() ? cls : "";
     }
 
-    /** The exception message the runner reported, or {@code ""}. */
+    /** The exception message the fork named, or {@code ""}. */
     public String headline() {
         String header = header(output);
         if (header == null) return "";
@@ -84,44 +95,104 @@ public final class TestLauncherFailure extends RuntimeException {
         return header.substring(colon + 2).strip();
     }
 
+    /** True when the fork was the JVM itself running out of memory, not a runner exception. */
+    public boolean outOfMemory() {
+        return "java.lang.OutOfMemoryError".equals(exceptionClass());
+    }
+
+    /**
+     * The innermost {@code caused by} the fork printed, {@code <class>: <message>}, or the header
+     * itself when there is no chain; {@code ""} when the output names nothing.
+     */
+    public String rootCause() {
+        List<String> causes = causes();
+        if (!causes.isEmpty()) return causes.getLast();
+        String header = header(output);
+        return header == null ? "" : header;
+    }
+
     /** The JUnit Platform engine id in {@code TestEngine with ID '…'}, or {@code null}. */
     public @Nullable String engineId() {
         Matcher m = ENGINE_ID.matcher(output);
         return m.find() ? m.group(1) : null;
     }
 
-    /** The {@code caused by:} chain the runner printed, outermost first. */
+    /**
+     * The cause chain the fork printed, outermost first: the runner's own {@code caused by:} lines
+     * when it printed any, else the {@code Caused by:} lines of the first stack trace in the output
+     * — a framework's bootstrap failure the JVM never let the runner report.
+     */
     public List<String> causes() {
-        List<String> out = new ArrayList<>();
+        List<String> runner = new ArrayList<>();
+        List<String> java = new ArrayList<>();
+        boolean firstTrace = true;
         for (String line : output.split("\n")) {
             String t = line.strip();
-            if (t.startsWith(CAUSE_PREFIX))
-                out.add(t.substring(CAUSE_PREFIX.length()).strip());
+            if (t.startsWith(CAUSE_PREFIX)) {
+                runner.add(t.substring(CAUSE_PREFIX.length()).strip());
+            } else if (t.startsWith(JAVA_CAUSE_PREFIX) && firstTrace) {
+                java.add(t.substring(JAVA_CAUSE_PREFIX.length()).strip());
+            } else if (!java.isEmpty() && exceptionLine(t) != null) {
+                firstTrace = false;
+            }
         }
-        return List.copyOf(out);
+        return List.copyOf(runner.isEmpty() ? java : runner);
     }
 
-    /** The first runner header line without its prefixes, or {@code null} when the fork printed none. */
+    /**
+     * The first line that names an exception, without its prefixes, or {@code null} when the fork
+     * printed none: the runner's {@code jk-test-runner:} header, else the JVM's {@code Terminating
+     * due to java.lang.OutOfMemoryError: …}, else the {@code <class>: <message>} line that opens a
+     * stack trace.
+     */
     private static @Nullable String header(@Nullable String output) {
         if (output == null) return null;
+        String jvm = null;
+        String trace = null;
         for (String line : output.split("\n")) {
             String t = line.strip();
-            if (!t.startsWith(RUNNER_PREFIX)) continue;
-            String rest = t.substring(RUNNER_PREFIX.length());
-            if (rest.startsWith(DISCOVERY_PREFIX)) rest = rest.substring(DISCOVERY_PREFIX.length());
-            return rest.strip();
+            if (t.startsWith(RUNNER_PREFIX)) {
+                String rest = t.substring(RUNNER_PREFIX.length());
+                if (rest.startsWith(DISCOVERY_PREFIX)) rest = rest.substring(DISCOVERY_PREFIX.length());
+                return rest.strip();
+            }
+            if (jvm == null && t.startsWith(JVM_OOM_PREFIX))
+                jvm = t.substring(JVM_OOM_PREFIX.length()).strip();
+            if (trace == null) trace = exceptionLine(t);
         }
-        return null;
+        return jvm != null ? jvm : trace;
     }
 
+    /** {@code t} when it is a bare {@code <class>: <message>} or {@code <class>} exception line. */
+    private static @Nullable String exceptionLine(String t) {
+        if (t.isEmpty() || t.startsWith("at ") || t.startsWith("...")) return null;
+        int colon = t.indexOf(": ");
+        String cls = colon < 0 ? t : t.substring(0, colon);
+        return CLASS_NAME.matcher(cls).matches() ? t : null;
+    }
+
+    /**
+     * What follows the exit in the message: the runner's own headline when it reported one, else
+     * the whole {@code <class>: <message>} the JVM or a framework printed, since a bare
+     * {@code Metaspace} says nothing without its {@code OutOfMemoryError}.
+     */
     private static String headlineSuffix(@Nullable String output) {
         String header = header(output);
         if (header == null || header.isBlank()) return "";
+        if (!fromRunner(output)) return " — " + header;
         int colon = header.indexOf(": ");
         String headline =
                 colon >= 0 && CLASS_NAME.matcher(header.substring(0, colon)).matches()
                         ? header.substring(colon + 2).strip()
                         : header;
         return headline.isBlank() ? "" : " — " + headline;
+    }
+
+    private static boolean fromRunner(@Nullable String output) {
+        if (output == null) return false;
+        for (String line : output.split("\n")) {
+            if (line.strip().startsWith(RUNNER_PREFIX)) return true;
+        }
+        return false;
     }
 }
