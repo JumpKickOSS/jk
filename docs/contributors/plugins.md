@@ -371,7 +371,10 @@ contributes = "sources"                                      # sources | resourc
   through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the
   rest is the failure message's tail.
 - **Not yet**: `contributes = "test-sources"` — the engine has no test-source contribution lane;
-  the entry is refused with that reason.
+  the entry is refused with that reason. And a module runs **one** code plugin
+  (`PluginBuild.activeCodePlugin`): a generator table beside a framework table in the same module
+  is refused by name; lifting that to a list of active plugins is the follow-up that lets
+  `[openapi]` sit in a `[spring-boot]` module.
 
 ### Many tables: presets over the worker
 
