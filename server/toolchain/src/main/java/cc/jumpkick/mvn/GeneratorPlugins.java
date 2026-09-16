@@ -32,6 +32,7 @@ import org.jspecify.annotations.Nullable;
  * files whose content is the step's cache key. What the preset has no key for is a row naming
  * the option. The generator's output directory is reported back so the {@code add-source} that
  * put it on Maven's compile path is not written as an {@code extra-src} root.
+ * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table.
  */
 final class GeneratorPlugins {
 
@@ -41,7 +42,8 @@ final class GeneratorPlugins {
      * The generator tables a POM's plugins add, and the module-relative output roots the POM's
      * generators fill, each with what an {@code add-source} root inside it is (the build-helper row).
      */
-    record Generators(@Nullable PluginConfig openapi, Map<String, String> outputRoots) {}
+    record Generators(
+            @Nullable PluginConfig openapi, @Nullable PluginConfig protobuf, Map<String, String> outputRoots) {}
 
     /** What an {@code add-source} root inside the OpenAPI output is, for the build-helper row. */
     private static final String OPENAPI_ADD_SOURCE_ROW = "the OpenAPI generator's output; `[openapi]` folds the"
@@ -79,7 +81,9 @@ final class GeneratorPlugins {
         }
         LocalizerPlugin.outputRoot(model, report)
                 .ifPresent(root -> outputRoots.put(root, LocalizerPlugin.ADD_SOURCE_ROW));
-        return new Generators(openapi, Collections.unmodifiableMap(outputRoots));
+        ProtobufPlugin.Mapped protobuf = ProtobufPlugin.map(model, report);
+        outputRoots.putAll(protobuf.outputRoots());
+        return new Generators(openapi, protobuf.table(), Collections.unmodifiableMap(outputRoots));
     }
 
     /**
