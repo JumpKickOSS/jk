@@ -166,10 +166,10 @@ public final class PomImporter {
         }
 
         ImportReport.Builder report = ImportReport.builder();
-        ReactorModelResolver reactor = new ReactorModelResolver();
-        reactor.add(rootFile, rootRaw);
+        ReactorModelResolver reactor = new ReactorModelResolver(resolver);
+        reactor.add(rootFile, rootXml, rootRaw);
         Path projectDir = Objects.requireNonNull(rootFile.getParent());
-        Map<String, byte[]> childXml = new LinkedHashMap<>();
+        Map<String, Path> childPoms = new LinkedHashMap<>();
         for (String module : modules) {
             Path childPom = projectDir.resolve(module).resolve("pom.xml");
             if (!Files.exists(childPom)) {
@@ -177,11 +177,11 @@ public final class PomImporter {
                 continue;
             }
             byte[] xml = Files.readAllBytes(childPom);
-            reactor.add(childPom, EffectiveModel.rawModel(xml));
-            childXml.put(module, xml);
+            reactor.add(childPom, xml, EffectiveModel.rawModel(xml));
+            childPoms.put(module, childPom);
         }
 
-        EffectiveModel rootModel = EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), reactor);
+        EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
         SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, report);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
@@ -196,9 +196,8 @@ public final class PomImporter {
                 .build();
 
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
-        for (var e : childXml.entrySet()) {
-            Path childPom = projectDir.resolve(e.getKey()).resolve("pom.xml");
-            Result child = importModel(EffectiveModel.build(e.getValue(), childPom, resolver.newCopy(), reactor));
+        for (var e : childPoms.entrySet()) {
+            Result child = importModel(reactor.effective(e.getValue()));
             moduleBuilds.put(e.getKey(), child.jkBuild());
             for (ImportReport.Issue issue : child.report().issues()) {
                 String prefixed = "[" + e.getKey() + "] " + issue.message();
@@ -213,7 +212,7 @@ public final class PomImporter {
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
         for (var e : moduleBuilds.entrySet()) {
-            rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa));
+            rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa, e.getKey(), report));
         }
         return new WorkspaceImportResult(rootJkBuild, rewritten, report.build());
     }
@@ -235,9 +234,12 @@ public final class PomImporter {
 
     /**
      * Convert deps whose GA matches a workspace sibling into workspace edges. Maven
-     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps).
+     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A sibling
+     * BOM leaves {@code [platform]}: its managed versions are already on the declared dependencies,
+     * and a workspace module is not a published BOM the lock could fetch.
      */
-    private static JkBuild rewriteSiblingDeps(JkBuild module, Map<String, String> siblingByGa) {
+    private static JkBuild rewriteSiblingDeps(
+            JkBuild module, Map<String, String> siblingByGa, String moduleKey, ImportReport.Builder report) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         boolean changed = false;
         for (Scope scope : Scope.values()) {
@@ -253,6 +255,13 @@ public final class PomImporter {
                     continue;
                 }
                 changed = true;
+                if (scope == Scope.PLATFORM) {
+                    report.warning("[" + moduleKey + "] `<dependencyManagement>` imports the sibling BOM " + d.module()
+                            + "; its managed versions are applied to the declared dependencies and no `[platform]`"
+                            + " entry is written, because a workspace module is not a published BOM, so transitive"
+                            + " versions follow the resolver.");
+                    continue;
+                }
                 // Library handle matches the sibling project name so `{ workspace = true }` resolves.
                 // mapDependencies already forced tests-kind deps into a test scope, so kind is
                 // carried as-is — never emitted where the parser would reject it.
@@ -306,6 +315,7 @@ public final class PomImporter {
         if (model.getArtifactId() == null) {
             throw new PomParseException("POM missing required <artifactId>");
         }
+        version = concreteVersion(version, model, report);
         int level = javaLevel(model, report);
         String description = model.getDescription();
         if (description != null && description.isBlank()) description = null;
@@ -320,6 +330,23 @@ public final class PomImporter {
                 .javadocMode(sourceTree.javadoc())
                 .description(description)
                 .build();
+    }
+
+    /**
+     * A CI-friendly version the effective model left uninterpolated names a property no POM in the
+     * chain defines (Maven takes it from {@code -D}); it is filled from the model's own properties
+     * where it can be, and what is left is written as {@link CiFriendlyVersions#FALLBACK} with a row
+     * naming the property.
+     */
+    private static String concreteVersion(String version, Model model, ImportReport.Builder report) {
+        if (!CiFriendlyVersions.hasPlaceholder(version)) return version;
+        String filled = CiFriendlyVersions.interpolate(version, model.getProperties()::getProperty);
+        List<String> missing = CiFriendlyVersions.unresolved(filled);
+        if (missing.isEmpty()) return filled;
+        report.warning("`<version>" + version + "</version>` references " + String.join(", ", missing)
+                + ", which no POM in the chain defines (Maven takes it from `-D" + missing.getFirst()
+                + "=…` on the command line); written as `version = \"" + CiFriendlyVersions.FALLBACK + "\"`.");
+        return CiFriendlyVersions.FALLBACK;
     }
 
     private static int javaLevel(Model model, ImportReport.Builder report) {
