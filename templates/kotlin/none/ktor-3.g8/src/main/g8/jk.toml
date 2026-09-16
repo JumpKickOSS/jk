@@ -9,17 +9,17 @@ main = "$package$.MainKt"
 
 [dependencies]
 ktor-server-core = "3.5.2"
-ktor-server-netty = "io.ktor:ktor-server-netty:3.5.2"
-ktor-server-content-negotiation = "io.ktor:ktor-server-content-negotiation:3.5.2"
-ktor-serialization-jackson = "io.ktor:ktor-serialization-jackson:3.5.2"
-koin-ktor = "io.insert-koin:koin-ktor:4.2.2"
-exposed-core = "org.jetbrains.exposed:exposed-core:1.5.0"
-exposed-jdbc = "org.jetbrains.exposed:exposed-jdbc:1.5.0"
-h2 = "com.h2database:h2:2.5.250"
+ktor-server-netty = "3.5.2"
+ktor-server-content-negotiation = "3.5.2"
+ktor-serialization-jackson = "3.5.2"
+koin-ktor = "4.2.2"
+exposed-core = "1.5.0"
+exposed-jdbc = "1.5.0"
+h2 = "2.5.250"
 logback-classic = "1.6.3"
 
 [test-dependencies]
-ktor-server-test-host = "io.ktor:ktor-server-test-host:3.5.2"
+ktor-server-test-host = "3.5.2"
 junit-jupiter = "6.1.3"
 
 # `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.

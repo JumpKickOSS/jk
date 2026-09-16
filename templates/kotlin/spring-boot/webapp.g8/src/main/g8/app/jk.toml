@@ -19,10 +19,10 @@ aot-cache = true
 web = { command = "npm run dev", cwd = "../web", ready = "http://localhost:5173", front-door = true }
 
 [dependencies]
-starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
-kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect" }
+starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
+kotlin-reflect = "org.jetbrains.kotlin:kotlin-reflect"
 # the SPA bundle: a resource jar with static/ at its root
 web = { workspace = true }
 
 [test-dependencies]
-starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
+starter-test = "org.springframework.boot:spring-boot-starter-test"

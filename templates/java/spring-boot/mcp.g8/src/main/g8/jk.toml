@@ -10,11 +10,11 @@ main = "$package$.Application"
 version = "4.1.1"
 
 [dependencies]
-starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
 mcp-server = "org.springframework.ai:spring-ai-starter-mcp-server-webmvc:2.0.1"
 
 [test-dependencies]
-starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
+starter-test = "org.springframework.boot:spring-boot-starter-test"
 
 # `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
 [image]

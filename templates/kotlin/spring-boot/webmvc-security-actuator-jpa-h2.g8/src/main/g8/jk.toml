@@ -11,19 +11,19 @@ main = "$package$.ApplicationKt"
 version = "4.1.1"
 
 [dependencies]
-starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
-starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation" }
-starter-actuator = { group = "org.springframework.boot", name = "spring-boot-starter-actuator" }
-starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }
-h2 = { group = "com.h2database", name = "h2" }
+starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
+starter-validation = "org.springframework.boot:spring-boot-starter-validation"
+starter-actuator = "org.springframework.boot:spring-boot-starter-actuator"
+starter-data-jpa = "org.springframework.boot:spring-boot-starter-data-jpa"
+h2 = "com.h2database:h2"
 kotlin-reflect = "2.4.20"
-jackson-kotlin = { group = "com.fasterxml.jackson.module", name = "jackson-module-kotlin" }
+jackson-kotlin = "com.fasterxml.jackson.module:jackson-module-kotlin"
 
 [dev-dependencies]
-devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
+devtools = "org.springframework.boot:spring-boot-devtools"
 
 [test-dependencies]
-starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
+starter-test = "org.springframework.boot:spring-boot-starter-test"
 
 # `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
 [image]
