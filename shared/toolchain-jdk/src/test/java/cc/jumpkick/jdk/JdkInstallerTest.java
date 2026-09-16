@@ -163,6 +163,55 @@ class JdkInstallerTest {
     }
 
     @Test
+    void a_target_populated_by_a_finished_install_is_adopted_and_the_stage_removed(@TempDir Path tempDir)
+            throws Exception {
+        byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkCatalog.Entry entry = new JdkCatalog.Entry(
+                "Eclipse",
+                "Temurin",
+                "temurin-21",
+                21,
+                "21.0.5",
+                true,
+                false,
+                List.of(),
+                "linux",
+                "x86_64",
+                "targz",
+                base.resolve("/jdk.tar.gz"),
+                Hashing.sha256Hex(archive),
+                archive.length,
+                "jdk-21.0.5+11",
+                "");
+        // The winner's tree, renamed into place after this client probed and downloaded — and not
+        // yet marked, the gap between the winner's rename and its mark.
+        Path target = jdksRoot.resolve("temurin-21.0.5");
+        for (var file : discoverableJdkFiles().entrySet()) {
+            Path f = target.resolve(file.getKey());
+            Files.createDirectories(f.getParent());
+            Files.writeString(f, file.getValue());
+        }
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        JdkInstaller.DownloadedArchive dl = installer.download(entry, read -> {});
+
+        InstalledJdk installed = installer.extractInstalled(entry, dl);
+
+        assertThat(installed.home()).isEqualTo(target);
+        assertThat(target.resolve("bin/java")).hasContent("#!/fake/java");
+        assertThat(JdkOwnership.isJkOwned(target))
+                .as("the loser closes the winner's marking gap")
+                .isTrue();
+        assertThat(dl.path()).doesNotExist();
+        try (var entries = Files.list(jdksRoot)) {
+            assertThat(entries.filter(p -> p.getFileName().toString().startsWith(".stage-")))
+                    .as("the loser keeps nothing of its own")
+                    .isEmpty();
+        }
+    }
+
+    @Test
     void a_tree_at_the_target_that_is_not_a_jdk_is_not_answered_as_one(@TempDir Path tempDir) throws Exception {
         byte[] archive = buildTarGz(
                 "jdk-21.0.5+11",

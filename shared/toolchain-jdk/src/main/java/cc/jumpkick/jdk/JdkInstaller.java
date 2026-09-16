@@ -15,8 +15,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -217,30 +216,11 @@ public final class JdkInstaller {
             IN_FLIGHT.add(stagingDir);
             try {
                 extract(dl.path(), stagingDir, entry.packageType());
-                Path effectiveRoot = flattenedRoot(stagingDir);
-                Files.move(effectiveRoot, target);
-            } catch (FileAlreadyExistsException | AccessDeniedException raced) {
-                // Another install of this very JDK — a second client pre-flighting the same pin
-                // against one root — moved its tree in between our probe and ours. A move is one
-                // rename, so what sits at the target is complete; this install is done and keeps
-                // nothing of its own. Marking is idempotent, so the loser closes the winner's gap
-                // between its move and its mark. A target the registry's own probe does not accept
-                // as a JDK is not answered as one: it is whatever refused the move, and the failure
-                // says so.
-                discardStaging(stagingDir);
-                if (ProbeSupport.discoverJdk(javaHome, "jk").isEmpty()) throw raced;
-                JdkOwnership.mark(target);
-                registry.refresh();
-                return Objects.requireNonNull(alreadyInstalled(entry), "the target that refused the move");
             } catch (IOException | RuntimeException e) {
                 discardStaging(stagingDir);
                 throw e;
             }
-            // Drop the (now-empty) staging wrapper when flattenedRoot hoisted
-            // a child out. If it returned stagingDir itself, the move
-            // consumed the dir and this is a no-op.
-            discardStaging(stagingDir);
-            JdkOwnership.mark(target);
+            moveIntoPlace(stagingDir, target, javaHome);
         } finally {
             Files.deleteIfExists(dl.path());
         }
@@ -338,17 +318,50 @@ public final class JdkInstaller {
             IN_FLIGHT.add(stagingDir);
             try {
                 extract(archive, stagingDir, archiveType);
-                Path effectiveRoot = flattenedRoot(stagingDir);
-                Files.move(effectiveRoot, target);
             } catch (IOException | RuntimeException e) {
                 discardStaging(stagingDir);
                 throw e;
             }
-            discardStaging(stagingDir);
-            JdkOwnership.mark(target);
+            moveIntoPlace(stagingDir, target, target);
         } finally {
             Files.deleteIfExists(archive);
         }
+    }
+
+    /**
+     * One rename from the stage into the durable name, then jk's ownership marker. The stage is
+     * gone afterwards whatever happened: consumed by the rename, or discarded.
+     *
+     * <p>Two clients pre-flighting the same pin against one root both extract to their own stage
+     * and rename to the same target. A rename is one {@code rename(2)}, so whatever refused ours
+     * is a complete tree: {@link java.nio.file.FileAlreadyExistsException} when it was there before
+     * our move began, and a bare "directory not empty" (or, on Windows, an access-denied)
+     * {@link FileSystemException} when it landed between the existence check and the syscall. The
+     * loser adopts the winner's tree and marks it — marking is idempotent, so the loser also
+     * closes the winner's gap between its rename and its mark. A target that is not a JDK
+     * (nothing jk marked, no {@code release} beside {@code bin/java}) is whatever refused the
+     * move, and the failure says so.
+     */
+    private void moveIntoPlace(Path stagingDir, Path target, Path javaHome) throws IOException {
+        try {
+            Files.move(flattenedRoot(stagingDir), target);
+        } catch (FileSystemException raced) {
+            discardStaging(stagingDir);
+            if (!completeInstall(target, javaHome)) throw raced;
+        } catch (IOException | RuntimeException e) {
+            discardStaging(stagingDir);
+            throw e;
+        }
+        // Drop the (now-empty) staging wrapper when flattenedRoot hoisted a child out; when the
+        // rename consumed the stage itself this is a no-op.
+        discardStaging(stagingDir);
+        JdkOwnership.mark(target);
+    }
+
+    /** Whether {@code target} holds a finished install: jk's marker, or a JDK the probe accepts. */
+    static boolean completeInstall(Path target, Path javaHome) {
+        return JdkOwnership.isJkOwned(target)
+                || ProbeSupport.discoverJdk(javaHome, "jk").isPresent();
     }
 
     /**
