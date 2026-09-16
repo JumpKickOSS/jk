@@ -6,6 +6,8 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.runtime.base.ProjectIds;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,8 +15,9 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
-import java.util.function.ToLongFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -71,6 +74,12 @@ public final class MemoryAdmission {
         DRAINING
     }
 
+    /** What a job of {@code kind} for {@code dir} will hold in this JVM, in bytes. */
+    @FunctionalInterface
+    public interface Estimator {
+        long estimate(String kind, String dir);
+    }
+
     /** Told once, the first time a job has to wait: how many wait ahead of it. */
     @FunctionalInterface
     public interface QueuedListener {
@@ -96,11 +105,22 @@ public final class MemoryAdmission {
      */
     public static final long LEDGER_BYTES_PER_BYTE = 8;
 
+    /**
+     * Heap an import holds per {@code pom.xml} of the reactor: the raw model of every POM stays
+     * registered for parent and BOM lookups while the walk imports one module at a time, and each
+     * module leaves its manifest and rows. Measured at 36 KiB per POM on a reactor of 1,900 modules
+     * and doubled.
+     */
+    public static final long IMPORT_BYTES_PER_POM = 64L << 10;
+
+    /** Directories an import never reads a {@code pom.xml} from: build outputs, the repository's own metadata. */
+    private static final Set<String> IMPORT_SKIPPED_DIRS = Set.of(BuildLayout.TARGET, "build", ".git", "node_modules");
+
     /** How long a waiter sleeps between re-judgements when nothing wakes it. */
     static final long POLL_MS = 500;
 
     private final Heap heap;
-    private final ToLongFunction<String> estimator;
+    private final Estimator estimator;
     private final Object lock = new Object();
 
     /** Waiting jobs in arrival order; the head is the only one ever admitted. */
@@ -128,19 +148,19 @@ public final class MemoryAdmission {
         return new MemoryAdmission(Heap.runtime(), MemoryAdmission::estimate);
     }
 
-    public MemoryAdmission(Heap heap, ToLongFunction<String> estimator) {
+    public MemoryAdmission(Heap heap, Estimator estimator) {
         this.heap = heap;
         this.estimator = estimator;
         this.idleCommittedBytes = heap.committedBytes();
     }
 
     /**
-     * Admit {@code jid} for {@code dir}, waiting behind earlier jobs until its estimate fits.
-     * {@code onQueued} runs once, outside the lock, if the job has to wait at all; {@code
-     * draining} is polled so a drain ends the wait. An interrupt ends it as a cancel.
+     * Admit {@code jid}, a job of {@code kind} for {@code dir}, waiting behind earlier jobs until
+     * its estimate fits. {@code onQueued} runs once, outside the lock, if the job has to wait at
+     * all; {@code draining} is polled so a drain ends the wait. An interrupt ends it as a cancel.
      */
-    public Verdict admit(long jid, String dir, QueuedListener onQueued, BooleanSupplier draining) {
-        long estimate = Math.max(0, estimator.applyAsLong(dir));
+    public Verdict admit(long jid, String kind, String dir, QueuedListener onQueued, BooleanSupplier draining) {
+        long estimate = Math.max(0, estimator.estimate(kind, dir));
         int ahead;
         synchronized (lock) {
             if (queue.isEmpty() && fits(estimate)) {
@@ -254,13 +274,16 @@ public final class MemoryAdmission {
     }
 
     /**
-     * A plan job's coordinator cost from what it reads whole: the workspace lock as a parse tree
-     * at {@link #TOML_TREE_BYTES_PER_BYTE}, the project's metrics ledger and the host ledger as
-     * scanned maps at {@link #LEDGER_BYTES_PER_BYTE}, on top of {@link #BASE_JOB_BYTES}. A job
-     * without a project directory costs the base.
+     * A plan job's coordinator cost from what it reads whole. An import holds the reactor: {@link
+     * #IMPORT_BYTES_PER_POM} per {@code pom.xml} under {@code dir}, build outputs pruned. Any other
+     * plan holds the workspace lock as a parse tree at {@link #TOML_TREE_BYTES_PER_BYTE}, the
+     * project's metrics ledger and the host ledger as scanned maps at {@link
+     * #LEDGER_BYTES_PER_BYTE}. Both sit on top of {@link #BASE_JOB_BYTES}, which is all a job
+     * without a project directory costs.
      */
-    public static long estimate(@Nullable String dir) {
+    public static long estimate(String kind, @Nullable String dir) {
         if (dir == null || dir.isBlank()) return BASE_JOB_BYTES;
+        if ("import".equals(kind)) return BASE_JOB_BYTES + IMPORT_BYTES_PER_POM * pomCount(Path.of(dir));
         long toml = 0;
         long ledgers = 0;
         try {
@@ -274,6 +297,20 @@ public final class MemoryAdmission {
             Log.debug("estimate: inputs unreadable, base cost only", e);
         }
         return BASE_JOB_BYTES + TOML_TREE_BYTES_PER_BYTE * toml + LEDGER_BYTES_PER_BYTE * ledgers;
+    }
+
+    /** Every {@code pom.xml} under {@code root} outside {@link #IMPORT_SKIPPED_DIRS}; zero when the tree cannot be read. */
+    static long pomCount(Path root) {
+        AtomicLong poms = new AtomicLong();
+        try {
+            PathUtil.forEachRegularFile(
+                    root, dir -> IMPORT_SKIPPED_DIRS.contains(String.valueOf(dir.getFileName())), (file, attrs) -> {
+                        if ("pom.xml".equals(String.valueOf(file.getFileName()))) poms.incrementAndGet();
+                    });
+        } catch (IOException | RuntimeException e) {
+            Log.debug("estimate: reactor unreadable, counted " + poms.get() + " POMs", e);
+        }
+        return poms.get();
     }
 
     private static long sizeOf(Path file) {
