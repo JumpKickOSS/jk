@@ -195,8 +195,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
     LoadedModule sibling(String module) {
         if (byGa.isEmpty() && byName.isEmpty()) return null;
         if (Dependency.isWorkspaceRef(module)) {
-            String name = Dependency.workspaceName(module);
-            String ga = byName.get(name);
+            String ga = Dependency.workspaceCoordinate(module);
+            if (ga == null) ga = byName.get(Dependency.workspaceName(module));
             return ga == null ? null : byGa.get(ga);
         }
         return byGa.get(toGa(module));
@@ -209,7 +209,8 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
 
     /** The readable coordinate for a collapsed {@code workspace:<name>} reference. */
     String collapsedCoord(String module) {
-        return byName.getOrDefault(Dependency.workspaceName(module), module);
+        String qualified = Dependency.workspaceCoordinate(module);
+        return qualified != null ? qualified : byName.getOrDefault(Dependency.workspaceName(module), module);
     }
 
     /**

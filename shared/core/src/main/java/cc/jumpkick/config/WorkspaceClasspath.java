@@ -337,11 +337,12 @@ public final class WorkspaceClasspath {
         }
     }
 
-    /** Resolve a {@code workspace:<name>} dep reference to its full {@code group:name} coord. */
+    /** Resolve a {@code workspace:<name>} or group-qualified dep reference to its full {@code group:name} coord. */
     private static String resolveWorkspaceRef(String module, Map<String, String> coordByName) {
         if (!Dependency.isWorkspaceRef(module)) return module;
-        String name = Dependency.workspaceName(module);
-        String coord = coordByName.get(name);
+        String qualified = Dependency.workspaceCoordinate(module);
+        if (qualified != null) return qualified;
+        String coord = coordByName.get(Dependency.workspaceName(module));
         return coord != null ? coord : module;
     }
 

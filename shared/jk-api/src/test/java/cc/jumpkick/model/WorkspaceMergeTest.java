@@ -89,6 +89,47 @@ class WorkspaceMergeTest {
         assertThat(testDeps.getFirst().module()).isEqualTo("org.junit.jupiter:junit-jupiter");
     }
 
+    /** Two siblings named `edqs`; the edge's group picks one, and the other's externals stay out. */
+    @Test
+    void group_qualified_workspace_dep_resolves_to_the_member_with_that_group() {
+        JkBuild root = workspaceRoot("tb", List.of("common/edqs", "edqs", "application"));
+        JkBuild commonEdqs = new JkBuild(
+                new Project("cc.jumpkick.common", "edqs", "0.1.0", 0),
+                new JkBuild.Dependencies(new EnumMap<>(Map.of(Scope.MAIN, List.of(dep("a", "com.foo:a", "1.0"))))));
+        JkBuild edqs = newProject("edqs", Map.of(Scope.MAIN, List.of(dep("b", "com.foo:b", "2.0"))));
+        JkBuild application = newProject(
+                "application", Map.of(Scope.MAIN, List.of(Dependency.workspace("edqs", "cc.jumpkick.common"))));
+
+        JkBuild resolved = WorkspaceMerge.resolveSiblingCoordinates(root, application, List.of(commonEdqs, edqs));
+        assertThat(resolved.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("cc.jumpkick.common:edqs");
+
+        JkBuild folded = WorkspaceMerge.applyToModule(root, application, List.of(commonEdqs, edqs));
+        assertThat(folded.dependencies().of(Scope.MAIN))
+                .as("only the chosen member's externals fold in")
+                .extracting(Dependency::module)
+                .containsExactly("com.foo:a");
+
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(commonEdqs, edqs, application));
+        assertThat(merged.dependencies().of(Scope.MAIN))
+                .as("the one-manifest lock fold resolves the qualified edge too")
+                .extracting(Dependency::module)
+                .containsExactlyInAnyOrder("com.foo:a", "com.foo:b");
+    }
+
+    @Test
+    void group_qualified_workspace_dep_to_an_absent_group_throws() {
+        JkBuild root = workspaceRoot("tb", List.of("edqs", "application"));
+        JkBuild edqs = newProject("edqs", Map.of());
+        JkBuild application =
+                newProject("application", Map.of(Scope.MAIN, List.of(Dependency.workspace("edqs", "org.elsewhere"))));
+
+        assertThatThrownBy(() -> WorkspaceMerge.merge(root, List.of(edqs, application)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("org.elsewhere:edqs");
+    }
+
     @Test
     void unresolved_workspace_dep_throws() {
         JkBuild root = workspaceRoot("jk", List.of("core"));

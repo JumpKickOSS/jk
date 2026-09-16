@@ -374,11 +374,13 @@ public final class JkBuildRenderer {
     /** One dependency line: workspace flag, git table, or versioned table (with its classifier when set). */
     private static String renderEntry(Dependency d) {
         if (d.isWorkspace()) {
-            // Shorthand only for the default main kind; kind=tests and optional need the table form.
-            if (d.kind() == DependencyKind.MAIN && !d.optional()) {
+            // Shorthand only for the default main kind; a group, kind=tests and optional need the table form.
+            String group = d.workspaceGroup();
+            if (group == null && d.kind() == DependencyKind.MAIN && !d.optional()) {
                 return safeKey(d.library()) + ".workspace = true";
             }
             StringBuilder ws = new StringBuilder(safeKey(d.library())).append(" = { workspace = true");
+            if (group != null) ws.append(", group = ").append(quote(group));
             if (d.kind() != DependencyKind.MAIN)
                 ws.append(", kind = ").append(quote(d.kind().toml()));
             if (d.optional()) ws.append(", optional = true");

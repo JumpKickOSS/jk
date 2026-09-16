@@ -436,10 +436,16 @@ public final class ManifestDeps {
             if (!Boolean.TRUE.equals(ws)) {
                 throw new JkBuildParseException(displayPath + ".workspace must be `true` (the only legal value)");
             }
-            // workspace = true is mutually exclusive with group/name too.
-            if (entry.contains("group") || entry.contains("name")) {
-                throw new JkBuildParseException(
-                        displayPath + " with `workspace = true` must not set `group` or `name`");
+            // The key is the sibling's name; `group` picks one of two members carrying it.
+            if (entry.contains("name")) {
+                throw new JkBuildParseException(displayPath + " with `workspace = true` must not set `name`");
+            }
+            String group = entry.getString("group");
+            if (group != null) {
+                if (group.isBlank()) {
+                    throw new JkBuildParseException(displayPath + ".group must not be blank");
+                }
+                return Dependency.workspace(name, group);
             }
             // kind is applied in parseDepEntry after this form returns.
             return resolveWorkspaceDep(name, displayPath, workspace);

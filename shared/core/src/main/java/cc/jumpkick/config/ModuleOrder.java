@@ -57,7 +57,7 @@ public final class ModuleOrder {
     /**
      * The canonical workspace-sibling match for a declared dependency: its {@code group:artifact}
      * coordinate, or — for unresolved {@code workspace = true} placeholders only — its bare sibling
-     * name. Deliberately no fallback on the TOML table key ({@code Dependency.library()}): a table
+     * name, or the {@code group:name} pair a group-qualified placeholder spells. Deliberately no fallback on the TOML table key ({@code Dependency.library()}): a table
      * key that happens to equal a module's name (e.g. an external, published release of a
      * first-party artifact) must stay an external artifact, not become a module edge.
      * Shared by build ordering and the dependency graph so both draw identical module edges.
@@ -65,7 +65,8 @@ public final class ModuleOrder {
     public static <T> @Nullable T resolveSibling(Dependency d, Map<String, T> byCoord, Map<String, T> byName) {
         T hit = byCoord.get(d.module());
         if (hit == null && d.isWorkspace()) {
-            hit = byName.get(d.workspaceName());
+            String coordinate = Dependency.workspaceCoordinate(d.module());
+            hit = coordinate != null ? byCoord.get(coordinate) : byName.get(d.workspaceName());
         }
         return hit;
     }

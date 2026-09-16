@@ -240,8 +240,11 @@ final class WorkspaceRunPhase {
         Set<Path> consumed = new HashSet<>();
         for (BuildGraph.BuildUnit unit : units) {
             for (String ref : WorkspaceClasspath.directTestsKindRefs(unit.manifest())) {
+                String qualified = Dependency.workspaceCoordinate(ref);
                 String name = Dependency.workspaceName(ref);
-                Path producer = name != null ? dirByName.get(name) : dirByCoord.get(ref);
+                Path producer = qualified != null
+                        ? dirByCoord.get(qualified)
+                        : name != null ? dirByName.get(name) : dirByCoord.get(ref);
                 if (producer != null) consumed.add(producer);
             }
         }

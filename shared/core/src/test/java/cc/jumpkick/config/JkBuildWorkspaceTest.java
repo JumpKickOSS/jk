@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -383,6 +384,63 @@ class JkBuildWorkspaceTest {
                 .hasMessageContaining("workspace edge `edqs` is ambiguous")
                 .hasMessageContaining("`application` depends on it")
                 .hasMessageContaining("`common/edqs` and `edqs` both carry that name");
+    }
+
+    /** The group on the edge picks one member, so the same three-member workspace loads. */
+    @Test
+    void workspace_loader_accepts_a_group_qualified_edge_to_a_shared_name(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group   = "org.tb"
+                name    = "root"
+                version = "4.4.0"
+
+                [workspace]
+                modules = ["common/edqs", "edqs", "application"]
+                """);
+        writeModule(tempDir, "common/edqs", "org.tb.common");
+        writeModule(tempDir, "edqs", "org.tb");
+        Path application = Files.createDirectories(tempDir.resolve("application"));
+        Files.writeString(application.resolve("jk.toml"), """
+                name = "application"
+
+                [dependencies]
+                edqs = { workspace = true, group = "org.tb.common" }
+                """);
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        assertThat(modules).hasSize(3);
+        JkBuild resolved = JkBuildParser.parse(application.resolve("jk.toml"));
+        assertThat(resolved.dependencies().of(Scope.MAIN)).singleElement().satisfies(d -> {
+            assertThat(d.module()).isEqualTo("org.tb.common:edqs");
+            assertThat(d.version().raw()).isEqualTo("=4.4.0");
+        });
+    }
+
+    @Test
+    void workspace_loader_refuses_a_group_no_member_carrying_the_name_has(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                group   = "org.tb"
+                name    = "root"
+                version = "4.4.0"
+
+                [workspace]
+                modules = ["common/edqs", "edqs", "application"]
+                """);
+        writeModule(tempDir, "common/edqs", "org.tb.common");
+        writeModule(tempDir, "edqs", "org.tb");
+        Path application = Files.createDirectories(tempDir.resolve("application"));
+        Files.writeString(application.resolve("jk.toml"), """
+                name = "application"
+
+                [dependencies]
+                edqs = { workspace = true, group = "org.tb.msa" }
+                """);
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace edge `edqs` names group `org.tb.msa`")
+                .hasMessageContaining("`application` depends on it")
+                .hasMessageContaining("`org.tb.common`, `org.tb`");
     }
 
     private static void writeModule(Path workspace, String rel, String group) throws IOException {

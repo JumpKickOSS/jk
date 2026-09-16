@@ -47,10 +47,21 @@ allows (`org.thingsboard.common:edqs` under `common/edqs` and `org.thingsboard:e
 `group:name:version` declared by two members is a `workspace module collision`: a workspace
 publishes one artifact per coordinate.
 
-A workspace edge (`edqs.workspace = true`, or a `[build] order-after` entry) is spelled by module
-name alone. An edge to a name two members carry is refused as ``workspace edge `edqs` is
-ambiguous``, naming the member that depends on it and both members that carry the name; rename one
-of them. Two same-named members nothing depends on by name build side by side.
+A bare workspace edge (`edqs.workspace = true`, or a `[build] order-after` entry) is spelled by
+module name alone. An edge to a name two members carry names the member's group as well:
+
+```toml
+[dependencies]
+edqs = { workspace = true, group = "org.thingsboard.common" }
+```
+
+The key is still the member's `name`; `group` picks which of the two, and `kind`, `optional` and
+`fixtures` sit beside it as on any workspace edge. A bare edge to a shared name is refused as
+``workspace edge `edqs` is ambiguous``, naming the member that depends on it, both members that
+carry the name and the groups to choose from; a qualified edge whose group no member carrying the
+name has is refused naming the groups that do. Two same-named members nothing depends on by name
+build side by side. `jk import` writes the qualified form for every Maven dependency on a shared
+artifactId, since the POM already named the group.
 
 ## Workspace dependencies
 
