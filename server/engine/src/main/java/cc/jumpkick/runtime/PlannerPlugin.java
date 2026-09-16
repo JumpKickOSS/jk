@@ -394,6 +394,7 @@ public final class PlannerPlugin {
                                     ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
                                 }
                                 ctx.label(step.name() + " up-to-date");
+                                ctx.cached();
                                 ctx.progress(1);
                                 return;
                             }
