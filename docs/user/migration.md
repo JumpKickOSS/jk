@@ -40,6 +40,58 @@ trusting the generated `jk.toml`. Making an existing Maven project work under jk
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
+### Which Maven plugins import, and how well
+
+Counted across 66 public repositories cloned for the Maven corpus and the agent-loop corpus on
+2026-09-16 (root and module POMs, `<build>` and `<pluginManagement>`; a repo counts once per
+plugin). The fidelity report cites this table per plugin; a grade says how the imported build
+relates to the Maven one.
+
+| Plugin | Repos | Lands in jk as | Grade |
+|---|---:|---|---|
+| spring-boot-maven-plugin | 36 | `[spring-boot]` (Boot jar, platform BOM) | exact |
+| maven-surefire-plugin | 35 | `[test]` includes/excludes, `argLine`, system properties, `<groups>` → tags | approximate |
+| maven-compiler-plugin | 35 | `java =`, `[javac]` args, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
+| maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
+| maven-javadoc-plugin | 22 | javadoc jar from `jk package` for a library | exact |
+| maven-source-plugin | 19 | sources jar from `jk package` | exact |
+| maven-resources-plugin | 19 | resource filtering when declared; otherwise nothing to map | approximate |
+| jacoco-maven-plugin | 17 | `[test] coverage = true` | exact |
+| maven-gpg-plugin | 17 | `jk publish --sign` | exact |
+| maven-assembly-plugin | 17 | fat jar (`jar-with-dependencies`); other descriptors → row | approximate |
+| maven-enforcer-plugin | 17 | `requireJavaVersion` → `java =`; banned deps → `jk deny`; rest → row | approximate |
+| build-helper-maven-plugin | 16 | `add-source` / `add-test-source` → extra source roots | exact |
+| exec-maven-plugin | 16 | `java` goal → `[application]`; `exec` goal → row (build logic) | manual |
+| maven-dependency-plugin | 15 | nothing (analysis / copy goals) → row when bound to a phase | manual |
+| maven-clean-plugin | 15 | `jk clean` | exact |
+| maven-checkstyle-plugin | 14 | lint step (planned battery) → row until then | manual |
+| maven-deploy-plugin | 14 | `jk publish` | exact |
+| maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
+| maven-failsafe-plugin | 13 | `integration` suite from `*IT` patterns, `argLine` | approximate |
+| maven-shade-plugin | 12 | fat jar with relocations → row; plain shade → fat jar | approximate |
+| kotlin-maven-plugin | 12 | `kotlin =` on the module; `test-compile`-only → mixed module | exact |
+| maven-release-plugin | 11 | nothing (release flow) | manual |
+| central-publishing-maven-plugin | 11 | `jk publish --central` (planned battery) | manual |
+| spotbugs-maven-plugin | 10 | lint step (planned battery) | manual |
+| spotless-maven-plugin | 10 | `jk format` | approximate |
+| maven-antrun-plugin | 10 | build logic script → row | manual |
+| maven-pmd-plugin | 8 | lint step (planned battery) | manual |
+| license-maven-plugin | 8 | nothing → row | manual |
+| protobuf-maven-plugin | 8 | `[protobuf]` | exact |
+| versions-maven-plugin | 7 | `jk outdated` / `jk update` | exact |
+| docker-maven-plugin / jib-maven-plugin | 7 | `[image]` | approximate |
+| frontend-maven-plugin | 7 | `[dev.sidecars]` + a resource module | manual |
+| quarkus-maven-plugin | 7 | `[quarkus]` | exact |
+| flatten-maven-plugin | 6 | nothing (`jk export maven` writes a flat POM) | exact |
+| native-maven-plugin | 6 | `[native]` | approximate |
+| maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
+| antlr4-maven-plugin | 5 | `[antlr]` (planned generator preset) | manual |
+| openapi-generator-maven-plugin | 4 | `[openapi]` (planned generator preset) | manual |
+
+**Grades.** *exact*: the imported build does what the plugin did. *approximate*: the common
+configuration maps; unusual configuration lands in the report. *manual*: the report names the
+plugin and where its job belongs. *none*: the module needs `jk mvn`.
+
 ### Where Maven profiles land
 
 Maven uses one `<profile>` for five different jobs; jk keeps them apart, so import maps by
