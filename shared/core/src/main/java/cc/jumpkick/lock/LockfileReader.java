@@ -333,6 +333,11 @@ public final class LockfileReader {
         if (excludedArray != null) {
             for (int i = 0; i < excludedArray.size(); i++) excludedBy.add(excludedArray.getString(i));
         }
+        List<String> members = new ArrayList<>();
+        TomlArray membersArray = table.getArray("members");
+        if (membersArray != null) {
+            for (int i = 0; i < membersArray.size(); i++) members.add(membersArray.getString(i));
+        }
         return new Lockfile.Artifact(
                 name,
                 version,
@@ -345,7 +350,8 @@ public final class LockfileReader {
                 git,
                 sourcesChecksum,
                 declared,
-                excludedBy);
+                excludedBy,
+                members);
     }
 
     /**

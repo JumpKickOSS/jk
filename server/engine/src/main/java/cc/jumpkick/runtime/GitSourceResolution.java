@@ -134,19 +134,7 @@ public final class GitSourceResolution {
                 gi = gitInfoByKey.get(provenanceKey(ga(p.name()), p.version()));
             }
             if (gi != null && p.git() == null) {
-                out.add(new Lockfile.Artifact(
-                        p.name(),
-                        p.version(),
-                        p.source(),
-                        p.checksum(),
-                        p.path(),
-                        p.scopes(),
-                        p.deps(),
-                        p.pinnedBy(),
-                        gi,
-                        p.sourcesChecksum(),
-                        p.declared(),
-                        p.excludedBy()));
+                out.add(p.withGit(gi));
             } else {
                 out.add(p);
             }

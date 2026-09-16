@@ -185,6 +185,14 @@ public final class LockfileWriter {
                 }
                 out.append("]\n");
             }
+            if (!pkg.members().isEmpty()) {
+                out.append("members  = [");
+                for (int i = 0; i < pkg.members().size(); i++) {
+                    if (i > 0) out.append(", ");
+                    out.append(quote(pkg.members().get(i)));
+                }
+                out.append("]\n");
+            }
             if (!pkg.deps().isEmpty()) {
                 List<String> deps = new ArrayList<>(pkg.deps());
                 deps.sort(Comparator.naturalOrder());

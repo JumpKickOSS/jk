@@ -627,6 +627,16 @@ public record Lockfile(
                 nativeMetadata);
     }
 
+    /**
+     * This lock as the module at {@code memberPath} (a {@link ModuleEntry#path}) reads it: for every
+     * coordinate a partition row lists the member on, that row alone; for every other coordinate,
+     * the workspace's plain row alone. The row set a module's classpath, package and run are made
+     * of; the lock on disk is unchanged. See {@link MemberRows}.
+     */
+    public Lockfile forMember(String memberPath) {
+        return withArtifacts(MemberRows.narrow(artifacts, memberPath));
+    }
+
     /** Return a copy with resolved first-party module identity pins (replaces any existing). */
     public Lockfile withModules(List<ModuleEntry> newModules) {
         return new Lockfile(
@@ -785,7 +795,13 @@ public record Lockfile(
              * line each ({@code jk.toml:<handle>} for a manifest exclusion, {@code g:a@version} for a
              * POM's); the coordinate may still sit in the lock through another path.
              */
-            List<String> excludedBy) {
+            List<String> excludedBy,
+            /**
+             * The workspace members whose classpath reads this row instead of the coordinate's plain
+             * row, by {@link ModuleEntry#path}; empty for the workspace's own row. See {@link
+             * Lockfile#forMember}.
+             */
+            List<String> members) {
 
         public Artifact {
             Objects.requireNonNull(name, "name");
@@ -800,6 +816,39 @@ public record Lockfile(
             deps = List.copyOf(deps);
             declared = declared == null || declared.isEmpty() ? Map.of() : Map.copyOf(declared);
             excludedBy = excludedBy == null || excludedBy.isEmpty() ? List.of() : List.copyOf(excludedBy);
+            members = members == null || members.isEmpty()
+                    ? List.of()
+                    : members.stream().sorted().distinct().toList();
+        }
+
+        /** The workspace's own row: no member partition. */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                @Nullable String checksum,
+                @Nullable String path,
+                List<Scope> scopes,
+                List<String> deps,
+                @Nullable String pinnedBy,
+                @Nullable GitInfo git,
+                @Nullable String sourcesChecksum,
+                Map<String, String> declared,
+                List<String> excludedBy) {
+            this(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    excludedBy,
+                    List.of());
         }
 
         /** Every edge kept: nothing pruned. */
@@ -827,7 +876,85 @@ public record Lockfile(
                     git,
                     sourcesChecksum,
                     declared,
+                    List.of(),
                     List.of());
+        }
+
+        /** This row with {@code git} as its provenance; every other field kept. */
+        public Artifact withGit(GitInfo git) {
+            return new Artifact(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    excludedBy,
+                    members);
+        }
+
+        /** This row with the {@code -sources.jar} digest; every other field kept. */
+        public Artifact withSourcesChecksum(@Nullable String sourcesChecksum) {
+            return new Artifact(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    excludedBy,
+                    members);
+        }
+
+        /** This row as the partition the listed members read; every other field kept. */
+        public Artifact withMembers(List<String> members) {
+            return new Artifact(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    excludedBy,
+                    members);
+        }
+
+        /** This row with {@code scopes}; every other field kept. */
+        public Artifact withScopes(List<Scope> scopes) {
+            return new Artifact(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    excludedBy,
+                    members);
+        }
+
+        /** True when this row is one member partition of its coordinate rather than the workspace's row. */
+        public boolean isPartition() {
+            return !members.isEmpty();
         }
 
         /** Every edge without a declared selector. */
