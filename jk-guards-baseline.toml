@@ -10,6 +10,7 @@ population = { constants = 1, files = 3359, literals = 103330 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -32,6 +33,7 @@ population = { files = 1865 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "server/toolchain" = { classes = 20, sites = 1776 }
@@ -734,6 +736,9 @@ in     = "shared/wire"
 at     = "cc.jumpkick.wire.EnginePaths#identitiesIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 
+[bootstrap-pin-reads-tree]
+population = { examined = 2 }
+
 [cache-tiers]
 population = { constants = 29, files = 1947, literals = 35490 }
 
@@ -743,12 +748,22 @@ population = { constants = 29, files = 1947, literals = 35490 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
 [central-address]
 population = { files = 1959 }
+
+[charter-parity]
+population = { examined = 33 }
+
+[cheapest-rejection-first]
+population = { examined = 1930 }
+
+[ci-cadence]
+population = { examined = 4 }
 
 [cli-engine-package-cycle]
 [cli-engine-package-cycle.populations]
@@ -775,7 +790,7 @@ population = { files = 1959 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 921, sites = 60097 }
-"server/guard" = { classes = 170, sites = 10374 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -1722,9 +1737,19 @@ unit   = "shared/wire"
 value  = 92.0785999385938
 reason = "seeded at the first jk test --coverage measurement; the ratchet only moves up from here"
 
+[curated-integration]
+population = { examined = 22 }
+
+[doc-links-resolve]
+population = { examined = 691 }
+
+[engine-config-docs]
+population = { examined = 15 }
+
 [engine-log-owner]
 [engine-log-owner.populations]
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -1738,14 +1763,23 @@ population = { units = 3323 }
 [git-writes-are-pinned]
 population = { files = 1893 }
 
+[gradle-bootstrap-parity]
+population = { examined = 42 }
+
 [guard-kinds-doc]
 population = { rows = 18 }
+
+[guard-letters-registry]
+population = { examined = 108 }
 
 [guard-registry-doc]
 population = { rows = 68 }
 
 [guard-schemas-doc]
 population = { rows = 84 }
+
+[hand-built-java-binary]
+population = { examined = 1929 }
 
 [ide-client-wiring]
 [ide-client-wiring.populations]
@@ -1760,6 +1794,7 @@ population = { files = 1413 }
 "plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 0 }
 "server/io" = { classes = 34, sites = 0 }
 "server/resolver" = { classes = 85, sites = 0 }
 "shared/client-io" = { classes = 88, sites = 0 }
@@ -2093,11 +2128,15 @@ population = { files = 1959 }
 [no-ticket-ids]
 population = { files = 4038 }
 
+[node-pin-parity]
+population = { examined = 5 }
+
 [null-marked-packages]
 [null-marked-packages.populations]
 "clients/cli" = { classes = 676, elements = 18 }
 "plugins/publisher" = { classes = 16, elements = 1 }
 "server/engine" = { classes = 921, elements = 19 }
+"server/guard" = { classes = 178, elements = 7 }
 "server/io" = { classes = 34, elements = 1 }
 "server/resolver" = { classes = 85, elements = 3 }
 "shared/client-io" = { classes = 88, elements = 6 }
@@ -2108,6 +2147,7 @@ population = { files = 4038 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -2118,6 +2158,7 @@ population = { files = 4038 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -2128,6 +2169,7 @@ population = { files = 4038 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
+"server/guard" = { classes = 178, sites = 8280 }
 "server/io" = { classes = 34, sites = 1555 }
 "server/resolver" = { classes = 85, sites = 3320 }
 "shared/client-io" = { classes = 88, sites = 3617 }
@@ -2137,8 +2179,12 @@ population = { files = 4038 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
+
+[one-json-codec]
+population = { examined = 1928 }
 
 [one-json-splicer]
 population = { files = 1893 }
@@ -2152,6 +2198,7 @@ population = { files = 1865 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
+"server/guard" = { classes = 178, sites = 8280 }
 "server/io" = { classes = 34, sites = 1555 }
 "server/resolver" = { classes = 85, sites = 3320 }
 "shared/client-io" = { classes = 88, sites = 3617 }
@@ -2163,6 +2210,7 @@ population = { files = 1865 }
 "plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
 "server/engine" = { edges = 92, slices = 19 }
+"server/guard" = { edges = 13, slices = 8 }
 "server/io" = { edges = 0, slices = 1 }
 "server/resolver" = { edges = 4, slices = 3 }
 "server/toolchain" = { edges = 4, slices = 4 }
@@ -2231,6 +2279,9 @@ unit   = "shared/toolchain-jdk:discovery"
 value  = 2
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 
+[plugin-family]
+population = { examined = 15 }
+
 [plugin-fork-owner]
 [plugin-fork-owner.populations]
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -2242,6 +2293,7 @@ reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -2267,6 +2319,7 @@ population = { files = 1985 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -2280,6 +2333,12 @@ population = { files = 11 }
 [script-walks-never-follow-links]
 population = { files = 1 }
 
+[security-docs]
+population = { examined = 3 }
+
+[shellcheck]
+population = { examined = 45 }
+
 [ship-layout-installer-jk]
 population = { left = 1, right = 1 }
 
@@ -2287,7 +2346,7 @@ population = { left = 1, right = 1 }
 population = { files = 3680 }
 
 [single-truth-set]
-population = { examined = 1707 }
+population = { examined = 1930 }
 [[single-truth-set.entries]]
 unit   = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/ActivateCommand.java"
 value  = 1
@@ -2317,10 +2376,6 @@ unit   = "server/resolver/src/main/java/cc/jumpkick/resolver/VersionSelectors.ja
 value  = 1
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
 [[single-truth-set.entries]]
-unit   = "server/toolchain/src/main/java/cc/jumpkick/mvn/PomImporter.java"
-value  = 1
-reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
-[[single-truth-set.entries]]
 unit   = "shared/toolchain-jdk/src/main/java/cc/jumpkick/jdk/JdkCatalogClient.java"
 value  = 2
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
@@ -2331,6 +2386,9 @@ population = { files = 26 }
 [spike-cache-temp-dir]
 [spike-cache-temp-dir.populations]
 "server/engine" = { examined = 20 }
+
+[stage-docs]
+population = { examined = 10 }
 
 [swallowed-broad-catch]
 population = { files = 1893 }
@@ -2347,11 +2405,15 @@ population = { constants = 66, files = 1947, literals = 35433 }
 [test-paths-from-checkout-root]
 population = { files = 1434 }
 
+[test-tier-docs]
+population = { examined = 5 }
+
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
+"server/guard" = { classes = 178, sites = 8280 }
 "server/io" = { classes = 34, sites = 1555 }
 "server/resolver" = { classes = 85, sites = 3320 }
 "shared/client-io" = { classes = 88, sites = 3617 }
@@ -2368,6 +2430,12 @@ population = { constants = 119, files = 1947, literals = 35366 }
 [worker-offline-from-spec]
 population = { files = 151 }
 
+[workflow-pins-permissions]
+population = { examined = 4 }
+
+[workflow-tee-pipefail]
+population = { examined = 4 }
+
 [xml-parser-hardening]
 population = { files = 1 }
 
@@ -2377,6 +2445,7 @@ population = { files = 1 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
+"server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 34, sites = 1989 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
