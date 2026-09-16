@@ -7,12 +7,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.Feature;
+import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Profile;
+import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
 import java.net.URI;
@@ -185,6 +191,56 @@ class JkBuildRendererTest {
                 .containsExactly(
                         Map.entry("Implementation-Title", "jk-test-runner"),
                         Map.entry("Implementation-Version", "1.0.0"));
+    }
+
+    @Test
+    void features_profiles_javac_source_roots_and_sources_round_trip() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.MAIN,
+                List.of(new Dependency("org.postgresql:postgresql", VersionSelector.parse("42.7.4"))
+                        .withOptional(true)));
+        JkBuild model = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
+                        .java(21)
+                        .sourcesMode(SourcesMode.ALWAYS)
+                        .build())
+                .dependencies(new JkBuild.Dependencies(byScope))
+                .features(new Features(
+                        Map.of("postgres", new Feature("postgres", List.of("postgresql"), List.of())), List.of()))
+                .profiles(new Profiles(Map.of(
+                        "preview",
+                        new Profile("preview", null, List.of("--enable-preview"), List.of("--enable-preview")))))
+                .build(JkBuild.Build.EMPTY
+                        .withJavac(new JavacConfig(Map.of(), List.of("-parameters")))
+                        .withExtraSrc(List.of("src/main/generated"))
+                        .withTestExtraSrc(List.of("src/it/java")))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("sources  = \"always\"")
+                .contains("[build]\nextra-src = [\"src/main/generated\"]")
+                .contains("[test]\nextra-src = [\"src/it/java\"]")
+                .contains("[javac]\nargs = [\"-parameters\"]")
+                .contains("[profiles.preview]\njavac = [\"--enable-preview\"]\njvm-args = [\"--enable-preview\"]")
+                .contains("[features.postgres]\ndeps = [\"postgresql\"]")
+                .doesNotContain("[features]\n")
+                .contains("postgresql = { group = \"org.postgresql\", version = \"42.7.4\", optional = true }")
+                .doesNotContain("jdk");
+
+        JkBuild reparsed = JkBuildParser.parse(out);
+        assertThat(reparsed.project().sourcesMode()).isEqualTo(SourcesMode.ALWAYS);
+        assertThat(reparsed.build().extraSrc()).containsExactly("src/main/generated");
+        assertThat(reparsed.build().testExtraSrc()).containsExactly("src/it/java");
+        assertThat(reparsed.build().javac().args()).containsExactly("-parameters");
+        assertThat(requireNonNull(reparsed.profiles().byName().get("preview")).javacArgs())
+                .containsExactly("--enable-preview");
+        assertThat(requireNonNull(reparsed.features().byName().get("postgres")).deps())
+                .containsExactly("postgresql");
+        assertThat(reparsed.dependencies().of(Scope.MAIN))
+                .singleElement()
+                .extracting(Dependency::optional)
+                .isEqualTo(true);
     }
 
     @Test
