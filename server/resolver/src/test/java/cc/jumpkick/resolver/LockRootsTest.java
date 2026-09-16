@@ -99,7 +99,7 @@ class LockRootsTest {
                 version = "1.0.0"
 
                 [test-dependencies]
-                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "5.9.0" }
+                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "5.9.0" }  # off the train: an old Jupiter line is the point of this fixture
                 junit         = { group = "junit", name = "junit", version = "4.13.2" }
                 """);
         LockRoots.Declared declared = LockRoots.partition(old, List.of(), true);
