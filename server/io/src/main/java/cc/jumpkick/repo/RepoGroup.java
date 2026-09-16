@@ -140,6 +140,21 @@ public final class RepoGroup {
         return new RepoGroup(merged, excl, leading.size() + priorityCount);
     }
 
+    /**
+     * This group followed by {@code trailing}, which answer only when every repository here has
+     * missed: the repositories a dependency's POM declares for its own subtree. They carry no
+     * exclusive binding, and the priority prefix is unchanged.
+     */
+    public RepoGroup withReposAppended(List<MavenRepo> trailing) {
+        if (trailing == null || trailing.isEmpty()) return this;
+        List<MavenRepo> merged = new ArrayList<>(repos.size() + trailing.size());
+        merged.addAll(repos);
+        merged.addAll(trailing);
+        List<List<String>> excl = new ArrayList<>(exclusiveGroups);
+        for (int i = 0; i < trailing.size(); i++) excl.add(List.of());
+        return new RepoGroup(merged, excl, priorityCount);
+    }
+
     public List<MavenRepo> repos() {
         return repos;
     }

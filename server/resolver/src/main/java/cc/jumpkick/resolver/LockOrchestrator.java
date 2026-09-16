@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -236,12 +237,14 @@ public final class LockOrchestrator {
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
+            for (String line : sharedSource.declaredRepositoryNotes()) observer.onNote(line);
         }
         // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
         JupiterLine.checkAligned(solved.test());
 
         progress.materializePhase(progress.graphPackages() + fileDeps.size());
-        Lockfile lockfile = new LockfileAssembler(repos, kmp, pomBuilder, constraints, activatedFeatures)
+        Function<String, RepoGroup> reposFor = sharedSource != null ? sharedSource::reposFor : pkg -> repos;
+        Lockfile lockfile = new LockfileAssembler(repos, reposFor, kmp, pomBuilder, constraints, activatedFeatures)
                 .assemble(project, solved, fileDeps, jkVersion, progress);
         progress.finished(lockfile.artifacts().size());
         return lockfile;

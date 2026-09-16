@@ -375,7 +375,20 @@ public final class EffectivePomBuilder {
                 retainedManaged,
                 retainedImportedKeys,
                 child.relocation(),
-                hostClassified);
+                hostClassified,
+                repositories(child, parent));
+    }
+
+    /** The child's own {@code <repositories>} first, then the parent chain's, one entry per URL. */
+    private static List<Pom.Repository> repositories(Pom child, @Nullable EffectivePom parent) {
+        if (child.repositories().isEmpty()
+                && (parent == null || parent.repositories().isEmpty())) return List.of();
+        LinkedHashMap<String, Pom.Repository> byUrl = new LinkedHashMap<>();
+        for (Pom.Repository r : child.repositories()) byUrl.putIfAbsent(r.url(), r);
+        if (parent != null) {
+            for (Pom.Repository r : parent.repositories()) byUrl.putIfAbsent(r.url(), r);
+        }
+        return new ArrayList<>(byUrl.values());
     }
 
     /**

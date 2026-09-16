@@ -207,7 +207,7 @@ public final class PubGrubResolver implements Resolver {
                     }
                     kmpDropped = kmpSelection.get().allTargets();
                 }
-                EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
+                EffectivePom pom = builderFor(e.getKey(), pomBuilder).build(toCoord(e.getKey(), e.getValue()));
                 // A relocation stub's one edge is the redirect. Without it the target would sit in
                 // the lock unreachable from anything, and every consumer of the graph — tree,
                 // explain, packaging closure — would treat it as orphaned.
@@ -294,5 +294,13 @@ public final class PubGrubResolver implements Resolver {
 
     private static Coordinate toCoord(String packageKey, String version) {
         return PackageId.parse(packageKey).withVersion(version);
+    }
+
+    /**
+     * The POM builder for {@code pkg}: the source's, when it scopes repositories a dependency POM
+     * declared to the subtree {@code pkg} was reached through, else {@code fallback}.
+     */
+    private EffectivePomBuilder builderFor(String pkg, EffectivePomBuilder fallback) {
+        return source instanceof MavenPackageSource maven ? maven.pomBuilderFor(pkg) : fallback;
     }
 }
