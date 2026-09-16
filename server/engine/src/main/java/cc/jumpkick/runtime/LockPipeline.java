@@ -460,7 +460,7 @@ public final class LockPipeline {
             // Pin only plugins this project configures. Pinning every located plugin churned each
             // project's lock on every jk version bump and ping-ponged between developers on
             // different jk versions, for plugins the project never forks.
-            if (effective.pluginConfig(d.table()).isEmpty()) continue;
+            if (effective.pluginConfig(d.id()).isEmpty()) continue;
             String coord = "cc.jumpkick:" + located.plugin().artifactId();
             if (!seen.add(coord + ":" + JkVersion.VERSION)) continue;
             try {
