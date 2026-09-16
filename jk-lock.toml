@@ -416,6 +416,9 @@ deps = [
   "com.google.guava:guava:jar:@33.7.1-jre <- 30.1-jre",
   "javax.inject:javax.inject:jar:@1 <- 1",
 ]
+excluded-by = [
+  "com.google.guava:guava <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+]
 
 [[artifact]]
 name     = "com.google.j2objc:j2objc-annotations:jar:"
@@ -582,6 +585,9 @@ deps = [
   "org.scala-lang:scala-library:jar:@3.9.0 <- 2.13.17",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
 ]
+excluded-by = [
+  "org.scala-lang:scala-library <- org.scala-lang:scala3-repl_3@3.9.0",
+]
 
 [[artifact]]
 name     = "io.github.eisop:checker-qual:jar:"
@@ -679,6 +685,9 @@ deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2 <- 3.0.2",
   "com.google.guava:guava:jar:@33.7.1-jre <- 33.6.0-android",
   "io.grpc:grpc-api:jar:@1.84.0 <- 1.84.0",
+]
+excluded-by = [
+  "com.google.protobuf:protobuf-javalite <- io.grpc:grpc-protobuf@1.84.0",
 ]
 
 [[artifact]]
@@ -821,6 +830,11 @@ deps = [
   "org.apache.maven:maven-resolver-provider:jar:@3.9.16 <- 4.0.0-rc-5",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0 <- 1.0.1",
 ]
+excluded-by = [
+  "javax.inject:javax.inject <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.apache.maven:maven-resolver-provider <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.eclipse.sisu:org.eclipse.sisu.inject <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+]
 
 [[artifact]]
 name     = "io.quarkus:quarkus-classloader-commons:jar:"
@@ -885,6 +899,10 @@ deps = [
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0 <- 0.3.5",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0 <- 0.3.5",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final <- 3.6.1.Final",
+]
+excluded-by = [
+  "commons-io:commons-io <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.jsoup:jsoup <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
 ]
 
 [[artifact]]
@@ -1284,6 +1302,9 @@ deps = [
   "commons-io:commons-io:jar:@2.22.0 <- 2.11.0",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
 ]
+excluded-by = [
+  "commons-io:commons-io <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+]
 
 [[artifact]]
 name     = "org.apache.maven.wagon:wagon-file:jar:"
@@ -1432,6 +1453,10 @@ deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0 <- 1.0.0",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
+]
+excluded-by = [
+  "org.codehaus.plexus:plexus-utils <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.slf4j:slf4j-api <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
 ]
 
 [[artifact]]
@@ -1801,6 +1826,9 @@ deps = [
   "org.eclipse.parsson:parsson:jar:@1.1.9 <- 1.1.7",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final <- 3.6.2.Final",
 ]
+excluded-by = [
+  "org.jboss.modules:jboss-modules <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+]
 
 [[artifact]]
 name     = "org.jboss.slf4j:slf4j-jboss-logmanager:jar:"
@@ -1847,6 +1875,9 @@ scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.10 <- 2.4.10",
 ]
+excluded-by = [
+  "org.jetbrains.kotlin:kotlin-stdlib <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.10",
+]
 
 [[artifact]]
 name     = "org.jetbrains.kotlin:kotlin-script-runtime:jar:"
@@ -1874,6 +1905,10 @@ scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.10 <- 2.2.20",
   "org.jetbrains:annotations:jar:@26.1.0 <- 23.0.0",
+]
+excluded-by = [
+  "org.jetbrains.kotlin:kotlin-stdlib <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.10",
+  "org.jetbrains:annotations <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.10",
 ]
 
 [[artifact]]
@@ -2129,6 +2164,9 @@ checksum = "sha256:abc8a5fe3c9fa739bc13d0f434832dd9d28e84da871fe71bf02dfbc8fb8a6
 scopes   = ["test"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0 <- 3.9.0",
+]
+excluded-by = [
+  "org.scala-lang:scala3-library_3 <- org.scala-lang:scala3-repl_3@3.9.0",
 ]
 
 [[artifact]]
