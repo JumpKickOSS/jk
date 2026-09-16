@@ -743,6 +743,10 @@ public record JkBuild(
              * tier while its nested-engine/integration classes stay serial.
              */
             List<String> testSerialTags,
+            /** {@code [test] include-tags}: the baseline tags a bare {@code jk test} runs; empty means every tag. */
+            List<String> testIncludeTags,
+            /** {@code [test] exclude-tags}: the baseline tags a bare {@code jk test} leaves out. */
+            List<String> testExcludeTags,
             /**
              * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
              * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
@@ -819,6 +823,8 @@ public record JkBuild(
                 null,
                 null,
                 List.of(),
+                List.of(),
+                List.of(),
                 true,
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
@@ -841,6 +847,8 @@ public record JkBuild(
             if (fixtures != null && fixtures.isBlank()) fixtures = null;
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
             testSerialTags = testSerialTags == null ? List.of() : List.copyOf(testSerialTags);
+            testIncludeTags = testIncludeTags == null ? List.of() : List.copyOf(testIncludeTags);
+            testExcludeTags = testExcludeTags == null ? List.of() : List.copyOf(testExcludeTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
@@ -889,6 +897,14 @@ public record JkBuild(
         /** The same block with {@code [[kotlin-plugins]]} set. */
         public Build withKotlinPlugins(List<KotlinPluginDecl> plugins) {
             return with(f -> f.kotlinPlugins = plugins);
+        }
+
+        /** The same block with {@code [test] include-tags} / {@code exclude-tags} set. */
+        public Build withTestTags(List<String> includeTags, List<String> excludeTags) {
+            return with(f -> {
+                f.testIncludeTags = includeTags;
+                f.testExcludeTags = excludeTags;
+            });
         }
 
         /** The same block with {@code [test] env} set. */
@@ -952,6 +968,8 @@ public record JkBuild(
             Integer testWorkers;
 
             List<String> testSerialTags;
+            List<String> testIncludeTags;
+            List<String> testExcludeTags;
             boolean testAssertions;
             PlatformPolicy platformPolicy;
             UnmappedPolicy unmappedPolicy;
@@ -978,6 +996,8 @@ public record JkBuild(
                 fixtures = b.fixtures;
                 testWorkers = b.testWorkers;
                 testSerialTags = b.testSerialTags;
+                testIncludeTags = b.testIncludeTags;
+                testExcludeTags = b.testExcludeTags;
                 testAssertions = b.testAssertions;
                 platformPolicy = b.platformPolicy;
                 unmappedPolicy = b.unmappedPolicy;
@@ -1003,6 +1023,8 @@ public record JkBuild(
                         fixtures,
                         testWorkers,
                         testSerialTags,
+                        testIncludeTags,
+                        testExcludeTags,
                         testAssertions,
                         platformPolicy,
                         unmappedPolicy,

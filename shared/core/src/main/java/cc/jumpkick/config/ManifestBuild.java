@@ -304,6 +304,8 @@ public final class ManifestBuild {
                     null,
                     null,
                     List.of(),
+                    List.of(),
+                    List.of(),
                     true,
                     policies.platform(),
                     policies.unmapped(),
@@ -315,6 +317,7 @@ public final class ManifestBuild {
                     EnvConfig.EMPTY);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
+        JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
         return new JkBuild.Build(
                 s.orderAfter,
                 s.testPluginJars,
@@ -328,6 +331,8 @@ public final class ManifestBuild {
                 s.fixtures,
                 s.testWorkers,
                 s.testSerialTags,
+                tags.includeTags(),
+                tags.excludeTags(),
                 s.testAssertions,
                 policies.platform(),
                 policies.unmapped(),

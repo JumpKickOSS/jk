@@ -45,9 +45,9 @@ import org.jspecify.annotations.Nullable;
  * unfaithful constructs. The POM is read as Maven's effective model ({@link EffectiveModel}):
  * parents flattened, {@code dependencyManagement} applied, BOM imports and properties resolved,
  * profiles active on this machine folded in. Coordinates, scoped deps (bare versions → exact pins),
- * BOM imports, repositories, the compiler level and arguments, annotation processors, source roots
- * and the inactive profiles' payloads are mapped; other POM features land in the report, which also
- * names what each parent contributed.
+ * BOM imports, repositories, the compiler level and arguments, annotation processors, source roots,
+ * the test plugins and the inactive profiles' payloads are mapped; other POM features
+ * land in the report, which also names what each parent contributed.
  */
 public final class PomImporter {
 
@@ -93,6 +93,7 @@ public final class PomImporter {
         warnUnsupportedSections(em, report, /* isWorkspaceRoot= */ false);
 
         String mainClass = PluginFacts.mainClass(em.model());
+        TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
         JkBuild.Application application = mainClass != null ? new JkBuild.Application(mainClass, false) : null;
         JkBuild jkBuild = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(byScope))
@@ -100,20 +101,27 @@ public final class PomImporter {
                 .features(profiles.features())
                 .profiles(toProfiles(profiles.profiles()))
                 .application(application)
-                .build(buildBlock(em.model(), sourceTree))
+                .build(buildBlock(em.model(), sourceTree, tests))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
         return new Result(jkBuild, report.build());
     }
 
-    /** {@code [javac] args} from {@code <compilerArgs>}; {@code [build]} / {@code [test]} extra source roots. */
-    private static JkBuild.Build buildBlock(Model model, SourceTreePlugins.SourceTree sourceTree) {
+    /**
+     * {@code [javac] args} from {@code <compilerArgs>}; {@code [build]} / {@code [test]} extra source
+     * roots; {@code [test]} tag filters from Surefire's groups.
+     */
+    private static JkBuild.Build buildBlock(
+            Model model, SourceTreePlugins.SourceTree sourceTree, TestPlugins.TestSettings tests) {
         JkBuild.Build build = JkBuild.Build.EMPTY;
         List<String> args = PluginFacts.compilerArgs(model);
         if (!args.isEmpty()) build = build.withJavac(new JavacConfig(Map.of(), args));
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
         if (!sourceTree.testExtraSrc().isEmpty()) build = build.withTestExtraSrc(sourceTree.testExtraSrc());
+        if (!tests.includeTags().isEmpty() || !tests.excludeTags().isEmpty()) {
+            build = build.withTestTags(tests.includeTags(), tests.excludeTags());
+        }
         return build;
     }
 

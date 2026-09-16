@@ -109,13 +109,13 @@ relates to the Maven one.
 | Plugin | Repos | Lands in jk as | Grade |
 |---|---:|---|---|
 | spring-boot-maven-plugin | 36 | `[spring-boot]` (Boot jar, platform BOM) | exact |
-| maven-surefire-plugin | 35 | `[test]` includes/excludes, `argLine`, system properties, `<groups>` → tags | approximate |
+| maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<includes>` / `<excludes>`, `<argLine>`, system properties and `skipTests` → rows — jk has no `[test]` key for any of them (`--class`, `[jvm] args`, `[test] env`, `--skip-tests`) | approximate |
 | maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
 | maven-javadoc-plugin | 22 | a library ships the javadoc jar by default; `<failOnError>true` / `<doclint>` → `javadoc = "strict"` | exact |
 | maven-source-plugin | 19 | `sources = "always"` — the sources jar on every `jk build` | exact |
 | maven-resources-plugin | 19 | nothing to map for the fixed layout; a filtered or non-standard `<resource>` directory is a row | approximate |
-| jacoco-maven-plugin | 17 | `[test] coverage = true` | exact |
+| jacoco-maven-plugin | 17 | `jk test --coverage` is a run flag, not a manifest key → row | manual |
 | maven-gpg-plugin | 17 | `jk publish --sign` | exact |
 | maven-assembly-plugin | 17 | fat jar (`jar-with-dependencies`); other descriptors → row | approximate |
 | maven-enforcer-plugin | 17 | `requireJavaVersion` → `java =`; banned deps → `jk deny`; rest → row | approximate |
@@ -126,7 +126,7 @@ relates to the Maven one.
 | maven-checkstyle-plugin | 14 | lint step (planned battery) → row until then | manual |
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
-| maven-failsafe-plugin | 13 | `integration` suite from `*IT` patterns, `argLine` | approximate |
+| maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` → row | manual |
 | maven-shade-plugin | 12 | fat jar with relocations → row; plain shade → fat jar | approximate |
 | kotlin-maven-plugin | 12 | `kotlin =` on the module; `test-compile`-only → mixed module | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |

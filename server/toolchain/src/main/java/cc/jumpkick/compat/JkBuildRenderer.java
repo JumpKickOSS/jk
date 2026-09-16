@@ -51,16 +51,23 @@ public final class JkBuildRenderer {
         return sb.toString();
     }
 
-    /** {@code [build] extra-src} and {@code [test] extra-src} — the source roots beyond the layout's own. */
+    /** {@code [build] extra-src}; {@code [test]} extra source roots and the baseline tag filters. */
     private static void renderBuild(StringBuilder sb, JkBuild.Build build) {
         if (!build.extraSrc().isEmpty()) {
             sb.append("\n[build]\nextra-src = ").append(list(build.extraSrc())).append('\n');
         }
-        if (!build.testExtraSrc().isEmpty()) {
-            sb.append("\n[test]\nextra-src = ")
-                    .append(list(build.testExtraSrc()))
-                    .append('\n');
+        if (build.testExtraSrc().isEmpty()
+                && build.testIncludeTags().isEmpty()
+                && build.testExcludeTags().isEmpty()) {
+            return;
         }
+        sb.append("\n[test]\n");
+        if (!build.testExtraSrc().isEmpty())
+            sb.append("extra-src = ").append(list(build.testExtraSrc())).append('\n');
+        if (!build.testIncludeTags().isEmpty())
+            sb.append("include-tags = ").append(list(build.testIncludeTags())).append('\n');
+        if (!build.testExcludeTags().isEmpty())
+            sb.append("exclude-tags = ").append(list(build.testExcludeTags())).append('\n');
     }
 
     /** {@code [javac]} — plugin names with their options, then verbatim args. */
