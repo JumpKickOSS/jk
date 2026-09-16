@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +28,12 @@ import java.util.stream.Stream;
 /**
  * Spring Boot build plugin: optional {@code spring-aot} step and {@code boot-jar} packager.
  * Engine fingerprints declared inputs and skips bodies on cache hits.
+ *
+ * <p>{@code [spring-boot]} keys: {@code aot} (the step runs when true; absent, it runs when
+ * {@code [native]} is declared), {@code aot-jvm-args} (flags for the processor's JVM), {@code
+ * aot-args} (arguments for the application under processing), {@code include-tools} (nest the
+ * jarmode tools jar; default true) and {@code build-info} (write {@code build-info.properties};
+ * default false).
  */
 public final class SpringBootPlugin implements Plugin, BuildExtension, PackageExtension {
 
@@ -85,7 +90,11 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         classpath.add(exec.classesDir());
         classpath.addAll(exec.runtimeClasspath());
 
+        // The processor's JVM flags come before the classpath: a library the application boots
+        // with may need an --add-opens the plain `java -jar` gets from its launcher.
+        List<String> jvmArgs = exec.config().stringList("aot-jvm-args");
         TaskExec.ToolRun.Result run = exec.java()
+                .args(jvmArgs)
                 .classpath(classpath)
                 .mainClass(AOT_PROCESSOR)
                 .arg(startClass)
@@ -98,7 +107,10 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                 .cwd(exec.moduleDir())
                 .run();
         if (run.exit() != 0) {
-            throw new IOException("Spring AOT processing failed (exit " + run.exit() + "):\n" + tail(run.output()));
+            throw new IOException(AotFailure.message(
+                    run.exit(),
+                    run.output(),
+                    new AotFailure.Invocation(AOT_PROCESSOR, jvmArgs, startClass, classpath.size())));
         }
 
         // Compile the generated sources into the generated-classes dir (alongside the
@@ -120,16 +132,10 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
             for (Path src : aotSources) javac.arg(src.toString());
             TaskExec.ToolRun.Result compile = javac.run();
             if (compile.exit() != 0) {
-                throw new IOException("compiling Spring AOT generated sources failed:\n" + tail(compile.output()));
+                throw new IOException(
+                        "compiling Spring AOT generated sources failed:\n" + AotFailure.tail(compile.output()));
             }
         }
-    }
-
-    /** The last ~40 lines — context-refresh stacks are long; the cause is at the bottom. */
-    private static String tail(String output) {
-        String[] lines = output.split("\n");
-        int from = Math.max(0, lines.length - 40);
-        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
     }
 
     // ---- boot-jar packager ------------------------------------------------------------------

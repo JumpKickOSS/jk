@@ -24,6 +24,23 @@ is the opt-in floor for the newest 4.x. Starters are versionless under the BOM
 (`web = "org.springframework.boot:spring-boot-starter-web"`). `jk build` produces a Boot jar (plugin-owned, not assembly
 packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 
+`[spring-boot]` keys beside `version`:
+
+| key | default | what |
+|---|---|---|
+| `aot` | on when `[native]` is declared, else off | run Spring's AOT processor (`SpringApplicationAotProcessor`) before packaging; the generated classes and hints go into the Boot jar with `spring.aot.enabled=true` |
+| `aot-jvm-args` | `[]` | flags for the processor's JVM — the `--add-opens` a library needs on JDK 17+, a heap size |
+| `aot-args` | `[]` | arguments handed to the application while it starts under processing |
+| `include-tools` | `true` | nest `spring-boot-jarmode-tools` so `java -Djarmode=tools -jar app.jar` works |
+| `build-info` | `false` | write `META-INF/build-info.properties` (group, artifact, name, version; no build time) |
+
+The processor starts the application context in AOT mode and then generates code from it. When
+the step fails, its message says which of the two failed and names the root cause first: the
+application's own startup failing (a bean that cannot be created, a library that needs a JVM flag
+— it fails the same way at run time) points at `aot-jvm-args` / `aot-args`; the processor crashing
+on a context that did start points at `aot = false`, which packages the Boot jar without AOT (a
+`[native]` image still needs the processor's output).
+
 ## Quarkus
 
 ```bash
