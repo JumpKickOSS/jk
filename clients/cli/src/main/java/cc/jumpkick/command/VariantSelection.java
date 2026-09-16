@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.api.ClientEnvForward;
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -64,6 +65,18 @@ public final class VariantSelection {
         Map<String, String> clientEnv = resolveClientEnv(projectDir);
         SessionContext.install(SessionContext.current().withVariant(selector, clientEnv));
         return selector;
+    }
+
+    /**
+     * For a command without the variant flags ({@code jk install}): resolve the client env for
+     * {@code projectDir} and park it on the ambient session, keeping whatever selection the
+     * session already carries. The engine request writers read it from there, so a manifest's
+     * {@code [test] env} name set in the shell running {@code jk} reaches the test JVM on this
+     * verb as it does on {@code jk build}.
+     */
+    public static void installEnv(Path projectDir) {
+        Session session = SessionContext.current();
+        SessionContext.install(session.withVariant(session.variant(), resolveClientEnv(projectDir)));
     }
 
     /**

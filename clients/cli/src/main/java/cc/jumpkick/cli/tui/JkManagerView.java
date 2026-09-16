@@ -21,8 +21,9 @@ final class JkManagerView {
     private final JkManager m;
 
     /**
-     * When true, the next {@link #paintBuildPlan()} rewrites every row even if content is unchanged
-     * (terminal resize changed the truncation budget).
+     * When true, the next {@link #paintBuildPlan()} rewrites every row even where the text is
+     * unchanged: a terminal resize changed the truncation budget, or a lift-and-rewrite path (peek
+     * toggle, force-show) repainted from a different geometry than the diff would assume.
      */
     private boolean forceFullRepaint;
 
@@ -290,58 +291,82 @@ final class JkManagerView {
      * <p>Cursor invariant: between paints the cursor is parked at the start of the line immediately
      * below the live region.
      *
-     * <p>Each frame climbs to the region top, erases, and rewrites. Growth at the bottom of the
-     * viewport must pre-scroll first: otherwise the extra trailing {@code \n}s orphan the header
-     * into scrollback while {@code lastLines} still counts it, and the next frame stacks a second
-     * {@code ● Build}.
+     * <p>Each frame climbs to the region top and rewrites only the rows whose text changed since
+     * the last paint (most frames: the spinner header alone); an unchanged row is stepped over
+     * with a bare newline. Rows the new region no longer covers — a shrink's stale tail, or
+     * park-row lines a child wrote at the park — are erased below it. Growth at the bottom of
+     * the viewport must pre-scroll first: otherwise the extra trailing {@code \n}s orphan the
+     * header into scrollback while {@code lastLines} still counts it, and the next frame stacks
+     * a second {@code ● Build}.
+     *
+     * <p>The whole frame is assembled and written once: a terminal that renders between writes
+     * would otherwise show the half-painted region.
      */
     void paintBuildPlan() {
         syncSize();
         long elapsed = m.elapsedMillis();
         List<String> lines = m.renderBuildPlanLines(m.width, elapsed);
+        // The diff assumes one physical row per painted line. A wrapped row (clipping failed) or
+        // a resize (new truncation budget) misaligns lastLines against the screen: rewrite all.
+        boolean force = forceFullRepaint || m.linesDrawn != m.lastLines.size();
         forceFullRepaint = false;
         int painted = Math.max(m.linesDrawn, m.lastLines.size());
         int drift = m.parkDrift.getAndSet(0);
         int next = lines.size();
         int maxUp = OutputWindow.maxRegionLines(m.height);
         int grow = next - painted;
+        StringBuilder f = new StringBuilder(256);
         if (grow > 0 && painted > 0) {
             // Room first, then climb the new height plus any unlocked park-row newlines.
-            for (int i = 0; i < grow; i++) {
-                m.out.print('\r');
-                m.out.print('\n');
-            }
-            m.out.print(Ansi.cursorUp(Math.min(next + drift, maxUp)));
+            for (int i = 0; i < grow; i++) f.append("\r\n");
+            f.append(Ansi.cursorUp(Math.min(next + drift, maxUp)));
         } else if (painted + drift > 0) {
-            m.out.print(Ansi.cursorUp(Math.min(painted + drift, maxUp)));
+            f.append(Ansi.cursorUp(Math.min(painted + drift, maxUp)));
         }
-        m.out.print('\r');
-        m.out.print(Ansi.ERASE_DISPLAY_TO_END);
-        writeLiveRegion(lines);
+        int prev = m.lastLines.size();
+        int rows = 0;
+        for (int i = 0; i < next; i++) {
+            String line = lines.get(i);
+            if (force || i >= prev || !line.equals(m.lastLines.get(i))) {
+                rows += emitLine(f, line);
+            } else {
+                f.append('\n');
+                rows++;
+            }
+        }
+        // Rows left under the new region: a shrink's stale tail, or the park-row drift lines.
+        if (painted + drift + Math.max(grow, 0) > next) {
+            f.append('\r').append(Ansi.ERASE_DISPLAY_TO_END);
+        }
+        m.lastLines = List.copyOf(lines);
+        m.linesDrawn = rows;
+        paintedCols = m.width;
+        appendTaskbar(f, elapsed);
+        m.out.print(f.toString());
     }
 
     /**
      * Lift the cursor to the top of the live region and erase it. Between paints the cursor is
      * parked on the line immediately below the region.
      */
-    private void liftRegion() {
+    private void liftRegion(StringBuilder f) {
         int up = Math.min(m.climbRows(), OutputWindow.maxRegionLines(m.height));
         if (up == 0) return;
-        m.out.print(Ansi.cursorUp(up));
-        m.out.print('\r');
-        m.out.print(Ansi.ERASE_DISPLAY_TO_END);
+        f.append(Ansi.cursorUp(up));
+        f.append('\r');
+        f.append(Ansi.ERASE_DISPLAY_TO_END);
     }
 
     /**
      * Paint one row from column 0, clipped so it cannot wrap, and advance a line. Returns the
      * physical rows occupied (1 unless clipping failed and the terminal width wrapped the row).
      */
-    private int emitLine(String line) {
+    private int emitLine(StringBuilder f, String line) {
         String painted = RenderContext.truncateVisible(line, colBudget());
-        m.out.print('\r');
-        m.out.print(painted);
-        m.out.print(Ansi.ERASE_LINE_TO_END);
-        m.out.print('\n');
+        f.append('\r');
+        f.append(painted);
+        f.append(Ansi.ERASE_LINE_TO_END);
+        f.append('\n');
         int vis = RenderContext.visibleWidth(painted);
         int width = Math.max(1, m.width);
         if (vis <= 0) return 1;
@@ -362,9 +387,11 @@ final class JkManagerView {
         synchronized (m.lock) {
             if (m.done || !m.animate || !m.planMode || !Theme.active().isAnsi()) return;
             syncSize();
-            liftRegion();
-            emitLine(captionLine);
-            writeLiveRegion(liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
+            StringBuilder f = new StringBuilder(256);
+            liftRegion(f);
+            emitLine(f, captionLine);
+            writeLiveRegion(f, liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
+            m.out.print(f.toString());
             m.out.flush();
         }
     }
@@ -381,11 +408,13 @@ final class JkManagerView {
         // Uncommitted only: lines from an earlier open (dump or live appends) are already
         // permanent scrollback right above — re-dumping them duplicates.
         List<String> pane = m.pane.window().uncommittedForDisplay(budget);
-        liftRegion();
-        for (String line : pane) emitLine(line);
+        StringBuilder f = new StringBuilder(256);
+        liftRegion(f);
+        for (String line : pane) emitLine(f, line);
         m.pane.window().noteCommitted(pane.size());
         m.pane.window().markAllCommitted();
-        writeLiveRegion(liveRegionLines(chrome, m.width));
+        writeLiveRegion(f, liveRegionLines(chrome, m.width));
+        m.out.print(f.toString());
         m.out.flush();
     }
 
@@ -397,9 +426,11 @@ final class JkManagerView {
     void closePeekPaint() {
         if (!m.animate || !Theme.active().isAnsi()) return;
         syncSize();
-        liftRegion();
+        StringBuilder f = new StringBuilder(256);
+        liftRegion(f);
         // liveRegionLines paints "" when peek is off but process lines were committed.
-        writeLiveRegion(liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
+        writeLiveRegion(f, liveRegionLines(renderChromeLines(m.width, m.elapsedMillis()), m.width));
+        m.out.print(f.toString());
         m.out.flush();
     }
 
@@ -409,24 +440,31 @@ final class JkManagerView {
      */
     private void liftEmitRepaintLive(String text) {
         syncSize();
-        liftRegion();
-        emitLine(text);
+        StringBuilder f = new StringBuilder(256);
+        liftRegion(f);
+        emitLine(f, text);
         m.pane.window().noteCommitted(1);
         m.pane.window().markAllCommitted();
         List<String> chrome = renderChromeLines(m.width, m.elapsedMillis());
-        writeLiveRegion(liveRegionLines(chrome, m.width));
+        writeLiveRegion(f, liveRegionLines(chrome, m.width));
+        m.out.print(f.toString());
         m.out.flush();
     }
 
     /** Write live-region lines from the current cursor and update lastLines / linesDrawn. */
-    private void writeLiveRegion(List<String> live) {
+    private void writeLiveRegion(StringBuilder f, List<String> live) {
         int rows = 0;
-        for (String line : live) rows += emitLine(line);
+        for (String line : live) rows += emitLine(f, line);
         m.lastLines = List.copyOf(live);
         m.linesDrawn = rows;
         paintedCols = m.width;
-        long[] bd = m.displayBar(m.elapsedMillis());
-        m.out.print(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
+        appendTaskbar(f, m.elapsedMillis());
+    }
+
+    /** The OS taskbar is re-told the bar's percent on every frame; it keeps no state of its own. */
+    private void appendTaskbar(StringBuilder f, long elapsedMillis) {
+        long[] bd = m.displayBar(elapsedMillis);
+        f.append(Osc.taskbarProgress(ProgressBar.percent(bd[0], bd[1])));
     }
 
     /**

@@ -483,6 +483,9 @@ class JkManagerTreeTest {
     void paint_on_peek_open_via_failure_then_grow_prescrolls() {
         // Force-show (native-image failure) paints via openPeekPaint; the next animator frame that
         // grows the completion tail must still pre-scroll — that is the flash-then-duplicate path.
+        // The header count is read off a viewport, not the frame bytes: openPeekPaint and the next
+        // frame share a frame counter, so the diff may step over an unchanged header row.
+        var screen = LiveRegionScreen.filled(24, 80);
         var buf = new ByteArrayOutputStream();
         var cm = new JkManager(stream(buf), true, true, 80);
         cm.height = 24;
@@ -493,6 +496,7 @@ class JkManagerTreeTest {
         cm.tick();
         cm.writeProcessOutput("native-image: Error: libz not found");
         cm.showProcessFailureOutput();
+        screen.write(buf.toString(StandardCharsets.UTF_8));
         int prev = cm.lastLines.size();
         assertThat(cm.outputWindow().visible()).isTrue();
         assertThat(prev).isGreaterThan(0);
@@ -506,9 +510,71 @@ class JkManagerTreeTest {
         buf.reset();
         cm.tick();
         String raw = buf.toString(StandardCharsets.UTF_8);
+        screen.write(raw);
         assertThat(raw).startsWith("\r\n".repeat(next - prev) + Ansi.cursorUp(next));
-        assertThat(TestAnsi.strip(raw).lines().filter(l -> l.contains("Build")).count())
-                .isEqualTo(1);
+        assertThat(screen.countBuildHeaders()).isEqualTo(1);
+    }
+
+    @Test
+    void paint_rewrites_only_rows_whose_text_changed() throws Exception {
+        // A frame climbs to the region top and steps over every row whose text is unchanged with
+        // a bare newline; it never erases the display to end just to rewrite everything. Here the
+        // spinner header pulses, so it is rewritten; the completion tail rows are not.
+        NoAnsi.forcedAnsi(() -> {
+            var buf = new ByteArrayOutputStream();
+            var cm = new JkManager(stream(buf), true, true, 80);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-cli", "compile-java", "compile");
+            cm.addCompletion("✓ [1 of 15] cc.jumpkick:mod-a took 1.0s");
+            cm.addCompletion("✓ [2 of 15] cc.jumpkick:mod-b took 1.0s");
+            cm.tick();
+            List<String> painted = cm.lastLines;
+            assertThat(String.join("\n", stripAll(painted))).contains("mod-a").contains("mod-b");
+
+            buf.reset();
+            cm.tick();
+            String raw = buf.toString(StandardCharsets.UTF_8);
+            String text = TestAnsi.strip(raw);
+            assertThat(raw).startsWith(Ansi.cursorUp(painted.size()));
+            assertThat(raw).doesNotContain(Ansi.ERASE_DISPLAY_TO_END);
+            assertThat(text).contains("Build").doesNotContain("mod-a").doesNotContain("mod-b");
+            // One newline per region row, changed or not, lands the cursor back at the park.
+            assertThat(raw.chars().filter(c -> c == '\n').count()).isEqualTo(painted.size());
+            assertThat(cm.lastLines).hasSize(painted.size());
+            return null;
+        });
+    }
+
+    @Test
+    void paint_erases_below_the_region_only_when_rows_are_left_under_it() throws Exception {
+        // A child that wrote at the park row leaves a line under the region; the frame climbs over
+        // it and erases from the region's new bottom, without rewriting the unchanged rows above.
+        NoAnsi.forcedAnsi(() -> {
+            var buf = new ByteArrayOutputStream();
+            var out = stream(buf);
+            var cm = new JkManager(out, true, true, 80);
+            cm.height = 24;
+            cm.name = "Build";
+            cm.startNanos = System.nanoTime();
+            cm.nerdFont = NerdFontCaps.NONE;
+            cm.stepRunning("cc.jumpkick:jk-cli", "compile-java", "compile");
+            cm.addCompletion("✓ [1 of 15] cc.jumpkick:mod-a took 1.0s");
+            cm.tick();
+            int rows = cm.lastLines.size();
+            cm.out.println("linker: cannot find -lz");
+
+            buf.reset();
+            cm.tick();
+            String raw = buf.toString(StandardCharsets.UTF_8);
+            assertThat(raw).startsWith(Ansi.cursorUp(rows + 1));
+            // The erase lands after the last region row, at the park, ahead of the taskbar OSC.
+            assertThat(raw.substring(raw.lastIndexOf('\n'))).contains("\r" + Ansi.ERASE_DISPLAY_TO_END);
+            assertThat(TestAnsi.strip(raw)).doesNotContain("mod-a");
+            return null;
+        });
     }
 
     /** The post-shrink frame, plus the lines that had been painted at the wider size. */
