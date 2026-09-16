@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -235,27 +236,71 @@ public final class MetricsHarvest {
         return false;
     }
 
-    private static void writeProjectMetrics(
+    /**
+     * Rows a project ledger holds at most, per family: per-class test walls, and everything else.
+     * Past the cap the best-sampled rows stay (highest {@code [count]}, then key order), so a
+     * ledger is bounded by the project's shape, not by how many checkouts have built it.
+     */
+    public static final int MAX_TEST_CLASS_ROWS = 2_000;
+
+    public static final int MAX_OTHER_ROWS = 4_000;
+
+    /**
+     * Write the ledger: {@code [mean]} and {@code [last]} for every kept row, {@code [count]} for
+     * every kept row that is not a per-class test wall — those are read as mean and last only, and
+     * a third copy of two thousand class names is most of a large ledger's bytes.
+     */
+    static void writeProjectMetrics(
             Path file, Map<String, Agg> means, Map<String, Double> last, Map<String, Long> counts) throws IOException {
+        List<String> kept = keptRows(means, last, counts);
         StringBuilder sb = new StringBuilder();
         sb.append("# project-metrics — derived by MetricsHarvest (scalars only)\n");
         sb.append("[mean]\n");
-        means.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
-                .append(" = ")
-                .append(fmt(e.getValue().trimmedMean()))
-                .append('\n'));
+        for (String key : kept) {
+            Agg agg = means.get(key);
+            if (agg != null)
+                sb.append(key).append(" = ").append(fmt(agg.trimmedMean())).append('\n');
+        }
         sb.append("\n[last]\n");
-        last.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
-                .append(" = ")
-                .append(fmt(e.getValue()))
-                .append('\n'));
+        for (String key : kept) {
+            Double v = last.get(key);
+            if (v != null) sb.append(key).append(" = ").append(fmt(v)).append('\n');
+        }
         sb.append("\n[count]\n");
-        counts.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e ->
-                        sb.append(e.getKey()).append(" = ").append(e.getValue()).append('\n'));
+        for (String key : kept) {
+            Long n = counts.get(key);
+            if (n != null && !isTestClassKey(key))
+                sb.append(key).append(" = ").append(n).append('\n');
+        }
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());
+    }
+
+    /** The union of keys across the three sections, capped per family and returned in key order. */
+    static List<String> keptRows(Map<String, Agg> means, Map<String, Double> last, Map<String, Long> counts) {
+        TreeSet<String> all = new TreeSet<>(means.keySet());
+        all.addAll(last.keySet());
+        all.addAll(counts.keySet());
+        List<String> classes = new ArrayList<>();
+        List<String> others = new ArrayList<>();
+        for (String key : all) (isTestClassKey(key) ? classes : others).add(key);
+        List<String> kept = new ArrayList<>(cap(classes, counts, MAX_TEST_CLASS_ROWS));
+        kept.addAll(cap(others, counts, MAX_OTHER_ROWS));
+        kept.sort(Comparator.naturalOrder());
+        return kept;
+    }
+
+    private static List<String> cap(List<String> keys, Map<String, Long> counts, int max) {
+        if (keys.size() <= max) return keys;
+        List<String> ranked = new ArrayList<>(keys);
+        ranked.sort(Comparator.<String>comparingLong(k -> -counts.getOrDefault(k, 0L))
+                .thenComparing(Comparator.naturalOrder()));
+        return ranked.subList(0, max);
+    }
+
+    /** {@code module.<dir>.test-class.<fqcn>.wall-ms}: one row per test class the module ran. */
+    static boolean isTestClassKey(String key) {
+        return key.startsWith("module.") && key.contains(".test-class.");
     }
 
     private static void writeHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {

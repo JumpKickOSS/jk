@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.host.Log;
@@ -83,11 +84,17 @@ public final class MemoryAdmission {
     public static final long BASE_JOB_BYTES = 48L << 20;
 
     /**
-     * Heap a standing TOML parse tree costs per byte of document. Measured on the lock and the
-     * project-metrics ledger of a 78-module workspace: a 2.5 MiB ledger parses in 160 MiB and
-     * fails in 128; a 100 KiB lock parses in 48 MiB and fails in 32.
+     * Heap a standing TOML parse tree costs per byte of document. Measured on the workspace lock:
+     * a 100 KiB lock parses in 48 MiB and fails in 32.
      */
     public static final long TOML_TREE_BYTES_PER_BYTE = 64;
+
+    /**
+     * Heap the metrics ledgers cost per byte of file. They are scanned line by line into three
+     * key-to-number maps ({@link AggregatedMetrics}), held once per session,
+     * so the cost is the keys and their boxed values, not a parse tree.
+     */
+    public static final long LEDGER_BYTES_PER_BYTE = 8;
 
     /** How long a waiter sleeps between re-judgements when nothing wakes it. */
     static final long POLL_MS = 500;
@@ -247,25 +254,26 @@ public final class MemoryAdmission {
     }
 
     /**
-     * A plan job's coordinator cost from the TOML it parses whole: the workspace lock, the
-     * project's metrics ledger and the host ledger, each standing as a parse tree at
-     * {@link #TOML_TREE_BYTES_PER_BYTE}, on top of {@link #BASE_JOB_BYTES}. A job without a
-     * project directory costs the base.
+     * A plan job's coordinator cost from what it reads whole: the workspace lock as a parse tree
+     * at {@link #TOML_TREE_BYTES_PER_BYTE}, the project's metrics ledger and the host ledger as
+     * scanned maps at {@link #LEDGER_BYTES_PER_BYTE}, on top of {@link #BASE_JOB_BYTES}. A job
+     * without a project directory costs the base.
      */
     public static long estimate(@Nullable String dir) {
         if (dir == null || dir.isBlank()) return BASE_JOB_BYTES;
         long toml = 0;
+        long ledgers = 0;
         try {
             toml += sizeOf(Path.of(dir).resolve(ManifestNames.LOCK));
             String projectId = ProjectIds.idOf(dir);
             if (projectId != null) {
-                toml += sizeOf(ProjectBuilds.projectHome(projectId).resolve(ProjectBuilds.PROJECT_METRICS));
+                ledgers += sizeOf(ProjectBuilds.projectHome(projectId).resolve(ProjectBuilds.PROJECT_METRICS));
             }
-            toml += sizeOf(ProjectBuilds.hostMetricsFile());
+            ledgers += sizeOf(ProjectBuilds.hostMetricsFile());
         } catch (RuntimeException e) {
             Log.debug("estimate: inputs unreadable, base cost only", e);
         }
-        return BASE_JOB_BYTES + TOML_TREE_BYTES_PER_BYTE * toml;
+        return BASE_JOB_BYTES + TOML_TREE_BYTES_PER_BYTE * toml + LEDGER_BYTES_PER_BYTE * ledgers;
     }
 
     private static long sizeOf(Path file) {

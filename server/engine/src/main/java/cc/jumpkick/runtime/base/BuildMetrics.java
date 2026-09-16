@@ -3,11 +3,9 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.AggregatedMetrics;
 import cc.jumpkick.config.EnvValues;
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
@@ -21,13 +19,10 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -273,95 +268,32 @@ public final class BuildMetrics {
     }
 
     /**
-     * Prefer the session workspace's project metrics so a stale project-identity home for the same
-     * absolute path cannot poison step walls. Fall back to {@link
-     * cc.jumpkick.builds.AggregatedMetrics#loadAll} (count-preferring merge) when there is no real
-     * project session.
-     *
-     * <p>Important: ambient {@link SessionContext} uses {@link Session#defaults()}, whose working
-     * dir is the process CWD. The engine process CWD is the state dir ({@code …/jk/engine}), which
-     * is a directory but has no {@code jk.toml} — treating that as a project session produced an
-     * empty project-metrics fold and left Admin KPIs at zero (host task means only). Only a
-     * checkout that actually has {@code jk.toml} scopes to one project; otherwise merge every
-     * harvested project (what the dashboard and host-wide ETA want).
-     *
-     * <p>Memoized for a short TTL keyed by (builds root, working dir): every priced step consults
-     * this (own + host tiers), so one ETA seed on a dirty monorepo issued hundreds of identical
-     * TOML parses. Harvest rewrites land between builds, well past the TTL.
+     * The session's harvested aggregates ({@link SessionAggregates#current}): the working dir's
+     * project ledger when it is a checkout, else every project's, parsed once and held until a
+     * ledger file changes.
      */
     public static AggregatedMetrics aggregatesForSession() {
-        return sessionMemo().agg();
+        return SessionAggregates.current();
     }
 
-    /**
-     * A view folded from the session aggregates, computed once per memo window under {@code key}
-     * and shared by every caller in it. The views live beside the aggregates they were folded
-     * from, so they expire together: a new window reloads the TOML and refolds each view on its
-     * first use, and nothing can serve a view of aggregates that are gone.
-     */
+    /** A view folded from the session aggregates, once per window: {@link SessionAggregates#view}. */
     public static <T> T foldedForSession(Class<T> key, Function<AggregatedMetrics, T> fold) {
-        AggMemo memo = sessionMemo();
-        Object view = memo.folds().computeIfAbsent(key, k -> {
-            SESSION_FOLDS.incrementAndGet();
-            return fold.apply(memo.agg());
-        });
-        return key.cast(view);
+        return SessionAggregates.view(key, fold);
     }
 
-    private static AggMemo sessionMemo() {
-        Path builds = JkDirs.builds();
-        Path work = null;
-        try {
-            Path w = SessionContext.current().workingDir();
-            if (w != null && Files.isDirectory(w)) work = w;
-        } catch (RuntimeException e) {
-            // no session / bad path — global merge below
-            Log.debug("aggregatesForSession: no session / bad path", e);
-        }
-        // Only a real jk checkout is a project session; engine CWD / random dirs use loadAll.
-        boolean projectSession = work != null && Files.isRegularFile(work.resolve(ManifestPaths.MANIFEST));
-        Path memoKey = projectSession ? work : null;
-        long now = System.currentTimeMillis();
-        AggMemo memo = AGG_MEMO.get();
-        if (memo != null
-                && memo.builds().equals(builds)
-                && Objects.equals(memo.work(), memoKey)
-                && now - memo.atMillis() < AGG_MEMO_TTL_MS) {
-            return memo;
-        }
-        AggregatedMetrics agg = work != null && projectSession
-                ? AggregatedMetrics.load(builds, null, work)
-                : AggregatedMetrics.loadAll(builds);
-        AggMemo fresh = new AggMemo(builds, memoKey, now, agg, new ConcurrentHashMap<>());
-        AGG_MEMO.set(fresh);
-        return fresh;
-    }
-
-    /** The aggregates of one memo window and the views folded from them so far. */
-    private record AggMemo(
-            Path builds,
-            @Nullable Path work,
-            long atMillis,
-            AggregatedMetrics agg,
-            ConcurrentHashMap<Class<?>, Object> folds) {}
-
-    private static final AtomicReference<@Nullable AggMemo> AGG_MEMO = new AtomicReference<>();
-    private static final long AGG_MEMO_TTL_MS = 3_000;
-    private static final AtomicLong SESSION_FOLDS = new AtomicLong();
-
-    /** Test seam: drop the session-aggregate memo (tests repoint JK_STATE_DIR between cases). */
+    /** Test seam: drop the session-aggregate memos (tests repoint JK_STATE_DIR between cases). */
     public static void clearSessionAggregatesMemo() {
-        AGG_MEMO.set(null);
+        SessionAggregates.clear();
     }
 
     /** Test seam: views folded from session aggregates since process start (or the last reset). */
     public static long sessionFoldCount() {
-        return SESSION_FOLDS.get();
+        return SessionAggregates.foldCount();
     }
 
     /** Test seam. */
     public static void resetSessionFoldCount() {
-        SESSION_FOLDS.set(0);
+        SessionAggregates.resetFoldCount();
     }
 
     /**
