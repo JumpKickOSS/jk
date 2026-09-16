@@ -241,7 +241,7 @@ public final class JobEnvelope {
             boolean detached,
             @Nullable BufferedWriter writer) {
         MemoryAdmission.Verdict verdict =
-                admission.admit(jid, dir, ahead -> announceQueued(jid, kind, dir, ahead, writer), host::draining);
+                admission.admit(jid, kind, dir, ahead -> announceQueued(jid, kind, dir, ahead, writer), host::draining);
         switch (verdict) {
             case CANCELLED -> {
                 return refuseCancelledInQueue(jid, kind, dir, workspaceStream, detached, writer);
@@ -584,9 +584,12 @@ public final class JobEnvelope {
         return live;
     }
 
+    /** The directory a job is journaled and judged under: its {@code dir}, an import's {@code baseDir}, else its cache. */
     public static String journalDir(String requestLine) {
         String dir = Jsonl.str(requestLine, "dir");
         if (dir != null) return dir;
+        String baseDir = Jsonl.str(requestLine, "baseDir");
+        if (baseDir != null) return baseDir;
         String cache = Jsonl.str(requestLine, "cache");
         if (cache != null) return cache;
         return "";

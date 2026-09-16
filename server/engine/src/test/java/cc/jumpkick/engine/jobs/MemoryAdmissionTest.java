@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.fail;
 
 import cc.jumpkick.engine.jobs.MemoryAdmission.Verdict;
 import cc.jumpkick.testing.Await;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -16,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The admission arithmetic on a synthetic heap and a fixed per-job cost. */
 class MemoryAdmissionTest {
@@ -61,11 +64,11 @@ class MemoryAdmissionTest {
     void two_jobs_fit_the_third_queues_and_is_admitted_when_one_finishes() throws Exception {
         // 1000 MiB heap, 100 idle, 32 reserved: 868 to hand out. Two 350 MiB jobs fit; a third does not.
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, dir -> 350 * MIB);
-        assertThat(gate.admit(1, "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        assertThat(gate.admit(2, "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 350 * MIB);
+        assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         AtomicInteger ahead = new AtomicInteger(-1);
-        CompletableFuture<Verdict> third = async(() -> gate.admit(3, "/c", ahead::set, () -> false));
+        CompletableFuture<Verdict> third = async(() -> gate.admit(3, "build", "/c", ahead::set, () -> false));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         assertThat(ahead).hasValue(0);
         assertThat(third).isNotDone();
@@ -84,11 +87,11 @@ class MemoryAdmissionTest {
     @Test
     void committed_heap_beyond_the_estimates_holds_the_door_until_it_shrinks() throws Exception {
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, dir -> 100 * MIB);
-        assertThat(gate.admit(1, "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB);
+        assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         // The running job holds far more than it estimated: 900 committed leaves 68, not the 768 the ledger says.
         heap.committed = 900 * MIB;
-        CompletableFuture<Verdict> second = async(() -> gate.admit(2, "/b", ahead -> {}, () -> false));
+        CompletableFuture<Verdict> second = async(() -> gate.admit(2, "build", "/b", ahead -> {}, () -> false));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         assertThat(second).isNotDone();
         // A collection (or the job's own release of memory) brings committed back; the poll notices.
@@ -99,17 +102,17 @@ class MemoryAdmissionTest {
     @Test
     void an_empty_engine_admits_a_job_that_would_never_fit() {
         FakeHeap heap = new FakeHeap(256, 40);
-        MemoryAdmission gate = new MemoryAdmission(heap, dir -> 5_000 * MIB);
-        assertThat(gate.admit(1, "/huge", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 5_000 * MIB);
+        assertThat(gate.admit(1, "build", "/huge", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
     }
 
     @Test
     void a_queued_job_is_cancelled_by_jid_or_by_dir() throws Exception {
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, dir -> 600 * MIB);
-        assertThat(gate.admit(1, "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        CompletableFuture<Verdict> byJid = async(() -> gate.admit(2, "/b", ahead -> {}, () -> false));
-        CompletableFuture<Verdict> byDir = async(() -> gate.admit(3, "/c", ahead -> {}, () -> false));
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 600 * MIB);
+        assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        CompletableFuture<Verdict> byJid = async(() -> gate.admit(2, "build", "/b", ahead -> {}, () -> false));
+        CompletableFuture<Verdict> byDir = async(() -> gate.admit(3, "build", "/c", ahead -> {}, () -> false));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
         assertThat(gate.cancel(99)).as("an unknown jid is not waiting").isFalse();
         assertThat(gate.cancel(2)).isTrue();
@@ -123,10 +126,10 @@ class MemoryAdmissionTest {
     @Test
     void a_drain_ends_the_wait() throws Exception {
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, dir -> 600 * MIB);
-        assertThat(gate.admit(1, "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 600 * MIB);
+        assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         AtomicBoolean draining = new AtomicBoolean();
-        CompletableFuture<Verdict> second = async(() -> gate.admit(2, "/b", ahead -> {}, draining::get));
+        CompletableFuture<Verdict> second = async(() -> gate.admit(2, "build", "/b", ahead -> {}, draining::get));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         draining.set(true);
         assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.DRAINING);
@@ -137,19 +140,19 @@ class MemoryAdmissionTest {
         // 400 MiB jobs: two fit (100 + 800 = 900 of 968). A third queues; a 10 MiB job behind it would
         // fit the 68 MiB left, and still waits its turn.
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, dir -> dir.equals("/small") ? 10 * MIB : 400 * MIB);
-        assertThat(gate.admit(1, "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        assertThat(gate.admit(2, "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> dir.equals("/small") ? 10 * MIB : 400 * MIB);
+        assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         List<Long> admittedOrder = new CopyOnWriteArrayList<>();
         CompletableFuture<Verdict> third = async(() -> {
-            Verdict v = gate.admit(3, "/c", ahead -> {}, () -> false);
+            Verdict v = gate.admit(3, "build", "/c", ahead -> {}, () -> false);
             admittedOrder.add(3L);
             return v;
         });
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         AtomicInteger smallAhead = new AtomicInteger(-1);
         CompletableFuture<Verdict> small = async(() -> {
-            Verdict v = gate.admit(4, "/small", smallAhead::set, () -> false);
+            Verdict v = gate.admit(4, "build", "/small", smallAhead::set, () -> false);
             admittedOrder.add(4L);
             return v;
         });
@@ -162,5 +165,28 @@ class MemoryAdmissionTest {
         assertThat(third.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(small.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(admittedOrder).containsExactly(3L, 4L);
+    }
+
+    @Test
+    void an_import_is_estimated_from_the_pom_files_under_the_project(@TempDir Path dir) throws Exception {
+        for (String pom : List.of("pom.xml", "core/pom.xml", "libs/util/pom.xml")) {
+            Path file = dir.resolve(pom);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "<project/>");
+        }
+        // A build output tree carries copies of the reactor's POMs; they are not modules to import.
+        for (String stale : List.of("core/target/classes/META-INF/maven/pom.xml", "build/pom.xml", ".git/pom.xml")) {
+            Path file = dir.resolve(stale);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, "<project/>");
+        }
+
+        assertThat(MemoryAdmission.estimate("import", dir.toString()))
+                .as("one share per pom.xml on top of the base, the output trees pruned")
+                .isEqualTo(MemoryAdmission.BASE_JOB_BYTES + 3 * MemoryAdmission.IMPORT_BYTES_PER_POM);
+        assertThat(MemoryAdmission.estimate("build", dir.toString()))
+                .as("a build reads the lock and the ledgers, not the POMs")
+                .isEqualTo(MemoryAdmission.estimate(
+                        "build", Files.createDirectories(dir.resolve("no-poms")).toString()));
     }
 }

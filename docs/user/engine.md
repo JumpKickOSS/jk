@@ -42,8 +42,8 @@ shows `Queued: N (waiting for engine memory)` while any job waits (`--output jso
 turns live. Ctrl-C and `jk cancel` dequeue a waiting job the same way they cancel a running one.
 
 The cost of a job is estimated from what it parses whole — the workspace `jk-lock.toml` and the
-project's metrics ledger — so a small project queues behind a large one only when the heap is
-genuinely short. An idle engine always admits the next job. Raising `[engine] max-heap-mb`
+project's metrics ledger; for `jk import`, the reactor's `pom.xml` files, build outputs pruned —
+so a small project queues behind a large one only when the heap is genuinely short. An idle engine always admits the next job. Raising `[engine] max-heap-mb`
 lets more jobs run at once; the default cap runs one build of a large workspace at a time.
 
 ## HTTP and MCP

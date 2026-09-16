@@ -43,7 +43,7 @@ class JobEnvelopeQueueTest {
             @Override
             public void collect() {}
         };
-        return new MemoryAdmission(heap, dir -> perJobMib << 20);
+        return new MemoryAdmission(heap, (kind, dir) -> perJobMib << 20);
     }
 
     @Test
