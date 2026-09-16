@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,6 +47,11 @@ import org.jspecify.annotations.Nullable;
  * blobs. Workspace locks are a <strong>union</strong> of every module's graph — prefer
  * {@link #classpathClosure} / {@link #entriesForClosure} for packaging (assembly, native-image)
  * so a fat jar only embeds the module's runtime closure — not the whole monorepo lock.
+ *
+ * <p>A classpath handed to a compiler or a JVM is built with the module's manifest ({@link
+ * #classpathFor(Lockfile, Set, boolean, JkBuild)}), which puts the module's own declarations
+ * first; the manifest-less overloads list the lock's rows in lock order and serve bills of
+ * materials and diagnostics.
  */
 public final class ClasspathResolver {
 
@@ -131,6 +137,49 @@ public final class ClasspathResolver {
             if (entry.jar() != null) result.add(entry.jar());
         }
         return result;
+    }
+
+    /**
+     * A module's classpath over {@code scopes}, in the order Maven hands javac and the JVM: the
+     * module's own declarations first, in manifest order ({@code [dependencies]} before
+     * {@code [provided-dependencies]} and the test tables), then their transitives breadth-first
+     * through the lock graph, then every other row of the lock in {@code scopes} in lock order (a
+     * workspace lock is the union of its members' graphs). A package two jars carry resolves to
+     * the jar the module declared.
+     */
+    public List<Path> classpathFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module) {
+        List<Path> result = new ArrayList<>(lock.artifacts().size());
+        for (Entry entry : entriesFor(lock, scopes, requirePresent, module)) {
+            if (entry.jar() != null) result.add(entry.jar());
+        }
+        return result;
+    }
+
+    /** As {@link #classpathFor(Lockfile, Set, boolean, JkBuild)}, each path paired with its lock row. */
+    public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module) {
+        List<Lockfile.Artifact> rows = ordered(lock, selected(lock, scopes), declaredExternalRoots(module, scopes));
+        return resolveEntries(rows, requirePresent, effectiveLocator(lock));
+    }
+
+    /**
+     * {@code selected} reordered for a module whose direct declarations are {@code directRoots}:
+     * the rows the roots reach, in the breadth-first order of {@link #reachableArtifacts}, then
+     * the rest in their given order. One row per module name, as {@code selected} already is.
+     */
+    static List<Lockfile.Artifact> ordered(
+            Lockfile lock, List<Lockfile.Artifact> selected, Collection<String> directRoots) {
+        Map<String, Lockfile.Artifact> byName = new LinkedHashMap<>();
+        for (Lockfile.Artifact row : selected) byName.put(row.name(), row);
+        List<Lockfile.Artifact> out = new ArrayList<>(selected.size());
+        Set<String> placed = new HashSet<>();
+        for (Lockfile.Artifact reached : reachableArtifacts(lock, directRoots)) {
+            Lockfile.Artifact row = byName.get(reached.name());
+            if (row != null && placed.add(row.name())) out.add(row);
+        }
+        for (Lockfile.Artifact row : selected) {
+            if (placed.add(row.name())) out.add(row);
+        }
+        return out;
     }
 
     /**
@@ -249,8 +298,10 @@ public final class ClasspathResolver {
     }
 
     /**
-     * BFS from {@code rootModules} through lock {@code deps} edges. Roots that do not resolve in
-     * the lock are skipped (caller may still surface missing-dep diagnostics elsewhere).
+     * BFS from {@code rootModules} through lock {@code deps} edges: the roots in the order given,
+     * then each row's edges by name, so the walk is the same however a row's edges were listed.
+     * Roots that do not resolve in the lock are skipped (caller may still surface missing-dep
+     * diagnostics elsewhere).
      */
     static List<Lockfile.Artifact> reachableArtifacts(Lockfile lock, Collection<String> rootModules) {
         if (rootModules == null || rootModules.isEmpty()) return List.of();
@@ -271,7 +322,9 @@ public final class ClasspathResolver {
             String key = queue.poll();
             Lockfile.Artifact pkg = lookup(byKey, key);
             if (pkg == null || !visited.add(pkg)) continue;
-            for (String depRef : pkg.deps()) {
+            List<String> edges = new ArrayList<>(pkg.deps());
+            edges.sort(Comparator.naturalOrder());
+            for (String depRef : edges) {
                 String child = stripVersion(depRef);
                 if (child.isBlank()) continue;
                 if (enqueued.add(child)) queue.add(child);

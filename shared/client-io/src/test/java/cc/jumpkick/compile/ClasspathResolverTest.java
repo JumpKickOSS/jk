@@ -4,13 +4,20 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
+import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -143,6 +150,62 @@ class ClasspathResolverTest {
         assertThat(ClasspathResolver.stripVersion("g:a:jar:@1.2.3")).isEqualTo("g:a:jar:");
         assertThat(ClasspathResolver.stripVersion("g:a@1.2.3")).isEqualTo("g:a");
         assertThat(ClasspathResolver.stripVersion("g:a:jar:")).isEqualTo("g:a:jar:");
+    }
+
+    @Test
+    void a_direct_dependency_precedes_the_transitive_that_shares_its_package(@TempDir Path tempDir) throws Exception {
+        String split = "com/caucho/hessian/io/SerializerFactory.class";
+        Path fork = putJarWithEntry(tempDir, "com/alipay/sofa/hessian/3.5.5/hessian-3.5.5.jar", split, "fork");
+        Path direct = putJarWithEntry(tempDir, "com/caucho/hessian/4.0.63/hessian-4.0.63.jar", split, "direct");
+        Path lib = putJar(tempDir, "org/example/lib/1.0/lib-1.0.jar", "lib");
+        Path noise = putJar(tempDir, "aa/noise/1.0/noise-1.0.jar", "noise");
+        // Lock order is by name: the fork, the unreached row and the transitive's parent all sort
+        // ahead of the direct declaration.
+        Lockfile lock = lock(
+                pkg("aa:noise:jar:", "1.0", Hashing.sha256Hex(noise)),
+                pkg("com.alipay.sofa:hessian:jar:", "3.5.5", Hashing.sha256Hex(fork)),
+                pkg("com.caucho:hessian:jar:", "4.0.63", Hashing.sha256Hex(direct)),
+                pkg(
+                        "org.example:lib:jar:",
+                        "1.0",
+                        Hashing.sha256Hex(lib),
+                        List.of("com.alipay.sofa:hessian:jar:@3.5.5")));
+        JkBuild module = JkBuildParser.parse("""
+                name = "m"
+                [dependencies]
+                lib = { group = "org.example", version = "1.0" }
+                hessian = { group = "com.caucho", version = "4.0.63" }
+                """);
+
+        List<Path> cp =
+                new ClasspathResolver(tempDir).classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, module);
+
+        assertThat(cp)
+                .containsExactly(
+                        lib.toAbsolutePath().normalize(),
+                        direct.toAbsolutePath().normalize(),
+                        fork.toAbsolutePath().normalize(),
+                        noise.toAbsolutePath().normalize());
+        URL[] urls = new URL[cp.size()];
+        for (int i = 0; i < urls.length; i++) urls[i] = cp.get(i).toUri().toURL();
+        try (URLClassLoader loader = new URLClassLoader(urls, null)) {
+            URL winner = loader.getResource(split);
+            assertThat(winner).isNotNull();
+            assertThat(winner.toString()).contains("hessian-4.0.63.jar");
+        }
+    }
+
+    private static Path putJarWithEntry(Path store, String relative, String entry, String payload) throws Exception {
+        Path src = store.resolve("src.jar");
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(src))) {
+            jar.putNextEntry(new JarEntry(entry));
+            OutputStream body = jar;
+            body.write(payload.getBytes());
+            jar.closeEntry();
+        }
+        RepoArtifactStore.forStoreId(store, "central").materialize(relative, src, Hashing.sha256Hex(src));
+        Files.deleteIfExists(src);
+        return store.resolve("repos/central").resolve(relative);
     }
 
     private static Path putJar(Path store, String relative, String payload) throws Exception {

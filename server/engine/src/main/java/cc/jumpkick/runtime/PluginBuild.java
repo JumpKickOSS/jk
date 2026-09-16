@@ -707,7 +707,8 @@ public final class PluginBuild {
         List<Path> classpath = new ArrayList<>();
         var resolver = new ClasspathResolver(cas);
         if (Files.exists(lockFile)) {
-            classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true));
+            classpath.addAll(
+                    resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true, project));
         }
         WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project);
         for (Path jar : siblings.jars()) {
@@ -766,7 +767,8 @@ public final class PluginBuild {
         List<ProdEntry> out = new ArrayList<>();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(cas);
-            for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true)) {
+            for (var entry :
+                    resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true, project)) {
                 var a = entry.artifact();
                 String ext = entry.container() != null ? ".aar" : ".jar";
                 out.add(new ProdEntry(
@@ -808,7 +810,8 @@ public final class PluginBuild {
         List<ProdEntry> out = new ArrayList<>();
         if (Files.exists(lockFile)) {
             var resolver = new ClasspathResolver(JkStores.storeCas());
-            for (var entry : resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.TEST)) {
+            for (var entry :
+                    resolver.entriesFor(LockfileReader.read(lockFile), ClasspathResolver.TEST, false, project)) {
                 var a = entry.artifact();
                 out.add(new ProdEntry(
                         a.moduleArtifact() + "-" + a.version() + ".jar",

@@ -125,14 +125,13 @@ public final class PlannerSupport {
      * than the built set, so {@code jk explain} reproduces the same action key after a clean.
      */
     public static List<Path> processorClasspath(
-            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
-        return processorClasspath(lock, resolver, siblings, false);
-    }
-
-    public static List<Path> processorClasspath(
-            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
+            JkBuild project,
+            Lockfile lock,
+            ClasspathResolver resolver,
+            WorkspaceClasspath.Result siblings,
+            boolean requirePresent)
             throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR), requirePresent));
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR), requirePresent, project));
         for (Path classes : siblings.siblingClosureClasses()) {
             if (!cp.contains(classes)) cp.add(classes);
         }
@@ -175,15 +174,16 @@ public final class PlannerSupport {
         return missing;
     }
 
+    /** Lock rows in the module's declaration order, then sibling classes trees, then sibling lock rows. */
     public static List<Path> mainCompileClasspath(
-            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
-        return mainCompileClasspath(lock, resolver, siblings, false);
-    }
-
-    public static List<Path> mainCompileClasspath(
-            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings, boolean requirePresent)
+            JkBuild project,
+            Lockfile lock,
+            ClasspathResolver resolver,
+            WorkspaceClasspath.Result siblings,
+            boolean requirePresent)
             throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent));
+        List<Path> cp =
+                new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN, requirePresent, project));
         // The siblings' classes trees, as the declared closure (deterministic paths) — not the
         // built set — so the action key is stable whether or not target/ is currently populated.
         // A tree is whole once its module has compiled, which is what admits this module to the
@@ -801,7 +801,7 @@ public final class PlannerSupport {
     static List<Path> testCompileClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST));
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, false, project));
         cp.addAll(sib.siblingClosureClasses());
         for (Path sl : sib.siblingLockfiles()) {
             try {
@@ -819,7 +819,7 @@ public final class PlannerSupport {
     static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
             throws IOException {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST));
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, false, project));
         cp.addAll(sib.siblingClosureJars());
         for (Path sl : sib.siblingLockfiles()) {
             try {

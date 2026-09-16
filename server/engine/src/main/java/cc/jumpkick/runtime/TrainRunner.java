@@ -317,7 +317,7 @@ public final class TrainRunner {
             var lock = LockfileReader.read(lockFile);
             List<Path> cp = new ArrayList<>();
             cp.add(mainJar);
-            for (var entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
+            for (var entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME, false, project)) {
                 if (Files.exists(entry.jar())) cp.add(entry.jar());
             }
             int deps = cp.size() - 1;
