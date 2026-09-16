@@ -301,6 +301,11 @@ relates to the Maven one.
 | openapi-generator-maven-plugin | 4 | `[openapi]`: `<inputSpec>` → `spec` (an HTTP URL is fetched once into `api/<file>` beside the manifest, a row says so), `<generatorName>` → `generator`, the `<modelPackage>` root (else the api or invoker package) → `package` with `<apiPackage>` / `<modelPackage>` / `<invokerPackage>` the root does not derive → `api-package` / `model-package` / `invoker-package`, `<configOptions>` / `<additionalProperties>` → `options`, the plugin version → `version`; `<packageName>`, a second `generate` execution and any other option → row | approximate |
 | any other `<build><extensions>` entry | 4 | Tier-3 row naming the coordinate and, for build-reporter-maven-extension, gitflow-incremental-builder, wagon-ssh and archetype-packaging, what it does under Maven | none |
 
+In a workspace, a row a parent's `<build>` puts on every module — an extension, a plugin with
+no mapping — is said once, at the declaring POM (`the root pom.xml`, `` `build-parent/pom.xml` ``,
+or the published parent) with the count of modules inheriting it; a module's own declaration
+keeps its row at the module.
+
 **Grades.** *exact*: the imported build does what the plugin did. *approximate*: the common
 configuration maps; unusual configuration lands in the report. *manual*: the report names the
 plugin and where its job belongs. *none*: the module needs `jk mvn`.

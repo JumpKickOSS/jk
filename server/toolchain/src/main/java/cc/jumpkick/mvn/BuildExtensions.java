@@ -34,19 +34,39 @@ final class BuildExtensions {
 
     private BuildExtensions() {}
 
-    /** One row per extension the import writes nothing for; a property-only extension needs no row. */
-    static void report(Model model, ImportReport.Builder report) {
-        Build build = model.getBuild();
+    /**
+     * One row per extension the import writes nothing for; a property-only extension needs no row.
+     * In a workspace ({@code inherited} set) an extension the POM inherits is counted onto the
+     * declaring POM's row instead of said at every module; the root's own go there too.
+     */
+    static void report(
+            EffectiveModel em, ImportReport.Builder report, @Nullable InheritedRows inherited, boolean isRoot) {
+        Build build = em.model().getBuild();
         if (build == null) return;
         for (Extension extension : build.getExtensions()) {
             String ga = extension.getGroupId() + ":" + extension.getArtifactId();
             if (PROPERTY_ONLY.contains(ga)) continue;
             String role = ROLES.get(ga);
-            report.error("`<build><extensions>` " + coordinate(extension, ga) + " "
+            String message = "`<build><extensions>` " + coordinate(extension, ga) + " "
                     + (role != null ? role : "is a Maven core extension jk does not load")
                     + "; nothing is written for it. Drop it from the POM when the jk build does not need it,"
-                    + " or keep running that step with `jk mvn`.");
+                    + " or keep running that step with `jk mvn`.";
+            if (inherited == null || (!isRoot && declares(em.raw(), ga))) {
+                report.error(message);
+            } else if (isRoot) {
+                inherited.declaredByRoot(ImportReport.Severity.ERROR, message);
+            } else {
+                inherited.inherited(
+                        inherited.declaredBy(em, raw -> declares(raw, ga)), ImportReport.Severity.ERROR, message);
+            }
         }
+    }
+
+    /** Whether a raw model lists the extension {@code ga} itself. */
+    private static boolean declares(Model raw, String ga) {
+        Build build = raw.getBuild();
+        return build != null
+                && build.getExtensions().stream().anyMatch(e -> ga.equals(e.getGroupId() + ":" + e.getArtifactId()));
     }
 
     /** {@code g:a:v}, or {@code g:a} when the version is a property no POM in the chain defines. */
