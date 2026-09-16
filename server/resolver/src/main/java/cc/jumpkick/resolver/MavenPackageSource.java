@@ -38,6 +38,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -157,6 +158,9 @@ public final class MavenPackageSource implements PackageSource {
     private final AtomicInteger outstandingPrefetches = new AtomicInteger();
 
     private final Object prefetchIdle = new Object();
+
+    /** Catalog and POM reads completed, speculative ones included; see {@link #readsCompleted}. */
+    private final AtomicLong readsCompleted = new AtomicLong();
 
     /** Ensures {@link #warmUp} runs once per source instance (main/test/processor share one source). */
     private final AtomicBoolean warmedUp = new AtomicBoolean();
@@ -475,6 +479,7 @@ public final class MavenPackageSource implements PackageSource {
                 List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
         versionCache.put(pkg, result);
         wantedAtCache.put(pkg, Set.copyOf(wanted));
+        readsCompleted.incrementAndGet();
         if (ResolveProfile.on()) {
             ResolveProfile.versions(System.nanoTime() - t0);
         }
@@ -496,7 +501,13 @@ public final class MavenPackageSource implements PackageSource {
         List<String> result = List.copyOf(orderedVersions(pkg, wanted));
         expandedVersionCache.put(pkg, result);
         wantedAtCache.put(pkg, Set.copyOf(wanted));
+        readsCompleted.incrementAndGet();
         return result;
+    }
+
+    @Override
+    public long readsCompleted() {
+        return readsCompleted.get();
     }
 
     private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {
@@ -716,8 +727,10 @@ public final class MavenPackageSource implements PackageSource {
         try {
             pom = declared.builderFor(pkg).build(coord);
         } catch (MavenRepo.ArtifactNotFoundException e) {
+            readsCompleted.incrementAndGet();
             throw new VersionUnavailableException(e.getMessage());
         }
+        readsCompleted.incrementAndGet();
         // <distributionManagement><relocation>: this coordinate moved. The stub has no classes and
         // no dependencies of its own, so its one edge is to the target — which is how Maven and
         // Gradle render it too. Chains terminate because each hop is a normal package expansion.
@@ -1128,6 +1141,7 @@ public final class MavenPackageSource implements PackageSource {
                     // best-effort warming; the sync path surfaces real failures
                     Log.debug("drainPrefetches: best-effort warming", e);
                 } finally {
+                    readsCompleted.incrementAndGet();
                     finishPrefetch();
                 }
             }

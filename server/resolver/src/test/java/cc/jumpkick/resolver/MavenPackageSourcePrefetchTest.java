@@ -101,6 +101,7 @@ class MavenPackageSourcePrefetchTest {
 
         assertThat(http.requestsFor(LIB_META)).isEqualTo(1);
         assertThat(http.requestsFor(LIB_POM)).isEqualTo(1);
+        assertThat(src.readsCompleted()).as("speculative reads count as progress").isPositive();
     }
 
     @Test

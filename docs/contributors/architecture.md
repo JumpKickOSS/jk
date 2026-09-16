@@ -335,10 +335,13 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   the Central mirror). A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp
   in the repository's store tree (`DownloadLeg`), so a row in flight costs its connection and that
   buffer, never its payload.
-- **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
-  (default 600 s per graph, sized for a cold multi-repository reactor of a few hundred modules).
-  Every prop/conflict step counts toward a step budget
-  (`maxDecisions × 16`). Conflict **watermarks** fingerprint decision maps that already
+- **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000) caps decisions, and every
+  prop/conflict step counts toward a step budget (`maxDecisions × 16`). Time is budgeted by
+  progress, not by length: a solve is stopped only when no decision, version catalog read or POM
+  read — the speculative reads included — has advanced for the stall window,
+  `JK_RESOLVE_TIMEOUT_MS` (default 120 s; `0` never stops a solve), and the refusal names what the
+  solver was doing when everything stood still. A thousand-dependency reactor on a busy engine
+  takes as long as it takes. Conflict **watermarks** fingerprint decision maps that already
   failed so the solver cannot re-enter them (cleared when a universe expands).
 
 Package identity in the solver is `group:artifact:type:classifier` (defaults: type `jar`,
