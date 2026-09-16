@@ -68,8 +68,14 @@ public final class MavenPackageSource implements PackageSource {
         return Math.max(1, Math.min(PREFETCH_WORKERS_CAP, slotWidth / 2));
     }
 
-    /** Upper bound on how long a solve waits for speculative prefetches to wind down. */
-    private static final long QUIESCE_TIMEOUT_MS = 30_000;
+    /**
+     * How long a widening pass waits for its catalogs before reading the rest itself, and how long
+     * {@link #quiesce} waits before it says which reads are still winding down.
+     */
+    private static final long PREFETCH_WAIT_MS = 30_000;
+
+    /** How often {@link #quiesce} re-interrupts a worker that has not finished its read. */
+    private static final long QUIESCE_NUDGE_MS = 1_000;
 
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
@@ -156,6 +162,9 @@ public final class MavenPackageSource implements PackageSource {
 
     /** Speculative prefetches submitted and not yet finished. Guards {@link #quiesce}. */
     private final AtomicInteger outstandingPrefetches = new AtomicInteger();
+
+    /** The threads draining the queue right now, so {@link #quiesce} can interrupt the read each is in. */
+    private final Set<Thread> prefetchThreads = ConcurrentHashMap.newKeySet();
 
     private final Object prefetchIdle = new Object();
 
@@ -1066,7 +1075,7 @@ public final class MavenPackageSource implements PackageSource {
             });
         }
         try {
-            if (!done.await(QUIESCE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            if (!done.await(PREFETCH_WAIT_MS, TimeUnit.MILLISECONDS)) {
                 Log.debug(
                         "warmExpandedVersions: still reading catalogs after the bound; the pass reads the rest itself");
             }
@@ -1125,27 +1134,31 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * One worker: run queued items until none is left. A worker interrupted mid-item leaves the
-     * rest of the queue to a fresh one.
+     * One worker: run queued items until none is left. A worker interrupted mid-item — which is how
+     * {@link #quiesce} cancels a read — leaves the rest of the queue to a fresh one.
      */
     private void drainPrefetches() {
+        Thread self = Thread.currentThread();
+        prefetchThreads.add(self);
         try {
             PrefetchWork work;
             while ((work = prefetchQueue.poll()) != null) {
                 try {
                     work.run();
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    self.interrupt();
                     return;
                 } catch (Exception e) {
                     // best-effort warming; the sync path surfaces real failures
                     Log.debug("drainPrefetches: best-effort warming", e);
+                    if (self.isInterrupted()) return;
                 } finally {
                     readsCompleted.incrementAndGet();
                     finishPrefetch();
                 }
             }
         } finally {
+            prefetchThreads.remove(self);
             prefetchWorkers.decrementAndGet();
             // A submit that saw a full complement while this worker was leaving left its item behind.
             startWorkerIfRoom();
@@ -1171,28 +1184,34 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Drop the speculative work not yet started and block until none is running. What has not
-     * started by the time a solve ends is fetched on demand if the next solve needs it, and it must
-     * not run beside the downloads that follow. Warming is best-effort, so this gives up after
-     * {@link #QUIESCE_TIMEOUT_MS} rather than holding a build hostage to a wedged fetch.
+     * Drop the speculative work not yet started, cancel what is running and block until nothing is
+     * in flight. What has not started by the time a solve ends is fetched on demand if the next solve
+     * needs it, and no read may run beside the downloads that follow or past the moment a caller
+     * deletes the store it was writing into. A running read is cancelled by interrupting its worker,
+     * again every {@link #QUIESCE_NUDGE_MS} until it has let go; a caller's own interrupt is kept
+     * for it and re-asserted once the workers are gone.
      */
     @Override
     public void quiesce() {
         PrefetchWork left;
         while ((left = prefetchQueue.poll()) != null) finishPrefetch();
-        long deadline = System.nanoTime() + QUIESCE_TIMEOUT_MS * 1_000_000L;
+        boolean interrupted = false;
+        int nudges = 0;
         synchronized (prefetchIdle) {
             while (outstandingPrefetches.get() > 0) {
-                long remainingMs = (deadline - System.nanoTime()) / 1_000_000L;
-                if (remainingMs <= 0) return;
+                for (Thread worker : prefetchThreads) worker.interrupt();
                 try {
-                    prefetchIdle.wait(remainingMs);
+                    prefetchIdle.wait(QUIESCE_NUDGE_MS);
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
+                    interrupted = true;
+                }
+                if (++nudges * QUIESCE_NUDGE_MS == PREFETCH_WAIT_MS) {
+                    Log.warn("jk: still waiting for " + outstandingPrefetches.get()
+                            + " speculative dependency read(s) to stop after " + (PREFETCH_WAIT_MS / 1_000) + " s");
                 }
             }
         }
+        if (interrupted) Thread.currentThread().interrupt();
     }
 
     private static Coordinate withVersion(String pkg, String version) {

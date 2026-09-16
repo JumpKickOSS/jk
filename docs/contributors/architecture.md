@@ -343,6 +343,9 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   solver was doing when everything stood still. A thousand-dependency reactor on a busy engine
   takes as long as it takes. Conflict **watermarks** fingerprint decision maps that already
   failed so the solver cannot re-enter them (cleared when a universe expands).
+- **Speculative reads end with the solve:** when a resolve returns, what the warm-up has not
+  started is dropped and what it is reading is cancelled, and the call returns only once nothing is
+  in flight — so a store the caller then deletes or replaces sees no late write.
 
 Package identity in the solver is `group:artifact:type:classifier` (defaults: type `jar`,
 classifier empty → `g:a:jar:`). Legacy lock rows with bare `g:a` still load. BOM management
