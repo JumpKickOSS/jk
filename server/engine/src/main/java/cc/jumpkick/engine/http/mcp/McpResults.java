@@ -15,7 +15,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * MCP {@code jk_results}: the high-level {@code jk-results.md} for a run. Sibling of {@code
- * details.jsonl} in the journal, with a latest copy at {@code target/jk-results.md}.
+ * details.jsonl} in the journal, with a latest copy at {@code target/jk-results.md}. A run with a
+ * run before it from the same session also returns {@code delta}: files changed, diagnostics that
+ * appeared or went away, tests that flipped, and the previous attempt's wall — each list a
+ * {@code count} with a bounded {@code shown} head.
  */
 public final class McpResults {
 
@@ -42,6 +45,9 @@ public final class McpResults {
             return m;
         }
         m.put("path", file.toString());
+        // What changed since the run before from the same origin — the record's own `delta`, the
+        // facts behind the report's "Since the previous run" section, structured for an agent.
+        if (rec.get("delta") instanceof Map<?, ?> delta) m.put("delta", delta);
         Optional<Path> details = id == null ? Optional.empty() : detailsFile.apply(id);
         if (details.isPresent() && Files.isRegularFile(details.get())) {
             m.put("details", details.get().toString());
