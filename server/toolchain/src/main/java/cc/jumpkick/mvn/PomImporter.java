@@ -210,17 +210,14 @@ public final class PomImporter {
         // Each module is imported as the walk reaches it and its effective model is dropped right
         // after: what stays of a module is its JkBuild, its rows and its shade relocations.
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
-        List<ImportReport.Issue> moduleRows = new ArrayList<>();
+        ModuleRows moduleRows = new ModuleRows();
         List<ShadedSiblings.Shaded> shaded = new ArrayList<>();
         InheritedRows inherited = new InheritedRows(Objects.requireNonNull(rootFile.getParent()));
         ReactorModules.Reactor found =
                 ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report, (leaf, model) -> {
                     Result child = importModel(model, remote, inherited);
                     moduleBuilds.put(leaf.path(), child.jkBuild());
-                    for (ImportReport.Issue issue : child.report().issues()) {
-                        moduleRows.add(
-                                new ImportReport.Issue(issue.severity(), "[" + leaf.path() + "] " + issue.message()));
-                    }
+                    moduleRows.addAll(leaf.path(), child.report());
                     ShadedSiblings.Shaded member = ShadedSiblings.of(leaf, model.model());
                     if (member != null) shaded.add(member);
                 });
@@ -237,13 +234,6 @@ public final class PomImporter {
         JkBuild.Application rootApplication =
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
 
-        for (ImportReport.Issue issue : moduleRows) {
-            if (issue.severity() == ImportReport.Severity.ERROR) {
-                report.error(issue.message());
-            } else {
-                report.warning(issue.message());
-            }
-        }
         SiblingNames.report(moduleBuilds, report);
         ShadedSiblings.report(leaves, shaded, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
@@ -274,8 +264,9 @@ public final class PomImporter {
                             found.unbuilt(),
                             importedBoms,
                             e.getKey(),
-                            report));
+                            moduleRows));
         }
+        moduleRows.flush(report);
         for (String bom : bomByGa.values()) {
             if (importedBoms.contains(bom)) continue;
             report.warning("`" + bom + "` is a BOM (packaging `pom`, a `<dependencyManagement>` table and nothing"

@@ -304,7 +304,10 @@ relates to the Maven one.
 In a workspace, a row a parent's `<build>` puts on every module — an extension, a plugin with
 no mapping — is said once, at the declaring POM (`the root pom.xml`, `` `build-parent/pom.xml` ``,
 or the published parent) with the count of modules inheriting it; a module's own declaration
-keeps its row at the module.
+keeps its row at the module. Any other module row whose text is the same in several modules — a
+dependency every module inherits from the workspace parent, a sibling BOM many modules import,
+a Surefire setting a parent puts on each of them — is one row at the first module saying it,
+with the count and the first few modules: `[core] … (12 modules: core, util, api, …)`.
 
 **Grades.** *exact*: the imported build does what the plugin did. *approximate*: the common
 configuration maps; unusual configuration lands in the report. *manual*: the report names the
