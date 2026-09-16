@@ -183,4 +183,40 @@ class PomParserTest {
                 .isInstanceOf(PomParseException.class)
                 .hasMessageContaining("artifactId");
     }
+
+    /** The plexus parent's shape: an HTML entity in a developer name, undeclared, as Maven reads it. */
+    @Test
+    void reads_a_pom_carrying_an_undeclared_html_entity() {
+        Pom pom = PomParser.parse("""
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.codehaus.plexus</groupId>
+                  <artifactId>plexus</artifactId>
+                  <version>1.0.4</version>
+                  <packaging>pom</packaging>
+                  <developers>
+                    <developer>
+                      <id>trygvis</id>
+                      <name>Trygve Laugst&oslash;l</name>
+                    </developer>
+                  </developers>
+                  <properties>
+                    <maintainer>Laugst&oslash;l</maintainer>
+                  </properties>
+                  <dependencies>
+                    <dependency>
+                      <groupId>junit</groupId>
+                      <artifactId>junit</artifactId>
+                      <version>3.8.1</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        assertThat(pom.properties()).containsEntry("maintainer", "Laugst\u00f8l");
+        assertThat(pom.dependencies())
+                .singleElement()
+                .extracting(Pom.Dep::version)
+                .isEqualTo("3.8.1");
+    }
 }

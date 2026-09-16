@@ -140,4 +140,38 @@ class DomXmlTest {
         assertThat(DomXml.childElement(null, "anything")).isNull();
         assertThat(DomXml.childText(project, "nope")).isNull();
     }
+
+    /**
+     * Maven's POM reader accepts the HTML 4 character entities without a declaration, and Central
+     * holds POMs that lean on it: the plexus parent names a developer {@code Laugst&oslash;l}.
+     */
+    @Test
+    void an_html_entity_reads_as_maven_reads_it() throws Exception {
+        String xml = "<project><name>Trygve Laugst&oslash;l</name></project>";
+        assertThat(DomXml.childText(DomXml.parse(xml).getDocumentElement(), "name"))
+                .isEqualTo("Trygve Laugst\u00f8l");
+        assertThat(DomXml.childText(
+                        DomXml.parse(xml.getBytes(StandardCharsets.UTF_8)).getDocumentElement(), "name"))
+                .isEqualTo("Trygve Laugst\u00f8l");
+    }
+
+    @Test
+    void an_html_entity_in_latin1_bytes_keeps_the_rest_of_the_document() throws Exception {
+        String xml = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><p><n>caf\u00e9 &amp; Laugst&oslash;l</n></p>";
+        var doc = DomXml.parse(xml.getBytes(StandardCharsets.ISO_8859_1));
+        assertThat(DomXml.childText(doc.getDocumentElement(), "n")).isEqualTo("caf\u00e9 & Laugst\u00f8l");
+    }
+
+    @Test
+    void an_entity_outside_the_table_is_still_refused() {
+        assertThatThrownBy(() -> DomXml.parse("<project><name>&bogus;</name></project>"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("bogus");
+    }
+
+    @Test
+    void an_html_entity_inside_cdata_stays_literal() throws Exception {
+        var doc = DomXml.parse("<p><n><![CDATA[&oslash;]]></n></p>");
+        assertThat(DomXml.childText(doc.getDocumentElement(), "n")).isEqualTo("&oslash;");
+    }
 }
