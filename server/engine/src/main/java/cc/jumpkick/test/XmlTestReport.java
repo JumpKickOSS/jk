@@ -222,14 +222,16 @@ public final class XmlTestReport {
 
     /**
      * The segments engines use for the class-like node when there is no {@code [class:…]}: Spock and
-     * Kotest name the spec, Vintage the runner, Cucumber the feature. In lookup order.
+     * Kotest name the spec, Cucumber the feature. In lookup order. Vintage's {@code [runner:…]} is
+     * read by the shared walk itself.
      */
-    private static final List<String> CLASS_LIKE_SEGMENTS = List.of("spec", "runner", "feature");
+    private static final List<String> CLASS_LIKE_SEGMENTS = List.of("spec", "feature");
 
     /**
      * The test class a uniqueId belongs to: the shared {@link JUnitUniqueIds} walk over
-     * {@code [class:…]}/{@code [nested-class:…]} first, then the engine-specific class-like segment,
-     * then the engine id, and the raw id only when the id has no recognisable segment at all.
+     * {@code [class:…]}/{@code [nested-class:…]} and Vintage's {@code [runner:…]}/{@code [test:…]}
+     * first, then the engine-specific class-like segment, then the engine id, and the raw id only
+     * when the id has no recognisable segment at all.
      */
     static String classNameFrom(String uniqueId) {
         String cls = JUnitUniqueIds.classOf(uniqueId);

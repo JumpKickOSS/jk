@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.protocol;
 
+import java.util.function.BiConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -12,6 +15,11 @@ import org.jspecify.annotations.Nullable;
  * JSONL event lacks the split {@code testClass}/{@code testEngine} fields. One owner, so a
  * Platform quirk (the {@code [nested-class:…]} → {@code $} join, the {@code %XX} escape set)
  * cannot diverge across the fork.
+ *
+ * <p>Two engine grammars are read. Jupiter names the class and method in segments of their own.
+ * Vintage (JUnit 4) names the class in {@code [runner:…]} and every node below it in
+ * {@code [test:…]} with the JUnit 4 display name: {@code method(class)} for a test, the bare class
+ * name for a suite member.
  *
  * <p>Vendored into the runner jar, which rides the user's test JVM — this class must stay
  * release-17 clean like the rest of {@code :plugin-sdk}.
@@ -32,7 +40,7 @@ public final class JUnitUniqueIds {
     public static String classOf(@Nullable String id) {
         if (id == null) return "";
         String outer = segment(id, "class");
-        if (outer.isEmpty()) return "";
+        if (outer.isEmpty()) return vintageClassOf(id);
         StringBuilder sb = new StringBuilder(outer);
         // Multiple nested-class segments are rare; take all in order.
         int from = 0;
@@ -59,10 +67,59 @@ public final class JUnitUniqueIds {
         if (!method.isEmpty()) return method;
         String template = segment(id, "test-template");
         if (template.isEmpty()) template = segment(id, "test-factory");
-        if (template.isEmpty()) return "";
+        if (template.isEmpty()) return vintageMethodOf(id);
         String invocation = invocationPath(id);
         if (invocation.isEmpty()) return template;
         return template + "[" + invocation + "]";
+    }
+
+    /** A JUnit 4 display name: {@code method(class)}, the method possibly carrying a {@code [n]} index. */
+    private static final Pattern JUNIT4_DISPLAY =
+            Pattern.compile("(.+)\\(([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*)\\)");
+
+    /** A binary class name and nothing else — what a Vintage suite member's {@code [test:…]} carries. */
+    private static final Pattern CLASS_NAME = Pattern.compile("[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*");
+
+    /**
+     * The class of a Vintage node: the innermost {@code [test:…]} that names one — as the owner of a
+     * {@code method(class)} display name or as a bare class name — else the {@code [runner:…]}.
+     */
+    private static String vintageClassOf(String id) {
+        String[] cls = {segment(id, "runner")};
+        forEachSegment(id, (type, value) -> {
+            if (!type.equals("test") && !type.equals("dynamic")) return;
+            Matcher m = JUNIT4_DISPLAY.matcher(value);
+            if (m.matches()) cls[0] = m.group(2);
+            else if (CLASS_NAME.matcher(value).matches()) cls[0] = value;
+        });
+        return cls[0];
+    }
+
+    /** The method of a Vintage test: the innermost {@code method(class)} display name's method part. */
+    private static String vintageMethodOf(String id) {
+        String[] method = {""};
+        forEachSegment(id, (type, value) -> {
+            if (!type.equals("test") && !type.equals("dynamic")) return;
+            Matcher m = JUNIT4_DISPLAY.matcher(value);
+            if (m.matches()) method[0] = m.group(1);
+        });
+        return method[0];
+    }
+
+    /** Every {@code [type:value]} segment in id order, values percent-decoded. */
+    private static void forEachSegment(String id, BiConsumer<String, String> segment) {
+        int from = 0;
+        while (true) {
+            int open = id.indexOf('[', from);
+            if (open < 0) break;
+            int colon = id.indexOf(':', open);
+            int close = id.indexOf(']', open);
+            if (colon < 0 || close < 0 || colon > close) break;
+            segment.accept(
+                    id.substring(open + 1, colon).trim(),
+                    percentDecode(id.substring(colon + 1, close).trim()));
+            from = close + 1;
+        }
     }
 
     /**
@@ -72,23 +129,15 @@ public final class JUnitUniqueIds {
      */
     private static String invocationPath(String id) {
         StringBuilder sb = new StringBuilder();
-        int from = 0;
-        while (true) {
-            int open = id.indexOf('[', from);
-            if (open < 0) break;
-            int colon = id.indexOf(':', open);
-            int close = id.indexOf(']', open);
-            if (colon < 0 || close < 0 || colon > close) break;
-            String type = id.substring(open + 1, colon).trim();
+        forEachSegment(id, (type, value) -> {
             switch (type) {
                 case "test-template-invocation", "test-factory-invocation", "dynamic-container", "dynamic-test" -> {
                     if (sb.length() > 0) sb.append('/');
-                    sb.append(percentDecode(id.substring(colon + 1, close).trim()));
+                    sb.append(value);
                 }
                 default -> {}
             }
-            from = close + 1;
-        }
+        });
         return sb.toString();
     }
 

@@ -22,8 +22,9 @@ import org.jspecify.annotations.Nullable;
  * The versions a project's platform BOMs manage, with the BOM each one came from, and the two
  * ways they touch declared roots: an exact user pin on a managed module wins over the BOM, and a
  * version-less {@code platform-managed} root takes the managed version. {@link #versions()} is the
- * constraint map the solvers and the row assembler consult; it is mutable until {@link #apply}
- * because the language-runtime inject adds to it after collection.
+ * constraint map the solvers and the row assembler consult; it stays mutable because the
+ * language-runtime inject adds to it after collection and the declared test-framework pins
+ * ({@link TestEngines#declaredTriggerPins}) after {@link #apply}.
  */
 public final class PlatformConstraints {
 

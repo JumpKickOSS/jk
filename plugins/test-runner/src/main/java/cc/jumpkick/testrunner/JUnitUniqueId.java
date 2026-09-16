@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * Parsed JUnit Platform {@code UniqueId} segments. Jupiter (and other engines) build the opaque
  * {@code [engine:…][class:…][method:…]} string; we only split it for the wire — we do not invent
- * identity. {@code UniqueId.parse} is the decoder of record; a malformed id falls back to the
+ * identity. Vintage's {@code [runner:…]/[test:…]} form is read by the shared walk. {@code UniqueId.parse} is the decoder of record; a malformed id falls back to the
  * shared string walk in {@link JUnitUniqueIds}, the same one the engine applies on its side of the
  * fork.
  */
@@ -76,6 +76,10 @@ final class JUnitUniqueId {
             method = template;
             if (!method.isEmpty() && invocation.length() > 0) method = method + "[" + invocation + "]";
         }
+        // Vintage names the class in [runner:…] and the method in a [test:method(class)] display
+        // name; the shared walk owns that grammar, so both sides of the fork read it one way.
+        if (cls.isEmpty()) cls = JUnitUniqueIds.classOf(raw);
+        if (method.isEmpty()) method = JUnitUniqueIds.methodOf(raw);
         return new JUnitUniqueId(raw, engine, cls, method);
     }
 

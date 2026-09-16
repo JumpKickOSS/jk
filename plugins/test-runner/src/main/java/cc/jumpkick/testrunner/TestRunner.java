@@ -77,6 +77,11 @@ public final class TestRunner implements Plugin {
             return Exit.SOFTWARE;
         } catch (Throwable t) {
             System.err.println("jk-test-runner: " + t.getClass().getName() + ": " + t.getMessage());
+            if (String.valueOf(t.getMessage()).contains("without at least one TestEngine")) {
+                System.err.println("  No JUnit Platform engine is on the test classpath. Declare the test framework"
+                        + " under [test-dependencies] (junit-jupiter; junit:junit brings the Vintage engine"
+                        + " with it) and re-run `jk lock`.");
+            }
             t.printStackTrace(System.err);
             return Exit.SOFTWARE;
         }

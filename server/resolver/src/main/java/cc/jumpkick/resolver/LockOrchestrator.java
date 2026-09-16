@@ -207,6 +207,9 @@ public final class LockOrchestrator {
                 LanguageRuntimeInject.inject(project, projectDir, bomConstraints, declared.main(), toolVersions);
 
         LockRoots.Roots roots = constraints.apply(declared.split(), injected);
+        // The framework a suite declares is the framework it runs on: an injected engine's own edge
+        // onto it takes the declared pin, as a transitive takes a direct dependency's in Maven.
+        bomConstraints.putAll(TestEngines.declaredTriggerPins(project));
         List<Dependency> fileDeps = roots.fileDeps();
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);

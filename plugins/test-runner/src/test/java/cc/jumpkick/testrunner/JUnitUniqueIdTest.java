@@ -18,6 +18,19 @@ class JUnitUniqueIdTest {
     }
 
     @Test
+    void vintage_ids_split_like_jupiter_ones() {
+        var id = JUnitUniqueId.parse(
+                "[engine:junit-vintage]/[runner:com.example.AdderTest]/[test:adds(com.example.AdderTest)]");
+        assertEquals("junit-vintage", id.testEngine);
+        assertEquals("com.example.AdderTest", id.testClass);
+        assertEquals("adds", id.testMethod);
+
+        var runner = JUnitUniqueId.parse("[engine:junit-vintage]/[runner:com.example.AdderTest]");
+        assertEquals("com.example.AdderTest", runner.testClass);
+        assertEquals("", runner.testMethod);
+    }
+
+    @Test
     void nested_class_uses_dollar() {
         var id = JUnitUniqueId.parse(
                 "[engine:junit-jupiter]/[class:com.example.Outer]/[nested-class:Inner]/[method:m()]");
