@@ -182,13 +182,6 @@ public final class PomImporter {
         String rootMainClass = PluginFacts.mainClass(rootModel.model());
         JkBuild.Application rootApplication =
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
-        // The workspace root is a coordination point — no deps of its own.
-        JkBuild rootJkBuild = JkBuild.builder(rootProject)
-                .workspace(new Workspace(
-                        leaves.stream().map(ReactorModules.Leaf::path).toList()))
-                .application(rootApplication)
-                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
-                .build();
 
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
         for (ReactorModules.Leaf leaf : leaves) {
@@ -204,6 +197,17 @@ public final class PomImporter {
             }
         }
         SiblingNames.report(moduleBuilds, report);
+        // The workspace root is a coordination point — no deps of its own — but it owns the one
+        // repository list the workspace lock resolves against, so every member's `<repositories>`
+        // is hoisted onto it.
+        JkBuild rootJkBuild = JkBuild.builder(rootProject)
+                .workspace(new Workspace(
+                        leaves.stream().map(ReactorModules.Leaf::path).toList()))
+                .repositories(hoistRepositories(
+                        mapRepositories(rootModel.model().getRepositories(), report), moduleBuilds.values()))
+                .application(rootApplication)
+                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build();
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Map<String, String> bomByGa = bomGaIndex(found.boms());
@@ -662,7 +666,10 @@ public final class PomImporter {
 
     // --- repositories -------------------------------------------------------
 
-    /** Every repository the effective model declares or inherits; Central is the implicit default. */
+    /**
+     * Every repository the effective model declares or inherits, with its {@code <releases>} /
+     * {@code <snapshots>} policy; Central is the implicit default.
+     */
     private static List<RepositorySpec> mapRepositories(List<Repository> repositories, ImportReport.Builder report) {
         Map<String, RepositorySpec> deduped = new LinkedHashMap<>();
         for (Repository repo : repositories) {
@@ -674,13 +681,30 @@ public final class PomImporter {
             }
             String name = (id == null || id.isBlank()) ? "repo" + (deduped.size() + 1) : id;
             if (name.equals("central") || RepoModelResolver.isCentral(url)) continue;
+            boolean releases = repo.getReleases() == null || repo.getReleases().isEnabled();
+            boolean snapshots =
+                    repo.getSnapshots() == null || repo.getSnapshots().isEnabled();
+            if (!releases && !snapshots) continue;
             try {
-                deduped.put(name, new RepositorySpec(name, new URI(url.trim())));
+                deduped.put(name, new RepositorySpec(name, new URI(url.trim())).withPolicy(releases, snapshots));
             } catch (URISyntaxException e) {
                 report.warning("`<repository><url>" + url + "</url></repository>` is not a valid URI; skipped.");
             }
         }
         return new ArrayList<>(deduped.values());
+    }
+
+    /**
+     * The root's repositories followed by every member's, one entry per name, first declaration
+     * wins — the list the workspace lock resolves every member against.
+     */
+    static List<RepositorySpec> hoistRepositories(List<RepositorySpec> root, Collection<JkBuild> members) {
+        Map<String, RepositorySpec> byName = new LinkedHashMap<>();
+        for (RepositorySpec spec : root) byName.putIfAbsent(spec.name(), spec);
+        for (JkBuild member : members) {
+            for (RepositorySpec spec : member.repositories()) byName.putIfAbsent(spec.name(), spec);
+        }
+        return List.copyOf(byName.values());
     }
 
     // --- unsupported-section warnings ---------------------------------------

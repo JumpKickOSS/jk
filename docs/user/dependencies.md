@@ -118,6 +118,19 @@ refusal says so, naming each repository asked and its policy:
   │   1.3.10-SNAPSHOT is a snapshot, and no repository org.questdb:questdb-client may resolve from serves snapshots: central (releases only). Declare one under [repositories] …
 ```
 
+### An exact version the first catalog does not list
+
+Version discovery asks the repositories in order and stops at the first `maven-metadata.xml`
+that lists a release — one read per dependency in the common case. When a version something asked
+for by name (the project's pin, or the plain version a dependency's POM wrote) is missing from that
+catalog, the remaining repositories are asked too and their catalogs unioned — the way Maven asks
+every repository for an exact version. An artifact whose old releases sit on Central and whose
+current ones sit on a vendor repository therefore resolves to the pinned version from the vendor
+repository, with that repository as its lock `source`.
+
+`jk import` hoists every reactor module's `<repositories>` onto the workspace root, since the
+workspace lock resolves every member against the root's list.
+
 ### Classifiers that follow the host
 
 Some POMs spell a platform artifact's classifier with a property a Maven build values from the
