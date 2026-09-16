@@ -1,9 +1,12 @@
 # The declarative layer jk reads in-process: the table this plugin owns, the keys it accepts,
-# and what it contributes. The jk floor is the release whose SDK the code compiled against.
+# and what it contributes. `sdk` is the jk-plugin-sdk release the code compiled against (the
+# version in jk.toml's [dependencies]): a consumer's lock pins the worker's SDK floor at it.
+# `jk-compat` is the oldest jk that loads the plugin.
 [plugin]
 id        = "hello"
 table     = "hello"
 version   = "0.1.0"
+sdk       = "0.13.7"
 jk-compat = ">=0.13"
 
 [schema]

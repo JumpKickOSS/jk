@@ -3,6 +3,7 @@ package cc.jumpkick.scaffold;
 
 import cc.jumpkick.docs.JkManual;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -196,6 +197,7 @@ public final class NewScaffolder {
                 id        = "%1$s"        # this plugin's identity
                 table     = "%1$s"        # the jk.toml table it owns
                 version   = "0.1.0"
+                sdk       = "%3$s"        # the jk-plugin-sdk release this compiles against (jk.toml [dependencies])
                 jk-compat = ">=0.10"      # the jk versions this plugin supports
 
                 # Typed keys for the [%1$s] table; jk validates the user's table against this for you,
@@ -207,7 +209,7 @@ public final class NewScaffolder {
                 # %1$s's manifest — they demux the worker's protocol lines from its stdout.
                 [code]
                 protocol-prefix = "%2$s"
-                """.formatted(id, prefix);
+                """.formatted(id, prefix, JkVersion.VERSION);
     }
 
     private static String renderJavaPlugin(String pkg, String className, String id, String prefix) {

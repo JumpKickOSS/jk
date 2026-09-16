@@ -43,6 +43,11 @@ public final class PluginDescriptors {
         String version = plugin.getString("version");
         String jkCompat = plugin.getString("jk-compat");
         if (enforceJkCompat) requireJkCompat(id, jkCompat);
+        String sdk = plugin.getString("sdk");
+        if (sdk != null && sdk.isBlank()) {
+            throw new JkBuildParseException(displayPath + ".plugin.sdk must name the jk-plugin-sdk release the plugin"
+                    + " compiled against (a version such as \"" + JkVersion.VERSION + "\"), or be absent");
+        }
 
         Map<String, PluginDescriptor.SchemaKey> schema =
                 parseSchemaKeys(result.getTable("schema"), displayPath + ".schema");
@@ -124,6 +129,7 @@ public final class PluginDescriptors {
                 table,
                 version,
                 jkCompat,
+                sdk,
                 schema,
                 contributions,
                 code,

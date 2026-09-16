@@ -12,6 +12,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -27,7 +29,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A path-pinned plugin's lock carries its SDK floor as ordinary {@code plugin}-scoped rows
- * resolved from the consumer's declared repositories, and the fork classpath is made of them.
+ * resolved from the consumer's declared repositories, at the SDK version the plugin's manifest
+ * names (the running jk's, with a note, when it names none), and the fork classpath is made of
+ * them.
  *
  * <p>The declared repository is a file tree this test publishes, with stand-ins for
  * {@code jk-plugin-sdk} and {@code jk-host} at the running jk's version; the first-party repository
@@ -39,33 +43,15 @@ class PluginSdkFloorTest {
 
     @Test
     void a_path_pins_lock_carries_the_sdk_floor_and_the_fork_classpath_contains_it(@TempDir Path tmp) throws Exception {
-        Path repo = publishSdk(tmp.resolve("repo"));
-        Path project = Files.createDirectories(tmp.resolve("proj"));
-        Path pluginJar = jar(project.resolve("hello.jar"), "hello-plugin");
-        String pin = Hashing.sha256Hex(pluginJar);
-        Files.writeString(project.resolve("jk.toml"), """
-                name    = "demo"
-                group   = "com.demo"
-                version = "0.1.0"
-
-                [m2]
-                integration = false
-                install = false
-
-                [repositories]
-                local = "%s"
-
-                [plugins]
-                hello = { path = "hello.jar", sha256 = "%s" }
-                """.formatted(repo.toUri(), pin));
-        JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
+        Path repo = publishSdk(tmp.resolve("repo"), JkVersion.VERSION);
+        JkBuild build = consumer(tmp.resolve("proj"), repo);
         PluginDeclaration decl = build.plugins().getFirst();
         assertThat(PluginSdkFloor.needsFloor(decl)).isTrue();
 
         Cas cas = JkStores.storeCas();
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         List<String> notes = new ArrayList<>();
-        List<Lockfile.Artifact> rows = PluginSdkFloor.rows(repos, decl, notes::add);
+        List<Lockfile.Artifact> rows = PluginSdkFloor.rows(repos, decl, null, notes::add);
 
         assertThat(rows)
                 .extracting(Lockfile.Artifact::name)
@@ -87,18 +73,75 @@ class PluginSdkFloorTest {
         assertThat(classpath.get(1).getFileName().toString()).startsWith("jk-host-");
     }
 
-    /** Stand-ins for the SDK floor in Maven layout: a jar and a POM per artifact at the running version. */
-    private static Path publishSdk(Path repo) throws Exception {
+    @Test
+    void a_manifest_that_names_its_sdk_pins_the_floor_at_that_version_without_a_note(@TempDir Path tmp)
+            throws Exception {
+        // A version no jk release has, so nothing but the manifest can be where the pin came from.
+        String declared = "0.0.1-sdk-test";
+        Path repo = publishSdk(tmp.resolve("repo"), declared);
+        JkBuild build = consumer(tmp.resolve("proj"), repo);
+        PluginDeclaration decl = build.plugins().getFirst();
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id      = "hello"
+                table   = "hello"
+                version = "0.1.0"
+                sdk     = "%s"
+                """.formatted(declared), "hello.jar!jk-plugin.toml");
+        assertThat(PluginSdkFloor.version(manifest)).isEqualTo(declared);
+        assertThat(PluginSdkFloor.version(null)).isEqualTo(JkVersion.VERSION);
+
+        // First-party coordinates route to the JumpKick repository alone, so the test's file
+        // repository stands in for it the way `jk lock --repo-url` does.
+        RepoGroup repos = RepoGroupBuilder.buildFor(build, repo.toUri(), JkStores.storeCas());
+        List<String> notes = new ArrayList<>();
+        List<Lockfile.Artifact> rows = PluginSdkFloor.rows(repos, decl, manifest, notes::add);
+
+        assertThat(rows)
+                .extracting(Lockfile.Artifact::name)
+                .containsExactly("cc.jumpkick:jk-plugin-sdk:jar:", "cc.jumpkick:jk-host:jar:");
+        assertThat(rows).allSatisfy(row -> {
+            assertThat(row.version()).isEqualTo(declared);
+            assertThat(row.scopes()).containsExactly(Scope.PLUGIN);
+            assertThat(row.pinnedBy()).isEqualTo("plugin:path:hello");
+        });
+        assertThat(notes).as("a declared SDK version needs no note").isEmpty();
+    }
+
+    /** A consumer pinning {@code hello.jar} by path, with {@code repo} as its one declared repository. */
+    private static JkBuild consumer(Path project, Path repo) throws Exception {
+        Files.createDirectories(project);
+        Path pluginJar = jar(project.resolve("hello.jar"), "hello-plugin");
+        String pin = Hashing.sha256Hex(pluginJar);
+        Files.writeString(project.resolve("jk.toml"), """
+                name    = "demo"
+                group   = "com.demo"
+                version = "0.1.0"
+
+                [m2]
+                integration = false
+                install = false
+
+                [repositories]
+                local = "%s"
+
+                [plugins]
+                hello = { path = "hello.jar", sha256 = "%s" }
+                """.formatted(repo.toUri(), pin));
+        return JkBuildParser.parse(project.resolve("jk.toml"));
+    }
+
+    /** Stand-ins for the SDK floor in Maven layout: a jar and a POM per artifact at {@code version}. */
+    private static Path publishSdk(Path repo, String version) throws Exception {
         for (String artifact : PluginSdkFloor.ARTIFACTS) {
             Path dir = Files.createDirectories(
-                    repo.resolve("cc/jumpkick").resolve(artifact).resolve(JkVersion.VERSION));
-            jar(dir.resolve(artifact + "-" + JkVersion.VERSION + ".jar"), artifact);
-            Files.writeString(dir.resolve(artifact + "-" + JkVersion.VERSION + ".pom"), """
+                    repo.resolve("cc/jumpkick").resolve(artifact).resolve(version));
+            jar(dir.resolve(artifact + "-" + version + ".jar"), artifact);
+            Files.writeString(dir.resolve(artifact + "-" + version + ".pom"), """
                     <project><modelVersion>4.0.0</modelVersion>
                     <groupId>cc.jumpkick</groupId><artifactId>%s</artifactId><version>%s</version>
                     </project>
-                    """.formatted(
-                            artifact, JkVersion.VERSION));
+                    """.formatted(artifact, version));
         }
         return repo;
     }

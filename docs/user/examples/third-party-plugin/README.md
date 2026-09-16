@@ -24,9 +24,10 @@ greeting = "hi"
 ```
 
 `jk lock` materializes the manifest, validates `[hello]` against its schema, stores the jar's
-bytes under their pin and adds the plugin's SDK floor (`jk-plugin-sdk`, `jk-host` at the running
-jk's version) to the lock as `plugin`-scoped rows resolved from the consumer's `[repositories]`;
-the worker forks with the jar plus those rows. The javac flag applies to the consumer's compile
+bytes under their pin and adds the plugin's SDK floor (`jk-plugin-sdk`, `jk-host` at the version
+the manifest's `sdk` names) to the lock as `plugin`-scoped rows resolved from the consumer's
+`[repositories]`; the worker forks with the jar plus those rows. A manifest without `sdk` is
+pinned at the running jk's version, and the lock says so in a note. The javac flag applies to the consumer's compile
 and is part of its compile key. The code layer forks only after `jk trust plugin path:hello` — a path pin is trusted
 by its `path:<alias>` coordinate, and jk refuses untrusted third-party code with that exact
 remedy.
@@ -41,6 +42,7 @@ file:///tmp/sdk-repo`. The integration test that drives this sample end to end
 (`ThirdPartyPluginExampleTest`) does exactly that, so the sample carries no committed lock until
 the SDK is served publicly.
 
-The `jk-compat` floor in `jk-plugin.toml` is the SDK release the plugin compiled against: jk
-refuses to load the plugin on an older jk with an upgrade error instead of failing inside the
-worker.
+Two versions in `jk-plugin.toml` describe the SDK: `sdk` is the exact `jk-plugin-sdk` release the
+code compiled against — the same number as the `[dependencies]` pin in `jk.toml`, and what a
+consumer's lock pins the worker's floor at — and `jk-compat` is the oldest jk that may load the
+plugin; jk refuses an older one with an upgrade error instead of failing inside the worker.
