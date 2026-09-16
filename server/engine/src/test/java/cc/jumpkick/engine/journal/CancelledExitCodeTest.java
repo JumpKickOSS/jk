@@ -5,8 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -81,6 +85,65 @@ class CancelledExitCodeTest {
         assertThat(r.cancelled()).isFalse();
         assertThat(r.success()).isTrue();
         assertThat(r.exitCode()).isEqualTo(Exit.SUCCESS);
+    }
+
+    /**
+     * Fail-fast: a module fails, the body rules {@code failed}, and a sibling still in flight ends
+     * its plan cancelled when the request is torn down. That plan's cancel is the failure's
+     * collateral, and the row keeps the failure's own verdict and code.
+     */
+    @Test
+    void a_sibling_plan_stopped_by_fail_fast_after_the_failure_does_not_make_the_run_cancelled() {
+        BuildAccumulator a = acc();
+        a.addModule(new ModuleOutcome("g:a", Path.of("/w/a"), false, Exit.FAILURE, 10, true));
+        a.stamp(JobOutcome.failed(Exit.FAILURE));
+        a.addBuildPlan("/w/b", cancelledPlan("b"));
+        a.addModule(new ModuleOutcome("g:b", Path.of("/w/b"), false, Exit.TESTS_FAILED, 20, true, true));
+
+        BuildRecord r = record(a, true);
+
+        assertThat(r.cancelled()).isFalse();
+        assertThat(r.success()).isFalse();
+        assertThat(r.exitCode()).isEqualTo(Exit.FAILURE);
+    }
+
+    /** The same sibling plan landing before the body has stamped: the recorded failure still rules. */
+    @Test
+    void a_sibling_plan_stopped_by_fail_fast_before_the_stamp_does_not_make_the_run_cancelled() {
+        BuildAccumulator a = acc();
+        a.addModule(new ModuleOutcome("g:a", Path.of("/w/a"), false, Exit.FAILURE, 10, true));
+        a.addBuildPlan("/w/b", cancelledPlan("b"));
+        a.stamp(JobOutcome.failed(Exit.FAILURE));
+
+        BuildRecord r = record(a, true);
+
+        assertThat(r.cancelled()).isFalse();
+        assertThat(r.exitCode()).isEqualTo(Exit.FAILURE);
+    }
+
+    /** A plan cancelled with no failure anywhere is what a Ctrl-C looks like from inside a plan. */
+    @Test
+    void a_plan_cancelled_with_no_failure_before_it_is_the_users_cancel() {
+        BuildAccumulator a = acc();
+        a.addBuildPlan("/w/a", cancelledPlan("a"));
+
+        BuildRecord r = record(a, true);
+
+        assertThat(r.cancelled()).isTrue();
+        assertThat(r.exitCode()).isEqualTo(Exit.INTERRUPTED);
+    }
+
+    private static BuildPlanResult cancelledPlan(String name) {
+        return new BuildPlanResult(
+                name,
+                false,
+                Duration.ofMillis(20),
+                List.of(new BuildPlanResult.StepReport(
+                        "run-tests", TaskStatus.CANCELLED, Duration.ofMillis(20), List.of())),
+                List.of(),
+                List.of(new BuildPlanResult.Diagnostic("run-tests", "cancelled", "test run cancelled")),
+                true,
+                true);
     }
 
     /**

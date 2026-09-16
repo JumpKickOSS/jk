@@ -57,6 +57,14 @@ them, and the fix (`jk why <coordinate>`), with the fork's output as the fenced 
 counted as a red test, so there is no `Tests:` line for it. MCP `jk_diagnostics` returns it as one
 row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-launcher-cannot-start).
 
+The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
+red tests) is a build that stopped at a failure; `CANCELLED` with `exit 130` is a run a user or a
+deadline interrupted, and only that. When one module fails, the build stops admitting the others
+and the modules already in flight are stopped where they stand: their unfinished steps are one
+line under `## Failed steps` — `_N steps stopped by the failure._` — the module reads `SKIPPED`
+in `## Modules` and in the `Modules:` count, and a test run that was stopped is not a failure
+under `## Failures`. `jk build --continue` runs every module to the end instead.
+
 The two markdown files are the same report. JUnit XML stays at `target/reports/test-results/`.
 There is no separate `test-results.md`. MCP: **`jk_results`** and resource
 `jk://runs/latest/results`. After a test run, prefer this file over `--all` guesswork:

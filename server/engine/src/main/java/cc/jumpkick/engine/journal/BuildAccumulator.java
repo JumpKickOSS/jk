@@ -190,8 +190,9 @@ public final class BuildAccumulator {
     /**
      * Genuine user/deadline cancellation — set by {@link #markUserCancelled} when CANCEL_REQUEST /
      * mid-job EOF / deadline fires, or by a finished plan with
-     * {@link BuildPlanResult#userCancelled}. Not the racy end-of-request EOF after a terminal
-     * outcome (that is ignored in {@link #markUserCancelled} / {@link #toRecord}).
+     * {@link BuildPlanResult#userCancelled} that arrives before any verdict or failure. Not the
+     * racy end-of-request EOF after a terminal outcome, and not a sibling plan stopped by
+     * fail-fast (both are ignored in {@link #markUserCancelled} / {@link #toRecord}).
      */
     public boolean wasCancelled() {
         return userCancelled;
@@ -489,7 +490,11 @@ public final class BuildAccumulator {
             requiresByDir.computeIfAbsent(d0, k -> new ConcurrentHashMap<>()).put(s.name(), List.copyOf(s.requires()));
         }
         if (!result.success()) anyFailure = true;
-        if (result.userCancelled()) userCancelled = true;
+        // A plan's cancel is the run's cancel only while the run has neither ruled nor failed. In a
+        // fail-fast workspace the siblings still in flight when a module fails end their plans as
+        // cancelled once the engine tears the request down, and that cancel arrives here after the
+        // body stamped a failure; it is the failure's collateral, not something the user did.
+        if (result.userCancelled()) markUserCancelled(false);
     }
 
     /**
