@@ -54,7 +54,8 @@ class JsonTest {
                 new BuildRecord.CacheBenefit(9000, 6000, 3, 4),
                 false,
                 new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096),
-                42L);
+                42L,
+                null);
 
         BuildRecord back = Json.read(Json.write(original));
 
@@ -98,6 +99,47 @@ class JsonTest {
     }
 
     @Test
+    void roundtrips_a_publish_row() {
+        BuildRecord original = new BuildRecord(
+                "20260710T143022417-0001",
+                0,
+                1,
+                "publish",
+                "/p",
+                "g:a",
+                null,
+                0,
+                5,
+                5,
+                false,
+                false,
+                1,
+                "9.9",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                0L,
+                new BuildRecord.Publish(
+                        "Central Portal (automatic)",
+                        8,
+                        false,
+                        "dep-1",
+                        "FAILED",
+                        List.of("e1", "e2"),
+                        List.of("a/b.jar")));
+        BuildRecord back = Json.read(Json.write(original));
+        assertThat(back.publish()).isEqualTo(original.publish());
+        assertThat(Json.read(Json.write(original.withBuildNumber(2))).publish()).isEqualTo(original.publish());
+    }
+
+    @Test
     void roundtrips_a_minimal_record_with_null_coord_and_no_tests() {
         BuildRecord original = new BuildRecord(
                 "20260710T143022417-0000",
@@ -124,7 +166,8 @@ class JsonTest {
                 null,
                 false,
                 null,
-                0L);
+                0L,
+                null);
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.coord()).isNull();
         assertThat(back.tests()).isNull();
@@ -223,7 +266,8 @@ class JsonTest {
                 null,
                 false,
                 null,
-                0L);
+                0L,
+                null);
     }
 
     private static int countOf(String haystack, String needle) {

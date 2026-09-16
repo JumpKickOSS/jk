@@ -175,7 +175,7 @@ public final class LocalProjectBuilder {
         // 4. Render the POM, stamped with the published coordinate + version.
         String pomXml = PublishablePom.render(
                         withCoordinate(project, group, artifact, version),
-                        PublishablePom.Metadata.empty(),
+                        null,
                         WorkspaceResolve.siblingCoordinates(projectDir))
                 .xml();
 

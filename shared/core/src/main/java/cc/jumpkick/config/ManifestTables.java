@@ -10,6 +10,7 @@ import cc.jumpkick.model.Features;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
+import cc.jumpkick.model.PomMetadata;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.RepositorySpec;
@@ -32,6 +33,7 @@ import java.util.Optional;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
+import org.tomlj.TomlArray;
 import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
@@ -184,6 +186,92 @@ public final class ManifestTables {
         }
         if (productLib == null && productBin == null) return Optional.empty();
         return Optional.of(new JkBuild.Install(productLib, productBin));
+    }
+
+    static final List<String> PUBLISH_KEYS = List.of("name", "url", "licenses", "developers", "scm");
+    static final List<String> PUBLISH_LICENSE_KEYS = List.of("name", "url");
+    static final List<String> PUBLISH_DEVELOPER_KEYS = List.of("id", "name", "email");
+    static final List<String> PUBLISH_SCM_KEYS = List.of("url", "connection", "developer-connection");
+
+    /**
+     * {@code [publish]} — the POM metadata a release carries. Every key is optional here; what a
+     * repository requires is the repository's rule, and {@code jk publish --central} names the
+     * missing ones before it signs anything.
+     */
+    static Optional<PomMetadata> parsePublish(TomlTable root) {
+        if (root.contains("publish") && !root.isTable("publish")) {
+            throw new JkBuildParseException(
+                    "`publish` must be a table — use [publish] with url, licenses, developers, scm");
+        }
+        TomlTable publish = root.getTable("publish");
+        if (publish == null) return Optional.empty();
+        rejectUnknownKeys(publish, PUBLISH_KEYS, "[publish]");
+        List<PomMetadata.License> licenses = new ArrayList<>();
+        for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
+            rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
+            String name = stringOrThrow(t, "name", "publish.licenses.name");
+            if (name == null || name.isBlank()) {
+                throw new JkBuildParseException(
+                        "[publish] licenses: every license needs a name (an SPDX id such as Apache-2.0)");
+            }
+            licenses.add(new PomMetadata.License(name, stringOrThrow(t, "url", "publish.licenses.url")));
+        }
+        List<PomMetadata.Developer> developers = new ArrayList<>();
+        for (TomlTable t : tables(publish, "developers", "publish.developers")) {
+            rejectUnknownKeys(t, PUBLISH_DEVELOPER_KEYS, "[publish] developers");
+            String id = stringOrThrow(t, "id", "publish.developers.id");
+            if (id == null || id.isBlank()) {
+                throw new JkBuildParseException("[publish] developers: every developer needs an id");
+            }
+            developers.add(new PomMetadata.Developer(
+                    id,
+                    stringOrThrow(t, "name", "publish.developers.name"),
+                    stringOrThrow(t, "email", "publish.developers.email")));
+        }
+        PomMetadata.Scm scm = null;
+        if (publish.contains("scm")) {
+            if (!publish.isTable("scm")) {
+                throw new JkBuildParseException(
+                        "[publish] scm must be a table with url, connection, developer-connection");
+            }
+            TomlTable t = Objects.requireNonNull(publish.getTable("scm"));
+            rejectUnknownKeys(t, PUBLISH_SCM_KEYS, "[publish] scm");
+            scm = new PomMetadata.Scm(
+                    stringOrThrow(t, "url", "publish.scm.url"),
+                    stringOrThrow(t, "connection", "publish.scm.connection"),
+                    stringOrThrow(t, "developer-connection", "publish.scm.developer-connection"));
+        }
+        return Optional.of(new PomMetadata(
+                stringOrThrow(publish, "name", "publish.name"),
+                null,
+                stringOrThrow(publish, "url", "publish.url"),
+                licenses,
+                developers,
+                scm));
+    }
+
+    private static List<TomlTable> tables(TomlTable parent, String key, String displayPath) {
+        if (!parent.contains(key)) return List.of();
+        if (!(parent.get(key) instanceof TomlArray arr)) {
+            throw new JkBuildParseException("`" + displayPath + "` must be an array of tables");
+        }
+        List<TomlTable> out = new ArrayList<>(arr.size());
+        for (int i = 0; i < arr.size(); i++) {
+            if (!(arr.get(i) instanceof TomlTable t)) {
+                throw new JkBuildParseException("`" + displayPath + "` must be an array of tables");
+            }
+            out.add(t);
+        }
+        return out;
+    }
+
+    private static void rejectUnknownKeys(TomlTable table, List<String> known, String where) {
+        for (String key : table.keySet()) {
+            if (!known.contains(key)) {
+                throw new JkBuildParseException(
+                        where + " unknown key `" + key + "` — expected one of: " + String.join(", ", known));
+            }
+        }
     }
 
     /** Present boolean key → its value; absent → null (caller applies the default). */

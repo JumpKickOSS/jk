@@ -42,7 +42,12 @@ public record JkBuild(
          * for every ordinary target — a library, an executable, a native binary, a script, an
          * external jar — which is the point: those five shapes are complete as they are.
          */
-        @Nullable Install install) {
+        @Nullable Install install,
+        /**
+         * {@code [publish]}: the POM metadata a release carries — name, url, licenses, developers,
+         * scm. {@code null} when the manifest (and its workspace root) declares none.
+         */
+        @Nullable PomMetadata publish) {
 
     public JkBuild {
         Objects.requireNonNull(project, "project");
@@ -83,6 +88,7 @@ public record JkBuild(
                 Build.EMPTY,
                 FormatConfig.EMPTY,
                 Variants.EMPTY,
+                null,
                 null);
     }
 
@@ -103,6 +109,7 @@ public record JkBuild(
                 Build.EMPTY,
                 FormatConfig.EMPTY,
                 Variants.EMPTY,
+                null,
                 null);
     }
 
@@ -157,7 +164,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** This build without the plugin config {@code id} (no-op when absent). */
@@ -180,7 +188,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /**
@@ -207,7 +216,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
@@ -227,7 +237,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
@@ -247,7 +258,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
@@ -267,7 +279,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** True when the {@code [spring-boot]} plugin table is declared. */
@@ -359,7 +372,8 @@ public record JkBuild(
                 .build(build)
                 .format(format)
                 .variants(variants)
-                .install(install);
+                .install(install)
+                .publish(publish);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -386,7 +400,8 @@ public record JkBuild(
                 .build(build)
                 .format(format)
                 .variants(variants)
-                .install(install);
+                .install(install)
+                .publish(publish);
         for (PluginConfig config : pluginConfigs.values()) {
             b.pluginConfig(config);
         }
@@ -410,6 +425,7 @@ public record JkBuild(
         private FormatConfig format = FormatConfig.EMPTY;
         private Variants variants = Variants.EMPTY;
         private @Nullable Install install;
+        private @Nullable PomMetadata publish;
 
         private Builder(Project project) {
             this.project = project;
@@ -485,6 +501,11 @@ public record JkBuild(
             return this;
         }
 
+        public Builder publish(@Nullable PomMetadata publish) {
+            this.publish = publish;
+            return this;
+        }
+
         public JkBuild build() {
             return new JkBuild(
                     project,
@@ -501,8 +522,38 @@ public record JkBuild(
                     build,
                     format,
                     variants,
-                    install);
+                    install,
+                    publish);
         }
+    }
+
+    /** The {@code [publish]} table, or {@link PomMetadata#EMPTY} when none is declared. */
+    public PomMetadata pomMetadata() {
+        return publish == null ? PomMetadata.EMPTY : publish;
+    }
+
+    /** This build carrying {@code publish} as its {@code [publish]} table — how a member takes the root's. */
+    public JkBuild withPublish(@Nullable PomMetadata publish) {
+        if (Objects.equals(publish, this.publish)) return this;
+        Builder b = builder(project)
+                .dependencies(dependencies)
+                .repositories(repositories)
+                .profiles(profiles)
+                .features(features)
+                .workspace(workspace)
+                .manifest(manifest)
+                .plugins(plugins)
+                .application(application)
+                .nativeConfig(nativeConfig)
+                .build(build)
+                .format(format)
+                .variants(variants)
+                .install(install)
+                .publish(publish);
+        for (PluginConfig config : pluginConfigs.values()) {
+            b.pluginConfig(config);
+        }
+        return b.build();
     }
 
     /** Return a copy with the given custom jar-manifest attributes. */
@@ -522,7 +573,8 @@ public record JkBuild(
                 build,
                 format,
                 variants,
-                install);
+                install,
+                publish);
     }
 
     /** True iff this is a workspace root (has a non-empty {@code workspace} block). */

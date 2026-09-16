@@ -7,6 +7,7 @@ import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSessions;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.verbs.VerbHost;
@@ -88,6 +89,16 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public void accTests(long rid, @Nullable TestSummary tests) {
         journalWriter.accTests(rid, tests);
+    }
+
+    @Override
+    public long currentRequestId() {
+        return eventRequestId.getAsLong();
+    }
+
+    @Override
+    public void accPublish(long rid, BuildRecord.@Nullable Publish publish) {
+        journalWriter.accPublish(rid, publish);
     }
 
     @Override

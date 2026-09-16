@@ -125,6 +125,9 @@ Sources, in order — the first that yields a credential wins:
 4. the `<server>` with that `<id>` in `~/.m2/settings.xml`
 5. a `jk auth login` forge token, for forge package registries (matched by host)
 
+`jk publish --central` reads the id `central`, bound to `https://central.sonatype.com` — see
+[Publish: Maven Central](publish.md#maven-central).
+
 ### A name is not a destination
 
 Sources 2–4 are keyed by the repository *id*, and the project's `jk.toml` chooses which URL that

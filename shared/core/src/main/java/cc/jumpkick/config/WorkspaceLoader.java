@@ -120,7 +120,7 @@ public final class WorkspaceLoader {
                         + workspaceRoot
                         + "`.");
             }
-            modules.put(moduleDir, inheritFromRoot(moduleBuild, root));
+            modules.put(moduleDir, inheritPublish(inheritFromRoot(moduleBuild, root), root));
         }
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
@@ -142,6 +142,18 @@ public final class WorkspaceLoader {
         } catch (IllegalArgumentException e) {
             throw new JkBuildParseException("module `" + module.project().name() + "`: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * {@code module} carrying the workspace root's {@code [publish]} table when it declares none
+     * of its own. The metadata is a workspace fact — one home page, one license, one team — so
+     * the root answers for it; a member's own table wins wholesale.
+     */
+    public static JkBuild inheritPublish(JkBuild module, JkBuild root) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(root, "root");
+        if (module.publish() != null || root.publish() == null) return module;
+        return module.withPublish(root.publish());
     }
 
     /**

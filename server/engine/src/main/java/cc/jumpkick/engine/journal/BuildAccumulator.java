@@ -73,6 +73,7 @@ public final class BuildAccumulator {
     private final List<BuildRecord.Diag> diagnostics = new ArrayList<>();
     private int droppedDiagnostics;
     private volatile BuildRecord.@Nullable Tests tests;
+    private volatile BuildRecord.@Nullable Publish publish;
     private @Nullable AffectedTests affected;
     private volatile boolean anyFailure;
     // Whether this run recorded anything it can be judged on: a module outcome, a finished plan,
@@ -576,6 +577,12 @@ public final class BuildAccumulator {
      * a workspace build calls it per module (each module's {@code TEST_RESULT}), so the counts
      * accumulate into the run's total rather than the last module overwriting the rest.
      */
+    /** What a publish run sent where; the one Publish row a record carries. */
+    public synchronized void addPublish(BuildRecord.Publish p) {
+        anyFact = true;
+        publish = p;
+    }
+
     public synchronized void addTests(TestSummary t) {
         if (t == null) return;
         anyFact = true;
@@ -720,7 +727,8 @@ public final class BuildAccumulator {
                 benefitRow,
                 false,
                 ioRow,
-                requestId);
+                requestId,
+                publish);
     }
 
     private static boolean notBlank(String s) {

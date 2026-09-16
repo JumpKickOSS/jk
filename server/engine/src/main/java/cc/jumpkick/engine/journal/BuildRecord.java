@@ -44,7 +44,8 @@ public record BuildRecord(
         @Nullable CacheBenefit benefit,
         boolean running,
         @Nullable Io io,
-        long requestId) {
+        long requestId,
+        @Nullable Publish publish) {
 
     /**
      * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
@@ -86,7 +87,8 @@ public record BuildRecord(
                 benefit,
                 running,
                 io,
-                requestId);
+                requestId,
+                publish);
     }
 
     /** This record with its journal id set (begin path). */
@@ -116,7 +118,8 @@ public record BuildRecord(
                 benefit,
                 running,
                 io,
-                requestId);
+                requestId,
+                publish);
     }
 
     /**
@@ -160,7 +163,8 @@ public record BuildRecord(
                 /* benefit */ null,
                 /* running */ false,
                 io,
-                requestId);
+                requestId,
+                publish);
     }
 
     /** {@code trigger}, then the session that asked when there is one: {@code mcp · claude-code 3f9a}. */
@@ -242,11 +246,33 @@ public record BuildRecord(
                 null,
                 true,
                 null,
-                requestId);
+                requestId,
+                null);
     }
 
     /** Aggregate test counts for the run, or {@code null} when no tests ran. */
     public record Tests(long total, long succeeded, long failed, long skipped) {}
+
+    /**
+     * What a {@code jk publish} run sent where, or {@code null} for every other kind. {@code
+     * destination} is the repository URL or the Central Portal; {@code files} the files uploaded (or
+     * assembled, on a dry run). A Central deployment carries the id the Portal assigned, the
+     * {@code state} the poll ended in and every validation {@code error} it listed; {@code bundle}
+     * is the entries of the bundle it uploaded or, on a dry run, wrote.
+     */
+    public record Publish(
+            String destination,
+            int files,
+            boolean dryRun,
+            @Nullable String deploymentId,
+            @Nullable String deploymentState,
+            List<String> deploymentErrors,
+            List<String> bundle) {
+        public Publish {
+            deploymentErrors = deploymentErrors == null ? List.of() : List.copyOf(deploymentErrors);
+            bundle = bundle == null ? List.of() : List.copyOf(bundle);
+        }
+    }
 
     /**
      * Bytes this run moved, or {@code null} when it moved none (and on older records). {@code remote}

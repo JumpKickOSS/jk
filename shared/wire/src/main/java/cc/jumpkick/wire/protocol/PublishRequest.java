@@ -4,7 +4,11 @@ package cc.jumpkick.wire.protocol;
 import cc.jumpkick.jsonl.Jsonl;
 import org.jspecify.annotations.Nullable;
 
-/** An artifact publication request, including resolved credentials. */
+/**
+ * An artifact publication request, including resolved credentials. {@code central} selects the
+ * Sonatype Central Portal bundle flow at {@code repoUrl} (the Portal's base), with {@code
+ * publishingType} {@code USER_MANAGED} or {@code AUTOMATIC}.
+ */
 public record PublishRequest(
         @Nullable String dir,
         @Nullable String cache,
@@ -24,7 +28,9 @@ public record PublishRequest(
         @Nullable String pass,
         @Nullable String token,
         boolean offline,
-        boolean verbose) {
+        boolean verbose,
+        boolean central,
+        @Nullable String publishingType) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.PUBLISH_REQUEST)
@@ -47,6 +53,8 @@ public record PublishRequest(
                 .string("token", token)
                 .bool("offline", offline)
                 .bool("verbose", verbose)
+                .bool("centralPortal", central)
+                .string("publishingType", publishingType)
                 .finish();
     }
 
@@ -70,6 +78,8 @@ public record PublishRequest(
                 Jsonl.str(json, "pass"),
                 Jsonl.str(json, "token"),
                 Jsonl.bool(json, "offline", false),
-                Jsonl.bool(json, "verbose", false));
+                Jsonl.bool(json, "verbose", false),
+                Jsonl.bool(json, "centralPortal", false),
+                Jsonl.str(json, "publishingType"));
     }
 }

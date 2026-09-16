@@ -1,11 +1,12 @@
 # Publish and supply chain
 
 ```bash
-jk publish
-jk publish --sign
+jk publish --repo-url https://repo.example.com/releases/
+jk publish --sign --key-file ~/.gnupg/release.asc
 jk publish --sigstore
 jk publish --slsa
 jk publish --sbom
+jk publish --central --sign --key-file ~/.gnupg/release.asc   # Maven Central, via the Portal
 jk verify                 # rebuild in a scratch dir and diff artifact hashes
 jk audit                  # OSV
 jk deny                   # apply [deny.sources]
@@ -17,8 +18,69 @@ always a **dry-run** so tokens never enter the engine — [MCP](mcp.md).
 Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md).
 
 A library's release set — jar, POM, `-sources.jar`, `-javadoc.jar` — is what `jk build` already
-wrote; Maven Central refuses a release missing either classifier jar.
+wrote, and `jk publish` uploads the two classifier jars whenever they are on disk; Maven Central
+refuses a release missing either.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
+
+## POM metadata: `[publish]`
+
+The POM carries the coordinate, the `description` and the dependencies from `jk.toml`. A release
+also names its home page, licenses, people and source repository — Maven Central refuses a POM
+without every one of them — and those live in a `[publish]` table. Every key is optional for a
+private repository; a workspace root's table applies to every member that declares none, and a
+member's own table wins wholesale.
+
+```toml
+[publish]
+name = "Widget"                      # POM <name>; default: the artifact id
+url = "https://example.com/widget"
+licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
+developers = [{ id = "ada", name = "Ada Lovelace", email = "ada@example.com" }]
+scm = { url = "https://github.com/example/widget",
+        connection = "scm:git:https://github.com/example/widget.git",
+        developer-connection = "scm:git:ssh://git@github.com/example/widget.git" }
+```
+
+## Maven Central
+
+`jk publish --central` publishes through the Sonatype Central Portal: one signed bundle — jar,
+POM, sources jar, javadoc jar, a detached GPG `.asc` on each, `.md5` and `.sha1` beside each — is
+uploaded to the Portal's API, and jk polls the deployment until the Portal rules.
+
+```bash
+# once: the Portal user token (central.sonatype.com → account → Generate User Token)
+printf '%s' "$TOKEN_PASSWORD" | jk repo login central --url https://central.sonatype.com --username "$TOKEN_NAME"
+
+jk build                                                   # the four artefacts
+jk publish --central --sign --key-file ~/.gnupg/release.asc   # JK_GPG_PASSPHRASE or --key-passphrase
+#   Published com.example:widget:1.0.0 to the Central Portal (16 files)
+#     deployment 28570f16-… · VALIDATED — release it from the Portal, or publish with --publishing-type automatic
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--central` | the Portal instead of a repository URL; requires `--sign --key-file` and the `[publish]` table |
+| `--publishing-type user-managed` | default: the Portal validates and parks the deployment for a click in its UI (`VALIDATED`) |
+| `--publishing-type automatic` | the Portal releases a valid deployment to Central on its own (`PUBLISHED`) |
+| `--repo-url <url>` | another Portal (a mirror, a stub) instead of `https://central.sonatype.com/` |
+| `--dry-run` | write the bundle to `target/publish/central-bundle.zip`, list its entries, upload nothing |
+
+Before anything is signed, jk refuses with the exact fix when the sources or javadoc jar is not
+on disk, when `[publish]` lacks a key Central requires, or when `--sign` is absent. The poll walks
+`PENDING → VALIDATING → VALIDATED` (`→ PUBLISHING → PUBLISHED` with `automatic`); a `FAILED`
+deployment fails the run and prints every validation error the Portal listed.
+
+The credential is the `central` entry: `jk repo login central --url https://central.sonatype.com`
+with the token's name as `--username` and its password on stdin (jk sends the Portal the base64
+`name:password` it documents), or a token already encoded, on stdin without `--username`. From
+CI, `JK_REPO_CENTRAL_USERNAME` + `JK_REPO_CENTRAL_PASSWORD` (or `JK_REPO_CENTRAL_TOKEN`) with
+`JK_REPO_CENTRAL_HOST=central.sonatype.com` beside them — the same name-to-origin binding every
+stored credential needs ([Repositories: credentials](repositories.md#credentials)). `--user` /
+`--password` on the command line are the token's name and password too.
+
+`target/jk-results.md` gets a **Publish** block for every publish run — the target, the file
+count, and for Central the deployment id, the state the poll ended in and every validation error
+— so a failed release is diagnosed from the results file, not from scrollback.
 
 ## SBOM
 
