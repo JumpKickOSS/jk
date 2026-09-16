@@ -55,19 +55,21 @@ class RepoMissesTest {
     }
 
     @Test
-    void a_catalog_a_repository_lacks_is_asked_of_it_once_across_locks(@TempDir Path tmp) throws Exception {
+    void a_catalog_miss_is_asked_again_because_a_catalog_answers_once_something_is_published(@TempDir Path tmp)
+            throws Exception {
         RepoGroup group = group(tmp);
 
         assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactly("1.0");
-        // The next lock's version walk: the process memo of the list has expired, the on-disk
-        // catalog copy of the repository that has it is within its TTL.
+        // Published on the repository that had nothing; the next walk (the list memo expired) sees it.
+        new MavenStub(empty).metadata("com.example", "lib", "2.0");
         RepoGroup.clearProcessVersionsCache();
-        assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactly("1.0");
+        assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactlyInAnyOrder("1.0", "2.0");
 
-        assertThat(empty.requestsFor(META)).as("the miss was paid once").isEqualTo(1);
+        assertThat(empty.requestsFor(META)).as("a catalog is asked every time").isEqualTo(2);
         assertThat(full.requestsFor(META))
                 .as("the hit came off disk the second time")
                 .isEqualTo(1);
+        assertThat(RepoMisses.size()).as("catalogs are not memoized").isZero();
     }
 
     @Test

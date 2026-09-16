@@ -132,10 +132,6 @@ public final class MavenMetadataCache {
         if (!force && fresh(body)) {
             return Files.readAllBytes(body);
         }
-        // A catalog this repository already said it lacks is not asked for again within the TTL.
-        if (!force && RepoMisses.known(uri)) {
-            throw new MavenRepo.ArtifactNotFoundException("not found: " + uri);
-        }
         Map<String, String> auth = AuthHeaders.of(credential);
         Map<String, String> headers = new LinkedHashMap<>(auth);
         // Validators speak only for the body they were stored beside. A sidecar that outlived its
@@ -162,13 +158,11 @@ public final class MavenMetadataCache {
             }
             if (status == 200) {
                 store(body, meta, resp);
-                RepoMisses.forget(uri);
                 // A fresh index off the network — a 304 revalidation costs no payload, so isn't metered.
                 SessionContext.current().io().remoteDown(body);
                 return resp.body();
             }
             if (status == 404) {
-                RepoMisses.record(uri);
                 throw new MavenRepo.ArtifactNotFoundException("not found: " + uri);
             }
             // 4xx (incl. 429) / other: reuse a stale copy rather than fail the
