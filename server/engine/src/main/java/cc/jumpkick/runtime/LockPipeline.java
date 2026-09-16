@@ -446,12 +446,13 @@ public final class LockPipeline {
         List<Lockfile.Artifact> sdkRows = new ArrayList<>();
         for (PluginDeclaration pd : effective.plugins()) {
             progress.label("lock " + pd.coordinate());
-            entries.add(pinDeclared(pd, repos, progress));
+            Pinned pinned = pinDeclared(pd, repos, progress);
+            entries.add(pinned.entry());
             // A third-party plugin forks with the SDK it compiled against; the floor rides in this
             // lock as [[artifact]] rows the consumer's repositories resolve, like any dependency.
             if (PluginSdkFloor.needsFloor(pd)) {
                 try {
-                    sdkRows.addAll(PluginSdkFloor.rows(repos, pd, progress::note));
+                    sdkRows.addAll(PluginSdkFloor.rows(repos, pd, pinned.descriptor(), progress::note));
                 } catch (IOException | InterruptedException e) {
                     if (e instanceof InterruptedException)
                         Thread.currentThread().interrupt();
@@ -567,7 +568,11 @@ public final class LockPipeline {
         return false;
     }
 
-    private Lockfile.PluginEntry pinDeclared(PluginDeclaration pd, RepoGroup repos, Progress progress) {
+    /** A declared plugin's lock row and the descriptor its jar carries (null: not a build plugin). */
+    private record Pinned(
+            Lockfile.PluginEntry entry, @Nullable PluginDescriptor descriptor) {}
+
+    private Pinned pinDeclared(PluginDeclaration pd, RepoGroup repos, Progress progress) {
         String hex;
         Path jarPath;
         try {
@@ -597,13 +602,14 @@ public final class LockPipeline {
         } catch (Exception e) {
             throw new IllegalStateException(pd.coordinate() + " — " + e.getMessage(), e);
         }
+        PluginDescriptor descriptor = null;
         try {
-            PluginDescriptorOps.materialize(lockDir, hex, jarPath, pd.coordinate());
+            descriptor = PluginDescriptorOps.materialize(lockDir, hex, jarPath, pd.coordinate());
         } catch (IOException noDescriptor) {
             progress.note("note: " + pd.coordinate()
                     + " has no jk-plugin.toml — locked, but it will not own a jk.toml table");
         }
-        return new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex);
+        return new Pinned(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex), descriptor);
     }
 
     private static void requireSha(PluginDeclaration pd, String hex, String subject, String where) {

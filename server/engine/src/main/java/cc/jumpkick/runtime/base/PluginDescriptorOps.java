@@ -83,10 +83,11 @@ public final class PluginDescriptorOps {
      * descriptor is shown to be the pinned artifact's own ({@link #requireOwnDescriptor}).
      *
      * @param pinnedCoordinate the lock's {@code group:artifact} for the jar, or a {@code path:<alias>} pin
+     * @return the descriptor the jar carries, parsed without the {@code jk-compat} check
      * @throws IOException when the jar has no root descriptor: not a build plugin
      * @throws IllegalStateException when the descriptor belongs to another plugin; nothing is written
      */
-    public static void materialize(Path moduleDir, String sha256Hex, Path jar, String pinnedCoordinate)
+    public static PluginDescriptor materialize(Path moduleDir, String sha256Hex, Path jar, String pinnedCoordinate)
             throws IOException {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry entry = zip.getEntry(ManifestPaths.PLUGIN_MANIFEST);
@@ -102,6 +103,7 @@ public final class PluginDescriptorOps {
             requireOwnDescriptor(descriptor, pinnedCoordinate, jar);
             Path target = PluginDescriptorStore.fileFor(moduleDir, sha256Hex);
             AtomicWrites.replace(target, text);
+            return descriptor;
         }
     }
 

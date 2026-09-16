@@ -52,12 +52,18 @@ jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.7"     # the release you compile
 id        = "hello"
 table     = "hello"
 version   = "0.1.0"
-jk-compat = ">=0.13"          # the floor: the jk line whose SDK you compiled against
+sdk       = "0.13.7"          # the jk-plugin-sdk release you compiled against — the pin above
+jk-compat = ">=0.13"          # the floor: the oldest jk line that loads this plugin
 ```
 
-The `jk-compat` floor is the contract between the two lines: a plugin built against release
-`N`'s SDK declares `>=N` and every later jk loads it, an older jk refuses it with an upgrade error
-before any code runs. Pick the oldest SDK whose SPI you use and name that release.
+Two versions describe the SDK. `sdk` is the exact release the code compiled against, the same
+number as the `[dependencies]` pin: a consumer's `jk lock` pins the worker's SDK floor
+(`jk-plugin-sdk`, `jk-host`) at it, as `plugin`-scoped rows resolved from the consumer's
+repositories, so the worker forks on the SPI it was built for whatever jk is running. A manifest
+without `sdk` is pinned at the running jk's version and the lock notes that. `jk-compat` is the
+contract between the two lines: a plugin built against release `N`'s SDK declares `>=N` and every
+later jk loads it, an older jk refuses it with an upgrade error before any code runs. Pick the
+oldest SDK whose SPI you use and name that release.
 
 The first-party plugins under `plugins/` keep the workspace edge on purpose: the self-host build
 compiles them against the SDK in the tree, so a release never depends on a prior release having
@@ -104,6 +110,7 @@ id        = "spring-boot"
 table     = "spring-boot"     # jk.toml table you own
 version   = "1.0.0"
 jk-compat = ">=0.10"
+# sdk = "0.13.7"              # out-of-tree plugins: the jk-plugin-sdk release compiled against
 
 [schema]
 version = { type = "string", required = true, example = "4.1.0",

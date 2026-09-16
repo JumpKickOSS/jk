@@ -80,7 +80,12 @@ marketplace: a consumer pins a plugin jar by content (path or Maven coordinate +
 ```
 
 A private jar keeps its `sha256` pin across jk upgrades: the lock's `[[plugin]]` row is the
-declaration's digest, and a jar that disagrees with it is refused. The first-party plugins that
+declaration's digest, and a jar that disagrees with it is refused. Its worker forks with the SDK
+it compiled against: `jk lock` adds `jk-plugin-sdk` and `jk-host` at the version the plugin's
+manifest names (`[plugin] sdk`) to the lock as `plugin`-scoped rows, resolved from your
+`[repositories]`; a manifest that names none is pinned at the running jk's version, and the lock
+says so in a note. That scope is the lock's own — a `[plugin-dependencies]` table in `jk.toml`
+is refused. The first-party plugins that
 ship inside jk are pinned the other way round — their rows follow the running jk
 ([Lockfile](lockfile.md#what-else-the-lock-pins)).
 

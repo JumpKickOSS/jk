@@ -9,6 +9,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The SDK floor a pinned third-party plugin forks with: {@code jk-plugin-sdk} and {@code jk-host}
@@ -23,8 +25,8 @@ import java.util.function.Consumer;
  * resolved from the consumer's declared repositories. The fork classpath is the plugin's jar plus
  * these rows; nothing of the module's own compiles or runs with them.
  *
- * <p>A plugin manifest carries no SDK version, so the floor is pinned at the running jk's version,
- * and the lock says so in its notes.
+ * <p>The version is the one the plugin's manifest names ({@code [plugin] sdk}); a manifest
+ * without it is pinned at the running jk's version, and the lock says so in its notes.
  */
 public final class PluginSdkFloor {
 
@@ -38,17 +40,26 @@ public final class PluginSdkFloor {
         return !PluginJar.GROUP.equals(decl.group());
     }
 
+    /** The SDK version a plugin's floor pins: the manifest's {@code sdk}, else the running jk's. */
+    public static String version(@Nullable PluginDescriptor manifest) {
+        return manifest == null || manifest.sdk() == null ? JkVersion.VERSION : manifest.sdk();
+    }
+
     /**
-     * The lock rows for {@code decl}'s SDK floor, fetched from {@code repos}. Each row names the
-     * repository it came from and is pinned by the plugin's coordinate. A floor no declared
-     * repository serves yields no rows and a note: a plugin without a code layer never forks, and
-     * one that does is refused at the fork with the remedy ({@link #missing}).
+     * The lock rows for {@code decl}'s SDK floor, fetched from {@code repos} at
+     * {@link #version(PluginDescriptor) the manifest's SDK version}. Each row names the repository
+     * it came from and is pinned by the plugin's coordinate. A floor no declared repository serves
+     * yields no rows and a note: a plugin without a code layer never forks, and one that does is
+     * refused at the fork with the remedy ({@link #missing}).
      */
-    public static List<Lockfile.Artifact> rows(RepoGroup repos, PluginDeclaration decl, Consumer<String> note)
+    public static List<Lockfile.Artifact> rows(
+            RepoGroup repos, PluginDeclaration decl, @Nullable PluginDescriptor manifest, Consumer<String> note)
             throws IOException, InterruptedException {
-        String version = JkVersion.VERSION;
-        note.accept("note: " + decl.coordinate() + " declares no SDK version; its SDK floor ("
-                + String.join(", ", ARTIFACTS) + ") is pinned at the running jk, " + version);
+        String version = version(manifest);
+        if (manifest == null || manifest.sdk() == null) {
+            note.accept("note: " + decl.coordinate() + " declares no SDK version; its SDK floor ("
+                    + String.join(", ", ARTIFACTS) + ") is pinned at the running jk, " + version);
+        }
         List<Lockfile.Artifact> out = new ArrayList<>();
         for (String artifact : ARTIFACTS) {
             Coordinate coord = Coordinate.of(PluginJar.GROUP, artifact, version);

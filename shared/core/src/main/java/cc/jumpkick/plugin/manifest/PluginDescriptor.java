@@ -19,6 +19,11 @@ public record PluginDescriptor(
         String table,
         @Nullable String version,
         @Nullable String jkCompat,
+        /**
+         * The {@code jk-plugin-sdk} release the code layer compiled against ({@code [plugin] sdk}),
+         * or null: a consumer's lock pins the plugin's SDK floor at this version.
+         */
+        @Nullable String sdk,
         Map<String, SchemaKey> schema,
         Contributions contributions,
         @Nullable Code code,

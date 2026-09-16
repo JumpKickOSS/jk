@@ -20,7 +20,6 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
@@ -893,7 +892,7 @@ public final class PluginBuild {
                 : List.of();
         if (floor.isEmpty()) {
             throw new IOException("plugin " + active.manifest().id() + ": "
-                    + PluginSdkFloor.missing(declaration.coordinate(), JkVersion.VERSION));
+                    + PluginSdkFloor.missing(declaration.coordinate(), PluginSdkFloor.version(active.manifest())));
         }
         return floor;
     }

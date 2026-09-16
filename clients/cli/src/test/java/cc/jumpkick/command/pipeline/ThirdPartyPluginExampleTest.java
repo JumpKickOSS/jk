@@ -74,6 +74,9 @@ class ThirdPartyPluginExampleTest {
         assertThat(Files.readString(plugin.resolve("jk.toml")))
                 .as("the sample depends on the SDK coordinate at the running jk's version")
                 .contains("jk-plugin-sdk = \"cc.jumpkick:jk-plugin-sdk:" + VERSION + "\"");
+        assertThat(Files.readString(plugin.resolve("src/main/resources/jk-plugin.toml")))
+                .as("the manifest names the same SDK release the code compiles against")
+                .contains("sdk       = \"" + VERSION + "\"");
         // The SDK comes from the repository the release step wrote; the test launcher jk adds to
         // every test graph still comes from Central, so the repository is declared beside it.
         Files.writeString(
@@ -127,12 +130,19 @@ class ThirdPartyPluginExampleTest {
                 greeting = "hi"
                 """.formatted(
                         repoUrl, jar.toString().replace('\\', '/'), Hashing.sha256Hex(jar)));
-        assertThat(run("lock", "-C", app.toString())).isEqualTo(0);
+        int[] appLockExit = new int[1];
+        Capture.Streams appLock =
+                Capture.both((Runnable) () -> appLockExit[0] = run("lock", "--no-ansi", "-C", app.toString()));
+        assertThat(appLockExit[0]).as(appLock.out() + appLock.err()).isEqualTo(0);
+        assertThat(appLock.out() + appLock.err())
+                .as("the manifest's sdk pins the floor, so the running-version fallback note is absent")
+                .doesNotContain("declares no SDK version");
         assertThat(Files.readString(app.resolve("jk-lock.toml")))
-                .as("the plugin's SDK floor rides in the consumer's lock")
+                .as("the plugin's SDK floor rides in the consumer's lock at the manifest's SDK version")
                 .contains("cc.jumpkick:jk-plugin-sdk:jar:")
                 .contains("cc.jumpkick:jk-host:jar:")
-                .contains("scopes   = [\"plugin\"]");
+                .contains("scopes   = [\"plugin\"]")
+                .contains("pinned-by = \"plugin:path:hello\"");
         try (Stream<Path> manifests = Files.list(app.resolve("target/plugin-manifests"))) {
             assertThat(manifests.map(p -> p.getFileName().toString()))
                     .as("the plugin's manifest is materialized for the consumer")
