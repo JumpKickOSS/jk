@@ -106,7 +106,7 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
         if (parts.length < 3) return null;
         for (Entry entry : byRawGav.values()) {
             Model raw = entry.raw();
-            if (!parts[0].equals(groupOf(raw)) || !parts[1].equals(raw.getArtifactId())) continue;
+            if (!parts[1].equals(raw.getArtifactId()) || !parts[0].equals(interpolated(groupOf(raw), raw))) continue;
             if (parts[2].equals(interpolatedVersion(raw))) return entry;
         }
         return null;
@@ -114,7 +114,11 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
 
     /** The version as Maven would spell it: placeholders filled from this POM and its reactor parents. */
     String interpolatedVersion(Model raw) {
-        return CiFriendlyVersions.interpolate(versionOf(raw), name -> property(raw, name, 0));
+        return interpolated(versionOf(raw), raw);
+    }
+
+    private String interpolated(@Nullable String text, Model raw) {
+        return text == null ? "" : CiFriendlyVersions.interpolate(text, name -> property(raw, name, 0));
     }
 
     private @Nullable String property(Model raw, String name, int depth) {

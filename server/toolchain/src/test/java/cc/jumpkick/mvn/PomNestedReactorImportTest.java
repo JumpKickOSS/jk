@@ -170,7 +170,7 @@ class PomNestedReactorImportTest {
                     <artifactId>demo-parent</artifactId>
                     <version>${revision}</version>
                   </parent>
-                  <groupId>${project.parent.groupId}.collector</groupId>
+                  <groupId>io.demo.collector</groupId>
                   <artifactId>collector-parent</artifactId>
                   <packaging>pom</packaging>
                   <modules>
