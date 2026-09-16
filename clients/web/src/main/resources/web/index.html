@@ -425,6 +425,8 @@
              :aria-valuenow="progress(projectRun.card)" aria-valuemin="0" aria-valuemax="100">
           <span class="cardbar-fill" :style="{ width: progress(projectRun.card) + '%' }"><span class="cardbar-pct">{{ progress(projectRun.card) }}%</span></span>
         </div>
+        <!-- Since the previous run from the same origin: files, diagnostics, tests, wall (delta.js). -->
+        <run-delta v-if="projectRun.card.delta" :delta="projectRun.card.delta" :millis="projectRun.card.millis"></run-delta>
         <div v-for="m in failedModules(projectRun.card)" :key="m.dir" class="module">
           <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || projectRun.card.coord || ''"></phase-chain>
           <div v-if="m.diagnostics.length" class="diag"><div class="console">
