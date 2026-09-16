@@ -169,12 +169,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | main, run 2 | main, run 3 | main, run 4 | main, run 5 |
-|---|---:|---:|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 |
-| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 |
-| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 |
+| Count (of 20) | jk 0.13.7 | main, run 2 | main, run 3 | main, run 4 | main, run 5 | main, run 6 |
+|---|---:|---:|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -198,7 +198,13 @@ annotation processor run without its own dependencies (neo4j), a `module-info.ja
 the module path (cryptomator), a javadoc error the lenient mode still fails on (xxl-job), a
 sibling package the import drops (apollo), a test runner that exits before discovery (floci),
 and three resolver gaps (an ISO-style exclusive range, a `pkg` type, a version the listing
-misses). The other walls are named in the corpus's `tier3-reasons.md`, each with its ticket.
+misses). Run 6 (main 9439e27c4) imports thirteen clean and builds xxl-job, and lost mall's lock to
+the same version-listing gap that stops nacos, now a P1. It carries a caveat the table cannot
+show: `install.sh` from a tree's `target/dist` does not shelve the tree's worker jars, so the engine
+in that run fetched the published 0.13.7 compiler worker and the worker-side fixes of the day
+(the module path, the diagnostic bridge) were not in it; cryptomator's wall in run 6 is that
+caveat, not a regression. The other walls are named in the corpus's `tier3-reasons.md`, each with
+its ticket.
 
 ### Which Maven plugins import, and how well
 
