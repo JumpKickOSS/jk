@@ -77,8 +77,11 @@ and a classifier a POM spells with `${os.detected.classifier}` or `${javafx.plat
 as this host's word. A `<type>` maps where jk has a spelling — `pom` to `[platform-dependencies]`,
 `test-jar` to `kind = "tests"`, `ejb-client` to the `client` classifier — and a type jk cannot
 spell (`aar`, `war`, `zip`) is a Tier-3 row with the dependency left out rather than written as a
-jar that does not exist. Exclusions are still rows. Read that report before trusting the generated
-`jk.toml`.
+jar that does not exist. Exclusions are still rows. A `<version>` that no repository the lock reads
+lists (`swing-layout 1.0.2`, which Central never published) is a Tier-3 row at import naming what the
+catalogs list instead, so the refusal arrives while the POM is still in front of you; a repository
+that cannot be reached during that check leaves a Tier-2 note, not a claim. Read that report before
+trusting the generated `jk.toml`.
 
 **A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
 version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a

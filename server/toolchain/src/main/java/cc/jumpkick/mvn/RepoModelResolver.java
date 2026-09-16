@@ -54,6 +54,15 @@ final class RepoModelResolver implements ModelResolver {
         this.declared = declared;
     }
 
+    /** The group this resolver was built over: what the lock reads before a POM's own {@code <repository>} entries. */
+    RepoGroup repos() {
+        return repos;
+    }
+
+    Cas cas() {
+        return cas;
+    }
+
     @Override
     public ModelSource resolveModel(String groupId, String artifactId, String version)
             throws UnresolvableModelException {
