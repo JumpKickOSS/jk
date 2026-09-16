@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
 import java.net.URI;
@@ -45,6 +46,35 @@ public final class MavenMetadataCache {
      */
     private static final ThreadLocal<Boolean> FORCE_REVALIDATE = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
+    static {
+        // The flag rides every JkThreads hop the way the session does: a version-catalog fan-out,
+        // a BOM-import fan-out and a prefetch revalidate when the thread that started them does.
+        ContextPropagator.add(new ContextPropagator.Propagator() {
+            @Override
+            public Runnable wrapRunnable(Runnable r) {
+                boolean forced = forceRevalidate();
+                return () -> {
+                    try {
+                        forced(forced, () -> {
+                            r.run();
+                            return null;
+                        });
+                    } catch (RuntimeException | Error e) {
+                        throw e;
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                };
+            }
+
+            @Override
+            public <T> Callable<T> wrapCallable(Callable<T> c) {
+                boolean forced = forceRevalidate();
+                return () -> forced(forced, c);
+            }
+        });
+    }
+
     private final Http http;
     private final Path dir;
     private final Duration ttl;
@@ -60,21 +90,26 @@ public final class MavenMetadataCache {
      * Nested calls keep the outer flag.
      */
     public static <T> T withForceRevalidate(Callable<T> body) throws Exception {
-        Boolean prev = FORCE_REVALIDATE.get();
-        FORCE_REVALIDATE.set(Boolean.TRUE);
         // Force means do not trust process-wide resolve memos computed against a prior view.
         // Concrete clears live on the types themselves so this module stays free of resolver deps.
         EffectivePomBuilder.clearProcessCache();
         GradleModuleMetadata.clearParseCache();
+        // KMP process cache is in resolver — clear via reflective no-op if absent (tests/io-only).
         try {
-            // KMP process cache is in resolver — clear via reflective no-op if absent (tests/io-only).
-            try {
-                Class.forName("cc.jumpkick.resolver.KmpRedirects")
-                        .getMethod("clearProcessCache")
-                        .invoke(null);
-            } catch (ReflectiveOperationException ignored) {
-                // io unit tests without resolver on classpath
-            }
+            Class.forName("cc.jumpkick.resolver.KmpRedirects")
+                    .getMethod("clearProcessCache")
+                    .invoke(null);
+        } catch (ReflectiveOperationException ignored) {
+            // io unit tests without resolver on classpath
+        }
+        return forced(true, body);
+    }
+
+    /** Run {@code body} with the revalidate flag set to {@code forced} on this thread, restoring it after. */
+    private static <T> T forced(boolean forced, Callable<T> body) throws Exception {
+        Boolean prev = FORCE_REVALIDATE.get();
+        FORCE_REVALIDATE.set(forced);
+        try {
             return body.call();
         } finally {
             FORCE_REVALIDATE.set(prev);
