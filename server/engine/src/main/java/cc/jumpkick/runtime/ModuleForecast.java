@@ -321,7 +321,7 @@ final class ModuleForecast {
         boolean mixedKotlin = prepared.mixedKotlin();
         boolean mixedGroovy = prepared.mixedGroovy();
         if (!mainSrc.isEmpty()) {
-            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+            WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
             List<Path> cp = PlannerSupport.mainCompileClasspath(lock, resolver, sib);
             mainCp = cp;
             Path out = layout.classesDir();

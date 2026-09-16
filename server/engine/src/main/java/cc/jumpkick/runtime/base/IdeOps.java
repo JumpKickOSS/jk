@@ -462,7 +462,7 @@ public final class IdeOps {
         JkBuild module = Objects.requireNonNull(declared, "module");
         List<String[]> result = new ArrayList<>();
         WorkspaceClasspath.Result mainCp =
-                WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.EXPORT, Scope.MAIN));
+                WorkspaceClasspath.resolve(moduleDir, module, WorkspaceClasspath.COMPILE_SCOPES);
         WorkspaceClasspath.Result testCp =
                 WorkspaceClasspath.resolve(moduleDir, module, EnumSet.of(Scope.TEST, Scope.TEST_DEV));
 

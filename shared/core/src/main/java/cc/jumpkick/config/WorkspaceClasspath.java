@@ -49,6 +49,20 @@ public final class WorkspaceClasspath {
      */
     public static final List<Scope> SIBLING_MODULE_SCOPES = List.of(Scope.EXPORT, Scope.MAIN);
 
+    /**
+     * The direct edges a module's main compile reads: its export, main and provided siblings, as
+     * Maven's compile classpath holds a {@code provided} dependency. Packaging and running read
+     * {@link #RUNTIME_SCOPES}, where a provided sibling is absent, the platform supplying it.
+     */
+    public static final Set<Scope> COMPILE_SCOPES = Set.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED);
+
+    /** The direct edges a module's test compile and test run read: {@link #COMPILE_SCOPES} plus the test scopes. */
+    public static final Set<Scope> TEST_SCOPES =
+            Set.of(Scope.EXPORT, Scope.MAIN, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
+
+    /** The direct edges whose jars ride into a module's package, run and native image. */
+    public static final Set<Scope> RUNTIME_SCOPES = Set.of(Scope.EXPORT, Scope.MAIN);
+
     private WorkspaceClasspath() {}
 
     /**
