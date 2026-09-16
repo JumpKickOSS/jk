@@ -182,8 +182,9 @@ public final class JkBuildParser {
         Path key = file.toAbsolutePath().normalize();
         PARSE_REQUESTS.incrementAndGet();
         ManifestStamp stamp = ManifestStamp.of(key, JkBuildParser::readManifest);
+        boolean[] provisional = new boolean[1];
         try {
-            return PARSE_CACHE.get(key, stamp, () -> {
+            JkBuild parsed = PARSE_CACHE.get(key, stamp, () -> {
                 try {
                     // The stamp already holds the bytes when the file is unsettled; otherwise this is
                     // the one read, on the miss that needs it.
@@ -196,11 +197,20 @@ public final class JkBuildParser {
                     } catch (IllegalStateException e) {
                         throw new JkBuildParseException(e.getMessage(), e);
                     }
-                    return build(root, catalog, moduleDir);
+                    JkBuild built = build(root, catalog, moduleDir);
+                    provisional[0] = PluginDescriptorStore.hasUnresolved(moduleDir, built.plugins());
+                    return built;
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
             });
+            // A parse made while a [plugins] declaration had no materialized manifest validated
+            // that plugin's table softly and applied none of its contributions. The answer is
+            // right only until the engine extracts the manifest, which leaves jk.toml's stamp
+            // untouched — so it is served once and never memoized, and the next parse re-reads
+            // the file and sees the plugin.
+            if (provisional[0]) PARSE_CACHE.forget(key);
+            return parsed;
         } catch (UncheckedIOException e) {
             throw e.getCause();
         }

@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -15,6 +16,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -307,11 +309,9 @@ public final class SyncPlans {
                     ctx.label("sync plugins");
                     Cas cas = JkStores.storeCas();
                     JkBuild build = ctx.get(BUILD).orElse(null);
-                    RepoGroup repos = build != null
-                            ? RepoGroupBuilder.buildFor(build, repoUrl, cas)
-                            : RepoGroupBuilder.buildFor(
-                                    JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST)), repoUrl, cas);
-                    syncPluginEntries(ctx, pluginEntries, repos, cas);
+                    if (build == null) build = JkBuildParser.parse(dir.resolve(ManifestPaths.MANIFEST));
+                    RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
+                    syncPluginEntries(ctx, dir, build, pluginEntries, repos, cas);
                     // Extract the fetched jars' manifests so the very next parse validates
                     // the plugins' tables (and applies their contributions).
                     PluginDescriptorOps.ensureMaterialized(dir, cache);
@@ -319,15 +319,28 @@ public final class SyncPlans {
                 .build();
     }
 
-    /** Fetch each pinned plugin jar into the CAS (pin is law) and warm its sibling POM. */
+    /**
+     * Fetch each pinned plugin jar into the CAS (pin is law) and warm its sibling POM; a path pin
+     * is copied from the file {@code [plugins]} declares instead.
+     */
     private static void syncPluginEntries(
-            TaskContext ctx, List<Lockfile.PluginEntry> pluginEntries, RepoGroup repos, Cas cas) {
+            TaskContext ctx,
+            Path dir,
+            JkBuild build,
+            List<Lockfile.PluginEntry> pluginEntries,
+            RepoGroup repos,
+            Cas cas) {
         for (var pe : pluginEntries) {
             ctx.label("sync " + pe.coordinate());
             String hex = pe.sha256Hex();
             if (hex == null) {
                 // A workspace module (the build produces it) or a first-party plugin pinned by
                 // version alone (the jk install of that version carries it): nothing to verify here.
+                ctx.progress(1);
+                continue;
+            }
+            if (pe.coordinate().startsWith(PluginDeclaration.PATH_GROUP + ":")) {
+                syncPathPin(ctx, dir, build, pe, hex, cas);
                 ctx.progress(1);
                 continue;
             }
@@ -507,6 +520,44 @@ public final class SyncPlans {
             return JkBuildParser.parse(buildFile);
         } catch (Exception e) {
             return null;
+        }
+    }
+    /**
+     * A path pin's bytes come from the declared file, never a repository, and the pin is law there
+     * too: a file whose digest disagrees with the lock is refused with both digests named.
+     */
+    private static void syncPathPin(
+            TaskContext ctx, Path dir, JkBuild build, Lockfile.PluginEntry pe, String hex, Cas cas) {
+        if (cas.contains(hex)) return;
+        String alias = pe.coordinate().substring(pe.coordinate().indexOf(':') + 1);
+        PluginDeclaration decl = build.plugins().stream()
+                .filter(d -> d.isPathPin() && d.alias().equals(alias))
+                .findFirst()
+                .orElse(null);
+        String path = decl == null ? null : decl.path();
+        if (path == null) {
+            ctx.error("plugin", pe.coordinate() + " is locked but jk.toml declares no path pin `" + alias + "`");
+            return;
+        }
+        Path jar = Path.of(path);
+        if (!jar.isAbsolute()) jar = dir.resolve(jar).normalize();
+        try {
+            if (!Files.isRegularFile(jar)) {
+                ctx.error("plugin", pe.coordinate() + " — " + jar + " is not a readable file");
+                return;
+            }
+            String got = Hashing.sha256Hex(jar);
+            if (!got.equalsIgnoreCase(hex)) {
+                ctx.error(
+                        "plugin",
+                        pe.coordinate() + " — " + jar + " has sha256 " + shortSha(got) + " but the lock pins "
+                                + shortSha(hex) + "; re-lock after rebuilding the jar");
+                return;
+            }
+            cas.putFile(jar, hex);
+            ctx.label("copied " + pe.coordinate());
+        } catch (IOException e) {
+            ctx.error("plugin", pe.coordinate() + " — " + e.getMessage());
         }
     }
 }

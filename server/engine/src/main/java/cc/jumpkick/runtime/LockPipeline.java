@@ -566,6 +566,10 @@ public final class LockPipeline {
                 }
                 hex = Hashing.sha256Hex(jarPath);
                 requireSha(pd, hex, "file is", jarPath.toString());
+                // A path pin has no repository to sync from: the lock has the file in hand, so its
+                // sha-verified bytes enter the store here, where the worker fork reads them
+                // (PluginDescriptorOps.jarFor); `jk sync` copies them again from the declared path.
+                JkStores.storeCas().putFile(jarPath, hex);
             } else {
                 Coordinate coord = Coordinate.of(pd.group(), pd.name(), pd.version());
                 var fetched = repos.tryFetchArtifact(coord)

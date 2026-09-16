@@ -13,6 +13,7 @@ import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -126,13 +127,21 @@ class ThirdPartyPluginExampleTest {
                     .as("the plugin's manifest is materialized for the consumer")
                     .anyMatch(n -> n.endsWith(".jk-plugin.toml"));
         }
-        assertThat(run("trust", "plugin", "com.example:hello-plugin")).isEqualTo(0);
+        assertThat(run("trust", "plugin", "path:hello")).isEqualTo(0);
         assertThat(run("build", "-C", app.toString(), "--skip-tests")).isEqualTo(0);
         assertThat(app.resolve("target/lib/app-0.1.0.jar")).exists();
-        // The plugin's [[contribute.compiler-args]] adds -parameters; whether the consumer's compile
-        // step honours a path-pinned plugin's javac contribution is checked by the contribution's own
-        // engine tests, not here — this test proves the SDK round trip: publish, compile against it,
-        // pin, trust, build under the plugin's table.
+        // The plugin's [[contribute.compiler-args]] adds -parameters: the consumer's compile step
+        // honours a path-pinned plugin's javac contribution, on the first build and on the cached
+        // second one alike.
+        Path appClass = app.resolve("target/classes/main/app/App.class");
+        assertThat(carriesMethodParameters(appClass)).as("first build").isTrue();
+        assertThat(run("build", "-C", app.toString(), "--skip-tests")).isEqualTo(0);
+        assertThat(carriesMethodParameters(appClass)).as("second build").isTrue();
+    }
+
+    /** javac writes the {@code MethodParameters} attribute only under {@code -parameters}. */
+    private static boolean carriesMethodParameters(Path classFile) throws IOException {
+        return new String(Files.readAllBytes(classFile), StandardCharsets.ISO_8859_1).contains("MethodParameters");
     }
 
     /**
