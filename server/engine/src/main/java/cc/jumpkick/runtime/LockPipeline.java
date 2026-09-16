@@ -294,7 +294,8 @@ public final class LockPipeline {
                 .withActivatedFeatures(pathPrep.activatedFeatures())
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(pathPrep.project(), lockDir))
                 .withPlatformPolicy(policy.platform())
-                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
+                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
+                .withPinPolicy(pathPrep.project().build().pinPolicy());
 
         boolean keepPins = policy.keepPins() && existing != null;
         // Compiler pins first: the solve injects each language's stdlib pinned to its compiler.

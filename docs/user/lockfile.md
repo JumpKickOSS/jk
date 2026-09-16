@@ -232,6 +232,13 @@ these edges and prints each step with `(declared <selector> by <parent>)` beside
 version — the parent is `jk.toml` for a declared root and the previous step otherwise. An edge
 the lock does not carry a selector for is written without the `<-` part.
 
+Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
+sit below the declared one: `jakarta.inject-api:jar:@2.0.1 <- 2.0.1.MR` says the project pinned
+`2.0.1` and the parent's floor of `2.0.1.MR` gave way to it, as a transitive's version gives way to
+a direct dependency's under Maven. `jk lock` prints one warning per such edge, naming the pin, the
+parent and what it asked for. Under the default `pins = "exact"` that shape is a conflict the lock
+refuses instead; see [Dependencies](dependencies.md#coordinates).
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

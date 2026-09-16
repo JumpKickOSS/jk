@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -64,6 +65,22 @@ class JkBuildParserProjectTest {
         assertThat(parsed.build().unmappedPolicy()).isEqualTo(UnmappedPolicy.STRICT);
         // Default is mediate.
         assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy()).isEqualTo(UnmappedPolicy.MEDIATE);
+    }
+
+    @Test
+    void resolve_pins_parses_and_defaults_to_exact() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+
+                [resolve]
+                pins = "nearest"
+                """);
+        assertThat(parsed.build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+        assertThat(JkBuildParser.parse(PROJECT).build().pinPolicy()).isEqualTo(PinPolicy.EXACT);
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [resolve]
+                        pins = "furthest"
+                        """)).hasMessageContaining("[resolve].pins");
     }
 
     @Test

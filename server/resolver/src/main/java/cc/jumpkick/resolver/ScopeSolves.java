@@ -2,11 +2,13 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import java.io.IOException;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,20 +37,24 @@ final class ScopeSolves {
     private final @Nullable MavenPackageSource sharedSource;
     private final EffectivePomBuilder pomBuilder;
     private final KmpRedirects kmp;
+    private final PinPolicy pinPolicy;
 
     /**
      * @param resolverOverride a test's stand-in solver, or {@code null} for PubGrub over {@code sharedSource}
      * @param sharedSource the package source shared by all three graphs; {@code null} only with an override
+     * @param pinPolicy whether each graph's exact roots override the transitive constraints on them
      */
     ScopeSolves(
             @Nullable Resolver resolverOverride,
             @Nullable MavenPackageSource sharedSource,
             EffectivePomBuilder pomBuilder,
-            KmpRedirects kmp) {
+            KmpRedirects kmp,
+            PinPolicy pinPolicy) {
         this.resolverOverride = resolverOverride;
         this.sharedSource = sharedSource;
         this.pomBuilder = pomBuilder;
         this.kmp = kmp;
+        this.pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
     }
 
     /** Solve every graph in {@link #ORDER}, seeding each with {@code lockedVersionPrefs} plus every earlier decision. */
@@ -80,12 +86,24 @@ final class ScopeSolves {
                 Objects.requireNonNull(this.sharedSource, "a solve without an override needs its shared source");
         sharedSource.setLockedVersionPrefs(prefs);
         sharedSource.setSnapshotPackages(snapshotModules(roots));
+        // Nearest-wins is a per-graph fact: a test-only pin has no say on the main classpath.
+        sharedSource.setNearestPins(pinPolicy == PinPolicy.NEAREST ? exactRoots(roots) : Map.of());
         // exclusion state is per-graph; main's clean paths must not bleed into
         // the test/processor solves.
         sharedSource.resetSolveScopedState();
         return new PubGrubResolver(sharedSource, pomBuilder, kmp)
                 .withOnDecision(progress::graphPackage)
                 .resolve(roots);
+    }
+
+    /** {@code group:artifact → version} for every root declared with an exact pin. */
+    private static Map<String, String> exactRoots(List<Dependency> roots) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Dependency d : roots) {
+            if (d.isWorkspace()) continue;
+            if (d.version() instanceof VersionSelector.Exact exact) out.putIfAbsent(d.module(), exact.version());
+        }
+        return out;
     }
 
     /**

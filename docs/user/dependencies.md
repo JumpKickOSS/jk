@@ -60,6 +60,13 @@ an unknown qualifier such as `2.0.1.MR` counts as newer than `2.0.1` when a sele
 a POM that declares `2.0.1` still gets `2.0.1`. Conflicts get PubGrub prose. With a BOM:
 [Platforms](platforms.md).
 
+Your own exact pin is one constraint among the transitives' by default: a pin below a floor some
+POM declares is a conflict, explained. `[resolve] pins = "nearest"` makes the pin the version
+instead, as a direct dependency's is under Maven's nearest-wins — the transitive's range on that
+module is recorded on the lock edge (`<- 2.0.1.MR`) and reported as a warning, not enforced.
+`jk import` writes that line for a Maven POM so the imported project resolves as Maven resolved it;
+a transitive with no pin on it keeps the highest-declared rule either way.
+
 **Maven relocations are followed** (`distributionManagement/relocation`).
 
 ## Library catalog

@@ -822,6 +822,11 @@ public record JkBuild(
              */
             UnmappedPolicy unmappedPolicy,
             /**
+             * {@code [resolve] pins}: how the project's own exact pin meets a transitive's constraint
+             * on the same module. Default {@link PinPolicy#EXACT}.
+             */
+            PinPolicy pinPolicy,
+            /**
              * {@code [test] env} — what every forked test JVM's environment gets, in the order the
              * manifest lists it. Test-scoped like {@code testPluginJars}, hence its home here.
              *
@@ -887,6 +892,7 @@ public record JkBuild(
                 false,
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
+                PinPolicy.EXACT,
                 List.of(),
                 List.of(),
                 List.of(),
@@ -910,6 +916,7 @@ public record JkBuild(
             testExcludeTags = testExcludeTags == null ? List.of() : List.copyOf(testExcludeTags);
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
+            pinPolicy = pinPolicy == null ? PinPolicy.EXACT : pinPolicy;
             testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
             testTools = testTools == null ? List.of() : List.copyOf(testTools);
             devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
@@ -951,6 +958,11 @@ public record JkBuild(
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
             return with(f -> f.platformPolicy = policy == null ? PlatformPolicy.ENFORCED : policy);
+        }
+
+        /** The same block with {@code [resolve] pins} set. */
+        public Build withPinPolicy(PinPolicy policy) {
+            return with(f -> f.pinPolicy = policy == null ? PinPolicy.EXACT : policy);
         }
 
         /** The same block with {@code [[kotlin-plugins]]} set. */
@@ -1002,100 +1014,10 @@ public record JkBuild(
         }
 
         /** One component changed, the rest copied — the one spelling of the copy every {@code with*} shares. */
-        private Build with(Consumer<Fields> change) {
-            Fields f = new Fields(this);
+        private Build with(Consumer<BuildFields> change) {
+            BuildFields f = new BuildFields(this);
             change.accept(f);
             return f.build();
-        }
-
-        /** The components, mutable for the length of one {@link #with}. */
-        private static final class Fields {
-            List<String> orderAfter;
-            List<String> testPluginJars;
-            boolean lint;
-            DebugInfo debug;
-            List<KotlinPluginDecl> kotlinPlugins;
-            List<String> kspOptions;
-            JavacConfig javac;
-            List<String> extraSrc;
-            List<String> testExtraSrc;
-
-            @Nullable
-            String fixtures;
-
-            @Nullable
-            Integer testWorkers;
-
-            List<String> testSerialTags;
-            List<String> testIncludeTags, testExcludeTags;
-            boolean testAssertions;
-            boolean testCoverage;
-            PlatformPolicy platformPolicy;
-            UnmappedPolicy unmappedPolicy;
-            List<EnvDecl> testEnv;
-            List<String> testTools;
-            List<Sidecar> devSidecars;
-
-            @Nullable
-            DevReady devReady;
-
-            List<AuditIgnore> auditIgnores;
-            EnvConfig env;
-
-            Fields(Build b) {
-                orderAfter = b.orderAfter;
-                testPluginJars = b.testPluginJars;
-                lint = b.lint;
-                debug = b.debug;
-                kotlinPlugins = b.kotlinPlugins;
-                kspOptions = b.kspOptions;
-                javac = b.javac;
-                extraSrc = b.extraSrc;
-                testExtraSrc = b.testExtraSrc;
-                fixtures = b.fixtures;
-                testWorkers = b.testWorkers;
-                testSerialTags = b.testSerialTags;
-                testIncludeTags = b.testIncludeTags;
-                testExcludeTags = b.testExcludeTags;
-                testAssertions = b.testAssertions;
-                testCoverage = b.testCoverage;
-                platformPolicy = b.platformPolicy;
-                unmappedPolicy = b.unmappedPolicy;
-                testEnv = b.testEnv;
-                testTools = b.testTools;
-                devSidecars = b.devSidecars;
-                devReady = b.devReady;
-                auditIgnores = b.auditIgnores;
-                env = b.env;
-            }
-
-            Build build() {
-                return new Build(
-                        orderAfter,
-                        testPluginJars,
-                        lint,
-                        debug,
-                        kotlinPlugins,
-                        kspOptions,
-                        javac,
-                        extraSrc,
-                        testExtraSrc,
-                        fixtures,
-                        testWorkers,
-                        testSerialTags,
-                        testIncludeTags,
-                        testExcludeTags,
-                        testAssertions,
-                        testCoverage,
-                        platformPolicy,
-                        unmappedPolicy,
-                        testEnv,
-                        testTools,
-                        devSidecars,
-                        devReady,
-                        auditIgnores,
-                        env);
-            }
         }
 
         /**

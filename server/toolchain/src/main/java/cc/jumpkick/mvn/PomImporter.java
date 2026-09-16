@@ -7,6 +7,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -117,7 +118,8 @@ public final class PomImporter {
      */
     private static JkBuild.Build buildBlock(
             Model model, SourceTreePlugins.SourceTree sourceTree, TestPlugins.TestSettings tests) {
-        JkBuild.Build build = JkBuild.Build.EMPTY;
+        // A POM's direct version is the version Maven used, whatever a transitive asked for.
+        JkBuild.Build build = JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST);
         List<String> args = PluginFacts.compilerArgs(model);
         if (!args.isEmpty()) build = build.withJavac(new JavacConfig(Map.of(), args));
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
@@ -182,6 +184,7 @@ public final class PomImporter {
                 .workspace(new Workspace(
                         leaves.stream().map(ReactorModules.Leaf::path).toList()))
                 .application(rootApplication)
+                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
 
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();

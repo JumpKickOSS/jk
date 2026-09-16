@@ -9,11 +9,14 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.util.MinimalToml;
@@ -43,6 +46,7 @@ public final class JkBuildRenderer {
         renderManifest(sb, jkBuild.manifest());
         renderWorkspace(sb, jkBuild);
         renderBuild(sb, jkBuild.build());
+        renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
         renderProfiles(sb, jkBuild);
         renderFeatures(sb, jkBuild);
@@ -68,6 +72,20 @@ public final class JkBuildRenderer {
             sb.append("include-tags = ").append(list(build.testIncludeTags())).append('\n');
         if (!build.testExcludeTags().isEmpty())
             sb.append("exclude-tags = ").append(list(build.testExcludeTags())).append('\n');
+    }
+
+    /** {@code [resolve]} — only the policies that differ from their defaults. */
+    private static void renderResolve(StringBuilder sb, JkBuild.Build build) {
+        boolean platform = build.platformPolicy() != PlatformPolicy.ENFORCED;
+        boolean unmapped = build.unmappedPolicy() != UnmappedPolicy.MEDIATE;
+        boolean pins = build.pinPolicy() != PinPolicy.EXACT;
+        if (!platform && !unmapped && !pins) return;
+        sb.append("\n[resolve]\n");
+        if (platform)
+            sb.append("platform = \"").append(build.platformPolicy().wireName()).append("\"\n");
+        if (unmapped)
+            sb.append("unmapped = \"").append(build.unmappedPolicy().wireName()).append("\"\n");
+        if (pins) sb.append("pins = \"").append(build.pinPolicy().wireName()).append("\"\n");
     }
 
     /** {@code [javac]} — plugin names with their options, then verbatim args. */
