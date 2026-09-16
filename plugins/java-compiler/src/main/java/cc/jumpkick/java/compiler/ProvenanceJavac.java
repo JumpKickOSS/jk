@@ -13,7 +13,9 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
+import javax.tools.DiagnosticListener;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
@@ -131,11 +133,23 @@ final class ProvenanceJavac implements JavaCompiler {
                 return ok && !keyed.hasErrors();
             }
             DiagnosticsReporter bridge = new DiagnosticsReporter(reporter);
-            for (var d : diags.getDiagnostics()) bridge.report(d);
+            reportAll(diags.getDiagnostics(), bridge);
             return ok && !bridge.hasErrors();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    /**
+     * Hand every collected diagnostic to {@code bridge}, the ones that arrive while it works
+     * included. {@code live} is the collector's own list, and the collector is also what the held
+     * file manager reports to: bridging a diagnostic reads its source back through that manager, so
+     * a report raised on the way (an unmappable byte, an unreadable file) lands in the list under
+     * the loop. Indexing the live list takes those late arrivals in turn, where an iterator fails on
+     * the modification and the whole compile is lost to a bare exception.
+     */
+    static void reportAll(List<Diagnostic<? extends JavaFileObject>> live, DiagnosticListener<JavaFileObject> bridge) {
+        for (int i = 0; i < live.size(); i++) bridge.report(live.get(i));
     }
 
     /** The path locations this compile's options set: processor path, module path, patched modules. */
