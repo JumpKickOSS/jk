@@ -325,6 +325,60 @@ class MavenRepoTest {
     }
 
     @Test
+    void an_md5_only_sidecar_verifies_as_the_last_resort_and_leaves_a_note(@TempDir Path tempDir) throws Exception {
+        byte[] pom = "<project/>".getBytes(StandardCharsets.UTF_8);
+        serve("/org/example/bom/1.0/bom-1.0.pom", 200, pom);
+        serve(
+                "/org/example/bom/1.0/bom-1.0.pom.md5",
+                200,
+                Hashing.hashHex("MD5", pom).getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("central", base, new Http(), new Cas(tempDir));
+        MavenRepo.Fetched f = repo.fetchPom(Coordinate.of("org.example", "bom", "1.0"));
+        assertThat(f.sha256()).isEqualTo(Hashing.sha256Hex(pom));
+        assertThat(repo.unverifiedAllowed()).isZero();
+        assertThat(repo.weakChecksumNotes())
+                .singleElement()
+                .asString()
+                .contains("org.example:bom:1.0 from central")
+                .contains(".md5 sidecar alone");
+    }
+
+    @Test
+    void a_mismatching_md5_sidecar_fails_closed(@TempDir Path tempDir) {
+        byte[] jar = "tampered-bytes".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        serve(
+                "/com/example/widget/1.0/widget-1.0.jar.md5",
+                200,
+                "00000000000000000000000000000000".getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+        assertThatThrownBy(() -> repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0")))
+                .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
+                .hasMessageContaining("expected md5");
+        assertThat(repo.weakChecksumNotes()).isEmpty();
+    }
+
+    @Test
+    void a_sha1_sidecar_outranks_an_md5_one(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "good-bytes".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        serve(
+                "/com/example/widget/1.0/widget-1.0.jar.sha1",
+                200,
+                Hashing.hashHex("SHA-1", jar).getBytes(StandardCharsets.UTF_8));
+        serve(
+                "/com/example/widget/1.0/widget-1.0.jar.md5",
+                200,
+                "00000000000000000000000000000000".getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+        repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
+        assertThat(repo.verifiedUpstream()).isEqualTo(1);
+        assertThat(repo.weakChecksumNotes())
+                .as("the stronger sidecar spoke; md5 was never asked")
+                .isEmpty();
+    }
+
+    @Test
     void a_missing_sidecar_refuses_the_fetch_and_names_the_opt_in(@TempDir Path tempDir) {
         byte[] jar = "no-sidecar".getBytes(StandardCharsets.UTF_8);
         serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
@@ -332,7 +386,7 @@ class MavenRepoTest {
         assertThatThrownBy(() -> repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0")))
                 .isInstanceOf(MavenRepo.MissingChecksumException.class)
                 .hasMessageContaining("no upstream checksum for com.example:widget:1.0 from mirror")
-                .hasMessageContaining("neither a .sha256 nor a .sha1 sidecar")
+                .hasMessageContaining("no .sha256, .sha1 or .md5 sidecar")
                 .hasMessageContaining("allow-unverified = true on [repositories.mirror]");
         assertThat(repo.unverifiedAllowed()).isZero();
         assertThat(Objects.requireNonNull(

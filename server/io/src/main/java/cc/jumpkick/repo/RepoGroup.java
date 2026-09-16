@@ -181,6 +181,17 @@ public final class RepoGroup {
         return new TrustSummary(verified, unverified, List.copyOf(insecure));
     }
 
+    /**
+     * One sentence per artifact this run verified against an {@code .md5} sidecar alone, over the
+     * repositories asked; see {@link MavenRepo#weakChecksumNotes()}.
+     */
+    public List<String> weakChecksumNotes() {
+        List<String> out = new ArrayList<>();
+        for (MavenRepo repo : repos) out.addAll(repo.weakChecksumNotes());
+        out.sort(null);
+        return List.copyOf(out);
+    }
+
     /** See {@link #trust()}. {@link #NONE} is the summary of a lock that downloaded nothing. */
     public record TrustSummary(int verified, int unverifiedAllowed, List<String> insecureRepos) {
         public static final TrustSummary NONE = new TrustSummary(0, 0, List.of());

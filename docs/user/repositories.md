@@ -94,14 +94,14 @@ url = "http://nexus.corp.example/maven"   # refused without the next line
 allow-insecure = true
 
 [repositories.legacy]
-url = "https://old.example/maven"          # publishes no .sha256 / .sha1 sidecars
+url = "https://old.example/maven"          # publishes no .sha256 / .sha1 / .md5 sidecars
 allow-unverified = true
 ```
 
 | Key | Default | What it accepts | The threat it accepts |
 |-----|---------|-----------------|-----------------------|
 | `allow-insecure` | `false` | A plaintext `http://` URL. Without it the manifest fails to load, naming the repository and URL. Loopback hosts (`localhost`, `127.*`, `::1`) need no opt-in: there is no network path to sit on. | Anyone on the network path can replace the bytes jk pins, and the lockfile then faithfully protects the tampered jar. |
-| `allow-unverified` | `false` | Pinning an artifact the repository publishes neither `.sha256` nor `.sha1` for. Without it `jk lock` / `jk update` fail, naming the artifact and repository. | The pin is taken from whatever the wire delivered, with nothing from the publisher vouching for it. |
+| `allow-unverified` | `false` | Pinning an artifact the repository publishes no `.sha256`, `.sha1` or `.md5` for. Without it `jk lock` / `jk update` fail, naming the artifact and repository. An `.md5` alone is accepted without the key, with a note in the lock output naming the artifact and the weaker digest. | The pin is taken from whatever the wire delivered, with nothing from the publisher vouching for it. |
 
 Both are refused on `central`: Maven Central serves https and publishes a checksum for every
 artifact, so the opt-in would only ever hide an attack. `file://` repositories are local disk

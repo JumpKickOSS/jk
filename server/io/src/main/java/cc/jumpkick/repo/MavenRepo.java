@@ -25,9 +25,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -88,6 +91,9 @@ public final class MavenRepo {
 
     /** Artifact downloads this run pinned without a published checksum because the repository allows it. */
     private final AtomicInteger unverifiedAllowed = new AtomicInteger();
+
+    /** One sentence per artifact this run could verify against an {@code .md5} sidecar alone. */
+    private final Set<String> weakChecksumNotes = ConcurrentHashMap.newKeySet();
 
     public MavenRepo(String name, URI baseUrl, Http http, Cas cas) {
         this(name, baseUrl, http, cas, RepoCredential.ANONYMOUS);
@@ -732,14 +738,17 @@ public final class MavenRepo {
 
     /**
      * Check the download against the lock pin when there is one, then against the checksum this
-     * repository publishes beside it: {@code .sha256} first, else {@code .sha1}; a mismatch fails
-     * closed. The pin is compared first so bytes the lock rejects are discarded here, before
-     * anything places them in the store or {@code ~/.m2} — placed bytes would be copied on and
-     * re-downloaded on every later sync. With no sidecar at all the bytes are accepted only when
-     * the pin vouches for them, when the repository is on local disk ({@code file://} has no
-     * network path to tamper with), or when the repository table says {@code allow-unverified =
-     * true}; otherwise the fetch is refused, because a pin taken from unverified bytes would
-     * protect every later build with a checksum of whatever arrived.
+     * repository publishes beside it: {@code .sha256} first, else {@code .sha1}, else {@code .md5}
+     * as the last resort; a mismatch fails closed. An artifact only an {@code .md5} vouches for is
+     * accepted with a note ({@link #weakChecksumNotes}) naming it and the digest, because Central
+     * holds releases published that way and the lock pins the bytes by their SHA-256 from then on.
+     * The pin is compared first so bytes the lock rejects are discarded here, before anything
+     * places them in the store or {@code ~/.m2} — placed bytes would be copied on and re-downloaded
+     * on every later sync. With no sidecar at all the bytes are accepted only when the pin vouches
+     * for them, when the repository is on local disk ({@code file://} has no network path to
+     * tamper with), or when the repository table says {@code allow-unverified = true}; otherwise
+     * the fetch is refused, because a pin taken from unverified bytes would protect every later
+     * build with a checksum of whatever arrived.
      */
     private void verifyUpstreamChecksum(
             Coordinate coord,
@@ -754,52 +763,24 @@ public final class MavenRepo {
             throw new ChecksumMismatchException("checksum mismatch for " + coord + " from " + name + " (" + relativePath
                     + "): jk-lock.toml pins sha256 " + expectedSha256 + " but got " + actualSha256);
         }
-        Optional<byte[]> sha256Side = transport.fetch(sidecarUri(artifactUri, ".sha256"), credential);
-        if (sha256Side.isPresent()) {
-            Optional<String> parsed =
-                    Hashing.checksumFromSidecar(new String(sha256Side.get(), StandardCharsets.UTF_8), 64);
-            if (parsed.isPresent()) {
-                String expected = parsed.get();
-                if (!expected.equalsIgnoreCase(actualSha256)) {
-                    throw new ChecksumMismatchException("upstream checksum mismatch for "
-                            + coord
-                            + " from "
-                            + name
-                            + " ("
-                            + relativePath
-                            + "): expected sha256 "
-                            + expected
-                            + " but got "
-                            + actualSha256);
-                }
-                if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
-                return;
+        for (Sidecar sidecar : Sidecar.values()) {
+            Optional<String> expected = publishedDigest(artifactUri, sidecar);
+            // Absent, or a non-hex body (e.g. test servers that path-prefix-match the artifact): the
+            // next sidecar speaks.
+            if (expected.isEmpty()) continue;
+            String actual =
+                    sidecar == Sidecar.SHA256 ? actualSha256 : Hashing.fileHex(sidecar.algorithm, stored.path());
+            if (!expected.get().equalsIgnoreCase(actual)) {
+                throw new ChecksumMismatchException("upstream checksum mismatch for " + coord + " from " + name + " ("
+                        + relativePath + "): expected " + sidecar.label + " " + expected.get() + " but got " + actual);
             }
-            // Non-hex body (e.g. test servers that path-prefix-match the artifact) → treat as missing.
-        }
-        Optional<byte[]> sha1Side = transport.fetch(sidecarUri(artifactUri, ".sha1"), credential);
-        if (sha1Side.isPresent()) {
-            Optional<String> parsed =
-                    Hashing.checksumFromSidecar(new String(sha1Side.get(), StandardCharsets.UTF_8), 40);
-            if (parsed.isPresent()) {
-                String expected = parsed.get();
-                // SHA-1 because that is the sidecar Central publishes; the format names the algorithm.
-                String actualSha1 = Hashing.fileHex("SHA-1", stored.path());
-                if (!expected.equalsIgnoreCase(actualSha1)) {
-                    throw new ChecksumMismatchException("upstream checksum mismatch for "
-                            + coord
-                            + " from "
-                            + name
-                            + " ("
-                            + relativePath
-                            + "): expected sha1 "
-                            + expected
-                            + " but got "
-                            + actualSha1);
-                }
-                if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
-                return;
+            if (sidecar == Sidecar.MD5) {
+                weakChecksumNotes.add(coord + " from " + name + " is verified against its .md5 sidecar alone: the"
+                        + " repository publishes no .sha256 or .sha1 for it, and md5 is the weakest digest a"
+                        + " repository publishes; the lock pins its bytes by sha256 from here on");
             }
+            if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
+            return;
         }
         // Post-lock: the pin is the authority, and it was taken when the sidecar was checked; it
         // matched above, so a sidecar-less repository needs no further vouching.
@@ -807,11 +788,51 @@ public final class MavenRepo {
         if ("file".equalsIgnoreCase(baseUrl.getScheme())) return;
         if (!allowUnverified) {
             throw new MissingChecksumException("no upstream checksum for " + coord + " from " + name + " ("
-                    + relativePath + "): the repository publishes neither a .sha256 nor a .sha1 sidecar, so the"
+                    + relativePath + "): the repository publishes no .sha256, .sha1 or .md5 sidecar, so the"
                     + " bytes cannot be verified before they are pinned. Set allow-unverified = true on"
                     + " [repositories." + name + "] to pin them anyway.");
         }
         if (leg == Leg.ARTIFACT) unverifiedAllowed.incrementAndGet();
+    }
+
+    /** The checksum sidecars a Maven repository publishes, strongest first. */
+    private enum Sidecar {
+        SHA256(".sha256", 64, "SHA-256", "sha256"),
+        SHA1(".sha1", 40, "SHA-1", "sha1"),
+        MD5(".md5", 32, "MD5", "md5");
+
+        final String suffix;
+        final int hexLength;
+        final String algorithm;
+        final String label;
+
+        Sidecar(String suffix, int hexLength, String algorithm, String label) {
+            this.suffix = suffix;
+            this.hexLength = hexLength;
+            this.algorithm = algorithm;
+            this.label = label;
+        }
+    }
+
+    /**
+     * The digest this repository publishes in {@code sidecar} beside {@code artifactUri}; empty
+     * when the sidecar is absent or its body is not a digest of the sidecar's length.
+     */
+    private Optional<String> publishedDigest(URI artifactUri, Sidecar sidecar)
+            throws IOException, InterruptedException {
+        Optional<byte[]> body = transport.fetch(sidecarUri(artifactUri, sidecar.suffix), credential);
+        if (body.isEmpty()) return Optional.empty();
+        return Hashing.checksumFromSidecar(new String(body.get(), StandardCharsets.UTF_8), sidecar.hexLength);
+    }
+
+    /**
+     * One sentence per artifact this run verified against an {@code .md5} sidecar alone, sorted:
+     * the lock output carries each so the weaker digest is on record.
+     */
+    public List<String> weakChecksumNotes() {
+        List<String> out = new ArrayList<>(weakChecksumNotes);
+        out.sort(null);
+        return List.copyOf(out);
     }
 
     private static URI sidecarUri(URI artifactUri, String suffix) {
