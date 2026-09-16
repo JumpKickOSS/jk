@@ -579,13 +579,19 @@ public final class EffectivePomBuilder {
         return s == null || s.isBlank();
     }
 
-    /** The BOM a {@code <scope>import</scope>} entry names; Maven requires the version on an import. */
+    /**
+     * The BOM a {@code <scope>import</scope>} entry names, every field valued from the chain's
+     * properties before the coordinate is formed: a groupId spelled {@code ${ee.maven.groupId}}
+     * whose value is itself {@code ${project.groupId}} is the group it chains to, never a
+     * repository path carrying the placeholder. Maven requires the version on an import.
+     */
     private static Coordinate bomCoordinate(Pom.Dep dep, Map<String, String> props) {
         String version = dep.version();
         if (version == null) {
             throw new IllegalStateException("BOM import " + dep.groupId() + ":" + dep.artifactId() + " has no version");
         }
-        return Coordinate.of(dep.groupId(), dep.artifactId(), substitute(version, props));
+        return Coordinate.of(
+                substitute(dep.groupId(), props), substitute(dep.artifactId(), props), substitute(version, props));
     }
 
     private static String substitute(String raw, Map<String, String> ctx) {
