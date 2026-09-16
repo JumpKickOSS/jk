@@ -67,7 +67,8 @@ class JsonTest {
                 false,
                 new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096),
                 42L,
-                null);
+                null,
+                List.of());
 
         BuildRecord back = Json.read(Json.write(original));
 
@@ -145,7 +146,8 @@ class JsonTest {
                         "dep-1",
                         "FAILED",
                         List.of("e1", "e2"),
-                        List.of("a/b.jar")));
+                        List.of("a/b.jar")),
+                List.of());
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.publish()).isEqualTo(original.publish());
         assertThat(Json.read(Json.write(original.withBuildNumber(2))).publish()).isEqualTo(original.publish());
@@ -179,7 +181,8 @@ class JsonTest {
                 false,
                 null,
                 0L,
-                null);
+                null,
+                List.of());
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.coord()).isNull();
         assertThat(back.tests()).isNull();
@@ -279,7 +282,8 @@ class JsonTest {
                 false,
                 null,
                 0L,
-                null);
+                null,
+                List.of());
     }
 
     private static int countOf(String haystack, String needle) {
