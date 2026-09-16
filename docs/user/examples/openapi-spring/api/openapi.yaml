@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: Greetings
+  version: "1.0"
+paths:
+  /greetings/{name}:
+    get:
+      tags: [greetings]
+      operationId: getGreeting
+      summary: Greet someone by name
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The greeting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Greeting"
+components:
+  schemas:
+    Greeting:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string

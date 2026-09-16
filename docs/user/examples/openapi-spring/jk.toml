@@ -1,0 +1,25 @@
+group = "com.acme"
+name = "openapi-spring"
+version = "0.1.0"
+java = 25
+
+[application]
+main = "com.acme.Application"
+
+[spring-boot]
+version = "4.1.1"
+
+# The contract generates the GreetingsApi interface and the Greeting model into the generate
+# stage; GreetingController implements the interface. Edit api/openapi.yaml and the next build
+# regenerates and recompiles; an unchanged spec is a cache hit (`jk explain`).
+[openapi]
+spec      = "api/openapi.yaml"
+generator = "spring"
+package   = "com.acme.api"
+
+[dependencies]
+starter-webmvc     = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
+starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation" }
+
+[test-dependencies]
+starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
