@@ -279,7 +279,10 @@ public final class Diagnostics {
                         .append(colorPkg(u.pkg(), palette))
                         .append(' ')
                         .append(colorVersion(u.version(), palette))
-                        .append(" is advertised but not fetchable (half-published release?) — skipped\n");
+                        .append(
+                                u.declaredOnly()
+                                        ? " is named by a POM but no declared repository has it — skipped\n"
+                                        : " is advertised but not fetchable (half-published release?) — skipped\n");
             case Incompatibility.Cause.BudgetExceeded b ->
                 out.append(prefix)
                         .append(label)

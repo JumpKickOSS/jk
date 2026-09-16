@@ -61,7 +61,12 @@ public record Incompatibility(List<Term> terms, Cause cause) {
          * excluded it and retreated to the next candidate.
          */
         record Unavailable(
-                String pkg, String version, @Nullable String reason) implements Cause {}
+                String pkg, String version, @Nullable String reason, boolean declaredOnly) implements Cause {
+            /** A version the repository advertised. */
+            public Unavailable(String pkg, String version, @Nullable String reason) {
+                this(pkg, version, reason, false);
+            }
+        }
 
         /**
          * Conflict-resolution derived this from two prior incompatibilities. Used by the diagnostic

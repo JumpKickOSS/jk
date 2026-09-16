@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
@@ -133,7 +134,7 @@ public final class LockFlow {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (cause instanceof UnsatisfiableException unsat) throw unsat;
             if (cause instanceof InterruptedException) Thread.currentThread().interrupt();
-            return failed(cause.getMessage() + variantUnionHint(scope.lockDir()), scope);
+            return failed(Errors.text(cause) + variantUnionHint(scope.lockDir()), scope);
         }
     }
 

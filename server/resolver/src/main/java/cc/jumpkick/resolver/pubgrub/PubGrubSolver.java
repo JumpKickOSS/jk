@@ -156,6 +156,20 @@ public class PubGrubSolver {
     /** Temporary resolution trace switch for the debug test. */
     private boolean wideUniverses;
 
+    /**
+     * What the solver is doing right now, in words a user can act on ({@code "choosing a version
+     * for g:a:jar:"}); an unexpected exception is rethrown carrying it, so a bare {@code
+     * NoSuchElementException} never reaches the results file without the package it happened on.
+     */
+    private String phase = "seeding the root";
+
+    /**
+     * Packages whose universe holds only versions POM edges declared, because no repository
+     * advertises any. Their failures read as a package that was not found, not as a half-published
+     * release.
+     */
+    private final Set<String> declaredOnlyUniverses = new HashSet<>();
+
     /** True when any universe was seeded from a compact list or preferred singleton. */
     private boolean usedCompactUniverse;
 
@@ -217,6 +231,7 @@ public class PubGrubSolver {
 
         floatingRoots.clear();
         dependenciesRecorded.clear();
+        declaredOnlyUniverses.clear();
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()), new Incompatibility.Cause.Dependency(rootTerm, dep)));
@@ -231,10 +246,16 @@ public class PubGrubSolver {
         noteDecision(rootPkg, rootVersion);
 
         String next = rootPkg;
-        while (next != null) {
-            checkBudget();
-            propagate(next);
-            next = makeDecision();
+        try {
+            while (next != null) {
+                checkBudget();
+                propagate(next);
+                next = makeDecision();
+            }
+        } catch (UnsatisfiableException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("dependency resolution failed while " + phase + ": " + e, e);
         }
         if (ResolveProfile.on()) {
             ResolveProfile.solve(System.nanoTime() - solveT0);
@@ -317,6 +338,7 @@ public class PubGrubSolver {
     // --- unit propagation --------------------------------------------------
 
     protected void propagate(String changedPackage) throws IOException, InterruptedException {
+        phase = "propagating the constraints on " + changedPackage;
         Set<String> changed = new LinkedHashSet<>();
         changed.add(changedPackage);
 
@@ -535,6 +557,7 @@ public class PubGrubSolver {
         // which grew quadratic over a solve on large BOM graphs.
         String pkg = solution.nextUndecidedPositive();
         if (pkg == null) return null;
+        phase = "choosing a version for " + pkg;
         ensureUniverse(pkg);
         // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
         if (solution.hasNoCandidates(pkg) && widenable(pkg)) {
@@ -550,10 +573,10 @@ public class PubGrubSolver {
                 expandUniverse(pkg);
             }
             VersionUniverse known = universes.get(pkg);
-            boolean unknownPackage = known == null || known.size() == 0;
+            boolean unknownPackage = known == null || known.size() == 0 || declaredOnlyUniverses.contains(pkg);
             VersionSet allowed = solution.positiveSet(pkg);
             if (allowed.isEmpty()) allowed = VersionSet.ALL;
-            List<String> available = sampleAvailable(pkg);
+            List<String> available = unknownPackage ? List.of() : sampleAvailable(pkg);
             addIncompatibility(new Incompatibility(
                     List.of(Term.positive(pkg, allowed)),
                     new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available)));
@@ -564,6 +587,7 @@ public class PubGrubSolver {
         boolean dependenciesKnown = dependenciesRecorded.contains(coord);
         List<Term> deps = List.of();
         if (!dependenciesKnown) {
+            phase = "reading the dependencies of " + coord;
             try {
                 deps = source.dependencies(pkg, pick);
             } catch (PackageSource.VersionUnavailableException e) {
@@ -587,7 +611,8 @@ public class PubGrubSolver {
                 }
                 addIncompatibility(new Incompatibility(
                         List.of(Term.positive(pkg, VersionSet.exact(pick))),
-                        new Incompatibility.Cause.Unavailable(pkg, pick, e.getMessage())));
+                        new Incompatibility.Cause.Unavailable(
+                                pkg, pick, e.getMessage(), declaredOnlyUniverses.contains(pkg))));
                 return pkg;
             }
         }
@@ -641,14 +666,21 @@ public class PubGrubSolver {
         }
         if (missing.isEmpty()) return;
         List<String> current = u.versions();
-        String front = current.getFirst();
-        boolean pinnedFront = current.stream().anyMatch(v -> Versions.compare(v, front) > 0);
         List<String> merged = new ArrayList<>(current);
         merged.addAll(missing);
         merged.sort((a, b) -> Versions.compare(b, a));
-        if (pinnedFront) {
-            merged.remove(front);
-            merged.addFirst(front);
+        // A repository that advertises nothing for the package (no maven-metadata) leaves the
+        // universe empty; the declared versions are then its only candidates, and each is tried
+        // against the POM it names. Otherwise a soft-prefer pin at the front keeps its place.
+        if (current.isEmpty()) {
+            declaredOnlyUniverses.add(pkg);
+        } else {
+            String front = current.getFirst();
+            boolean pinnedFront = current.stream().anyMatch(v -> Versions.compare(v, front) > 0);
+            if (pinnedFront) {
+                merged.remove(front);
+                merged.addFirst(front);
+            }
         }
         universes.put(pkg, VersionUniverse.of(pkg, merged));
         solution.rebindAfterUniverseExpand(pkg);
