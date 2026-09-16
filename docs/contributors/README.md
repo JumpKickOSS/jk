@@ -27,6 +27,7 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Progress contract](progress-contract.md) | ETA / bar semantics |
 | [The 1.0 plan](plan-1.0.md) | Priority order to 1.0: the developer's inner loop first; six epics |
 | [Compatibility](compatibility.md) | What a minor or major release may change in manifest, lock, results, MCP, SDK, CLI |
+| [Plugin census](plugin-census.md) | Maven and Gradle plugin use on GitHub, classified against the batteries register; gaps and non-goals |
 
 ## Planning and internal design
 

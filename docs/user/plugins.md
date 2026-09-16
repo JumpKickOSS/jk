@@ -41,6 +41,11 @@ The next core battery is whichever step most Spring and Kotlin services touch ev
 coverage in the results file, sources and javadoc jars, Central Portal publishing, lint as a
 cached step — in the order set by [the 1.0 plan](../contributors/plan-1.0.md).
 
+Which batteries matter is measured, not guessed: the [plugin census](../contributors/plugin-census.md)
+ranks the Maven and Gradle plugins GitHub projects declare and classifies each against this
+register. Core plus the planned batteries covers about ninety percent of Maven plugin use and of
+server-side Gradle use; the census names the gaps, the recipes and the deliberate non-goals.
+
 Framework how-tos: [Frameworks](frameworks.md). Generators: [Generate](generate.md). Format:
 [Format](format.md).
 
