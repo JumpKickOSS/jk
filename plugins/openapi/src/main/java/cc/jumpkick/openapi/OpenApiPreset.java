@@ -63,13 +63,20 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
         String pkg = config.stringOpt("package").orElse(project.group() + ".api");
         List<String> args = new ArrayList<>(List.of(
                 "generate",
-                "-i", "${in}",
-                "-g", generator,
-                "-o", "${out}",
-                "--api-package", pkg,
-                "--model-package", pkg + ".model",
-                "--invoker-package", pkg,
-                "--package-name", pkg));
+                "-i",
+                "${in}",
+                "-g",
+                generator,
+                "-o",
+                "${out}",
+                "--api-package",
+                pkg,
+                "--model-package",
+                pkg + ".model",
+                "--invoker-package",
+                pkg,
+                "--package-name",
+                pkg));
         Map<String, String> options = new LinkedHashMap<>();
         if (generator.equals("spring")) {
             for (String pair : SPRING_DEFAULTS) {

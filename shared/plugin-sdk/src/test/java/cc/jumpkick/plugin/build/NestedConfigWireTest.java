@@ -37,7 +37,12 @@ class NestedConfigWireTest {
         values.put(PluginConfig.ENTRIES, entries);
 
         Path spec = dir.resolve("spec.jsonl");
-        Files.write(spec, new SpecWriter().op("describe", null, "gen").configValues(values).lines());
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op("describe", null, "gen")
+                        .configValues(values)
+                        .lines());
 
         PluginConfig read = BuildPluginHarness.Spec.read(spec).config();
         assertThat(read.bool("flag")).contains(false);

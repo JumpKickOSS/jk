@@ -52,6 +52,8 @@ class ActiveCodePluginTest {
                 spring-boot-dependencies = "4.1.1"
                 """);
 
-        assertThat(PluginBuild.activeCodePlugin(build, dir)).map(a -> a.manifest().id()).contains("openapi");
+        assertThat(PluginBuild.activeCodePlugin(build, dir))
+                .map(a -> a.manifest().id())
+                .contains("openapi");
     }
 }

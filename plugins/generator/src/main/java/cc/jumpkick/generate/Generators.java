@@ -29,6 +29,9 @@ public final class Generators implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.config().entries().forEach((name, values) -> ctx.task(GeneratorEntry.fromConfig(name, values).task()));
+        ctx.config()
+                .entries()
+                .forEach((name, values) ->
+                        ctx.task(GeneratorEntry.fromConfig(name, values).task()));
     }
 }

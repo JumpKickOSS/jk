@@ -478,7 +478,9 @@ public final class PluginDescriptors {
             boolean perEntry = Boolean.TRUE.equals(t.getBoolean("per-entry"));
             if (perEntry && manifestEntryKeys == null) {
                 throw new JkBuildParseException(where + ": per-entry needs an [entries] table on this manifest"
-                        + (key.equals("step-dependency") ? "" : " and applies to a [[contribute.step-dependency]] only"));
+                        + (key.equals("step-dependency")
+                                ? ""
+                                : " and applies to a [[contribute.step-dependency]] only"));
             }
             Set<String> entryKeys = perEntry ? manifestEntryKeys : null;
             String artifact = requireString(t, "artifact", where);

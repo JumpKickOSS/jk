@@ -62,33 +62,18 @@ public final class SpecWriter {
                 for (Map.Entry<?, ?> entry : m.entrySet()) {
                     if (!(entry.getValue() instanceof Map<?, ?> fields)) continue;
                     for (Map.Entry<?, ?> field : fields.entrySet()) {
-                        String address = ",\"entry\":" + Jsonl.quote(String.valueOf(entry.getKey())) + ",\"field\":"
-                                + Jsonl.quote(String.valueOf(field.getKey()));
-                        configValue(e.getKey(), address, field.getValue());
+                        configValue(
+                                e.getKey(),
+                                String.valueOf(entry.getKey()),
+                                String.valueOf(field.getKey()),
+                                field.getValue());
                     }
                 }
                 continue;
             }
-            configValue(e.getKey(), "", v);
+            configValue(e.getKey(), null, null, v);
         }
         return this;
-    }
-
-    /** One typed leaf under {@code key}; {@code address} is the entry/field suffix, or empty. */
-    @SuppressWarnings("unchecked")
-    private void configValue(String key, String address, @Nullable Object v) {
-        String head = "{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + address;
-        if (v instanceof String s) lines.add(head + ",\"kind\":\"string\",\"value\":" + Jsonl.quote(s) + "}");
-        else if (v instanceof Boolean b) lines.add(head + ",\"kind\":\"bool\",\"value\":" + b + "}");
-        else if (v instanceof Long l) lines.add(head + ",\"kind\":\"int\",\"value\":" + l + "}");
-        else if (v instanceof Integer i) lines.add(head + ",\"kind\":\"int\",\"value\":" + i + "}");
-        else if (v instanceof List<?> list) {
-            List<String> strs = new ArrayList<>();
-            for (Object o : list) strs.add(String.valueOf(o));
-            lines.add(head + ",\"kind\":\"list\",\"values\":" + array(strs) + "}");
-        } else if (v instanceof Map<?, ?> m) {
-            lines.add(head + ",\"kind\":\"map\",\"values\":" + Jsonl.map((Map<String, String>) m) + "}");
-        }
     }
 
     /**
@@ -97,26 +82,44 @@ public final class SpecWriter {
      * with a message that named the field, not the key.
      */
     public SpecWriter configString(String key, @Nullable String value) {
-        if (value == null) return this;
-        lines.add("{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + ",\"kind\":\"string\",\"value\":"
-                + Jsonl.quote(value) + "}");
+        if (value != null) configValue(key, null, null, value);
         return this;
     }
 
     public SpecWriter configBool(String key, boolean value) {
-        lines.add("{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + ",\"kind\":\"bool\",\"value\":" + value + "}");
+        configValue(key, null, null, value);
         return this;
     }
 
     public SpecWriter configInt(String key, long value) {
-        lines.add("{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + ",\"kind\":\"int\",\"value\":" + value + "}");
+        configValue(key, null, null, value);
         return this;
     }
 
     public SpecWriter configList(String key, List<String> values) {
-        lines.add("{\"t\":\"config\",\"key\":" + Jsonl.quote(key) + ",\"kind\":\"list\",\"values\":" + array(values)
-                + "}");
+        configValue(key, null, null, values);
         return this;
+    }
+
+    /** One typed leaf under {@code key}; {@code entry}/{@code field} address a nested entry's field. */
+    @SuppressWarnings("unchecked")
+    private void configValue(String key, @Nullable String entry, @Nullable String field, @Nullable Object v) {
+        JsonFields line = JsonFields.object()
+                .string("t", "config")
+                .string("key", key)
+                .optionalString("entry", entry)
+                .optionalString("field", field);
+        if (v instanceof String s) lines.add(line.string("kind", "string").string("value", s).finish());
+        else if (v instanceof Boolean b) lines.add(line.string("kind", "bool").bool("value", b).finish());
+        else if (v instanceof Long l) lines.add(line.string("kind", "int").number("value", l).finish());
+        else if (v instanceof Integer i) lines.add(line.string("kind", "int").number("value", i).finish());
+        else if (v instanceof List<?> list) {
+            List<String> strs = new ArrayList<>();
+            for (Object o : list) strs.add(String.valueOf(o));
+            lines.add(line.string("kind", "list").array("values", strs).finish());
+        } else if (v instanceof Map<?, ?> m) {
+            lines.add(line.string("kind", "map").map("values", (Map<String, String>) m).finish());
+        }
     }
 
     public SpecWriter project(ProjectFacts p) {

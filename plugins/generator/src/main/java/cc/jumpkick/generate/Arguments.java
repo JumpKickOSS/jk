@@ -42,12 +42,13 @@ final class Arguments {
             Matcher m = VAR.matcher(arg);
             StringBuilder expanded = new StringBuilder();
             while (m.find()) {
-                String value = switch (m.group(1)) {
-                    case "in" -> scope.inputs().getFirst().toString();
-                    case "inputs" -> scope.joined();
-                    case "out" -> scope.out().toString();
-                    default -> scope.moduleDir().toString();
-                };
+                String value =
+                        switch (m.group(1)) {
+                            case "in" -> scope.inputs().getFirst().toString();
+                            case "inputs" -> scope.joined();
+                            case "out" -> scope.out().toString();
+                            default -> scope.moduleDir().toString();
+                        };
                 m.appendReplacement(expanded, Matcher.quoteReplacement(value));
             }
             m.appendTail(expanded);

@@ -55,8 +55,8 @@ final class Interpolation {
             if (var.startsWith("entry.")) {
                 String key = var.substring("entry.".length());
                 if (entryKeys == null) {
-                    throw new JkBuildParseException(where + " references ${" + var
-                            + "} outside a per-entry = true step-dependency");
+                    throw new JkBuildParseException(
+                            where + " references ${" + var + "} outside a per-entry = true step-dependency");
                 }
                 if (!key.equals(ENTRY_NAME) && !entryKeys.contains(key)) {
                     throw new JkBuildParseException(
@@ -131,11 +131,14 @@ final class Interpolation {
                 value = String.valueOf(raw);
             } else if (var.startsWith("entry.")) {
                 String key = var.substring("entry.".length());
-                Object raw = entry == null ? null : key.equals(ENTRY_NAME) ? entry.name() : entry.values().get(key);
+                Object raw = entry == null
+                        ? null
+                        : key.equals(ENTRY_NAME) ? entry.name() : entry.values().get(key);
                 if (raw == null) {
                     throw new JkBuildParseException("[" + config.id() + "] contribution needs ${" + var + "} but "
-                            + (entry == null ? "no entry is in scope" : "[" + config.id() + "." + entry.name()
-                                    + "] leaves `" + key + "` unset"));
+                            + (entry == null
+                                    ? "no entry is in scope"
+                                    : "[" + config.id() + "." + entry.name() + "] leaves `" + key + "` unset"));
                 }
                 value = String.valueOf(raw);
             } else {

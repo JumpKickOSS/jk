@@ -29,7 +29,8 @@ final class Inputs {
             PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
             List<Path> matched = new ArrayList<>();
             PathUtil.forEachRegularFile(base, (file, attrs) -> {
-                if (matcher.matches(moduleDir.relativize(file))) matched.add(file.toAbsolutePath().normalize());
+                if (matcher.matches(moduleDir.relativize(file)))
+                    matched.add(file.toAbsolutePath().normalize());
             });
             matched.sort(null);
             out.addAll(matched);

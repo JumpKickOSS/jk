@@ -72,8 +72,12 @@ class OpenApiGeneratorTest {
                 .isEqualTo(TaskStatus.SKIPPED);
 
         Path spec = project.resolve("api/openapi.yaml");
-        Files.writeString(spec, Files.readString(spec).replace("        message:\n          type: string",
-                "        message:\n          type: string\n        language:\n          type: string"));
+        Files.writeString(
+                spec,
+                Files.readString(spec)
+                        .replace(
+                                "        message:\n          type: string",
+                                "        message:\n          type: string\n        language:\n          type: string"));
         BuildPlanResult third = build(project, cache);
         assertThat(third.errors()).isEmpty();
         assertThat(third.success()).isTrue();
@@ -90,7 +94,8 @@ class OpenApiGeneratorTest {
     private static void workerJarFromWorkspace(PluginJar worker, String module) throws IOException {
         if (System.getProperty(worker.jarProperty()) != null) return;
         Path dir = RepoRoot.find(OpenApiGeneratorTest.class).resolve(module);
-        Path jar = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml"))).mainJar();
+        Path jar =
+                BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml"))).mainJar();
         assertThat(jar).as(worker.artifactId() + " built by this workspace").isRegularFile();
         System.setProperty(worker.jarProperty(), jar.toAbsolutePath().toString());
     }
@@ -119,7 +124,9 @@ class OpenApiGeneratorTest {
         Optional<BuildPlanResult.StepReport> step = result.steps().stream()
                 .filter(s -> s.name().contains("generate-openapi"))
                 .findFirst();
-        assertThat(step).as("a generate-openapi step in " + result.steps().stream().map(s -> s.name()).toList())
+        assertThat(step)
+                .as("a generate-openapi step in "
+                        + result.steps().stream().map(s -> s.name()).toList())
                 .isPresent();
         return step.get();
     }

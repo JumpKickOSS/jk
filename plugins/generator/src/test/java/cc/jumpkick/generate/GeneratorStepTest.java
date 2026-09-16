@@ -36,7 +36,12 @@ class GeneratorStepTest {
 
         Path out = tmp.resolve("scratch/generated/api");
         assertThat(Files.readAllLines(out.resolve("argv.txt")))
-                .containsExactly("generate", "-i", spec.toString(), "-o", out.toAbsolutePath().toString());
+                .containsExactly(
+                        "generate",
+                        "-i",
+                        spec.toString(),
+                        "-o",
+                        out.toAbsolutePath().toString());
         assertThat(out.resolve("Hello.java")).isRegularFile();
         assertThat(io.labels()).containsExactly("api (1 input)");
         assertThat(io.diagnostics()).containsExactly("warning: " + spec + ":3:1: deprecated `foo`");
@@ -51,7 +56,8 @@ class GeneratorStepTest {
         FakeBuildIo.write(closure.resolve("dep-2.0.jar"), "not read");
         io.extra("api", closure);
 
-        GeneratorStep.run(io, entry(StubTool.class.getName(), List.of("api/a.yaml"), List.of("-i", "${in}", "-o", "${out}")));
+        GeneratorStep.run(
+                io, entry(StubTool.class.getName(), List.of("api/a.yaml"), List.of("-i", "${in}", "-o", "${out}")));
 
         assertThat(tmp.resolve("scratch/generated/api/Hello.java")).isRegularFile();
     }
@@ -92,7 +98,13 @@ class GeneratorStepTest {
 
     private static GeneratorEntry entry(@Nullable String main, List<String> inputs, List<String> args) {
         return new GeneratorEntry(
-                "api", "api", "com.example:stub-gen:1.0", main, inputs, args, GeneratorEntry.Contribution.SOURCES,
+                "api",
+                "api",
+                "com.example:stub-gen:1.0",
+                main,
+                inputs,
+                args,
+                GeneratorEntry.Contribution.SOURCES,
                 "generated/api");
     }
 
