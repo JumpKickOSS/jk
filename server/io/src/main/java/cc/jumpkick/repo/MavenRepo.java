@@ -387,7 +387,7 @@ public final class MavenRepo {
             byte[] xml = metadataCache != null
                     ? metadataCache.fetch(baseUrl.resolve(MavenLayout.metadataPath(coord)), credential)
                     : Files.readAllBytes(fetchMetadata(coord).cachePath());
-            return MavenMetadata.parse(xml).versions();
+            return MavenMetadata.parse(xml, coord.group(), coord.artifact()).versions();
         } catch (ArtifactNotFoundException notFound) {
             return List.of();
         }

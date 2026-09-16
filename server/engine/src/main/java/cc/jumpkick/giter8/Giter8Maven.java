@@ -68,7 +68,7 @@ public final class Giter8Maven {
                 if (res.statusCode() != 200 || res.body() == null) {
                     throw new IOException("maven() lookup failed for " + key + " (HTTP " + res.statusCode() + ")");
                 }
-                md = MavenMetadata.parse(res.body());
+                md = MavenMetadata.parse(res.body(), group, artifact);
                 METADATA_CACHE.put(key, new CachedMetadata(md, System.nanoTime()));
             }
             String picked = pick(md, stable);
