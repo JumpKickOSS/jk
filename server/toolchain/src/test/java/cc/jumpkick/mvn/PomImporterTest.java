@@ -131,6 +131,55 @@ class PomImporterTest {
     }
 
     @Test
+    void a_junit_below_the_vintage_floor_is_raised_with_a_note_and_a_supported_one_is_kept(@TempDir Path root)
+            throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>junit</groupId><artifactId>junit</artifactId><version>3.8.2</version>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        PomImporter.Result raised = TestImporters.offline(root).importFrom(root.resolve("pom.xml"));
+        assertThat(raised.jkBuild().dependencies().of(Scope.TEST))
+                .singleElement()
+                .satisfies(d -> {
+                    assertThat(d.module()).isEqualTo("junit:junit");
+                    assertThat(d.version().raw()).isEqualTo("4.13.2");
+                });
+        assertThat(raised.report().issues())
+                .anyMatch(i -> i.message().contains("junit:junit 3.8.2 raised to 4.13.2")
+                        && i.message().contains("junit-vintage-engine"));
+
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>junit</groupId><artifactId>junit</artifactId><version>4.12</version>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        PomImporter.Result kept = TestImporters.offline(root).importFrom(root.resolve("pom.xml"));
+        assertThat(kept.jkBuild().dependencies().of(Scope.TEST))
+                .singleElement()
+                .satisfies(d -> assertThat(d.version().raw()).isEqualTo("4.12"));
+        assertThat(kept.report().issues()).noneMatch(i -> i.message().contains("raised to"));
+    }
+
+    @Test
     void jar_and_test_jar_of_same_ga_yield_two_entries(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("pom.xml"), """
                 <project>

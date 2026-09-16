@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
@@ -9,6 +10,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,19 +21,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * android-plan §3.6's JUnit-4 path: Android's default test style is JUnit 4, and jk's runner
- * discovers engines from the <em>test classpath</em> (ServiceLoader over junit-platform-engine) —
- * so declaring {@code junit:junit} + {@code org.junit.vintage:junit-vintage-engine} in
- * {@code [test-dependencies]} runs {@code @org.junit.Test} classes with zero runner changes.
- * This proves that contract on a plain JVM module (the Android flavor differs only in classpath
- * additions — platform stubs + Robolectric config — wired by the android plugin).
+ * A JUnit 4 suite runs under {@code jk test} with nothing but {@code junit:junit} declared: the lock
+ * injects the Vintage engine beside the launcher, discovery finds the {@code @org.junit.Test}
+ * methods, and each one is reported by class and method as a Jupiter test is — the passing one
+ * counted, the failing one named.
  */
 // Out of the unit tier: network resolve of junit4/vintage + a forked test JVM.
 @Tag("integration")
 class JUnit4VintageTest {
 
     @Test
-    void junit4_tests_run_through_the_vintage_engine(@TempDir Path tmp) throws Exception {
+    void junit4_tests_run_through_the_injected_vintage_engine(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("j4"));
         Path cache = TestCaches.dir("android-spike-cache");
 
@@ -42,8 +42,7 @@ class JUnit4VintageTest {
                 java    = 25
 
                 [test-dependencies]
-                junit          = { group = "junit", name = "junit", version = "=4.13.2" }
-                vintage-engine = { group = "org.junit.vintage", name = "junit-vintage-engine", version = "6.1.3" }
+                junit = { group = "junit", name = "junit", version = "=4.13.2" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
@@ -68,6 +67,11 @@ class JUnit4VintageTest {
                     public void adds() {
                         assertEquals(4, Adder.add(2, 2));
                     }
+
+                    @Test
+                    public void addsWrong() {
+                        assertEquals(5, Adder.add(2, 2));
+                    }
                 }
                 """);
 
@@ -75,6 +79,11 @@ class JUnit4VintageTest {
         BuildPlan lock = LockPlans.lockBuildPlan(
                 project, build, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).isTrue();
+        String lockText = Files.readString(project.resolve("jk-lock.toml"));
+        assertThat(lockText)
+                .as("the lock carries the engine the declared framework needs")
+                .contains("org.junit.vintage:junit-vintage-engine:jar:")
+                .contains("org.junit.platform:junit-platform-launcher:jar:");
 
         BuildPlanner.Inputs in = new BuildPlanner.Inputs(
                 project,
@@ -93,9 +102,23 @@ class JUnit4VintageTest {
                 Set.of(),
                 SessionContext.current());
         BuildPlanResult result = BuildPlanner.fullPlan(in).run();
-        assertThat(result.errors()).isEmpty();
-        assertThat(result.success())
-                .as("JUnit4 test discovered and passed via vintage")
-                .isTrue();
+
+        assertThat(result.success()).as("one of the two JUnit 4 tests fails").isFalse();
+        assertThat(result.errors())
+                .as("the failing method is named by class and method, as a Jupiter failure is")
+                .anySatisfy(d -> {
+                    assertThat(d.className()).isEqualTo("com.example.AdderTest");
+                    assertThat(d.method()).isEqualTo("addsWrong");
+                    assertThat(d.engine()).isEqualTo("junit-vintage");
+                });
+
+        List<MarkdownTestReport.Entry> entries = MarkdownTestReport.takeUnder(project).stream()
+                .flatMap(run -> run.entries().stream())
+                .toList();
+        assertThat(entries)
+                .as("the results file gets one row per test, each under its class")
+                .allSatisfy(e -> assertThat(e.className()).isEqualTo("com.example.AdderTest"))
+                .extracting(MarkdownTestReport.Entry::displayName, MarkdownTestReport.Entry::isPass)
+                .containsExactlyInAnyOrder(tuple("adds", true), tuple("addsWrong", false));
     }
 }

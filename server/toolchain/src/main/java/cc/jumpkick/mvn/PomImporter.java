@@ -14,6 +14,8 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.TestEngines;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -346,7 +348,7 @@ public final class PomImporter {
         }
         warnUnresolvedVersion(dep, report);
         Scope scope = mapScope(dep.scope());
-        Dependency d = toDependency(dep);
+        Dependency d = raiseToEngineFloor(toDependency(dep), scope, report);
         // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
         // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
         // scope moves to TEST — otherwise the emitted jk.toml rejects its own `jk lock`.
@@ -468,6 +470,32 @@ public final class PomImporter {
         // Stash test-jar as kind=tests so workspace rewrite can emit kind = "tests".
         if (testJar) {
             d = d.withKind(DependencyKind.TESTS);
+        }
+        return d;
+    }
+
+    /**
+     * A test framework pinned below the floor of the Platform engine that runs it under jk is
+     * written at the version the engine accepts: JUnit 3.8.2 becomes JUnit 4.13.2, whose jar still
+     * runs {@code TestCase} suites. The lock would refuse the pin as written; the note says why.
+     */
+    private static Dependency raiseToEngineFloor(Dependency d, Scope scope, ImportReport.Builder report) {
+        if (scope != Scope.TEST && scope != Scope.TEST_DEV) return d;
+        if (!(d.version() instanceof VersionSelector.Exact exact)) return d;
+        for (TestEngines.Row row : TestEngines.ROWS) {
+            if (!row.trigger().equals(d.module()) || Versions.compare(exact.version(), row.floor()) >= 0) continue;
+            report.warning(d.module()
+                    + " "
+                    + exact.version()
+                    + " raised to "
+                    + row.suggested()
+                    + ": jk runs its suites through "
+                    + row.engine().module()
+                    + ", which needs "
+                    + row.floor()
+                    + " or later.");
+            return Dependency.of(d.library(), d.module(), VersionSelector.parse(row.suggested()))
+                    .withKind(d.kind());
         }
         return d;
     }

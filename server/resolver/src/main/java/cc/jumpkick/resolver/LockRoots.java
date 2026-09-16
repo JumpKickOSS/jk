@@ -49,7 +49,8 @@ final class LockRoots {
     /**
      * jk test infrastructure: always injected into the TEST classpath via {@code putIfAbsent} so
      * {@code jk test} (which forks {@code jk-test-runner} over the JUnit Platform Launcher API)
-     * works regardless of which test framework the user chose.
+     * works regardless of which test framework the user chose. The engines a declared framework
+     * needs ride beside it: {@link TestEngines}.
      */
     static final Dependency JUNIT_LAUNCHER =
             new Dependency("org.junit.platform:junit-platform-launcher", VersionSelector.parse("latest"));
@@ -107,8 +108,9 @@ final class LockRoots {
 
     /**
      * Partition {@code project}'s declared dependencies. Optional dependencies enter only when a
-     * requested feature names them; the JUnit Platform launcher always rides the test graph, and
-     * JUnit Jupiter joins it only when the user declared no test dependencies at all. Cross-package
+     * requested feature names them; the JUnit Platform launcher always rides the test graph, JUnit
+     * Jupiter joins it only when the user declared no test dependencies at all, and a declared
+     * framework's Platform engine joins it when the framework has none ({@link TestEngines}). Cross-package
      * features on {@code path=} libraries are expanded by the engine before the path dep is rewritten
      * to a coordinate, so they arrive here as ordinary main roots.
      */
@@ -153,11 +155,21 @@ final class LockRoots {
             }
         }
         // junit infrastructure rides the test graph only.
-        testDeduped.putIfAbsent(JUNIT_LAUNCHER.packageKey(), JUNIT_LAUNCHER);
-        if (project.dependencies().of(Scope.TEST).isEmpty()) {
-            testDeduped.putIfAbsent(JUNIT_JUPITER.packageKey(), JUNIT_JUPITER);
-        }
+        for (Dependency d : injectedTestRoots(project)) testDeduped.putIfAbsent(d.packageKey(), d);
         return new Declared(mainDeduped, testDeduped, processorDeduped);
+    }
+
+    /**
+     * What jk adds to the test graph beyond the declaration: the launcher always, Jupiter when the
+     * user declared no test dependencies, and the engine of every declared framework that has no
+     * engine of its own. One list, so the solve and the lockfile's scope tagging see the same roots.
+     */
+    static List<Dependency> injectedTestRoots(JkBuild project) {
+        List<Dependency> roots = new ArrayList<>();
+        roots.add(JUNIT_LAUNCHER);
+        if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(JUNIT_JUPITER);
+        roots.addAll(TestEngines.injected(project));
+        return roots;
     }
 
     private static GraphGroup graphGroup(Scope scope) {

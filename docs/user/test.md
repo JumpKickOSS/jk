@@ -300,6 +300,29 @@ losing the tool from the PATH (`missing`) changes the stamp and re-runs the suit
 `jk test`, no `--redo` needed; a tool left alone costs one `--version` per engine lifetime. The
 key is test-scoped like `env`: nothing about it enters the compile or package keys.
 
+## Test frameworks: Jupiter by default, JUnit 4 via Vintage
+
+`jk test` discovers and runs tests through the JUnit Platform launcher and nothing else; `jk lock`
+puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
+declares no `[test-dependencies]` at all. Once you own that table, the framework is yours.
+
+A framework that has no Platform engine of its own gets one from the lock. Declare `junit:junit`
+and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, at the launcher's
+own `latest` selector so both sit on one Platform line:
+
+```toml
+[test-dependencies]
+junit = { group = "junit", version = "4.13.2" }      # @org.junit.Test suites, and JUnit 3 TestCase classes
+```
+
+The JUnit 4 you declare is the JUnit 4 the suite runs on — Vintage's own `junit:junit` edge takes
+your pin, as a transitive takes a direct dependency's in Maven. Vintage refuses a JUnit older than
+4.12, so an exact pin below that is refused by `jk lock` with the fix (`4.13.2`, the last release of
+the line, still runs `TestCase` suites); `jk import` writes that raise for you and says so in its
+notes. Results render per test as they do for Jupiter: the class from the runner, the method from
+the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the injection is
+`putIfAbsent`, and your version wins.
+
 ## Isolation contract
 
 Tests never run in the engine process (always a forked JVM). Defaults assume tests are

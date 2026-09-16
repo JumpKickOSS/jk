@@ -22,6 +22,35 @@ class JUnitUniqueIdsTest {
     }
 
     @Test
+    void vintage_names_the_class_in_the_runner_and_the_method_in_the_display_name() {
+        String id = "[engine:junit-vintage]/[runner:com.example.AdderTest]/[test:adds(com.example.AdderTest)]";
+        assertEquals("junit-vintage", JUnitUniqueIds.engineOf(id));
+        assertEquals("com.example.AdderTest", JUnitUniqueIds.classOf(id));
+        assertEquals("adds", JUnitUniqueIds.methodOf(id));
+
+        String runnerOnly = "[engine:junit-vintage]/[runner:com.example.AdderTest]";
+        assertEquals("com.example.AdderTest", JUnitUniqueIds.classOf(runnerOnly));
+        assertEquals("", JUnitUniqueIds.methodOf(runnerOnly));
+    }
+
+    @Test
+    void vintage_suite_members_and_parameter_groups_resolve_to_the_owning_class() {
+        String member = "[engine:junit-vintage]/[runner:com.example.AllTests]/[test:com.example.FooTest]"
+                + "/[test:testBar(com.example.FooTest)]";
+        assertEquals("com.example.FooTest", JUnitUniqueIds.classOf(member));
+        assertEquals("testBar", JUnitUniqueIds.methodOf(member));
+
+        String parameterized = "[engine:junit-vintage]/[runner:com.example.ParamTest]/[test:%5B0%5D]"
+                + "/[test:adds%5B0%5D(com.example.ParamTest)]";
+        assertEquals("com.example.ParamTest", JUnitUniqueIds.classOf(parameterized));
+        assertEquals("adds[0]", JUnitUniqueIds.methodOf(parameterized));
+
+        String group = "[engine:junit-vintage]/[runner:com.example.ParamTest]/[test:%5B0%5D]";
+        assertEquals("com.example.ParamTest", JUnitUniqueIds.classOf(group));
+        assertEquals("", JUnitUniqueIds.methodOf(group));
+    }
+
+    @Test
     void nested_class_joins_with_dollar() {
         String id = "[engine:junit-jupiter]/[class:com.example.Outer]/[nested-class:Inner]/[method:m()]";
         assertEquals("com.example.Outer$Inner", JUnitUniqueIds.classOf(id));
