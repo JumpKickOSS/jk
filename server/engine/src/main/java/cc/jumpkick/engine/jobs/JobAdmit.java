@@ -74,17 +74,18 @@ public final class JobAdmit {
         return AdmitResult.ok(buildNumber, journalId);
     }
 
-    /** Job-start wire line with buildNumber + details path for the CLI transcript. */
+    /**
+     * Job-start wire line with buildNumber + details path for the CLI transcript. The path is the
+     * run's own: build numbers are per project, so it is resolved under this project's home and
+     * never by number across homes, where another project's run of the same number would answer.
+     */
     public static String jobStartLine(JobEnvelope.Host host, long jid, String kind, String dir, AdmitResult admit) {
         String detailsPath = null;
         if (admit.buildNumber() > 0) {
             detailsPath = host.journal()
                     .detailsFile(host.coordOf(dir), dir, admit.buildNumber())
                     .map(Path::toString)
-                    .orElseGet(() -> host.journal()
-                            .detailsFile(Long.toString(admit.buildNumber()))
-                            .map(Path::toString)
-                            .orElse(null));
+                    .orElse(null);
         }
         return ProtoLifecycle.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
     }

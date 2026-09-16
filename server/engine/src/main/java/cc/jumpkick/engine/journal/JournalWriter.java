@@ -120,6 +120,11 @@ public final class JournalWriter {
         if (a != null) a.addBuildPlan(dir, result);
     }
 
+    public void accPreflightFailed(long requestId, String stage, long millis, String reason) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        if (a != null) a.addPreflightFailure(stage, millis, reason);
+    }
+
     public void accStepStart(long requestId, String dir, String step, String phase) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a != null) a.noteTaskStart(dir, step, phase);
@@ -198,7 +203,7 @@ public final class JournalWriter {
                     locator = journal.append(record, snapshot);
                 }
                 if (locator != null && !locator.isBlank()) {
-                    runDir = journal.runDir(locator).orElse(null);
+                    runDir = journal.runDir(locator, record).orElse(null);
                 }
             }
             Path latest = writesProjectTarget(record.kind()) ? latestPath(a.dir()) : null;
