@@ -7,11 +7,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.AccessLevel;
@@ -21,6 +25,11 @@ import org.jspecify.annotations.Nullable;
 /**
  * Read-only view of harvested {@code project-metrics.toml} + {@code host-metrics.toml} scalars.
  * Prefer {@code [last]} then {@code [mean]} for ETA ladders; {@code [count]} for confidence.
+ *
+ * <p>Module keys are absolute in this view: the ledger spells a module relative to its project
+ * root ({@link ModuleKeys}) and {@link #load} expands them against the directory it was asked for,
+ * so a worktree reads the rows its siblings wrote. The files read are stamped (mtime and size);
+ * {@link #fresh()} is two stats, which is what lets a memo hold a parsed view until a write lands.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
 public final class AggregatedMetrics {
@@ -29,13 +38,50 @@ public final class AggregatedMetrics {
     private static final Pattern KEY_EQ =
             Pattern.compile("(?m)^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
 
+    private static final AtomicLong PARSES = new AtomicLong();
+
     private final Map<String, Double> mean;
     private final Map<String, Double> last;
     private final Map<String, Long> count;
     private final Map<String, Double> hostMean;
+    private final List<FileStamp> stamps;
+
+    /** One file as it stood when it was parsed; a missing file is {@code (-1, -1)}. */
+    record FileStamp(Path file, long mtimeMillis, long size) {
+        static FileStamp of(Path file) {
+            try {
+                BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
+                return new FileStamp(file, a.lastModifiedTime().toMillis(), a.size());
+            } catch (IOException | RuntimeException e) {
+                return new FileStamp(file, -1, -1);
+            }
+        }
+
+        boolean unchanged() {
+            return equals(of(file));
+        }
+    }
 
     public static AggregatedMetrics empty() {
-        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of());
+        return new AggregatedMetrics(Map.of(), Map.of(), Map.of(), Map.of(), List.of());
+    }
+
+    /** True while every file this view was parsed from still has the mtime and size it had then. */
+    public boolean fresh() {
+        for (FileStamp s : stamps) {
+            if (!s.unchanged()) return false;
+        }
+        return true;
+    }
+
+    /** Test seam: ledger files parsed since process start. */
+    public static long parseCount() {
+        return PARSES.get();
+    }
+
+    /** The sanitized absolute form of {@code projectDir}, the root relative module keys expand against. */
+    static String rootKey(Path projectDir) {
+        return sanitize(projectDir.toAbsolutePath().normalize().toString());
     }
 
     /** Load project metrics for {@code coord}+{@code projectDir} plus host means. */
@@ -48,10 +94,15 @@ public final class AggregatedMetrics {
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
         Map<String, Long> count = new LinkedHashMap<>();
-        parseProjectFile(home.resolve(ProjectBuilds.PROJECT_METRICS), mean, last, count);
+        List<FileStamp> stamps = new ArrayList<>(2);
+        Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
+        stamps.add(FileStamp.of(project));
+        parseProjectFile(project, rootKey(projectDir), mean, last, count);
         Map<String, Double> hostMean = new LinkedHashMap<>();
-        parseHostMean(ProjectBuilds.hostMetricsFile(buildsRoot), hostMean);
-        return new AggregatedMetrics(mean, last, count, hostMean);
+        Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
+        stamps.add(FileStamp.of(host));
+        parseHostMean(host, hostMean);
+        return new AggregatedMetrics(mean, last, count, hostMean, List.copyOf(stamps));
     }
 
     /**
@@ -66,17 +117,33 @@ public final class AggregatedMetrics {
         Map<String, Double> mean = new LinkedHashMap<>();
         Map<String, Double> last = new LinkedHashMap<>();
         Map<String, Long> count = new LinkedHashMap<>();
+        List<FileStamp> stamps = new ArrayList<>();
         // Prefer one home per checkout path so stale re-keyed identities do not re-enter.
         for (Path home : ProjectBuilds.listProjectHomesForMetrics(buildsRoot)) {
             Map<String, Double> m = new LinkedHashMap<>();
             Map<String, Double> l = new LinkedHashMap<>();
             Map<String, Long> c = new LinkedHashMap<>();
-            parseProjectFile(home.resolve(ProjectBuilds.PROJECT_METRICS), m, l, c);
+            Path project = home.resolve(ProjectBuilds.PROJECT_METRICS);
+            stamps.add(FileStamp.of(project));
+            parseProjectFile(project, identityRoot(home), m, l, c);
             mergePreferHigherCount(mean, last, count, m, l, c);
         }
         Map<String, Double> hostMean = new LinkedHashMap<>();
-        parseHostMean(ProjectBuilds.hostMetricsFile(buildsRoot), hostMean);
-        return new AggregatedMetrics(mean, last, count, hostMean);
+        Path host = ProjectBuilds.hostMetricsFile(buildsRoot);
+        stamps.add(FileStamp.of(host));
+        parseHostMean(host, hostMean);
+        return new AggregatedMetrics(mean, last, count, hostMean, List.copyOf(stamps));
+    }
+
+    /** The checkout a project home last recorded, as a key root; null when the home has none. */
+    private static @Nullable String identityRoot(Path home) {
+        var idf = ProjectIdentity.IdentityFile.read(home);
+        if (idf.isEmpty() || idf.get().path() == null || idf.get().path().isBlank()) return null;
+        try {
+            return rootKey(Path.of(idf.get().path()));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -248,8 +315,13 @@ public final class AggregatedMetrics {
     }
 
     private static void parseProjectFile(
-            Path file, Map<String, Double> mean, Map<String, Double> last, Map<String, Long> count) {
+            Path file,
+            @Nullable String root,
+            Map<String, Double> mean,
+            Map<String, Double> last,
+            Map<String, Long> count) {
         if (!Files.isRegularFile(file)) return;
+        PARSES.incrementAndGet();
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
             String section = "";
@@ -261,7 +333,7 @@ public final class AggregatedMetrics {
                 }
                 Matcher km = KEY_EQ.matcher(line);
                 if (!km.matches()) continue;
-                String key = km.group(1);
+                String key = ModuleKeys.absolute(km.group(1), root);
                 double v = Double.parseDouble(km.group(2));
                 switch (section) {
                     case "mean" -> mean.put(key, v);

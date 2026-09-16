@@ -4,6 +4,8 @@ package cc.jumpkick.engine.journal;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TestSuiteRunners;
@@ -703,6 +705,73 @@ class BuildJournalTest {
         assertThat(toml)
                 .as("17384 x 8^(1/3), the single-runner-equivalent cost")
                 .contains(".task.run-tests.wall1-ms = " + TestSuiteScaling.normalize(17_384, 8));
+    }
+
+    /**
+     * Module keys are spelled relative to the run's project root, so three worktrees of one
+     * project write the same keys and the harvest folds them into one row set.
+     */
+    @Test
+    void three_worktrees_of_one_project_write_one_row_set() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        for (String name : List.of("a", "b", "c")) {
+            Path root = Files.createDirectories(dir.resolve("wt").resolve(name));
+            Files.writeString(root.resolve("jk.toml"), "id = \"demo\"\n");
+            Path mod = root.resolve("server/io");
+            var tasks = List.of(new BuildRecord.Task("guard", "check", "SUCCESS", 70, 0L));
+            var modules = List.of(new BuildRecord.Module(
+                    "g:io",
+                    mod.toString(),
+                    true,
+                    0,
+                    900,
+                    List.of(new BuildRecord.Task("compile-java", "compile", "SUCCESS", 800, 0L))));
+            BuildRecord base = record(1_700_000_000_000L, true, "g:a");
+            BuildRecord rec = withModules(withTasks(withDir(base, root.toString()), tasks), modules);
+            String locator = requireNonNull(j.append(rec, BuildJournal.Snapshot.NONE));
+            String toml = Files.readString(j.runDir(locator).orElseThrow().resolve("metrics.toml"));
+            assertThat(toml).contains("module.server/io.task.compile-java.wall-ms = 800");
+            assertThat(toml).contains("module." + ModuleKeys.ROOT + ".task.guard.wall-ms = 70");
+            assertThat(toml).doesNotContain(root.toString());
+        }
+        MetricsHarvest.get().runOnce(dir);
+        Path home = ProjectBuilds.projectHome(dir, null, dir.resolve("wt").resolve("a"));
+        String ledger = Files.readString(home.resolve(ProjectBuilds.PROJECT_METRICS));
+        assertThat(ledger.lines().filter(l -> l.startsWith("module.server/io.task.compile-java.wall-ms")))
+                .as("one mean, one last, one count")
+                .hasSize(3);
+        assertThat(ledger).contains("module.server/io.task.compile-java.wall-ms = 3");
+    }
+
+    private static BuildRecord withDir(BuildRecord base, String dir) {
+        return new BuildRecord(
+                base.id(),
+                base.buildNumber(),
+                BuildRecord.SCHEMA,
+                base.kind(),
+                dir,
+                base.coord(),
+                base.projectId(),
+                base.startedAt(),
+                base.finishedAt(),
+                base.millis(),
+                base.success(),
+                base.cancelled(),
+                base.exitCode(),
+                base.jkVersion(),
+                base.tests(),
+                base.modules(),
+                base.steps(),
+                base.diagnostics(),
+                base.trigger(),
+                base.session(),
+                base.commit(),
+                base.benefit(),
+                base.running(),
+                base.io(),
+                base.requestId(),
+                base.publish(),
+                base.coverage());
     }
 
     /** No recorded runner count → no runner keys at all, rather than a guessed 1. */

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.ModuleKeys;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.host.Log;
@@ -281,7 +282,7 @@ public final class BuildJournal {
             if (finished.dir() != null && !finished.dir().isBlank()) {
                 int dirty = finished.modules() == null ? 0 : finished.modules().size();
                 if (dirty == 0 && finished.steps() != null && !finished.steps().isEmpty()) dirty = 1;
-                String dirKey = sanitize(finished.dir()) + (dirty > 0 ? "#d" + dirty : "");
+                String dirKey = ModuleKeys.ROOT + (dirty > 0 ? "#d" + dirty : "");
                 sb.append("invocation.")
                         .append(sanitize(kind))
                         .append(".")
@@ -291,10 +292,11 @@ public final class BuildJournal {
                         .append('\n');
             }
         }
+        String root = finished.dir();
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
                 if (m == null || m.millis() <= 0 || !m.success()) continue;
-                String key = "module." + sanitize(m.coord() != null ? m.coord() : m.dir());
+                String key = "module." + (m.coord() != null ? sanitize(m.coord()) : ModuleKeys.relative(m.dir(), root));
                 sb.append(key).append(".wall-ms = ").append(m.millis()).append('\n');
             }
         }
@@ -305,14 +307,14 @@ public final class BuildJournal {
         Map<String, Map<String, Long>> modulePhaseTotals = new LinkedHashMap<>();
         if (finished.steps() != null) {
             for (BuildRecord.Task s : finished.steps()) {
-                appendStepMetrics(sb, s, finished.dir(), phaseTotals, modulePhaseTotals);
+                appendStepMetrics(sb, s, root, root, phaseTotals, modulePhaseTotals);
             }
         }
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
                 if (m == null || m.steps() == null) continue;
                 for (BuildRecord.Task s : m.steps()) {
-                    appendStepMetrics(sb, s, m.dir(), phaseTotals, modulePhaseTotals);
+                    appendStepMetrics(sb, s, m.dir(), root, phaseTotals, modulePhaseTotals);
                 }
             }
         }
@@ -335,10 +337,10 @@ public final class BuildJournal {
             }
         }
         // Test-class walls buffered during run-tests (FQCN → ms); train harvest without recounting methods.
-        appendTestClassWalls(sb, finished.dir());
+        appendTestClassWalls(sb, root, root);
         if (finished.modules() != null) {
             for (BuildRecord.Module m : finished.modules()) {
-                if (m != null) appendTestClassWalls(sb, m.dir());
+                if (m != null) appendTestClassWalls(sb, m.dir(), root);
             }
         }
         if (sb.length() > 40) {
@@ -346,11 +348,11 @@ public final class BuildJournal {
         }
     }
 
-    private static void appendTestClassWalls(StringBuilder sb, String moduleDir) {
+    private static void appendTestClassWalls(StringBuilder sb, String moduleDir, String root) {
         if (moduleDir == null || moduleDir.isBlank()) return;
         Map<String, Long> walls = TestClassWalls.take(moduleDir);
         if (walls.isEmpty()) return;
-        String mod = sanitize(moduleDir);
+        String mod = ModuleKeys.relative(moduleDir, root);
         for (var e : walls.entrySet()) {
             if (e.getKey() == null || e.getValue() == null || e.getValue() <= 0) continue;
             sb.append("module.")
@@ -367,6 +369,7 @@ public final class BuildJournal {
             StringBuilder sb,
             BuildRecord.Task s,
             String moduleDir,
+            String root,
             Map<String, Long> phaseTotals,
             Map<String, Map<String, Long>> modulePhaseTotals) {
         if (s == null || s.millis() <= 0) return;
@@ -392,7 +395,7 @@ public final class BuildJournal {
         }
         phaseTotals.merge(phase, s.millis(), Long::sum);
         if (moduleDir != null && !moduleDir.isBlank()) {
-            String mod = sanitize(moduleDir);
+            String mod = ModuleKeys.relative(moduleDir, root);
             sb.append("module.")
                     .append(mod)
                     .append(".task.")
