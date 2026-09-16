@@ -53,14 +53,15 @@ class CommandJsonFrozenBytesTest {
                 "epoch-1",
                 3,
                 40_960,
-                1_700_000_000_500L);
+                1_700_000_000_500L,
+                "");
         assertThat(EngineStatusCommand.runningJson(s, 60, List.of()))
                 .isEqualTo("{\"running\":true,\"pid\":4242,\"version\":\"0.13.0\",\"startedAt\":1700000000000,"
                         + "\"uptimeSeconds\":60,\"activeRequests\":2,\"idleDropped\":3,\"heapUsedBytes\":100,\"heapCommittedBytes\":200,"
                         + "\"heapMaxBytes\":300,\"rssBytes\":400,\"aotTrainingPid\":0,\"cores\":8,\"totalMemoryBytes\":32000,"
                         + "\"availableMemoryBytes\":16000,\"systemCpuLoad\":0.25,\"systemLoadAverage\":1.5,"
                         + "\"engineEpoch\":\"epoch-1\",\"logBytes\":40960,\"logRolledAt\":1700000000500,"
-                        + "\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
+                        + "\"ignoredSignals\":\"\",\"httpUrl\":\"http://127.0.0.1:8910/\",\"httpError\":null,"
                         + "\"mcpUrl\":\"http://127.0.0.1:8910/mcp\",\"engines\":[]}");
         EngineProbe.Status withVfs = new EngineProbe.Status(
                 "0.13.0",
@@ -86,7 +87,8 @@ class CommandJsonFrozenBytesTest {
                 null,
                 -1,
                 -1,
-                -1);
+                -1,
+                null);
         assertThat(EngineStatusCommand.runningJson(withVfs, 0, List.of()))
                 .contains(
                         "\"httpUrl\":null,\"httpError\":\"refused\",\"mcpUrl\":null,\"vfs\":{\"files\":3},\"engines\":[]}");

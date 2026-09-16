@@ -144,6 +144,17 @@ sent with the request, so two terminals exporting different values get their own
 from one engine. The same holds for `JK_REPO_*` credentials and host bindings
 ([Repositories](repositories.md)).
 
+### Signals
+
+The engine detaches into its own session and catches `SIGINT` / `SIGHUP` itself, so a Ctrl-C
+aimed at the terminal that started it never reaches it; cancel is a wire request. A shell that
+had those signals *ignored* — a background job of a script, `nohup` — would otherwise hand the
+ignore down to the engine and from there to every worker, test JVM and `jk dev` sidecar it forks,
+and their Ctrl-C would do nothing. The engine therefore resets both to the default disposition
+before it forks anything, and logs the mask it inherited. `jk engine status` prints a `Signals`
+row only when an ignore survived that reset; `--output json` carries it as `ignoredSignals`
+(`""` = none).
+
 HTTP / MCP knobs are `[http]` / `[mcp]`: [Config](config.md), [Web](web.md), [MCP](mcp.md).
 
 ## Related

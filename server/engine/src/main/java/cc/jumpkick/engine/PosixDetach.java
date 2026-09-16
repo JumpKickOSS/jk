@@ -19,7 +19,7 @@ import java.lang.invoke.MethodHandle;
  * group leader, so the call succeeds in the lazy-spawn path; someone running the engine main from
  * an interactive shell IS a group leader (job control), gets {@code EPERM}, and keeps their
  * foreground semantics — which is what they asked for. Any failure leaves the process exactly
- * where it was; the engine's SIGINT/SIGHUP-ignore policy still applies either way.
+ * where it was; {@link TerminalSignals} still applies either way.
  */
 public final class PosixDetach {
 

@@ -58,7 +58,12 @@ public final class EngineProbe {
             /** Engine log size on disk in bytes; {@code -1} when not reported. */
             long logBytes,
             /** Epoch millis of the log's last in-process roll; {@code -1} when it has not rolled. */
-            long logRolledAt) {}
+            long logRolledAt,
+            /**
+             * Signals the engine still ignores ({@code "HUP, INT"}) — an inherited ignore its startup
+             * could not reset; {@code ""} when none, {@code null} when the engine did not report.
+             */
+            @Nullable String ignoredSignals) {}
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -147,7 +152,8 @@ public final class EngineProbe {
                     Jsonl.requiredStr(ack, "engineEpoch"),
                     Jsonl.longValue(ack, "idleDropped", -1),
                     Jsonl.longValue(ack, "logBytes", -1),
-                    Jsonl.longValue(ack, "logRolledAt", -1)));
+                    Jsonl.longValue(ack, "logRolledAt", -1),
+                    Jsonl.str(ack, "ignoredSignals")));
         } catch (IOException e) {
             return Optional.empty();
         }
