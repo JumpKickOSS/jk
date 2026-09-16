@@ -58,15 +58,16 @@ and Maven behave:
 
 | Declaration | Processors that run |
 |-------------|---------------------|
-| No `[processor-dependencies]` | Every compile-classpath entry that registers one in `META-INF/services/javax.annotation.processing.Processor` — Lombok or MapStruct declared as a plain or `provided` dependency runs |
+| No `[processor-dependencies]` | When any compile-classpath entry registers one in `META-INF/services/javax.annotation.processing.Processor`, the whole compile classpath is the processor path — javac's own behaviour without `-processorpath` — so Lombok or MapStruct declared as a plain or `provided` dependency runs, and a processor that needs other jars at processing time (a Log4j plugin processor, Dagger's compiler) finds them beside it |
 | `[processor-dependencies]` present | That path alone; a processor that is only on the compile classpath does not run |
 
-The discovered entries become the step's processor path, so a discovered processor and a
-declared one are the same thing downstream: the worker loads it, records what it generates, and
-the compile action key hashes its full content. `compile-main`, `compile-test`, fixtures and the
-guard suite all apply the rule. Declare `[processor-dependencies]` when the manifest should say
-what runs, when the processor needs dependencies of its own that do not belong on the compile
-classpath, or when a classpath jar registers a processor you want silent.
+A discovered processor and a declared one are the same thing downstream: the worker loads the
+processor path, records what each processor generates, and the compile action key hashes the
+path's full content. A classpath that registers no processor hands javac none, and the key hashes
+it by ABI alone. `compile-main`, `compile-test`, fixtures and the guard suite all apply the rule.
+Declare `[processor-dependencies]` when the manifest should say what runs, when the processor needs
+dependencies of its own that do not belong on the compile classpath, or when a classpath jar
+registers a processor you want silent.
 
 `jk explain --verbose` names what a compile step runs: each processor class on the step's
 processor path with the jar it comes from (`processors: org.mapstruct.ap.MappingProcessor

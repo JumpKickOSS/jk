@@ -17,8 +17,8 @@ import java.util.zip.ZipFile;
 /**
  * The compile-classpath entries that register a javac annotation processor through
  * {@code META-INF/services/javax.annotation.processing.Processor}: exactly the set javac's own
- * classpath discovery runs when no processor path is named, found up front so the engine can hand
- * javac a processor path, load the processors itself and name them.
+ * classpath discovery runs when no processor path is named, found up front so the engine knows
+ * whether the classpath is a processor path at all and can name what runs.
  *
  * <p>A jar's answer is memoized on {@code (size, mtime)}: a classpath of a hundred jars is probed
  * once per jar, not once per compile request, and a rewritten jar re-probes. A directory entry (a
