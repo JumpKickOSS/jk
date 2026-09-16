@@ -126,8 +126,8 @@ dependency treadmill on a network surface that is on by default. The same-facts 
 ## Cross-cutting
 
 - **Compatibility policy.** What a minor release may change in `jk.toml`, `jk-lock.toml`, the
-  results shape, MCP tools and the plugin SPI, with a deprecation window. Published beside this
-  plan before 1.0.
+  results shape, MCP tools and the plugin SPI, with a deprecation window:
+  [Compatibility](compatibility.md).
 - **Ordering rule on the board.** `ka next` sorts by priority then id. Everything under
   `inner-loop-1.0` at P0 is "start now"; P1 is "next"; a P2 waits for the P1s of its own epic.
   Outer-loop epics of the same age sit at P2.
