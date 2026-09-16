@@ -22,6 +22,7 @@ class JsonlRecordRoundTripTest {
             SessionStartLine.class,
             JobLine.class,
             PreflightLine.class,
+            NoteLine.class,
             EtaLine.class,
             SessionFinishLine.class,
             PlanStartLine.class,

@@ -26,6 +26,10 @@ public final class ProtoEvents {
         return new InvocationPhaseEvent(phase, status).encode();
     }
 
+    public static String note(String text) {
+        return new NoteEvent(text).encode();
+    }
+
     public static String planModule(String dir, String coord, String planName, int weight, boolean fullyCached) {
         return new PlanModuleEvent(dir, coord, planName, weight, fullyCached).encode();
     }

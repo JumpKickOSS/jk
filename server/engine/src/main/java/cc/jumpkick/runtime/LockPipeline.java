@@ -463,20 +463,10 @@ public final class LockPipeline {
             if (effective.pluginConfig(d.table()).isEmpty()) continue;
             String coord = "cc.jumpkick:" + located.plugin().artifactId();
             if (!seen.add(coord + ":" + JkVersion.VERSION)) continue;
-            // A first-party plugin at a pre-release version is pinned by version alone: the bytes
-            // published under that version change with every rebuild, so a digest breaks every
-            // committed lock on the next side-load without guarding anything the version does not.
-            // A stable release is immutable and gets its digest.
-            if (Versions.isPreRelease(JkVersion.VERSION)) {
-                entries.add(Lockfile.PluginEntry.versionOnly(coord, JkVersion.VERSION));
-            } else {
-                String hex;
-                try {
-                    hex = Hashing.sha256Hex(located.path());
-                } catch (IOException unreadable) {
-                    continue;
-                }
-                entries.add(new Lockfile.PluginEntry(coord, JkVersion.VERSION, "sha256:" + hex));
+            try {
+                entries.add(FirstPartyPins.running(located.plugin(), located.path()));
+            } catch (IOException unreadable) {
+                continue;
             }
             floor = PluginDescriptors.maxFloor(floor, PluginDescriptors.jkCompatFloor(d.jkCompat()));
         }

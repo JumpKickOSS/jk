@@ -16,6 +16,7 @@ import cc.jumpkick.wire.protocol.ErrorLineEvent;
 import cc.jumpkick.wire.protocol.EtaEvent;
 import cc.jumpkick.wire.protocol.LabelEvent;
 import cc.jumpkick.wire.protocol.ModuleFinishEvent;
+import cc.jumpkick.wire.protocol.NoteEvent;
 import cc.jumpkick.wire.protocol.OutputEvent;
 import cc.jumpkick.wire.protocol.PlanDiagnosticEvent;
 import cc.jumpkick.wire.protocol.PlanFinishEvent;
@@ -209,6 +210,8 @@ final class EngineEventDecoder {
                         PreflightEvent e = PreflightEvent.decode(line);
                         listener.onPreflight(e.stage(), e.done(), e.total(), e.label());
                     }
+                    case EngineProtocol.NOTE ->
+                        listener.onNote(NoteEvent.decode(line).text());
                     case EngineProtocol.WORKSPACE_PROGRESS ->
                         listener.onWorkspaceProgress(snapshotOf(WorkspaceProgressEvent.decode(line)));
                     case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));

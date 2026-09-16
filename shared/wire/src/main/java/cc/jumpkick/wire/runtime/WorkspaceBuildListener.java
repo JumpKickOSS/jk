@@ -24,6 +24,12 @@ public interface WorkspaceBuildListener {
      */
     default void onPreflight(String stage, int done, int total, String label) {}
 
+    /**
+     * One workspace-level line for the user to keep: a fact about the run that no module owns, such
+     * as the lock's first-party plugin rows following the running jk. Emitted before {@link #onPlan}.
+     */
+    default void onNote(String text) {}
+
     /** The resolved modules in dependency order, each with its assembled plan + estimated weight. */
     default void onPlan(List<ModulePlan> plan) {}
 

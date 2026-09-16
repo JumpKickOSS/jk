@@ -118,6 +118,12 @@ public final class EngineProtocol {
     /** Server → client: outer InvocationPhase enter/leave ({@code phase}, {@code status}). */
     public static final String INVOCATION_PHASE = "invocation-phase";
 
+    /**
+     * Server → client: one workspace-level line the user keeps ({@code onNote}) — a fact about the
+     * run as a whole, owned by no module, such as the lock following the running jk.
+     */
+    public static final String NOTE = "note";
+
     /** Server → client, repeated once per module: {@code onPlan}'s per-module identity/sizing. */
     public static final String PLAN_MODULE = "plan-module";
 

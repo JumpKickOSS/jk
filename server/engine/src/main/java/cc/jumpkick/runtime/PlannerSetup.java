@@ -23,6 +23,7 @@ import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Variants;
@@ -39,9 +40,11 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
 import cc.jumpkick.task.ActionCache;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -141,7 +144,7 @@ public final class PlannerSetup {
                                 ctx::output);
                         ctx.put(LOCKFILE, updated != null ? updated : existing);
                     } else {
-                        ctx.put(LOCKFILE, LockfileReader.read(in.lockFile()));
+                        ctx.put(LOCKFILE, followFirstPartyPins(in, project, ctx));
                     }
 
                     Lockfile lock = ctx.require(LOCKFILE);
@@ -500,5 +503,20 @@ public final class PlannerSetup {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * The lock's first-party plugin rows follow the running jk ({@link FirstPartyPins}); a
+     * standalone project hears about a move here, once. A workspace member finds its rows already
+     * moved by the workspace preflight. A lock that cannot be read fails loudly on the read below,
+     * with the reader's own message.
+     */
+    private static Lockfile followFirstPartyPins(BuildPlanner.Inputs in, JkBuild project, TaskContext ctx)
+            throws IOException {
+        Set<String> declared = new HashSet<>();
+        for (PluginDeclaration declaration : project.plugins()) declared.add(declaration.coordinate());
+        List<FirstPartyPins.Repin> moved = FirstPartyPins.follow(in.dir(), declared);
+        if (!moved.isEmpty()) ctx.output(FirstPartyPins.describe(moved));
+        return LockfileReader.read(in.lockFile());
     }
 }
