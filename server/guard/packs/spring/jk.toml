@@ -1,4 +1,5 @@
 group = "cc.jumpkick.guards"
+javadoc = false   # a rule pack has no API to document
 name = "spring"
 description = "Spring Boot house rules: one logger, Jakarta EE, Lombok as a processor, test libraries in the test scope, java.time, a file-size ratchet."
 
