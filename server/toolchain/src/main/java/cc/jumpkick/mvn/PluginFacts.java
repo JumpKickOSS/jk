@@ -43,7 +43,14 @@ final class PluginFacts {
             "kotlin-maven-plugin",
             "maven-surefire-plugin",
             "maven-failsafe-plugin",
-            "jacoco-maven-plugin");
+            "jacoco-maven-plugin",
+            "maven-shade-plugin",
+            "maven-assembly-plugin",
+            "spring-boot-maven-plugin",
+            "native-maven-plugin",
+            "jib-maven-plugin",
+            "docker-maven-plugin",
+            "maven-war-plugin");
 
     private static final String[] COMPILER_PROPERTIES = {
         "maven.compiler.release", "maven.compiler.target", "maven.compiler.source"
@@ -153,7 +160,8 @@ final class PluginFacts {
         return paths;
     }
 
-    private static @Nullable String managedVersion(Model model, String group, String artifact) {
+    /** The effective {@code dependencyManagement} pin for {@code group:artifact}, when there is one. */
+    static @Nullable String managedVersion(Model model, String group, String artifact) {
         DependencyManagement dm = model.getDependencyManagement();
         if (dm == null) return null;
         for (Dependency d : dm.getDependencies()) {

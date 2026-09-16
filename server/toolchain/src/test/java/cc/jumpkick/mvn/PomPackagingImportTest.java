@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.mvn;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.JkBuild;
+import java.nio.file.Path;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * Where the packaging plugins land: Shade and {@code jar-with-dependencies} in {@code [application]
+ * assembly}, Boot in {@code [spring-boot]}, native-image in {@code [native]}, Jib in an {@code
+ * [image]} row, and a war in a Tier-3 row.
+ */
+class PomPackagingImportTest {
+
+    @Test
+    void shade_is_the_fat_jar_and_its_rewrites_are_rows(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "shade-pom.xml");
+        JkBuild build = result.jkBuild();
+        List<String> messages = TestImporters.messages(result);
+
+        assertThat(build.applicationOpt()).isPresent();
+        assertThat(build.applicationOpt().get().main()).isEqualTo("com.ex.cli.Main");
+        assertThat(build.applicationOpt().get().assembly()).isTrue();
+        assertThat(build.manifest()).containsEntry("Multi-Release", "true");
+        assertThat(messages)
+                .anyMatch(m ->
+                        m.startsWith("`maven-shade-plugin` `<relocations>` com.google.common → com.ex.shaded.guava —"));
+        assertThat(messages).anyMatch(m -> m.startsWith("`maven-shade-plugin` `<filters>` on *:* —"));
+        assertThat(messages)
+                .as("the manifest and services transformers are jk's default merge; only the appending one is a row")
+                .anyMatch(m -> m.startsWith("`maven-shade-plugin` transformers AppendingTransformer —"));
+        assertThat(messages).noneMatch(m -> m.startsWith("`<plugin>"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered).contains("[application]\nmain       = \"com.ex.cli.Main\"\nassembly = true\n");
+        assertThat(JkBuildParser.parse(rendered).applicationOpt().get().assembly())
+                .isTrue();
+    }
+
+    @Test
+    void jar_with_dependencies_is_the_fat_jar_and_other_descriptors_are_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "assembly-pom.xml");
+        JkBuild.Application application = result.jkBuild().applicationOpt().orElseThrow();
+        assertThat(application.main()).isEqualTo("com.ex.tool.Main");
+        assertThat(application.assembly()).isTrue();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("`maven-assembly-plugin` descriptors src —"))
+                .noneMatch(m -> m.startsWith("`<plugin>"));
+    }
+
+    @Test
+    void a_fat_jar_without_a_main_class_is_a_row_not_a_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.6.0</version>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().applicationOpt()).isEmpty();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("a fat jar was requested but no `<mainClass>` was found"));
+        assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("[application]");
+    }
+
+    @Test
+    void spring_boot_plugin_is_the_table_at_the_managed_boot_version(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "spring-boot-pom.xml");
+        JkBuild build = result.jkBuild();
+        List<String> messages = TestImporters.messages(result);
+
+        assertThat(build.pluginConfig("spring-boot")).isPresent();
+        assertThat(build.pluginConfig("spring-boot").get().string("version")).isEqualTo("3.5.5");
+        assertThat(build.applicationOpt().orElseThrow().main()).isEqualTo("com.ex.api.Application");
+        assertThat(build.applicationOpt().orElseThrow().assembly())
+                .as("the Boot jar is plugin-owned, not the assembly fat jar")
+                .isFalse();
+        assertThat(messages)
+                .anyMatch(m -> m.startsWith("`spring-boot-maven-plugin` `<excludes>` org.projectlombok:lombok —"))
+                .noneMatch(m -> m.startsWith("`<plugin>"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered).contains("[spring-boot]\nversion = \"3.5.5\"\n");
+        assertThat(JkBuildParser.parse(rendered)
+                        .pluginConfig("spring-boot")
+                        .orElseThrow()
+                        .string("version"))
+                .isEqualTo("3.5.5");
+    }
+
+    @Test
+    void a_boot_plugin_without_a_version_anywhere_is_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>api</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(
+                        m -> m.startsWith("`spring-boot-maven-plugin` is declared without a resolvable Boot version"));
+    }
+
+    @Test
+    void native_plugin_is_the_native_table_and_jib_is_an_image_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importFixture(tempDir, "plugins", "native-image-pom.xml");
+        JkBuild build = result.jkBuild();
+        List<String> messages = TestImporters.messages(result);
+
+        JkBuild.NativeConfig nativeConfig = build.nativeConfigOpt().orElseThrow();
+        assertThat(build.applicationOpt().orElseThrow().main()).isEqualTo("com.ex.fastcli.Main");
+        assertThat(nativeConfig.mainClass())
+                .as("[application] main already names the entry point")
+                .isNull();
+        assertThat(nativeConfig.name()).isEqualTo("fastcli");
+        assertThat(nativeConfig.args()).containsExactly("--no-fallback", "-H:+ReportExceptionStackTraces");
+        assertThat(nativeConfig.enabled()).isEqualTo(JkBuild.NativeMode.SUPPORTED);
+        assertThat(messages)
+                .anyMatch(m -> m.startsWith("`jib-maven-plugin` — jk builds the image itself (`jk image`); paste"
+                        + " `[image] base = \"eclipse-temurin:21-jre\" registry = \"ghcr.io\" name = \"ex/fastcli\""
+                        + " tag = \"1.0.0\"` into jk.toml"))
+                .noneMatch(m -> m.startsWith("`<plugin>"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains(
+                        "[native]\nname       = \"fastcli\"\nargs       = [\"--no-fallback\", \"-H:+ReportExceptionStackTraces\"]\n");
+        JkBuild reparsed = JkBuildParser.parse(rendered);
+        assertThat(reparsed.nativeConfigOpt().orElseThrow().args()).isEqualTo(nativeConfig.args());
+    }
+
+    @Test
+    void a_war_is_a_tier_three_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>web</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>war</packaging>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-war-plugin</artifactId>
+                    <version>3.4.0</version>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        assertThat(result.report().hasErrors()).isTrue();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("packaging `war` (`maven-war-plugin`) is not supported"))
+                .noneMatch(m -> m.startsWith("`<plugin>"));
+    }
+}

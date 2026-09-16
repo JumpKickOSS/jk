@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-written stand-in for a native CLI built by native-maven-plugin and shipped through Jib; never produced by jk's own writer. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.ex</groupId>
+  <artifactId>fastcli</artifactId>
+  <version>1.0.0</version>
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+  </properties>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.graalvm.buildtools</groupId>
+        <artifactId>native-maven-plugin</artifactId>
+        <version>0.10.6</version>
+        <configuration>
+          <mainClass>com.ex.fastcli.Main</mainClass>
+          <imageName>fastcli</imageName>
+          <buildArgs>
+            <buildArg>--no-fallback</buildArg>
+            <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+          </buildArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.google.cloud.tools</groupId>
+        <artifactId>jib-maven-plugin</artifactId>
+        <version>3.4.4</version>
+        <configuration>
+          <from>
+            <image>eclipse-temurin:21-jre</image>
+          </from>
+          <to>
+            <image>ghcr.io/ex/fastcli:1.0.0</image>
+          </to>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

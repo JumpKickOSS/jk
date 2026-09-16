@@ -46,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  * parents flattened, {@code dependencyManagement} applied, BOM imports and properties resolved,
  * profiles active on this machine folded in. Coordinates, scoped deps (bare versions → exact pins),
  * BOM imports, repositories, the compiler level and arguments, annotation processors, source roots,
- * the test plugins and the inactive profiles' payloads are mapped; other POM features
+ * the test and packaging plugins and the inactive profiles' payloads are mapped; other POM features
  * land in the report, which also names what each parent contributed.
  */
 public final class PomImporter {
@@ -94,13 +94,17 @@ public final class PomImporter {
 
         String mainClass = PluginFacts.mainClass(em.model());
         TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
-        JkBuild.Application application = mainClass != null ? new JkBuild.Application(mainClass, false) : null;
+        PackagingPlugins.Packaging packaging = PackagingPlugins.map(em.model(), mainClass, report);
+        JkBuild.Application application =
+                mainClass != null ? new JkBuild.Application(mainClass, packaging.fatJar()) : null;
         JkBuild jkBuild = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(repos)
                 .features(profiles.features())
                 .profiles(toProfiles(profiles.profiles()))
                 .application(application)
+                .nativeConfig(packaging.nativeConfig())
+                .pluginConfig(packaging.springBoot())
                 .build(buildBlock(em.model(), sourceTree, tests))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());

@@ -108,7 +108,7 @@ relates to the Maven one.
 
 | Plugin | Repos | Lands in jk as | Grade |
 |---|---:|---|---|
-| spring-boot-maven-plugin | 36 | `[spring-boot]` (Boot jar, platform BOM) | exact |
+| spring-boot-maven-plugin | 36 | `[spring-boot] version` at the Boot version the chain resolves (Boot jar, platform BOM); `<mainClass>` → `[application] main`; `<excludes>` and buildpack `<image>` → rows | approximate |
 | maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<includes>` / `<excludes>`, `<argLine>`, system properties and `skipTests` → rows — jk has no `[test]` key for any of them (`--class`, `[jvm] args`, `[test] env`, `--skip-tests`) | approximate |
 | maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` → `[javac] args`, `annotationProcessorPaths` → `[processor-dependencies]` | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
@@ -117,7 +117,7 @@ relates to the Maven one.
 | maven-resources-plugin | 19 | nothing to map for the fixed layout; a filtered or non-standard `<resource>` directory is a row | approximate |
 | jacoco-maven-plugin | 17 | `jk test --coverage` is a run flag, not a manifest key → row | manual |
 | maven-gpg-plugin | 17 | `jk publish --sign` | exact |
-| maven-assembly-plugin | 17 | fat jar (`jar-with-dependencies`); other descriptors → row | approximate |
+| maven-assembly-plugin | 17 | `jar-with-dependencies` → `[application] assembly = true` (needs a `<mainClass>`, else a row); other descriptors → row | approximate |
 | maven-enforcer-plugin | 17 | `requireJavaVersion` → `java =`; banned deps → `jk deny`; rest → row | approximate |
 | build-helper-maven-plugin | 16 | `add-source` → `[build] extra-src`, `add-test-source` → `[test] extra-src`; other goals → row | approximate |
 | exec-maven-plugin | 16 | `java` goal → `[application]`; `exec` goal → row (build logic) | manual |
@@ -127,7 +127,7 @@ relates to the Maven one.
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` → row | manual |
-| maven-shade-plugin | 12 | fat jar with relocations → row; plain shade → fat jar | approximate |
+| maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; relocations, filters, other transformers and `minimizeJar` → rows | approximate |
 | kotlin-maven-plugin | 12 | `kotlin =` on the module; `test-compile`-only → mixed module | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
 | central-publishing-maven-plugin | 11 | `jk publish --central` (planned battery) | manual |
@@ -138,11 +138,11 @@ relates to the Maven one.
 | license-maven-plugin | 8 | nothing → row | manual |
 | protobuf-maven-plugin | 8 | `[protobuf]` | exact |
 | versions-maven-plugin | 7 | `jk outdated` / `jk update` | exact |
-| docker-maven-plugin / jib-maven-plugin | 7 | `[image]` | approximate |
+| docker-maven-plugin / jib-maven-plugin | 7 | row carrying the `[image]` lines to paste (`base`, `registry`, `name`, `tag` from `<from>` / `<to>`); nothing is written to `jk.toml` | manual |
 | frontend-maven-plugin | 7 | `[dev.sidecars]` + a resource module | manual |
 | quarkus-maven-plugin | 7 | `[quarkus]` | exact |
 | flatten-maven-plugin | 6 | nothing (`jk export maven` writes a flat POM) | exact |
-| native-maven-plugin | 6 | `[native]` | approximate |
+| native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main` | approximate |
 | maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
 | antlr4-maven-plugin | 5 | `[antlr]` (planned generator preset) | manual |
 | openapi-generator-maven-plugin | 4 | `[openapi]` (planned generator preset) | manual |
