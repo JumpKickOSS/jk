@@ -4,6 +4,10 @@
     bench/wall/measure                         # every tool, every scenario, five timed runs each
     bench/wall/measure --tool jk --scenario edit --runs 3
     bench/wall/measure --bank                  # measure, then rewrite the [[wall.*]] tail of wall-baseline.toml
+    bench/wall/measure --bank --from ~/src/scratch/wall/results/<run> --tool maven --scenario test
+                                               # re-measure one cell and bank it with that run's other rows
+    bench/wall/measure --bank --from <run1> --from <run2> --runs 0
+                                               # bank earlier runs as they are, the later run winning a cell
     bench/wall/measure --render                # the docs tables from wall-baseline.toml, nothing measured
 
 The project is spring-projects/spring-petclinic at the commit in PROJECT: one module, a pom.xml
@@ -437,9 +441,9 @@ def bank(rows: list[dict], versions: dict[str, str], load: str) -> None:
         out.append(f"commit = {toml_str(jk_commit())}")
         out.append(f"host = {toml_str(host_line())}")
         out.append(f"project = {toml_str(PROJECT['source'].split('github.com/')[1] + '@' + PROJECT['commit'][:9])}")
-        out.append(f"tool-version = {toml_str(versions[row['tool']])}")
+        out.append(f"tool-version = {toml_str(row.get('tool_version') or versions[row['tool']])}")
         out.append(f"command = {toml_str(row['command'])}")
-        out.append(f"load = {toml_str(load)}")
+        out.append(f"load = {toml_str(row.get('load') or load)}")
     BASELINE.write_text("\n".join(out) + "\n")
     print(f"banked {sum('median_s' in r for r in rows)} entries into {BASELINE}", file=sys.stderr)
 
@@ -504,6 +508,8 @@ def main() -> int:
     ap.add_argument("--wait-idle", type=float, default=900, help="seconds to wait for the shared engine to have no live job (default 900)")
     ap.add_argument("--bank", action="store_true", help="rewrite the [[wall.*]] tail of wall-baseline.toml and the docs tables")
     ap.add_argument("--render", action="store_true", help="only render the docs tables from wall-baseline.toml")
+    ap.add_argument("--from", dest="from_dirs", action="append", type=Path, default=[],
+                    help="an earlier run's results directory whose rows fill the cells this run does not measure (repeatable; later wins)")
     args = ap.parse_args()
     if args.render:
         render_docs()
@@ -511,8 +517,17 @@ def main() -> int:
 
     tools = args.tool or list(TOOLS)
     scenarios = args.scenario or list(SCENARIOS)
-    if args.bank and (args.tool or args.scenario):
-        raise SystemExit("--bank banks a whole run: drop --tool and --scenario")
+    if args.bank and (args.tool or args.scenario) and not args.from_dirs:
+        raise SystemExit("--bank banks a whole run: drop --tool and --scenario, or name the run to fill from with --from")
+    earlier: dict[tuple[str, str], dict] = {}
+    for from_dir in args.from_dirs:
+        for line in (from_dir / "rows.jsonl").read_text().splitlines():
+            if line.strip():
+                row = json.loads(line)
+                if "median_s" in row:
+                    earlier[(row["tool"], row["scenario"])] = row
+    if args.runs == 0:
+        tools, scenarios = [], []
     out_dir = WALL_HOME / "results" / f"{dt.datetime.now():%Y-%m-%dT%H%M%S}"
     out_dir.mkdir(parents=True)
     log = out_dir / "setup.log"
@@ -520,13 +535,19 @@ def main() -> int:
     works = {tool: working_copy(tool, repo, log) for tool in tools}
     versions = {tool: tool_version(tool, works[tool]) for tool in tools}
 
-    live, load1 = wait_idle(args.wait_idle)
+    live, load1 = wait_idle(args.wait_idle if tools else 0)
     load = f"loadavg {load1:.1f} at start, engine live jobs {live if live is not None else '?'}"
+    for row in earlier.values():
+        if row["tool"] not in versions:
+            work = WALL_HOME / "work" / row["tool"]
+            versions[row["tool"]] = row.get("tool_version") or (tool_version(row["tool"], work) if work.is_dir() else row["tool"])
     print(f"host: {host_line()}\n{load}", file=sys.stderr)
     rows = []
     for tool in tools:
         for scenario in scenarios:
             row = measure(tool, scenario, works[tool], args.runs, out_dir / f"{tool}-{scenario}.log")
+            row["tool_version"] = versions[tool]
+            row["load"] = load
             rows.append(row)
             with open(out_dir / "rows.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(row, sort_keys=True) + "\n")
@@ -543,7 +564,10 @@ def main() -> int:
         print("a run failed; nothing banked", file=sys.stderr)
         return 1
     if args.bank:
-        bank(rows, versions, load)
+        measured = {(row["tool"], row["scenario"]) for row in rows}
+        banked_rows = [row for key, row in earlier.items() if key not in measured] + rows
+        banked_rows.sort(key=lambda row: (TOOLS.index(row["tool"]), SCENARIOS.index(row["scenario"])))
+        bank(banked_rows, versions, load)
         render_docs()
     return 0
 

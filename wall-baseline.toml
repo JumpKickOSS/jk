@@ -16,3 +16,202 @@
 # Below the ratchet tables sits the three-tool wall section, `[[wall.<tool>.<scenario>]]`, banked by
 # bench/wall/measure --bank and rendered into docs/user/performance.md. The ratchet reads past it
 # and writes it back untouched.
+
+
+# The three-tool table behind docs/user/performance.md, banked by bench/wall/measure --bank:
+# one entry per tool and scenario, from the run named by its date, commit and host.
+
+[[wall.jk.clean]]
+median-s = 0.90
+p90-s = 1.26
+peak-rss-mb = 2715
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.13.7"
+command = "jk build --skip-tests --no-ansi -r"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.jk.rebuild]]
+median-s = 0.10
+p90-s = 0.10
+peak-rss-mb = 2426
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.13.7"
+command = "jk build --skip-tests --no-ansi"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.jk.noop]]
+median-s = 0.09
+p90-s = 0.36
+peak-rss-mb = 2551
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.13.7"
+command = "jk build --skip-tests --no-ansi"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.jk.edit]]
+median-s = 0.64
+p90-s = 1.05
+peak-rss-mb = 2716
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.13.7"
+command = "jk build --skip-tests --no-ansi"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.jk.test]]
+median-s = 26.15
+p90-s = 35.66
+peak-rss-mb = 7479
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "jk 0.13.7"
+command = "jk test -r --no-ansi"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.gradle.clean]]
+median-s = 2.04
+p90-s = 4.14
+peak-rss-mb = 1687
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.gradle.rebuild]]
+median-s = 0.43
+p90-s = 0.48
+peak-rss-mb = 1700
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.gradle.noop]]
+median-s = 0.44
+p90-s = 1.05
+peak-rss-mb = 1698
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.gradle.edit]]
+median-s = 0.52
+p90-s = 0.59
+peak-rss-mb = 1742
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+command = "./gradlew classes jar --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.gradle.test]]
+median-s = 24.45
+p90-s = 38.74
+peak-rss-mb = 2938
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Gradle 9.5.1 (the repository's wrapper)"
+command = "./gradlew test --rerun --configuration-cache --build-cache -q --console=plain -I bench/wall/wall.init.gradle -Dwall.build-cache=$WALL_HOME/gradle-build-cache"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.maven.clean]]
+median-s = 2.26
+p90-s = 2.60
+peak-rss-mb = 435
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16 via jk mvn"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.maven.rebuild]]
+median-s = 2.40
+p90-s = 3.66
+peak-rss-mb = 442
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16 via jk mvn"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.maven.noop]]
+median-s = 1.84
+p90-s = 1.92
+peak-rss-mb = 399
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16 via jk mvn"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.maven.edit]]
+median-s = 2.23
+p90-s = 2.30
+peak-rss-mb = 429
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16 via jk mvn"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip -Dmaven.test.skip package"
+load = "loadavg 2.5 at start, engine live jobs 0 (run 2026-09-16T04:32, other gates idle)"
+
+[[wall.maven.test]]
+median-s = 23.66
+p90-s = 27.31
+peak-rss-mb = 1081
+runs = 5
+date = "2026-09-16"
+commit = "e86db43a4"
+host = "AMD Ryzen 9 7900X 12-Core Processor, 24 threads, 30 GB, Linux 7.1.12-200.fc44.x86_64"
+project = "spring-projects/spring-petclinic@818c4136e"
+tool-version = "Maven 3.9.16 via jk mvn"
+command = "jk mvn -q -o -Dcheckstyle.skip -Dspring-javaformat.skip -Denforcer.skip -Dmaven.gitcommitid.skip -Dcyclonedx.skip -Dspring-boot.repackage.skip -Djacoco.skip test"
+load = "loadavg 0.4 at start, engine live jobs 0"
