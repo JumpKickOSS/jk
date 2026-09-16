@@ -98,24 +98,29 @@ class WorkspaceLifecyclePhasesTest {
         List<BuildPlan> plans = List.of(
                 BuildPlan.builder("api").build(), BuildPlan.builder("app").build());
         List<ModuleOutcome> outcomes = List.of(outcome("api", true, 0), outcome("app", true, 0));
+        List<BuildGraph.BuildUnit> order = BuildGraph.resolve(workspace, root).topoOrder();
         Session session = Session.defaults();
 
-        assertThat(NoTestsRan.verdict(test, root, session, plans, outcomes))
+        assertThat(NoTestsRan.verdict(test, root, session, plans, outcomes, order))
                 .isEqualTo("no tests ran: none of the 2 modules has a test suite (example:api, example:app)");
-        assertThat(NoTestsRan.verdict(request(workspace), root, session, plans, outcomes))
+        List<ModuleOutcome> appFirst = List.of(outcome("app", true, 0), outcome("api", true, 0));
+        assertThat(NoTestsRan.verdict(test, root, session, plans, appFirst, order))
+                .as("the modules are named in the workspace's order, not the order they finished in")
+                .isEqualTo("no tests ran: none of the 2 modules has a test suite (example:api, example:app)");
+        assertThat(NoTestsRan.verdict(request(workspace), root, session, plans, outcomes, order))
                 .as("a build is judged by built nothing, not here")
                 .isNull();
         WorkspaceRequest skipped = new WorkspaceRequest(
                         workspace, tmp.resolve("cache"), null, 0, null, true, false, 1, null, false, false)
                 .withTestOnly(true);
-        assertThat(NoTestsRan.verdict(skipped, root, session, plans, outcomes))
+        assertThat(NoTestsRan.verdict(skipped, root, session, plans, outcomes, order))
                 .as("a run that asked for no tests")
                 .isNull();
-        assertThat(NoTestsRan.verdict(test, plain, session, plans, outcomes))
+        assertThat(NoTestsRan.verdict(test, plain, session, plans, outcomes, order))
                 .as("a plain project is never judged here")
                 .isNull();
         Session classes = session.withTestSelection(TestSelection.DEFAULT.withClasses(List.of("FooTest")));
-        assertThat(NoTestsRan.verdict(test, root, classes, plans, outcomes))
+        assertThat(NoTestsRan.verdict(test, root, classes, plans, outcomes, order))
                 .as("--class patterns have their own verdict")
                 .isNull();
     }
