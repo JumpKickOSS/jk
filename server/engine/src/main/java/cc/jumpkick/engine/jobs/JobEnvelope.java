@@ -126,12 +126,14 @@ public final class JobEnvelope {
         String eventDir = journalDir(requestLine);
         long eventStartMillis = host.nowMillis();
         boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
-        // How the build was started: default "cli"; optimize/calibrate mark synthetic history.
+        // Who asked: default "cli"; optimize/calibrate mark synthetic history. The session (an MCP
+        // connection, an IDE window) rides beside it when the requester has one.
         String trigger = Jsonl.str(requestLine, "trigger");
         if (trigger == null || trigger.isBlank()) trigger = "cli";
+        String session = Jsonl.str(requestLine, "session");
         // exclusive fingerprint + start-time build number for journaled kinds.
         String fingerprint = BuildJobFingerprint.ofRequest(eventKind, requestLine);
-        AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger);
+        AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger, session);
         if (admit.rejected() != null) {
             return refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
         }
@@ -141,6 +143,7 @@ public final class JobEnvelope {
                 eventKind,
                 eventDir,
                 trigger,
+                session,
                 !job.kind().writesTimeline() || Jsonl.bool(requestLine, "noTimeline", false),
                 rebuildRun,
                 admit.buildNumber(),

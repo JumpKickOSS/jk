@@ -361,6 +361,10 @@ public final class SsePublisher implements SseEvents {
                 .put("dir", dir)
                 .put("coord", coord)
                 .put("projectId", ProjectIds.idOf(dir));
+        // The origin rides the first frame so a card shows who asked from its first paint.
+        var hold = inFlight.get(requestId).orElse(null);
+        if (hold != null && hold.trigger() != null) payload = payload.put("trigger", hold.trigger());
+        if (hold != null && hold.session() != null) payload = payload.put("session", hold.session());
         if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
         if (startedAt > 0) {
             payload = payload.put("startedAt", startedAt);

@@ -35,8 +35,9 @@ public interface HostedVerb {
     }
 
     /**
-     * Decode an HTTP/MCP job into this verb's wire request line ({@code Proto*} builders +
-     * {@code ProtoSession.withTrigger}). Only called for kinds in {@link #jobKinds()}.
+     * Decode an HTTP/MCP job into this verb's wire request line ({@code Proto*} builders). The
+     * admission point stamps the spec's origin onto the line. Only called for kinds in
+     * {@link #jobKinds()}.
      *
      * @throws IllegalArgumentException when the spec cannot run (bad modules, missing toolchain …)
      */

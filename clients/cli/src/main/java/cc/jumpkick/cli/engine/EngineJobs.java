@@ -98,38 +98,43 @@ final class EngineJobs {
         String workspaceTarget = spec != null && spec.target() != WorkspaceTarget.PACKAGE
                 ? spec.target().name().toLowerCase(Locale.ROOT)
                 : null;
-        return new BuildRequest(
-                        req.entryDir().toString(),
-                        req.cache().toString(),
-                        req.jdksDir() != null ? req.jdksDir().toString() : null,
-                        req.workers(),
-                        req.profile(),
-                        req.skipTests(),
-                        req.verbose(),
-                        req.maxModuleConcurrency(),
-                        session.parallelTests(),
-                        session.offline(),
-                        session.force(),
-                        req.freshenLock(),
-                        req.ephemeralActions(),
-                        req.testOnly(),
-                        req.dirtyHint() == null
-                                ? null
-                                : req.dirtyHint().stream()
-                                        .map(Object::toString)
-                                        .sorted()
-                                        .toList(),
-                        session.testSelection(),
-                        ProtoJobs.debugJvmSpelling(session.debugJvm()),
-                        Objects.requireNonNullElse(req.modules(), List.of()),
-                        req.keepGoing(),
-                        workspaceTarget,
-                        graalHomes,
-                        spec != null && spec.m2Dir() != null ? spec.m2Dir().toString() : null,
-                        RequestEnvironment.trigger(),
-                        RequestEnvironment.progressMode(),
-                        session.coverage())
-                .encode();
+        return ProtoSession.withOrigin(
+                new BuildRequest(
+                                req.entryDir().toString(),
+                                req.cache().toString(),
+                                req.jdksDir() != null ? req.jdksDir().toString() : null,
+                                req.workers(),
+                                req.profile(),
+                                req.skipTests(),
+                                req.verbose(),
+                                req.maxModuleConcurrency(),
+                                session.parallelTests(),
+                                session.offline(),
+                                session.force(),
+                                req.freshenLock(),
+                                req.ephemeralActions(),
+                                req.testOnly(),
+                                req.dirtyHint() == null
+                                        ? null
+                                        : req.dirtyHint().stream()
+                                                .map(Object::toString)
+                                                .sorted()
+                                                .toList(),
+                                session.testSelection(),
+                                ProtoJobs.debugJvmSpelling(session.debugJvm()),
+                                Objects.requireNonNullElse(req.modules(), List.of()),
+                                req.keepGoing(),
+                                workspaceTarget,
+                                graalHomes,
+                                spec != null && spec.m2Dir() != null
+                                        ? spec.m2Dir().toString()
+                                        : null,
+                                RequestEnvironment.trigger(),
+                                RequestEnvironment.progressMode(),
+                                session.coverage())
+                        .encode(),
+                null,
+                RequestEnvironment.session());
     }
 
     /**
@@ -157,24 +162,27 @@ final class EngineJobs {
                 paths,
                 ProtoSession.withToolchain(
                         ProtoSession.withSession(
-                                new TestRequest(
-                                                req.entryDir().toString(),
-                                                req.cache().toString(),
-                                                req.jdksDir() != null
-                                                        ? req.jdksDir().toString()
-                                                        : null,
-                                                req.workers(),
-                                                req.profile(),
-                                                req.verbose(),
-                                                req.offline(),
-                                                req.force(),
-                                                req.parallelTests() || session.parallelTests(),
-                                                sel,
-                                                ProtoJobs.debugJvmSpelling(debug),
-                                                RequestEnvironment.trigger(),
-                                                RequestEnvironment.progressMode(),
-                                                req.coverage() || session.coverage())
-                                        .encode(),
+                                ProtoSession.withOrigin(
+                                        new TestRequest(
+                                                        req.entryDir().toString(),
+                                                        req.cache().toString(),
+                                                        req.jdksDir() != null
+                                                                ? req.jdksDir().toString()
+                                                                : null,
+                                                        req.workers(),
+                                                        req.profile(),
+                                                        req.verbose(),
+                                                        req.offline(),
+                                                        req.force(),
+                                                        req.parallelTests() || session.parallelTests(),
+                                                        sel,
+                                                        ProtoJobs.debugJvmSpelling(debug),
+                                                        RequestEnvironment.trigger(),
+                                                        RequestEnvironment.progressMode(),
+                                                        req.coverage() || session.coverage())
+                                                .encode(),
+                                        null,
+                                        RequestEnvironment.session()),
                                 session.variant(),
                                 session.clientEnv(),
                                 session.jvm(),

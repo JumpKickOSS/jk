@@ -12,6 +12,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.IdeWireModel;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import cc.jumpkick.wire.protocol.RequestEnvironment;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,7 +96,11 @@ public final class BspServer {
         if (method == null) return;
         try {
             switch (method) {
-                case "build/initialize" -> respond(id, initializeResultJson());
+                case "build/initialize" -> {
+                    // Every build this server sends from here on journals as the IDE's own.
+                    RequestEnvironment.declare("bsp", sessionLabel(message));
+                    respond(id, initializeResultJson());
+                }
                 case "build/initialized" -> {
                     /* notification */
                 }
@@ -288,6 +294,20 @@ public final class BspServer {
     }
 
     private static final List<String> LANGUAGE_IDS = List.of("java", "kotlin", "groovy");
+
+    /** Four hex digits minted once per server process: two windows of one IDE are two sessions. */
+    private static final String SESSION_ID = String.format("%04x", new SecureRandom().nextInt(1 << 16));
+
+    /**
+     * The journal's session label for this server: the client's {@code displayName} from
+     * {@code build/initialize} and the per-process id, e.g. {@code IntelliJ-BSP 7b2c}.
+     */
+    static String sessionLabel(@Nullable Object initializeMessage) {
+        Object params = initializeMessage instanceof Map<?, ?> m ? m.get("params") : null;
+        Object name = params instanceof Map<?, ?> p ? p.get("displayName") : null;
+        String client = name instanceof String s && !s.isBlank() ? s.trim() : "bsp-client";
+        return client + " " + SESSION_ID;
+    }
 
     /** The {@code build/initialize} result: server identity and the three provider capabilities. */
     static String initializeResultJson() {

@@ -2398,3 +2398,34 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
   cursor: pointer;
 }
 .code-pick-row:hover { border-color: var(--cn); }
+
+/* Who asked — trigger · session on a card, a session group header, and the project page's run. */
+.origin {
+  font-size: 11px;
+  color: var(--mu);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.origin-mcp { border-color: rgba(var(--cn-rgb), 0.45); color: var(--cn); }
+.origin-bsp { border-color: rgba(var(--cn-rgb), 0.25); }
+.group-toggle { font-size: 11px; padding: 2px 8px; }
+.group-toggle.active { border-color: var(--cn); color: var(--cn); }
+.session-group .tally { display: inline-flex; gap: 6px; }
+.session-group .tally .badge { font-size: 10.5px; padding: 2px 7px; }
+.timeline { list-style: none; margin: 10px 0 0; padding: 0; border-left: 1px solid var(--bd); }
+.timeline li { display: flex; align-items: baseline; gap: 10px; padding: 4px 0 4px 12px; position: relative; }
+.timeline li::before {
+  content: ''; position: absolute; left: -4px; top: 11px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--dim);
+}
+.timeline li.success::before { background: var(--okc); }
+.timeline li.failed::before { background: var(--err); }
+.timeline li.running::before { background: var(--runc); }
+.timeline li .badge { font-size: 10.5px; padding: 2px 7px; }
+.focused-run { margin-bottom: 14px; }
+.focused-run .card-head { margin-top: 4px; }
+table.stats.history tr.pinnable { cursor: pointer; }
+table.stats.history tr.pinnable:hover td { background: rgba(var(--cn-rgb), 0.06); }
+table.stats.history tr.pinned td { background: rgba(var(--cn-rgb), 0.12); }

@@ -41,7 +41,10 @@ public final class BuildAccumulator {
     private final String dir;
     private final @Nullable String coord;
     private final @Nullable String projectId;
-    private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
+    /** Who asked: {@code cli}, {@code mcp}, {@code web}, {@code bsp}, or a fixture trigger. */
+    private final String trigger;
+    /** The session that asked (an MCP connection, an IDE window); null for a plain shell. */
+    private final @Nullable String session;
     /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
     private final @Nullable ChromeTimeline timeline;
     /** request was {@code --redo}/{@code --force} — train {@code build:rebuild} metrics. */
@@ -105,7 +108,7 @@ public final class BuildAccumulator {
             String trigger,
             @Nullable ChromeTimeline timeline,
             boolean rebuild) {
-        this(kind, dir, coord, trigger, timeline, rebuild, 0L, null, 0L);
+        this(kind, dir, coord, trigger, null, timeline, rebuild, 0L, null, 0L);
     }
 
     public BuildAccumulator(
@@ -117,7 +120,7 @@ public final class BuildAccumulator {
             boolean rebuild,
             long buildNumber,
             @Nullable String journalId) {
-        this(kind, dir, coord, trigger, timeline, rebuild, buildNumber, journalId, 0L);
+        this(kind, dir, coord, trigger, null, timeline, rebuild, buildNumber, journalId, 0L);
     }
 
     public BuildAccumulator(
@@ -125,6 +128,7 @@ public final class BuildAccumulator {
             String dir,
             @Nullable String coord,
             String trigger,
+            @Nullable String session,
             @Nullable ChromeTimeline timeline,
             boolean rebuild,
             long buildNumber,
@@ -135,6 +139,7 @@ public final class BuildAccumulator {
         this.coord = coord;
         this.projectId = ProjectIds.idOf(dir);
         this.trigger = trigger;
+        this.session = session;
         this.timeline = timeline;
         this.rebuild = rebuild;
         this.buildNumber = buildNumber;
@@ -710,6 +715,7 @@ public final class BuildAccumulator {
                 topSteps,
                 noVerdict ? withNoVerdictRow(diagSnapshot()) : diagSnapshot(),
                 trigger,
+                session,
                 commit,
                 benefitRow,
                 false,

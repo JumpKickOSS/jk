@@ -175,6 +175,8 @@ class McpHandlerTest {
                 "build",
                 "/a",
                 "c",
+                null,
+                null,
                 now - 10 * 60_000,
                 now - 1_000,
                 40.0,
@@ -191,6 +193,8 @@ class McpHandlerTest {
                 "build",
                 "/b",
                 "c",
+                null,
+                null,
                 now - 10 * 60_000,
                 now - McpVitals.STALL_MS - 5_000,
                 40.0,
@@ -203,7 +207,23 @@ class McpHandlerTest {
                 List.of());
         // No signal ever: falls back to startedAt (young job — not stalled).
         HttpLive.Run young = new HttpLive.Run(
-                3L, 3L, "lock", "/c", "c", now - 2_000, 0L, Double.NaN, "j-3", 0, 0, 1, 2, List.of(), List.of());
+                3L,
+                3L,
+                "lock",
+                "/c",
+                "c",
+                null,
+                null,
+                now - 2_000,
+                0L,
+                Double.NaN,
+                "j-3",
+                0,
+                0,
+                1,
+                2,
+                List.of(),
+                List.of());
         McpHandler withLive = new McpHandler(
                 () -> new StatusSnapshot("0.12.0", 1L, 0L, 0, 0, 1L << 20, 2L << 20, 256L << 20, -1L, 0, 8, 16L << 30),
                 jobs,
@@ -237,6 +257,8 @@ class McpHandlerTest {
                 "build",
                 "/tmp/demo",
                 "com.example:demo",
+                null,
+                null,
                 1L,
                 0L,
                 50.0,

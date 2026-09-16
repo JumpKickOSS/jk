@@ -104,21 +104,19 @@ public final class NativeVerb implements HostedVerb {
         Map<String, String> graalHomes = new LinkedHashMap<>();
         for (Path d : targets) graalHomes.put(d.toString(), graal.toString());
         // The binary is the job's deliverable; the dashboard/agent surface has no test toggle.
-        return ProtoSession.withTrigger(
-                new NativeRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                JkDirs.jdks().toString(),
-                                null,
-                                true,
-                                false,
-                                false,
-                                false,
-                                List.of(),
-                                graalHomes,
-                                List.of())
-                        .encode(),
-                "web");
+        return new NativeRequest(
+                        spec.dir(),
+                        JkDirs.cache().toString(),
+                        JkDirs.jdks().toString(),
+                        null,
+                        true,
+                        false,
+                        false,
+                        false,
+                        List.of(),
+                        graalHomes,
+                        List.of())
+                .encode();
     }
 
     private static Map<Path, JkBuild> nativeScopes(Path entryDir, JkBuild entry) throws IOException {

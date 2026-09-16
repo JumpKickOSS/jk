@@ -254,6 +254,16 @@ Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash
 
 The dashboard `#project/<id>/files/…` pane is the primary consumer (Copy / Preview / Save + Build).
 
+### `GET /api/history`
+
+The persisted journal, newest first, as the engine wrote each `record.json` (finished rows
+stream verbatim; in-flight rows gain live `jid`/`progress`/phase fields — see "Mid-build
+connect"). Every row carries `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
+list already hides) and, when the surface had one, `session` — the MCP connection's
+`<client> <id>` or the BSP client's `<displayName> <id>`; a CLI row has no `session` key. The
+dashboard's **By session** grouping and the project page's followed run read only these
+fields, so they show exactly what `jk-results.md` prints.
+
 ### `GET /api/metrics`
 
 Aggregate build history as a flat array, one object per row, averages pre-computed so clients stay
@@ -329,8 +339,9 @@ are impossible. Independently, `GET /api/history` enriches `running: true` rows 
 live fields so the SPA's initial GET matches the TUI even before the first SSE frame.
 
 `run-snapshot` payload (same shape as an enriched history row): `jid`, `kind`,
-`dir`, `coord?`, `projectId?`, `buildNumber?`, `historyId?` (journal id, present for journaled
-kinds), `startedAt` + `serverNow` (engine wall-clock pair — the SPA derives skew-free elapsed
+`dir`, `coord?`, `projectId?`, `trigger?`/`session?` (who asked, as the journal row carries it;
+`request-start` carries the same pair), `buildNumber?`, `historyId?` (journal id, present for
+journaled kinds), `startedAt` + `serverNow` (engine wall-clock pair — the SPA derives skew-free elapsed
 as `serverNow − startedAt` and re-anchors it to its own clock at receipt; both omitted until
 the hold registers), `running: true`, `progress?`, `remainingMs?`, `R0?`,
 `numerator`/`denominator?`, and phase chains: `modules[]` (`dir`, `coord?`, `finished`,

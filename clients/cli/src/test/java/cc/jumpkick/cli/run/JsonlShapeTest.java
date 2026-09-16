@@ -117,6 +117,9 @@ class JsonlShapeTest {
         assertThat(start).contains("\"type\":\"session-start\"");
         assertThat(start).contains("\"command\":\"build\"");
         assertThat(start).contains("\"argv\":[\"build\",\"--skip-tests\"]");
+        // The origin the run record will carry: a plain shell is `cli` with no session.
+        assertThat(start).contains("\"trigger\":\"cli\"");
+        assertThat(start).doesNotContain("\"session\"");
         String finish = JsonlShape.sessionFinish(0, 42, "ok", List.of("a:b"));
         assertThat(finish).contains("\"type\":\"session-finish\"");
         assertThat(finish).contains("\"exit\":0");

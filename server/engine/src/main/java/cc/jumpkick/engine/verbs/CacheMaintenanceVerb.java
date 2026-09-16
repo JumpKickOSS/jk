@@ -53,8 +53,7 @@ public final class CacheMaintenanceVerb implements HostedVerb {
 
     @Override
     public String decodeJob(JobSpec spec) {
-        return ProtoSession.withTrigger(
-                new CachePruneRequest("clear", JkDirs.cache().toString(), spec.dir(), false, false).encode(), "web");
+        return new CachePruneRequest("clear", JkDirs.cache().toString(), spec.dir(), false, false).encode();
     }
 
     @Override

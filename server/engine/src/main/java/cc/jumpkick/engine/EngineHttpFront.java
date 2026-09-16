@@ -18,6 +18,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -144,14 +145,17 @@ public final class EngineHttpFront {
 
     /**
      * {@code POST /api/build} / MCP {@code jk_run}: resolve the verb, decode the spec into its
-     * wire request line, submit FireAndForget on the one envelope.
+     * wire request line, stamp the origin that asked, submit FireAndForget on the one envelope.
      */
     private long trigger(JobSpec spec) {
         Path entryDir = requireProject(spec.dir());
         HostedVerb verb = verbs.forJobKind(spec.kind());
         if (verb == null) throw new IllegalArgumentException("kind not hosted: " + spec.kind());
         LockFloor.refuseIfBelow(entryDir, verb.wireType(), version);
-        String line = verb.decodeJob(spec.withDir(entryDir.toString()));
+        String line = ProtoSession.withOrigin(
+                verb.decodeJob(spec.withDir(entryDir.toString())),
+                spec.origin().trigger(),
+                spec.origin().session());
         return jobs.submit(line, verb.toJobRequest(line), spec.transport());
     }
 

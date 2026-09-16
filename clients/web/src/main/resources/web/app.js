@@ -36,6 +36,7 @@ import { PhaseChain } from './phase.js';
 import { projectComputed } from './projects.js';
 import { FailReport } from './report.js';
 import { buildProjectHash, routeFromHash } from './route.js';
+import { sessionComputed, sessionMethods } from './sessions.js';
 import { statusMethods } from './status.js';
 import { installTips } from './tip.js';
 import { EVENT, SSE } from './wire.js';
@@ -55,6 +56,8 @@ export const appOptions = {
     codeCol: routeFromHash().col || 0,
     codeLineErr: !!routeFromHash().lineErr,
     codeMsg: routeFromHash().msg || '',
+    pinnedRun: routeFromHash().run || 0, // #project/<id>/run/<n>: 0 follows the newest run
+    groupBySession: false, // Activity feed: one card per run, or runs grouped under the session that asked
     selectedProjectDir: null, // checkout path resolved from project meta
     projectMeta: null, // live /api/project payload (coord + description + dir) for the open project
     // Dependencies panel on the Project page — closed by default; graph fetch + echarts
@@ -133,11 +136,13 @@ export const appOptions = {
   computed: {
     ...wizardComputed,
     ...projectComputed,
+    ...sessionComputed,
   },
   methods: {
     ...cardMethods,
     ...statusMethods,
     ...wizardMethods,
+    ...sessionMethods,
     /**
      * Open the blocking auth dialog and freeze live updates. When {@code clear} is true, drop a
      * stored token that the engine just rejected.
@@ -339,6 +344,7 @@ export const appOptions = {
       this.codeCol = r.col || 0;
       this.codeLineErr = !!r.lineErr;
       this.codeMsg = r.msg || '';
+      this.pinnedRun = r.run || 0;
       // Collapse the expensive graph panel when leaving project view or switching projects.
       if (r.view !== 'project' || idChanged || r.files) this.projectGraphOpen = false;
       // Project identity cannot change between two clicks on the same #project/<id> route, and
@@ -362,6 +368,10 @@ export const appOptions = {
     },
     browseCodebase() {
       this.openCode({ projectId: this.selectedProjectId });
+    },
+    /** `#project/<id>/run/<n>`, or the plain project route when `buildNumber` is 0 (follow newest). */
+    projectRunHash(projectId, buildNumber) {
+      return buildProjectHash({ projectId, run: buildNumber || 0 });
     },
     openCode({ projectId, path, line, col, err, msg, replace } = {}) {
       if (this.authModal) return;

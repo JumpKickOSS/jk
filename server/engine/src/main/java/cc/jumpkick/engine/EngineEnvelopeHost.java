@@ -90,11 +90,12 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
             String kind,
             String dir,
             String trigger,
+            @Nullable String session,
             boolean noTimeline,
             boolean rebuild,
             long buildNumber,
             @Nullable String journalId) {
-        journalWriter.register(id, kind, dir, trigger, noTimeline, rebuild, buildNumber, journalId);
+        journalWriter.register(id, kind, dir, trigger, session, noTimeline, rebuild, buildNumber, journalId);
     }
 
     @Override

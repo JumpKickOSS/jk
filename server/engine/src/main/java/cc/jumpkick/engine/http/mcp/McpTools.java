@@ -158,16 +158,21 @@ public final class McpTools {
         return Map.of("tools", rows);
     }
 
-    /** Dispatch one {@code tools/call}. */
-    @SuppressWarnings("unchecked")
+    /** Dispatch one {@code tools/call} from an anonymous connection. */
     public Map<String, Object> call(McpContext ctx, Map<String, Object> params) {
+        return call(ctx, params, null);
+    }
+
+    /** Dispatch one {@code tools/call}; {@code connection} is the caller's, or null when it sent no session id. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> call(McpContext ctx, Map<String, Object> params, @Nullable McpConnection connection) {
         Object rawName = params.get("name");
         String name = rawName == null ? null : String.valueOf(rawName);
         if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
         McpTool tool = byName.get(name);
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
-        return tool.call(new McpCall(ctx, args, progressTokenOf(params)));
+        return tool.call(new McpCall(ctx, args, progressTokenOf(params), connection));
     }
 
     /**

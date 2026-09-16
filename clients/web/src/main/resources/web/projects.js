@@ -5,6 +5,7 @@
 
 import { historyCard } from './fold.js';
 import { outcomeOf } from './outcome.js';
+import { focusedRun } from './sessions.js';
 
 /**
  * A persisted record's outcome. There is exactly one outcome rule, {@link outcomeOf}, and it reads
@@ -118,6 +119,22 @@ export const projectComputed = {
     list.sort((a, b) => (b.state === 'running') - (a.state === 'running') || b.lastFinishedAt - a.lastFinishedAt);
     return list;
   },
+  /**
+   * The run the project page follows: the newest one (a live card first) unless the route pins a
+   * build number. Folded to a card either way so the same outcome rule and module rows apply.
+   */
+  projectRun() {
+    const id = this.selectedProjectId;
+    const dir = this.selectedProjectDir || (this.projectMeta && this.projectMeta.dir);
+    if (!id && !dir) return null;
+    const same = (r) => (id && r.projectId ? r.projectId === id : dir && r.dir === dir);
+    const records = (this.projectHistory || []).filter(same);
+    const cards = (this.cards || []).filter(same);
+    const focus = focusedRun(records, cards, this.pinnedRun || 0);
+    if (!focus) return null;
+    const card = focus.live ? focus.run : historyCard(focus.run);
+    return { ...focus, card, outcome: outcomeOf(card) };
+  },
   // The open project's detail page: identity + aggregate metrics + a build-history table, all
   // derived from the journal filtered to this project (by projectId).
   // Recomputes only when the history, selection, or meta change — not on the 1s clock tick.
@@ -182,6 +199,7 @@ export const projectComputed = {
         buildNumber: r.buildNumber || null,
         outcome: recordOutcome(r),
         trigger: r.trigger || null,
+        session: r.session || null,
         commit: r.commit || null,
         tests: r.tests || null,
         saved: bs.present && bs.uncached > 0 ? this.duration(bs.saved) : null,

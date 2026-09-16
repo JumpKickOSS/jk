@@ -26,7 +26,8 @@ public final class InFlightBuilds {
             @Nullable String coord,
             long startedAt,
             @Nullable String journalId,
-            @Nullable String trigger) {}
+            @Nullable String trigger,
+            @Nullable String session) {}
 
     private final ConcurrentHashMap<String, Hold> byFingerprint = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Hold> byRequestId = new ConcurrentHashMap<>();
@@ -91,7 +92,8 @@ public final class InFlightBuilds {
                         h.coord(),
                         h.startedAt(),
                         journalId,
-                        h.trigger()));
+                        h.trigger(),
+                        h.session()));
         Hold updated = byRequestId.get(requestId);
         if (updated != null
                 && updated.fingerprint() != null

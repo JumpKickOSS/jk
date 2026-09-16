@@ -9,6 +9,7 @@ import cc.jumpkick.runtime.base.BuildNumberAllocator;
 import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.nio.file.Path;
+import org.jspecify.annotations.Nullable;
 
 /** Exclusive fingerprint + start-time journal stub for one job. */
 public final class JobAdmit {
@@ -20,7 +21,13 @@ public final class JobAdmit {
      * and persist an in-flight journal stub.
      */
     public static AdmitResult admit(
-            JobEnvelope.Host host, long requestId, String kind, String dir, String fingerprint, String trigger) {
+            JobEnvelope.Host host,
+            long requestId,
+            String kind,
+            String dir,
+            String fingerprint,
+            String trigger,
+            @Nullable String session) {
         boolean exclusive = BuildJobFingerprint.isExclusiveKind(kind);
         String fp = exclusive && fingerprint != null ? fingerprint : "";
         // Reject before allocating a build number so collisions do not burn sequence values.
@@ -40,10 +47,19 @@ public final class JobAdmit {
         if (host.historyConfig().enabled() && canonDir != null && !canonDir.isBlank()) {
             journalId = host.journal()
                     .begin(BuildRecord.running(
-                            buildNumber, kind, dir, coord, projectId, startedAt, host.version(), trigger, requestId));
+                            buildNumber,
+                            kind,
+                            dir,
+                            coord,
+                            projectId,
+                            startedAt,
+                            host.version(),
+                            trigger,
+                            session,
+                            requestId));
         }
-        InFlightBuilds.Hold candidate =
-                new InFlightBuilds.Hold(requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger);
+        InFlightBuilds.Hold candidate = new InFlightBuilds.Hold(
+                requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger, session);
         if (exclusive && !fp.isEmpty()) {
             var raced = host.inFlight().tryAcquire(candidate);
             if (raced.isPresent()) {

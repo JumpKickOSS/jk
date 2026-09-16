@@ -26,7 +26,8 @@ stopped providing.
 | `failure.js` | Diagnostics → the test and compile failure report models (CLI parity) |
 | `cards.js` | The Activity feed's per-card methods: progress, ETA, badge, diagnostics |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
-| `projects.js` | The Projects tab and Project page: history records grouped per project |
+| `projects.js` | The Projects tab and Project page: history records grouped per project, and the run the page follows or pins |
+| `sessions.js` | Who asked: origin labels, the Activity feed grouped by session, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the workspace directory browser |
 | `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
 | `phase.js` | `<phase-chain>`: the coarse plan-phase strip on a card |
@@ -44,8 +45,10 @@ stopped providing.
 ## Auth
 
 Token bootstrap rides the URL fragment: `jk web` (and `jk engine status`) print a dashboard link
-ending in `#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and `localStorage`
-and scrubs the fragment from the address bar (fragments never leave the browser). Later
+ending in `#t=<token>`, and an MCP result's `dashboard` link carries it in a project route's
+fragment query, `#project/<id>?t=<token>` (`DashboardLinks` engine-side); on load `api.js`
+(`adoptFragmentToken`) stashes the token in `sessionStorage` and `localStorage` and scrubs it from
+the address bar, keeping the route (fragments never leave the browser). Later
 tabs/refreshes reuse the stored token. Every `/api` call then sends `Authorization: Bearer <token>`.
 **All `/api/*` endpoints require a valid token**, including loopback (static shell assets stay open
 so the SPA can render the auth dialog — see [http.md](http.md)).
@@ -102,10 +105,18 @@ resolves the last-known checkout path via `identity.toml` under the builds state
 Source files hang off the same route:
 
 ```text
-#project/<projectId>
+#project/<projectId>                 (follows the project's newest run)
+#project/<projectId>/run/<n>         (pinned to build #n — a history row click; Follow newest clears it)
 #project/<projectId>/files
 #project/<projectId>/files/src/Main.java?line=42
 ```
+
+The **focused run** panel above the build history renders `projectRun` (`projects.js`): the
+pinned record when the route names a build number the project has, else the newest — a live
+card first, then the newest journal record — folded through `historyCard` so the same outcome
+rule and module rows apply as on the Activity feed. `focusedRun` in `sessions.js` is the pure
+rule and is tested headlessly; the panel markup itself is checked only by `shell.test.mjs`'s
+name contract, not rendered.
 
 The cyan **code** control (**View/edit this codebase**) sits next to **Build** and opens
 `#project/<id>/files` (tree). It is hidden *on* the files pane — you are already there — which is

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.verbs;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.List;
@@ -18,7 +19,16 @@ class WorkspaceBuildVerbDefaultsTest {
     void http_and_mcp_jobs_default_to_parallel_module_tests() {
         String line = new WorkspaceBuildVerb(new InertVerbHost())
                 .decodeJob(new JobSpec(
-                        "build", "/tmp/ws", List.of(), List.of(), List.of(), List.of(), false, false, null));
+                        "build",
+                        "/tmp/ws",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        false,
+                        false,
+                        null,
+                        JobOrigin.WEB));
         assertThat(Jsonl.bool(line, "parallelTests", false))
                 .as("decodeJob must emit the CLI's default, not a serial one")
                 .isTrue();

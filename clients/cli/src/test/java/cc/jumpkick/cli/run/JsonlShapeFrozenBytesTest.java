@@ -39,9 +39,9 @@ class JsonlShapeFrozenBytesTest {
 
     @Test
     void session_lines() {
-        assertThat(new SessionStartLine(TS, "build", List.of("-r", "a b")).encode())
+        assertThat(new SessionStartLine(TS, "build", List.of("-r", "a b"), null, null).encode())
                 .isEqualTo(ENV + "session-start\",\"command\":\"build\",\"argv\":[\"-r\",\"a b\"]}");
-        assertThat(new SessionStartLine(TS, "build", List.of()).encode())
+        assertThat(new SessionStartLine(TS, "build", List.of(), null, null).encode())
                 .isEqualTo(ENV + "session-start\",\"command\":\"build\",\"argv\":[]}");
         assertThat(new SessionFinishLine(TS, 0, 1234, null, List.of()).encode())
                 .isEqualTo(ENV + "session-finish\",\"exit\":0,\"duration_ms\":1234}");

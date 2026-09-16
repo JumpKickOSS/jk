@@ -89,6 +89,8 @@ public final class HistoryListVerb implements HostedVerb {
                         .put("kind", r.kind())
                         .put("dir", r.dir())
                         .put("coord", r.coord())
+                        .put("trigger", r.trigger())
+                        .put("session", r.session())
                         .put("startedAt", r.startedAt())
                         .put("finishedAt", r.finishedAt())
                         .put("millis", elapsed)

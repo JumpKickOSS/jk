@@ -17,7 +17,6 @@ import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ImportRequest;
 import cc.jumpkick.wire.protocol.ProtoEvents;
-import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -73,17 +72,15 @@ public final class ImportVerb implements HostedVerb {
             throw new IllegalArgumentException(
                     "no build file found in " + dir + " (looked for build.gradle.kts, build.gradle, pom.xml)");
         }
-        return ProtoSession.withTrigger(
-                new ImportRequest(
-                                source.toString(),
-                                dir.resolve(ManifestPaths.MANIFEST).toString(),
-                                spec.dir(),
-                                JkDirs.tmp().toString(),
-                                false,
-                                null,
-                                JkDirs.cache().toString())
-                        .encode(),
-                "web");
+        return new ImportRequest(
+                        source.toString(),
+                        dir.resolve(ManifestPaths.MANIFEST).toString(),
+                        spec.dir(),
+                        JkDirs.tmp().toString(),
+                        false,
+                        null,
+                        JkDirs.cache().toString())
+                .encode();
     }
 
     /**

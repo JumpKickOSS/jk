@@ -128,6 +128,7 @@ public final class JkResultsMarkdown {
         boolean meta = false;
         if (notBlank(r.trigger())) {
             sb.append("trigger: ").append(r.trigger());
+            if (notBlank(r.session())) sb.append(" · session: ").append(r.session());
             meta = true;
         }
         if (tool) {

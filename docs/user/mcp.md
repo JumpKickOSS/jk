@@ -15,6 +15,7 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 | Discovery | `GET {httpUrl}/mcp` |
 | Live events | `GET {httpUrl}/mcp` with `Accept: text/event-stream` |
 | Auth | `Authorization: Bearer <token>` (**always** required) |
+| Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
 | Protocol | Advertised `protocolVersion` `2024-11-05` (Streamable-HTTP) |
 | Server name | `jk-engine` |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
@@ -42,6 +43,12 @@ SSE budget: `[mcp] max-event-streams` / `JK_MCP_MAX_EVENT_STREAMS` (default **16
 
 Results use MCP `structuredContent` plus a short `content` text summary. Tool JSON uses
 `schema` + `type` like the rest of the machine model (`schema` stays **1** until 1.0).
+
+A job result (`jk_run`, `jk_build`, `jk_test`, `jk_lock`) names who asked — `trigger: "mcp"`
+and `session: "claude-code 3f9a"` when the client echoes its session id — and carries
+**`dashboard`**: the authenticated project page (`{httpUrl}#project/<id>?t=<token>`) that
+follows the newest run of that project, so the human supervising the agent can open it and
+watch. Absent when HTTP is not serving. Same facts as `target/jk-results.md`: [Web](web.md).
 
 ## Tools
 

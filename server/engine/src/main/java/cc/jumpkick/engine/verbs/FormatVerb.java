@@ -68,20 +68,18 @@ public final class FormatVerb implements HostedVerb {
         // Same style/hygiene precedence as `jk format` without CLI flags: the entry [format]
         // table, then the built-in defaults — one verb, one result across entry points.
         FormatStyles.Resolved styles = FormatStyles.resolve(null, null, null, null, null, null, entry.format());
-        return ProtoSession.withTrigger(
-                new FormatRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                false,
-                                styles.java(),
-                                styles.kotlin(),
-                                styles.optimizeImports(),
-                                styles.importOrder(),
-                                styles.removeUnusedImports(),
-                                false,
-                                false)
-                        .encode(),
-                "web");
+        return new FormatRequest(
+                        spec.dir(),
+                        JkDirs.cache().toString(),
+                        false,
+                        styles.java(),
+                        styles.kotlin(),
+                        styles.optimizeImports(),
+                        styles.importOrder(),
+                        styles.removeUnusedImports(),
+                        false,
+                        false)
+                .encode();
     }
 
     /**

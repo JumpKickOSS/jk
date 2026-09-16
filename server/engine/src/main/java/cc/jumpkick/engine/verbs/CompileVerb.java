@@ -112,10 +112,8 @@ public final class CompileVerb implements HostedVerb {
                 moduleDirs = selected.stream().map(Path::toString).sorted().toList();
             }
         }
-        return ProtoSession.withTrigger(
-                new CompileRequest(spec.dir(), JkDirs.cache().toString(), null, false, false, false, moduleDirs)
-                        .encode(),
-                "web");
+        return new CompileRequest(spec.dir(), JkDirs.cache().toString(), null, false, false, false, moduleDirs)
+                .encode();
     }
 
     @Override

@@ -74,6 +74,16 @@ public final class McpContext {
 
     private final McpSession session = new McpSession();
 
+    /** Every connection that has said {@code initialize}, by the session id the engine minted for it. */
+    private final McpConnections connections = new McpConnections();
+
+    /**
+     * The authenticated dashboard URL for a checkout dir — the project page that follows its newest
+     * run. Optional wiring; unset answers null and job results carry no {@code dashboard} field.
+     */
+    @Setter
+    private volatile Function<String, @Nullable String> dashboardLink = dir -> null;
+
     /**
      * Shared memoized cache/store walker (same supplier as {@code GET /api/cache}) — {@code
      * jk_disk}/{@code jk_doctor}/{@code jk://disk} must not re-walk multi-GiB stores per call.

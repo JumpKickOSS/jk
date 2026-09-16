@@ -10,16 +10,17 @@ const EPOCH_HEADER = 'X-Jk-Engine-Epoch';
 const RELOAD_FLAG = 'jk-epoch-reload';
 
 /**
- * On load, adopt a token from the URL fragment (`#t=…` — printed by `jk engine status`), stash it
- * in sessionStorage <em>and</em> localStorage, and scrub it from the address bar. Fragments never
- * leave the browser. localStorage lets a new tab on the same origin load history without
- * re-opening the tokenized URL (sessionStorage alone is per-tab).
+ * On load, adopt a token from the URL fragment — `#t=…` as `jk engine status` prints it, or
+ * `?t=…` in a route's fragment query as an MCP result's `dashboard` link carries it
+ * (`#project/<id>?t=…`) — stash it in sessionStorage <em>and</em> localStorage, and scrub it from
+ * the address bar, keeping the route. Fragments never leave the browser. localStorage lets a new
+ * tab on the same origin load history without re-opening the tokenized URL (sessionStorage alone
+ * is per-tab).
  */
 export function bootstrapToken() {
-  const match = /^#t=([A-Za-z0-9_=-]+)$/.exec(location.hash);
-  if (match) {
-    storeToken(match[1]);
-    history.replaceState(null, '', location.pathname + location.search);
+  const scrubbed = adoptFragmentToken(location.hash);
+  if (scrubbed != null) {
+    history.replaceState(null, '', location.pathname + location.search + scrubbed);
     return;
   }
   // Promote a previously stored token into this tab's session when the hash is absent
@@ -32,6 +33,28 @@ export function bootstrapToken() {
       // private mode / blocked storage — token stays absent; loopback history still works
     }
   }
+}
+
+/**
+ * Store the token a fragment carries and return the fragment without it (`''` when nothing else
+ * was there), or null when the fragment carries no token. Exported for the headless suite.
+ */
+export function adoptFragmentToken(hash) {
+  const h = String(hash || '');
+  const bare = /^#t=([A-Za-z0-9_=-]+)$/.exec(h);
+  if (bare) {
+    storeToken(bare[1]);
+    return '';
+  }
+  const q = h.indexOf('?');
+  if (q < 0) return null;
+  const params = h.slice(q + 1).split('&');
+  const rest = params.filter((p) => !/^t=/.test(p));
+  if (rest.length === params.length) return null;
+  const token = /^t=([A-Za-z0-9_=-]+)$/.exec(params.find((p) => /^t=/.test(p)) || '');
+  if (!token) return null;
+  storeToken(token[1]);
+  return h.slice(0, q) + (rest.length ? '?' + rest.join('&') : '');
 }
 
 function storeToken(value) {

@@ -14,7 +14,8 @@ public final class HttpLive {
      * none) — stall detection keys on this, never on {@code startedAt}. {@code remainingMs}/
      * {@code r0Ms} are {@code -1} when unknown. {@code modules}/{@code tasks} carry finished +
      * currently-running phase chains so a hard refresh can paint the same strip as a tab that
-     * was open from the start.
+     * was open from the start. {@code trigger}/{@code session} are the job's origin, as the journal
+     * row carries it.
      */
     public record Run(
             long requestId,
@@ -22,6 +23,8 @@ public final class HttpLive {
             String kind,
             String dir,
             @Nullable String coord,
+            @Nullable String trigger,
+            @Nullable String session,
             long startedAt,
             long lastEventAt,
             double progress,
@@ -54,6 +57,8 @@ public final class HttpLive {
                     kind,
                     dir,
                     coord,
+                    null,
+                    null,
                     startedAt,
                     0L,
                     progress,

@@ -929,6 +929,7 @@ class JobEnvelopeTest {
                 String kind,
                 String dir,
                 String trigger,
+                @Nullable String session,
                 boolean noTimeline,
                 boolean rebuild,
                 long buildNumber,

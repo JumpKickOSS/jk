@@ -63,29 +63,27 @@ public final class PublishVerb implements HostedVerb {
      */
     @Override
     public String decodeJob(JobSpec spec) {
-        return ProtoSession.withTrigger(
-                new PublishRequest(
-                                spec.dir(),
-                                JkDirs.cache().toString(),
-                                "https://publish.invalid/",
-                                null,
-                                null,
-                                null,
-                                false,
-                                true,
-                                null,
-                                null,
-                                false,
-                                false,
-                                false,
-                                "anonymous",
-                                null,
-                                null,
-                                null,
-                                false,
-                                false)
-                        .encode(),
-                "web");
+        return new PublishRequest(
+                        spec.dir(),
+                        JkDirs.cache().toString(),
+                        "https://publish.invalid/",
+                        null,
+                        null,
+                        null,
+                        false,
+                        true,
+                        null,
+                        null,
+                        false,
+                        false,
+                        false,
+                        "anonymous",
+                        null,
+                        null,
+                        null,
+                        false,
+                        false)
+                .encode();
     }
 
     @Override

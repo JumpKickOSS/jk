@@ -26,10 +26,6 @@ export const cardMethods = {
   riseDelay(i) {
     return Math.min(i, 8) * 0.04 + 's';
   },
-  // Human label for a build's trigger. Missing trigger → em dash.
-  triggerLabel(trigger) {
-    return { web: 'Web build', cli: 'CLI build' }[trigger] || '—';
-  },
   // Progress % — same strategies as CLI (clock vs weighted). Default AUTO: open-loop
   // elapsed/R0 when R0 is known (smooth + aligned with countdown); else weight slices.
   // Override: localStorage.jkProgressMode = 'clock' | 'weighted' | 'auto'
