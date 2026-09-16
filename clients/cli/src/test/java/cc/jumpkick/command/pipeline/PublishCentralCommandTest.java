@@ -90,6 +90,7 @@ class PublishCentralCommandTest {
 
         String out = Capture.stdout(() -> assertThat(run(
                         "publish",
+                        "--no-ansi",
                         "-C",
                         dir.toString(),
                         "--central",
@@ -131,7 +132,8 @@ class PublishCentralCommandTest {
                         STEM + "-javadoc.jar.sha1");
         assertThat(out)
                 .contains("Published com.example:widget:1.0.0 to the Central Portal (16 files)")
-                .contains("deployment dep-1234 · VALIDATED");
+                .contains("deployment dep-1234")
+                .contains("VALIDATED");
 
         String results = Files.readString(dir.resolve("target/jk-results.md"));
         assertThat(results)
@@ -179,6 +181,7 @@ class PublishCentralCommandTest {
 
         Capture.Streams streams = Capture.both(() -> assertThat(run(
                         "publish",
+                        "--no-ansi",
                         "-C",
                         dir.toString(),
                         "--central",
@@ -210,6 +213,7 @@ class PublishCentralCommandTest {
 
         String out = Capture.stdout(() -> assertThat(run(
                         "publish",
+                        "--no-ansi",
                         "-C",
                         dir.toString(),
                         "--central",
