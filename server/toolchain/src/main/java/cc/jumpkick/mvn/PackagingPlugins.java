@@ -55,8 +55,9 @@ final class PackagingPlugins {
                 .orElse(null);
         PluginFacts.plugin(model, "jib-maven-plugin").ifPresent(jib -> reportImage(jib, report));
         PluginFacts.plugin(model, "docker-maven-plugin").ifPresent(docker -> reportImage(docker, report));
-        if ("war".equals(model.getPackaging())
-                || PluginFacts.plugin(model, "maven-war-plugin").isPresent()) {
+        // Packaging decides: a parent's <build><plugins> declaration of the war plugin is inherited
+        // by every jar module and binds nothing there.
+        if ("war".equals(model.getPackaging())) {
             report.error("packaging `war` (`maven-war-plugin`) is not supported: jk builds jars, Boot jars and"
                     + " native images. Keep building this module with `jk mvn package`.");
         }
