@@ -73,9 +73,10 @@ public interface PackageSource {
     default void warmExpandedVersions(List<String> pkgs) {}
 
     /**
-     * Wait for any speculative work this source started in the background. Called when a solve
-     * finishes, so a caller that then deletes the cache directory is not racing a prefetch still
-     * writing into it. Default: nothing to wait for.
+     * End every speculative read this source started in the background: what has not begun is
+     * dropped, what is running is cancelled, and the call returns only once nothing is in flight.
+     * Called when a solve finishes, so a caller that then deletes the cache directory is not racing a
+     * prefetch still writing into it. Default: nothing to end.
      */
     default void quiesce() {}
 

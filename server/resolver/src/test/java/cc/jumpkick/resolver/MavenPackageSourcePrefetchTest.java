@@ -28,6 +28,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,7 +40,8 @@ import org.junit.jupiter.api.io.TempDir;
  * The speculative warm-up runs ahead of the solver: every edge's catalog and likeliest POM are
  * read once the parent expands, and the roots are read before the first decide, so the solver's own
  * calls are memo hits. The queue is drained by a bounded set of workers, and the warm-up runs under
- * the caller's session, so {@code --offline} keeps it off the network.
+ * the caller's session, so {@code --offline} keeps it off the network. Quiescing the source ends
+ * every read still running, so nothing is written into the store after the solve returned.
  */
 class MavenPackageSourcePrefetchTest {
 
@@ -72,7 +75,8 @@ class MavenPackageSourcePrefetchTest {
         MavenPackageSource src = source(tmp);
 
         src.dependencies("com.foo:widget", "1.0");
-        Await.until(Duration.ofSeconds(10), () -> http.requestsFor(LIB_DECLARED_POM) > 0);
+        // Quiesce cancels a read still running; let the warm-up finish so its memo is what is asserted.
+        Await.until(Duration.ofSeconds(10), () -> src.prefetchWorkersRunning() == 0);
         src.quiesce();
 
         assertThat(http.requestsFor(LIB_META)).as("the catalog was read ahead").isEqualTo(1);
@@ -96,12 +100,57 @@ class MavenPackageSourcePrefetchTest {
         MavenPackageSource src = source(tmp);
 
         src.prefetchRoots(List.of(Term.positive("com.foo:lib:jar:", VersionSet.atLeast("1.0", true))));
-        Await.until(Duration.ofSeconds(10), () -> http.requestsFor(LIB_POM) > 0);
+        Await.until(Duration.ofSeconds(10), () -> src.prefetchWorkersRunning() == 0);
         src.quiesce();
 
         assertThat(http.requestsFor(LIB_META)).isEqualTo(1);
         assertThat(http.requestsFor(LIB_POM)).isEqualTo(1);
-        assertThat(src.readsCompleted()).as("speculative reads count as progress").isPositive();
+        assertThat(src.readsCompleted())
+                .as("speculative reads count as progress")
+                .isPositive();
+    }
+
+    @Test
+    void quiesce_cancels_a_read_still_running_and_nothing_is_written_after_it_returns(@TempDir Path tmp)
+            throws Exception {
+        upstream.pomOnly("com.foo", "lib", "1.0", MavenStub.emptyPom("com.foo", "lib", "1.0"));
+        CountDownLatch serving = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        // The repository holds the POM response open: the read is in flight, not merely queued.
+        http.beforeServe(path -> {
+            if (!path.equals(LIB_DECLARED_POM)) return;
+            serving.countDown();
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Cas cas = new Cas(tmp.resolve("cache"));
+        MavenRepo repo = new MavenRepo("local", http.base(), new Http(), cas, RepoCredential.ANONYMOUS, false);
+        MavenPackageSource src = new MavenPackageSource(repo, new EffectivePomBuilder(repo));
+        RepoArtifactStore store = RepoArtifactStore.forRepository(cas.root(), "local", repo.baseUrl());
+        String pomPath = MavenLayout.pomPath(Coordinate.of("com.foo", "lib", "1.0"));
+
+        src.prefetchRoots(List.of(Term.positive("com.foo:lib:jar:", VersionSet.exact("1.0"))));
+        assertThat(serving.await(10, TimeUnit.SECONDS))
+                .as("the POM read is in flight")
+                .isTrue();
+        src.quiesce();
+
+        assertThat(release.getCount())
+                .as("quiesce returned by cancelling the read, not by waiting the response out")
+                .isEqualTo(1);
+        assertThat(store.locate(pomPath))
+                .as("the cancelled read placed nothing")
+                .isEmpty();
+        // Let the repository answer into the void; the cancelled worker is gone and writes nothing.
+        release.countDown();
+        Await.until(Duration.ofSeconds(10), () -> src.prefetchWorkersRunning() == 0);
+        Thread.sleep(200);
+        assertThat(store.locate(pomPath))
+                .as("no write lands after quiesce returned")
+                .isEmpty();
     }
 
     @Test
