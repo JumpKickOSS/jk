@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * The engine's {@link ManifestPaths.ShadowSource}: a module with a {@code pom.xml} and no {@code
@@ -54,8 +56,8 @@ public final class ShadowManifests {
     /**
      * The shadow manifest of {@code dir}, rendered now when absent or behind the POM files it read.
      * A leaf of a reactor is rendered by its root; a directory the root lists that Maven would not
-     * build here (an aggregator, a module of an inactive profile) is an {@link IllegalStateException}
-     * naming the root to build from. An unreadable POM is an {@link UncheckedIOException}.
+     * build here (an aggregator, a module of an inactive profile) is a {@link NotBuiltHere} naming
+     * the profile and the remedies. An unreadable POM is an {@link UncheckedIOException}.
      */
     public static Path materialize(Path dir) {
         Path module = dir.toAbsolutePath().normalize();
@@ -75,11 +77,35 @@ public final class ShadowManifests {
                 render(root.get());
             }
             if (PomShadow.isCurrent(shadow, module)) return shadow;
-            throw new IllegalStateException(
-                    module + " is listed by " + root.get().resolve(ManifestPaths.POM)
-                            + " but is not a module Maven would build here (an aggregator, or a module of a profile that is"
-                            + " not active); build from " + root.get());
+            throw notBuiltHere(module, root.get());
         }
+    }
+
+    /**
+     * A directory its reactor root lists that Maven would not build on this machine: a module only
+     * an inactive profile lists, or an aggregator. One line, naming the profile and both remedies.
+     */
+    public static final class NotBuiltHere extends IllegalStateException {
+        NotBuiltHere(String message) {
+            super(message);
+        }
+    }
+
+    private static NotBuiltHere notBuiltHere(Path module, Path root) {
+        Path pom = root.resolve(ManifestPaths.POM);
+        Set<String> profiles = PomReactorScan.profilesListing(root, module);
+        if (profiles.isEmpty()) {
+            return new NotBuiltHere(module + " is listed by " + pom
+                    + " as an aggregator, not as a module Maven builds; build from " + root
+                    + ", or run `jk import " + ManifestPaths.POM + "` there to own a " + ManifestPaths.MANIFEST);
+        }
+        String named = profiles.stream().map(id -> "`" + id + "`").collect(Collectors.joining(", "));
+        return new NotBuiltHere(module + " is listed by " + pom + " only in "
+                + (profiles.size() == 1 ? "profile " : "profiles ") + named
+                + ", which Maven does not activate on this machine, so the in-place build skips it;"
+                + " activate the profile in Maven terms (<activeByDefault>true</activeByDefault>, or an <activation>"
+                + " that holds here), or run `jk import " + ManifestPaths.POM + "` at " + root
+                + " and list the module under [workspace] modules");
     }
 
     /** Render {@code module}'s shadow, and with it every leaf's when {@code module} is a reactor root. */

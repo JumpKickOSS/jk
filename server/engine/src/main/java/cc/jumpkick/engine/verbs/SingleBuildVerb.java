@@ -19,6 +19,7 @@ import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.runtime.PlannerTails;
 import cc.jumpkick.runtime.PreflightMemo;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.runtime.workspace.ModuleInputProvenance;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -150,6 +151,10 @@ public final class SingleBuildVerb implements HostedVerb {
                 ModuleInputProvenance.record(entryDir, preGraph, preFps);
             }
             return outcome;
+        } catch (ShadowManifests.NotBuiltHere refused) {
+            // A shadowed directory Maven would not build here: a configuration refusal, not a crash.
+            host.sendQuiet(writer, host.requestFailedLine(null, refused));
+            return JobOutcome.failed(Exit.CONFIG);
         } catch (Exception e) {
             // The build threw before it could rule. Declining here would hand the journal a run
             // with no failure rows, which derives green — a build that never finished, recorded

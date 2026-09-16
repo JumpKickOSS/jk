@@ -9,6 +9,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.api.PlanOptions;
+import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -157,10 +158,7 @@ public final class BuildCommand implements CliCommand {
         SessionContext.install(
                 SessionContext.current().withParallelTests(parallelTests).withTestSelection(testSelection));
         Path startDir = global.workingDir();
-        if (!ManifestPaths.describesProject(startDir)) {
-            CommandWedge.printFail("Build", "no jk.toml in " + PathDisplay.styledRaw(startDir));
-            return Exit.CONFIG;
-        }
+        if (ProjectContext.require(startDir, "Build").isEmpty()) return Exit.CONFIG;
         // Variant selection (--release / --variant <dim>=<value>): rides the request as a compact
         // selector plus the client-resolved env: values (VariantSelection). Also installed on the
         // ambient session for the in-process paths.

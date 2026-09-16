@@ -7,10 +7,14 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -24,7 +28,8 @@ import org.w3c.dom.Element;
  *
  * <p>The shadow manifest the engine renders is the module list a build reads, and it follows only
  * the profiles Maven activates on this machine, so a module listed by an inactive profile is
- * located to its root here but is not one the workspace builds.
+ * located to its root here but is not one the workspace builds; {@link #profilesListing} names the
+ * profiles that list it, for the refusal that says so.
  */
 public final class PomReactorScan {
 
@@ -74,6 +79,57 @@ public final class PomReactorScan {
             candidate = parent;
         }
         return Optional.ofNullable(found);
+    }
+
+    /**
+     * The ids of the profiles whose {@code <modules>} list {@code moduleDir}, read from the root's
+     * pom.xml and every aggregator's below it; empty when only a top-level {@code <modules>} lists
+     * it. A profile without an {@code <id>} is reported as {@code (unnamed)}.
+     */
+    public static Set<String> profilesListing(Path rootDir, Path moduleDir) {
+        Path root = rootDir.toAbsolutePath().normalize();
+        Path module = moduleDir.toAbsolutePath().normalize();
+        Set<String> out = new LinkedHashSet<>();
+        Set<Path> visited = new HashSet<>();
+        Deque<Path> poms = new ArrayDeque<>(List.of(root.resolve(ManifestPaths.POM)));
+        while (!poms.isEmpty() && visited.size() <= MAX_POMS) {
+            Path pom = poms.poll();
+            if (!visited.add(pom)) continue;
+            for (Map.Entry<String, List<String>> profile : profileModules(pom).entrySet()) {
+                for (String text : profile.getValue()) {
+                    if (module.equals(childPom(pom, text).getParent())) out.add(profile.getKey());
+                }
+            }
+            for (String text : modulesOf(pom)) {
+                Path child = childPom(pom, text);
+                if (child.startsWith(root) && Files.isRegularFile(child)) poms.add(child);
+            }
+        }
+        return out;
+    }
+
+    /** Profile id to the {@code <module>} texts it declares, for the profiles of {@code pom} that declare any. */
+    private static Map<String, List<String>> profileModules(Path pom) {
+        try {
+            Element project = DomXml.parse(pom).getDocumentElement();
+            Map<String, List<String>> out = new LinkedHashMap<>();
+            for (Element profiles : DomXml.childElements(project, "profiles")) {
+                for (Element profile : DomXml.childElements(profiles, "profile")) {
+                    List<String> modules = new ArrayList<>();
+                    collect(profile, modules);
+                    if (modules.isEmpty()) continue;
+                    String id = DomXml.childElements(profile, "id").stream()
+                            .map(e -> e.getTextContent().trim())
+                            .filter(text -> !text.isEmpty())
+                            .findFirst()
+                            .orElse("(unnamed)");
+                    out.computeIfAbsent(id, k -> new ArrayList<>()).addAll(modules);
+                }
+            }
+            return out;
+        } catch (IOException | RuntimeException notAPom) {
+            return Map.of();
+        }
     }
 
     /**
