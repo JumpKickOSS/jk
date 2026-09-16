@@ -36,4 +36,8 @@ public final class HostedEvents {
             @Nullable String source,
             @Nullable String error,
             int exit) {}
+
+    /** A journaled {@code jk mvn} run: the report path, or why none was written. */
+    public record MvnResults(
+            @Nullable String results, @Nullable String error) {}
 }

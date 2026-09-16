@@ -16,6 +16,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -87,6 +88,21 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public void accTests(long rid, @Nullable TestSummary tests) {
         journalWriter.accTests(rid, tests);
+    }
+
+    @Override
+    public void accModule(long rid, ModuleOutcome outcome) {
+        journalWriter.accModule(rid, outcome);
+    }
+
+    @Override
+    public void accStepFinish(long rid, String dir, String step, String status, long millis) {
+        journalWriter.accStepFinish(rid, dir, step, "", status, millis, 0L);
+    }
+
+    @Override
+    public void accBuildPlanFinish(long rid, String dir, BuildPlanResult result) {
+        journalWriter.accBuildPlanFinish(rid, dir, result);
     }
 
     @Override

@@ -26,6 +26,18 @@ those names, and only the exact spelling is taken — `--tools` is Maven's — s
 tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean` therefore provisions Maven under
 `/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the three.
 
+`jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history
+row behind `jk results`, MCP `jk_results` and `jk_diagnostics` (header `trigger: cli · tool: mvn`).
+A small Maven core extension, `jk-maven-spy-<version>.jar`, rides Maven's `-Dmaven.ext.class.path`
+and records the reactor's events; after Maven exits the engine folds those events, each module's
+`target/surefire-reports` / `target/failsafe-reports` XML and the compiler plugin's
+`file:[line,col]` failures into the same Tests, Modules and Diagnostics blocks a jk build gets.
+The jar is looked up in this order, first hit wins: the `jk.maven-spy.jar` system property;
+`~/.jk/lib/jk-maven-spy-<version>.jar` (where `install.sh` puts it); the store's `jk-local` shelf
+(`jk install` from a checkout); `lib/` beside the `jk` binary (the `target/dist` ship layout). With
+no jar found, `jk mvn` is a plain passthrough and writes no report. A project with only a `pom.xml`
+binds for MCP by its POM coordinate.
+
 **POM import** is the primary path, and it reads the POM the way Maven does: the effective
 model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the
 reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows),

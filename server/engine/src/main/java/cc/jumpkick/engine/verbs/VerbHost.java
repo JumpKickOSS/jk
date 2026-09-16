@@ -13,6 +13,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.ProtoLifecycle;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -45,6 +46,21 @@ public interface VerbHost {
     boolean effectiveCancelled(long rid, boolean tokenCancelled);
 
     void accTests(long rid, @Nullable TestSummary tests);
+
+    /** One module's outcome, for a verb that journals a run another tool performed. */
+    default void accModule(long rid, ModuleOutcome outcome) {
+        throw new UnsupportedOperationException("accModule");
+    }
+
+    /** One finished step of {@code dir}'s chain; {@code status} is {@code SUCCESS}/{@code FAIL}/{@code SKIPPED}. */
+    default void accStepFinish(long rid, String dir, String step, String status, long millis) {
+        throw new UnsupportedOperationException("accStepFinish");
+    }
+
+    /** One module's plan verdict and diagnostics. */
+    default void accBuildPlanFinish(long rid, String dir, BuildPlanResult result) {
+        throw new UnsupportedOperationException("accBuildPlanFinish");
+    }
 
     /** One plan's {@code --affected} ranking slice; merged per request, written at request-finish. */
     default void accAffected(long rid, cc.jumpkick.test.@Nullable AffectedTests affected) {}

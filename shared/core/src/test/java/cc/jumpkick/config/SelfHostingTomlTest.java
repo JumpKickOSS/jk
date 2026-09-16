@@ -79,6 +79,7 @@ class SelfHostingTomlTest {
                         "clients/cli",
                         "clients/cli-terminal",
                         "clients/web",
+                        "clients/maven-spy",
                         "plugins/test-runner",
                         "plugins/java-compiler",
                         "plugins/kotlin-compiler",

@@ -7,6 +7,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.mvn.PomCoord;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,8 +59,9 @@ public record ProjectCard(
             jdk = p.jdk();
             members = membersOf(root, build);
         } catch (Exception e) {
-            // missing/unparseable jk.toml — identity-only card
+            // missing/unparseable jk.toml — identity-only card, with the POM's coordinate if there is one
             Log.debug("of: missing/unparseable jk.toml", e);
+            coord = PomCoord.of(root);
         }
         boolean lockStale;
         try {

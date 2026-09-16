@@ -345,6 +345,7 @@ target/dist/
   lib/
     jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
     jk-<version>.jar         # JVM client assembly (cc.jumpkick.cli.Jk and its closure)
+    jk-maven-spy-<version>.jar  # Maven core extension `jk mvn` attaches (clients/maven-spy)
 ```
 
 The release workflow assembles `target/dist` per platform (`scripts/assemble-release-dir.sh`);
