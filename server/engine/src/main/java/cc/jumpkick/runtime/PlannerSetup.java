@@ -312,9 +312,11 @@ public final class PlannerSetup {
         mainCp.addAll(contributedProvided);
         ctx.put(CLASSPATH, mainCp);
 
-        // Annotation processors live in their own scope (kept off the
-        // compile classpath); javac discovers them via -processorpath and
-        // KspProcessors.split routes the KSP ones to the forked KSP2 round.
+        // Declared annotation processors live in their own scope (kept off the
+        // compile classpath); javac searches that path alone and KspProcessors.split
+        // routes the KSP ones to the forked KSP2 round. A module that declares none
+        // runs the processors registered on its compile classpath instead — the
+        // request builders (PlannerCompile.effectiveProcessorPath) decide that.
         // Workspace siblings must merge in exactly as they do for main/test
         // a processor declared `{ workspace = true }` is never in the
         // lock, so a lock-only path silently yields no processors at all.

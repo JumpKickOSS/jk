@@ -87,7 +87,7 @@ public final class PlannerGuardSuite {
                 .release(release)
                 .extraOptions(javacArgs)
                 .javaHome(javaHome)
-                .processorPath(processorPath)
+                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, classpath))
                 .build();
     }
 

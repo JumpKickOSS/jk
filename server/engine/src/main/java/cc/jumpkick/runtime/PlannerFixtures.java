@@ -104,7 +104,7 @@ public final class PlannerFixtures {
                 .release(release)
                 .extraOptions(PlannerCompile.javacOptions(javacArgs, javac))
                 .javaHome(javaHome)
-                .processorPath(processorPath)
+                .processorPath(PlannerCompile.effectiveProcessorPath(processorPath, classpath))
                 .build();
     }
 
