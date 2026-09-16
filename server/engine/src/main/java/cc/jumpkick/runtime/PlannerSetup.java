@@ -512,7 +512,7 @@ public final class PlannerSetup {
      * project, or the workspace root itself, reads the lock as written.
      */
     static Lockfile memberView(BuildPlanner.Inputs in, Lockfile lock) {
-        return MemberRows.view(lock, in.lockDir(), in.dir());
+        return MemberRows.view(lock, in.lockFile(), in.dir());
     }
 
     /**
