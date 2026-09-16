@@ -104,8 +104,9 @@ surface, real lockfile, agent-readable outcomes.
 **Coming from Gradle:** keep warm/incremental ambition without “your build is a second
 program.” Agents should not write Kotlin DSL to add Jackson.
 
-**Speed (honest):** competitive with modern Gradle on warm builds, a claim that gets its
-jk / Gradle / Maven table before 1.0. Lead with *repeated* local and agent cycles
+**Speed (honest):** competitive with modern Gradle on warm builds; the jk / Gradle / Maven
+table — walls and peak memory on one public Spring Boot project — is in
+[docs/user/performance.md](docs/user/performance.md). Lead with *repeated* local and agent cycles
 (RSS + cache + structured retries), not a one-shot CI bake-off.
 
 ### Stay on the newest versions

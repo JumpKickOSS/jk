@@ -28,6 +28,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 | Format source | [Format](format.md) |
 | Run tests (unit inner loop, integration / e2e rungs, tags) | [Test](test.md) |
 | Understand a rebuild | [Explain](explain.md) |
+| See jk beside Gradle and Maven on one project | [Performance](performance.md) |
 | Create a project from a template | [Templates](templates.md) |
 | Import Maven or Gradle | [Migration](migration.md) |
 | Use Spring Boot / Quarkus / Grails / … | [Frameworks](frameworks.md) |
@@ -59,6 +60,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [Run, watch, REPL](run.md)
 - [Explain and tasks](explain.md)
 - [Cache and storage](cache.md)
+- [Performance](performance.md) — jk, Gradle and Maven walls and peak memory on spring-petclinic
 
 ### Ship
 

@@ -1,0 +1,14 @@
+// Points Gradle's local build cache at the directory the wall harness owns, so the clean scenario
+// can empty it without touching the developer's own cache under ~/.gradle. The harness passes
+// -Dwall.build-cache=<dir> on every Gradle command it times.
+settingsEvaluated { settings ->
+    def dir = System.getProperty('wall.build-cache')
+    if (dir != null) {
+        settings.buildCache {
+            local {
+                directory = new File(dir)
+                enabled = true
+            }
+        }
+    }
+}

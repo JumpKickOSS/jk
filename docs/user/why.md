@@ -105,8 +105,14 @@ These impress on a feature matrix and retain power users; they rarely *cause* th
 | **22** | Contrib batteries: Android, Grails, Scala 3 in mixed modules | Best-effort by label. Android is not AGP parity; Grails tracks a milestone; Scala compiles through Zinc and is described exactly that way. |
 
 **Raw speed vs Gradle** is a **credibility footnote** beside this list: competitive on warm
-builds; the win is fewer failed cycles and less agent thrash. The footnote still needs its
-table: jk, Gradle and Maven columns on a public project, peak RSS included.
+builds; the win is fewer failed cycles and less agent thrash. The footnote's table, jk, Gradle and
+Maven on [spring-petclinic](https://github.com/spring-projects/spring-petclinic) doing the same
+work, peak RSS included — how it was measured and what "warm" means per tool is in
+[Performance](performance.md):
+
+<!-- wall-table:begin -->
+_No banked wall yet: run `bench/wall/measure --bank`._
+<!-- wall-table:end -->
 
 ---
 
