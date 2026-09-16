@@ -238,7 +238,7 @@ relates to the Maven one.
 | maven-deploy-plugin | 14 | `jk publish` | exact |
 | maven-install-plugin | 13 | `jk install` to `~/.m2` | exact |
 | maven-failsafe-plugin | 13 | row naming its patterns (`**/*IT.java`, …) and the move into `src/integration/java`, jk's `integration` suite; `argLine` and system properties → the same `[test]` keys when Surefire set none, else a row | manual |
-| maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; relocations, filters, other transformers and `minimizeJar` → rows | approximate |
+| maven-shade-plugin | 12 | `[application] assembly = true`, `Main-Class` from the manifest transformer; relocations, filters, other transformers and `minimizeJar` → rows; a relocation whose shaded package another member's sources import → Tier-3 row on the shaded member (jk has no package relocation) naming the importers and the Maven-built artifact to depend on instead | approximate |
 | kotlin-maven-plugin | 12 | `kotlin =` on the module; `test-compile`-only → mixed module | exact |
 | maven-release-plugin | 11 | nothing (release flow) | manual |
 | central-publishing-maven-plugin | 11 | `jk publish --central` (planned battery) | manual |

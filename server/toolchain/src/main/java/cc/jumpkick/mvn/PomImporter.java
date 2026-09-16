@@ -227,6 +227,7 @@ public final class PomImporter {
             }
         }
         SiblingNames.report(moduleBuilds, report);
+        ShadedSiblings.report(leaves, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
         // repository list the workspace lock resolves against, so every member's `<repositories>`
         // is hoisted onto it.
@@ -248,7 +249,13 @@ public final class PomImporter {
             rewritten.put(
                     e.getKey(),
                     rewriteSiblingDeps(
-                            e.getValue(), siblingByGa, sharedNames, bomByGa, found.unbuilt(), importedBoms, e.getKey(),
+                            e.getValue(),
+                            siblingByGa,
+                            sharedNames,
+                            bomByGa,
+                            found.unbuilt(),
+                            importedBoms,
+                            e.getKey(),
                             report));
         }
         for (String bom : bomByGa.values()) {
