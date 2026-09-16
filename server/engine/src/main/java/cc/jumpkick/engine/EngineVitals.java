@@ -28,6 +28,7 @@ public final class EngineVitals {
     private final LongSupplier idleDropped;
     private final LongSupplier logBytes;
     private final LongSupplier logRolledAtMillis;
+    private final Supplier<String> ignoredSignals;
 
     public StatusSnapshot snapshot() {
         Runtime rt = Runtime.getRuntime();
@@ -56,7 +57,8 @@ public final class EngineVitals {
                 peakActiveBuildPlans.get(),
                 idleDropped.getAsLong(),
                 logBytes.getAsLong(),
-                logRolledAtMillis.getAsLong());
+                logRolledAtMillis.getAsLong(),
+                ignoredSignals.get());
     }
 
     public int liveConnectionCount() {

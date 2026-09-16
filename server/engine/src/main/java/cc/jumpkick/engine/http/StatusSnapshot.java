@@ -61,7 +61,13 @@ public record StatusSnapshot(
         /** Size of the engine log on disk in bytes; {@code -1} when unobservable. */
         long logBytes,
         /** Epoch millis of the log's last in-process roll to {@code .1}; {@code -1} when it has not rolled. */
-        long logRolledAt) {
+        long logRolledAt,
+        /**
+         * Signals the engine process still ignores, as {@code "HUP, INT"} — an ignore inherited from
+         * the spawning shell that the startup reset could not undo, which every forked JVM inherits
+         * in turn. {@code ""} when none, or when the platform does not expose the mask.
+         */
+        String ignoredSignals) {
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
     public StatusSnapshot(
@@ -98,7 +104,8 @@ public record StatusSnapshot(
                 activeBuildPlans,
                 /* idleDropped */ 0L,
                 /* logBytes */ -1L,
-                /* logRolledAt */ -1L);
+                /* logRolledAt */ -1L,
+                /* ignoredSignals */ "");
     }
 
     /**
@@ -145,6 +152,7 @@ public record StatusSnapshot(
         m.put("engineEpoch", engineEpoch);
         m.put("logBytes", logBytes);
         m.put("logRolledAt", logRolledAt);
+        m.put("ignoredSignals", ignoredSignals);
         return m;
     }
 }

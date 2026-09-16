@@ -85,10 +85,11 @@ public final class EngineMain {
      * process's stdout/stderr to the engine's log file, so nothing here writes to a real terminal.
      */
     public static int run() {
-        // Survive the spawner's terminal: detach into our own POSIX session, then ignore
-        // terminal-generated SIGINT/SIGHUP. Cancelling a build is CANCEL_REQUEST on the wire.
+        // Survive the spawner's terminal: detach into our own POSIX session, then take over
+        // SIGINT/SIGHUP — before anything is forked, so children start with default dispositions.
+        // Cancelling a build is CANCEL_REQUEST on the wire.
         PosixDetach.intoOwnSession();
-        TerminalSignals.ignoreInterruptAndHangup();
+        TerminalSignals.install();
         try {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();

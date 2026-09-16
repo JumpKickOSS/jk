@@ -428,7 +428,8 @@ public final class EngineServer implements AutoCloseable {
                 aot::pid,
                 idleDropped::get,
                 () -> EngineLogSink.sizeOf(paths.log()),
-                this::logRolledAtMillis);
+                this::logRolledAtMillis,
+                TerminalSignals::ignoredSignals);
     }
 
     private long logRolledAtMillis() {

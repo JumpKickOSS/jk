@@ -102,6 +102,9 @@ public final class EngineStatusCommand implements CliCommand {
             detail("Dropped", s.idleDropped() + (s.idleDropped() == 1 ? " idle connection" : " idle connections"));
         }
         if (s.logBytes() >= 0) detail("Log", describeLog(s, now));
+        if (s.ignoredSignals() != null && !s.ignoredSignals().isEmpty()) {
+            detail("Signals", describeIgnoredSignals(s.ignoredSignals()));
+        }
         heapDumpRow(paths);
         // Transient by design: the sidecar trainer lives ~15s after a fresh install/upgrade, then
         // this line disappears — steady state stays four/five detail rows (+ memory bar).
@@ -198,6 +201,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .string("engineEpoch", s.engineEpoch())
                 .number("logBytes", s.logBytes())
                 .number("logRolledAt", s.logRolledAt())
+                .string("ignoredSignals", s.ignoredSignals())
                 .string("httpUrl", s.httpUrl())
                 .string("httpError", s.httpError())
                 .string("mcpUrl", s.mcpUrl());
@@ -312,6 +316,16 @@ public final class EngineStatusCommand implements CliCommand {
 
     private static String mib(long bytes) {
         return (bytes + (1 << 19)) / (1 << 20) + "M"; // round to nearest MiB
+    }
+
+    /**
+     * Only printed when the engine still ignores a terminal signal: the spawning shell had it
+     * ignored and the startup reset did not take, so every JVM the engine forks ignores it too and
+     * the Ctrl-C contract of {@code jk dev} and the test runner is void until a respawn.
+     */
+    static String describeIgnoredSignals(String ignored) {
+        return "ignoring " + ignored + " (inherited from the shell that started the engine; forked workers"
+                + " inherit it — `jk engine stop`, then start it from a foreground shell)";
     }
 
     /** The engine log's size and when this engine last rolled it, e.g. {@code 3M, rolled 2h 5m 0s ago}. */
