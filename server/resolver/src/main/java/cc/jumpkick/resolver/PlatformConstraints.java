@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -25,19 +27,53 @@ import org.jspecify.annotations.Nullable;
  * constraint map the solvers and the row assembler consult; it stays mutable because the
  * language-runtime inject adds to it after collection and the declared test-framework pins
  * ({@link TestEngines#declaredTriggerPins}) after {@link #apply}.
+ *
+ * <p>Two BOMs that manage one module at different versions meet the pin policy: under {@link
+ * PinPolicy#NEAREST} the first-declared BOM's version stands, as the first {@code import} does in
+ * Maven's {@code dependencyManagement}, and the later BOM's say is kept as an override the lock
+ * reports; under {@link PinPolicy#EXACT} the disagreement is a refusal.
  */
 public final class PlatformConstraints {
 
     private final Map<String, String> versions = new LinkedHashMap<>();
     private final Map<String, String> provenance = new LinkedHashMap<>();
 
-    private PlatformConstraints() {}
+    /** Per module, the later BOMs whose say the first-declared BOM's version kept. */
+    private final Map<String, ManagementOverride> overrides = new LinkedHashMap<>();
 
-    /** Load every {@code [platform-dependencies]} BOM and fold its managed versions in, refusing a conflict. */
-    static PlatformConstraints collect(JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder)
+    private final PinPolicy pinPolicy;
+
+    /**
+     * A module two imported BOMs manage at different versions, resolved as Maven resolves
+     * dependencyManagement imports: the first-declared BOM's version stands.
+     *
+     * @param module the managed {@code group:artifact}
+     * @param kept the version the lock uses
+     * @param keptBy the first-declared BOM, as {@code group:artifact:version}
+     * @param overridden every later BOM with the version it asked for, in declaration order
+     */
+    record ManagementOverride(String module, String kept, String keptBy, List<String> overridden) {
+        String render() {
+            return module + " " + kept + " is " + keptBy
+                    + "'s, the first [platform-dependencies] entry that manages it; "
+                    + String.join(", ", overridden)
+                    + " — the first-declared BOM wins, as the first import does under Maven";
+        }
+    }
+
+    private PlatformConstraints(PinPolicy pinPolicy) {
+        this.pinPolicy = pinPolicy;
+    }
+
+    /**
+     * Load every {@code [platform-dependencies]} BOM in declaration order and fold its managed
+     * versions in; a module an earlier BOM manages at another version follows {@code pinPolicy}.
+     */
+    static PlatformConstraints collect(
+            JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, PinPolicy pinPolicy)
             throws IOException, InterruptedException {
-        PlatformConstraints c = new PlatformConstraints();
-        collect(project, repos, pomBuilder, c.versions, c.provenance);
+        PlatformConstraints c = new PlatformConstraints(pinPolicy == null ? PinPolicy.EXACT : pinPolicy);
+        c.fold(project, repos, pomBuilder);
         return c;
     }
 
@@ -62,6 +98,7 @@ public final class PlatformConstraints {
         stripBomForExactRoots(roots.main(), versions, provenance, injectedRuntimes);
         stripBomForExactRoots(roots.test(), versions, provenance, injectedRuntimes);
         stripBomForExactRoots(roots.processor(), versions, provenance, injectedRuntimes);
+        overrides.keySet().retainAll(versions.keySet());
         return new LockRoots.Roots(
                 materializePlatformManaged(roots.main(), versions),
                 materializePlatformManaged(roots.test(), versions),
@@ -69,12 +106,7 @@ public final class PlatformConstraints {
                 roots.fileDeps());
     }
 
-    private static void collect(
-            JkBuild project,
-            RepoGroup repos,
-            EffectivePomBuilder pomBuilder,
-            Map<String, String> bomConstraints,
-            Map<String, String> constraintProvenance)
+    private void fold(JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder)
             throws IOException, InterruptedException {
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
             // Resolve caret/tilde/latest/snapshot against repo metadata, then load *that* BOM's
@@ -85,30 +117,44 @@ public final class PlatformConstraints {
             EffectivePom bomPom = pomBuilder.build(bomCoord);
             String bomLabel = bomCoord.toGav();
             for (Map.Entry<String, String> m : managedVersionsByModule(bomPom).entrySet()) {
-                String existing = bomConstraints.get(m.getKey());
+                String existing = versions.get(m.getKey());
                 if (existing == null) {
-                    bomConstraints.put(m.getKey(), m.getValue());
-                    constraintProvenance.put(m.getKey(), bomLabel);
+                    versions.put(m.getKey(), m.getValue());
+                    provenance.put(m.getKey(), bomLabel);
                 } else if (!existing.equals(m.getValue())) {
-                    throw new IllegalStateException("platform BOM conflict on `"
-                            + m.getKey()
-                            + "`: "
-                            + constraintProvenance.get(m.getKey())
-                            + " constrains to "
-                            + existing
-                            + ", but "
-                            + bomLabel
-                            + " constrains to "
-                            + m.getValue()
-                            + ". Pick one BOM or pin the coord explicitly.");
+                    laterBomDisagrees(m.getKey(), existing, bomLabel, m.getValue());
                 }
             }
             // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
             // often omit named-locks. Bare edges are exact under a platform (EffectivePom fill),
             // but keep the family in the platform map for preferredVersion / pinned-by when an
             // edge arrives without a fill.
-            alignMavenResolverFamily(bomConstraints, constraintProvenance, bomPom, bomLabel);
+            alignMavenResolverFamily(versions, provenance, bomPom, bomLabel);
         }
+    }
+
+    /** A later BOM manages {@code module} at {@code asked} where the first-declared one said {@code kept}. */
+    private void laterBomDisagrees(String module, String kept, String bomLabel, String asked) {
+        String keptBy = Objects.requireNonNull(provenance.get(module));
+        if (pinPolicy != PinPolicy.NEAREST) {
+            throw new IllegalStateException("platform BOM conflict on `" + module + "`: " + keptBy
+                    + " constrains to " + kept + ", but " + bomLabel + " constrains to " + asked
+                    + ". Pick one BOM, pin the coord explicitly, or set [resolve] pins = \"nearest\""
+                    + " to take the first-declared BOM's version as Maven does.");
+        }
+        overrides
+                .computeIfAbsent(module, k -> new ManagementOverride(module, kept, keptBy, new ArrayList<>()))
+                .overridden()
+                .add(bomLabel + " constrains to " + asked);
+    }
+
+    /**
+     * One line per module a later BOM manages at another version, in the order the modules were
+     * met; empty under {@link PinPolicy#EXACT}, where such a module is a refusal. A module the
+     * project pins exactly is not here: the pin beats every BOM.
+     */
+    List<String> renderedOverrides() {
+        return overrides.values().stream().map(ManagementOverride::render).toList();
     }
 
     /**

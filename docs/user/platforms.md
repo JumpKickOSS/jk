@@ -53,6 +53,23 @@ way Gradle's `platform()` does, while an exact version you declare yourself stil
 the BOM. Inside the BOM the precedence is Maven's: entries the BOM (or its parents)
 declares win over the BOMs it imports, and among imports the first wins.
 
+## Two BOMs that manage one module
+
+`[platform-dependencies]` is an ordered table. When two of its BOMs manage the same module at
+different versions, what happens is decided by `[resolve] pins`:
+
+| Policy | Two BOMs disagree on a module |
+|--------|-------------------------------|
+| `pins = "exact"` (default, hand-written manifests) | `jk lock` refuses: `platform BOM conflict on g:a: X constrains to 2.10.1, but Y constrains to 2.13.2` — pick one BOM, pin the module yourself, or opt into the rule below |
+| `pins = "nearest"` (what `jk import` writes) | Maven's rule: the first-declared BOM that manages the module wins, the later BOM's say is dropped, the lock row's `pinned-by` names the winner, and `jk lock` prints one line per such module naming the winner and every BOM it overrode |
+
+The rule is Maven's for `<dependencyManagement>` imports — the first `import` that manages a
+coordinate wins, in declaration order — and `jk import` writes the BOMs in the order the POM
+declares them, so an imported project resolves to the versions Maven built with. Your own exact
+pin on the module beats every BOM under both policies. In a workspace the table is the root's
+entries followed by each member's in `[workspace] modules` order, each in its own declaration
+order, so a BOM the root declares wins over one a member declares.
+
 GAs the platform does **not** manage resolve to the highest version the POMs that name
 them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with
 `[resolve] unmapped = "strict"` (every unmanaged diamond is a hard error). Exact user

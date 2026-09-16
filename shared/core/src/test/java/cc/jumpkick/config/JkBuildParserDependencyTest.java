@@ -7,6 +7,7 @@ import static cc.jumpkick.config.JkBuildParserFixtures.pathSourceOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
@@ -648,6 +649,24 @@ class JkBuildParserDependencyTest {
                 [dependencies]
                 mystery = { optional = false }
                 """)).hasMessageContaining("must set exactly one of");
+    }
+
+    @Test
+    void platform_dependencies_keep_their_declaration_order() {
+        // The first BOM that manages a module wins, so the table's order is meaning, not style.
+        JkBuild b = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0"
+
+                [platform-dependencies]
+                spring-boot-dependencies = { group = "org.springframework.boot", version = "3.5.15" }
+                knife4j-dependencies = { group = "com.github.xiaoymin", version = "4.5.0" }
+                activemq-bom = { group = "org.apache.activemq", version = "6.1.8" }
+                """);
+        assertThat(b.dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::library)
+                .containsExactly("spring-boot-dependencies", "knife4j-dependencies", "activemq-bom");
     }
 
     @Test

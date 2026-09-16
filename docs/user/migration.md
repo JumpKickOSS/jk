@@ -62,8 +62,10 @@ writes no report. A project with only a `pom.xml` binds for MCP by its POM coord
 model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the
 reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows),
 `dependencyManagement` is merged so a dependency declared without a version gets the managed one,
-`import`-scope BOMs become `[platform]` entries with their versions resolved, `${property}`
-placeholders are interpolated, and profiles Maven would activate on this machine (active by
+`import`-scope BOMs become `[platform]` entries with their versions resolved, in the order the
+POM declares them (two BOMs that manage the same module resolve to the first one's version under
+`pins = "nearest"`, as Maven's imports do — [Platforms](platforms.md#two-boms-that-manage-one-module)),
+`${property}` placeholders are interpolated, and profiles Maven would activate on this machine (active by
 default, JDK, OS) are folded in. The fidelity report names what each parent contributed —
 "versions for X, Y managed by parent g:a:v" — and a parent no repository has is a Tier-3 row, not
 a failed import. The compiler level is written as `java = N`, never as a `jdk` pin: a level below

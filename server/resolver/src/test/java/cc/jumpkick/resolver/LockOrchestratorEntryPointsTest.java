@@ -11,6 +11,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -22,6 +23,7 @@ import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -140,8 +142,80 @@ class LockOrchestratorEntryPointsTest {
 
         assertThatThrownBy(() -> new LockOrchestrator(repos(dir)).lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("platform BOM conflict on `com.foo:widget`: org.example:bom-a:1.0 constrains to 1.0,"
-                        + " but org.example:bom-b:1.0 constrains to 2.0. Pick one BOM or pin the coord explicitly.");
+                .hasMessage(
+                        "platform BOM conflict on `com.foo:widget`: org.example:bom-a:1.0 constrains to 1.0,"
+                                + " but org.example:bom-b:1.0 constrains to 2.0. Pick one BOM, pin the coord explicitly,"
+                                + " or set [resolve] pins = \"nearest\" to take the first-declared BOM's version as Maven does.");
+    }
+
+    /**
+     * Under {@code [resolve] pins = "nearest"} the same two BOMs resolve as Maven resolves two
+     * dependencyManagement imports: the first-declared entry's version stands, the row names that
+     * BOM as {@code pinned-by}, and the lock reports the later BOM's say in one line per module.
+     * Swapping the declaration order swaps the winner.
+     */
+    @Test
+    void under_nearest_pins_the_first_declared_bom_wins_and_the_later_one_is_reported(@TempDir Path dir)
+            throws Exception {
+        upstream.metadata("com.foo", "widget", "1.0", "2.0")
+                .pom("com.foo", "widget", "1.0", MavenStub.emptyPom("com.foo", "widget", "1.0"))
+                .pom("com.foo", "widget", "2.0", MavenStub.emptyPom("com.foo", "widget", "2.0"))
+                .pom(
+                        "org.example",
+                        "bom-a",
+                        "1.0",
+                        MavenStub.bom("org.example", "bom-a", "1.0", List.of("com.foo:widget:1.0")))
+                .pom(
+                        "org.example",
+                        "bom-b",
+                        "1.0",
+                        MavenStub.bom("org.example", "bom-b", "1.0", List.of("com.foo:widget:2.0")));
+        Dependency bomA = Dependency.of("bom-a", "org.example:bom-a", VersionSelector.parse("=1.0"));
+        Dependency bomB = Dependency.of("bom-b", "org.example:bom-b", VersionSelector.parse("=1.0"));
+        Dependency widget = Dependency.platformManaged("widget", "com.foo:widget");
+        List<String> overrides = new ArrayList<>();
+        ResolveObserver observer = new ResolveObserver() {
+            @Override
+            public void onTotal(int total) {}
+
+            @Override
+            public void onPackage(String module, String version) {}
+
+            @Override
+            public void onOverride(String line) {
+                overrides.add(line);
+            }
+        };
+
+        Lockfile aFirst = new LockOrchestrator(repos(dir.resolve("a-first")))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .lock(
+                        project(Map.of(Scope.PLATFORM, List.of(bomA, bomB), Scope.MAIN, List.of(widget))),
+                        "test",
+                        List.of(),
+                        true,
+                        observer);
+
+        assertThat(version(aFirst, "com.foo:widget:jar:")).isEqualTo("1.0");
+        assertThat(row(aFirst, "com.foo:widget:jar:").pinnedBy()).isEqualTo("org.example:bom-a:1.0");
+        assertThat(overrides)
+                .containsExactly("com.foo:widget 1.0 is org.example:bom-a:1.0's, the first [platform-dependencies]"
+                        + " entry that manages it; org.example:bom-b:1.0 constrains to 2.0"
+                        + " — the first-declared BOM wins, as the first import does under Maven");
+
+        overrides.clear();
+        Lockfile bFirst = new LockOrchestrator(repos(dir.resolve("b-first")))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .lock(
+                        project(Map.of(Scope.PLATFORM, List.of(bomB, bomA), Scope.MAIN, List.of(widget))),
+                        "test",
+                        List.of(),
+                        true,
+                        observer);
+
+        assertThat(version(bFirst, "com.foo:widget:jar:")).isEqualTo("2.0");
+        assertThat(row(bFirst, "com.foo:widget:jar:").pinnedBy()).isEqualTo("org.example:bom-b:1.0");
+        assertThat(overrides).singleElement().asString().startsWith("com.foo:widget 2.0 is org.example:bom-b:1.0's");
     }
 
     /**

@@ -206,7 +206,7 @@ public final class LockOrchestrator {
         LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults);
         // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
-        PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder);
+        PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder, pinPolicy);
         Map<String, String> bomConstraints = constraints.versions();
 
         // Language runtimes must be lock deps so package-jar / boot-jar nest them.
@@ -217,6 +217,7 @@ public final class LockOrchestrator {
                 LanguageRuntimeInject.inject(project, projectDir, bomConstraints, declared.main(), toolVersions);
 
         LockRoots.Roots roots = constraints.apply(declared.split(), injected);
+        for (String line : constraints.renderedOverrides()) observer.onOverride(line);
         // The framework a suite declares is the framework it runs on: an injected engine's own edge
         // onto it takes the declared pin, as a transitive takes a direct dependency's in Maven.
         bomConstraints.putAll(TestEngines.declaredTriggerPins(project));
