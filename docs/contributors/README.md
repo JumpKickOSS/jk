@@ -25,11 +25,14 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Self-host](self-host.md) | Dogfooding this monorepo with `jk` |
 | [Test suite tiers](test-suite-tiers.md) | `jk test` vs `--profile integration` vs the nightly profiles |
 | [Progress contract](progress-contract.md) | ETA / bar semantics |
+| [The 1.0 plan](plan-1.0.md) | Priority order to 1.0: the developer's inner loop first; six epics |
 
 ## Planning and internal design
 
 Tickets, PRDs, benches, and decision records are **not** in this repo. They live in
 [KanArtist](https://github.com/JumpKickOSS/kanartist) project `jk`
-(`projects/jk/tickets/`, `projects/jk/docs/`).
+(`projects/jk/tickets/`, `projects/jk/docs/`). The one planning page that does live here is
+[the 1.0 plan](plan-1.0.md): the priority order, without ticket ids, so a reader of this tree
+knows what is being built next. Its tickets carry the label `inner-loop-1.0` on the board.
 
 Out-of-tree black-box scenarios: [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples).

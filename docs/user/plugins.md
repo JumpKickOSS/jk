@@ -8,6 +8,13 @@ First-party plugins ship with JumpKick (Spring Boot, Quarkus, Grails, Micronaut,
 protobuf, formatter, test-runner, publisher, image-builder, minified, auditor, …).
 Enable them by using their table and/or a [template](templates.md).
 
+Batteries come in two tiers. **Core** batteries ship with every release and are gated by the
+self-host build. **Contrib** batteries are best-effort: Android (not AGP parity) and Grails
+(tracking a milestone) are contrib. The next core battery is whichever step most Spring and
+Kotlin services touch every day — coverage in the results file, sources and javadoc jars,
+Central Portal publishing, code generation, lint as a cached step — in the order set by
+[the 1.0 plan](../contributors/plan-1.0.md).
+
 Framework how-tos: [Frameworks](frameworks.md). Format: [Format](format.md).
 
 ## Private / vendored plugins

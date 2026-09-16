@@ -104,8 +104,9 @@ surface, real lockfile, agent-readable outcomes.
 **Coming from Gradle:** keep warm/incremental ambition without “your build is a second
 program.” Agents should not write Kotlin DSL to add Jackson.
 
-**Speed (honest):** competitive with modern Gradle on warm builds. Lead with *repeated*
-local and agent cycles (RSS + cache + structured retries), not a one-shot CI bake-off.
+**Speed (honest):** competitive with modern Gradle on warm builds, a claim that gets its
+jk / Gradle / Maven table before 1.0. Lead with *repeated* local and agent cycles
+(RSS + cache + structured retries), not a one-shot CI bake-off.
 
 ### Stay on the newest versions
 
@@ -372,6 +373,11 @@ Product docs (will be published at [jumpkick.build/documentation](https://jumpki
 guards, installs and releases jk (`jk build` writes the ship layout under `target/dist/`).
 APIs and lock schema may still change until 1.0. Protocol/schema version numbers stay
 at **1** until 1.0.
+
+What 1.0 means and in what order it lands: **[the 1.0 plan](docs/contributors/plan-1.0.md)** —
+the developer's inner loop first (Maven projects as they are, a measured agent loop, IntelliJ
+that just works, daily-loop batteries, the dashboard as the supervisor's view, checkable
+performance numbers).
 
 Supported project JDKs: **17+** (no Java 8 or 11).
 

@@ -26,7 +26,13 @@ those names, and only the exact spelling is taken — `--tools` is Maven's — s
 tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean` therefore provisions Maven under
 `/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the three.
 
-**POM import** is the high-fidelity path.
+**POM import** is the primary path, and today it is shallow: the importer maps
+`maven-compiler-plugin` and dependencies, reports a `<parent>` without flattening it, hands
+back a checklist for every `<profile>`, and drops the other plugins into the fidelity report.
+Read that report before trusting the generated `jk.toml`. Making an existing Maven project work
+under jk — effective-POM import, plugin-aware mapping, structured results from `jk mvn`, and a
+jk loop over an unmodified `pom.xml` — is the first epic of
+[the 1.0 plan](../contributors/plan-1.0.md).
 
 **Gradle import** does not execute build scripts (no Groovy/Kotlin evaluation). It does
 read on-disk `gradle/libs.versions.toml` (libraries, bundles, `version.ref`) and maps
