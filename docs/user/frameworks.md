@@ -2,8 +2,8 @@
 
 First-party plugins teach JumpKick extra `jk.toml` tables and shape `jk build` / `jk test`
 / `jk image` around them. You **use** them by declaring the table (and usually a template).
-Authoring plugins: [contributor plugin guide](../contributors/plugins.md) (pre-1.0: first-party
-and private/vendored jars — the SDK is not on Central yet).
+Authoring plugins: [contributor plugin guide](../contributors/plugins.md) — against the published
+`cc.jumpkick:jk-plugin-sdk` coordinate, pinned by content in the consumer.
 
 User-facing plugin install: [Plugins](plugins.md). Templates: [Templates](templates.md).
 
