@@ -31,6 +31,21 @@ Every engine-hosted operation gets a **jid** at admission.
 A second same-kind build in the same checkout is rejected: **Build #N already running**.
 Worktrees are different slots.
 
+### Queued for memory
+
+The engine admits a build, test or lock job only when its own heap can hold it beside the jobs
+already running; otherwise the job **queues** — first come, first served — until one of them
+finishes. A queued job is not an error and never dies for lack of memory: the CLI prints one
+line, `waiting for engine memory (2 jobs ahead)`, and then proceeds as usual; `jk engine status`
+shows `Queued: N (waiting for engine memory)` while any job waits (`--output json`:
+`queuedBuildPlans`); the dashboard's Activity feed shows the card as *Queued for memory* until it
+turns live. Ctrl-C and `jk cancel` dequeue a waiting job the same way they cancel a running one.
+
+The cost of a job is estimated from what it parses whole — the workspace `jk-lock.toml` and the
+project's metrics ledger — so a small project queues behind a large one only when the heap is
+genuinely short. An idle engine always admits the next job. Raising `[engine] max-heap-mb`
+lets more jobs run at once; the default cap runs one build of a large workspace at a time.
+
 ## HTTP and MCP
 
 HTTP is **on by default** (loopback). Turn it off with `[http] enabled = false` or

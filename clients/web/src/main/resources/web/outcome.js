@@ -22,6 +22,7 @@ function hasFailedStep(card) {
  * because the session was cancelled ({@code state === 'cancelled'}) do not flip the badge.
  */
 export function outcomeOf(card) {
+  if (card.state === 'queued') return 'queued';
   if (card.state === 'running') return 'running';
   // FAIL steps / failed modules first — a cancel bit alone must not mask a real test failure.
   if (hasFailedStep(card) || (card.modules || []).some((m) => m.state === 'failed')) return 'failed';

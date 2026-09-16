@@ -315,7 +315,7 @@ progress/structure, and the freshest sample always survives); the engine skips w
 
 | Kind | Events | When published |
 | --- | --- | --- |
-| **Inflicted** | `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `progress` / `workspace-progress` / `eta` / `output` / `error` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
+| **Inflicted** | `request-queued` / `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `progress` / `workspace-progress` / `eta` / `output` / `error` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
@@ -418,6 +418,7 @@ the TUI), never by `LiveVitals`.
 
 | Event | Publisher (typical) | Notes |
 | --- | --- | --- |
+| `request-queued` | `publishRequestQueued` | A job waiting for coordinator memory (`ahead`, `reason`); once, before its `request-start` |
 | `request-start` | `publishRequestStart` | CLI admit + HTTP workspace/lock |
 | `plan` | `publishPlan` | Total weight for bar denominator |
 | `module-start` / `module-finish` | workspace listener | Per-module rows |

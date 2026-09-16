@@ -66,3 +66,7 @@ export const start = (id, dir, extra = {}) => ({
   data: { jid: id, kind: 'build', dir, ...extra },
 });
 export const finish = (id, data = {}) => ({ type: 'request-finish', data: { jid: id, ...data } });
+export const queued = (id, dir, extra = {}) => ({
+  type: 'request-queued',
+  data: { jid: id, kind: 'build', dir, ahead: 1, reason: 'memory', ...extra },
+});

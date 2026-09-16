@@ -19,6 +19,7 @@ import {
   moduleSummary,
   normalizeDiagnostic,
   outcomeOf,
+  queued,
   seedFromHistory,
   start,
   startAnchor,
@@ -36,6 +37,28 @@ test('request-start ignores format and lock (Activity is build-like only)', () =
   assert.equal(cards.length, 1);
   assert.equal(cards[0].id, 3);
   assert.equal(cards[0].kind, 'build');
+});
+
+test('request-queued opens a queued card that request-start turns live', () => {
+  const cards = [];
+  foldEvent(cards, queued(7, '/w/q', { ahead: 2 }));
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].state, 'queued');
+  assert.equal(cards[0].ahead, 2);
+  assert.equal(outcomeOf(cards[0]), 'queued');
+  foldEvent(cards, start(7, '/w/q', { startedAt: 5_000, serverNow: 5_000 }));
+  assert.equal(cards.length, 1); // the same card, not a second one
+  assert.equal(cards[0].state, 'running');
+  assert.equal(cards[0].ahead, null);
+  assert.equal(cards[0].startedAt, 5_000);
+  assert.equal(outcomeOf(cards[0]), 'running');
+});
+
+test('a queued job cancelled before it ran resolves as cancelled', () => {
+  const cards = [];
+  foldEvent(cards, queued(8, '/w/q'));
+  foldEvent(cards, finish(8, { success: false, cancelled: true, millis: 0 }));
+  assert.equal(outcomeOf(cards[0]), 'cancelled');
 });
 
 test('request-start opens a running card, newest first', () => {

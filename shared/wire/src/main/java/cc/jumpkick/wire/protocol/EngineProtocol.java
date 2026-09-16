@@ -92,6 +92,13 @@ public final class EngineProtocol {
     public static final String CANCEL_ACK = "cancel-ack";
 
     /**
+     * Server → client: the job is waiting for coordinator memory behind {@code ahead} others;
+     * carries {@code jid} (already the cancel handle), {@code ahead} and {@code reason}. Sent at
+     * most once, before {@link #JOB_START}; a job that fits at once never sends it.
+     */
+    public static final String JOB_QUEUED = "job-queued";
+
+    /**
      * Server → client: job admitted; carries {@code jid} (and {@code requestId} alias), kind, dir,
      * optional {@code buildNumber}. Clients track this for Ctrl-C / {@code jk cancel}.
      */

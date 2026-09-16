@@ -67,7 +67,9 @@ public record StatusSnapshot(
          * the spawning shell that the startup reset could not undo, which every forked JVM inherits
          * in turn. {@code ""} when none, or when the platform does not expose the mask.
          */
-        String ignoredSignals) {
+        String ignoredSignals,
+        /** Jobs waiting for coordinator memory before they may run; not counted in {@link #activeBuildPlans}. */
+        int queuedBuildPlans) {
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
     public StatusSnapshot(
@@ -105,7 +107,8 @@ public record StatusSnapshot(
                 /* idleDropped */ 0L,
                 /* logBytes */ -1L,
                 /* logRolledAt */ -1L,
-                /* ignoredSignals */ "");
+                /* ignoredSignals */ "",
+                /* queuedBuildPlans */ 0);
     }
 
     /**
@@ -136,6 +139,7 @@ public record StatusSnapshot(
         m.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - startedAtMillis) / 1000));
         m.put("activeRequests", activeRequests);
         m.put("activeBuildPlans", activeBuildPlans);
+        m.put("queuedBuildPlans", queuedBuildPlans);
         m.put("peakActiveRequests", peakActiveRequests);
         m.put("peakActiveBuildPlans", peakActiveBuildPlans);
         m.put("idleDropped", idleDropped);

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.JobQueuedFrame;
 import cc.jumpkick.wire.protocol.JobStartFrame;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -87,6 +89,14 @@ public final class WireStream {
             while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
+                if (EngineProtocol.JOB_QUEUED.equals(type)) {
+                    // The jid is already the cancel handle: a Ctrl-C while queued dequeues the job.
+                    JobQueuedFrame queued = JobQueuedFrame.decode(line);
+                    notedJid = queued.jid();
+                    ActiveJobs.note(notedJid);
+                    CliOutput.err(waitingLine(queued.ahead()));
+                    continue;
+                }
                 if (EngineProtocol.JOB_START.equals(type)) {
                     JobStartFrame start = JobStartFrame.decode(line);
                     // An absent jid is "none" (-1) here, where the record reads 0.
@@ -107,6 +117,12 @@ public final class WireStream {
             // RPC to every later Ctrl-C in this process.
             if (notedJid > 0) ActiveJobs.forget(notedJid);
         }
+    }
+
+    /** The one line a queued job prints: {@code waiting for engine memory (2 jobs ahead)}. */
+    static String waitingLine(int ahead) {
+        if (ahead <= 0) return "waiting for engine memory (next in line)";
+        return "waiting for engine memory (" + ahead + (ahead == 1 ? " job" : " jobs") + " ahead)";
     }
 
     /** Hand a decoded {@code job-start} to the registered observer, if any. */

@@ -68,7 +68,8 @@ class StatusSnapshotJsonTest {
             6L,
             7_000L,
             8_000L,
-            "");
+            "",
+            0);
 
     /**
      * The one wire name that is not its component name. Every other field is serialized under the

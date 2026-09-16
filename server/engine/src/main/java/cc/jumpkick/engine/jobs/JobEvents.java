@@ -8,6 +8,9 @@ import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 public interface JobEvents {
     void publishRequestStart(long id, String kind, String dir, long buildNumber);
 
+    /** The job waits for coordinator memory behind {@code ahead} others; sent once, before its start. */
+    void publishRequestQueued(long id, String kind, String dir, int ahead);
+
     void publishEvent(String type, JsonOut payload);
 
     JsonOut withProgress(JsonOut payload, long id);

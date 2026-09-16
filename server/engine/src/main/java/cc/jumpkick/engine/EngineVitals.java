@@ -7,6 +7,7 @@ import cc.jumpkick.engine.plugin.MemoryProbe;
 import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public final class EngineVitals {
     private final LongSupplier logBytes;
     private final LongSupplier logRolledAtMillis;
     private final Supplier<String> ignoredSignals;
+    private final IntSupplier queuedBuildPlans;
 
     public StatusSnapshot snapshot() {
         Runtime rt = Runtime.getRuntime();
@@ -58,7 +60,8 @@ public final class EngineVitals {
                 idleDropped.getAsLong(),
                 logBytes.getAsLong(),
                 logRolledAtMillis.getAsLong(),
-                ignoredSignals.get());
+                ignoredSignals.get(),
+                queuedBuildPlans.getAsInt());
     }
 
     public int liveConnectionCount() {
