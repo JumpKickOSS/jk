@@ -314,7 +314,7 @@ final class PlannerGuards {
                     // ---- the module's src/guard suite, if compiled: its guards join the lane's rules
                     Path guardClasses = ctx.require(LAYOUT).guardClassesDir();
                     List<Rule> suiteRules = List.of();
-                    EvalContext.IoRunnable beforeEvaluate = null;
+                    Evaluation withSuite = null;
                     if (Files.isDirectory(guardClasses) && PlannerGuardSuite.declared(moduleDir, compact(moduleDir))) {
                         FactsIndexing.Ensured suite =
                                 FactsIndexing.ensure(guardClasses, FactsIndexing.indexPath(buildDir, "guard"));
@@ -373,16 +373,19 @@ final class PlannerGuards {
                                 testIdx,
                                 classDirs,
                                 workspace);
-                        beforeEvaluate = () -> {
-                            List<String> problems;
+                        // The fork and the evaluation share one turn on the report: a concurrent run
+                        // on this tree waits, so the report the test kind reads is this run's.
+                        withSuite = evaluate -> {
                             try {
-                                problems = GuardSuiteRunner.run(inputs, workspaceModules);
+                                return GuardSuiteRunner.takingTurn(GuardSuiteRunner.report(inputs), () -> {
+                                    for (String p : GuardSuiteRunner.run(inputs, workspaceModules))
+                                        ctx.error("guards", "GUARD suite  scanner-failed\n  Observed: " + p);
+                                    return evaluate.get();
+                                });
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
                                 throw new IOException("guard suite run interrupted", e);
                             }
-                            for (String p : problems)
-                                ctx.error("guards", "GUARD suite  scanner-failed\n  Observed: " + p);
                         };
                     }
                     // A module that compiled nothing (a resources-only module) has no site for any
@@ -397,7 +400,7 @@ final class PlannerGuards {
                             ActionKey.qualifiedTaskId(TaskNames.GUARD, moduleDir),
                             main.classes() == 0 && suiteRules.isEmpty(),
                             suiteRules,
-                            beforeEvaluate);
+                            withSuite);
                     ctx.progress(1);
                 })
                 .build();
@@ -569,9 +572,17 @@ final class PlannerGuards {
     }
 
     /**
+     * The lane's evaluation wrapped in what must surround it: the module's suite forks first and
+     * the report it leaves is read under the same turn on the tree.
+     */
+    interface Evaluation {
+        LaneRun.Result run(EvalContext.IoSupplier<LaneRun.Result> evaluate) throws IOException;
+    }
+
+    /**
      * @param extraRules rules the lane owns beyond the TOML file — a module's guard tests
-     * @param beforeEvaluate runs once the lane is known not to be cached, before evaluation — the
-     *     suite's forked JUnit run, which leaves the report the test kind reads
+     * @param withSuite wraps the evaluation once the lane is known not to be cached — the suite's
+     *     forked JUnit run, holding the tree's turn until the test kind has read its report
      */
     private static void execute(
             TaskContext ctx,
@@ -582,9 +593,9 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses,
             List<Rule> extraRules,
-            EvalContext.@Nullable IoRunnable beforeEvaluate)
+            @Nullable Evaluation withSuite)
             throws IOException {
-        executeLane(ctx, env(cx), lane, ectx, tokenSupplier, taskId, noClasses, extraRules, beforeEvaluate);
+        executeLane(ctx, env(cx), lane, ectx, tokenSupplier, taskId, noClasses, extraRules, withSuite);
     }
 
     /**
@@ -602,10 +613,10 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses,
             List<Rule> extraRules,
-            EvalContext.@Nullable IoRunnable beforeEvaluate)
+            @Nullable Evaluation withSuite)
             throws IOException {
         try {
-            evaluateLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, extraRules, beforeEvaluate);
+            evaluateLane(ctx, env, lane, ectx, tokenSupplier, taskId, noClasses, extraRules, withSuite);
         } catch (GuardsRed red) {
             throw red;
         } catch (IOException | RuntimeException e) {
@@ -623,7 +634,7 @@ final class PlannerGuards {
             String taskId,
             boolean noClasses,
             List<Rule> extraRules,
-            EvalContext.@Nullable IoRunnable beforeEvaluate)
+            @Nullable Evaluation withSuite)
             throws IOException {
         GuardsPlan g = env.guards();
         LoadResult load = rules(g);
@@ -673,8 +684,10 @@ final class PlannerGuards {
             cache.storeVerdict(taskId, key, inputsOf(tokens, baselineSha));
             return;
         }
-        if (beforeEvaluate != null) beforeEvaluate.run();
-        LaneRun.Result result = runLane(lane, rules, ectx, baseline);
+        EvalContext laneCtx = ectx;
+        LaneRun.Result result = withSuite == null
+                ? runLane(lane, rules, laneCtx, baseline)
+                : withSuite.run(() -> runLane(lane, rules, laneCtx, baseline));
         // Engine validations ride the lane: invariants of the build model, not rules, so they
         // have no table and no baseline, and a workspace without guards runs none.
         List<Fault> faults = lane == Lane.MODEL

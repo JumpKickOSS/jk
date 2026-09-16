@@ -85,11 +85,11 @@ final class GuardSuiteRunner {
 
     /** Forks the suite; returns the problems that stop the run from meaning anything (empty = ran). */
     static List<String> run(Inputs in, List<Path> workspaceModules) throws IOException, InterruptedException {
-        return run(in, workspaceModules, GuardSuites.report(BuildLayout.moduleTargetDir(in.root(), in.moduleDir())));
+        return run(in, workspaceModules, report(in));
     }
 
     /**
-     * One run at a time per report: the build's guard lane and a standalone {@code jk guard} on the
+     * One turn at a time per report: the build's guard lane and a standalone {@code jk guard} on the
      * same tree share {@code target/<module>/guard/}, and a second fork appending to the same side
      * file while the first is read leaves both short. Threads of this engine queue on the lock;
      * another engine on the same tree queues on the file lock beside the report.
@@ -99,20 +99,43 @@ final class GuardSuiteRunner {
     /** The file the cross-process lock is taken on, beside the report. */
     static final String LOCK_FILE = "run.lock";
 
-    /** As above, with the report (and its run files) beside {@code report} — fixtures run the suite off to the side. */
-    static List<String> run(Inputs in, List<Path> workspaceModules, Path report)
-            throws IOException, InterruptedException {
+    /** The report the module's own suite leaves, the one its lane evaluates. */
+    static Path report(Inputs in) {
+        return GuardSuites.report(BuildLayout.moduleTargetDir(in.root(), in.moduleDir()));
+    }
+
+    /** Work done while the tree's turn on a report is held. */
+    interface Turn<T> {
+        T run() throws IOException, InterruptedException;
+    }
+
+    /**
+     * Runs {@code body} as this tree's turn on {@code report}: no other run of this engine or of
+     * another on the same tree forks into, rewrites or removes the report until it returns. A lane
+     * forks the suite and evaluates inside one turn, so the report its evaluator reads is the one
+     * its own run left, not the emptied one a concurrent run that reported nothing leaves behind.
+     * Reentrant: a body may call {@link #run}.
+     */
+    static <T> T takingTurn(Path report, Turn<T> body) throws IOException, InterruptedException {
         Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
         ReentrantLock turn = RUNS.computeIfAbsent(guardDir.normalize(), k -> new ReentrantLock());
+        if (turn.isHeldByCurrentThread()) return body.run();
         turn.lockInterruptibly();
         try (FileChannel channel = FileChannel.open(
                         guardDir.resolve(LOCK_FILE), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                 FileLock held = channel.lock()) {
-            return runLocked(in, workspaceModules, report, guardDir);
+            return body.run();
         } finally {
             turn.unlock();
         }
+    }
+
+    /** As above, with the report (and its run files) beside {@code report} — fixtures run the suite off to the side. */
+    static List<String> run(Inputs in, List<Path> workspaceModules, Path report)
+            throws IOException, InterruptedException {
+        Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
+        return takingTurn(report, () -> runLocked(in, workspaceModules, report, guardDir));
     }
 
     private static List<String> runLocked(Inputs in, List<Path> workspaceModules, Path report, Path guardDir)
