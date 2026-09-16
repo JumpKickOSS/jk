@@ -68,6 +68,41 @@ class ImportCommandTest {
         assertThat(Files.readString(existing)).contains("\"prior\"");
     }
 
+    /** A reactor whose member already has a jk.toml: the root is not written either, and the message names the member. */
+    @Test
+    void a_reactor_member_manifest_refuses_the_root_write_too(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>core</module>
+                  </modules>
+                </project>
+                """, StandardCharsets.UTF_8);
+        Path core = Files.createDirectories(tempDir.resolve("core"));
+        Files.writeString(core.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.example</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>core</artifactId>
+                </project>
+                """, StandardCharsets.UTF_8);
+        Files.writeString(core.resolve("jk.toml"), "name = \"prior\"\n");
+
+        int exit = run("import", tempDir.resolve("pom.xml").toString());
+        assertThat(exit).isEqualTo(73); // EX_CANTCREAT
+        assertThat(tempDir.resolve("jk.toml")).doesNotExist();
+        assertThat(Files.readString(core.resolve("jk.toml"))).isEqualTo("name = \"prior\"\n");
+    }
+
     @Test
     void force_overwrites_existing_build_jk(@TempDir Path tempDir) throws Exception {
         Path pom = tempDir.resolve("pom.xml");
