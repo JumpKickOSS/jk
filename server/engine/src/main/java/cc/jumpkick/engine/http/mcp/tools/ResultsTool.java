@@ -20,7 +20,7 @@ public final class ResultsTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_results",
-                "Markdown report of the last run: what failed and where; `delta` says what changed since the previous run of this session.",
+                "Markdown report of the last run: what failed and where.",
                 McpSchemas.object(Map.of("dir", McpSchemas.string())),
                 McpSchemas.READ_ONLY);
     }
