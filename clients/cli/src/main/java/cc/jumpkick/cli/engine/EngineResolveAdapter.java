@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.EngineWireException;
 import cc.jumpkick.wire.protocol.LockFinishEvent;
 import cc.jumpkick.wire.protocol.LockModuleEvent;
 import cc.jumpkick.wire.protocol.LockPackageEvent;
+import cc.jumpkick.wire.protocol.LockPhaseEvent;
 import cc.jumpkick.wire.protocol.LockRequest;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import cc.jumpkick.wire.protocol.OutdatedRequest;
@@ -262,6 +263,10 @@ final class EngineResolveAdapter {
                         case EngineProtocol.LOCK_PACKAGE -> {
                             LockPackageEvent e = LockPackageEvent.decode(line);
                             handler.onPackage(e.dir(), e.name(), e.version(), e.totalSeen());
+                        }
+                        case EngineProtocol.LOCK_PHASE -> {
+                            LockPhaseEvent e = LockPhaseEvent.decode(line);
+                            handler.onPhase(e.dir(), e.label());
                         }
                         case EngineProtocol.UPDATE_REWRITE -> {
                             UpdateRewriteEvent e = UpdateRewriteEvent.decode(line);

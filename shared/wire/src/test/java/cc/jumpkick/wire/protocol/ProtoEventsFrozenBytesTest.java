@@ -182,6 +182,8 @@ class ProtoEventsFrozenBytesTest {
                 .isEqualTo("{\"type\":\"lock-package\",\"dir\":\"a/b\",\"name\":\"g:x\",\"version\":\"1.2\"}");
         assertThat(ProtoEvents.lockPackage(null, "g:x", null, 0))
                 .isEqualTo("{\"type\":\"lock-package\",\"dir\":null,\"name\":\"g:x\",\"version\":null,\"total\":0}");
+        assertThat(ProtoEvents.lockPhase("a/b", "Downloading 3 artifacts…"))
+                .isEqualTo("{\"type\":\"lock-phase\",\"dir\":\"a/b\",\"label\":\"Downloading 3 artifacts…\"}");
         assertThat(ProtoEvents.lockFinish(false, 6, List.of("no such artifact", "x"), -1))
                 .isEqualTo(
                         "{\"type\":\"lock-finish\",\"success\":false,\"exitCode\":6,\"errors\":[\"no such artifact\",\"x\"],\"refreshed\":-1}");

@@ -321,6 +321,10 @@ public final class ProtoEvents {
         return new LockPackageEvent(dir, name, version, totalSeen).encode();
     }
 
+    public static String lockPhase(String dir, String label) {
+        return new LockPhaseEvent(dir, label).encode();
+    }
+
     public static String lockFinish(boolean success, int exitCode, List<String> errors, int refreshed) {
         return new LockFinishEvent(success, exitCode, errors, refreshed).encode();
     }
