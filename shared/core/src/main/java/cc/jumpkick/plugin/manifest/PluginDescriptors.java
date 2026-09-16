@@ -98,19 +98,21 @@ public final class PluginDescriptors {
         // named sub-schema — a table of things ([generate.api], [generate.grammar]) rather than a
         // table of keys.
         String entrySchema = null;
+        Set<String> entryKeys = null;
         TomlTable entries = result.getTable("entries");
         if (entries != null) {
             entrySchema = entries.getString("schema");
-            if (entrySchema == null || !subSchemas.containsKey(entrySchema)) {
+            Map<String, PluginDescriptor.SchemaKey> keys = entrySchema == null ? null : subSchemas.get(entrySchema);
+            if (keys == null) {
                 throw new JkBuildParseException(
                         displayPath + ".entries requires schema = \"<name>\" naming a declared [sub-schema.<name>]");
             }
-            if (subSchemas.get(entrySchema).containsKey(Interpolation.ENTRY_NAME)) {
+            if (keys.containsKey(Interpolation.ENTRY_NAME)) {
                 throw new JkBuildParseException(displayPath + ".sub-schema." + entrySchema + " declares `"
                         + Interpolation.ENTRY_NAME + "`, which is the entry's own table name (${entry.name})");
             }
+            entryKeys = keys.keySet();
         }
-        Set<String> entryKeys = entrySchema == null ? null : subSchemas.get(entrySchema).keySet();
 
         PluginDescriptor.Contributions contributions =
                 parseContributions(result, schema.keySet(), entryKeys, displayPath);
