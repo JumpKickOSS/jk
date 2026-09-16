@@ -19,9 +19,10 @@ spec      = "api/openapi.yaml"
 generator = "spring"
 package   = "com.acme.api"
 
+# Versionless coordinates: the Boot platform BOM the [spring-boot] table imports manages them.
 [dependencies]
-starter-webmvc     = { group = "org.springframework.boot", name = "spring-boot-starter-webmvc" }
-starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation" }
+starter-webmvc     = "org.springframework.boot:spring-boot-starter-webmvc"
+starter-validation = "org.springframework.boot:spring-boot-starter-validation"
 
 [test-dependencies]
-starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test" }
+starter-test = "org.springframework.boot:spring-boot-starter-test"

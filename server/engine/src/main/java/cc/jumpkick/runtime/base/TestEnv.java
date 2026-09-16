@@ -86,19 +86,22 @@ public final class TestEnv {
      * <p>Not part of the run-tests action key — the key hashes the module's declared
      * {@code [test] env}, not the sandbox underneath it — so moving it re-runs nothing.
      */
-    private static Path sandboxM2(Path moduleDir) {
+    private static Path sandboxM2(Path moduleDir) throws IOException {
+        Path owner = moduleDir;
         try {
             Optional<Path> root = WorkspaceScan.findRoot(moduleDir);
             // The workspace's slot, not its home: the m2 is a sibling of one member's home rather
             // than inside it, so it outlives a home being wiped and `jk clean` at the root takes it.
-            if (root.isPresent()) return TestHomes.slotFor(root.get()).resolve("test-m2");
+            if (root.isPresent()) owner = root.get();
         } catch (RuntimeException e) {
             // A workspace root that will not read is the build's error to report, not this one's:
             // fall back to the module's own slot so a test JVM still gets a sandbox.
             Log.debug(
                     "sandboxM2: A workspace root that will not read is the build's error to report, not this one's", e);
         }
-        return TestHomes.slotFor(moduleDir).resolve("test-m2");
+        // Stamped as in use at every launch: the suite reads its dependency jars out of this
+        // directory, and a concurrent launch's reaper spares a stamped slot.
+        return TestHomes.prepareSlot(owner).resolve("test-m2");
     }
 
     /**

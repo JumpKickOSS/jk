@@ -35,8 +35,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p><b>Cleanup.</b> Warm is not unbounded. {@link #prepare} stamps the slot it hands out, and the
  * first call in a JVM reaps every slot not stamped within {@link #KEEP_DAYS} days, then the least
  * recently stamped slots until the root fits {@link #KEEP_BYTES} — before the run, so a project that
- * was deleted or renamed cannot leave one behind for ever. {@code jk clean} deletes this module's
- * slot outright. Nothing is deleted after a run: that is the warmth.
+ * was deleted or renamed cannot leave one behind for ever. A slot stamped within {@link #HOLD_HOURS}
+ * is one a running suite may be reading — several gates share one machine and one of them launching
+ * must not pull the dependency jars out from under another — so the byte cap is enforced over the
+ * rest. {@code jk clean} deletes this module's slot outright. Nothing is deleted after a run: that
+ * is the warmth.
+ *
+ * <p><b>The shared local m2.</b> A workspace's test JVMs share one Maven local repository, {@code
+ * <workspace slot>/test-m2}: the sandbox store answers a lock row from it, so it is the classpath a
+ * suite runs against. {@link #prepareSlot} stamps that slot at every launch exactly like a home,
+ * which is what keeps the reaper of a concurrent launch off it.
  *
  * <p><b>A slot, not just a home.</b> {@code JK_HOME} is {@code <slot>/home} rather than the slot
  * itself because the launcher derives the shared test cache as a <em>sibling</em> of {@code JK_HOME},
@@ -53,6 +61,9 @@ public final class TestHomes {
 
     /** Bytes the root may hold before the least recently used slots go. */
     static final long KEEP_BYTES = 2L << 30;
+
+    /** A slot stamped this recently is held: a gate that launched it may still be running. */
+    static final int HOLD_HOURS = 24;
 
     private static final String STAMP = ".used-at";
     private static final AtomicBoolean REAPED = new AtomicBoolean();
@@ -95,13 +106,29 @@ public final class TestHomes {
      * timestamps around whatever now happens to be.
      */
     public static Path prepare(Path moduleDir, Clock clock) throws IOException {
+        Path home = prepareSlot(moduleDir, clock).resolve("home");
+        Files.createDirectories(home);
+        return home;
+    }
+
+    /**
+     * {@code dir}'s slot, created and stamped as in use, stale slots reaped once per JVM. The
+     * workspace's shared {@code test-m2} lives in the workspace root's slot, which holds no home: it
+     * is stamped through here so the reaper reads it as a slot in use rather than as a leftover.
+     */
+    public static Path prepareSlot(Path dir) throws IOException {
+        return prepareSlot(dir, Clock.SYSTEM);
+    }
+
+    /** {@link #prepareSlot(Path)} against a supplied clock. */
+    public static Path prepareSlot(Path dir, Clock clock) throws IOException {
         if (REAPED.compareAndSet(false, true)) {
             reapStale(root(), clock.millis(), KEEP_BYTES);
         }
-        Path home = pathFor(moduleDir);
-        Files.createDirectories(home);
-        stamp(slotFor(moduleDir));
-        return home;
+        Path slot = slotFor(dir);
+        Files.createDirectories(slot);
+        stamp(slot);
+        return slot;
     }
 
     /**
@@ -135,11 +162,12 @@ public final class TestHomes {
     /**
      * Delete every slot whose stamp is older than {@link #KEEP_DAYS} — and every entry that carries no
      * stamp at all, since nothing else writes here — then the least recently stamped survivors until
-     * the rest fit {@code capBytes}. Returns how many were removed. Best effort: a slot another
-     * process still holds is left for the run after this one.
+     * the rest fit {@code capBytes}, never one stamped within {@link #HOLD_HOURS}. Returns how many
+     * were removed. Best effort: a slot another process still holds is left for the run after this one.
      */
     static int reapStale(Path root, long nowMillis, long capBytes) {
         long cutoff = nowMillis - KEEP_DAYS * 24L * 60 * 60 * 1000;
+        long held = nowMillis - HOLD_HOURS * 60L * 60 * 1000;
         int removed = 0;
         List<Slot> fresh = new ArrayList<>();
         long total = 0;
@@ -171,6 +199,8 @@ public final class TestHomes {
         fresh.sort(Comparator.comparingLong(Slot::usedMillis));
         for (Slot slot : fresh) {
             if (total <= capBytes) break;
+            // A launch inside the hold window may still be running against this slot.
+            if (slot.usedMillis() > held) continue;
             if (delete(slot.dir())) {
                 removed++;
                 total -= slot.bytes();

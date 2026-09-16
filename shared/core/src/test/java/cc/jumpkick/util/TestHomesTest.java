@@ -138,6 +138,33 @@ class TestHomesTest {
         assertThat(newer).isDirectory();
     }
 
+    /**
+     * Several gates share one machine: a slot stamped within the hold window is one a running suite
+     * may be reading its dependency jars out of, so the byte cap never takes it.
+     */
+    @Test
+    void over_the_byte_cap_a_slot_inside_the_hold_window_is_kept(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path running = slotWithBytes(root, "aaaaaaaaaaaa", 100);
+        Path launching = slotWithBytes(root, "bbbbbbbbbbbb", 100);
+        age(running.resolve(".used-at"), Duration.ofHours(TestHomes.HOLD_HOURS - 1));
+
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150)).isZero();
+        assertThat(running).isDirectory();
+        assertThat(launching).isDirectory();
+    }
+
+    /** The workspace's shared m2 lives in a slot with no home; stamped, it reads as in use, not as a leftover. */
+    @Test
+    void a_slot_prepared_without_a_home_is_stamped(@TempDir Path tmp) throws Exception {
+        Path workspace = Files.createDirectories(tmp.resolve("ws"));
+        Path slot = TestHomes.prepareSlot(workspace);
+
+        assertThat(slot).isEqualTo(TestHomes.slotFor(workspace));
+        assertThat(slot.resolve(".used-at")).isRegularFile();
+        assertThat(slot.resolve("home")).doesNotExist();
+    }
+
     @Test
     void under_the_byte_cap_nothing_recent_is_reaped(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("homes"));
