@@ -26,9 +26,13 @@ import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus optional exclusive
- * group bindingswhen a coordinate's group is claimed by one or more repos, only those
- * repos participate in version discovery and fetch.
+ * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus two kinds of group
+ * binding. An <em>exclusive</em> binding is a dependency-confusion defense: a claimed group is
+ * discovered and fetched from the claiming repos alone, and their miss is the answer. A
+ * <em>routed</em> binding is a precedence rule between public repositories that share a
+ * namespace: the claiming repos are asked first and alone when they answer, and every other
+ * repository is asked when they all miss ({@code com.google.firebase} holds the Firebase Android
+ * SDK on Google's Maven and {@code firebase-admin} on Central).
  */
 public final class RepoGroup {
 
@@ -88,6 +92,8 @@ public final class RepoGroup {
     private final String repoIdentity;
     /** Parallel to {@link #repos}: exclusive group patterns per repo (empty = no exclusive claim). */
     private final List<List<String>> exclusiveGroups;
+    /** Parallel to {@link #repos}: routed group patterns per repo (empty = no routing claim). */
+    private final List<List<String>> routedGroups;
     /**
      * The first {@code priorityCount} repos are workspace-local materializations (path/git):
      * always eligible and always consulted first, even for exclusively-claimed groups — a
@@ -104,26 +110,45 @@ public final class RepoGroup {
      * shorter lists are treated as no bindings for those entries
      */
     public RepoGroup(List<MavenRepo> repos, @Nullable List<List<String>> exclusiveGroups) {
-        this(repos, exclusiveGroups, 0);
+        this(repos, exclusiveGroups, null, 0);
     }
 
-    private RepoGroup(List<MavenRepo> repos, @Nullable List<List<String>> exclusiveGroups, int priorityCount) {
+    /**
+     * @param exclusiveGroups parallel list of exclusive group patterns per repo
+     * @param routedGroups parallel list of routed group patterns per repo; a repo may carry both
+     * kinds, and an exclusive claim on a group outranks any routing claim on it
+     */
+    public RepoGroup(
+            List<MavenRepo> repos,
+            @Nullable List<List<String>> exclusiveGroups,
+            @Nullable List<List<String>> routedGroups) {
+        this(repos, exclusiveGroups, routedGroups, 0);
+    }
+
+    private RepoGroup(
+            List<MavenRepo> repos,
+            @Nullable List<List<String>> exclusiveGroups,
+            @Nullable List<List<String>> routedGroups,
+            int priorityCount) {
         Objects.requireNonNull(repos, "repos");
         if (repos.isEmpty()) {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
         }
         this.repos = List.copyOf(repos);
-        this.exclusiveGroups = normalizeExclusive(this.repos.size(), exclusiveGroups);
+        this.exclusiveGroups = normalizePatterns(this.repos.size(), exclusiveGroups);
+        this.routedGroups = normalizePatterns(this.repos.size(), routedGroups);
         this.priorityCount = priorityCount;
-        // Exclusive bindings and the priority prefix change which repos are eligible for a
-        // coordinate, so they are part of the question every memo answers — two groups with the
-        // same URLs but different bindings must never share memo entries.
+        // Bindings and the priority prefix change which repos are eligible for a coordinate, so
+        // they are part of the question every memo answers — two groups with the same URLs but
+        // different bindings must never share memo entries.
         StringBuilder id = new StringBuilder();
         for (int i = 0; i < this.repos.size(); i++) {
             if (i > 0) id.append(',');
             id.append(this.repos.get(i).baseUrl());
             List<String> excl = this.exclusiveGroups.get(i);
             if (!excl.isEmpty()) id.append('!').append(String.join(";", excl));
+            List<String> routed = this.routedGroups.get(i);
+            if (!routed.isEmpty()) id.append('>').append(String.join(";", routed));
         }
         this.repoIdentity = id.append("|p").append(priorityCount).toString();
     }
@@ -133,35 +158,47 @@ public final class RepoGroup {
     }
 
     /**
-     * Prepend {@code leading} repos ahead of this group, keeping this group's exclusive bindings
-     * aligned with the trailing repos. Used for path/git materialize repos: they answer before
-     * remotes — including for exclusively-claimed groupswithout stripping JumpKick
-     * exclusive groups (which would make every Central GAV HTTP-404 on jumpkick first).
+     * Prepend {@code leading} repos ahead of this group, keeping this group's bindings aligned
+     * with the trailing repos. Used for path/git materialize repos: they answer before remotes —
+     * including for exclusively-claimed groups — without stripping JumpKick's exclusive groups
+     * (which would make every Central GAV HTTP-404 on jumpkick first).
      */
     public RepoGroup withReposPrepended(List<MavenRepo> leading) {
         if (leading == null || leading.isEmpty()) return this;
         List<MavenRepo> merged = new ArrayList<>(leading.size() + repos.size());
         merged.addAll(leading);
         merged.addAll(repos);
-        List<List<String>> excl = new ArrayList<>(merged.size());
-        for (int i = 0; i < leading.size(); i++) excl.add(List.of());
-        excl.addAll(exclusiveGroups);
-        return new RepoGroup(merged, excl, leading.size() + priorityCount);
+        return new RepoGroup(
+                merged,
+                padded(leading.size(), exclusiveGroups, 0),
+                padded(leading.size(), routedGroups, 0),
+                leading.size() + priorityCount);
     }
 
     /**
      * This group followed by {@code trailing}, which answer only when every repository here has
      * missed: the repositories a dependency's POM declares for its own subtree. They carry no
-     * exclusive binding, and the priority prefix is unchanged.
+     * binding, and the priority prefix is unchanged.
      */
     public RepoGroup withReposAppended(List<MavenRepo> trailing) {
         if (trailing == null || trailing.isEmpty()) return this;
         List<MavenRepo> merged = new ArrayList<>(repos.size() + trailing.size());
         merged.addAll(repos);
         merged.addAll(trailing);
-        List<List<String>> excl = new ArrayList<>(exclusiveGroups);
-        for (int i = 0; i < trailing.size(); i++) excl.add(List.of());
-        return new RepoGroup(merged, excl, priorityCount);
+        return new RepoGroup(
+                merged,
+                padded(0, exclusiveGroups, trailing.size()),
+                padded(0, routedGroups, trailing.size()),
+                priorityCount);
+    }
+
+    /** {@code patterns} with {@code before} empty entries ahead of it and {@code after} behind it. */
+    private static List<List<String>> padded(int before, List<List<String>> patterns, int after) {
+        List<List<String>> out = new ArrayList<>(before + patterns.size() + after);
+        for (int i = 0; i < before; i++) out.add(List.of());
+        out.addAll(patterns);
+        for (int i = 0; i < after; i++) out.add(List.of());
+        return out;
     }
 
     public List<MavenRepo> repos() {
@@ -219,8 +256,14 @@ public final class RepoGroup {
         return exclusiveGroups;
     }
 
+    /** Routed group patterns aligned with {@link #repos()}. */
+    public List<List<String>> routedGroups() {
+        return routedGroups;
+    }
+
+    /** {@code true} when any repository carries a binding of either kind. */
     public boolean hasExclusiveBindings() {
-        return ExclusiveGroups.anyBinding(exclusiveGroups);
+        return ExclusiveGroups.anyBinding(exclusiveGroups) || ExclusiveGroups.anyBinding(routedGroups);
     }
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
@@ -473,16 +516,18 @@ public final class RepoGroup {
      * <ul>
      * <li>When the group is exclusively claimed — only the claiming repos (dependency-confusion
      * defense).
-     * <li>Otherwise — general (no exclusive binding) repos only. Exclusive-bound specialists
-     * (e.g. JumpKick first-party) are skipped so warm multi-repo re-locks do not HTTP-404
-     * every Maven Central GAV against them.
+     * <li>When the group is routed — only the routing repos; the rest are last resort.
+     * <li>Otherwise — general (unbound) repos only. Bound specialists (e.g. JumpKick
+     * first-party) are skipped so warm multi-repo re-locks do not HTTP-404 every Maven Central
+     * GAV against them.
      * </ul>
      */
     List<MavenRepo> eligibleRepos(Coordinate coord) {
         // Priority (path/git) repos always answer first — even for claimed groups
-        // the workspace build outranks whatever an exclusive remote binding would serve.
+        // the workspace build outranks whatever a remote binding would serve.
         List<MavenRepo> out = new ArrayList<>(repos.subList(0, priorityCount));
         List<Integer> claimants = ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group());
+        if (claimants.isEmpty()) claimants = ExclusiveGroups.claimantIndices(routedGroups, coord.group());
         if (!claimants.isEmpty()) {
             for (int i : claimants) {
                 if (i >= priorityCount) out.add(repos.get(i));
@@ -491,11 +536,9 @@ public final class RepoGroup {
         }
         int before = out.size();
         for (int i = priorityCount; i < repos.size(); i++) {
-            if (exclusiveGroups.get(i).isEmpty()) {
-                out.add(repos.get(i));
-            }
+            if (unbound(i)) out.add(repos.get(i));
         }
-        // Safety: if every trailing repo is exclusive and none claimed this group, fall back to
+        // Safety: if every trailing repo is bound and none claimed this group, fall back to
         // all of them (otherwise unbound coords would be unresolvable).
         if (out.size() == before) {
             out.addAll(repos.subList(priorityCount, repos.size()));
@@ -503,13 +546,20 @@ public final class RepoGroup {
         return out;
     }
 
+    /** {@code true} when repository {@code i} carries no binding of either kind. */
+    private boolean unbound(int i) {
+        return exclusiveGroups.get(i).isEmpty() && routedGroups.get(i).isEmpty();
+    }
+
     /**
-     * Last-resort repos for an <em>unclaimed</em> group after every eligible repo missed:
-     * exclusive specialists that did not claim it. Google Maven hosts plenty of groups outside
-     * the built-in binding list ({@code com.google.gms}, {@code com.google.ar}, {@code
+     * Repos asked after every eligible repo missed. For an <em>exclusively claimed</em> group
+     * this is empty: the claimants' miss stays a miss (dependency-confusion defense). For a
+     * <em>routed</em> group it is every other repository, the unbound ones first: the routing
+     * repos serve part of the namespace and the rest lives elsewhere. For an <em>unclaimed</em>
+     * group it is the bound specialists that did not claim it: Google Maven hosts plenty of groups
+     * outside the built-in routing list ({@code com.google.gms}, {@code com.google.ar}, {@code
      * org.chromium.net}, ...) — skipping specialists on the fast path is a perf choice and must
-     * not make those coordinates unresolvable. For a <em>claimed</em> group this is empty: a
-     * miss in the claiming repos stays a miss (dependency-confusion defense).
+     * not make those coordinates unresolvable.
      */
     private List<MavenRepo> lastResortRepos(Coordinate coord, List<MavenRepo> alreadyAsked) {
         if (!ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group()).isEmpty()) {
@@ -518,18 +568,20 @@ public final class RepoGroup {
         List<MavenRepo> out = new ArrayList<>();
         for (int i = priorityCount; i < repos.size(); i++) {
             MavenRepo r = repos.get(i);
-            if (!exclusiveGroups.get(i).isEmpty() && !alreadyAsked.contains(r)) {
-                out.add(r);
-            }
+            if (unbound(i) && !alreadyAsked.contains(r)) out.add(r);
+        }
+        for (int i = priorityCount; i < repos.size(); i++) {
+            MavenRepo r = repos.get(i);
+            if (!unbound(i) && !alreadyAsked.contains(r)) out.add(r);
         }
         return out;
     }
 
     /**
-     * Per-repo local-then-remote, in repo ordereach eligible repo's warm mirror is
+     * Per-repo local-then-remote, in repo order — each eligible repo's warm mirror is
      * probed before its remote leg, but a LATER repo's warm mirror can never shadow an EARLIER
      * repo — order is the precedence contract. (The no-HTTP-404 property still holds:
-     * exclusive specialists are already skipped by {@link #eligibleRepos}, and the first
+     * bound specialists are already skipped by {@link #eligibleRepos}, and the first
      * eligible repo's warm mirror short-circuits without network.)
      */
     private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
@@ -617,7 +669,7 @@ public final class RepoGroup {
     /** Abort supplier for fetch paths with no abort semantics (POM / metadata). */
     private static final BooleanSupplier NO_ABORT = () -> false;
 
-    private static List<List<String>> normalizeExclusive(int n, @Nullable List<List<String>> raw) {
+    private static List<List<String>> normalizePatterns(int n, @Nullable List<List<String>> raw) {
         List<List<String>> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             if (raw != null

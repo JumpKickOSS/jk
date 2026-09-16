@@ -8,41 +8,43 @@ import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+/** Google Android Maven routes the Android groups; only what a user binds on it is exclusive. */
 class RepoGroupBuilderGoogleExclusiveTest {
 
     @Test
-    void built_in_google_maven_claims_androidx() {
-        assertThat(RepositorySpec.GOOGLE_MAVEN.hasExclusiveGroups()).isTrue();
+    void built_in_google_maven_routes_androidx_and_claims_nothing_exclusively() {
+        assertThat(RepositorySpec.GOOGLE_MAVEN.hasExclusiveGroups()).isFalse();
+        assertThat(RepoGroupBuilder.routedGroupsFor(RepositorySpec.GOOGLE_MAVEN))
+                .contains("androidx.*", "com.google.android.*", "com.google.firebase");
         assertThat(RepoGroupBuilder.exclusiveGroupsFor(RepositorySpec.GOOGLE_MAVEN))
-                .contains("androidx.*", "com.google.android.*");
+                .isEmpty();
     }
 
     @Test
-    void user_declared_google_without_groups_gets_defaults() {
+    void user_declared_google_without_groups_gets_the_routed_defaults() {
         RepositorySpec bare = new RepositorySpec("google", URI.create("https://dl.google.com/dl/android/maven2/"));
         assertThat(bare.hasExclusiveGroups()).isFalse();
-        assertThat(RepoGroupBuilder.exclusiveGroupsFor(bare)).isEqualTo(RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
+        assertThat(RepoGroupBuilder.routedGroupsFor(bare)).isEqualTo(RepositorySpec.GOOGLE_ANDROID_GROUPS);
+        assertThat(RepoGroupBuilder.exclusiveGroupsFor(bare)).isEmpty();
     }
 
     @Test
-    void user_explicit_groups_on_google_extend_the_defaults() {
-        // Additive, not replacing: binding one extra group must not silently re-open the
-        // AndroidX namespace to other repos.
+    void user_explicit_groups_on_google_are_exclusive_on_top_of_the_routed_defaults() {
         RepositorySpec custom = new RepositorySpec(
                 "google",
                 URI.create("https://dl.google.com/dl/android/maven2/"),
                 null,
                 null,
                 List.of("com.google.gms", "androidx.*"));
-        assertThat(RepoGroupBuilder.exclusiveGroupsFor(custom))
-                .containsAll(RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS)
-                .contains("com.google.gms")
-                .doesNotHaveDuplicates();
+        assertThat(RepoGroupBuilder.routedGroupsFor(custom)).isEqualTo(RepositorySpec.GOOGLE_ANDROID_GROUPS);
+        assertThat(RepoGroupBuilder.exclusiveGroupsFor(custom)).containsExactly("com.google.gms", "androidx.*");
     }
 
     @Test
-    void central_has_no_default_exclusive() {
+    void central_has_no_default_binding() {
         assertThat(RepoGroupBuilder.exclusiveGroupsFor(RepositorySpec.MAVEN_CENTRAL))
+                .isEmpty();
+        assertThat(RepoGroupBuilder.routedGroupsFor(RepositorySpec.MAVEN_CENTRAL))
                 .isEmpty();
     }
 

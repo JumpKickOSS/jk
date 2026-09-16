@@ -287,7 +287,7 @@ public final class PomRuntimeClasspath {
     /**
      * The HTTP remotes a worker's closure is fetched from, in order: the official JumpKick
      * repository at {@code officialBase} (exclusive for the first-party groups), Maven Central,
-     * then Google's Android Maven (exclusive for the Android groups, so an {@code androidx} or
+     * then Google's Android Maven (routed for the Android groups, so an {@code androidx} or
      * {@code com.android} request never probes Central). It is the set a lock resolves against by
      * default, which is why a dependency the plugin's lock pins with a Google source is fetchable
      * for the worker too. Reads and writes stay under {@code cas}'s store.
@@ -298,7 +298,8 @@ public final class PomRuntimeClasspath {
         MavenRepo google = storeOnlyRepo(RepositorySpec.GOOGLE, RepositorySpec.GOOGLE_MAVEN.url(), http, cas);
         return new RepoGroup(
                 List.of(jumpkick, central, google),
-                List.of(RepositorySpec.JUMPKICK.groups(), List.of(), RepositorySpec.GOOGLE_MAVEN.groups()));
+                List.of(RepositorySpec.JUMPKICK.groups(), List.of(), List.of()),
+                List.of(List.of(), List.of(), RepositorySpec.GOOGLE_ANDROID_GROUPS));
     }
 
     /** File-only {@code local} / {@code jumpkick} / {@code central} / {@code google} under {@code storeRoot}. */

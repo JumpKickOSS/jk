@@ -53,7 +53,7 @@ class SigstoreGrpcClosureTest {
             MavenRepo google =
                     new MavenRepo("google", URI.create("https://dl.google.com/dl/android/maven2/"), http, cas);
             repos = new RepoGroup(
-                    List.of(central, google), List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+                    List.of(central, google), null, List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_GROUPS));
         } else {
             repos = RepoGroup.of(central);
         }

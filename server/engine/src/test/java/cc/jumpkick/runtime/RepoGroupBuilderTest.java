@@ -190,7 +190,7 @@ class RepoGroupBuilderTest {
                     List.of(RepositorySpec.MAVEN_CENTRAL), List.of(List.of()));
             RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
                     List.of(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN),
-                    List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
+                    List.of(List.of(), RepositorySpec.GOOGLE_ANDROID_GROUPS));
             RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(
                     List.of(new RepositorySpec(
                             "internal", URI.create("https://i.example/"), null, null, List.of("com.acme"))),

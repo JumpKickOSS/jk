@@ -40,21 +40,22 @@ fields are unchanged (`"<name>+<url>"`): the URL in the row is what the lookup k
 ## Built-in remotes
 
 When you declare none: **JumpKick official repo → Maven Central → Google Maven**.
-Routing is exclusive by group:
+Routing is by group:
 
 | Coordinates | Where they resolve |
 |-------------|--------------------|
 | `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`, `build.jumpkick.*` | **JumpKick only** (never Central) — dependency-confusion safe |
-| `androidx.*`, `com.android.*`, `com.google.android.*`, Firebase/ML Kit/Play-related Google Android groups | **Google Maven only** |
+| `androidx.*`, `com.android.*`, `com.google.android.*`, Firebase/ML Kit/Play-related Google Android groups | **Google Maven first**; Central when Google does not serve the coordinate (`com.google.firebase:firebase-admin` lives on Central, the Firebase Android SDK on Google) |
 | Everything else | **Central** (JumpKick/Google specialists are not probed for unbound third-party GAs) |
 
 Official product URL: `https://jumpkick.build/repo/` (override `JK_OFFICIAL_REPO_URL`).
 Publishing that repo: [contributor maven-repo](../contributors/maven-repo.md).
 
-Google’s exclusive set applies whenever the Google Android Maven remote is present
-(built-in or declared as `google` / `dl.google.com`). Override with
-`[repositories.google] groups = [...]` if you must. Declared `groups` on Google are
-**additive** to the default Android bindings.
+Google’s routed set applies whenever the Google Android Maven remote is present
+(built-in or declared as `google` / `dl.google.com`). A routed group is a precedence rule
+between public repositories, not a confinement: Google answers alone when it has the
+coordinate, and a miss there is asked of the other remotes. Declared `groups` on Google are
+**exclusive** bindings on top of the routed defaults.
 
 ## Exclusive groups (your internals)
 

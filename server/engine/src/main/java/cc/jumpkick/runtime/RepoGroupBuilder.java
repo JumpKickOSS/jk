@@ -189,6 +189,8 @@ public final class RepoGroupBuilder {
         // transparent for Maven Central, Google Maven, and other open mirrors.
         RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply);
         List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
+        List<List<String>> routedGroups = new ArrayList<>(effective.size());
+        List<List<String>> bindings = new ArrayList<>(effective.size());
         for (RepositorySpec spec : effective) {
             RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credentialOpt());
             maybeWarnUrlUserInfo(spec, cred);
@@ -214,27 +216,31 @@ public final class RepoGroupBuilder {
                             spec.allowInsecure())
                     .withPolicy(spec.releases(), spec.snapshots()));
             exclusiveGroups.add(exclusiveGroupsFor(spec));
+            routedGroups.add(routedGroupsFor(spec));
+            var bound = new LinkedHashSet<>(exclusiveGroupsFor(spec));
+            bound.addAll(routedGroupsFor(spec));
+            bindings.add(List.copyOf(bound));
         }
-        maybeWarnMultiRepoWithoutBindings(effective, exclusiveGroups);
-        return new RepoGroup(repos, exclusiveGroups);
+        maybeWarnMultiRepoWithoutBindings(effective, bindings);
+        return new RepoGroup(repos, exclusiveGroups, routedGroups);
     }
 
     /**
-     * Exclusive patterns for {@code spec}. Google Android Maven always carries
-     * {@link RepositorySpec#GOOGLE_ANDROID_EXCLUSIVE_GROUPS} so {@code androidx.*} never
-     * double-probes Central; user-declared {@code groups} on that remote are <em>additive</em> —
-     * replacing the built-in list would silently re-open the AndroidX namespace to other repos
-     * the moment a user binds one extra group. Elsewhere, declared groups stand alone.
+     * Exclusive patterns for {@code spec}: the {@code groups} it declares. On Google Android Maven
+     * they sit on top of the routed defaults, so binding one extra group there does not re-open the
+     * AndroidX namespace to other repos.
      */
     static List<String> exclusiveGroupsFor(RepositorySpec spec) {
-        if (isGoogleAndroidMaven(spec)) {
-            if (!spec.hasExclusiveGroups()) return RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS;
-            var merged = new LinkedHashSet<>(RepositorySpec.GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
-            merged.addAll(spec.groups());
-            return List.copyOf(merged);
-        }
-        if (spec.hasExclusiveGroups()) return spec.groups();
-        return List.of();
+        return spec.hasExclusiveGroups() ? spec.groups() : List.of();
+    }
+
+    /**
+     * Routed patterns for {@code spec}: {@link RepositorySpec#GOOGLE_ANDROID_GROUPS} on Google
+     * Android Maven, so {@code androidx.*} never double-probes Central while a coordinate Google
+     * does not serve still reaches it; nothing elsewhere.
+     */
+    static List<String> routedGroupsFor(RepositorySpec spec) {
+        return isGoogleAndroidMaven(spec) ? RepositorySpec.GOOGLE_ANDROID_GROUPS : List.of();
     }
 
     /** True for the built-in Google Maven remote (name or well-known host). */
@@ -247,7 +253,7 @@ public final class RepoGroupBuilder {
 
     /**
      * Once per run when the effective remote list has more than one repo and none end up with
-     * exclusive bindings (after Google defaults). Soft warn — resolve still proceeds.
+     * a binding of either kind (after Google's routed defaults). Soft warn — resolve still proceeds.
      *
      * <p>Keyed by the repository names, not by a bare flag: two modules of one workspace may
      * declare different remotes, and each unbound set is its own thing to say.
