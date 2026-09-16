@@ -69,7 +69,7 @@ class JkResultsMarkdownTest {
         String md = JkResultsMarkdown.render(mcp);
         assertThat(md)
                 .startsWith("# jk results — OK\n\n**OK** · build · `g:a` · #3 · 100ms · exit 0\n"
-                        + "trigger: mcp · session: claude-code 3f9a · jk 9.9\n\n");
+                        + "trigger: mcp · session: claude-code 3f9a · jk 9.9\ntokens ≈ ");
     }
 
     @Test

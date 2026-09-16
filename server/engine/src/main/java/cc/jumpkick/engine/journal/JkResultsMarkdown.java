@@ -110,7 +110,7 @@ public final class JkResultsMarkdown {
         StringBuilder sb = new StringBuilder(2_048);
         String outcome = outcome(record);
         sb.append("# jk results — ").append(outcome).append("\n\n");
-        appendHeadline(sb, record, outcome);
+        int tokensAt = appendHeadline(sb, record, outcome);
         appendWhy(sb, record);
         appendCounts(sb, record, tests);
         appendFiles(sb, record, detailsPath, latestPath, tests);
@@ -123,6 +123,9 @@ public final class JkResultsMarkdown {
         appendFailedSteps(sb, record);
         appendWarnings(sb, record);
         appendModules(sb, record);
+        // Sized over the whole file, this line included: the header is written before the body
+        // exists, so the line goes in last, where the headline left room for it.
+        sb.insert(tokensAt, JkResultsTokens.line(sb.length()));
         return sb.toString();
     }
 
@@ -136,7 +139,8 @@ public final class JkResultsMarkdown {
         return r.success() ? "OK" : "FAIL";
     }
 
-    private static void appendHeadline(StringBuilder sb, BuildRecord r, String outcome) {
+    /** The headline and its meta line; returns where the {@code tokens ≈ N} line goes. */
+    private static int appendHeadline(StringBuilder sb, BuildRecord r, String outcome) {
         sb.append("**").append(outcome).append("**");
         boolean tool = isExternalTool(r.kind());
         if (notBlank(r.kind()) && !tool) sb.append(" · ").append(r.kind());
@@ -171,7 +175,9 @@ public final class JkResultsMarkdown {
             meta = true;
         }
         if (meta) sb.append('\n');
+        int tokensAt = sb.length();
         sb.append('\n');
+        return tokensAt;
     }
 
     private static void appendWhy(StringBuilder sb, BuildRecord r) {
@@ -466,6 +472,8 @@ public final class JkResultsMarkdown {
         if (stack != null) {
             fence(sb, JkResultsStack.clip(stack, d.className(), MAX_STACK_LINES));
         }
+        JkResultsHints.Hint hint = JkResultsHints.forDiag(d);
+        if (hint != null) sb.append("→ ").append(hint.text()).append('\n');
         sb.append('\n');
     }
 

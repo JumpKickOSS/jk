@@ -36,7 +36,9 @@ The header's second line names who asked: `trigger: cli`, or `trigger: mcp · se
 claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an IDE), then
 `commit:` and the jk version. The same `trigger`/`session` fields sit on the journal record
 (`jk history`, `GET /api/history`, `jk_history`) and on the `session-start` line of
-`details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked).
+`details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked). The line after it is
+`tokens ≈ N`: the whole file's size at a fixed 3.6 characters per token, so an agent can decide
+between this file and `details.jsonl` before reading either.
 
 A coverage run (`jk test --coverage`, or a module with `[test] coverage = true`) adds a
 `Coverage:` line to the headline and a `## Coverage` table after `## Tests`: one row per module —
@@ -50,7 +52,14 @@ at the HTML (`target/reports/coverage/index.html`; per module under
 
 A step that failed without a diagnostic of its own is one row of `## Failed steps`; a step that
 explained itself is also a `## Failures` entry headed `<step> — <module>`, its message fenced, then
-its output. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
+its output. A compiler error whose repair is mechanical ends with a `→` line, the way a guard
+violation carries `instead`: javac's cannot find symbol, package does not exist, incompatible types,
+unreported exception, missing return statement, variable might not have been initialized and
+non-static referenced from a static context; kotlinc's unresolved reference, type mismatch, unsafe
+call on a nullable receiver and no value passed for a parameter. The hint quotes the symbol, package
+or types from the compiler's own message — `symbol:` and `location:` for cannot find symbol — and
+names `jk add` when a dependency is the likely repair; it never names a coordinate, because the
+library catalog maps short names to coordinates, not packages to libraries. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
 test class together with the assertion frame above it — the middle is elided with a frame count —
 so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
 launcher missing from the classpath — is that shape with code `test-launcher`: the exit, the
