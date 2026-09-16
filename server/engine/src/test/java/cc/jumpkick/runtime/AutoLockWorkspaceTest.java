@@ -8,6 +8,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.lock.ModuleEntry;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.resolver.ResolveObserver;
 import java.nio.file.Files;
@@ -162,8 +163,8 @@ class AutoLockWorkspaceTest {
         // The on-disk lock pins 1.0.0 identity (digest stamped against the 1.0.0 manifest).
         Path lockFile = LockPaths.lockFile(proj);
         Lockfile stale = new Lockfile(Lockfile.CURRENT_VERSION, "test", "jk-test", List.of())
-                .withModules(List.of(new Lockfile.ModuleEntry(
-                        ".", "com.example", "solo", "1.0.0", 21, null, null, null, null, null)));
+                .withModules(List.of(
+                        new ModuleEntry(".", "com.example", "solo", "1.0.0", 21, null, null, null, null, null)));
         LockfileWriter.write(stale, lockFile);
 
         // Then the project bumps its version: content digest diverges (mtimes are irrelevant

@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.discovery.JkProbe;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -147,8 +148,7 @@ class JdkResolutionTest {
         makeJdk(jdks, "temurin-21.0.5");
         // required-version admits that version and nothing else, so an install is the only answer
         // — it never settles for what happens to be here, and never falls through to a later tier.
-        var req = req(tmp).lockJdk(new Lockfile.JdkPin("", "", "temurin", "25.0.4"))
-                .build();
+        var req = req(tmp).lockJdk(new JdkPin("", "", "temurin", "25.0.4")).build();
 
         var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.jdkOpt()).isEmpty();
@@ -269,11 +269,11 @@ class JdkResolutionTest {
         }
 
         ReqBuilder lockJdk(String vendor, String version) {
-            this.lockJdk = Lockfile.JdkPin.suggested(vendor, version);
+            this.lockJdk = JdkPin.suggested(vendor, version);
             return this;
         }
 
-        ReqBuilder lockJdk(Lockfile.JdkPin pin) {
+        ReqBuilder lockJdk(JdkPin pin) {
             this.lockJdk = pin;
             return this;
         }

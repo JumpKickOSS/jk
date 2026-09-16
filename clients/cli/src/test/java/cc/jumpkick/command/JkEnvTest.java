@@ -8,6 +8,8 @@ import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.lock.GraalPin;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import java.io.File;
@@ -51,7 +53,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
         String livePath = "/home/u/.jk/bin" + File.pathSeparator + "/home/u/bin";
         var env = new JkEnv(new JdkRegistry(jdksRoot), livePath, noGlobalDefault(tempDir));
@@ -84,7 +86,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("graalvm-jdk", "25")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("graalvm-jdk", "25")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.jk/bin", noGlobalDefault(tempDir));
         var target = env.resolve(project);
@@ -114,8 +116,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("nonexistent-jdk", "999")),
-                project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("nonexistent-jdk", "999")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/home/u/.jk/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).isActive()).isFalse();
@@ -152,7 +153,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
         String livePath = "/home/u/.jdks/old/bin"
                 + File.pathSeparator
@@ -201,7 +202,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.jk/bin", defaults);
         var target = env.resolve(project);
@@ -216,7 +217,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("temurin", "25.0.3")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.jk/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).vars().get("JAVA_HOME"))
@@ -233,7 +234,7 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.4")), project.resolve("jk-lock.toml"));
+                Lockfile.empty("0.1", JdkPin.suggested("temurin", "25.0.4")), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.jk/bin", defaults);
         assertThat(env.resolve(project).isActive()).isFalse();
@@ -251,8 +252,8 @@ class JkEnvTest {
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "group=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
         LockfileWriter.write(
-                Lockfile.empty("0.1", Lockfile.JdkPin.suggested("temurin", "25.0.3"))
-                        .withGraal(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.3")),
+                Lockfile.empty("0.1", JdkPin.suggested("temurin", "25.0.3"))
+                        .withGraal(GraalPin.suggested("graalvm-ce", "25.0.3")),
                 project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/home/u/.jk/bin", defaults);

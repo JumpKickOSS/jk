@@ -5,6 +5,8 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.discovery.JkProbe;
+import cc.jumpkick.lock.GraalPin;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.ToolchainSpec;
 import java.io.IOException;
@@ -26,7 +28,7 @@ class ToolchainLockStampTest {
         Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "25"), false);
         // The declared "25" is what the lock records for the version — a floor on the major, not
         // the patch. No vendor was declared, so the one that resolved fills that field in.
-        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25"));
+        assertThat(stamped.jdk()).isEqualTo(JdkPin.suggested("temurin", "25"));
         assertThat(stamped.graal()).isNull();
     }
 
@@ -38,8 +40,8 @@ class ToolchainLockStampTest {
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
         Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, true);
-        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
-        assertThat(stamped.graal()).isEqualTo(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.4"));
+        assertThat(stamped.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
+        assertThat(stamped.graal()).isEqualTo(GraalPin.suggested("graalvm-ce", "25.0.4"));
     }
 
     @Test
@@ -53,8 +55,8 @@ class ToolchainLockStampTest {
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
         Lockfile stamped = apply(graal, registry, ToolchainSpec.NONE, false);
-        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("graalvm", "25.0.4"));
-        assertThat(stamped.graal()).isEqualTo(Lockfile.GraalPin.suggested("graalvm", "25.0.4"));
+        assertThat(stamped.jdk()).isEqualTo(JdkPin.suggested("graalvm", "25.0.4"));
+        assertThat(stamped.graal()).isEqualTo(GraalPin.suggested("graalvm", "25.0.4"));
     }
 
     @Test
@@ -78,7 +80,7 @@ class ToolchainLockStampTest {
         // Nothing declared, so the lock records what built it. That is a suggestion and a floor on
         // the major — it does not hold a later build to Temurin, or to 25.0.4.
         Lockfile stamped = apply(home, registry, ToolchainSpec.NONE, false);
-        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+        assertThat(stamped.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
     }
 
     @Test
@@ -88,7 +90,7 @@ class ToolchainLockStampTest {
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
         Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "=corretto-25.0.4"), false);
-        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("", "", "corretto", "25.0.4"));
+        assertThat(stamped.jdk()).isEqualTo(new JdkPin("", "", "corretto", "25.0.4"));
     }
 
     @Test
@@ -99,7 +101,7 @@ class ToolchainLockStampTest {
 
         // No patch to be exact about, so the major stays a floor and the = binds the vendor.
         Lockfile stamped = apply(home, registry, ToolchainSpec.parse("jdk", "=temurin-25"), false);
-        assertThat(stamped.jdk()).isEqualTo(new Lockfile.JdkPin("", "25", "temurin", ""));
+        assertThat(stamped.jdk()).isEqualTo(new JdkPin("", "25", "temurin", ""));
     }
 
     @Test
@@ -111,7 +113,7 @@ class ToolchainLockStampTest {
 
         // [native] with no graal names no vendor, so whichever distribution resolves is recorded.
         Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, true);
-        assertThat(stamped.graal()).isEqualTo(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.4"));
+        assertThat(stamped.graal()).isEqualTo(GraalPin.suggested("graalvm-ce", "25.0.4"));
     }
 
     @Test
@@ -126,7 +128,7 @@ class ToolchainLockStampTest {
         // nobody put. This is the shape was filed against.
         Lockfile stamped = apply(java, registry, ToolchainSpec.NONE, false);
         assertThat(stamped.graal()).isNull();
-        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+        assertThat(stamped.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
     }
 
     private static Lockfile apply(Path home, JdkRegistry registry, ToolchainSpec jdk, boolean graalDeclared) {
@@ -142,14 +144,14 @@ class ToolchainLockStampTest {
 
         // Someone else locked this on Corretto. Re-locking here must not rewrite the record of
         // what built it just because this machine runs Temurin — only jk update refreshes that.
-        Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
+        Lockfile previous = Lockfile.empty("0.1").withJdk(JdkPin.suggested("corretto", "25.0.1"));
         Lockfile kept = requireNonNull(ToolchainLockStamp.apply(
                 Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
-        assertThat(kept.jdk()).isEqualTo(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
+        assertThat(kept.jdk()).isEqualTo(JdkPin.suggested("corretto", "25.0.1"));
 
         // jk update passes no previous, so the suggestion moves to what resolved.
         Lockfile refreshed = apply(home, registry, ToolchainSpec.NONE, false);
-        assertThat(refreshed.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+        assertThat(refreshed.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
     }
 
     @Test
@@ -158,10 +160,10 @@ class ToolchainLockStampTest {
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("nosuchvendor", "99"));
+        Lockfile previous = Lockfile.empty("0.1").withJdk(JdkPin.suggested("nosuchvendor", "99"));
         Lockfile rewritten = requireNonNull(ToolchainLockStamp.apply(
                 Lockfile.empty("0.1"), previous, home, registry, ToolchainSpec.NONE, ToolchainSpec.NONE, false));
-        assertThat(rewritten.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.4"));
+        assertThat(rewritten.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.4"));
     }
 
     @Test
@@ -170,7 +172,7 @@ class ToolchainLockStampTest {
         Path home = fakeJdk(jdks.resolve("temurin-25.0.4"), "25.0.4", "Eclipse Adoptium", null);
         JdkRegistry registry = new JdkRegistry(jdks, List.of(new JkProbe(jdks)));
 
-        Lockfile previous = Lockfile.empty("0.1").withJdk(Lockfile.JdkPin.suggested("corretto", "25.0.1"));
+        Lockfile previous = Lockfile.empty("0.1").withJdk(JdkPin.suggested("corretto", "25.0.1"));
         Lockfile stamped = requireNonNull(ToolchainLockStamp.apply(
                 Lockfile.empty("0.1"),
                 previous,
@@ -179,7 +181,7 @@ class ToolchainLockStampTest {
                 ToolchainSpec.parse("jdk", "microsoft-26"),
                 ToolchainSpec.NONE,
                 false));
-        assertThat(stamped.jdk()).isEqualTo(Lockfile.JdkPin.suggested("microsoft", "26"));
+        assertThat(stamped.jdk()).isEqualTo(JdkPin.suggested("microsoft", "26"));
     }
 
     private static Path fakeJdk(Path home, String version, String implementor, @Nullable String extra)

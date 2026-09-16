@@ -247,9 +247,9 @@ public final class LockfileWriter {
 
     /** One {@code [[module]]} row per workspace module, sorted by path then name; blank fields left out. */
     private static void writeModules(StringBuilder out, Lockfile lockfile) {
-        List<Lockfile.ModuleEntry> sortedModules = new ArrayList<>(lockfile.modules());
-        sortedModules.sort(Comparator.comparing(Lockfile.ModuleEntry::path).thenComparing(Lockfile.ModuleEntry::name));
-        for (Lockfile.ModuleEntry m : sortedModules) {
+        List<ModuleEntry> sortedModules = new ArrayList<>(lockfile.modules());
+        sortedModules.sort(Comparator.comparing(ModuleEntry::path).thenComparing(ModuleEntry::name));
+        for (ModuleEntry m : sortedModules) {
             out.append('\n');
             out.append("[[module]]\n");
             out.append("path    = ").append(quote(m.path())).append('\n');

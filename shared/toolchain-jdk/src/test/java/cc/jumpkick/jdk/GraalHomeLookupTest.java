@@ -4,7 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
-import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.tool.GraalHomeLookup;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -58,7 +58,7 @@ class GraalHomeLookupTest {
         Path older = jdks.resolve("graalvm-24.0.2");
         makeGraalvmInstall(older, "24.0.2");
         JdkRegistry registry = new JdkRegistry(jdks);
-        var pin = new Lockfile.GraalPin("oracle-graalvm", "25.0.3", "", "");
+        var pin = new GraalPin("oracle-graalvm", "25.0.3", "", "");
 
         assertThat(GraalHomeLookup.byLockPin(registry, pin, NO_ENV))
                 .as("an unsatisfied pin answers nothing rather than an older Graal")

@@ -16,6 +16,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.ModuleEntry;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -530,7 +531,7 @@ public final class InstallPlans {
                 out.put(a.name(), a.version());
             }
         }
-        for (Lockfile.ModuleEntry m : lock.modules()) {
+        for (ModuleEntry m : lock.modules()) {
             out.put(m.group() + ":" + m.name(), m.version());
         }
         return out;

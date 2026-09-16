@@ -3,7 +3,7 @@ package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.JdkPin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,7 +57,7 @@ class JdkEnsurePendingInstallTest {
     void a_required_lock_pin_is_the_tier_that_asks(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Lockfile.JdkPin lock = new Lockfile.JdkPin("temurin", "", "", "21.0.5");
+        JdkPin lock = new JdkPin("temurin", "", "", "21.0.5");
 
         Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, null, 0, lock);
 

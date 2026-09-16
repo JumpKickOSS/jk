@@ -19,7 +19,7 @@ import cc.jumpkick.jdk.JdkResolver;
 import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkService;
 import cc.jumpkick.jdk.LockPinMatch;
-import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.ToolchainPins;
 import cc.jumpkick.tool.GraalHomeLookup;
 import cc.jumpkick.tool.NativeImageDriver;
@@ -93,7 +93,7 @@ public final class GraalResolver {
         //    mirroring the JDK side's lock tier. Major-or-better among installed wins;
         //    an unsatisfied pin is a floor the native build must not sink below, so it
         //    installs the pinned spec rather than falling through to an older Graal.
-        Lockfile.GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
+        GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
         if (lockGraal != null) {
             Optional<Path> locked = GraalHomeLookup.byLockPin(registry, lockGraal, env);
             if (locked.isPresent()) return locked.get();

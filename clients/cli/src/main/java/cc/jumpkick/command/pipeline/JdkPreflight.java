@@ -5,6 +5,7 @@ import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.ToolchainInstalls;
 import cc.jumpkick.jdk.JdkEnsure;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -113,7 +114,7 @@ public final class JdkPreflight {
 
     private static Optional<Need> needOf(Path dir, String jdk, int javaRelease, @Nullable Path jdksDir) {
         String spec = jdk.isBlank() ? null : jdk;
-        Lockfile.JdkPin lockJdk = lockJdkPin(dir);
+        JdkPin lockJdk = lockJdkPin(dir);
         Optional<JdkEnsure.Pending> pending;
         try {
             pending = JdkEnsure.pendingInstall(dir, jdksDir, spec, javaRelease, lockJdk);

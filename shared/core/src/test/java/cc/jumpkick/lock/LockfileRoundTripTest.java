@@ -203,20 +203,20 @@ class LockfileRoundTripTest {
 
     @Test
     void kotlin_version_round_trips() {
-        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", Lockfile.JdkPin.suggested("temurin", "25.0.3"))
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", JdkPin.suggested("temurin", "25.0.3"))
                 .withKotlin("2.3.21");
         String rendered = LockfileWriter.render(original);
         assertThat(rendered).contains("kotlin = \"2.3.21\"");
 
         Lockfile parsed = LockfileReader.parse(rendered);
         assertThat(parsed.kotlin()).isEqualTo("2.3.21");
-        assertThat(parsed.jdk()).isEqualTo(Lockfile.JdkPin.suggested("temurin", "25.0.3"));
+        assertThat(parsed.jdk()).isEqualTo(JdkPin.suggested("temurin", "25.0.3"));
     }
 
     @Test
     void jdk_and_graal_pins_round_trip() {
-        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", Lockfile.JdkPin.suggested("temurin", "25.0.4.1"))
-                .withGraal(Lockfile.GraalPin.suggested("graalvm-ce", "25.0.4"));
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", JdkPin.suggested("temurin", "25.0.4.1"))
+                .withGraal(GraalPin.suggested("graalvm-ce", "25.0.4"));
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
                 .contains("[jdk]\nsuggested-vendor = \"temurin\"\nsuggested-version = \"25.0.4.1\"\n")
@@ -230,8 +230,8 @@ class LockfileRoundTripTest {
 
     @Test
     void required_pins_round_trip_and_leave_the_suggestion_out() {
-        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new Lockfile.JdkPin("", "25", "microsoft", ""))
-                .withGraal(new Lockfile.GraalPin("", "", "graalvm-ce", "25.0.4"));
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT", new JdkPin("", "25", "microsoft", ""))
+                .withGraal(new GraalPin("", "", "graalvm-ce", "25.0.4"));
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
                 .contains("[jdk]\nsuggested-version = \"25\"\nrequired-vendor = \"microsoft\"\n")
@@ -292,9 +292,8 @@ class LockfileRoundTripTest {
     void module_entries_round_trip() {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
                 .withModules(List.of(
-                        new Lockfile.ModuleEntry(
-                                ".", "com.example", "root", "1.2.3", 25, null, null, "Root", null, null),
-                        new Lockfile.ModuleEntry(
+                        new ModuleEntry(".", "com.example", "root", "1.2.3", 25, null, null, "Root", null, null),
+                        new ModuleEntry(
                                 "lib",
                                 "com.example",
                                 "lib",
@@ -329,7 +328,7 @@ class LockfileRoundTripTest {
     @Test
     void module_scala_pin_round_trips() {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
-                .withModules(List.of(new Lockfile.ModuleEntry(
+                .withModules(List.of(new ModuleEntry(
                         ".", "com.example", "app", "1.0.0", 25, null, null, "3", null, null, null, null)));
         String rendered = LockfileWriter.render(original);
         assertThat(rendered).contains("scala   = \"3\"");

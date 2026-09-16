@@ -67,9 +67,15 @@ public final class GraphOps {
                 members.add(String.join(",", target.members()));
                 for (Provenance.Path path : Provenance.pathsTo(graph, target.packageKey())) {
                     owners.add(Integer.toString(i));
-                    paths.add(path.steps().stream()
-                            .map(s -> ga(s.module()) + "@" + s.version())
-                            .collect(Collectors.joining(">")));
+                    // The walk ends at the coordinate, so the last step is this row: a partition
+                    // row shows its own version there, the workspace's row its own.
+                    List<String> steps = new ArrayList<>(path.steps().size());
+                    for (int k = 0; k < path.steps().size(); k++) {
+                        var s = path.steps().get(k);
+                        String v = k == path.steps().size() - 1 ? target.version() : s.version();
+                        steps.add(ga(s.module()) + "@" + v);
+                    }
+                    paths.add(String.join(">", steps));
                     selectors.add(path.steps().stream()
                             .map(s -> s.declared() == null ? "" : s.declared())
                             .collect(Collectors.joining(WhyReport.STEP_SELECTOR_SEPARATOR)));

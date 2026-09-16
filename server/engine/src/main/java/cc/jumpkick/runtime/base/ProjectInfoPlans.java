@@ -14,6 +14,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.ModuleEntry;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.manifest.VariantApply;
@@ -322,7 +323,7 @@ public final class ProjectInfoPlans {
                     .replace('\\', '/');
             if (rel.isEmpty()) rel = ".";
             final String pathKey = rel;
-            Lockfile.ModuleEntry pin = lock.modules().stream()
+            ModuleEntry pin = lock.modules().stream()
                     .filter(m ->
                             pathKey.equals(m.path()) || build.project().name().equals(m.name()))
                     .findFirst()

@@ -7,7 +7,7 @@ import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.LockPinMatch;
-import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.ToolchainPins;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -54,7 +54,7 @@ public final class GraalHomeLookup {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         String effective = firstNonBlank(specs);
         if (effective != null) return bySpec(registry, effective, env);
-        Lockfile.GraalPin pin = ToolchainPins.scan(projectDir).graal();
+        GraalPin pin = ToolchainPins.scan(projectDir).graal();
         if (pin != null) return byLockPin(registry, pin, env);
         Optional<Path> pointer = byInventory(registry, env);
         if (pointer.isPresent()) return pointer;
@@ -67,8 +67,7 @@ public final class GraalHomeLookup {
     }
 
     /** The best installed Graal satisfying the lock's pin, when it carries native-image. */
-    public static Optional<Path> byLockPin(
-            JdkRegistry registry, Lockfile.GraalPin pin, Function<String, @Nullable String> env) {
+    public static Optional<Path> byLockPin(JdkRegistry registry, GraalPin pin, Function<String, @Nullable String> env) {
         return LockPinMatch.chooseGraal(registry.listHits(), pin)
                 .map(JdkHit::home)
                 .filter(home -> usable(home, env));

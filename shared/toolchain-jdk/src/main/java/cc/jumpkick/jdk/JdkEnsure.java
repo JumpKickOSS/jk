@@ -5,8 +5,8 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.Probes;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.Lockfile.JdkPin;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
@@ -127,7 +127,7 @@ public final class JdkEnsure {
     }
 
     /**
-     * As {@link #ensure(Path, Path, String, int, Lockfile.JdkPin, java.util.function.Consumer, boolean)}
+     * As {@link #ensure(Path, Path, String, int, JdkPin, java.util.function.Consumer, boolean)}
      * with a progress sink for a missing-JDK install (TUI {@code downloading}/{@code installing}
      * labels). Already-on-disk resolution does not call {@code progress}.
      */
