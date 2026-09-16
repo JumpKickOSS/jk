@@ -216,12 +216,20 @@ open in cryptomator, a test that refuses jk's class directory in apollo), each a
 columns are not comparable: six gates shared the host during that run. The other walls are named
 in the corpus's `tier3-reasons.md`, each with its ticket.
 
-One of run 7's test walls is the repository's contract with Maven rather than something jk
+Two of run 7's test walls are the repository's contract with Maven rather than something jk
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
 on a host with no display Maven fails it with the same `UnsupportedOperationException: Unable to
 open DISPLAY` (Surefire sets no `java.awt.headless`, and JavaFX would not read it), and the
 repository's own CI wraps Maven in `xvfb-run`. Under jk the test JVM gets the display of the shell
 running `jk test`, so `xvfb-run jk test` is the same remedy ([Test](test.md#a-suite-that-needs-a-display)).
+apollo's `ApolloSqlConverterUtil.getRepositoryDir()` reads the class directory off
+`ApolloSqlConverter`'s code source and accepts only a path ending in
+`/apollo-build-sql-converter/target/classes`, stripping that suffix to find the repository root;
+jk compiles the module to `target/apollo-build-sql-converter/classes/main`, so the check throws
+`illegal class path`. No classpath scanner is involved and no `[test]` key spells a class
+directory: the test hard-codes Maven's layout, and the portable spelling is the working directory
+(`user.dir`), which both Surefire and jk set to the module directory. Until the test says that,
+the module's suite fails under jk and the corpus row names it.
 
 ### Which Maven plugins import, and how well
 
