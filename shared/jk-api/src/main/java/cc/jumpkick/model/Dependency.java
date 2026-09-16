@@ -14,7 +14,9 @@ import org.jspecify.annotations.Nullable;
  * Edges may select a {@link #kind()} ({@link DependencyKind#MAIN} default, or
  * {@link DependencyKind#TESTS} for Mill-style test-module deps / Maven test-jar).
  * {@link #fixtures()} is a separate flag: put a sibling's fixtures output on this
- * module's test classpath. It does not imply {@link DependencyKind#TESTS}.
+ * module's test classpath. It does not imply {@link DependencyKind#TESTS}. A Maven coordinate may
+ * name a {@link #classifier()} ({@code natives-linux}, {@code linux-x86_64}): the edge is then the
+ * classified jar of the module, {@code g:a:jar:classifier} in the solver and the lock.
  */
 public record Dependency(
         String library,
@@ -35,7 +37,9 @@ public record Dependency(
          * {@code fixtures = true} on a workspace test-dependency: consume the sibling's fixtures
          * output directory. Independent of {@link #kind()}.
          */
-        boolean fixtures) {
+        boolean fixtures,
+        /** The Maven classifier of the artifact this edge wants; {@code null} for the plain jar. */
+        @Nullable String classifier) {
 
     /** Synthetic {@code module} for an unresolved workspace sibling; rewritten by {@code WorkspaceMerge}. */
     public static final String WORKSPACE_PREFIX = "workspace:";
@@ -60,6 +64,40 @@ public record Dependency(
         pinned = derivePinned(version, gitSource, sha256, pathSource);
         requestedFeatures = requestedFeatures == null ? List.of() : List.copyOf(requestedFeatures);
         kind = kind == null ? DependencyKind.MAIN : kind;
+        if (classifier != null && (classifier.isBlank() || classifier.indexOf(':') >= 0)) {
+            throw new IllegalArgumentException(
+                    "dependency classifier must be a non-blank word without ':' (got: " + classifier + ")");
+        }
+    }
+
+    /** Every component but the classifier; the edge is the plain jar. */
+    public Dependency(
+            String library,
+            String module,
+            VersionSelector version,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
+            boolean pinned,
+            boolean optional,
+            @Nullable PathSource pathSource,
+            List<String> requestedFeatures,
+            boolean defaultFeatures,
+            DependencyKind kind,
+            boolean fixtures) {
+        this(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                null);
     }
 
     /** Defaults pathSource null, no feature selection, default-features true, kind main. */
@@ -147,7 +185,8 @@ public record Dependency(
                 requestedFeatures,
                 defaultFeatures,
                 kind,
-                fixtures);
+                fixtures,
+                classifier);
     }
 
     public Dependency withFeatures(List<String> features, boolean defaultFeatures) {
@@ -163,7 +202,8 @@ public record Dependency(
                 features == null ? List.of() : features,
                 defaultFeatures,
                 kind,
-                fixtures);
+                fixtures,
+                classifier);
     }
 
     public Dependency withKind(DependencyKind kind) {
@@ -179,7 +219,8 @@ public record Dependency(
                 requestedFeatures,
                 defaultFeatures,
                 kind == null ? DependencyKind.MAIN : kind,
-                fixtures);
+                fixtures,
+                classifier);
     }
 
     public Dependency withFixtures(boolean fixtures) {
@@ -195,7 +236,26 @@ public record Dependency(
                 requestedFeatures,
                 defaultFeatures,
                 kind,
-                fixtures);
+                fixtures,
+                classifier);
+    }
+
+    /** The same edge naming the classified artifact; {@code null} returns to the plain jar. */
+    public Dependency withClassifier(@Nullable String classifier) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier);
     }
 
     /**
@@ -219,17 +279,16 @@ public record Dependency(
 
     /**
      * Solver / lock package key for this edge. Workspace/git/path/file deps return {@link #module()}
-     * unchanged. Maven GAs with {@link #isTestsKind()} map to {@code g:a:test-jar:tests}.
+     * unchanged. Maven GAs with {@link #isTestsKind()} map to {@code g:a:test-jar:tests}; one with
+     * a {@link #classifier()} maps to {@code g:a:jar:classifier}.
      */
     public String packageKey() {
         if (isWorkspace() || isGit() || isPath() || isFile()) return module;
-        if (isTestsKind() && PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
+        if (!PackageId.isMavenPackageKey(module) || module.indexOf(':') != module.lastIndexOf(':')) return module;
+        if (isTestsKind())
             return PackageId.of(group(), name(), "test-jar", "tests").key();
-        }
-        if (PackageId.isMavenPackageKey(module) && module.indexOf(':') == module.lastIndexOf(':')) {
-            return PackageId.ofGa(module).key();
-        }
-        return module;
+        return PackageId.of(group(), name(), PackageId.DEFAULT_TYPE, classifier == null ? "" : classifier)
+                .key();
     }
 
     public Dependency(String module, VersionSelector version) {

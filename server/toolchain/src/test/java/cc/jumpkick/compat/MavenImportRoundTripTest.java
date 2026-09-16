@@ -70,14 +70,16 @@ class MavenImportRoundTripTest {
 
     @Test
     void compile_scope_tests_classifier_dep_round_trips() {
-        // `<classifier>tests</classifier>` in compile scope is not kind=tests; classifier
-        // alone does not imply test-jar. The renderer must not write `kind = "tests"` under
-        // [dependencies], which JkBuildParser hard-rejects.
+        // `<classifier>tests</classifier>` on the default jar type is the classified jar, not
+        // kind=tests: the entry carries `classifier = "tests"` under [dependencies], where
+        // JkBuildParser hard-rejects `kind = "tests"`.
         JkBuild imported = importPom(pom("compile", "tests", null));
         JkBuild reparsed = JkBuildParser.parse(JkBuildRenderer.render(imported));
-        assertThat(reparsed.dependencies().of(Scope.MAIN))
-                .extracting(Dependency::packageKey)
-                .containsExactly("com.acme:helpers:jar:");
+        assertThat(reparsed.dependencies().of(Scope.MAIN)).singleElement().satisfies(d -> {
+            assertThat(d.packageKey()).isEqualTo("com.acme:helpers:jar:tests");
+            assertThat(d.classifier()).isEqualTo("tests");
+            assertThat(d.isTestsKind()).isFalse();
+        });
     }
 
     @Test

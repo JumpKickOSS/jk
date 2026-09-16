@@ -295,6 +295,7 @@ public final class ManifestDeps {
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
         dep = applyDependencyKind(dep, entry, scope, name);
+        dep = applyClassifier(dep, entry, scope, name);
         dep = applyFixtures(dep, entry, scope, name);
         // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
@@ -306,6 +307,31 @@ public final class ManifestDeps {
                 : List.of();
         boolean defaultFeatures = !hasDefaultFeaturesKey || !Boolean.FALSE.equals(entry.getBoolean("default-features"));
         return dep.withFeatures(features, defaultFeatures);
+    }
+
+    /**
+     * {@code classifier = "natives-linux"} — the classified jar of a Maven coordinate, the edge the
+     * solver and the lock key as {@code g:a:jar:classifier}. A git, path or workspace source has no
+     * classifier, and {@code kind = "tests"} already names the {@code tests} classifier of the
+     * test-jar type, so either alongside {@code classifier} is refused.
+     */
+    static Dependency applyClassifier(Dependency dep, TomlTable entry, Scope scope, String name) {
+        if (!entry.contains("classifier")) return dep;
+        String displayPath = scope.tomlSection() + "." + name;
+        String classifier = entry.getString("classifier");
+        if (classifier == null || classifier.isBlank() || classifier.indexOf(':') >= 0) {
+            throw new JkBuildParseException(displayPath + ".classifier must be a non-blank word without `:`");
+        }
+        if (dep.isWorkspace() || dep.isGit() || dep.isPath()) {
+            throw new JkBuildParseException(
+                    displayPath + ".classifier applies to a Maven coordinate (got a workspace/git/path source)");
+        }
+        if (dep.isTestsKind()) {
+            throw new JkBuildParseException(displayPath
+                    + ".classifier cannot be combined with kind = \"tests\" — the test-jar is the `tests`"
+                    + " classifier already");
+        }
+        return dep.withClassifier(classifier);
     }
 
     /**

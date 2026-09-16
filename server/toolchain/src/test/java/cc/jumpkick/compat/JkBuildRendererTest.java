@@ -376,6 +376,29 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void a_classifier_renders_in_the_inline_table_and_round_trips() {
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.MAIN,
+                List.of(Dependency.of("lwjgl-natives-linux", "org.lwjgl:lwjgl", VersionSelector.parse("3.3.6"))
+                        .withClassifier("natives-linux")));
+        JkBuild model = JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
+                .dependencies(new JkBuild.Dependencies(byScope))
+                .build();
+
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("lwjgl-natives-linux = { group = \"org.lwjgl\", name = \"lwjgl\", version = \"3.3.6\","
+                        + " classifier = \"natives-linux\" }");
+        assertThat(JkBuildParser.parse(out).dependencies().of(Scope.MAIN))
+                .singleElement()
+                .satisfies(d -> {
+                    assertThat(d.classifier()).isEqualTo("natives-linux");
+                    assertThat(d.packageKey()).isEqualTo("org.lwjgl:lwjgl:jar:natives-linux");
+                });
+    }
+
+    @Test
     void external_tests_kind_renders_kind_key() {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.put(

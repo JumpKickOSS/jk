@@ -71,8 +71,14 @@ default, JDK, OS) are folded in. The fidelity report names what each parent cont
 a failed import. The compiler level is written as `java = N`, never as a `jdk` pin: a level below
 17 is raised to jk's floor with a row saying so, and `jdk =` appears only when the POM pins a
 toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inactive profiles land by payload
-(the table below); exclusions and classifiers are still rows. Read that report before trusting the
-generated `jk.toml`.
+(the table below). A `<classifier>` is carried: the entry is `{ group, name, version, classifier }`
+with the handle suffixed by the classifier, so a jar and its `natives-linux` twin are two entries,
+and a classifier a POM spells with `${os.detected.classifier}` or `${javafx.platform}` is written
+as this host's word. A `<type>` maps where jk has a spelling — `pom` to `[platform-dependencies]`,
+`test-jar` to `kind = "tests"`, `ejb-client` to the `client` classifier — and a type jk cannot
+spell (`aar`, `war`, `zip`) is a Tier-3 row with the dependency left out rather than written as a
+jar that does not exist. Exclusions are still rows. Read that report before trusting the generated
+`jk.toml`.
 
 **A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
 version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a

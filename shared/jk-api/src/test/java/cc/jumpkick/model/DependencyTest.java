@@ -67,4 +67,22 @@ class DependencyTest {
         Dependency tests = main.withKind(DependencyKind.TESTS);
         assertThat(tests.packageKey()).isEqualTo("com.acme:lib:test-jar:tests");
     }
+
+    @Test
+    void package_key_carries_the_classifier_and_the_plain_jar_stays_distinct() {
+        Dependency plain = Dependency.of("lwjgl", "org.lwjgl:lwjgl", VersionSelector.parse("=3.3.6"));
+        Dependency natives = plain.withClassifier("natives-linux");
+        assertThat(natives.classifier()).isEqualTo("natives-linux");
+        assertThat(natives.packageKey()).isEqualTo("org.lwjgl:lwjgl:jar:natives-linux");
+        assertThat(natives.module()).isEqualTo(plain.module());
+        assertThat(natives.withClassifier(null).packageKey()).isEqualTo(plain.packageKey());
+        assertThat(natives.withOptional(true).classifier()).isEqualTo("natives-linux");
+    }
+
+    @Test
+    void a_blank_or_colon_classifier_is_refused() {
+        Dependency plain = Dependency.of("lwjgl", "org.lwjgl:lwjgl", VersionSelector.parse("=3.3.6"));
+        assertThatThrownBy(() -> plain.withClassifier(" ")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> plain.withClassifier("a:b")).isInstanceOf(IllegalArgumentException.class);
+    }
 }

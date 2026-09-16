@@ -257,6 +257,7 @@ public final class PlatformConstraints {
                 roots.add(Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
                         .withOptional(d.optional())
                         .withKind(d.kind())
+                        .withClassifier(d.classifier())
                         .withFeatures(d.requestedFeatures(), d.defaultFeatures()));
             } else {
                 roots.add(d);
