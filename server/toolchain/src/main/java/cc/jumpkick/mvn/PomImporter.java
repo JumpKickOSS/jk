@@ -202,7 +202,22 @@ public final class PomImporter {
 
         ImportReport.Builder report = ImportReport.builder();
         ReactorModelResolver reactor = new ReactorModelResolver(resolver);
-        ReactorModules.Reactor found = ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report);
+        // Each module is imported as the walk reaches it and its effective model is dropped right
+        // after: what stays of a module is its JkBuild, its rows and its shade relocations.
+        Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
+        List<ImportReport.Issue> moduleRows = new ArrayList<>();
+        List<ShadedSiblings.Shaded> shaded = new ArrayList<>();
+        ReactorModules.Reactor found =
+                ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report, (leaf, model) -> {
+                    Result child = importModel(model, remote);
+                    moduleBuilds.put(leaf.path(), child.jkBuild());
+                    for (ImportReport.Issue issue : child.report().issues()) {
+                        moduleRows.add(
+                                new ImportReport.Issue(issue.severity(), "[" + leaf.path() + "] " + issue.message()));
+                    }
+                    ShadedSiblings.Shaded member = ShadedSiblings.of(leaf, model.model());
+                    if (member != null) shaded.add(member);
+                });
         List<ReactorModules.Leaf> leaves = found.modules();
         EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
@@ -214,21 +229,15 @@ public final class PomImporter {
         JkBuild.Application rootApplication =
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
 
-        Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
-        for (ReactorModules.Leaf leaf : leaves) {
-            Result child = importModel(leaf.model(), remote);
-            moduleBuilds.put(leaf.path(), child.jkBuild());
-            for (ImportReport.Issue issue : child.report().issues()) {
-                String prefixed = "[" + leaf.path() + "] " + issue.message();
-                if (issue.severity() == ImportReport.Severity.ERROR) {
-                    report.error(prefixed);
-                } else {
-                    report.warning(prefixed);
-                }
+        for (ImportReport.Issue issue : moduleRows) {
+            if (issue.severity() == ImportReport.Severity.ERROR) {
+                report.error(issue.message());
+            } else {
+                report.warning(issue.message());
             }
         }
         SiblingNames.report(moduleBuilds, report);
-        ShadedSiblings.report(leaves, report);
+        ShadedSiblings.report(leaves, shaded, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
         // repository list the workspace lock resolves against, so every member's `<repositories>`
         // is hoisted onto it.
@@ -270,10 +279,7 @@ public final class PomImporter {
     /** {@code group:artifact} → root-relative path for every BOM leaf of the reactor. */
     private static Map<String, String> bomGaIndex(List<ReactorModules.Leaf> boms) {
         Map<String, String> ga = new LinkedHashMap<>();
-        for (ReactorModules.Leaf bom : boms) {
-            Model model = bom.model().model();
-            ga.put(model.getGroupId() + ":" + model.getArtifactId(), bom.path());
-        }
+        for (ReactorModules.Leaf bom : boms) ga.put(bom.ga(), bom.path());
         return ga;
     }
 
