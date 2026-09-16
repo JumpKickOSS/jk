@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
@@ -9,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.platform.engine.DiscoverySelector;
 import org.junit.platform.engine.SelectorResolutionResult;
@@ -101,8 +101,8 @@ final class DiscoveryFailures implements LauncherDiscoveryListener {
     static List<String> topLevelClassNames(Path root) {
         if (root == null || !Files.isDirectory(root)) return List.of();
         List<String> names = new ArrayList<>();
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
+        try {
+            PathUtil.forEachRegularFile(root, (file, attrs) -> {
                 String leaf = file.getFileName().toString();
                 if (!leaf.endsWith(".class") || leaf.contains("$") || leaf.endsWith("-info.class")) return;
                 String rel = root.relativize(file).toString().replace('\\', '/');
