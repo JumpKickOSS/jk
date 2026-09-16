@@ -22,9 +22,11 @@ import org.jspecify.annotations.Nullable;
  * extra-src}; {@code maven-source-plugin} is {@code sources = "always"}, the sources jar Maven built
  * on every package; {@code maven-javadoc-plugin} is satisfied by the javadoc jar a library ships by
  * default, and becomes {@code javadoc = "strict"} when its configuration keeps doclint on and fails
- * on error — {@code <doclint>none</doclint>} turns doclint off, so that plugin stays lenient. Resource filtering has no jk equivalent, so a filtered directory is a report row, as is
- * a resource directory outside the fixed layout. Everything else under {@code <build><plugins>}
- * gets the generic row.
+ * on error — {@code <doclint>none</doclint>} turns doclint off, so that plugin stays lenient. An
+ * {@code add-source} root inside a generator's output directory is that generator's contribution,
+ * not an extra root. Resource filtering has no jk equivalent, so a filtered directory is a report
+ * row, as is a resource directory outside the fixed layout. Everything else under
+ * {@code <build><plugins>} gets the generic row.
  */
 final class SourceTreePlugins {
 
@@ -36,7 +38,8 @@ final class SourceTreePlugins {
 
     private SourceTreePlugins() {}
 
-    static SourceTree map(EffectiveModel em, ImportReport.Builder report) {
+    /** {@code generatorOutputs} are the module-relative directories the module's generator steps fill. */
+    static SourceTree map(EffectiveModel em, List<String> generatorOutputs, ImportReport.Builder report) {
         Model model = em.model();
         List<String> extraSrc = new ArrayList<>();
         List<String> testExtraSrc = new ArrayList<>();
@@ -44,7 +47,7 @@ final class SourceTreePlugins {
                 ? null
                 : model.getProjectDirectory().toPath();
         PluginFacts.plugin(model, "build-helper-maven-plugin")
-                .ifPresent(helper -> addSourceRoots(helper, baseDir, extraSrc, testExtraSrc, report));
+                .ifPresent(helper -> addSourceRoots(helper, baseDir, generatorOutputs, extraSrc, testExtraSrc, report));
         reportResources(model, report);
         SourcesMode sources = PluginFacts.plugin(model, "maven-source-plugin").isPresent()
                 ? SourcesMode.ALWAYS
@@ -79,10 +82,14 @@ final class SourceTreePlugins {
         return node == null ? null : node.getValue();
     }
 
-    /** Each {@code add-source} / {@code add-test-source} execution's {@code <sources>}; other goals are a row. */
+    /**
+     * Each {@code add-source} / {@code add-test-source} execution's {@code <sources>}; other goals are
+     * a row. A root under a generator's output is the generator's own contribution and is not written.
+     */
     private static void addSourceRoots(
             Plugin helper,
             @Nullable Path baseDir,
+            List<String> generatorOutputs,
             List<String> extraSrc,
             List<String> testExtraSrc,
             ImportReport.Builder report) {
@@ -90,8 +97,10 @@ final class SourceTreePlugins {
             Xpp3Dom config = execution.getConfiguration() instanceof Xpp3Dom dom ? dom : null;
             for (String goal : execution.getGoals()) {
                 switch (goal) {
-                    case "add-source" -> extraSrc.addAll(sourceDirs(config, baseDir));
-                    case "add-test-source" -> testExtraSrc.addAll(sourceDirs(config, baseDir));
+                    case "add-source" ->
+                        extraSrc.addAll(ownRoots(sourceDirs(config, baseDir), generatorOutputs, report));
+                    case "add-test-source" ->
+                        testExtraSrc.addAll(ownRoots(sourceDirs(config, baseDir), generatorOutputs, report));
                     default ->
                         report.warning("`build-helper-maven-plugin` goal `" + goal
                                 + "` was not imported; only `add-source` and `add-test-source` map to"
@@ -99,6 +108,25 @@ final class SourceTreePlugins {
                 }
             }
         }
+    }
+
+    /** {@code dirs} without the ones inside a generator's output, each of those being a row. */
+    private static List<String> ownRoots(
+            List<String> dirs, List<String> generatorOutputs, ImportReport.Builder report) {
+        List<String> own = new ArrayList<>();
+        for (String dir : dirs) {
+            String output = generatorOutputs.stream()
+                    .filter(root -> dir.equals(root) || dir.startsWith(root + "/"))
+                    .findFirst()
+                    .orElse(null);
+            if (output == null) {
+                own.add(dir);
+                continue;
+            }
+            report.warning("`build-helper-maven-plugin` adds `" + dir + "`, the OpenAPI generator's output; `[openapi]`"
+                    + " folds the generated sources into the compile itself, so no `extra-src` root is written.");
+        }
+        return own;
     }
 
     private static List<String> sourceDirs(@Nullable Xpp3Dom config, @Nullable Path baseDir) {

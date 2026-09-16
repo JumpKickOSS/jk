@@ -43,21 +43,27 @@ otherwise. A non-zero exit fails the step with the tool's last lines.
 [openapi]
 spec      = "api/openapi.yaml"   # default api/*.yaml (the first match)
 generator = "spring"             # any openapi-generator generator: spring, java, kotlin-spring, …
-package   = "com.acme.api"       # api + invoker package; models in <package>.model. Default <group>.api
+package   = "com.acme.api"       # the root: api + invoker package; models in <package>.model. Default <group>.api
 version   = "latest"             # openapi-generator-cli release; default latest, a bare version is exact
 options   = { useTags = "false" }  # --additional-properties, over the preset's defaults
+# api-package = "com.acme.api.controller"   # each replaces the name the root derives
+# model-package = "com.acme.dto"
+# invoker-package = "com.acme.api.client"
 ```
 
 The preset expands to one generator entry — `openapi-generator-cli generate -i <spec> -g
 <generator> -o <out> --api-package … --model-package … --additional-properties …` — and `jk
-explain` shows it as the step `generate-openapi`. For `spring` the defaults produce an
+explain` shows it as the step `generate-openapi`. `package` is the root every generated package
+derives from; `api-package`, `model-package` and `invoker-package` each replace the derived name
+when a code base keeps them apart (api under `<root>.api`, say, with models under `<root>.model`). For `spring` the defaults produce an
 interface-only API a Boot module compiles with no extra libraries: `interfaceOnly`,
 `useSpringBoot3`, `useJakartaEe`, no documentation provider or annotation library, no
 `JsonNullable`, `useTags`. Any of them is overridden by `options`; another generator gets only
 what `options` says.
 
 The worked example: [`examples/openapi-spring`](examples/openapi-spring/) — a Boot controller
-implementing the generated interface.
+implementing the generated interface. `jk import` writes this table from a POM's
+`openapi-generator-maven-plugin` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## Beside a framework table
 

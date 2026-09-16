@@ -15,6 +15,7 @@ import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
+import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -362,6 +363,16 @@ class JkBuildRendererTest {
         JkBuild reparsed = JkBuildParser.parse(out);
         assertThat(reparsed.isWorkspaceRoot()).isTrue();
         assertThat(requireNonNull(reparsed.workspace()).modules()).containsExactly("core", "app");
+    }
+
+    /** A table whose manifest is not installed in this process is still written, every value as carried. */
+    @Test
+    void a_plugin_table_without_an_installed_manifest_is_rendered_from_its_values() {
+        JkBuild model = JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
+                .pluginConfig(new PluginConfig("nonesuch", Map.of("spec", "api/x.yaml", "options", Map.of("a", "1"))))
+                .build();
+        String out = JkBuildRenderer.render(model);
+        assertThat(out).contains("[nonesuch]").contains("spec = \"api/x.yaml\"").contains("options = { a = \"1\" }");
     }
 
     @Test

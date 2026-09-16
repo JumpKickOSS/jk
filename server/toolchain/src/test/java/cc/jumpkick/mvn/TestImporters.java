@@ -28,8 +28,15 @@ public final class TestImporters {
 
     /** An importer resolving parents and BOMs from {@code repo} (a loopback server or a directory). */
     public static PomImporter over(Path tempDir, URI repo) {
+        return over(tempDir, repo, uri -> {
+            throw new IOException("no remote files in this test: " + uri);
+        });
+    }
+
+    /** {@link #over(Path, URI)} with {@code remote} answering the URLs a generator plugin's spec names. */
+    public static PomImporter over(Path tempDir, URI repo, PomImporter.RemoteFile remote) {
         Cas cas = new Cas(tempDir.resolve("cache"));
-        return new PomImporter(RepoGroup.of(new MavenRepo("fixture", repo, new Http(), cas)), cas);
+        return new PomImporter(RepoGroup.of(new MavenRepo("fixture", repo, new Http(), cas)), cas, remote);
     }
 
     /** Maven-layout path of a POM under a repository root. */
@@ -44,10 +51,19 @@ public final class TestImporters {
 
     /** Import an inline POM offline, written under {@code tempDir/project}. */
     public static PomImporter.Result importXml(Path tempDir, String xml) throws IOException {
+        return importXml(tempDir, xml, uri -> {
+            throw new IOException("no remote files in this test: " + uri);
+        });
+    }
+
+    /** {@link #importXml(Path, String)} with {@code remote} answering a generator plugin's spec URL. */
+    public static PomImporter.Result importXml(Path tempDir, String xml, PomImporter.RemoteFile remote)
+            throws IOException {
         Path project = Files.createDirectories(tempDir.resolve("project"));
         Path pom = project.resolve("pom.xml");
         Files.writeString(pom, xml, StandardCharsets.UTF_8);
-        return offline(tempDir).importFrom(pom);
+        Path empty = Files.createDirectories(tempDir.resolve("no-repo"));
+        return over(tempDir, empty.toUri(), remote).importFrom(pom);
     }
 
     /** Every report row's text, in order. */
