@@ -134,7 +134,7 @@ policy `jk import` writes). The results file's header says which mode ran — `m
 no jk.toml (effective POM, built in place)` — so an agent reading `target/jk-results.md` knows the
 manifest it should edit is the POM.
 
-What the import report would grade Tier 3 (a `<build><extensions>` block, a `war` packaging, a
+What the import report would grade Tier 3 (a `<build><extensions>` entry other than os-maven-plugin, a `war` packaging, a
 `system`-scoped dependency, a parent no repository serves) is not an error here: the build after
 a POM change reports each row once, under Warnings, with the remedy — `jk import pom.xml` writes
 a `jk.toml` you can edit. A reactor root (a POM with `<modules>`, at the top level or in a
@@ -222,10 +222,12 @@ relates to the Maven one.
 | frontend-maven-plugin | 7 | `[dev.sidecars]` + a resource module | manual |
 | quarkus-maven-plugin | 7 | `[quarkus]` | exact |
 | flatten-maven-plugin | 6 | nothing (`jk export maven` writes a flat POM) | exact |
+| os-maven-plugin (a `<build><extensions>` entry or the `detect` goal) | 6 | nothing to write: `os.detected.name`, `os.detected.arch` and `os.detected.classifier` are valued from the host in the effective model, so a `${os.detected.classifier}` classifier is this machine's word | exact |
 | native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main` | approximate |
 | maven-war-plugin | 5 | not supported (packaging `war`) → Tier-3 row | none |
 | antlr4-maven-plugin | 5 | `[antlr]` (planned generator preset) | manual |
 | openapi-generator-maven-plugin | 4 | `[openapi]` (planned generator preset) | manual |
+| any other `<build><extensions>` entry | 4 | Tier-3 row naming the coordinate and, for build-reporter-maven-extension, gitflow-incremental-builder, wagon-ssh and archetype-packaging, what it does under Maven | none |
 
 **Grades.** *exact*: the imported build does what the plugin did. *approximate*: the common
 configuration maps; unusual configuration lands in the report. *manual*: the report names the

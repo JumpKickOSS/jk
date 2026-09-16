@@ -32,9 +32,14 @@ final class PluginFacts {
     /** The lowest {@code java =} jk compiles for; an older declared level is raised to it. */
     static final int JAVA_FLOOR = 17;
 
-    /** Plugins the import maps (or reports on its own terms); every other plugin gets the generic row. */
+    /**
+     * Plugins the import maps (or reports on its own terms); every other plugin gets the generic
+     * row. os-maven-plugin's {@code detect} goal exports the {@code os.detected.*} properties the
+     * effective model values from the host itself, so it has nothing to import.
+     */
     static final Set<String> MAPPED_PLUGINS = Set.of(
             "maven-compiler-plugin",
+            "os-maven-plugin",
             "maven-toolchains-plugin",
             "maven-resources-plugin",
             "build-helper-maven-plugin",
