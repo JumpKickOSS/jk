@@ -298,6 +298,13 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   classpaths select by scope.
 - **POM fidelity:** exclusions and Maven version ranges are honored on expand; optional deps
   stay out until features activate them.
+- **Warm-up ahead of the solver:** the roots before the first decide, and every positive edge
+  as its parent expands, are read speculatively on the io pool — the version catalog for a
+  floating edge, then the `.module` redirect and the effective POM (parents and imports) of
+  the version the solver will most likely take — so the solver's own reads are memo hits. The
+  checksum sidecars of a download travel beside its body rather than after it. A path a
+  repository answered "not found" is remembered for the metadata TTL, so a re-lock in the same
+  engine pays none of the 404s a multi-repository walk produces; `--force` asks past the memo.
 - **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
   (default 600 s per graph, sized for a cold multi-repository reactor of a few hundred modules).
   Every prop/conflict step counts toward a step budget

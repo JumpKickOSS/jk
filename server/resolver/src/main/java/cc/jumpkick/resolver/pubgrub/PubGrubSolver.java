@@ -756,6 +756,9 @@ public class PubGrubSolver {
     private boolean widenIncompleteUniverses() throws IOException, InterruptedException {
         List<String> incomplete = new ArrayList<>(lazyUniverses);
         incomplete.addAll(cappedUniverses);
+        // Every catalog at once, then the sequential rebinds read memos: a widening pass over a
+        // few hundred lazy singletons is otherwise one catalog round trip after another.
+        source.warmExpandedVersions(incomplete);
         for (String pkg : incomplete) expandUniverse(pkg);
         return !incomplete.isEmpty();
     }
