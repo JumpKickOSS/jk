@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.io.IOException;
@@ -39,7 +40,7 @@ public final class RunSnapshots {
     public static final int MAX_FILES = 20_000;
 
     /** Directory names the source walk never enters, at any depth. */
-    static final Set<String> SKIPPED = Set.of("target", "build", "node_modules", "out");
+    static final Set<String> SKIPPED = Set.of(BuildLayout.TARGET, "build", "node_modules", "out");
 
     // ------------------------------------------------------------------ tests
 
