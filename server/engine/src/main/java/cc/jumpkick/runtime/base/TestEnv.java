@@ -87,21 +87,33 @@ public final class TestEnv {
      * {@code [test] env}, not the sandbox underneath it — so moving it re-runs nothing.
      */
     private static Path sandboxM2(Path moduleDir) throws IOException {
-        Path owner = moduleDir;
+        // Stamped as in use at every launch: the suite reads its dependency jars out of this
+        // directory, and a concurrent launch's reaper spares a stamped slot.
+        return TestHomes.prepareSlot(m2Owner(moduleDir)).resolve("test-m2");
+    }
+
+    /** The directory whose slot holds the shared local m2: the workspace root, else the module itself. */
+    private static Path m2Owner(Path moduleDir) {
         try {
-            Optional<Path> root = WorkspaceScan.findRoot(moduleDir);
             // The workspace's slot, not its home: the m2 is a sibling of one member's home rather
             // than inside it, so it outlives a home being wiped and `jk clean` at the root takes it.
-            if (root.isPresent()) owner = root.get();
+            Optional<Path> root = WorkspaceScan.findRoot(moduleDir);
+            if (root.isPresent()) return root.get();
         } catch (RuntimeException e) {
             // A workspace root that will not read is the build's error to report, not this one's:
             // fall back to the module's own slot so a test JVM still gets a sandbox.
-            Log.debug(
-                    "sandboxM2: A workspace root that will not read is the build's error to report, not this one's", e);
+            Log.debug("m2Owner: A workspace root that will not read is the build's error to report, not this one's", e);
         }
-        // Stamped as in use at every launch: the suite reads its dependency jars out of this
-        // directory, and a concurrent launch's reaper spares a stamped slot.
-        return TestHomes.prepareSlot(owner).resolve("test-m2");
+        return moduleDir;
+    }
+
+    /**
+     * Mark the slots {@code moduleDir}'s test JVMs read — the module's home and the workspace's
+     * shared local m2 — as held by a live launch until the hold is closed, so no reaper takes their
+     * jars while the suite runs.
+     */
+    public static TestHomes.Hold holdSandboxes(Path moduleDir) {
+        return TestHomes.hold(TestHomes.slotFor(moduleDir), TestHomes.slotFor(m2Owner(moduleDir)));
     }
 
     /**

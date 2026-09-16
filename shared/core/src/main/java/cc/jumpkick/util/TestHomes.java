@@ -8,10 +8,13 @@ import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The {@code JK_HOME} a forked test JVM runs against: jk's whole layout, throwaway, and
@@ -35,11 +38,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p><b>Cleanup.</b> Warm is not unbounded. {@link #prepare} stamps the slot it hands out, and the
  * first call in a JVM reaps every slot not stamped within {@link #KEEP_DAYS} days, then the least
  * recently stamped slots until the root fits {@link #KEEP_BYTES} — before the run, so a project that
- * was deleted or renamed cannot leave one behind for ever. A slot stamped within {@link #HOLD_HOURS}
- * is one a running suite may be reading — several gates share one machine and one of them launching
- * must not pull the dependency jars out from under another — so the byte cap is enforced over the
- * rest. {@code jk clean} deletes this module's slot outright. Nothing is deleted after a run: that
- * is the warmth.
+ * was deleted or renamed cannot leave one behind for ever. A launch marks every slot it reads with
+ * a hold ({@link #hold}: a file under {@code .holds} naming its pid and start time, released when
+ * the suite exits), and the reaper never removes a held slot — several gates share one machine and
+ * one of them launching must not pull the dependency jars out from under another. A hold whose
+ * process has exited is dropped as it is read. A slot stamped within {@link #HOLD_HOURS} is kept
+ * from the byte cap as well, the fallback for a launch that could not write its hold. {@code jk
+ * clean} deletes this module's slot outright. Nothing is deleted after a run: that is the warmth.
  *
  * <p><b>The shared local m2.</b> A workspace's test JVMs share one Maven local repository, {@code
  * <workspace slot>/test-m2}: the sandbox store answers a lock row from it, so it is the classpath a
@@ -66,7 +71,12 @@ public final class TestHomes {
     static final int HOLD_HOURS = 24;
 
     private static final String STAMP = ".used-at";
+
+    /** {@code <slot>/.holds/<pid>-<n>}, body {@code <pid> <start epoch millis>}: one per live launch. */
+    private static final String HOLDS = ".holds";
+
     private static final AtomicBoolean REAPED = new AtomicBoolean();
+    private static final AtomicLong HOLD_SEQ = new AtomicLong();
 
     private TestHomes() {}
 
@@ -156,14 +166,108 @@ public final class TestHomes {
         }
     }
 
-    /** A slot, when it was last handed out (the stamp's mtime, or the directory's without one), and its size. */
-    private record Slot(Path dir, long usedMillis, long bytes) {}
+    /** Slots marked as read by a live launch until {@link #close}; see {@link TestHomes#hold}. */
+    public static final class Hold implements AutoCloseable {
+        private final List<Path> files;
+
+        private Hold(List<Path> files) {
+            this.files = files;
+        }
+
+        @Override
+        public void close() {
+            for (Path file : files) {
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException | RuntimeException e) {
+                    // A hold left behind names this live process; it lapses when the process does.
+                    Log.debug("Hold.close: A hold left behind lapses when this process exits", e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Mark each of {@code slots} as read by this process — a suite is about to run against its jars —
+     * until the returned hold is closed. Best effort: a hold that could not be written leaves the slot
+     * to the stamp's hold window.
+     */
+    public static Hold hold(Path... slots) {
+        ProcessHandle self = ProcessHandle.current();
+        String body = self.pid() + " " + startMillis(self) + "\n";
+        List<Path> files = new ArrayList<>();
+        for (Path slot : slots) {
+            try {
+                Path dir = Files.createDirectories(slot.resolve(HOLDS));
+                Path file = dir.resolve(self.pid() + "-" + Long.toString(HOLD_SEQ.incrementAndGet(), 36));
+                Files.writeString(file, body);
+                files.add(file);
+            } catch (IOException | RuntimeException e) {
+                Log.debug("hold: A missing hold leaves the slot to the stamp's hold window, never a failed build", e);
+            }
+        }
+        return new Hold(List.copyOf(files));
+    }
+
+    private static long startMillis(ProcessHandle process) {
+        return process.info().startInstant().map(Instant::toEpochMilli).orElse(0L);
+    }
+
+    /** Whether a hold under {@code slot} names a live process. A hold from one that has exited is removed. */
+    static boolean held(Path slot) {
+        boolean[] live = {false};
+        try {
+            PathUtil.forEachChild(slot.resolve(HOLDS), (file, attrs) -> {
+                if (!attrs.isRegularFile()) return true;
+                if (holdIsLive(file)) {
+                    live[0] = true;
+                } else {
+                    Files.deleteIfExists(file);
+                }
+                return true;
+            });
+        } catch (IOException | RuntimeException e) {
+            // A holds directory that will not list is read as unheld; the stamp's window still applies.
+            Log.debug("held: A holds directory that will not list is read as unheld", e);
+        }
+        return live[0];
+    }
+
+    private static boolean holdIsLive(Path file) {
+        try {
+            String[] parts = Files.readString(file).trim().split("\\s+");
+            long pid = Long.parseLong(parts[0]);
+            long start = parts.length > 1 ? Long.parseLong(parts[1]) : 0L;
+            return isLive(pid, start);
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
+    }
+
+    /**
+     * A process with this pid is running and started when the hold says, within a second — a pid
+     * the OS has reused since belongs to someone else. A start time of zero on either side (an OS
+     * that reports none) leaves the pid alone to answer.
+     */
+    static boolean isLive(long pid, long startMillis) {
+        Optional<ProcessHandle> handle = ProcessHandle.of(pid).filter(ProcessHandle::isAlive);
+        if (handle.isEmpty()) return false;
+        long started = startMillis(handle.get());
+        return started == 0L || startMillis == 0L || Math.abs(started - startMillis) <= 1000;
+    }
+
+    /**
+     * A slot, when it was last handed out (the stamp's mtime, or the directory's without one), its
+     * size, and whether a live launch holds it.
+     */
+    private record Slot(Path dir, long usedMillis, long bytes, boolean held) {}
 
     /**
      * Delete every slot whose stamp is older than {@link #KEEP_DAYS} — and every entry that carries no
      * stamp at all, since nothing else writes here — then the least recently stamped survivors until
-     * the rest fit {@code capBytes}, never one stamped within {@link #HOLD_HOURS}. Returns how many
-     * were removed. Best effort: a slot another process still holds is left for the run after this one.
+     * the rest fit {@code capBytes}. Never a slot a live launch holds, and never one stamped within
+     * {@link #HOLD_HOURS}. Returns how many were removed. Best effort: a slot another process still
+     * has open is left for the run after this one.
      */
     static int reapStale(Path root, long nowMillis, long capBytes) {
         long cutoff = nowMillis - KEEP_DAYS * 24L * 60 * 60 * 1000;
@@ -180,10 +284,11 @@ public final class TestHomes {
                 long used = PathUtil.stat(slot.resolve(STAMP))
                         .map(st -> st.lastModifiedTime().toMillis())
                         .orElseGet(() -> attrs.lastModifiedTime().toMillis());
-                if (used <= cutoff) {
+                boolean inUse = held(slot);
+                if (used <= cutoff && !inUse) {
                     stale.add(slot);
                 } else {
-                    fresh.add(new Slot(slot, used, size(slot)));
+                    fresh.add(new Slot(slot, used, size(slot), inUse));
                 }
                 return true;
             });
@@ -199,8 +304,8 @@ public final class TestHomes {
         fresh.sort(Comparator.comparingLong(Slot::usedMillis));
         for (Slot slot : fresh) {
             if (total <= capBytes) break;
-            // A launch inside the hold window may still be running against this slot.
-            if (slot.usedMillis() > held) continue;
+            // A live launch reads this slot, or one inside the hold window may still be running.
+            if (slot.held() || slot.usedMillis() > held) continue;
             if (delete(slot.dir())) {
                 removed++;
                 total -= slot.bytes();
