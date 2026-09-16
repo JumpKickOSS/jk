@@ -364,7 +364,7 @@ public final class JkBuildRenderer {
         return sorted.values();
     }
 
-    /** One dependency line: workspace flag, git table, or versioned table. */
+    /** One dependency line: workspace flag, git table, or versioned table (with its classifier when set). */
     private static String renderEntry(Dependency d) {
         if (d.isWorkspace()) {
             // Shorthand only for the default main kind; kind=tests and optional need the table form.
@@ -401,6 +401,9 @@ public final class JkBuildRenderer {
             // parser re-derives the platform-managed marker from its absence.
             if (!d.isPlatformManaged()) {
                 sb.append(", version = ").append(quote(versionLiteral(d.version())));
+            }
+            if (d.classifier() != null) {
+                sb.append(", classifier = ").append(quote(d.classifier()));
             }
             if (d.isTestsKind()) {
                 sb.append(", kind = ").append(quote(d.kind().toml()));

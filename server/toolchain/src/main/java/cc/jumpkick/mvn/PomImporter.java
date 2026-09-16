@@ -434,21 +434,19 @@ public final class PomImporter {
                     + "). Move it to a git dependency or a local repository.");
             return;
         }
+        String unmappedType = DependencyMapping.unmappedType(dep);
+        if (unmappedType != null) {
+            report.error("`<type>" + unmappedType + "</type>` on " + dep.module()
+                    + " names an artifact jk has no manifest spelling for; the dependency was not written."
+                    + " A jar of the same module is `{ group, name, version }`, a classified jar adds"
+                    + " `classifier`.");
+            return;
+        }
         if (dep.optional()) {
             report.warning("`<dependency><optional>true</optional></dependency>` on "
                     + dep.module()
                     + " — jk has no `<optional>`; emitted as a normal dep."
                     + " Use a feature flag if it should be opt-in.");
-        }
-        boolean testJar = DependencyMapping.isTestJar(dep);
-        if (dep.classifier() != null
-                && !dep.classifier().isBlank()
-                && !(testJar && "tests".equalsIgnoreCase(dep.classifier()))) {
-            report.warning("`<classifier>"
-                    + dep.classifier()
-                    + "</classifier>` on "
-                    + dep.module()
-                    + " — classifier support lands in a later slice; the coord was emitted without it.");
         }
         if (!dep.exclusions().isEmpty()) {
             report.warning("`<exclusions>` on "
@@ -457,6 +455,12 @@ public final class PomImporter {
         }
         DependencyMapping.warnUnresolvedVersion(dep, report);
         Scope scope = DependencyMapping.scope(dep.scope());
+        if (DependencyMapping.isPom(dep)) {
+            report.warning("`<type>pom</type>` on " + dep.module()
+                    + " is written to [platform-dependencies]: its dependencyManagement governs versions, and"
+                    + " the libraries it lists are not on the classpath — declare the ones the code uses.");
+            scope = Scope.PLATFORM;
+        }
         Dependency d = raiseToEngineFloor(DependencyMapping.toDependency(dep), scope, report);
         // kind=tests is only legal under [test-dependencies]/[test-dev-dependencies]
         // (JkBuildParser.applyDependencyKind), so a test-jar dep declared in another Maven
@@ -507,6 +511,7 @@ public final class PomImporter {
                                 ? d
                                 : Dependency.of(handle, d.module(), d.version())
                                         .withKind(d.kind())
+                                        .withClassifier(d.classifier())
                                         .withOptional(true));
             }
         }
@@ -576,7 +581,11 @@ public final class PomImporter {
                         + " was written as `"
                         + candidate
                         + "`.");
-                deps.set(i, Dependency.of(candidate, d.module(), d.version()).withKind(d.kind()));
+                deps.set(
+                        i,
+                        Dependency.of(candidate, d.module(), d.version())
+                                .withKind(d.kind())
+                                .withClassifier(d.classifier()));
             }
         }
     }
@@ -602,7 +611,8 @@ public final class PomImporter {
                     + row.floor()
                     + " or later.");
             return Dependency.of(d.library(), d.module(), VersionSelector.parse(row.suggested()))
-                    .withKind(d.kind());
+                    .withKind(d.kind())
+                    .withClassifier(d.classifier());
         }
         return d;
     }

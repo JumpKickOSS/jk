@@ -44,7 +44,11 @@ postgres = { group = "org.postgresql", name = "postgresql", version = "42.7.4", 
 
 `jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table.
 `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
-(`g:a:v:classifier`) is an error — use the inline table.
+(`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of
+the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as
+`group:artifact:jar:classifier`, so the plain jar and a classified twin are two entries under two
+handles. It applies to a Maven coordinate only, and `kind = "tests"` already names the test-jar's
+`tests` classifier, so the two do not combine.
 
 Version syntax: [Projects](projects.md#version-strings). Scopes:
 [Projects](projects.md#dependency-scopes).
