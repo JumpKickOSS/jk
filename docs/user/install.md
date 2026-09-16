@@ -106,7 +106,7 @@ to decode: if you want to know where a file is, it is under `~/.jk`.
   cache/        action cache + cache CAS (rebuildable; costs local CPU)
   config/       per-app config, <bin>/config.toml
   creds/        forge tokens (creds/forge) and per-repo credentials (creds/repo)
-  lib/          live engine jar + installed app jars
+  lib/          live engine jar, the Maven spy jar (`jk mvn`), installed app jars
   state/        engine socket, AOT caches, build history, JDK inventory, scratch
   store/        artifact store: repos/, tools/, templates/, completions/, jdks.json
 ```
@@ -234,7 +234,7 @@ them — run `jk activate` to hook a newly installed shell.
 |-----|------|
 | `https://jumpkick.build/install.sh` | Installer (Linux / macOS) |
 | `https://jumpkick.build/install.ps1` | Installer (Windows / PowerShell) |
-| `https://jumpkick.build/releases/` | Native clients, the JVM client jar, and the engine jar |
+| `https://jumpkick.build/releases/` | Native clients, the JVM client jar, the engine jar, and the Maven spy jar `jk mvn` fetches on first use |
 | `https://jumpkick.build/repo/` | First-party Maven repo (workers, `cc.jumpkick.*`) |
 
 First-party coordinates never resolve from Central — [Repositories](repositories.md).

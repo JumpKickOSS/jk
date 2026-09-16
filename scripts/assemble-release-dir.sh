@@ -14,6 +14,7 @@
 # release directory cannot name what an installer asks for.
 # jk-engine-<version>.jar
 # jk-<version>.jar (the JVM client: every host a JDK 25 runs on and no native client is hosted for)
+# jk-maven-spy-<version>.jar (the Maven core extension `jk mvn` attaches; a client self-fetches it)
 # SHA256SUMS
 # SHA256SUMS.sig (if JK_RELEASE_RSA_SIGNING_KEY or its file variant is set)
 # The ../latest/ pointer (LATEST, LATEST.sig, VERSION) is the caller's job: scripts/sign-latest-pointer.sh.
@@ -97,6 +98,15 @@ if [[ ! -f "$client_jar" ]]; then
   exit 2
 fi
 cp "$client_jar" "$OUT/jk-${VERSION}.jar"
+
+# The Maven spy, under its shipped name already. Required: a release without it is a `jk mvn`
+# that writes no run report, and the client self-fetches it by this exact name.
+spy_jar="$DIST/lib/jk-maven-spy-${VERSION}.jar"
+if [[ ! -f "$spy_jar" ]]; then
+  echo "assemble-release-dir: no Maven spy jar at $spy_jar (jk build writes it from clients/maven-spy)" >&2
+  exit 2
+fi
+cp "$spy_jar" "$OUT/jk-maven-spy-${VERSION}.jar"
 
 # SHA256SUMS (coreutils format: hash two spaces name). The file list is fixed before the manifest
 # exists, so the manifest never names itself.

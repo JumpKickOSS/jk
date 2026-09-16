@@ -342,10 +342,13 @@ grep -q "checksum mismatch for $ENGINE_JAR" "$WORK/last-install.log" || { cat "$
 [[ ! -e "$WORK/home-jvm-tampered-engine/bin/jk" ]] || { echo "a tampered engine jar still installed the launcher" >&2; exit 1; }
 printf 'PK fixture engine jar\n' >"$RELEASE/$ENGINE_JAR"
 
-# A local jar beside its engine jar installs the JVM client from the dist layout, no network.
+# A local jar beside its engine jar installs the JVM client from the dist layout, no network; the
+# Maven spy jar beside them lands under the product lib, where `jk mvn` looks for it.
+SPY_JAR="jk-maven-spy-1.0.0.jar"
 mkdir -p "$WORK/dist/lib"
 cp "$RELEASE/$JVM_JAR" "$WORK/dist/lib/$JVM_JAR"
 cp "$RELEASE/$ENGINE_JAR" "$WORK/dist/lib/$ENGINE_JAR"
+printf 'PK fixture spy jar\n' >"$WORK/dist/lib/$SPY_JAR"
 rm -f "$WORK/java-calls"
 if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" JAVA_HOME= JK_JAVA_HOME= FIXTURE_JAVA_HOME="$WORK/jdk" FIXTURE_JAVA_LOG="$WORK/java-calls" \
     JK_HOME="$WORK/home-jvm-local" JK_RELEASES_URL="https://fixture/releases-missing" CI=1 \
@@ -353,6 +356,7 @@ if ! ( env PATH="$WORK/bin:$PATH" FIXTURE_HTTP_ROOT="$WORK/http" JAVA_HOME= JK_J
   cat "$WORK/last-install.log" >&2; echo "a local JVM client install failed" >&2; exit 1
 fi
 cmp -s "$RELEASE/$JVM_JAR" "$WORK/home-jvm-local/lib/jk/$JVM_JAR" || { echo "the local jar did not land under lib/jk" >&2; exit 1; }
+cmp -s "$WORK/dist/lib/$SPY_JAR" "$WORK/home-jvm-local/lib/$SPY_JAR" || { echo "the Maven spy jar did not land under lib/" >&2; exit 1; }
 grep -q -- "--version" "$WORK/java-calls" || { echo "a local jar was not asked its version" >&2; exit 1; }
 rm -f "$WORK/bin/uname" "$WORK/bin/java" "$RELEASE/$JVM_JAR" "$RELEASE/$ENGINE_JAR"
 write_evidence

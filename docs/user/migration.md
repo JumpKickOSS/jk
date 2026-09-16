@@ -46,10 +46,16 @@ and records the reactor's events; after Maven exits the engine folds those event
 `target/surefire-reports` / `target/failsafe-reports` XML and the compiler plugin's
 `file:[line,col]` failures into the same Tests, Modules and Diagnostics blocks a jk build gets.
 The jar is looked up in this order, first hit wins: the `jk.maven-spy.jar` system property;
-`~/.jk/lib/jk-maven-spy-<version>.jar` (where `install.sh` puts it); the store's `jk-local` shelf
-(`jk install` from a checkout); `lib/` beside the `jk` binary (the `target/dist` ship layout). With
-no jar found, `jk mvn` is a plain passthrough and writes no report. A project with only a `pom.xml`
-binds for MCP by its POM coordinate.
+`~/.jk/lib/jk-maven-spy-<version>.jar` (where the installers put it from a dist); the store's
+`jk-local` shelf (`jk install` from a checkout); `lib/` beside the `jk` binary (the `target/dist`
+ship layout). A release install (`curl … | bash`, `install.ps1`, the JVM client) carries no spy
+until the first `jk mvn`, which fetches its own version's `jk-maven-spy-<version>.jar` from the
+release directory into `~/.jk/lib/` — the same directory, signed `SHA256SUMS` and checksum the
+engine jar is held to, shown as a `Maven` download line — and then runs Maven with it. A fetch that
+fails (offline, a mirror without the jar) is one line on stderr; Maven still runs, without a
+report, and the next `jk mvn` tries again. `jk doctor` has an `mvn` row that names the jar's
+place and the one command that fills it. With no jar found, `jk mvn` is a plain passthrough and
+writes no report. A project with only a `pom.xml` binds for MCP by its POM coordinate.
 
 **POM import** is the primary path, and it reads the POM the way Maven does: the effective
 model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the

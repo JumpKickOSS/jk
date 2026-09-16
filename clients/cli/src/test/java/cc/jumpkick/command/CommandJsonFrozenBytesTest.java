@@ -168,17 +168,19 @@ class CommandJsonFrozenBytesTest {
         assertThat(DoctorCommand.checkJson(fail)).isEqualTo("{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"}");
         var noWorkers = new DoctorCommand.Workers(List.of(), null);
         var noRepos = new RepoStores.Stores(List.of(), null);
-        assertThat(DoctorCommand.reportJson(ok, warn, ok, fail, ok, ok, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos))
+        assertThat(DoctorCommand.reportJson(
+                        ok, warn, ok, fail, ok, ok, warn, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos))
                 .isEqualTo("{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"jdk\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"lock\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
+                        + "\"mvn\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
                         + "\"workers\":[],\"repos\":[]}");
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers, noRepos))
+                        ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers, noRepos))
                 .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]}");
         var one = new DoctorCommand.Workers(
                 List.of(new DoctorCommand.Worker(
@@ -197,7 +199,7 @@ class CommandJsonFrozenBytesTest {
                 List.of(new RepoStores.Store(
                         "nexus.acme-0123456789ab", "private", "https://nexus.acme/maven", 2, 40, false)),
                 null);
-        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos))
+        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"
