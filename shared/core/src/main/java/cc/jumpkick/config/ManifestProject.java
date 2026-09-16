@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
+import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ProjectInherit;
@@ -37,6 +38,7 @@ public final class ManifestProject {
             "groovy",
             "scala",
             "sources",
+            "javadoc",
             "description",
             "layout");
 
@@ -152,6 +154,15 @@ public final class ManifestProject {
             }
         }
 
+        // javadoc = false → DISABLED; javadoc = "strict" → STRICT; absent/true → LENIENT
+        JavadocMode javadocMode;
+        if (isWorkspaceInherit(root, "javadoc") || (!workspaceRoot && !root.contains("javadoc"))) {
+            inherits.add(ProjectInherit.JAVADOC);
+            javadocMode = JavadocMode.LENIENT;
+        } else {
+            javadocMode = parseJavadocMode(root.get("javadoc"));
+        }
+
         String description;
         if (isWorkspaceInherit(root, "description")) {
             inherits.add(ProjectInherit.DESCRIPTION);
@@ -192,12 +203,23 @@ public final class ManifestProject {
                 groovy,
                 scala,
                 sourcesMode,
+                javadocMode,
                 description,
                 m2integration,
                 m2install,
                 layout,
                 inherits,
                 jdkSpec);
+    }
+
+    /** {@code javadoc}: {@code false} → no javadoc jar, {@code "strict"} → doclint on, else lenient. */
+    static JavadocMode parseJavadocMode(@Nullable Object raw) {
+        if (raw instanceof Boolean b) return b ? JavadocMode.LENIENT : JavadocMode.DISABLED;
+        if (raw instanceof String str) {
+            if ("strict".equalsIgnoreCase(str.trim())) return JavadocMode.STRICT;
+            if (EnvValues.parseBool(str).orElse(true) == Boolean.FALSE) return JavadocMode.DISABLED;
+        }
+        return JavadocMode.LENIENT;
     }
 
     private record M2Flags(boolean integration, boolean install) {}

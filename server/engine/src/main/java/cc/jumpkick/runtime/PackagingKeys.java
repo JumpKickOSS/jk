@@ -12,6 +12,7 @@ import cc.jumpkick.layout.ModuleLayoutPlugins;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -590,5 +591,69 @@ public final class PackagingKeys {
 
     private static String orEmpty(@Nullable String s) {
         return s == null ? "" : s;
+    }
+
+    // ---- library artefacts: package-sources + package-javadoc -----------------------------------
+
+    /**
+     * Whether {@code jk package} writes the sources and javadoc jars beside the module jar. A
+     * library is a module with main sources and no {@code [application]} table — the model's own
+     * definition of one; {@code sources = "always"} forces the pair for any module, application
+     * included. A coordinator root packages nothing.
+     */
+    public static boolean libraryArtifacts(JkBuild project, Path moduleDir) {
+        if (project.project().sourcesMode() == SourcesMode.ALWAYS) return true;
+        if (project.isApplication()) return false;
+        return !CompileSupport.coordinatorOnly(project, moduleDir) && CompileSupport.hasSources(moduleDir);
+    }
+
+    /**
+     * The javadoc jar's key: the Java sources' content, the classpath's ABI (through {@code cp},
+     * so the forecast can answer for a tree it has not restored), the javadoc options and the JDK.
+     * One body for the step and its forecast; a module with no Java sources keys a constant.
+     */
+    public static Keyed javadoc(
+            Path javadocJar,
+            Path moduleDir,
+            List<Path> javaSources,
+            List<Path> classpath,
+            ActionKey.EntryToken cp,
+            List<String> options,
+            @Nullable Path javaHome)
+            throws IOException {
+        // A module with no Java sources gets the README-only jar, a constant: nothing about the
+        // classpath, the options or the JDK reaches it, so none of them may reach its key.
+        boolean readme = javaSources.isEmpty();
+        List<String> tokens = List.of(
+                "sources:" + (readme ? "" : sourcesToken(moduleDir, javaSources)),
+                "classpath:" + (readme ? "" : classpathAbiToken(classpath, cp)),
+                "options:" + (readme ? "" : String.join(" ", options)),
+                "jdk:" + (readme ? "" : ActionKey.jdkToken(javaHome)),
+                "packaging:" + (readme ? "javadoc-readme" : "javadoc"));
+        String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAVADOC, javadocJar);
+        String jdKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
+        return new Keyed(taskId, tokens, jdKey);
+    }
+
+    /** Content digest of {@code sources}, each spelled by its module-relative path. */
+    static String sourcesToken(Path moduleDir, List<Path> sources) throws IOException {
+        Path root = moduleDir.toAbsolutePath().normalize();
+        TreeMap<String, String> byPath = new TreeMap<>();
+        for (Path src : sources) {
+            Path abs = src.toAbsolutePath().normalize();
+            String rel = abs.startsWith(root) ? root.relativize(abs).toString().replace('\\', '/') : abs.toString();
+            byPath.put(rel, FileHashMemo.contentHash(abs));
+        }
+        StringBuilder sb = new StringBuilder();
+        for (var e : byPath.entrySet())
+            sb.append(e.getKey()).append('\0').append(e.getValue()).append('\n');
+        return Hashing.sha256Hex(sb.toString());
+    }
+
+    private static String classpathAbiToken(List<Path> classpath, ActionKey.EntryToken cp) throws IOException {
+        List<String> parts = new ArrayList<>(classpath.size());
+        for (Path p : classpath) parts.add(cp.of(p));
+        parts.sort(Comparator.naturalOrder());
+        return Hashing.sha256Hex(String.join("\n", parts));
     }
 }

@@ -103,10 +103,16 @@
       ]
     },
     "sources": {
-      "description": "Source roots beyond the standard layout.",
+      "description": "Sources jar: true → assembled by jk publish only; \"always\" → built by jk package. A library (no [application]) builds it regardless.",
       "type": [
-        "array",
-        "object",
+        "boolean",
+        "string"
+      ]
+    },
+    "javadoc": {
+      "description": "Javadoc jar for a library: false → not built; \"strict\" → javadoc's doclint checks fail the step; default lenient (-Xdoclint:none, warnings in the results).",
+      "type": [
+        "boolean",
         "string"
       ]
     },

@@ -103,6 +103,9 @@ final class ModuleForecast {
     private @Nullable Boolean knownResourceDrift;
     private final Path lockFile;
     private boolean mainResourceDrift;
+    /** The compile-main classpath, once {@link #compileMain} has derived it; the javadoc arm keys on it. */
+    private List<Path> mainCp = List.of();
+
     private boolean nativeOnBuild;
     private boolean nativeOnNativeCmd;
 
@@ -209,7 +212,7 @@ final class ModuleForecast {
             guard(prepared);
             resource(prepared);
             packageJar(prepared);
-            packageAssembly(prepared);
+            packageTails(prepared);
             nativeImage(prepared);
             writeImage(prepared);
             cacheInstall(prepared);
@@ -320,6 +323,7 @@ final class ModuleForecast {
         if (!mainSrc.isEmpty()) {
             WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
             List<Path> cp = PlannerSupport.mainCompileClasspath(lock, resolver, sib);
+            mainCp = cp;
             Path out = layout.classesDir();
             // Same stamp gate as BuildPlanner compile-main: a post-rebuild tree with a
             // fresh.jstamp is cached even when action-cache keys were not rewritten
@@ -913,37 +917,23 @@ final class ModuleForecast {
         }
     }
 
-    private void packageAssembly(Prepared prepared) throws Exception {
-        BuildLayout layout = prepared.layout();
-        List<Path> mainSrc = prepared.mainSrc();
-        List<Path> ktSrc = prepared.ktSrc();
-        List<Path> gvSrc = prepared.gvSrc();
-        // ---- package-assembly (fat jar) — only when configured ----
-        // Same action-key recipe as PlannerTails.assemblyStep (not "jar exists on disk").
-        if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
-            if (compileDirty) {
-                steps.add(new TaskForecast.Task(
-                        TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage · compile changed", null));
-            } else {
-                boolean hit = PackagingKeys.assemblyActionCached(
-                        dir,
-                        project,
-                        layout,
-                        lockFile,
-                        actionCache,
-                        cache,
-                        compileMainKey,
-                        restored.jarShas(),
-                        knownResourceDrift,
-                        restored.projectedIdentity(layout.classesDir()));
-                steps.add(
-                        hit
-                                ? new TaskForecast.Task(
-                                        TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.CACHED, "", null)
-                                : new TaskForecast.Task(
-                                        TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage", null));
-            }
-        }
+    /** The tails beside package-jar: fat jar and javadoc jar, each read against its own key. */
+    private void packageTails(Prepared prepared) throws Exception {
+        TaskForecast.Task assembly = ForecastPackagingTails.assembly(
+                project,
+                dir,
+                prepared,
+                lockFile,
+                actionCache,
+                cache,
+                compileMainKey,
+                restored,
+                knownResourceDrift,
+                compileDirty);
+        if (assembly != null) steps.add(assembly);
+        TaskForecast.Task javadoc = ForecastPackagingTails.javadoc(
+                project, dir, prepared, mainCp, restored.abiToken(), actionCache, compileDirty);
+        if (javadoc != null) steps.add(javadoc);
     }
 
     private void nativeImage(Prepared prepared) throws Exception {

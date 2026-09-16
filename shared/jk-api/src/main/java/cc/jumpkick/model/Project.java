@@ -26,6 +26,7 @@ public record Project(
         @Nullable VersionSelector groovy,
         @Nullable VersionSelector scala,
         SourcesMode sourcesMode,
+        JavadocMode javadocMode,
         @Nullable String description,
         boolean m2integration,
         boolean m2install,
@@ -51,6 +52,7 @@ public record Project(
         }
         if (jdk != null && jdk.isBlank()) jdk = null;
         if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
+        if (javadocMode == null) javadocMode = JavadocMode.LENIENT;
         if (layout == null) layout = Layout.AUTO;
         if (description != null && description.isBlank()) description = null;
         workspaceInherits =
@@ -87,12 +89,49 @@ public record Project(
                 groovy,
                 scala,
                 sourcesMode,
+                JavadocMode.LENIENT,
                 description,
                 m2integration,
                 m2install,
                 layout,
                 workspaceInherits,
                 ToolchainSpec.NONE);
+    }
+
+    /** Lenient javadoc; every other component as given. */
+    public Project(
+            String group,
+            String name,
+            String version,
+            @Nullable String jdk,
+            int java,
+            @Nullable VersionSelector kotlin,
+            @Nullable VersionSelector groovy,
+            @Nullable VersionSelector scala,
+            SourcesMode sourcesMode,
+            @Nullable String description,
+            boolean m2integration,
+            boolean m2install,
+            Layout layout,
+            Set<ProjectInherit> workspaceInherits,
+            ToolchainSpec jdkSpec) {
+        this(
+                group,
+                name,
+                version,
+                jdk,
+                java,
+                kotlin,
+                groovy,
+                scala,
+                sourcesMode,
+                JavadocMode.LENIENT,
+                description,
+                m2integration,
+                m2install,
+                layout,
+                workspaceInherits,
+                jdkSpec);
     }
 
     /** Unset Scala pin; {@code workspaceInherits} as given. */
@@ -219,6 +258,7 @@ public record Project(
         next.remove(ProjectInherit.GROOVY);
         next.remove(ProjectInherit.SCALA);
         next.remove(ProjectInherit.SOURCES);
+        next.remove(ProjectInherit.JAVADOC);
         next.remove(ProjectInherit.DESCRIPTION);
         next.remove(ProjectInherit.M2INTEGRATION);
         next.remove(ProjectInherit.M2INSTALL);
@@ -234,6 +274,7 @@ public record Project(
                 groovy,
                 scala,
                 sourcesMode,
+                javadocMode,
                 description,
                 m2integration,
                 m2install,
@@ -268,12 +309,13 @@ public record Project(
         VersionSelector gr = inherits(ProjectInherit.GROOVY) ? root.groovy() : groovy;
         VersionSelector sc = inherits(ProjectInherit.SCALA) ? root.scala() : scala;
         SourcesMode src = inherits(ProjectInherit.SOURCES) ? root.sourcesMode() : sourcesMode;
+        JavadocMode jd = inherits(ProjectInherit.JAVADOC) ? root.javadocMode() : javadocMode;
         String desc = inherits(ProjectInherit.DESCRIPTION) ? root.description() : description;
         boolean m2 = inherits(ProjectInherit.M2INTEGRATION) ? root.m2integration() : m2integration;
         boolean inst = inherits(ProjectInherit.M2INSTALL) ? root.m2install() : m2install;
         Layout lay = inherits(ProjectInherit.LAYOUT) ? root.layout() : layout;
         ToolchainSpec js = inherits(ProjectInherit.JDK) ? root.jdkSpec() : jdkSpec;
-        return new Project(g, name, v, j, ja, kt, gr, sc, src, desc, m2, inst, lay, Set.of(), js);
+        return new Project(g, name, v, j, ja, kt, gr, sc, src, jd, desc, m2, inst, lay, Set.of(), js);
     }
 
     private static String requireRoot(String value, String field) {
@@ -302,6 +344,7 @@ public record Project(
                 groovy,
                 scala,
                 sourcesMode,
+                javadocMode,
                 description,
                 m2integration,
                 m2install,
@@ -351,6 +394,7 @@ public record Project(
         private @Nullable VersionSelector groovy;
         private @Nullable VersionSelector scala;
         private SourcesMode sourcesMode = SourcesMode.DISABLED;
+        private JavadocMode javadocMode = JavadocMode.LENIENT;
         private @Nullable String description;
         private boolean m2integration = true;
         private boolean m2install = true;
@@ -400,6 +444,11 @@ public record Project(
             return this;
         }
 
+        public Builder javadocMode(JavadocMode javadocMode) {
+            this.javadocMode = javadocMode;
+            return this;
+        }
+
         public Builder description(@Nullable String description) {
             this.description = description;
             return this;
@@ -437,6 +486,7 @@ public record Project(
                     groovy,
                     scala,
                     sourcesMode,
+                    javadocMode,
                     description,
                     m2integration,
                     m2install,

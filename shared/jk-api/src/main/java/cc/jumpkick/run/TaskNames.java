@@ -98,6 +98,10 @@ public final class TaskNames {
     public static final String PACKAGE_MINIFIED = "package-minified";
 
     public static final String PACKAGE_SOURCES = "package-sources";
+
+    /** {@code -javadoc.jar} for a library, built from its Java sources beside the module jar. */
+    public static final String PACKAGE_JAVADOC = "package-javadoc";
+
     public static final String PARSE_BUILD = "parse-build";
     public static final String PARSE_LOCK = "parse-lock";
     public static final String PARSE_SCRIPT = "parse-script";
@@ -122,7 +126,7 @@ public final class TaskNames {
      * and this tail, not the sum of its steps.
      */
     public static final Set<String> PACKAGING_TAILS =
-            Set.of(PACKAGE_ASSEMBLY, PACKAGE_MINIFIED, NATIVE_IMAGE, PACKAGE_SOURCES);
+            Set.of(PACKAGE_ASSEMBLY, PACKAGE_MINIFIED, NATIVE_IMAGE, PACKAGE_SOURCES, PACKAGE_JAVADOC);
 
     public static final String SET_DEFAULT = "set-default";
     public static final String SYNC_CAS = "sync-cas";

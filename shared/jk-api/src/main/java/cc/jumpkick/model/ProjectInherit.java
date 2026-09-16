@@ -14,6 +14,7 @@ public enum ProjectInherit {
     GROOVY,
     SCALA,
     SOURCES,
+    JAVADOC,
     DESCRIPTION,
     M2INTEGRATION,
     M2INSTALL,
