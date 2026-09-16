@@ -3,6 +3,10 @@ package cc.jumpkick.testrunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.platform.engine.Filter;
@@ -31,6 +36,11 @@ import org.junit.platform.launcher.core.LauncherFactory;
  * <p>{@link Tagged} is driven through {@code runClass}; every one of its methods passes, because
  * classpath-root discovery (what {@code jk test} itself does to this module) walks nested classes
  * too, so a fixture that failed on purpose would fail the self-hosted build.
+ *
+ * <p>The empty-tier tests copy a class file into a root of its own, so the runner's discovery over
+ * that root sees exactly the classes named: a tier every test of which the tag filter excludes
+ * reports nothing, and only a root with no test under any filter raises the empty-discovery
+ * warning.
  */
 class LauncherPathTest {
 
@@ -142,6 +152,43 @@ class LauncherPathTest {
         return LauncherFactory.create()
                 .discover(
                         Objects.requireNonNull(named(c).get()).filters(filters).build());
+    }
+
+    // --- a tier the tag filter emptied ---------------------------------------------
+
+    @Test
+    void a_root_whose_every_test_the_tag_filter_excludes_is_an_empty_tier_not_a_warning(@TempDir Path tmp)
+            throws IOException {
+        Path root = classpathRootOf(tmp, TagEmptiedFixture.class);
+        var events = new Recorder();
+        LauncherPath.runListOnly(root, null, List.of("integration"), List.of(), 0, events);
+        assertThat(events.warnings()).isEmpty();
+        assertThat(events.finishedTests()).isEmpty();
+    }
+
+    @Test
+    void a_root_with_classes_and_no_test_under_any_filter_warns_of_an_empty_discovery(@TempDir Path tmp)
+            throws IOException {
+        Path root = classpathRootOf(tmp, EventType.class);
+        var events = new Recorder();
+        LauncherPath.runListOnly(root, null, List.of("integration"), List.of(), 0, events);
+        assertThat(events.warnings()).singleElement().satisfies(w -> {
+            assertThat(w.get("code")).isEqualTo(LauncherPath.NO_TESTS_DISCOVERED);
+            assertThat(String.valueOf(w.get("message"))).contains("no tests discovered in 1 class");
+        });
+    }
+
+    /** A classpath root holding only {@code classes}, copied out of this module's own output. */
+    private static Path classpathRootOf(Path tmp, Class<?>... classes) throws IOException {
+        for (Class<?> c : classes) {
+            Path file = tmp.resolve(c.getName().replace('.', '/') + ".class");
+            Files.createDirectories(Objects.requireNonNull(file.getParent()));
+            try (InputStream in =
+                    Objects.requireNonNull(c.getResourceAsStream(c.getSimpleName() + ".class"), c.getName())) {
+                Files.copy(in, file);
+            }
+        }
+        return tmp;
     }
 
     // --- discovery ---------------------------------------------------------------
