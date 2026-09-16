@@ -140,11 +140,12 @@ class TestCommandTest {
                 "new File('" + ran.toString().replace("\\", "\\\\") + "').append('x')\n");
         String c = cache.toString();
         String p = project.toString();
-        assertThat(run("test", "-C", p, "--cache-dir", c)).isEqualTo(0);
+        // The workspace has no suite, so each `jk test` that runs the suites is `no tests ran` (exit 2).
+        assertThat(run("test", "-C", p, "--cache-dir", c)).isEqualTo(2);
         assertThat(Files.exists(ran)).isFalse();
         assertThat(run("build", "-C", p, "--cache-dir", c, "--skip-tests")).isEqualTo(0);
         assertThat(Files.exists(ran)).isFalse();
-        assertThat(run("test", "--guard", "-C", p, "--cache-dir", c)).isEqualTo(0);
+        assertThat(run("test", "--guard", "-C", p, "--cache-dir", c)).isEqualTo(2);
         assertThat(Files.readString(ran)).hasSize(1);
         assertThat(run("test", "--scripts-only", "-C", p, "--cache-dir", c)).isEqualTo(0);
         assertThat(Files.readString(ran)).hasSize(1);

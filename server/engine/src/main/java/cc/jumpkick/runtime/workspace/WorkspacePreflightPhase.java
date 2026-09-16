@@ -50,6 +50,7 @@ public final class WorkspacePreflightPhase {
     /** Typed state handed from preflight to resource planning. */
     record Context(
             WorkspaceRequest request,
+            JkBuild entry,
             BuildGraph.Result graph,
             List<BuildGraph.BuildUnit> units,
             Set<Path> moduleDirs,
@@ -124,6 +125,7 @@ public final class WorkspacePreflightPhase {
 
         return new Ready(new Context(
                 request,
+                entryBuild,
                 graph,
                 List.copyOf(units),
                 immutableOrderedSet(moduleDirs),
