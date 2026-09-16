@@ -12,11 +12,13 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.maven.model.Build;
+import org.apache.maven.model.BuildBase;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
+import org.apache.maven.model.Profile;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
@@ -305,6 +307,45 @@ final class PluginFacts {
             }
         }
         return attrs;
+    }
+
+    /**
+     * The Maven profile whose declaration is what makes {@code plugin} do anything: the effective
+     * model declares it bare (no executions, no configuration of its own) and a profile of this POM
+     * or of an ancestor carries its executions or configuration under {@code <plugins>} or {@code
+     * <pluginManagement>}. That profile is not active here, else its payload would be in the
+     * effective model, so under Maven the plugin runs only with {@code -P}. Empty when the plugin
+     * carries executions or configuration itself, or when no profile adds any.
+     */
+    static Optional<String> boundOnlyInProfile(EffectiveModel em, Plugin plugin) {
+        if (bound(plugin)) return Optional.empty();
+        String artifactId = plugin.getArtifactId();
+        List<Model> chain = new ArrayList<>();
+        chain.add(em.raw());
+        for (EffectiveModel.Ancestor ancestor : em.ancestors()) chain.add(ancestor.raw());
+        for (Model model : chain) {
+            for (Profile profile : model.getProfiles()) {
+                if (profile.getBuild() != null && bindsPlugin(profile.getBuild(), artifactId)) {
+                    String id = profile.getId();
+                    return Optional.of(id == null || id.isBlank() ? "<unnamed>" : id);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Whether the plugin carries an execution or a configuration of its own. */
+    private static boolean bound(Plugin plugin) {
+        return !plugin.getExecutions().isEmpty()
+                || (plugin.getConfiguration() instanceof Xpp3Dom dom && dom.getChildCount() > 0);
+    }
+
+    /** Whether {@code build}'s plugins or plugin management carry a bound declaration of {@code artifactId}. */
+    private static boolean bindsPlugin(BuildBase build, String artifactId) {
+        List<Plugin> declared = new ArrayList<>(build.getPlugins());
+        if (build.getPluginManagement() != null)
+            declared.addAll(build.getPluginManagement().getPlugins());
+        return declared.stream().anyMatch(p -> artifactId.equals(p.getArtifactId()) && bound(p));
     }
 
     /** The plugin's configuration followed by each execution's, in declaration order. */

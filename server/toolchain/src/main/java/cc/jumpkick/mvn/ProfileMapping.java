@@ -269,9 +269,23 @@ final class ProfileMapping {
         return true;
     }
 
-    /** {@code <build><plugins>} stay a checklist: the plugin table says where each lands, a profile does not move it. */
+    /**
+     * {@code <build><plugins>} stay a checklist: the plugin table says where each lands, a profile
+     * does not move it. A {@code <pluginManagement>} entry carrying executions is on the list too:
+     * it is what binds a plugin the POM declares bare, so the profile is where that plugin runs.
+     */
     private boolean reportPlugins(Profile profile) {
         List<String> plugins = pluginIds(profile.getBuild());
+        BuildBase build = profile.getBuild();
+        if (build != null && build.getPluginManagement() != null) {
+            for (Plugin managed : build.getPluginManagement().getPlugins()) {
+                String artifactId = managed.getArtifactId();
+                if (artifactId == null
+                        || artifactId.isBlank()
+                        || managed.getExecutions().isEmpty()) continue;
+                if (!plugins.contains(artifactId)) plugins.add(artifactId);
+            }
+        }
         plugins.remove("maven-compiler-plugin");
         if (plugins.isEmpty()) return false;
         row(

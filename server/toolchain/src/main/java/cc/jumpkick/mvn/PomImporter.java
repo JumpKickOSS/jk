@@ -127,7 +127,7 @@ public final class PomImporter {
 
         String mainClass = PluginFacts.mainClass(em.model());
         TestPlugins.TestSettings tests = TestPlugins.map(em.model(), report);
-        PackagingPlugins.Packaging packaging = PackagingPlugins.map(em.model(), mainClass, report);
+        PackagingPlugins.Packaging packaging = PackagingPlugins.map(em, mainClass, report);
         JkBuild.Application application =
                 mainClass != null ? new JkBuild.Application(mainClass, packaging.fatJar()) : null;
         JkBuild jkBuild = JkBuild.builder(project)
