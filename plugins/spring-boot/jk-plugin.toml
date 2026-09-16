@@ -34,7 +34,8 @@ version       = { type = "string", required = true, example = "4.1.0", hint = "s
 aot           = { type = "bool" }                          # tri-state: absent = auto (on when [native] is declared)
 build-info    = { type = "bool", default = false }
 include-tools = { type = "bool", default = true }
-aot-args      = { type = "string-list", default = [] }
+aot-args      = { type = "string-list", default = [] }     # arguments for the application under AOT processing
+aot-jvm-args  = { type = "string-list", default = [] }     # flags for the AOT processor's JVM (--add-opens, heap)
 
 # ---- Declarative contributions (P2) — pure data, evaluated engine-side with zero plugin code.
 
