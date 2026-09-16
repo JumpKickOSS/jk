@@ -102,6 +102,9 @@ public final class MavenPackageSource implements PackageSource {
     /** The graph's exact roots when they override transitive constraints (see {@link NearestPins}). */
     private final NearestPins nearestPins = new NearestPins();
 
+    /** One sentence per edge whose classifier reads the running host; see {@link #hostClassifierNotes}. */
+    private final Set<String> hostClassifierNotes = ConcurrentHashMap.newKeySet();
+
     /**
      * Modules to strip when expanding a package, keyed by package module id.
      *
@@ -239,6 +242,17 @@ public final class MavenPackageSource implements PackageSource {
     /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */
     public List<String> nearestOverrides() {
         return nearestPins.renderedOverrides();
+    }
+
+    /**
+     * Every expanded edge whose classifier a POM spells with a host property ({@code
+     * ${javafx.platform}}, {@code ${os.detected.classifier}}), one sentence each, sorted: the lock
+     * pins this machine's artifact, and a lock made elsewhere pins that machine's.
+     */
+    public List<String> hostClassifierNotes() {
+        List<String> out = new ArrayList<>(hostClassifierNotes);
+        out.sort(null);
+        return List.copyOf(out);
     }
 
     private VersionSet nearestOrOwn(String parentPkg, String parentVersion, RawEdge edge) {
@@ -581,6 +595,12 @@ public final class MavenPackageSource implements PackageSource {
             if (scope != null && !scope.isEmpty() && !FOLLOWED_SCOPES.contains(scope)) continue;
             if (dep.version() == null || dep.version().isBlank()) continue;
             String depPkg = packageKey(dep);
+            String hostExpression = pom.hostClassified().get(dep.module());
+            if (hostExpression != null) {
+                hostClassifierNotes.add(PackageId.parse(pkg).ga() + " " + version + " depends on " + dep.module()
+                        + " with classifier `" + dep.classifier() + "`: the POM spells it " + hostExpression
+                        + ", which follows the host, so a lock made on another platform pins that platform's artifact");
+            }
             Set<String> edgeExcl = modulesOf(dep.exclusions());
             String edgeVersion = dep.version().trim();
             String declared = VersionSelectors.looksLikeMavenRange(edgeVersion) ? null : edgeVersion;

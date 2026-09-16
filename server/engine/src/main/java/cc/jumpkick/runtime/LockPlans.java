@@ -299,6 +299,12 @@ public final class LockPlans {
                 ctx.warn("nearest-wins", line);
                 observer.onOverride(line);
             }
+
+            @Override
+            public void onNote(String line) {
+                ctx.warn("lock-note", line);
+                observer.onNote(line);
+            }
         };
     }
 
