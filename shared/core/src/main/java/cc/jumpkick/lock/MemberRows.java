@@ -37,15 +37,15 @@ public final class MemberRows {
     }
 
     /**
-     * {@code lock} as the module at {@code moduleDir} reads it: narrowed to that member's rows when
-     * the lock is a workspace's under {@code lockDir} and the module is one of its members, the
-     * lock itself when the module is the lock's own directory or the lock carries no partition.
+     * {@code lock}, read from {@code lockFile}, as the module at {@code moduleDir} reads it: narrowed
+     * to that member's rows when the lock is a workspace's and the module is one of its members,
+     * the lock itself when the module is the lock's own directory or the lock carries no partition.
      */
-    public static Lockfile view(Lockfile lock, Path lockDir, Path moduleDir) {
+    public static Lockfile view(Lockfile lock, Path lockFile, Path moduleDir) {
         if (!anyPartition(lock.artifacts())) return lock;
-        Path root = lockDir.toAbsolutePath().normalize();
+        Path root = lockFile.toAbsolutePath().normalize().getParent();
         Path module = moduleDir.toAbsolutePath().normalize();
-        if (root.equals(module) || !module.startsWith(root)) return lock;
+        if (root == null || root.equals(module) || !module.startsWith(root)) return lock;
         return lock.forMember(root.relativize(module).toString().replace('\\', '/'));
     }
 

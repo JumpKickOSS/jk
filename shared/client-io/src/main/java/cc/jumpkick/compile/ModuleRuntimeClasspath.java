@@ -78,7 +78,7 @@ public final class ModuleRuntimeClasspath {
             }
             return depJars;
         }
-        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile.getParent(), moduleDir);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
 
