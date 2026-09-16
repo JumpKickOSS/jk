@@ -698,9 +698,9 @@ public final class PluginBuild {
      * is NOT included — the plugin adds {@code exec.classesDir()} itself.
      *
      * <p>{@code cas} is the planner's artifact store, the one {@code resolve-deps} synced into.
-     * Every checksummed row of the module's lock must be on disk there; a missing one fails the
-     * step naming the row, as the compile classpaths do, so the runtime closure a step or packager
-     * ships is never silently short of a jar.
+     * Every checksummed row of the module's lock, and of each sibling's own lock, must be on disk
+     * there; a missing one fails the step naming the row, as the compile classpaths do, so the
+     * runtime closure a step or packager ships is never silently short of a jar.
      */
     public static List<Path> productionClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
@@ -709,27 +709,27 @@ public final class PluginBuild {
         if (Files.exists(lockFile)) {
             classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true));
         }
-        try {
-            var siblings = WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-            for (Path jar : siblings.jars()) {
-                if (!classpath.contains(jar)) classpath.add(jar);
+        WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project);
+        for (Path jar : siblings.jars()) {
+            if (!classpath.contains(jar)) classpath.add(jar);
+        }
+        for (Path sibLock : siblings.siblingLockfiles()) {
+            var sib = LockfileReader.read(sibLock);
+            for (Path pth : resolver.classpathFor(sib, ClasspathResolver.RUNTIME, true)) {
+                if (!classpath.contains(pth)) classpath.add(pth);
             }
-            for (Path sibLock : siblings.siblingLockfiles()) {
-                try {
-                    var sib = LockfileReader.read(sibLock);
-                    for (Path pth : resolver.classpathFor(sib, ClasspathResolver.RUNTIME, true)) {
-                        if (!classpath.contains(pth)) classpath.add(pth);
-                    }
-                } catch (Exception e) {
-                    /* best-effort, mirrors shadow packaging */
-                    Log.debug("sdkPins: best-effort, mirrors shadow packaging", e);
-                }
-            }
-        } catch (Exception e) {
-            /* no workspace — fine */
-            Log.debug("sdkPins: no workspace", e);
         }
         return classpath;
+    }
+
+    /** The MAIN/EXPORT workspace siblings of {@code projectDir}; a module outside any workspace has none. */
+    private static WorkspaceClasspath.Result siblingsOrNone(Path projectDir, JkBuild project) {
+        try {
+            return WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+        } catch (IOException | RuntimeException e) {
+            Log.debug("productionClasspath: no workspace", e);
+            return new WorkspaceClasspath.Result(List.of(), List.of());
+        }
     }
 
     /**

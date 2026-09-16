@@ -238,6 +238,51 @@ class ClasspathAfterSyncTest {
         assertThat(ctx.errors).anyMatch(e -> e.contains("test sibling not built") && e.contains("fixtures"));
     }
 
+    /**
+     * A sibling's own lock is judged like this module's: a row whose file has left the store fails
+     * the classpaths by name, in the same words, instead of the whole sibling lock being skipped and
+     * the compile or the packaged closure running short of a jar.
+     */
+    @Test
+    void a_sibling_lock_row_that_is_not_on_disk_fails_by_name(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Workspace ws = twoModules(tmp, "");
+        Files.createDirectories(ws.libLayout.classesDir());
+        Cas cas = new Cas(store);
+        Path siblingLock = ws.root.resolve("jk-lock.toml");
+        LockfileWriter.write(
+                new Lockfile(
+                        Lockfile.CURRENT_VERSION,
+                        "jk test",
+                        Lockfile.RESOLUTION_ALGORITHM,
+                        List.of(materialized(tmp, store, "com.foo:gone", "2.0"))),
+                siblingLock);
+        JkBuild app = JkBuildParser.parse(ws.app.resolve("jk.toml"));
+        Path noOwnLock = ws.app.resolve("jk-lock.toml");
+
+        StashContext whole = ws.context();
+        PlannerSetup.publishClasspaths(whole, ws.inputs(store, false), cas, new PluginBuild.StepTools());
+        assertThat(whole.require(BuildPlanner.CLASSPATH))
+                .as("the sibling lock's row rides the compile classpath while its jar is on disk")
+                .anyMatch(p -> p.getFileName().toString().equals("gone-2.0.jar"));
+        assertThat(PluginBuild.productionClasspath(ws.app, cas, noOwnLock, app))
+                .anyMatch(p -> p.getFileName().toString().equals("gone-2.0.jar"));
+
+        Files.delete(store.resolve("repos/central/com/foo/gone/2.0/gone-2.0.jar"));
+
+        StashContext ctx = ws.context();
+        assertThatThrownBy(() ->
+                        PlannerSetup.publishClasspaths(ctx, ws.inputs(store, false), cas, new PluginBuild.StepTools()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:gone:2.0")
+                .hasMessageContaining("not on disk after sync");
+        assertThatThrownBy(() -> PluginBuild.productionClasspath(ws.app, cas, noOwnLock, app))
+                .as("the runtime classpath a step or packager ships is judged the same way")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:gone:2.0")
+                .hasMessageContaining("not on disk after sync");
+    }
+
     /** {@code lib} with one Java source and {@code app} depending on it, plus {@code appExtra} manifest text. */
     private static Workspace twoModules(Path tmp, String appExtra) throws Exception {
         Path ws = Files.createDirectories(tmp.resolve("ws"));
