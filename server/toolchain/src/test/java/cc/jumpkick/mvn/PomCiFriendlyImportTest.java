@@ -111,7 +111,8 @@ class PomCiFriendlyImportTest {
                 .isEmpty();
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
-                .anyMatch(m -> m.startsWith("[core] `<dependencyManagement>` imports the sibling BOM org.demo:bom"));
+                .anyMatch(m ->
+                        m.startsWith("[core] `<dependencyManagement>` imports the reactor BOM `bom` (org.demo:bom)"));
     }
 
     @Test

@@ -107,10 +107,13 @@ different groups (thingsboard's `common/edqs` and `edqs`) are both modules — e
 own `target/<path>/` — and the report names them: a Tier-2 row when no member depends on the name,
 a Tier-3 row naming both paths and the dependents when one does, since a workspace edge is spelled
 by module name alone and `edqs.workspace = true` cannot pick one of them; rename one module. A
-sibling answers as a parent and as an `import`-scope BOM before any repository is asked, so a
-`dependencyManagement` that imports a
-sibling BOM is applied to the declared dependencies and the BOM is not written as a `[platform]`
-entry (a workspace module is not a published BOM; the row says so). CI-friendly versions —
+sibling answers as a parent and as an `import`-scope BOM before any repository is asked. A BOM
+leaf — packaging `pom`, no `<modules>`, a `<dependencyManagement>` table and nothing else of its
+own — is not a workspace module: a `dependencyManagement` that imports it is applied to the
+declared dependencies and the BOM is not written as a `[platform]` row (the lock fetches a BOM from
+a repository, which a reactor BOM is not in; the row on each importing member says so), and a BOM
+no member imports is one row. A `pom`-packaged leaf with plugins of its own stays a module.
+CI-friendly versions —
 `${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
 `<properties>`, which is where Maven reads them without `-D`; a placeholder no POM defines is
 written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that lives only in

@@ -16,7 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * What a reactor's identities become in a workspace: two leaves sharing an artifactId across groups
- * are reported, Tier 3 when a member's edge would be ambiguous.
+ * are reported (Tier 3 when a member's edge would be ambiguous), and a BOM leaf is the row on the
+ * members that import it rather than a source-less module.
  */
 class PomReactorIdentityImportTest {
 
@@ -70,6 +71,117 @@ class PomReactorIdentityImportTest {
                 .anySatisfy(m -> assertThat(m)
                         .contains("`common/edqs` and `edqs` both carry the name `edqs`")
                         .contains("nothing is ambiguous"));
+    }
+
+    @Test
+    void a_bom_leaf_is_a_row_on_the_members_that_import_it_and_not_a_module(@TempDir Path root) throws Exception {
+        write(root, "pom.xml", parent(List.of("bom", "core", "tools", "docker")));
+        write(root, "bom/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.tb</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>4.4.0</version>
+                  </parent>
+                  <artifactId>tb-bom</artifactId>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>guava</artifactId>
+                        <version>33.4.8-jre</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        write(root, "core/pom.xml", leaf("core", null, """
+                <dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.tb</groupId>
+                      <artifactId>tb-bom</artifactId>
+                      <version>4.4.0</version>
+                      <type>pom</type>
+                      <scope>import</scope>
+                    </dependency>
+                  </dependencies>
+                </dependencyManagement>
+                <dependencies>
+                  <dependency>
+                    <groupId>com.google.guava</groupId>
+                    <artifactId>guava</artifactId>
+                  </dependency>
+                </dependencies>
+                """));
+        write(root, "tools/pom.xml", leaf("tools", null, ""));
+        // A pom-packaged leaf that does work of its own (a plugin) is a module, not a BOM.
+        write(root, "docker/pom.xml", leaf("docker", null, """
+                <packaging>pom</packaging>
+                <build>
+                  <plugins>
+                    <plugin>
+                      <groupId>org.apache.maven.plugins</groupId>
+                      <artifactId>maven-antrun-plugin</artifactId>
+                      <version>3.1.0</version>
+                    </plugin>
+                  </plugins>
+                </build>
+                """));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(requireNonNull(result.root().workspace()).modules()).containsExactly("core", "tools", "docker");
+        JkBuild core = requireNonNull(result.modules().get("core"));
+        assertThat(core.dependencies().of(Scope.PLATFORM))
+                .as("no [platform] row for a reactor BOM")
+                .isEmpty();
+        assertThat(core.dependencies().of(Scope.MAIN))
+                .singleElement()
+                .satisfies(d -> assertThat(d.version().toString()).contains("33.4.8-jre"));
+        assertThat(result.report().hasErrors()).isFalse();
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(
+                        m -> assertThat(m).startsWith("[core] `<dependencyManagement>` imports the reactor BOM `bom`"));
+    }
+
+    @Test
+    void a_bom_leaf_nothing_imports_is_one_row_and_still_not_a_module(@TempDir Path root) throws Exception {
+        write(root, "pom.xml", parent(List.of("bom", "core")));
+        write(root, "bom/pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.tb</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>4.4.0</version>
+                  </parent>
+                  <artifactId>tb-bom</artifactId>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>guava</artifactId>
+                        <version>33.4.8-jre</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        write(root, "core/pom.xml", leaf("core", null, ""));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(requireNonNull(result.root().workspace()).modules()).containsExactly("core");
+        assertThat(result.report().hasErrors()).isFalse();
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(
+                        m -> assertThat(m).startsWith("`bom` is a BOM").contains("no module of the reactor imports"));
     }
 
     private static String parent(List<String> modules) {
