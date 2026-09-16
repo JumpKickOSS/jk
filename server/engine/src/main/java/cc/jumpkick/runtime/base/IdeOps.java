@@ -371,7 +371,7 @@ public final class IdeOps {
     }
 
     /** The resolved JDK pin stamped in the workspace {@code jk-lock.toml}, or null. */
-    private static Lockfile.@Nullable JdkPin readLockJdk(Path moduleDir) {
+    private static @Nullable JdkPin readLockJdk(Path moduleDir) {
         Path lf = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lf)) return null;
         try {

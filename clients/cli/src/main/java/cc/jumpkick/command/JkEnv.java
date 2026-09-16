@@ -9,7 +9,7 @@ import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.LockPinMatch;
-import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.ToolchainPins;
 import java.io.IOException;
@@ -142,7 +142,7 @@ public final class JkEnv {
      * GraalVM". Empty when no GraalVM is installed. An unsatisfied lock pin is a floor: later
      * defaults must still meet it.
      */
-    private Optional<Path> resolveGraalHome(@Nullable String projectGraalSpec, Lockfile.@Nullable GraalPin lockGraal) {
+    private Optional<Path> resolveGraalHome(@Nullable String projectGraalSpec, @Nullable GraalPin lockGraal) {
         for (String spec : new String[] {System.getenv("JK_GRAAL"), projectGraalSpec}) {
             if (spec == null || spec.isBlank()) continue;
             if (spec.trim().equalsIgnoreCase("native")) {

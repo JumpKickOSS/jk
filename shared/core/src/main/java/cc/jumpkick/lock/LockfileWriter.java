@@ -287,7 +287,7 @@ public final class LockfileWriter {
      * One toolchain table. Each axis is written on exactly one side — a required vendor makes the
      * suggested one noise — and a blank field is left out rather than written empty.
      */
-    private static void writeToolchain(StringBuilder out, String table, Lockfile.@Nullable ToolchainPin pin) {
+    private static void writeToolchain(StringBuilder out, String table, @Nullable ToolchainPin pin) {
         if (pin == null || pin.isEmpty()) return;
         out.append('\n').append('[').append(table).append(']').append('\n');
         field(out, "suggested-vendor", pin.suggestedVendor());

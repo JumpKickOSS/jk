@@ -7,7 +7,6 @@ import cc.jumpkick.cli.run.ToolchainInstalls;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.wire.protocol.ProjectInfo;
@@ -51,7 +50,7 @@ public final class JdkPreflight {
             Path dir,
             @Nullable String jdkSpec,
             int javaRelease,
-            Lockfile.@Nullable JdkPin lockJdk,
+            @Nullable JdkPin lockJdk,
             JdkEnsure.Pending pending) {}
 
     private JdkPreflight() {}
@@ -167,7 +166,7 @@ public final class JdkPreflight {
      * The lock's {@code [jdk]} pin, or null when there is no lock or it does not parse: a lock the
      * engine will refuse is the engine's error to report, structured and once, not this walk's.
      */
-    private static Lockfile.@Nullable JdkPin lockJdkPin(Path dir) {
+    private static @Nullable JdkPin lockJdkPin(Path dir) {
         Path lf = LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lf)) return null;
         try {
