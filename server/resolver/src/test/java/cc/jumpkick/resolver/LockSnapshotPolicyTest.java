@@ -27,7 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A {@code -SNAPSHOT} dependency resolves from a repository that serves snapshots, or the refusal
- * names the repositories that were asked and their policy.
+ * names the repositories that were asked and their policy; a snapshot-only repository never
+ * supplies a floating root such as the injected JUnit Platform launcher.
  */
 class LockSnapshotPolicyTest {
 
@@ -82,6 +83,23 @@ class LockSnapshotPolicyTest {
                 .isZero();
     }
 
+    @Test
+    void the_injected_launcher_resolves_from_a_release_repository_past_a_snapshot_only_one(@TempDir Path dir)
+            throws Exception {
+        RepoGroup repos = new RepoGroup(List.of(snapshotsRepo(dir, false), centralRepo(dir)));
+        Lockfile lock =
+                new LockOrchestrator(repos).lock(testProject("org.junit.jupiter:junit-jupiter", "6.1.0"), "test");
+
+        Lockfile.Artifact launcher = lock.artifacts().stream()
+                .filter(a -> a.name().startsWith("org.junit.platform:junit-platform-launcher"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(launcher.version()).isEqualTo("6.1.0");
+        assertThat(launcher.source()).startsWith("central+");
+        assertThat(snapshots.requestsFor(MavenStub.metadataPath("org.junit.platform", "junit-platform-launcher")))
+                .as("a snapshot-only repository is not asked for a release catalog")
+                .isZero();
+    }
 
     private MavenRepo centralRepo(Path dir) {
         return new MavenRepo("central", central.base(), new Http(), new Cas(dir.resolve("cache")))
