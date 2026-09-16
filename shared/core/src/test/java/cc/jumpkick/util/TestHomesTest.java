@@ -2,12 +2,14 @@
 package cc.jumpkick.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -154,6 +156,55 @@ class TestHomesTest {
         assertThat(launching).isDirectory();
     }
 
+    /**
+     * A running suite reads its jars out of a held slot, however long ago the slot was stamped: the
+     * byte cap takes the unheld neighbour instead, and the slot is reclaimable once the hold is
+     * released.
+     */
+    @Test
+    void over_the_byte_cap_a_slot_held_by_a_live_launch_is_kept_until_released(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path running = slotWithBytes(root, "aaaaaaaaaaaa", 100);
+        Path idle = slotWithBytes(root, "bbbbbbbbbbbb", 100);
+        age(running.resolve(".used-at"), Duration.ofDays(3));
+        age(idle.resolve(".used-at"), Duration.ofDays(2));
+
+        try (TestHomes.Hold held = TestHomes.hold(running)) {
+            assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 150))
+                    .isEqualTo(1);
+            assertThat(running).isDirectory();
+            assertThat(idle).doesNotExist();
+        }
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 50)).isEqualTo(1);
+        assertThat(running).doesNotExist();
+    }
+
+    /** A hold left by a process that has exited holds nothing: the slot is reclaimed and the hold with it. */
+    @Test
+    void a_slot_whose_hold_names_a_dead_process_is_reclaimable(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path abandoned = slotWithBytes(root, "aaaaaaaaaaaa", 100);
+        age(abandoned.resolve(".used-at"), Duration.ofDays(2));
+        Path holds = Files.createDirectories(abandoned.resolve(".holds"));
+        Files.writeString(holds.resolve(deadPid() + "-1"), deadPid() + " 0\n");
+
+        assertThat(TestHomes.held(abandoned)).isFalse();
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), 50)).isEqualTo(1);
+        assertThat(abandoned).doesNotExist();
+    }
+
+    /** A pid the OS has reused since the hold was written belongs to another process. */
+    @Test
+    void a_hold_whose_pid_started_at_another_time_is_stale() {
+        ProcessHandle self = ProcessHandle.current();
+        assumeTrue(self.info().startInstant().isPresent());
+        long started = self.info().startInstant().orElseThrow().toEpochMilli();
+
+        assertThat(TestHomes.isLive(self.pid(), started)).isTrue();
+        assertThat(TestHomes.isLive(self.pid(), started - Duration.ofMinutes(5).toMillis()))
+                .isFalse();
+    }
+
     /** The workspace's shared m2 lives in a slot with no home; stamped, it reads as in use, not as a leftover. */
     @Test
     void a_slot_prepared_without_a_home_is_stamped(@TempDir Path tmp) throws Exception {
@@ -196,6 +247,14 @@ class TestHomesTest {
                 .as("a clock moved past the window reaps it; no file timestamps were touched")
                 .isEqualTo(1);
         assertThat(old).doesNotExist();
+    }
+
+    /** A pid no process has: counted down from the top of the range until the OS knows nothing by it. */
+    private static long deadPid() {
+        return LongStream.iterate(4_000_000L, pid -> pid - 1)
+                .filter(pid -> ProcessHandle.of(pid).isEmpty())
+                .findFirst()
+                .orElseThrow();
     }
 
     private static Path slotWithBytes(Path root, String key, int bytes) throws Exception {

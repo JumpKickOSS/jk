@@ -54,6 +54,7 @@ import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestProgressListener;
 import cc.jumpkick.test.TestWorkers;
+import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -880,7 +881,10 @@ public final class PlannerTest {
         }
     }
 
-    /** Runs the suite; the caller holds the serial-test gate when the session asks for one. */
+    /**
+     * Runs the suite; the caller holds the serial-test gate when the session asks for one. The
+     * module's sandbox slots are held for the run so no reaper takes the jars the fork reads.
+     */
     private static TestSummary launch(
             TaskContext ctx,
             BuildPlanner.Inputs in,
@@ -891,7 +895,7 @@ public final class PlannerTest {
             WorkerEnv testEnv,
             TestProgressListener listener)
             throws Exception {
-        try {
+        try (TestHomes.Hold held = TestEnv.holdSandboxes(in.dir())) {
             return launcher.run(
                     ctx.require(JAVA_HOME),
                     ctx.require(TEST_CLASSES),
