@@ -44,6 +44,23 @@ cached step — in the order set by [the 1.0 plan](../contributors/plan-1.0.md).
 Framework how-tos: [Frameworks](frameworks.md). Generators: [Generate](generate.md). Format:
 [Format](format.md).
 
+## More than one plugin in a module
+
+A module runs every plugin whose table it declares; each plugin with a code layer forks its own
+worker, and their steps join one plan. What a module may hold is decided by capability:
+
+| Capability | Per module | Examples |
+|---|---|---|
+| Steps and generators | any number | `[openapi]`, `[generate]`, `[protobuf]` beside a framework table |
+| Packager replacing the main artifact | exactly one at most | `[spring-boot]`, `[quarkus]`, `[grails]`, `[android]` |
+| Packager writing beside the main artifact | any number | `[minified]` |
+
+So `[openapi]` plus `[spring-boot]` in one module builds — the generated interface compiles into
+the Boot jar ([examples/openapi-spring](examples/openapi-spring/)) — while `[spring-boot]` plus
+`[quarkus]` is refused by name: two jars would each claim to be the module's one output. Step
+and command names are one namespace across a module's plugins; two plugins registering the same
+name is refused the same way.
+
 ## Third-party and vendored plugins
 
 The plugin SDK, `cc.jumpkick:jk-plugin-sdk`, is a published coordinate: every jk release ships it

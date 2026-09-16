@@ -169,7 +169,7 @@ class ThirdPartyPluginTest {
         build = JkBuildParser.reparse(project.resolve("jk.toml"));
 
         // 4. Untrusted: the engine refuses to fork the worker, naming the remedy.
-        var active = PluginBuild.activeCodePlugin(build, project).orElseThrow();
+        var active = ActivePlugins.of(build, project).getFirst();
         Path spec = Files.writeString(tmp.resolve("noop.spec"), "{\"t\":\"op\",\"op\":\"describe\"}\n");
         assertThatThrownBy(() -> PluginBuild.runWorker(active, cache, spec, WorkerEnv.strict(), null))
                 .isInstanceOf(IOException.class)

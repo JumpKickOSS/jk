@@ -195,7 +195,7 @@ class ThirdPartyPackagerForecastTest {
         assertThat(cold.text()).isEqualTo("repackage · " + PACKAGER);
 
         // The record a live package-jar leaves behind, keyed by the packager's own token bag.
-        Path artifact = PluginBuild.mainArtifactPath(layout, owner.active());
+        Path artifact = PluginBuild.mainArtifactPath(layout, requireNonNull(owner.packager()));
         assertThat(artifact.getFileName().toString()).endsWith(".hlo");
         var keyed = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
                         project,
@@ -208,7 +208,7 @@ class ThirdPartyPackagerForecastTest {
                         layout.classesDir(),
                         artifact,
                         TaskForecaster.forecastJavaHome(proj, project, LockfileReader.read(lockFile)),
-                        owner.active(),
+                        requireNonNull(owner.packager()),
                         owner.decls(),
                         Map.of()))
                 .keyed();

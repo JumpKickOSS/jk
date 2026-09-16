@@ -59,14 +59,14 @@ what `options` says.
 The worked example: [`examples/openapi-spring`](examples/openapi-spring/) — a Boot controller
 implementing the generated interface.
 
-## One plugin worker per module
+## Beside a framework table
 
-A module runs one plugin worker. `[generate]` or a preset table is that worker's table, so it
-cannot share a module with `[spring-boot]`, `[quarkus]`, `[micronaut]`, `[protobuf]` or
-`[android]` — the build refuses the pair by name rather than skipping the generator. Put the
-generator in its own module (an `api` module the service depends on), or in a Boot module drop
-the `[spring-boot]` table for the BOM as a platform line, as
-[`examples/openapi-spring`](examples/openapi-spring/) does.
+A module runs every plugin whose table it declares, each in its own worker, so `[generate]` or a
+preset sits beside `[spring-boot]`, `[quarkus]`, `[micronaut]`, `[protobuf]` or `[android]` in one
+module: the generator contributes its step, the framework packages the artifact.
+[`examples/openapi-spring`](examples/openapi-spring/) is that shape. What a module cannot hold is
+two tables that both package its main artifact (`[spring-boot]` and `[quarkus]`); the build
+refuses that pair by name ([Using plugins](plugins.md#more-than-one-plugin-in-a-module)).
 
 ## What the lock pins
 

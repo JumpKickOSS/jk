@@ -531,10 +531,11 @@ public final class PackagingKeys {
             Path lockFile,
             Cas cas,
             Path javaHome,
-            PackagingKeys.@Nullable Owner plugin,
+            ActivePlugins.@Nullable Declared plugin,
             ActionCache actionCache) {
-        PackagingKeys.Owner owner = Objects.requireNonNull(plugin, "plugin owner");
-        Path artifact = PluginBuild.mainArtifactPath(layout, owner.active());
+        ActivePlugins.Declared owner = Objects.requireNonNull(plugin, "plugin owner");
+        PluginBuild.Active packagerPlugin = Objects.requireNonNull(owner.packager(), "packager plugin");
+        Path artifact = PluginBuild.mainArtifactPath(layout, packagerPlugin);
         String packager =
                 Objects.requireNonNull(owner.decls().packager(), "packager").name();
         try {
@@ -549,8 +550,8 @@ public final class PackagingKeys {
                             layout.classesDir(),
                             artifact,
                             javaHome,
-                            plugin.active(),
-                            plugin.decls(),
+                            packagerPlugin,
+                            owner.decls(),
                             Map.of())) // secrets: absent — see the javadoc
                     .keyed();
             if (TaskForecaster.present(actionCache, keyed.key())) {
@@ -563,30 +564,19 @@ public final class PackagingKeys {
         return new TaskForecast.Task(TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · " + packager, null);
     }
 
-    /** A module's active code plugin and its declarations; null {@code decls} means none declared. */
-    public record Owner(PluginBuild.Active active, PluginBuild.Declarations decls) {}
-
-    /** The active code plugin with its declarations, or null when the module has none. */
-    static @Nullable Owner pluginFor(JkBuild project, BuildLayout layout, Path cache)
+    /** The module's active code plugins with their merged declarations, or null when it has none. */
+    static ActivePlugins.@Nullable Declared pluginFor(JkBuild project, BuildLayout layout, Path cache)
             throws IOException, InterruptedException {
-        var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
-        if (active.isEmpty()) return null;
-        return new Owner(
-                active.get(),
-                PluginBuild.declarations(active.get(), project, layout.moduleRoot(), cache, layout.moduleTargetDir()));
+        return ActivePlugins.declared(project, layout.moduleRoot(), cache, layout.moduleTargetDir());
     }
 
     /**
-     * Whether the plugin packs this module's main artifact instead of jk's {@code JarPackager}.
+     * Whether a plugin packs this module's main artifact instead of jk's {@code JarPackager}.
      * This is {@code PlannerPackage.packageJarStep}'s own dispatch, spelled once so the forecast
-     * asks exactly the question the build answers — the gap survived because the
-     * forecast had no way to take the branch and the guard's exemption said so accurately.
+     * asks exactly the question the build answers.
      */
-    static boolean ownsPackaging(@Nullable Owner owner) {
-        return owner != null
-                && owner.decls() != null
-                && owner.decls().packager() != null
-                && PlannerPackage.ownsMainArtifact(owner.active());
+    static boolean ownsPackaging(ActivePlugins.@Nullable Declared plugins) {
+        return plugins != null && plugins.packager() != null && plugins.decls().packager() != null;
     }
 
     private static String orEmpty(@Nullable String s) {

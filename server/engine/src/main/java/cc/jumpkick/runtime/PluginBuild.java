@@ -78,42 +78,16 @@ public final class PluginBuild {
     private PluginBuild() {}
 
     /**
-     * An installed plugin with a code layer, active on this project (owns a declared table).
-     * {@code declaration} is the matching {@code [plugins]} entry for third-party plugins and
-     * null for built-ins — it carries the coordinate the trust gate and jar lookup key on.
+     * An installed plugin with a code layer, active on this project (owns a declared table); the
+     * module's set is {@link ActivePlugins#of}. {@code declaration} is the matching
+     * {@code [plugins]} entry for third-party plugins and null for built-ins — it carries the
+     * coordinate the trust gate and jar lookup key on.
      */
     public record Active(
             PluginDescriptor manifest,
             PluginConfig config,
             Path moduleDir,
             @Nullable PluginDeclaration declaration) {}
-
-    /**
-     * The module's one code plugin. A module runs a single worker: the first installed manifest
-     * with a {@code [code]} layer whose table the module declares. A second code plugin whose steps
-     * would be skipped is refused here rather than silently dropped — the generated sources it
-     * promised would otherwise surface as a compile error that names nothing.
-     */
-    public static Optional<Active> activeCodePlugin(JkBuild project, Path moduleDir) {
-        Active first = null;
-        for (PluginDescriptor m : PluginTableRegistry.manifestsFor(moduleDir, project.plugins())) {
-            if (m.code() == null || project.pluginConfig(m.id()).isEmpty()) continue;
-            if (first == null) {
-                PluginDeclaration declaration = PluginDescriptorOps.declarationOf(moduleDir, project, m.id())
-                        .orElse(null);
-                first = new Active(m, project.pluginConfig(m.id()).get(), moduleDir, declaration);
-                continue;
-            }
-            if (m.packaging() == null || first.manifest().packaging() == null) {
-                PluginDescriptor stepPlugin = m.packaging() == null ? m : first.manifest();
-                PluginDescriptor other = stepPlugin == m ? first.manifest() : m;
-                throw new IllegalStateException("[" + stepPlugin.table() + "] cannot run beside [" + other.table()
-                        + "] in one module: a module runs one plugin worker, so its steps would never run."
-                        + " Move [" + stepPlugin.table() + "] to its own module and depend on it");
-            }
-        }
-        return Optional.ofNullable(first);
-    }
 
     /** The active packager's static artifact descriptor, or empty — manifest data, no fork. */
     public static Optional<PluginDescriptor.Packaging> shape(JkBuild project, Path moduleDir) {
@@ -188,7 +162,7 @@ public final class PluginBuild {
     /** The registered packager, as declared. */
     /**
      * The {@code [code]} table of a plugin that has one. Every caller here has already established
-     * that: a code plugin is precisely a manifest with this table, and {@code activeCodePlugin}
+     * that: a code plugin is precisely a manifest with this table, and {@link ActivePlugins#of}
      * skips the ones without it.
      */
     static PluginDescriptor.Code code(Active active) {

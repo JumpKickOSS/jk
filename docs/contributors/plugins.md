@@ -260,6 +260,22 @@ spec, and the engine reads worker replies through a bounded line reader. Prefer 
 hand-rolled protocols. A plugin's `jk-compat = ">=x.y"` floor is enforced at manifest load —
 too-old jk refuses the plugin with an upgrade error.
 
+## Active plugins per module
+
+`ActivePlugins.of(project, moduleDir)` is the selection rule: every installed manifest with a
+`[code]` layer whose table the module declares is active, in registry order, and each forks its
+own worker. Capability bounds the count of a kind — any number of step contributors; at most one
+plugin whose `[packaging]` replaces the main artifact (`main-artifact` unset or `true`), a second
+is refused by name; any number whose packaging writes beside it (`main-artifact = false`, the
+minifier). `ActivePlugins.declared` runs the describe round for each and merges the replies into
+one `Declarations`: every step with the plugin that owns it (`Declared.ownerOf` is what the plan
+forks), the main-artifact packager's `packager`, every command with its owner. Step and command
+names are one namespace across the module's plugins; a collision is a refusal, never a priority.
+The planner reads the merged view everywhere — compile folds in every plugin's generated
+sources, package-jar dispatches to the one packager, the native tail asks the packager plugin
+for `native-image-sources` — and a packager that writes beside the main artifact keeps its own
+declarations for its own step.
+
 ## Tasks and transforms
 
 Plugins contribute **tasks** into the build plan (codegen before compile, class transforms
@@ -371,10 +387,10 @@ contributes = "sources"                                      # sources | resourc
   through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the
   rest is the failure message's tail.
 - **Not yet**: `contributes = "test-sources"` — the engine has no test-source contribution lane;
-  the entry is refused with that reason. And a module runs **one** code plugin
-  (`PluginBuild.activeCodePlugin`): a generator table beside a framework table in the same module
-  is refused by name; lifting that to a list of active plugins is the follow-up that lets
-  `[openapi]` sit in a `[spring-boot]` module.
+  the entry is refused with that reason.
+- **Beside a framework**: a module's active code plugins are a list (`ActivePlugins.of`), so a
+  generator table sits beside `[spring-boot]` or `[quarkus]` in one module; see
+  [Active plugins per module](#active-plugins-per-module).
 
 ### Many tables: presets over the worker
 

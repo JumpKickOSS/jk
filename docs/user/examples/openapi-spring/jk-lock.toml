@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.7"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.10"
-manifests-sha256 = "df00fdd26668f8dd051e0b2173fd842c356cde180153d0b93df9bd6bed6fd6da"
+manifests-sha256 = "cab111ab3aa0beeda79324acaf70749f813f53d0058c90c3f7c024f81f6ae47e"
 project-id = "98eca0f1682d6b46793dd13e694ea38b"
 
 [jdk]
@@ -843,6 +843,10 @@ deps = [
 
 [[plugin]]
 coordinate = "cc.jumpkick:jk-openapi"
+version    = "0.13.7"
+
+[[plugin]]
+coordinate = "cc.jumpkick:jk-spring-boot"
 version    = "0.13.7"
 
 [[module]]

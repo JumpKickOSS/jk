@@ -169,16 +169,19 @@ public final class PlannerTails {
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
-                    var active = PluginBuild.activeCodePlugin(project, layout.moduleRoot());
-                    if (active.isEmpty()) {
-                        throw new IllegalStateException("[application] minified = true requires the minified plugin"
-                                + " — add a [minified] table or remove `minified`");
-                    }
+                    // The minifier packages beside the main artifact, so among the module's plugins
+                    // it is the one with a [packaging] table that does not replace that artifact.
+                    PluginBuild.Active minifier = ActivePlugins.of(project, layout.moduleRoot()).stream()
+                            .filter(a -> a.manifest().packaging() != null && !ActivePlugins.packagesMainArtifact(a))
+                            .findFirst()
+                            .orElseThrow(() -> new IllegalStateException(
+                                    "[application] minified = true requires the minified plugin"
+                                            + " — add a [minified] table or remove `minified`"));
                     PluginBuild.Declarations decls = PluginBuild.declarations(
-                            active.get(), project, layout.moduleRoot(), in.cache(), layout.moduleTargetDir());
+                            minifier, project, layout.moduleRoot(), in.cache(), layout.moduleTargetDir());
                     if (decls.packager() == null) {
-                        throw new IllegalStateException("[application] minified = true, but the active plugin `"
-                                + active.get().manifest().id() + "` declares no packager");
+                        throw new IllegalStateException("[application] minified = true, but the plugin `"
+                                + minifier.manifest().id() + "` declares no packager");
                     }
                     packagePlugin(
                             ctx,
@@ -188,7 +191,7 @@ public final class PlannerTails {
                             project,
                             ctx.require(MAIN_CLASSES),
                             layout.minifiedJar(),
-                            active.get(),
+                            minifier,
                             decls,
                             Map.of());
                     ctx.progress(1);

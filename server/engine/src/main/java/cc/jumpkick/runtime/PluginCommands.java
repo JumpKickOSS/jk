@@ -59,13 +59,13 @@ public final class PluginCommands {
             }
             project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
                     .build();
-            var active = PluginBuild.activeCodePlugin(project, dir).orElse(null);
-            if (active == null) return PluginCommandReport.notFound();
-
             BuildLayout layout = BuildLayout.of(dir, project);
-            PluginBuild.Declarations decls =
-                    PluginBuild.declarations(active, project, dir, cache, layout.moduleTargetDir());
-            if (decls.command(command) == null) return PluginCommandReport.notFound();
+            ActivePlugins.Declared plugins = ActivePlugins.declared(project, dir, cache, layout.moduleTargetDir());
+            if (plugins == null) return PluginCommandReport.notFound();
+            PluginBuild.CommandDecl declared = plugins.decls().command(command);
+            if (declared == null) return PluginCommandReport.notFound();
+            PluginBuild.Active active = plugins.commandOwners().get(declared.name());
+            if (active == null) return PluginCommandReport.notFound();
 
             Path scratch = layout.moduleTargetDir().resolve("plugin").resolve("command-" + command);
             Files.createDirectories(scratch);
