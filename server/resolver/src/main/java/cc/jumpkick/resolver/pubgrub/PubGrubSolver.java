@@ -710,11 +710,7 @@ public class PubGrubSolver {
                 universes.put(pkg, VersionUniverse.of(pkg, List.of(exact.get())));
                 lazyUniverses.add(pkg);
             } else if (wideUniverses) {
-                List<String> versions = source.expandedVersions(pkg);
-                if (versions.size() > MAX_EXPANDED_VERSIONS) {
-                    versions = List.copyOf(versions.subList(0, MAX_EXPANDED_VERSIONS));
-                }
-                universes.put(pkg, VersionUniverse.of(pkg, versions));
+                universes.put(pkg, VersionUniverse.of(pkg, capExpanded(pkg, source.expandedVersions(pkg))));
             } else {
                 Optional<String> preferred = source.preferredVersion(pkg);
                 if (preferred.isPresent() && positive.contains(preferred.get())) {
@@ -746,14 +742,10 @@ public class PubGrubSolver {
         // Widen from the FULL advertised historyversions is compacted for the
         // happy path, and re-reading it here left MAX_EXPANDED_VERSIONS dead — a range below
         // the compact candidates (or backtracking past them) hard-failed a satisfiable graph.
-        List<String> versions = source.expandedVersions(pkg);
         // Cap long metadata histories. Do not filter against the continuous positive set
         // here: after a failed soft-prefer pin the discrete rebind must still see every advertised
         // candidate the pin was chosen from, or Unavailable(pin) can empty the domain incorrectly.
-        if (versions.size() > MAX_EXPANDED_VERSIONS) {
-            versions = List.copyOf(versions.subList(0, MAX_EXPANDED_VERSIONS));
-        }
-        universes.put(pkg, VersionUniverse.of(pkg, versions));
+        universes.put(pkg, VersionUniverse.of(pkg, capExpanded(pkg, source.expandedVersions(pkg))));
         solution.rebindAfterUniverseExpand(pkg);
         // Prior conflicts may have been artifacts of a singleton/compact candidate list. Expanding
         // invalidates those watermarks so a genuine wider solve can rebuild the same decides.
@@ -775,6 +767,24 @@ public class PubGrubSolver {
 
     /** Max candidates kept after expand (highest-first order already applied by PackageSource). */
     private static final int MAX_EXPANDED_VERSIONS = 48;
+
+    /**
+     * The highest {@value #MAX_EXPANDED_VERSIONS} of {@code versions}, plus every version below
+     * them that something asked for by number: the project's exact pin on {@code pkg} and the
+     * versions POM edges declared. A release deep in a long history is exactly what such a pin
+     * names, and a cap that dropped it would report the pin as matching nothing the repository
+     * advertises.
+     */
+    private List<String> capExpanded(String pkg, List<String> versions) {
+        if (versions.size() <= MAX_EXPANDED_VERSIONS) return versions;
+        Set<String> named = new LinkedHashSet<>(source.declaredVersions(pkg));
+        solution.positiveSet(pkg).asExactSingleton().ifPresent(named::add);
+        List<String> kept = new ArrayList<>(versions.subList(0, MAX_EXPANDED_VERSIONS));
+        for (String v : versions.subList(MAX_EXPANDED_VERSIONS, versions.size())) {
+            if (named.contains(v)) kept.add(v);
+        }
+        return List.copyOf(kept);
+    }
 
     protected void addIncompatibility(Incompatibility inco) {
         clauseAdditions++;
