@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import static cc.jumpkick.mvn.TestImporters.messages;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
@@ -126,5 +127,77 @@ class PomGeneratorImportTest {
 
     private static PomImporter.Result importFixture(Path tempDir, PomImporter.RemoteFile remote) throws IOException {
         return TestImporters.importXml(tempDir, TestImporters.fixture("plugins", "openapi-pom.xml"), remote);
+    }
+
+    /**
+     * jenkins's {@code cli} shape: localizer-maven-plugin generates {@code hudson.cli.client.Messages}
+     * from a resource bundle and build-helper adds the output as a source root. The plugin has no
+     * entry point jk can run, so the module gets a Tier-3 row naming the class, and the output is
+     * not written as an {@code extra-src} root nothing would fill.
+     */
+    @Test
+    void localizer_plugin_is_a_tier_3_row_naming_the_generated_classes(@TempDir Path tempDir) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("project"));
+        Path bundle = Files.createDirectories(project.resolve("src/main/resources/hudson/cli/client"));
+        Files.writeString(bundle.resolve("Messages.properties"), "CLI.Usage=Jenkins CLI\n");
+        Files.writeString(bundle.resolve("Messages_de.properties"), "CLI.Usage=Jenkins-CLI\n");
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.jenkins-ci.main</groupId>
+                  <artifactId>cli</artifactId>
+                  <version>2.583</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jvnet.localizer</groupId>
+                        <artifactId>localizer-maven-plugin</artifactId>
+                        <version>1.31</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>generate</goal></goals>
+                            <configuration>
+                              <fileMask>Messages.properties</fileMask>
+                              <outputDirectory>target/generated-sources/localizer</outputDirectory>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>add-source</goal></goals>
+                            <configuration>
+                              <sources><source>target/generated-sources/localizer</source></sources>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().extraSrc())
+                .as("a root nothing fills is not written")
+                .isEmpty();
+        assertThat(result.report().issues())
+                .filteredOn(i -> i.message().startsWith("`localizer-maven-plugin` generates"))
+                .singleElement()
+                .satisfies(issue -> {
+                    assertThat(issue.severity()).isEqualTo(ImportReport.Severity.ERROR);
+                    assertThat(issue.message())
+                            .contains("`hudson.cli.client.Messages`")
+                            .doesNotContain("Messages_de")
+                            .contains("`target/generated-sources/localizer`")
+                            .contains("jk mvn generate-sources");
+                });
+        assertThat(messages(result))
+                .anyMatch(m -> m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/localizer`, the"
+                        + " localizer plugin's output"))
+                .noneMatch(m -> m.contains("`<plugin>localizer-maven-plugin</plugin>` was not imported"));
     }
 }
