@@ -71,7 +71,10 @@ module is recorded on the lock edge (`<- 2.0.1.MR`) and reported as a warning, n
 `jk import` writes that line for a Maven POM so the imported project resolves as Maven resolved it;
 a transitive with no pin on it keeps the highest-declared rule either way.
 
-**Maven relocations are followed** (`distributionManagement/relocation`).
+**Maven relocations are followed** (`distributionManagement/relocation`). The stub's one edge
+carries the target's version as a floor, like any POM dependency, so a module whose line ended in
+a relocation (`bcprov-ext-jdk18on` → `bcprov-jdk18on`) does not hold the target below what another
+edge needs.
 
 **Ranges in dependency POMs and Gradle module metadata** read in Maven's spelling (`[1.0,2.0)`,
 `(,2.0]`, `[1.0]`) and in the ISO spelling Gradle publishes (`[1.0,2.0[` is exclusive above,

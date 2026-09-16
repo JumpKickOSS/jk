@@ -9,9 +9,11 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
@@ -238,14 +240,18 @@ final class LockfileAssembler {
 
     /**
      * True when this package is not expected to publish a primary artifact: coordinate type
-     * {@code pom}, or POM {@code packaging=pom} (BOM / aggregator).
+     * {@code pom}, POM {@code packaging=pom} (BOM / aggregator), or a relocation stub, whose POM
+     * points at the target and stands beside no jar of its own.
      */
     private static boolean isPomOnlyPackage(Coordinate coord, EffectivePomBuilder pomBuilder) {
         if (coord.type() != null && "pom".equalsIgnoreCase(coord.type())) {
             return true;
         }
         try {
-            return "pom".equalsIgnoreCase(pomBuilder.build(coord).packaging());
+            EffectivePom pom = pomBuilder.build(coord);
+            if ("pom".equalsIgnoreCase(pom.packaging())) return true;
+            Pom.Relocation moved = pom.relocation();
+            return moved != null && moved.redirects(coord);
         } catch (Exception ignored) {
             return false;
         }
