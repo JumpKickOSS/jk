@@ -2,7 +2,6 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.util.List;
 import java.util.Objects;
@@ -67,15 +66,15 @@ record Discovery(
     }
 
     /**
-     * The verdict for a fork that {@link #crashed()}: the same {@code (test run)} failure a crashed
-     * pool worker gets — the exit code and what the JVM printed, or the handler's exception when the
-     * parent ended the conversation — so the summary explains the crash instead of counting zero
-     * tests as passed.
+     * The verdict for a fork that {@link #crashed()}. A conversation the parent's own decoder ended
+     * is the parent's bug and stays a {@code (test run)} row; a fork that exited non-zero with
+     * nothing named is a {@link TestLauncherFailure} — the exit code and what the JVM printed fail
+     * the step, so zero tests are never counted as passed.
      */
-    TestSummary failure(String moduleLabel) {
-        TestFailureInfo row = handler != null
-                ? WorkerFailureRow.discovery(moduleLabel, handler)
-                : new TestFailureInfo(moduleLabel, "", "", "(test run)", "", "test discovery exited " + exit, output);
-        return new TestSummary(1, 0, 1, 0, List.of(row));
+    TestSummary verdict(String moduleLabel) {
+        if (handler != null) {
+            return new TestSummary(1, 0, 1, 0, List.of(WorkerFailureRow.discovery(moduleLabel, handler)));
+        }
+        throw TestLauncherFailure.discovery(moduleLabel, exit, output);
     }
 }

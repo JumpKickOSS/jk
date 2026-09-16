@@ -108,6 +108,45 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_launcher_failure_is_a_failed_step_with_the_runner_output_not_a_red_test() {
+        String message = "test discovery exited 70 before any test ran"
+                + " — TestEngine with ID 'junit-jupiter' failed to discover tests\n"
+                + "engine: junit-jupiter\n\n"
+                + "Two versions of the org.junit.jupiter line on the test classpath:\n"
+                + "  5.0.0: org.junit.jupiter:junit-jupiter-api (declared =5.0.0 in [test-dependencies])\n"
+                + "  6.1.3: org.junit.jupiter:junit-jupiter, org.junit.jupiter:junit-jupiter-engine\n\n"
+                + "Fix: `jk why org.junit.jupiter:junit-jupiter-api` names who asked for each version";
+        BuildRecord.Diag launcher = new BuildRecord.Diag(
+                "error",
+                "/ws/app",
+                "run-tests",
+                "test-launcher",
+                message,
+                "",
+                "org.junit.platform.commons.JUnitException",
+                "com.example:app",
+                "junit-jupiter",
+                "",
+                "",
+                "jk-test-runner: test discovery failed: org.junit.platform.commons.JUnitException: TestEngine"
+                        + " with ID 'junit-jupiter' failed to discover tests\n  caused by: java.lang.NoSuchMethodError");
+        BuildRecord r = record(false, List.of(), List.of(launcher), List.of(task("run-tests", "test", "FAIL", 900)));
+        String md = JkResultsMarkdown.render(r);
+
+        assertThat(md)
+                .contains("- `com.example:app` `run-tests`: test discovery exited 70 before any test ran"
+                        + " — TestEngine with ID 'junit-jupiter' failed to discover tests")
+                .contains("### run-tests — com.example:app")
+                .contains("declared =5.0.0 in [test-dependencies]")
+                .contains("`jk why org.junit.jupiter:junit-jupiter-api`")
+                .contains("jk-test-runner: test discovery failed")
+                .contains("## Failed steps")
+                .doesNotContain("Tests:")
+                .doesNotContain("## Tests")
+                .doesNotContain("(test run)");
+    }
+
+    @Test
     void test_failure_uses_class_method_and_stack() {
         BuildRecord.Diag err = new BuildRecord.Diag(
                 "error",

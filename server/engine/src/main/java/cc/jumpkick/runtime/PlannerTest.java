@@ -50,6 +50,7 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.JUnitLauncher;
+import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestProgressListener;
 import cc.jumpkick.test.TestWorkers;
 import java.io.IOException;
@@ -570,7 +571,18 @@ public final class PlannerTest {
                             launcher.withCoverage(new CoverageAgent(jacoco.agentJar(), coverageExec));
                         }
                         if (affected != null) launcher.withClassNames(affected.classNames());
-                        result = launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
+                        try {
+                            result = launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
+                        } catch (TestLauncherFailure e) {
+                            // The launcher never ran a test: a failed step with the fork's output,
+                            // not a red test — and a red marker, so the next build runs it again.
+                            TestLauncherReport.report(ctx, in.lockFile(), projectUnderTest, e);
+                            if (stampKey != null) {
+                                actionCache.storeWithOutputs(
+                                        testTaskId, stampKey, Map.of(), TestStamp.outcome(0, 0, 0, 1));
+                            }
+                            throw e;
+                        }
                     } finally {
                         if (gated) TEST_GATE.release();
                     }

@@ -327,27 +327,14 @@ final class ResultAggregator {
     }
 
     /**
-     * As {@link #toResult(int)}, attaching {@code crashOutput} (the worker's captured
-     * stdout/stderr) to the synthetic "runner exited" failure so a hard crash with no test events
-     * still explains itself.
+     * As {@link #toResult(int)}. A non-zero exit with no test event at all is a {@link
+     * TestLauncherFailure} carrying {@code crashOutput} (the worker's captured stdout/stderr): the
+     * launcher never ran a test, so the step fails on that instead of counting one red test.
      */
     synchronized TestSummary toResult(int exitCode, String crashOutput) {
         long total = succeeded + failed + skipped;
         if (total == 0 && exitCode != 0) {
-            return new TestSummary(
-                    1,
-                    0,
-                    1,
-                    0,
-                    List.of(new TestFailureInfo(
-                            moduleLabel,
-                            "",
-                            "",
-                            "(test run)",
-                            "",
-                            "runner exited " + exitCode,
-                            crashOutput == null ? "" : crashOutput,
-                            workerId)));
+            throw TestLauncherFailure.runner(moduleLabel, exitCode, crashOutput == null ? "" : crashOutput);
         }
         return new TestSummary(
                 total,

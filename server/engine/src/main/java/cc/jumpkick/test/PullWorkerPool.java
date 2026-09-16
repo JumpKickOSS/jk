@@ -115,8 +115,8 @@ final class PullWorkerPool {
         }
         boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
         if (total == 0 && worstExit != 0 && !handlerFailed) {
-            // No test events but a worker died — surface what the crashed worker(s)
-            // printed (the dropped stderr) instead of a bare "runner exited N".
+            // No test events but a worker died — the launcher failed before any test ran; what
+            // the crashed worker(s) printed (the dropped stderr) is the evidence.
             StringBuilder crash = new StringBuilder();
             for (int i = 0; i < actualWorkers; i++) {
                 if (exits[i] != 0 && !captures.get(i).isEmpty()) {
@@ -124,13 +124,7 @@ final class PullWorkerPool {
                     crash.append(captures.get(i).text());
                 }
             }
-            return new TestSummary(
-                    1,
-                    0,
-                    1,
-                    0,
-                    List.of(new TestFailureInfo(
-                            moduleLabel, "", "", "(test run)", "", "runner exited " + worstExit, crash.toString())));
+            throw TestLauncherFailure.runner(moduleLabel, worstExit, crash.toString());
         }
         // A worker that dies mid-suite while its siblings keep going must not vanish silently:
         // its in-flight class is neither run nor reported, and the suite would go green with a

@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import cc.jumpkick.engine.plugin.PluginProcess;
@@ -376,7 +377,7 @@ class JUnitLauncherAggregatorTest {
         assertThat(discovery.crashed())
                 .as("a list the decoder could not finish reading is not a suite")
                 .isTrue();
-        TestSummary summary = discovery.failure("m");
+        TestSummary summary = discovery.verdict("m");
         assertThat(summary.allPassed()).isFalse();
         assertThat(summary.total()).isEqualTo(1);
         assertThat(summary.failures()).singleElement().satisfies(row -> {
@@ -390,19 +391,6 @@ class JUnitLauncherAggregatorTest {
         });
         // A clean listing with a shutdown blemish keeps its verdict: the list survives a non-zero exit.
         assertThat(new Discovery(List.of("com.acme.ATest"), 1, "").crashed()).isFalse();
-    }
-
-    @Test
-    void non_zero_exit_with_empty_results_reports_a_run_level_failure() {
-        // Worker crashed before emitting any tests — we still want a non-zero
-        // pass/fail signal.
-        var agg = new ResultAggregator();
-        var result = agg.toResult(2);
-        assertThat(result.allPassed()).isFalse();
-        assertThat(result.failures())
-                .singleElement()
-                .extracting(TestFailureInfo::method)
-                .isEqualTo("(test run)");
     }
 
     @Test
@@ -445,15 +433,16 @@ class JUnitLauncherAggregatorTest {
     }
 
     @Test
-    void crash_output_is_attached_to_the_synthetic_failure() {
+    void a_non_zero_exit_with_no_events_is_a_launcher_failure_carrying_the_crash_output() {
         var agg = new ResultAggregator();
         String crash = "Exception in thread \"main\" java.lang.NoClassDefFoundError: Missing\n"
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
-        var result = agg.toResult(1, crash); // no events, non-zero exit
-        assertThat(result.failures()).singleElement().satisfies(f -> {
-            assertThat(f.method()).isEqualTo("(test run)");
-            assertThat(f.stack()).contains("NoClassDefFoundError").contains("at cc.jumpkick.Boot.main");
-        });
+        assertThatThrownBy(() -> agg.toResult(1, crash)) // no events, non-zero exit
+                .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
+                    assertThat(f.exit()).isEqualTo(1);
+                    assertThat(f.phase()).isEqualTo("test runner");
+                    assertThat(f.output()).contains("NoClassDefFoundError").contains("at cc.jumpkick.Boot.main");
+                });
     }
 
     @Test

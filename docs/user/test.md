@@ -326,6 +326,16 @@ notes. Results render per test as they do for Jupiter: the class from the runner
 the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the injection is
 `putIfAbsent`, and your version wins.
 
+### When the launcher cannot start
+
+A forked test JVM that exits without running a test is a **launcher failure**, not a failed test:
+`run-tests` fails as a step, and `jk-results.md` names the exit, the exception and the engine the
+runner reported (`TestEngine with ID 'junit-jupiter' failed to discover tests`), with the fork's
+output under it. The usual cause is two versions of one JUnit line — an exact pin such as
+`junit-jupiter-api = "=5.0.0"` beside `junit-jupiter 6.1.3` — and the report spells both out from
+the lock, marks the pinned one, and points at `jk why org.junit.jupiter:junit-jupiter-api`. Align
+the pin with the platform line (one version for every artifact of the line) and `jk lock`.
+
 ## Assertions in the test JVM (`[test] assertions`)
 
 Every test JVM jk forks runs with `-ea`, as Surefire's and Gradle's do: a Java `assert` or a Kotlin
