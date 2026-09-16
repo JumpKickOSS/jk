@@ -589,6 +589,7 @@ public final class PlannerTest {
                         }
                         result = TestClassMatch.asFailure(moduleLabel, effectiveSel);
                     }
+                    TagExcludedSuite.note(ctx, effectiveSel, in.profileName(), affected != null, result);
                     ctx.put(TEST_RESULT, result);
                     recordOutcome(ctx, in, actionCache, testTaskId, stampKey, result, !testSrcs.isEmpty(), snippets);
                 })
