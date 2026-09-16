@@ -137,14 +137,9 @@ public final class PlannerSupport {
             if (!cp.contains(classes)) cp.add(classes);
         }
         for (Path sibLock : siblings.siblingLockfiles()) {
-            try {
-                Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
-                    if (!cp.contains(p)) cp.add(p);
-                }
-            } catch (Exception e) {
-                /* best-effort: a sibling's lock may be absent */
-                Log.debug("processorClasspath: best-effort", e);
+            Lockfile sl = LockfileReader.read(sibLock);
+            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
+                if (!cp.contains(p)) cp.add(p);
             }
         }
         return cp;
@@ -195,15 +190,12 @@ public final class PlannerSupport {
         // schedule: javac compiles against these paths while the sibling may still be packaging.
         // After `jk clean` they still let `jk explain` reproduce the build's key.
         cp.addAll(siblings.siblingClosureClasses());
+        // A sibling's lock is read like this module's: under requirePresent a row that is not on
+        // disk fails by name rather than leaving the classpath short.
         for (Path sibLock : siblings.siblingLockfiles()) {
-            try {
-                Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
-                    if (!cp.contains(p)) cp.add(p);
-                }
-            } catch (Exception e) {
-                /* best-effort: a sibling's lock may be absent */
-                Log.debug("mainCompileClasspath: best-effort", e);
+            Lockfile sl = LockfileReader.read(sibLock);
+            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
+                if (!cp.contains(p)) cp.add(p);
             }
         }
         return cp;

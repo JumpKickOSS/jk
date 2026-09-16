@@ -357,21 +357,16 @@ public final class PlannerSetup {
         compileTestCp.addAll(testSiblings.siblingClosureClasses());
         List<Path> testRuntimeCp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, true));
         testRuntimeCp.addAll(testSiblings.siblingClosureJars());
-        // A sibling's own external deps (e.g. resolver's maven-artifact) must
-        // also reach the test classpath, or tests exercising sibling code hit
-        // NoClassDefFoundError. Mirrors the main-cp sibling-lockfile loop above.
+        // A sibling's own external deps (e.g. resolver's maven-artifact) must also reach the test
+        // classpath, or tests exercising sibling code hit NoClassDefFoundError. Its rows are held to
+        // the same bar as this module's: one not on disk fails here by name.
         for (Path sibLock : testSiblings.siblingLockfiles()) {
-            try {
-                Lockfile sl = LockfileReader.read(sibLock);
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, true)) {
-                    if (!compileTestCp.contains(p)) compileTestCp.add(p);
-                }
-                for (Path p : resolver.classpathFor(sl, ClasspathResolver.RUNTIME, true)) {
-                    if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-                }
-            } catch (Exception e) {
-                /* best-effort */
-                Log.debug("failed: best-effort", e);
+            Lockfile sl = LockfileReader.read(sibLock);
+            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, true)) {
+                if (!compileTestCp.contains(p)) compileTestCp.add(p);
+            }
+            for (Path p : resolver.classpathFor(sl, ClasspathResolver.RUNTIME, true)) {
+                if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
             }
         }
         compileTestCp.addAll(contributedProvided);
