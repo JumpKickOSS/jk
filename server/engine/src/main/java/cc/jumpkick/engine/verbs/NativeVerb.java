@@ -14,6 +14,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -212,6 +213,12 @@ public final class NativeVerb implements HostedVerb {
                     session,
                     () -> BuildService.buildWorkspace(req, host.workspaceListener(writer, entryDir.toString())));
             return WorkspaceTerminal.finish(host, writer, entryDir.toString(), result, cancelToken.cancelled());
+        } catch (ShadowManifests.NotBuiltHere refused) {
+            // A shadowed directory Maven would not build here: a configuration refusal, not a crash.
+            host.sendQuiet(
+                    writer,
+                    host.requestFailedLine(NativeRequest.decode(requestLine).dir(), refused));
+            return JobOutcome.failed(Exit.CONFIG);
         } catch (Exception e) {
             host.sendQuiet(
                     writer,
