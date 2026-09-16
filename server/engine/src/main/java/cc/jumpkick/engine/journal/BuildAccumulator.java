@@ -383,6 +383,37 @@ public final class BuildAccumulator {
         }
     }
 
+    /**
+     * A preflight step of the workspace's own that failed before any module ran — the lock
+     * freshen the solver refused. One root {@code FAIL} step named after the stage and one error
+     * diagnostic carrying the reason: a failure the run recorded, so the client hanging up on the
+     * terminal cannot relabel it as a cancel, and {@code jk-results.md} names what the solver said.
+     */
+    public void addPreflightFailure(String stage, long millis, String reason) {
+        String step = stage == null || stage.isBlank() ? "preflight" : stage;
+        addTask("", step, "resolve", "FAIL", millis, 0L);
+        anyFailure = true;
+        addDiag(new BuildRecord.Diag(
+                "error",
+                "",
+                step,
+                step,
+                reason == null ? "" : reason,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0));
+    }
+
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;

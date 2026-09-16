@@ -96,6 +96,11 @@ public final class EngineListeners {
             }
 
             @Override
+            public void preflightFailed(String stage, long millis, String reason) {
+                journal.accPreflightFailed(rid, stage, millis, reason);
+            }
+
+            @Override
             public void workModel(WorkModel model) {
                 if (rid <= 0) return;
                 sessions.remaining(rid, model.toRemainingWork());
