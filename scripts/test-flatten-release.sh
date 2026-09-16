@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Network-free fixtures for scripts/flatten-release.sh: the complete matrix flattens to one signed-ready tree; a
-# missing platform, an engine jar whose bytes differ and two trees carrying one file name are each refused by name.
+# missing platform, a platform-neutral jar whose bytes differ and two trees carrying one file name are each
+# refused by name.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,6 +22,7 @@ stage() {
     [[ "$platform" == "windows-x86_64" ]] && printf 'client zip\n' >"$dir/jk-$platform-$VER.zip"
     printf 'engine bytes\n' >"$dir/jk-engine-$VER.jar"
     printf 'client jar bytes\n' >"$dir/jk-$VER.jar"
+    printf 'spy jar bytes\n' >"$dir/jk-maven-spy-$VER.jar"
     printf 'per-platform manifest\n' >"$dir/SHA256SUMS"
     printf 'per-platform signature\n' >"$dir/SHA256SUMS.sig"
   done
@@ -56,18 +58,19 @@ jk-linux-aarch64-$VER.xz
 jk-linux-x86_64-$VER.xz
 jk-macos-aarch64-$VER.xz
 jk-macos-x86_64-$VER.xz
+jk-maven-spy-$VER.jar
 jk-windows-x86_64-$VER.xz
 jk-windows-x86_64-$VER.zip"
 [[ "$(cd "$WORK/out" && printf '%s\n' * | LC_ALL=C sort)" == "$expected_listing" ]] || {
   (cd "$WORK/out" && printf '%s\n' *) >&2
-  echo "test-flatten-release: the flattened tree does not hold exactly the eight artifacts plus SHA256SUMS" >&2
+  echo "test-flatten-release: the flattened tree does not hold exactly the nine artifacts plus SHA256SUMS" >&2
   exit 1
 }
 [[ ! -e "$WORK/out/SHA256SUMS.sig" ]] || { echo "test-flatten-release: a per-platform signature leaked into the tree" >&2; exit 1; }
 # The manifest names every artifact once, in coreutils form, and nothing else.
-[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "8" ]] || {
+[[ "$(wc -l <"$WORK/out/SHA256SUMS" | tr -d '[:space:]')" == "9" ]] || {
   cat "$WORK/out/SHA256SUMS" >&2
-  echo "test-flatten-release: SHA256SUMS does not hold eight entries" >&2
+  echo "test-flatten-release: SHA256SUMS does not hold nine entries" >&2
   exit 1
 }
 grep -vqE '^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$' "$WORK/out/SHA256SUMS" && {
@@ -122,6 +125,15 @@ assert_refused "$WORK/staging" "the platforms built different JVM clients"
 stage "$WORK/staging"
 rm -f "$WORK/staging/release-$VER-linux-x86_64/jk-$VER.jar"
 assert_refused "$WORK/staging" "the linux-x86_64 build did not produce the JVM client jar"
+
+# ---- a Maven spy jar whose bytes differ, or that linux-x86_64 never built ---------------------
+stage "$WORK/staging"
+printf 'different spy bytes\n' >"$WORK/staging/release-$VER-linux-aarch64/jk-maven-spy-$VER.jar"
+assert_refused "$WORK/staging" "the platforms built different Maven spies"
+
+stage "$WORK/staging"
+rm -f "$WORK/staging/release-$VER-linux-x86_64/jk-maven-spy-$VER.jar"
+assert_refused "$WORK/staging" "the linux-x86_64 build did not produce the Maven spy jar"
 
 # ---- two trees carrying one name ------------------------------------------------------------
 stage "$WORK/staging"

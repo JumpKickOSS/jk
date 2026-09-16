@@ -13,11 +13,12 @@ import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The terminal's view of the build engine jar the slim client fetches for itself — the one bar,
- * phase lines and settled chip line {@code jk jdk install} renders, under an {@code Engine} chip:
+ * The terminal's view of a release artifact the client fetches for itself — the build engine jar,
+ * the Maven spy jar — rendered as {@code jk jdk install} renders a JDK: the one bar, phase lines
+ * and settled chip line, under the chip of the thing being fetched:
  *
  * <pre>
- *   ✓ Engine ▶ build engine 0.13.7 has been downloaded to ~/.jk/lib/jk-engine/jk-engine-0.13.6.jar
+ *   ✓ Engine ▶ build engine 0.13.7 has been downloaded to ~/.jk/lib/jk-engine/jk-engine-0.13.7.jar
  * </pre>
  *
  * <p>Output modes follow the stream, as {@link JdkInstallView}'s do: a terminal animates the bar;
@@ -25,22 +26,32 @@ import org.jspecify.annotations.Nullable;
  * machine-consumed stdout ({@code --output json}) keeps the human line on stderr so the JSONL
  * stream stays parseable. {@link AutoCloseable} so a failed fetch still wipes the active bar.
  */
-final class EngineDownloadView implements EngineJarFetcher.Progress, AutoCloseable {
+public final class ReleaseDownloadView implements ReleaseArtifacts.Progress, AutoCloseable {
 
     /** The chip the engine's own lines carry, matching the {@code Engine} chip of start and stop. */
-    static final String CHIP = "Engine";
+    static final String ENGINE_CHIP = "Engine";
 
+    private final String chip;
     private final String label;
     private @Nullable JdkDownloadBar bar;
 
-    /** @param version the client's version, which the jar being fetched is paired with */
-    EngineDownloadView(String version) {
-        this.label = "build engine " + version;
+    /** The engine jar's view: {@code version} is the client's, which the jar is paired with. */
+    static ReleaseDownloadView engine(String version) {
+        return new ReleaseDownloadView(ENGINE_CHIP, "build engine " + version);
+    }
+
+    /**
+     * @param chip the chip the lines carry ({@code Engine}, {@code Maven})
+     * @param label what is being fetched, as the bar and the done line name it
+     */
+    public ReleaseDownloadView(String chip, String label) {
+        this.chip = chip;
+        this.label = label;
     }
 
     @Override
     public void start(String jarName, long totalBytes) {
-        bar = JdkDownloadBar.show(CliOutput.stdout(), CHIP, label);
+        bar = JdkDownloadBar.show(CliOutput.stdout(), chip, label);
     }
 
     @Override
@@ -50,10 +61,10 @@ final class EngineDownloadView implements EngineJarFetcher.Progress, AutoCloseab
     }
 
     @Override
-    public void done(Path engineJar) {
+    public void done(Path artifact) {
         // Wipe the bar first so the done line takes its place on screen.
         finishBar();
-        line(doneLine(engineJar));
+        line(doneLine(artifact));
     }
 
     @Override
@@ -70,12 +81,12 @@ final class EngineDownloadView implements EngineJarFetcher.Progress, AutoCloseab
     }
 
     /** {@code ✓ Engine ▶ build engine {version} has been downloaded to {~/path}}. */
-    String doneLine(Path engineJar) {
+    String doneLine(Path artifact) {
         Theme t = Theme.active();
         String msg = Theme.colorize(label, t.focused())
                 + Theme.colorize(" has been downloaded to ", t.normalGray())
-                + Theme.colorize(JdkInstallView.tildeCollapse(engineJar), t.path());
-        return JkWedge.chipLine(Glyphs.CHECK, CHIP, GlobalConfig.nerdFont(), msg);
+                + Theme.colorize(JdkInstallView.tildeCollapse(artifact), t.path());
+        return JkWedge.chipLine(Glyphs.CHECK, chip, GlobalConfig.nerdFont(), msg);
     }
 
     /** A human line of this view: stdout, or stderr when stdout is machine-consumed. */

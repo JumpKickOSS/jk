@@ -9,8 +9,8 @@ import cc.jumpkick.cli.testing.NoAnsi;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 
-/** The engine jar's download renders as the JDK's does: a phase line and a done line, on the right stream. */
-class EngineDownloadViewTest {
+/** A release artifact's download renders as the JDK's does: a phase line and a done line, on the right stream. */
+class ReleaseDownloadViewTest {
 
     private static final Path JAR = Path.of("/opt/jk/lib/jk-engine/jk-engine-1.2.3.jar");
 
@@ -18,7 +18,7 @@ class EngineDownloadViewTest {
     void plain_mode_says_the_download_as_a_line_then_the_done_line() throws Exception {
         String out = NoAnsi.forced(() -> Capture.stdout(() -> {
             CliOutput.beginCommand(false);
-            try (EngineDownloadView view = new EngineDownloadView("1.2.3")) {
+            try (ReleaseDownloadView view = ReleaseDownloadView.engine("1.2.3")) {
                 view.start("jk-engine-1.2.3.jar", 1_000);
                 view.progress(500, 1_000);
                 view.done(JAR);
@@ -34,7 +34,7 @@ class EngineDownloadViewTest {
     void a_machine_consumed_stdout_stays_clean_and_the_done_line_goes_to_stderr() throws Exception {
         Capture.Streams streams = NoAnsi.forced(() -> Capture.both(() -> {
             CliOutput.beginCommand(true);
-            try (EngineDownloadView view = new EngineDownloadView("1.2.3")) {
+            try (ReleaseDownloadView view = ReleaseDownloadView.engine("1.2.3")) {
                 view.start("jk-engine-1.2.3.jar", 1_000);
                 view.progress(1_000, 1_000);
                 view.done(JAR);

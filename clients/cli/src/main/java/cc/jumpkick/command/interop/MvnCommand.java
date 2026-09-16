@@ -31,9 +31,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk mvn ...} — passthrough to Maven. Provisioning is engine-hosted; {@code bin/mvn} execs
- * client-side with inherited stdio so Maven keeps its TTY and Ctrl-C semantics. When the event spy
- * jar is on hand ({@link MavenSpyJar}) it rides Maven's extension path and records the reactor to
- * a file the engine journals afterwards, so {@code jk results} and MCP see the run.
+ * client-side with inherited stdio so Maven keeps its TTY and Ctrl-C semantics. The event spy jar
+ * ({@link MavenSpyJar}, fetched from the release on first use when a release install has none)
+ * rides Maven's extension path and records the reactor to a file the engine journals afterwards,
+ * so {@code jk results} and MCP see the run.
  */
 public final class MvnCommand implements CliCommand {
 
@@ -72,6 +73,17 @@ public final class MvnCommand implements CliCommand {
         return List.of(Param.of("args", Arity.ZERO_OR_MORE, "Arguments forwarded to Maven."));
     }
 
+    /** The spy a test hands in; null means {@link MavenSpyJar#current()}, read when the command runs. */
+    private final @Nullable MavenSpyJar spy;
+
+    public MvnCommand() {
+        this(null);
+    }
+
+    MvnCommand(@Nullable MavenSpyJar spy) {
+        this.spy = spy;
+    }
+
     @Nullable
     Path directory;
 
@@ -105,11 +117,11 @@ public final class MvnCommand implements CliCommand {
 
         // Exec Maven directly so stdio is inherited cleanly.
         Optional<InstalledJdk> jdk = JdkResolver.forProject(projectDir, jdksDir);
-        Optional<Path> spy = MavenSpyJar.locate();
-        Path events = spy.isPresent() ? eventsFile() : null;
+        Optional<Path> spyJar = (spy != null ? spy : MavenSpyJar.current()).ensure();
+        Path events = spyJar.isPresent() ? eventsFile() : null;
         List<String> command = new ArrayList<>();
         command.add(mvnBin.toString());
-        command.addAll(events == null ? args : MavenSpyJar.arguments(spy.get(), events, args));
+        command.addAll(events == null ? args : MavenSpyJar.arguments(spyJar.get(), events, args));
         ProcessBuilder pb = new ProcessBuilder(command).directory(projectDir.toFile());
         PassthroughEnv.apply(pb.environment(), jdk.map(InstalledJdk::home).orElse(null));
         long started = Clock.SYSTEM.nanos();

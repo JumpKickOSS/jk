@@ -320,14 +320,14 @@ public final class EngineSpawn {
         Optional<EngineArtifact> resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
         if (resolved.isEmpty()
-                && EngineJarFetcher.applicable(
+                && ReleaseArtifacts.applicable(
                         clientVersion,
-                        isNativeImage() || JvmClient.installed(),
+                        ReleaseArtifacts.releasedClient(),
                         SessionContext.current().offline())) {
             // The same bar, phase lines and done line `jk jdk install` renders, under an Engine
             // chip: the user is watching this download as they watch a JDK's.
-            try (EngineDownloadView view = new EngineDownloadView(clientVersion)) {
-                EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion, view);
+            try (ReleaseDownloadView view = ReleaseDownloadView.engine(clientVersion)) {
+                EngineJarFetcher.fetch(ReleaseArtifacts.releasesBase(), clientVersion, view);
             }
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
@@ -780,7 +780,7 @@ public final class EngineSpawn {
     }
 
     /** True when this client runs as a GraalVM native image (so the spawned engine will too). */
-    private static boolean isNativeImage() {
+    static boolean isNativeImage() {
         return System.getProperty("org.graalvm.nativeimage.imagecode") != null;
     }
 

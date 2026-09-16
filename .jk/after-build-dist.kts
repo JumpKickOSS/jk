@@ -71,10 +71,12 @@ if (!Files.isDirectory(target)) {
 
     /**
      * The Maven event spy's module jar for [version], or null when this build produced none. A
-     * thin jar on purpose: Maven supplies its API, so there is nothing to bundle.
+     * thin jar on purpose: Maven supplies its API, so there is nothing to bundle. A library
+     * module's jar lands under its own `target/<module>/lib/`, not at the workspace root where
+     * the assemblies do.
      */
     fun mavenSpy(version: String): Path? {
-        val jar = target.resolve("jk-maven-spy-$version.jar")
+        val jar = target.resolve("clients/maven-spy/lib/jk-maven-spy-$version.jar")
         return if (Files.isRegularFile(jar)) jar else null
     }
 

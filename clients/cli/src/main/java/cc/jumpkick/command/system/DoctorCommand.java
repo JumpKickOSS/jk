@@ -10,6 +10,7 @@ import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.command.interop.MavenSpyJar;
 import cc.jumpkick.command.toolchain.Shell;
 import cc.jumpkick.command.toolchain.ShellInstallerBlock;
 import cc.jumpkick.compat.BuildTool;
@@ -45,7 +46,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code jk doctor} — host health checklist. Prints a wedge header plus one row per subsystem
- * (engine, dirs, state, jdk, lock, shell, tools, workers) and a summary. The worker and repository
+ * (engine, dirs, state, jdk, lock, shell, mvn, tools, workers) and a summary. The worker and repository
  * rows are answered by a running engine only — a health check never starts one unless
  * {@code --engine} asks it to, and {@code --no-engine} skips those rows. {@code --output json}
  * emits machine output.
@@ -90,6 +91,7 @@ public final class DoctorCommand implements CliCommand {
         Check jdk = checkJdk();
         Check lock = checkLock();
         Check shell = checkShell();
+        Check mvn = checkMavenSpy(MavenSpyJar.current());
         List<ToolRow> toolRows;
         String toolsError = null;
         try {
@@ -131,6 +133,7 @@ public final class DoctorCommand implements CliCommand {
                     jdk,
                     lock,
                     shell,
+                    mvn,
                     healthy,
                     pruned,
                     verified,
@@ -153,42 +156,9 @@ public final class DoctorCommand implements CliCommand {
         printCheck(jdk, t);
         printCheck(lock, t);
         printCheck(shell, t);
+        printCheck(mvn, t);
 
-        if (toolsError != null) {
-            CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan())
-                    + " — probe failed: " + toolsError);
-        } else if (toolRows.isEmpty()) {
-            // If no tools at all, emit a row so the checklist looks complete.
-            CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " tools — no installs found");
-        } else {
-            for (ToolRow row : toolRows) {
-                String toolName = Theme.colorize(row.tool().slug(), t.cyan());
-                String label = toolName + " " + row.installed().version();
-                switch (row.kind()) {
-                    case PRUNED ->
-                        CliOutput.out(Theme.colorize("pruned:  ", t.warning()) + " " + label + " (link target missing: "
-                                + Theme.colorize(row.detail(), t.path()) + ")");
-                    case VERIFIED ->
-                        CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label + " (sha256-tree="
-                                + short12(row.detail()) + "…, unchanged)");
-                    case FIRST_SEEN ->
-                        CliOutput.out(Theme.colorize("recorded:", t.completedStep()) + " " + label + " (sha256-tree="
-                                + short12(row.detail()) + "…, first fingerprint)");
-                    case DRIFTED ->
-                        CliOutput.out(Theme.colorize("drifted: ", t.warning()) + " " + label + " — link target changed "
-                                + Theme.colorize(row.detail(), t.path()) + " (baseline updated)");
-                    case EMPTY ->
-                        CliOutput.out(Theme.colorize("warn:    ", t.warning()) + " " + label
-                                + " — link target holds no files; there is nothing to fingerprint ("
-                                + Theme.colorize(row.detail(), t.path()) + ")");
-                    case LINKED ->
-                        CliOutput.out("linked:   " + label
-                                + " " + Theme.colorize("→", t.darkGray()) + " "
-                                + Theme.colorize(row.detail(), t.path()));
-                    case OK -> CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " " + label);
-                }
-            }
-        }
+        printTools(toolRows, toolsError, t);
 
         for (String line : renderWorkers(workers, global.verbose, t)) CliOutput.out(line);
         for (String line : renderShelf(workers, pointerEngineSha(), t)) CliOutput.out(line);
@@ -539,6 +509,21 @@ public final class DoctorCommand implements CliCommand {
     }
 
     /**
+     * The Maven spy jar {@code jk mvn} attaches: found somewhere in its lookup order, or missing
+     * — in which case Maven still runs, without a run report, and the fix is one command.
+     */
+    static Check checkMavenSpy(MavenSpyJar spy) {
+        return spy.locate()
+                .map(jar -> new Check(Status.OK, "mvn", "run-report extension at " + jar))
+                .orElseGet(() -> new Check(
+                        Status.WARN,
+                        "mvn",
+                        spy.jarName() + " not found — `jk mvn` runs Maven without a run report; run `jk mvn -v` once"
+                                + " online to fetch it into " + spy.expected().getParent()
+                                + " (from a checkout: `jk install`)"));
+    }
+
+    /**
      * The cache directory is created by the first command that resolves something, so a fresh
      * install has none and that is healthy — the row says so instead of failing a cold runner
      * before its first {@code jk sync}. A cache path that exists but is not a readable directory
@@ -783,6 +768,45 @@ public final class DoctorCommand implements CliCommand {
         return digest.length() <= 12 ? digest : digest.substring(0, 12);
     }
 
+    /** One row per installed tool, or the one line that says why there are none. */
+    private static void printTools(List<ToolRow> toolRows, @Nullable String toolsError, Theme t) {
+        if (toolsError != null) {
+            CliOutput.out(Theme.colorize("warn:    ", t.warning()) + Theme.colorize("tools", t.cyan())
+                    + " — probe failed: " + toolsError);
+        } else if (toolRows.isEmpty()) {
+            // If no tools at all, emit a row so the checklist looks complete.
+            CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " tools — no installs found");
+        } else {
+            for (ToolRow row : toolRows) {
+                String toolName = Theme.colorize(row.tool().slug(), t.cyan());
+                String label = toolName + " " + row.installed().version();
+                switch (row.kind()) {
+                    case PRUNED ->
+                        CliOutput.out(Theme.colorize("pruned:  ", t.warning()) + " " + label + " (link target missing: "
+                                + Theme.colorize(row.detail(), t.path()) + ")");
+                    case VERIFIED ->
+                        CliOutput.out(Theme.colorize("verified:", t.completedStep()) + " " + label + " (sha256-tree="
+                                + short12(row.detail()) + "…, unchanged)");
+                    case FIRST_SEEN ->
+                        CliOutput.out(Theme.colorize("recorded:", t.completedStep()) + " " + label + " (sha256-tree="
+                                + short12(row.detail()) + "…, first fingerprint)");
+                    case DRIFTED ->
+                        CliOutput.out(Theme.colorize("drifted: ", t.warning()) + " " + label + " — link target changed "
+                                + Theme.colorize(row.detail(), t.path()) + " (baseline updated)");
+                    case EMPTY ->
+                        CliOutput.out(Theme.colorize("warn:    ", t.warning()) + " " + label
+                                + " — link target holds no files; there is nothing to fingerprint ("
+                                + Theme.colorize(row.detail(), t.path()) + ")");
+                    case LINKED ->
+                        CliOutput.out("linked:   " + label
+                                + " " + Theme.colorize("→", t.darkGray()) + " "
+                                + Theme.colorize(row.detail(), t.path()));
+                    case OK -> CliOutput.out(Theme.colorize("ok:      ", t.completedStep()) + " " + label);
+                }
+            }
+        }
+    }
+
     private static void printCheck(Check c, Theme t) {
         String prefix;
         switch (c.status) {
@@ -805,6 +829,7 @@ public final class DoctorCommand implements CliCommand {
             Check jdk,
             Check lock,
             Check shell,
+            Check mvn,
             int healthy,
             int pruned,
             int verified,
@@ -821,6 +846,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("jdk", checkJson(jdk))
                 .token("lock", checkJson(lock))
                 .token("shell", checkJson(shell))
+                .token("mvn", checkJson(mvn))
                 .token(
                         "tools",
                         JsonFields.object()

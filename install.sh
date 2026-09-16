@@ -503,7 +503,9 @@ main() {
       || note "engine materialization skipped (jk self materialize failed; the client re-fetches on demand)"
   fi
   # The Maven event spy (`jk mvn` attaches it to Maven's extension path) is a plain jar under the
-  # product lib, one per version; the client looks for lib/jk-maven-spy-<its version>.jar.
+  # product lib, one per version; the client looks for lib/jk-maven-spy-<its version>.jar. A
+  # download install carries none: the client fetches its own version's spy from the release
+  # directory, verified against the same signed sums, on the first `jk mvn`.
   if [ -n "$LOCAL_FILE" ]; then
     for f in "$SRC_LIB"/jk-maven-spy-*.jar; do
       [ -f "$f" ] || continue

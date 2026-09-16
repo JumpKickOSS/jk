@@ -156,6 +156,8 @@ releases/
     jk-engine-0.13.6.jar
     jk-0.13.6.jar                  # the JVM client: every host with no native client (install.sh
                                    # falls back to it; install.ps1 on JK_CLIENT=jvm)
+    jk-maven-spy-0.13.6.jar        # the Maven core extension `jk mvn` attaches; a client fetches
+                                   # its own version's on the first `jk mvn` (native and JVM alike)
     SHA256SUMS              # coreutils: <hex>  <filename>
     SHA256SUMS.sig          # base64 RSA/SHA-256 signature over exact SHA256SUMS bytes
 ```
@@ -163,9 +165,12 @@ releases/
 `install.sh` and the Unix `jk` wrapper fetch `jk-<os>-<arch>-<version>.xz`. `jk.bat` /
 `install.ps1` fetch the Windows `.zip`. On a host with no native client, `install.sh` fetches
 `jk-<version>.jar` and `jk-engine-<version>.jar` instead (so does `install.ps1` on
-`JK_CLIENT=jvm`, and `jk self update` from a JVM install); both are platform-neutral, built by
-every platform job, and `scripts/flatten-release.sh` takes linux-x86_64's copy after checking the
-others are byte-identical. That identity assumes one bootstrap: the embedded SBOM
+`JK_CLIENT=jvm`, and `jk self update` from a JVM install). No installer fetches
+`jk-maven-spy-<version>.jar`: the client does, from the same version directory and against the
+same signed sums, the first time `jk mvn` runs and finds none under `~/.jk/lib/` (a dist install
+copies it there). All three jars are platform-neutral, built by every platform job, and
+`scripts/flatten-release.sh` takes linux-x86_64's copy after checking the others are
+byte-identical. That identity assumes one bootstrap: the embedded SBOM
 (`META-INF/sbom/application.cdx.json`) names the jk that packaged the jar as its tool, and nothing
 else in an assembly varies between builds of one commit, so every lane packaging with the pinned
 `.jk/ci-bootstrap-version` writes the same bytes, while a dogfood tree whose install re-shelved
@@ -231,13 +236,15 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    so the matrix has a row for every platform jumpkick.build serves a client for at that pin
    ([below](#platforms-without-a-hosted-client)). The linux-x86_64 lane also runs `jk install`,
    so the first-party plugins it stages for `repo/` are the commit's own.
-3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs +
+3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
+   the client archive(s), the engine jar, the JVM client jar and the Maven spy jar — +
    `SHA256SUMS` + `.sig`.
 4. The publish job first writes the release notes (`scripts/release-notes.sh <version>`: the
    version's entry under [Highlights](#highlights), then the commits since the previous tag) and
    refuses a version with no entry before anything is downloaded.
 5. It flattens the five trees into one (`scripts/flatten-release.sh`, refusing a partial matrix
-   or a differing engine jar), re-signs the combined `SHA256SUMS`, takes the CycloneDX SBOM the
+   or a platform-neutral jar whose bytes differ between platforms), re-signs the combined
+   `SHA256SUMS`, takes the CycloneDX SBOM the
    linux-x86_64 build wrote of the engine (`jk publish --sbom --dry-run` in `server/engine`,
    which leaves `target/server/engine/sbom/jk-engine-<version>.cdx.json` at the workspace root —
    the document the engine jar embeds
@@ -357,7 +364,7 @@ scripts/publish-github-release.sh publish 0.13.6
 ## Local dry-run
 
 ```bash
-jk build --skip-tests                      # target/dist/jk + target/dist/lib/jk-engine-<ver>.jar
+jk build --skip-tests    # target/dist/jk + lib/jk-engine-<ver>.jar + lib/jk-<ver>.jar + lib/jk-maven-spy-<ver>.jar
 export JK_RELEASE_RSA_SIGNING_KEY_FILE=/owner-only/path/release-key.pem
 DIST_DIR=target/dist scripts/assemble-release-dir.sh
 # inspect target/release/0.13.6/
