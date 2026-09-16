@@ -189,7 +189,7 @@ public final class JkResultsMarkdown {
         if (r == null || (r.success() && !r.cancelled())) return List.of();
         List<String> out = new ArrayList<>();
         for (BuildRecord.Diag d : r.diagnostics()) {
-            if (!isError(d) || isGuard(d)) continue;
+            if (!isError(d) || isGuard(d) || JkResultsStopped.collateral(r, d)) continue;
             out.add(whyLine(d));
             if (out.size() >= MAX_WHY) return List.copyOf(out);
         }
@@ -225,11 +225,16 @@ public final class JkResultsMarkdown {
     private static void appendCounts(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
         List<BuildRecord.Module> modules = r.modules();
         if (modules.size() > 1) {
-            long failed = modules.stream().filter(m -> !m.success()).count();
+            long stopped = modules.stream()
+                    .filter(m -> JkResultsStopped.stoppedModule(r, m))
+                    .count();
+            long failed = modules.stream().filter(m -> !m.success()).count() - stopped;
             sb.append("Modules: ").append(modules.size());
-            if (failed > 0) sb.append(" (**").append(failed).append(" failed**)");
-            else sb.append(" (all ok)");
-            sb.append('\n');
+            if (failed > 0) sb.append(" (**").append(failed).append(" failed**");
+            else if (stopped > 0) sb.append(" (none failed");
+            else sb.append(" (all ok");
+            if (stopped > 0) sb.append(", ").append(stopped).append(" skipped");
+            sb.append(")\n");
         }
         boolean testsLine = JkResultsTestsSection.appendCount(sb, r, tests);
         boolean coverageLine = JkResultsCoverageSection.appendCount(sb, r);
@@ -237,7 +242,7 @@ public final class JkResultsMarkdown {
         boolean coverTests = JkResultsTestsSection.hasTestEntries(tests);
         for (BuildRecord.Diag d : r.diagnostics()) {
             if (isError(d)) {
-                if (coverTests && isTest(d)) continue;
+                if ((coverTests && isTest(d)) || JkResultsStopped.collateral(r, d)) continue;
                 errors++;
             } else if (isWarning(d)) warnings++;
         }
@@ -291,6 +296,7 @@ public final class JkResultsMarkdown {
             if (!isError(d)) continue;
             if (testsSectionCoversTests && isTest(d)) continue;
             if (isGuard(d)) continue; // rendered under ## Guards
+            if (JkResultsStopped.collateral(r, d)) continue; // counted as stopped, not failed
             errors.add(d);
         }
         if (errors.isEmpty()) return;
@@ -538,7 +544,10 @@ public final class JkResultsMarkdown {
     private static void appendFailedSteps(StringBuilder sb, BuildRecord r) {
         List<Row> rows = failedSteps(r);
         int skipped = countSkipped(r);
-        if (rows.isEmpty() && skipped == 0) return;
+        if (rows.isEmpty() && skipped == 0) {
+            JkResultsStopped.appendNote(sb, r);
+            return;
+        }
         if (!rows.isEmpty()) {
             sb.append("## Failed steps\n\n");
             sb.append("| Module | Task | Status | Time |\n|---|---|---|---|\n");
@@ -561,21 +570,27 @@ public final class JkResultsMarkdown {
             }
             sb.append('\n');
         }
+        JkResultsStopped.appendNote(sb, r);
         if (skipped > 0 && (!r.success() || r.cancelled())) {
             sb.append("_").append(skipped).append(" tasks skipped (cache)._\n\n");
         }
     }
 
-    /** FAIL / CANCELLED steps that are not deliverables, root then modules. */
+    /**
+     * FAIL / CANCELLED steps that are not deliverables, root then modules. In a run that failed, a
+     * CANCELLED step is what the failure stopped ({@link JkResultsStopped}), not a failure.
+     */
     static List<Row> failedSteps(BuildRecord r) {
         List<Row> rows = new ArrayList<>();
         if (r == null) return rows;
         for (BuildRecord.Task t : r.steps()) {
-            if (isFailedStatus(t.status()) && !isDeliverable(t.name())) rows.add(new Row("", t));
+            if (isFailedStatus(t.status()) && !isDeliverable(t.name()) && !JkResultsStopped.stoppedStep(r, t)) {
+                rows.add(new Row("", t));
+            }
         }
         for (BuildRecord.Module m : r.modules()) {
             for (BuildRecord.Task t : m.steps()) {
-                if (isFailedStatus(t.status()) && !isDeliverable(t.name())) {
+                if (isFailedStatus(t.status()) && !isDeliverable(t.name()) && !JkResultsStopped.stoppedStep(r, t)) {
                     rows.add(new Row(moduleLabel(m), t));
                 }
             }
@@ -634,7 +649,8 @@ public final class JkResultsMarkdown {
         int shown = 0;
         // Failed first so a large workspace still surfaces the problem.
         List<BuildRecord.Module> ordered = new ArrayList<>(modules.size());
-        for (BuildRecord.Module m : modules) if (!m.success()) ordered.add(m);
+        for (BuildRecord.Module m : modules) if (!m.success() && !JkResultsStopped.stoppedModule(r, m)) ordered.add(m);
+        for (BuildRecord.Module m : modules) if (JkResultsStopped.stoppedModule(r, m)) ordered.add(m);
         for (BuildRecord.Module m : modules) if (m.success()) ordered.add(m);
         for (BuildRecord.Module m : ordered) {
             if (shown >= MAX_MODULES) {
@@ -644,7 +660,7 @@ public final class JkResultsMarkdown {
             sb.append("| ")
                     .append(escCell(moduleLabel(m)))
                     .append(" | ")
-                    .append(m.success() ? "OK" : "FAIL")
+                    .append(m.success() ? "OK" : JkResultsStopped.stoppedModule(r, m) ? "SKIPPED" : "FAIL")
                     .append(" | ")
                     .append(fmtDuration(m.millis()))
                     .append(" |\n");
