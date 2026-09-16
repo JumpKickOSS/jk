@@ -107,8 +107,11 @@ class LibraryArtifactsE2eTest {
         BuildLayout loose = BuildLayout.of(ws, ws.resolve("loose"), JkBuildParser.parse(ws.resolve("loose/jk.toml")));
 
         Steps steps = new Steps();
+        // Both libraries run to their own verdict: without keep-going, strict's failure cancels
+        // whatever loose has not yet run, and the two build side by side.
         WorkspaceResult result = WorkspaceExecute.buildWorkspace(
-                new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, null, false, false), steps);
+                new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, null, false, false).withKeepGoing(true),
+                steps);
 
         assertThat(result.success()).as("strict fails the workspace").isFalse();
         assertThat(steps.status("strict", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.FAIL);
