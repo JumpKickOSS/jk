@@ -18,13 +18,21 @@ A run materialises one (repo × failure) for one tool, runs the tool once so the
 
 | Tool | Runs | Green | Green rate | Turns median | Turns p90 | Tokens median | Tokens p90 | Wall median | Wall p90 | Cost |
 |---|---|---|---|---|---|---|---|---|---|---|
-| jk | 1 | 1 | 100% | 6 | 6 | 52,399 | 52,399 | 14.3s | 14.3s | $0.04 |
+| jk | 1 | 1 | 100% | 9 | 9 | 45,982 | 45,982 | 29.3s | 29.3s | $0.04 |
 | mvn | 1 | 1 | 100% | 6 | 6 | 23,623 | 23,623 | 26.0s | 26.0s | $0.02 |
 | gradle | 1 | 1 | 100% | 6 | 6 | 23,807 | 23,807 | 14.2s | 14.2s | $0.02 |
 
 | Repo | Failure | jk | mvn | gradle |
 |---|---|---|---|---|
-| gs-rest-service | missing-dependency | green · 6t · 14.3s · 52,399 tok | green · 6t · 26.0s · 23,623 tok | green · 6t · 14.2s · 23,807 tok |
+| gs-rest-service | missing-dependency | green · 9t · 29.3s · 45,982 tok | green · 6t · 26.0s · 23,623 tok | green · 6t · 14.2s · 23,807 tok |
+
+### Findings
+
+What the results file did not say, per run: the oracle records where it needed more than the file, and the LLM drivers record why they stopped.
+
+| Repo | Failure | Tool | Outcome | Fix source | Finding |
+|---|---|---|---|---|---|
+| gs-rest-service | missing-dependency | jk | green | — | agent stopped (error_max_turns) |
 
 ## `scripted` · budget 8 turns / 10 min
 
