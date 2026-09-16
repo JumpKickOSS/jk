@@ -272,6 +272,9 @@ public final class Diagnostics {
                         out.append('\n');
                     }
                 }
+                for (String note : nv.notes()) {
+                    out.append(prefix).append("  ").append(note).append('\n');
+                }
             }
             case Incompatibility.Cause.Unavailable u ->
                 out.append(prefix)

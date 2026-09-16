@@ -119,6 +119,30 @@ class JkBuildParserRepositoryTest {
     }
 
     @Test
+    void the_release_and_snapshot_policies_default_to_maven_s_and_a_repository_must_serve_something() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories]
+                plain = "https://repo.example/maven"
+                nightly = { url = "https://repo.example/snapshots", releases = false }
+                stable = { url = "https://repo.example/releases", snapshots = false }
+                """);
+        assertThat(parsed.repositories())
+                .extracting(r -> r.name(), r -> r.releases(), r -> r.snapshots())
+                .containsExactly(
+                        Tuple.tuple("plain", true, true),
+                        Tuple.tuple("nightly", false, true),
+                        Tuple.tuple("stable", true, false));
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories.idle]
+                url = "https://repo.example/maven"
+                releases = false
+                snapshots = false
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.idle serves neither releases nor snapshots");
+    }
+
+    @Test
     void the_trust_keys_are_refused_on_central() {
         for (String key : List.of("allow-insecure", "allow-unverified")) {
             assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """

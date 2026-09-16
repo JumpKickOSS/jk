@@ -51,6 +51,15 @@ public interface PackageSource {
     }
 
     /**
+     * Why the candidate list of {@code pkg} lacks what was asked of it, when the source knows: one
+     * sentence per reason, rendered under the refusal. A snapshot asked of repositories that serve
+     * releases only is the shape this exists for. Default: nothing to add.
+     */
+    default List<String> refusalNotes(String pkg) {
+        return List.of();
+    }
+
+    /**
      * Optional pre-solve warm (BOM pins, lock prefs, root exact pins). Default: no-op. Production
      * Maven sources parallel-load known pins so the first decide frontier is not cold on disk.
      */

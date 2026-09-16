@@ -2,16 +2,20 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.RunNotices;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -299,40 +303,53 @@ public final class RepoGroup {
         return tryFetch(coord, (repo, c) -> Optional.empty(), MavenRepo::fetchMetadata);
     }
 
-    /**
-     * Union of the versions of {@code coord}'s {@code group:artifact} available across eligible
-     * repos (exclusive bindings applied), de-duplicated, preserving first-seen order.
-     */
-    /**
-     * Version discovery across eligible remotes. Stops at the first repo that advertises any
-     * versions (repo order is the precedence contract — Central before Google for unbound GAs,
-     * exclusive claimants alone for claimed groups).
-     *
-     * <p>Previously this <em>unioned</em> every eligible remote's metadata, which forced a
-     * second {@code maven-metadata.xml} read (often a 404) on every AndroidX GAV when both
-     * Central and Google were declared — dominant on warm multi-repo locks (NIA). Split version
-     * catalogs across remotes are vanishingly rare for our remotes; exclusive bindings still
-     * restrict which remotes are eligible at all.
-     */
+    /** {@link #availableVersions(Coordinate, Set, boolean)} wanting nothing in particular: releases only. */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
+        return availableVersions(coord, Set.of(), false);
+    }
+
+    /**
+     * Release-version discovery across eligible remotes, the way Maven finds an exact version:
+     * repos are asked in order (repo order is the precedence contract — Central before Google for
+     * unbound GAs, exclusive claimants alone for claimed groups) and the walk stops at the first
+     * repo that advertises a release, unless a version in {@code wanted} — an exact pin, a version
+     * a POM edge wrote — is still missing, in which case the remaining repos are asked and their
+     * catalogs unioned. A repo whose policy leaves out releases is not asked for them, and its
+     * {@code -SNAPSHOT} entries are dropped from every repo whose policy leaves out snapshots.
+     *
+     * <p>{@code snapshots} adds the {@code -SNAPSHOT} entries of every snapshot-serving repo: the
+     * {@code snapshot} selector, or a wanted version that is one. Without it a snapshot is never a
+     * candidate, so a floating selector cannot land on one.
+     *
+     * <p>One {@code maven-metadata.xml} read per GAV is the common case: the first repo answers
+     * and nothing is wanted beyond what it lists. The union is paid only when a catalog is split
+     * across remotes for a version something asked for.
+     */
+    public List<String> availableVersions(Coordinate coord, Set<String> wanted, boolean snapshots)
+            throws IOException, InterruptedException {
         // The session's offline flag changes what MavenRepo.availableVersions even measures
         // (local store listing vs remote metadata), so it is part of the question: an --offline
         // session's [] must not poison an online session for the TTL, nor may network-derived
         // lists leak into offline resolves.
         boolean offline = SessionContext.current().config().offlineOr(false);
-        String key = (offline ? "offline|" : "online|") + repoIdentity + "|" + coord.group() + ":" + coord.artifact();
+        String key = (offline ? "offline|" : "online|") + (snapshots ? "snapshots|" : "") + repoIdentity + "|"
+                + coord.group() + ":" + coord.artifact();
         // Force means the caller does not trust any cached view of what exists.
         boolean memoable = !MavenMetadataCache.forceRevalidate();
         if (memoable) {
             VersionsEntry cached = VERSIONS_CACHE.get(key);
-            if (cached != null && !cached.expired()) return cached.versions();
+            if (cached != null && !cached.expired() && cached.versions().containsAll(wanted)) return cached.versions();
             if (cached != null) VERSIONS_CACHE.remove(key, cached);
         }
         List<MavenRepo> eligible = eligibleRepos(coord);
         List<MavenRepo> asked = new ArrayList<>(eligible);
         asked.addAll(lastResortRepos(coord, eligible));
+        LinkedHashSet<String> union = new LinkedHashSet<>();
+        boolean releaseFound = false;
         IOException firstFailure = null;
         for (MavenRepo repo : asked) {
+            if (!repo.servesReleases() && !(snapshots && repo.servesSnapshots())) continue;
+            if (releaseFound && union.containsAll(wanted) && !(snapshots && repo.servesSnapshots())) continue;
             List<String> found;
             try {
                 found = repo.availableVersions(coord);
@@ -347,24 +364,36 @@ public final class RepoGroup {
                                 + "); trying the remaining repositories");
                 continue;
             }
-            if (!found.isEmpty()) {
-                List<String> immutable = List.copyOf(found);
-                if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
-                    VERSIONS_CACHE.put(key, new VersionsEntry(immutable, System.nanoTime() + VERSIONS_TTL_NANOS));
+            for (String v : found) {
+                boolean snapshot = Versions.isSnapshot(v);
+                if (snapshot ? snapshots && repo.servesSnapshots() : repo.servesReleases()) {
+                    union.add(v);
+                    releaseFound |= !snapshot;
                 }
-                return immutable;
             }
         }
         // Every candidate failed to answer: that is the failure, not an empty catalog, and an
         // empty answer must not be memoised over it.
-        if (firstFailure != null) throw firstFailure;
-        // Cache empty only after a full miss — rare; avoids re-statting empty GAs every expand.
-        // Expires like any other entry: an artifact that does not exist yet may exist later.
-        List<String> empty = List.of();
+        if (union.isEmpty() && firstFailure != null) throw firstFailure;
+        // An empty answer is cached too, after a full miss — rare; avoids re-statting empty GAs
+        // every expand. Expires like any other entry: an artifact that does not exist yet may exist
+        // later.
+        List<String> immutable = List.copyOf(union);
         if (memoable && VERSIONS_CACHE.size() < VERSIONS_CACHE_MAX) {
-            VERSIONS_CACHE.put(key, new VersionsEntry(empty, System.nanoTime() + VERSIONS_TTL_NANOS));
+            VERSIONS_CACHE.put(key, new VersionsEntry(immutable, Clock.SYSTEM.nanos() + VERSIONS_TTL_NANOS));
         }
-        return empty;
+        return immutable;
+    }
+
+    /**
+     * The repositories {@code coord}'s group is asked of, in order: the eligible ones (exclusive
+     * bindings applied) and then the last-resort specialists. For a diagnostic that names them.
+     */
+    public List<MavenRepo> repositoriesFor(Coordinate coord) {
+        List<MavenRepo> eligible = eligibleRepos(coord);
+        List<MavenRepo> out = new ArrayList<>(eligible);
+        out.addAll(lastResortRepos(coord, eligible));
+        return List.copyOf(out);
     }
 
     /**
@@ -441,10 +470,19 @@ public final class RepoGroup {
             Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
             throws IOException, InterruptedException {
         List<MavenRepo> eligible = eligibleRepos(coord);
-        Optional<RepoFetched> found = tryFetchFrom(eligible, coord, localProbe, fetcher, abort);
+        Optional<RepoFetched> found = tryFetchFrom(serving(eligible, coord), coord, localProbe, fetcher, abort);
         if (found.isPresent()) return found;
         // Full miss on the fast path: consult non-claiming specialists before giving up.
-        return tryFetchFrom(lastResortRepos(coord, eligible), coord, localProbe, fetcher, abort);
+        return tryFetchFrom(serving(lastResortRepos(coord, eligible), coord), coord, localProbe, fetcher, abort);
+    }
+
+    /** {@code repos} whose policy covers {@code coord}'s version: a snapshot is never asked of a releases-only repo. */
+    private static List<MavenRepo> serving(List<MavenRepo> repos, Coordinate coord) {
+        List<MavenRepo> out = new ArrayList<>(repos.size());
+        for (MavenRepo repo : repos) {
+            if (repo.serves(coord.version())) out.add(repo);
+        }
+        return out;
     }
 
     private Optional<RepoFetched> tryFetchFrom(

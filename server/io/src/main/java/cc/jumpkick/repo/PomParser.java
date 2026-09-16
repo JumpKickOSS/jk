@@ -131,8 +131,8 @@ public final class PomParser {
 
     /**
      * The POM's own {@code <repositories>}: the top-level list plus those of every profile Maven
-     * would activate with nothing on the command line. Central and snapshot-only repositories are
-     * left out, and an {@code <id>} defaults to the URL.
+     * would activate with nothing on the command line. Central is left out, an {@code <id>}
+     * defaults to the URL, and the {@code <releases>} / {@code <snapshots>} policies ride along.
      */
     private static List<Pom.Repository> parseRepositories(Element project, Map<String, String> ctx, String gav) {
         List<Pom.Repository> out = new ArrayList<>();
@@ -171,18 +171,21 @@ public final class PomParser {
             @Nullable Element repositories, Map<String, String> ctx, String gav, List<Pom.Repository> out) {
         if (repositories == null) return;
         for (Element repository : childElements(repositories, "repository")) {
-            if (releasesDisabled(childElement(repository, "releases"))) continue;
             String url = substituteOrNull(childText(repository, "url"), ctx);
             if (url == null || url.isBlank() || url.contains("${") || isCentral(url.trim())) continue;
+            boolean releases = policyEnabled(childElement(repository, "releases"));
+            boolean snapshots = policyEnabled(childElement(repository, "snapshots"));
+            if (!releases && !snapshots) continue;
             String id = childText(repository, "id");
-            out.add(new Pom.Repository(id == null || id.isBlank() ? url.trim() : id.trim(), url.trim(), gav));
+            out.add(new Pom.Repository(
+                    id == null || id.isBlank() ? url.trim() : id.trim(), url.trim(), gav, releases, snapshots));
         }
     }
 
-    /** {@code <releases><enabled>false</enabled></releases>}: a snapshot-only repository, which a release lookup never asks. */
-    private static boolean releasesDisabled(@Nullable Element releases) {
-        return releases != null
-                && !EnvValues.parseBool(childText(releases, "enabled")).orElse(true);
+    /** {@code <releases>} / {@code <snapshots>}: {@code <enabled>} as written, on when the element is absent. */
+    private static boolean policyEnabled(@Nullable Element policy) {
+        return policy == null
+                || EnvValues.parseBool(childText(policy, "enabled")).orElse(true);
     }
 
     /** Maven Central is in every group already. */

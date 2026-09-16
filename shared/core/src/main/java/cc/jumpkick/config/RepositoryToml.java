@@ -100,7 +100,9 @@ public final class RepositoryToml {
             "session-token",
             "groups",
             "allow-insecure",
-            "allow-unverified");
+            "allow-unverified",
+            "releases",
+            "snapshots");
 
     /** One entry; {@code null} when it is malformed and the layer skips rather than rejects. */
     private static @Nullable RepositorySpec entry(String name, @Nullable Object value, VarPolicy vars, OnBad onBad) {
@@ -111,6 +113,8 @@ public final class RepositoryToml {
         List<String> groups = List.of();
         boolean allowInsecure = false;
         boolean allowUnverified = false;
+        boolean releases = true;
+        boolean snapshots = true;
         if (value instanceof String s) {
             url = s;
         } else if (value instanceof TomlTable t) {
@@ -133,6 +137,8 @@ public final class RepositoryToml {
                 groups = groups(t, where);
                 allowInsecure = flag(t, "allow-insecure", where);
                 allowUnverified = flag(t, "allow-unverified", where);
+                releases = flag(t, "releases", where, true);
+                snapshots = flag(t, "snapshots", where, true);
             } catch (IllegalArgumentException e) {
                 if (onBad == OnBad.SKIP) return null;
                 throw new JkBuildParseException(e.getMessage(), e);
@@ -160,14 +166,32 @@ public final class RepositoryToml {
                     + "): anyone on the network path can replace the bytes jk pins into jk-lock.toml."
                     + " Use https, or set allow-insecure = true on [" + where + "] to accept that.");
         }
+        if (!releases && !snapshots) {
+            if (onBad == OnBad.SKIP) return null;
+            throw new JkBuildParseException(
+                    where + " serves neither releases nor snapshots: nothing would be asked of it");
+        }
         return new RepositorySpec(
-                name, uri, credential.orElse(null), objectStore.orElse(null), groups, allowInsecure, allowUnverified);
+                name,
+                uri,
+                credential.orElse(null),
+                objectStore.orElse(null),
+                groups,
+                allowInsecure,
+                allowUnverified,
+                releases,
+                snapshots);
     }
 
     /** The boolean at {@code key}, {@code false} when absent; any other type is an error naming the position. */
     private static boolean flag(TomlTable t, String key, String where) {
+        return flag(t, key, where, false);
+    }
+
+    /** The boolean at {@code key}, {@code absent} when missing; any other type is an error naming the position. */
+    private static boolean flag(TomlTable t, String key, String where, boolean absent) {
         Object raw = t.get(key);
-        if (raw == null) return false;
+        if (raw == null) return absent;
         if (raw instanceof Boolean b) return b;
         throw new IllegalArgumentException(where + "." + key + " must be true or false");
     }

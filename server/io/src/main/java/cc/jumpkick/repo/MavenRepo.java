@@ -16,6 +16,7 @@ import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.util.StoreWriteGate;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -72,6 +73,12 @@ public final class MavenRepo {
     private final boolean allowUnverified;
 
     private final boolean allowInsecure;
+
+    /** Release versions are asked of this repository; see {@link #serves}. */
+    private final boolean servesReleases;
+
+    /** {@code -SNAPSHOT} versions are asked of this repository; off for every built-in remote. */
+    private final boolean servesSnapshots;
 
     /**
      * Artifacts this run whose bytes the repository's published checksum confirmed — downloads and
@@ -160,6 +167,25 @@ public final class MavenRepo {
     }
 
     /**
+     * This repository with the given release/snapshot policy, sharing its store, transport and
+     * client. A repository whose policy leaves out a kind of version is never asked for one.
+     */
+    public MavenRepo withPolicy(boolean releases, boolean snapshots) {
+        return new MavenRepo(
+                name,
+                baseUrl,
+                transport,
+                cas,
+                credential,
+                http,
+                m2integration,
+                allowUnverified,
+                allowInsecure,
+                releases,
+                snapshots);
+    }
+
+    /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code m2integration}
      * is the resolving project's {@code m2integration} value; {@code allowUnverified} is the
@@ -175,6 +201,33 @@ public final class MavenRepo {
             boolean m2integration,
             boolean allowUnverified,
             boolean allowInsecure) {
+        this(
+                name,
+                baseUrl,
+                transport,
+                cas,
+                credential,
+                httpOrNull,
+                m2integration,
+                allowUnverified,
+                allowInsecure,
+                true,
+                true);
+    }
+
+    /** As above, with the release/snapshot policy; Maven's default is both on. */
+    private MavenRepo(
+            String name,
+            URI baseUrl,
+            RepoTransport transport,
+            Cas cas,
+            RepoCredential credential,
+            @Nullable Http httpOrNull,
+            boolean m2integration,
+            boolean allowUnverified,
+            boolean allowInsecure,
+            boolean servesReleases,
+            boolean servesSnapshots) {
         this.name = Objects.requireNonNull(name, "name");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
         this.transport = Objects.requireNonNull(transport, "transport");
@@ -187,6 +240,8 @@ public final class MavenRepo {
         this.m2integration = m2integration;
         this.allowUnverified = allowUnverified;
         this.allowInsecure = allowInsecure;
+        this.servesReleases = servesReleases;
+        this.servesSnapshots = servesSnapshots;
         this.http = httpOrNull;
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
@@ -199,9 +254,10 @@ public final class MavenRepo {
     /**
      * A repository a dependency's POM declares, over this repository's store and client: anonymous,
      * with neither {@code allow-unverified} nor {@code allow-insecure} — a POM has no table to opt in
-     * with, so its repository is held to the rule a project-declared one meets by default.
+     * with, so its repository is held to the rule a project-declared one meets by default — and
+     * with the {@code <releases>} / {@code <snapshots>} policy the POM wrote.
      */
-    public MavenRepo declaredByPom(String name, URI url) {
+    public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots) {
         Http client = http != null ? http : new Http();
         return new MavenRepo(
                 name,
@@ -212,7 +268,30 @@ public final class MavenRepo {
                 client,
                 m2integration,
                 false,
-                false);
+                false,
+                releases,
+                snapshots);
+    }
+
+    /** True when {@code version} is of a kind this repository is asked for; see {@link #servesSnapshots()}. */
+    public boolean serves(String version) {
+        return Versions.isSnapshot(version) ? servesSnapshots : servesReleases;
+    }
+
+    /** True when release versions are asked of this repository. */
+    public boolean servesReleases() {
+        return servesReleases;
+    }
+
+    /** True when {@code -SNAPSHOT} versions are asked of this repository. */
+    public boolean servesSnapshots() {
+        return servesSnapshots;
+    }
+
+    /** The one-word policy for a diagnostic: {@code releases only}, {@code snapshots only} or {@code releases and snapshots}. */
+    public String policyLabel() {
+        if (servesReleases && servesSnapshots) return "releases and snapshots";
+        return servesSnapshots ? "snapshots only" : "releases only";
     }
 
     private static boolean isHttp(URI uri) {

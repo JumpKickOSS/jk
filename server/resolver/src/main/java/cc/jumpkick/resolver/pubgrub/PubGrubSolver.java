@@ -579,7 +579,8 @@ public class PubGrubSolver {
             List<String> available = unknownPackage ? List.of() : sampleAvailable(pkg);
             addIncompatibility(new Incompatibility(
                     List.of(Term.positive(pkg, allowed)),
-                    new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, available)));
+                    new Incompatibility.Cause.NoVersions(
+                            pkg, allowed, unknownPackage, available, source.refusalNotes(pkg))));
             return pkg;
         }
 
@@ -606,7 +607,8 @@ public class PubGrubSolver {
                     if (allowed.isEmpty()) allowed = VersionSet.ALL;
                     addIncompatibility(new Incompatibility(
                             List.of(Term.positive(pkg, allowed)),
-                            new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                            new Incompatibility.Cause.NoVersions(
+                                    pkg, allowed, unknownPackage, sampleAvailable(pkg), source.refusalNotes(pkg))));
                     return pkg;
                 }
                 addIncompatibility(new Incompatibility(

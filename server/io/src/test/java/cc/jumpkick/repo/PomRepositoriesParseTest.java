@@ -7,13 +7,13 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A POM's own {@code <repositories>}: the top-level list and those of profiles Maven activates
- * with no command line, Central and snapshot-only repositories left out, each entry naming the POM
- * that wrote it.
+ * with no command line, Central left out, each entry naming the POM that wrote it and carrying its
+ * release/snapshot policy.
  */
 class PomRepositoriesParseTest {
 
     @Test
-    void top_level_and_default_active_profile_repositories_are_read_and_central_and_snapshot_only_are_not() {
+    void top_level_and_default_active_profile_repositories_are_read_with_their_policy_and_central_is_not() {
         Pom pom = PomParser.parse("""
                 <project>
                   <groupId>io.apicurio</groupId>
@@ -93,6 +93,12 @@ class PomRepositoriesParseTest {
                                 "confluent",
                                 "https://packages.confluent.io/maven/",
                                 "io.apicurio:apicurio-registry:2.6.13.Final"),
+                        new Pom.Repository(
+                                "apache.snapshots",
+                                "https://repository.apache.org/snapshots",
+                                "io.apicurio:apicurio-registry:2.6.13.Final",
+                                false,
+                                true),
                         new Pom.Repository(
                                 "jitpack.io", "https://jitpack.io", "io.apicurio:apicurio-registry:2.6.13.Final"),
                         new Pom.Repository(

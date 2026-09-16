@@ -55,6 +55,16 @@ public final class Versions {
     private static final Pattern SNAPSHOT_TIMESTAMP = Pattern.compile("-\\d{8}\\.\\d{6}-\\d+$");
 
     /**
+     * True for a Maven snapshot: a {@code -SNAPSHOT} version or its resolved timestamped form. A
+     * snapshot is served only by a repository whose snapshot policy is enabled, and never by
+     * Maven Central.
+     */
+    public static boolean isSnapshot(String version) {
+        return version.endsWith("-SNAPSHOT")
+                || SNAPSHOT_TIMESTAMP.matcher(version).find();
+    }
+
+    /**
      * True for a stable release: sorts ≥ its numeric core under {@link MavenVersion}, has no
      * pre-release qualifier, and is not a timestamped snapshot. No numeric core → unstable.
      * Release synonyms ({@code Final}, {@code RELEASE}, {@code GA}) remain stable.
