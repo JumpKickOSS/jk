@@ -293,6 +293,12 @@ public final class LockPlans {
                 ctx.progress(1);
                 observer.onGraphPackage(module, version);
             }
+
+            @Override
+            public void onOverride(String line) {
+                ctx.warn("nearest-wins", line);
+                observer.onOverride(line);
+            }
         };
     }
 

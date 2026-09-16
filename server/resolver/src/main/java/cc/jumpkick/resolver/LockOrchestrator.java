@@ -6,6 +6,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -53,6 +54,9 @@ public final class LockOrchestrator {
     /** Unmapped-fill policy; default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
     private UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
 
+    /** How a declared exact pin meets a transitive's constraint; default {@link PinPolicy#EXACT}. */
+    private PinPolicy pinPolicy = PinPolicy.EXACT;
+
     /** The compiler versions this lock pins; the injected stdlibs follow them exactly. */
     public LockOrchestrator withToolVersions(LanguageRuntimeInject.ToolVersions tools) {
         this.toolVersions = tools == null ? LanguageRuntimeInject.ToolVersions.NONE : tools;
@@ -79,6 +83,12 @@ public final class LockOrchestrator {
     /** Unmapped-fill policy under a platform (see {@link cc.jumpkick.model.UnmappedPolicy}). */
     public LockOrchestrator withUnmappedPolicy(UnmappedPolicy policy) {
         if (policy != null) this.unmappedPolicy = policy;
+        return this;
+    }
+
+    /** Direct-pin policy (see {@link PinPolicy}). */
+    public LockOrchestrator withPinPolicy(PinPolicy policy) {
+        if (policy != null) this.pinPolicy = policy;
         return this;
     }
 
@@ -220,8 +230,11 @@ public final class LockOrchestrator {
                         repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
 
         progress.graphPhase(roots.declaredCount());
-        ScopeSolves.Solved solved = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp)
+        ScopeSolves.Solved solved = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy)
                 .solve(roots, lockedVersionPrefs, progress);
+        if (sharedSource != null) {
+            for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
+        }
 
         progress.materializePhase(progress.graphPackages() + fileDeps.size());
         Lockfile lockfile = new LockfileAssembler(repos, kmp, pomBuilder, constraints, activatedFeatures)

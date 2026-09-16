@@ -14,6 +14,7 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -192,6 +193,22 @@ class JkBuildRendererTest {
                 .containsExactly(
                         Map.entry("Implementation-Title", "jk-test-runner"),
                         Map.entry("Implementation-Version", "1.0.0"));
+    }
+
+    @Test
+    void resolve_policies_render_only_when_they_differ_from_the_defaults() {
+        JkBuild plain = JkBuild.builder(
+                        Project.builder("com.example", "widget", "1.0.0").build())
+                .build();
+        assertThat(JkBuildRenderer.render(plain)).doesNotContain("[resolve]");
+
+        JkBuild nearest = JkBuild.builder(
+                        Project.builder("com.example", "widget", "1.0.0").build())
+                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build();
+        String out = JkBuildRenderer.render(nearest);
+        assertThat(out).contains("[resolve]\npins = \"nearest\"").doesNotContain("platform =");
+        assertThat(JkBuildParser.parse(out).build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
     }
 
     @Test

@@ -27,6 +27,13 @@ public interface ResolveObserver {
      */
     default void onGraphPackage(String module, String version) {}
 
+    /**
+     * One transitive constraint the project's own pin overrode under {@code [resolve] pins =
+     * "nearest"}, rendered as a sentence naming the pin, the parent and what it asked for. Fires
+     * once per distinct override after the graphs are solved.
+     */
+    default void onOverride(String line) {}
+
     /** No-op observer — used when no progress tracking is needed. */
     ResolveObserver NOOP = new ResolveObserver() {
         @Override

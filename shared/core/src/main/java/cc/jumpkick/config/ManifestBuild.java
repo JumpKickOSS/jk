@@ -10,6 +10,7 @@ import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
@@ -311,6 +312,7 @@ public final class ManifestBuild {
                     false,
                     policies.platform(),
                     policies.unmapped(),
+                    policies.pins(),
                     List.of(),
                     List.of(),
                     List.of(),
@@ -339,6 +341,7 @@ public final class ManifestBuild {
                 s.testCoverage,
                 policies.platform(),
                 policies.unmapped(),
+                policies.pins(),
                 List.of(),
                 s.testTools,
                 List.of(),
@@ -347,12 +350,13 @@ public final class ManifestBuild {
                 EnvConfig.EMPTY);
     }
 
-    /** The two {@code [resolve]} policies, at their defaults when the table or key is absent. */
-    private record ResolvePolicies(PlatformPolicy platform, UnmappedPolicy unmapped) {}
+    /** The three {@code [resolve]} policies, at their defaults when the table or key is absent. */
+    private record ResolvePolicies(PlatformPolicy platform, UnmappedPolicy unmapped, PinPolicy pins) {}
 
     private static ResolvePolicies resolvePolicies(@Nullable TomlTable resolve) {
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
         UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
+        PinPolicy pinPolicy = PinPolicy.EXACT;
         if (resolve != null && resolve.contains("platform")) {
             String raw = resolve.getString("platform");
             if (raw == null || raw.isBlank()) {
@@ -375,7 +379,18 @@ public final class ManifestBuild {
                 throw new JkBuildParseException("[resolve].unmapped: " + e.getMessage());
             }
         }
-        return new ResolvePolicies(platformPolicy, unmappedPolicy);
+        if (resolve != null && resolve.contains("pins")) {
+            String raw = resolve.getString("pins");
+            if (raw == null || raw.isBlank()) {
+                throw new JkBuildParseException("[resolve].pins must be a string (exact or nearest)");
+            }
+            try {
+                pinPolicy = PinPolicy.parse(raw);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("[resolve].pins: " + e.getMessage());
+            }
+        }
+        return new ResolvePolicies(platformPolicy, unmappedPolicy, pinPolicy);
     }
 
     /** The keys one {@code [dev.sidecars.<name>]} table may carry; the schema names exactly these. */

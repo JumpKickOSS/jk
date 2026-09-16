@@ -99,6 +99,9 @@ public final class MavenPackageSource implements PackageSource {
     /** Package key → plain versions edges expanded in this solve have declared for it. */
     private final ConcurrentHashMap<String, Set<String>> declaredVersions = new ConcurrentHashMap<>();
 
+    /** The graph's exact roots when they override transitive constraints (see {@link NearestPins}). */
+    private final NearestPins nearestPins = new NearestPins();
+
     /**
      * Modules to strip when expanding a package, keyed by package module id.
      *
@@ -226,6 +229,21 @@ public final class MavenPackageSource implements PackageSource {
         exclusionsWhenExpanding.clear();
         filteredAtExpansion.clear();
         declaredVersions.clear();
+    }
+
+    /** The exact roots of the graph about to be solved, or empty when pins are plain constraints. */
+    public void setNearestPins(Map<String, String> gaToVersion) {
+        nearestPins.set(gaToVersion);
+    }
+
+    /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */
+    public List<String> nearestOverrides() {
+        return nearestPins.renderedOverrides();
+    }
+
+    private VersionSet nearestOrOwn(String parentPkg, String parentVersion, RawEdge edge) {
+        return nearestPins.constraintFor(
+                parentPkg, parentVersion, edge.depPkg(), edge.constraint(), edge.declaredVersion());
     }
 
     @Override
@@ -472,7 +490,8 @@ public final class MavenPackageSource implements PackageSource {
                             .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
                             .add(edge.declaredVersion());
                 }
-                out.add(Term.negative(edge.depPkg(), edge.constraint().complement()));
+                out.add(Term.negative(
+                        edge.depPkg(), nearestOrOwn(pkg, version, edge).complement()));
                 continue;
             }
             if (isExcluded(edge.depPkg(), excl)) {
@@ -491,7 +510,7 @@ public final class MavenPackageSource implements PackageSource {
                         .computeIfAbsent(edge.depPkg(), k -> ConcurrentHashMap.newKeySet())
                         .add(edge.declaredVersion());
             }
-            out.add(Term.positive(edge.depPkg(), edge.constraint()));
+            out.add(Term.positive(edge.depPkg(), nearestOrOwn(pkg, version, edge)));
         }
         // Remember what this expansion dropped so the resolver can detect a stale expansion
         // after the exclusion sets converge (they only ever narrow). Overwrite, not merge: a

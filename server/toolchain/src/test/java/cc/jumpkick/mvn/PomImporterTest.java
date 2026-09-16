@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.PomParseException;
 import java.nio.file.Files;
@@ -51,6 +52,49 @@ class PomImporterTest {
                 .hasMessageContaining("DOCTYPE")
                 .hasMessageNotContaining("TOP_SECRET_VALUE")
                 .isInstanceOf(PomParseException.class);
+    }
+
+    /**
+     * A POM's direct version is the version Maven built with, whatever a transitive asked for; the
+     * imported manifest says so, and so does the workspace root that owns the lock.
+     */
+    @Test
+    void an_imported_pom_resolves_its_pins_nearest_wins(@TempDir Path root) throws Exception {
+        PomImporter.Result single = TestImporters.importXml(root, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                </project>
+                """);
+        assertThat(single.jkBuild().build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>lib</module>
+                  </modules>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("lib"));
+        Files.writeString(root.resolve("lib/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.ex</groupId><artifactId>parent</artifactId><version>1.0.0</version>
+                  </parent>
+                  <artifactId>lib</artifactId>
+                </project>
+                """);
+        PomImporter.WorkspaceImportResult ws = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+        assertThat(ws.root().build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
+        assertThat(requireNonNull(ws.modules().get("lib")).build().pinPolicy()).isEqualTo(PinPolicy.NEAREST);
     }
 
     @Test

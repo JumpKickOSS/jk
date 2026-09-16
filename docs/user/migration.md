@@ -70,7 +70,19 @@ a failed import. The compiler level is written as `java = N`, never as a `jdk` p
 17 is raised to jk's floor with a row saying so, and `jdk =` appears only when the POM pins a
 toolchain (`maven-toolchains-plugin` or `<jdkToolchain>`). Inactive profiles land by payload
 (the table below); exclusions and classifiers are still rows. Read that report before trusting the
-generated `jk.toml`. Making an existing Maven project work under jk — plugin-aware
+generated `jk.toml`.
+
+**A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
+version as an exact pin and sets `[resolve] pins = "nearest"`, so the lock resolves a pinned module
+the way Maven's nearest-wins did: the project's pin is the version, and a transitive POM's range on
+that module is reported, not enforced. `cryptofs 2.10.0` declares `jakarta.inject-api 2.0.1.MR`;
+the POM's own `2.0.1` wins, the lock edge reads `jakarta.inject-api@2.0.1 <- 2.0.1.MR`, and
+`jk lock` prints one warning per overridden range so the divergence from what the library asked for
+is on record. A `jk.toml` written by hand keeps the default, `pins = "exact"`, under which the same
+shape is a conflict PubGrub refuses with its explanation; delete the `[resolve]` line to get that
+strictness back on an imported project. The alternative — importing direct versions as `>=` floors
+so highest-wins lifts them — would float every imported project past the versions Maven built
+with, which is not what the POM says. Making an existing Maven project work under jk — plugin-aware
 mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
 first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
@@ -115,7 +127,6 @@ because a repository stopped importing is not. The one repository that runs end 
 end, TheAlgorithms/Java, runs its 9,745 tests in 13 s under jk against 37 s under Maven, with one
 jk-only failure (a recursive test that needs the platform default thread stack). The walls that
 stop the other nineteen are named in the corpus's `tier3-reasons.md`, each with its ticket: a
-project pin refused against a transitive's lower bound that Maven's nearest-wins would accept, a
 Lombok on the classpath that never ran as a processor, and a lenient javadoc that still failed a
 build.
 
