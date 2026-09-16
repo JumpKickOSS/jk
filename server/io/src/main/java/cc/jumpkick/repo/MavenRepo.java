@@ -3,7 +3,6 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.FetchTimings;
-import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
@@ -37,18 +36,15 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One Maven-style repository: fetch into {@code repos/<name>/} (Maven layout + {@code .jk} memo).
- * When {@code m2integration} is on, a Maven local-repo file the repository's own checksum vouches
- * for is adopted into the store instead of downloaded, and a download is written through to the
- * local repository when that slot is empty or already equal — for Maven's benefit; the store is
- * what jk reads. Offline serves from the named repo store ({@link ArtifactNotFoundException} on
- * miss).
+ * When {@code m2integration} is on, the Maven local repository is a source of vouched bytes and a
+ * courtesy copy ({@link M2Adoption}); the store is what jk reads. Offline serves from the named
+ * repo store ({@link ArtifactNotFoundException} on miss).
  */
 public final class MavenRepo {
 
     /**
-     * Central failover + the standing download preference: {@link CentralMirror#standard()}, the same
-     * instance the transport holds. Static because the four-hour window is a fact about this machine's
-     * IP rather than about a repository — a per-repository copy would split it.
+     * Central failover + the standing download preference, the instance the transport holds. Static
+     * because the four-hour window is a fact about this machine's IP, not about a repository.
      */
     private static final CentralMirror CENTRAL_MIRROR = CentralMirror.standard();
 
@@ -60,6 +56,9 @@ public final class MavenRepo {
     private final RepoCredential credential;
     /** When true, prefer/write the Maven local repository for third-party artifacts. */
     private final boolean m2integration;
+
+    /** The Maven local repository as a source of vouched bytes and a courtesy copy; see {@link M2Adoption}. */
+    private final M2Adoption m2;
 
     /** TTL + conditional-GET cache for maven-metadata.xml; null for non-HTTP transports. */
     private final @Nullable MavenMetadataCache metadataCache;
@@ -147,18 +146,8 @@ public final class MavenRepo {
 
     /**
      * Caller-selected transport <em>and</em> the HTTP client, for an http(s) repo whose transport was
-     * built with per-repo object-store config.
-     *
-     * <p>This exists because the transport-only constructors pass {@code null} for the client, and the
-     * normal resolve path went through one of them — so for every ordinary build both HTTP-only features
-     * silently switched off: the {@code maven-metadata.xml} TTL/conditional-GET cache (which also holds
-     * the "reuse a stale copy rather than fail on 429" behaviour) and the {@code ~/.m2} probe. Only a
-     * test pinning an override URL took the client-carrying path, which is why the metadata cache looked
-     * healthy in tests while never running in practice.
-     */
-    /**
-     * Transport + HTTP client for an http(s) repo, with the repository's {@code allow-unverified}
-     * opt-in. See the note above on why this is separate.
+     * built with per-repo object-store config, with the repository's {@code allow-unverified} opt-in.
+     * The client is what keeps the metadata cache and the local-repository probe live.
      */
     public static MavenRepo overTransport(
             String name,
@@ -257,6 +246,7 @@ public final class MavenRepo {
         this.metadataCache = (httpOrNull != null && isHttp(this.baseUrl))
                 ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), MavenMetadataCache.DEFAULT_TTL)
                 : null;
+        this.m2 = new M2Adoption(name, isHttp(this.baseUrl) ? httpOrNull : null, repoStore, m2integration);
     }
 
     /**
@@ -307,11 +297,7 @@ public final class MavenRepo {
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
     }
 
-    /**
-     * True when this repo carries the HTTP client, i.e. the metadata TTL/conditional-GET cache and the
-     * {@code ~/.m2} probe are live. Both silently switch off without it, so it is worth being
-     * able to assert on.
-     */
+    /** True when this repo carries the HTTP client, so the metadata TTL/conditional-GET cache is live. */
     public boolean hasMetadataCache() {
         return metadataCache != null;
     }
@@ -369,10 +355,7 @@ public final class MavenRepo {
         return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT, abort, expectedSha256);
     }
 
-    /**
-     * Local-only artifact probe (no HTTP). Used by {@link RepoGroup} to hit any repo's CAS mirror
-     * before walking remotes that would 404 warm multi-repo re-lock).
-     */
+    /** Local-only artifact probe (no HTTP): {@link RepoGroup} asks every repo's store before any remote. */
     public Optional<Fetched> tryLocalArtifact(Coordinate coord) {
         boolean force = SessionContext.current().config().forceOr(false);
         if (force) return Optional.empty();
@@ -393,11 +376,9 @@ public final class MavenRepo {
     }
 
     /**
-     * Versions of this coordinate's {@code group:artifact} available here. Online: parses {@code
-     * maven-metadata.xml}, served through the {@link MavenMetadataCache} (TTL + conditional GET) for
-     * HTTP repos so back-to-back resolves don't re-download the index. Offline: lists what the local
-     * repo holds. A missing artifact yields an empty list rather than an error so {@link RepoGroup}
-     * can union across repos.
+     * Versions of this coordinate's {@code group:artifact} available here: online from {@code
+     * maven-metadata.xml} through the {@link MavenMetadataCache} for HTTP repos, offline from what
+     * the store holds. A missing artifact is an empty list, so {@link RepoGroup} can union across repos.
      */
     public List<String> availableVersions(Coordinate coord) throws IOException, InterruptedException {
         if (SessionContext.current().config().offlineOr(false)) {
@@ -462,12 +443,14 @@ public final class MavenRepo {
         URI uri = baseUrl.resolve(relativePath);
         // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
         URI primary = leg == Leg.ARTIFACT ? CENTRAL_MIRROR.routeForDownload(uri) : uri;
-        // Before paying for the artifact, see whether the machine's Maven repository already has it
-        // . Confirmed against a checksum fetched from THIS repository, so ~/.m2 is only ever a
-        // candidate for bytes the remote vouches for.
+        // A Maven local-repository copy this repository's own checksum vouches for costs one small GET.
         if (mirror && !force) {
-            Optional<Fetched> fromM2 = tryM2(coord, relativePath, uri, leg);
-            if (fromM2.isPresent()) return fromM2.get();
+            Optional<M2Adoption.Adopted> adopted = m2.tryAdopt(relativePath, uri);
+            if (adopted.isPresent()) {
+                M2Adoption.Adopted a = adopted.get();
+                if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
+                return new Fetched(uri, a.placed(), a.sha256(), a.size());
+            }
         }
         // Per-host cap around the NETWORK leg only. Warm mirror hits short-circuit
         // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
@@ -529,108 +512,8 @@ public final class MavenRepo {
                 .orElseThrow(() -> new IOException(
                         "failed to store " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " at "
                                 + relativePath + " (store write failed — check disk space and permissions)"));
-        if (m2integration && JkM2Config.resolve().integration()) {
-            // Refuse a relativePath (from a possibly hostile GAV) that would escape ~/.m2.
-            writeThroughM2(MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath), placed);
-        }
+        m2.writeThrough(relativePath, placed);
         return placed;
-    }
-
-    /**
-     * Maven's copy, with the {@code .sha1} / {@code .md5} sidecars and {@code _remote.repositories}
-     * Maven expects. Best effort: a local repository that cannot be written, or that holds other
-     * bytes at this slot, costs Maven a fetch and jk nothing.
-     */
-    private void writeThroughM2(Path m2Target, Path source) {
-        try {
-            if (Files.isRegularFile(m2Target)) return;
-            M2CompatWriter.MavenHashes hashes = M2CompatWriter.copyToM2AndHash(source, m2Target);
-            M2CompatWriter.writeMavenSidecars(m2Target, hashes.sha1(), hashes.md5());
-            M2CompatWriter.writeRemoteRepositories(
-                    Objects.requireNonNull(m2Target.getParent()),
-                    name,
-                    m2Target.getFileName().toString());
-        } catch (IOException | RuntimeException e) {
-            Log.debug("writeThroughM2: the Maven local repository is a courtesy copy", e);
-        }
-    }
-
-    /**
-     * Adopt {@code relativePath} out of the Maven local repository when its bytes match the checksum this
-     * repository publishes for it.
-     *
-     * <p>The hash is fetched remotely rather than read from {@code jk-lock.toml} on purpose: it makes the
-     * check work during resolve, when no lock entry exists yet, and it keeps the authority with the
-     * repository instead of with a directory any {@code mvn install} can write to. A {@code .sha1} is
-     * ~40 bytes against a jar that can be tens of megabytes, so the saving is bandwidth — it does not
-     * reduce request count, and so does not by itself relieve a per-IP quota.
-     *
-     * <p>Empty on any doubt whatsoever: lookup disabled, no local file, no HTTP client, sidecar missing
-     * or unparseable, or bytes that do not match. Every one of those falls through to the ordinary
-     * download, so the worst case is one wasted small GET. An adopted artifact counts as verified:
-     * the repository's own checksum vouched for it, exactly as it would for a download.
-     */
-    private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri, Leg leg) {
-        if (!m2integration || !JkM2Config.resolve().integration()) return Optional.empty();
-        if (http == null || !isHttp(baseUrl)) return Optional.empty();
-        try {
-            Path candidate = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
-            if (!Files.isRegularFile(candidate)) return Optional.empty();
-
-            // Prefer the collision-resistant .sha256 sidecar; fall back to .sha1 only when the repo
-            // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
-            // for bytes any `mvn install` could have seeded). The SHA-256 is computed once: it is
-            // both the comparison and the memo the adoption records.
-            String sha256 = Hashing.sha256Hex(candidate);
-            String vouchAlgo;
-            Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
-            if (advertised.isPresent()) {
-                vouchAlgo = "sha256";
-                if (!sha256.equalsIgnoreCase(advertised.get())) {
-                    return Optional.empty();
-                }
-            } else {
-                vouchAlgo = "sha1";
-                advertised = fetchSidecar(uri, ".sha1", 40);
-                if (advertised.isEmpty()) return Optional.empty();
-                if (!Hashing.fileHex("SHA-1", candidate).equalsIgnoreCase(advertised.get())) {
-                    return Optional.empty();
-                }
-            }
-
-            // Into the store: the build reads only what the store owns, so an adopted file is a copy
-            // and the local repository keeps its own.
-            repoStore.materialize(relativePath, candidate, sha256);
-            Path placed = repoStore.locate(relativePath).orElse(null);
-            if (placed == null) return Optional.empty();
-            if (leg == Leg.ARTIFACT) verifiedUpstream.incrementAndGet();
-            if (SessionContext.current().config().verboseOr(false)) {
-                Log.info("jk: adopted " + relativePath + " from Maven local repo (" + vouchAlgo + " confirmed by "
-                        + name + ")");
-            }
-            return Optional.of(new Fetched(uri, placed, sha256, Files.size(placed)));
-        } catch (IOException | RuntimeException e) {
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * The digest this repository publishes in the {@code suffix} sidecar beside {@code uri}; empty
-     * when absent or not a {@code hexLength}-digit digest. Some repositories answer a missing
-     * sidecar with an HTML error page under HTTP 200, which is why the body is validated and not
-     * merely non-empty.
-     */
-    private Optional<String> fetchSidecar(URI uri, String suffix, int hexLength) {
-        Http client = http;
-        if (client == null) return Optional.empty(); // a non-HTTP transport publishes no sidecar this way
-        try {
-            var resp = client.get(URI.create(uri + suffix));
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            return Hashing.checksumFromSidecar(new String(resp.body(), StandardCharsets.UTF_8), hexLength);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            return Optional.empty();
-        }
     }
 
     private record Downloaded(Path path, String sha256, long size) {}
@@ -727,18 +610,14 @@ public final class MavenRepo {
     }
 
     /**
-     * Check the download against the lock pin when there is one, then against the checksum this
-     * repository publishes beside it: {@code .sha256} first, else {@code .sha1}, else {@code .md5}
-     * as the last resort; a mismatch fails closed. An artifact only an {@code .md5} vouches for is
-     * accepted with a note ({@link #weakChecksumNotes}) naming it and the digest, because Central
-     * holds releases published that way and the lock pins the bytes by their SHA-256 from then on.
-     * The pin is compared first so bytes the lock rejects are discarded here, before anything
-     * places them in the store or {@code ~/.m2} — placed bytes would be copied on and re-downloaded
-     * on every later sync. With no sidecar at all the bytes are accepted only when the pin vouches
-     * for them, when the repository is on local disk ({@code file://} has no network path to
-     * tamper with), or when the repository table says {@code allow-unverified = true}; otherwise
-     * the fetch is refused, because a pin taken from unverified bytes would protect every later
-     * build with a checksum of whatever arrived.
+     * Check the download against the lock pin when there is one — first, so bytes the lock rejects
+     * are discarded before anything places them — then against the checksum this repository
+     * publishes beside it: {@code .sha256}, else {@code .sha1}, else {@code .md5}; a mismatch fails
+     * closed, and an {@code .md5}-only match is accepted with a note ({@link #weakChecksumNotes}).
+     * With no sidecar at all the bytes are accepted only when the pin vouches for them, when the
+     * repository is on local disk, or under {@code allow-unverified = true}; otherwise the fetch is
+     * refused, because a pin taken from unverified bytes would protect every later build with a
+     * checksum of whatever arrived.
      */
     private void verifyUpstreamChecksum(
             Coordinate coord,
@@ -843,17 +722,10 @@ public final class MavenRepo {
 
     /**
      * The canonical form of a repository base URL: a trailing slash so {@code resolve} appends
-     * rather than replaces, and <strong>no userinfo</strong>.
-     *
-     * <p>{@link #baseUrl()} is not just a request prefix — {@code LockOrchestrator} interpolates it
-     * into every artifact's {@code source} field, so it is committed to {@code jk-lock.toml} and
-     * shared with everyone who clones the repository. A base URL declared as
-     * {@code https://alice:s3cr3t@nexus.example.com/repo/} (in {@code jk.toml} or, worse, in one
-     * developer's {@code ~/.jk/config.toml}) would put that credential in the lockfile, in
-     * every fetch error and in the journal. Stripping it here costs nothing: authentication runs
-     * through {@link RepoCredentialResolver} and an {@code Authorization} header,
-     * and the JDK's {@code HttpClient} never authenticates from userinfo — so the credential half
-     * of such a URL was inert on the wire and live everywhere else.
+     * rather than replaces, and <strong>no userinfo</strong>. {@link #baseUrl()} is interpolated into
+     * every artifact's {@code source} field in {@code jk-lock.toml}, into fetch errors and into the
+     * journal, so a credential written into the URL must not travel with it; authentication runs
+     * through {@link RepoCredentialResolver} and an {@code Authorization} header, never userinfo.
      */
     private static URI normalize(URI uri) {
         URI safe = Objects.requireNonNull(SafeUri.withoutUserInfo(uri));
