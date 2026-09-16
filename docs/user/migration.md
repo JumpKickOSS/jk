@@ -187,12 +187,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 |
-| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 |
-| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 |
+| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -229,6 +229,11 @@ drops in nacos and jenkins, a `javax.jms` transitive in zipkin, a JavaFX suite w
 open in cryptomator, a test that refuses jk's class directory in apollo), each a ticket. Its wall
 columns are not comparable: six gates shared the host during that run. The other walls are named
 in the corpus's `tier3-reasons.md`, each with its ticket.
+Run 8 (main dbd295c77) holds fourteen locks; its import count fell because neo4j's shaded sibling
+is now a named row, and its build count fell because floci's imported `[quarkus]` table runs the
+augment, which fails on a jar the POM excludes and that lock did not yet honour. hadoop's import
+rows fell from 105 to 4 once reactor parents resolved from the checkout, and quarkus's 760-module
+import outgrew the default engine heap, both tickets.
 
 Two of run 7's test walls are the repository's contract with Maven rather than something jk
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
