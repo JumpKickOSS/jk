@@ -860,8 +860,18 @@ public final class BuildJournal {
     private record Entry(Path dir, long millis, long size) {}
 
     private Optional<Path> resolveForComplete(String locator, BuildRecord finished) {
-        if (finished != null && finished.buildNumber() > 0 && finished.dir() != null) {
-            Optional<Path> scoped = runDir(finished.coord(), finished.dir(), finished.buildNumber());
+        return runDir(locator, finished);
+    }
+
+    /**
+     * The run directory {@code record} was written to under {@code locator}. Build numbers are
+     * per project, so a numbered locator is resolved under the record's own project home; the
+     * unscoped lookup is for the locators that name no project (a {@code j-…} job dir, a record
+     * id), and for a record that carries no project.
+     */
+    public Optional<Path> runDir(String locator, @Nullable BuildRecord record) {
+        if (record != null && record.buildNumber() > 0 && record.dir() != null) {
+            Optional<Path> scoped = runDir(record.coord(), record.dir(), record.buildNumber());
             if (scoped.isPresent()) return scoped;
         }
         return findRunDir(locator);

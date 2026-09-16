@@ -60,6 +60,59 @@ class BuildJournalTest {
                 List.of());
     }
 
+    /**
+     * Build numbers restart at 1 in every project home, so two projects on one home both own a
+     * {@code runs/1}. The directory a record resolves to is the one under its own project: the
+     * results file of one project must never point its transcript at the other's run.
+     */
+    @Test
+    void a_numbered_locator_resolves_under_the_records_own_project_home() {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord a = recordIn("/proj-a", "g:a").withBuildNumber(1);
+        BuildRecord b = recordIn("/proj-b", "g:b").withBuildNumber(1);
+        assertThat(j.append(a, BuildJournal.Snapshot.NONE)).isEqualTo("1");
+        assertThat(j.append(b, BuildJournal.Snapshot.NONE)).isEqualTo("1");
+        Path homeA = ProjectBuilds.projectHome(dir, "g:a", Path.of("/proj-a"));
+        Path homeB = ProjectBuilds.projectHome(dir, "g:b", Path.of("/proj-b"));
+        assertThat(homeA).isNotEqualTo(homeB);
+
+        assertThat(j.runDir("1", a)).contains(homeA.resolve("runs").resolve("1"));
+        assertThat(j.runDir("1", b)).contains(homeB.resolve("runs").resolve("1"));
+        assertThat(j.detailsFile("g:a", "/proj-a", 1)).contains(homeA.resolve("runs/1/details.jsonl"));
+        assertThat(j.detailsFile("g:b", "/proj-b", 1)).contains(homeB.resolve("runs/1/details.jsonl"));
+    }
+
+    private static BuildRecord recordIn(String projectDir, String coord) {
+        return new BuildRecord(
+                null,
+                0L,
+                BuildRecord.SCHEMA,
+                "build",
+                projectDir,
+                coord,
+                null,
+                1_700_000_000_900L,
+                1_700_000_001_000L,
+                100,
+                true,
+                false,
+                0,
+                "9.9-test",
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                "cli",
+                null,
+                null,
+                null,
+                false,
+                null,
+                0L,
+                null,
+                List.of());
+    }
+
     /** The journal writes {@code trigger}, never a {@code synthetic} key: both loaders derive it. */
     @Test
     void fixture_runs_are_hidden_from_the_raw_path_exactly_as_from_the_parsed_one() {
