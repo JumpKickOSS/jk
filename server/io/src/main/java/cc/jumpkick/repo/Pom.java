@@ -62,13 +62,20 @@ public record Pom(
      * A {@code <repository>} the POM declares for its own dependencies, at the top level or in a
      * profile Maven activates without a command line ({@code activeByDefault}, or a {@code
      * <property><name>!x</name>} activation). Maven Central is never listed: every group has it.
-     * {@code declaredBy} is the {@code g:a:v} of the POM that wrote it, for the lock's note.
+     * {@code declaredBy} is the {@code g:a:v} of the POM that wrote it, for the lock's note. {@code
+     * releases} and {@code snapshots} are the {@code <releases><enabled>} and {@code
+     * <snapshots><enabled>} policies, both on when the POM leaves them unsaid.
      */
-    public record Repository(String id, String url, String declaredBy) {
+    public record Repository(String id, String url, String declaredBy, boolean releases, boolean snapshots) {
         public Repository {
             Objects.requireNonNull(id, "id");
             Objects.requireNonNull(url, "url");
             Objects.requireNonNull(declaredBy, "declaredBy");
+        }
+
+        /** A repository with Maven's default policy: releases and snapshots both enabled. */
+        public Repository(String id, String url, String declaredBy) {
+            this(id, url, declaredBy, true, true);
         }
     }
 

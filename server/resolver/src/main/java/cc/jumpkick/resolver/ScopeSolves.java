@@ -86,8 +86,10 @@ final class ScopeSolves {
                 Objects.requireNonNull(this.sharedSource, "a solve without an override needs its shared source");
         sharedSource.setLockedVersionPrefs(prefs);
         sharedSource.setSnapshotPackages(snapshotModules(roots));
+        Map<String, String> exact = exactRoots(roots);
+        sharedSource.setExactRoots(exact);
         // Nearest-wins is a per-graph fact: a test-only pin has no say on the main classpath.
-        sharedSource.setNearestPins(pinPolicy == PinPolicy.NEAREST ? exactRoots(roots) : Map.of());
+        sharedSource.setNearestPins(pinPolicy == PinPolicy.NEAREST ? exact : Map.of());
         // exclusion state is per-graph; main's clean paths must not bleed into
         // the test/processor solves.
         sharedSource.resetSolveScopedState();

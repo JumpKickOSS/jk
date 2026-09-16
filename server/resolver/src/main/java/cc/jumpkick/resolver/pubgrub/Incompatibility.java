@@ -38,12 +38,19 @@ public record Incompatibility(List<Term> terms, Cause cause) {
          * when the package source returned an empty version list (typically a 404 on the artifact's
          * {@code maven-metadata.xml}), and {@code false} when some versions exist but none satisfy the
          * constraint. {@code available} is a sample of advertised versions (highest-first, capped)
-         * for near-miss diagnostics (R6a).
+         * for near-miss diagnostics (R6a); {@code notes} are the source's reasons the list lacks what
+         * was asked ({@link PackageSource#refusalNotes}).
          */
-        record NoVersions(String pkg, VersionSet requested, boolean unknownPackage, List<String> available)
+        record NoVersions(
+                String pkg, VersionSet requested, boolean unknownPackage, List<String> available, List<String> notes)
                 implements Cause {
             public NoVersions {
                 available = available == null ? List.of() : List.copyOf(available);
+                notes = notes == null ? List.of() : List.copyOf(notes);
+            }
+
+            public NoVersions(String pkg, VersionSet requested, boolean unknownPackage, List<String> available) {
+                this(pkg, requested, unknownPackage, available, List.of());
             }
 
             public NoVersions(String pkg, VersionSet requested) {

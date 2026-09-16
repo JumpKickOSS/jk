@@ -70,8 +70,17 @@ public final class MavenPackageSource implements PackageSource {
      */
     private volatile Set<String> snapshotPackages = Set.of();
 
+    /**
+     * {@code group:artifact} → the exact version the project declares for it. Together with {@link
+     * #declaredVersions} these are the versions a repository walk must find before it stops, the way
+     * Maven asks every repository for an exact version rather than the first catalog that answers.
+     */
+    private volatile Map<String, String> exactRoots = Map.of();
+
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
+    /** pkg → the wanted set its cached candidate lists were computed for; see {@link #dropStaleCandidates}. */
+    private final Map<String, Set<String>> wantedAtCache = new ConcurrentHashMap<>();
     /**
      * Raw POM edge cache keyed by {@code pkg@version} only. Exclusion filtering is applied
      * per-call so backtracking does not re-parse EffectivePoms under shifting exclusion keys.
@@ -264,6 +273,63 @@ public final class MavenPackageSource implements PackageSource {
         nearestPins.set(gaToVersion);
     }
 
+    /** Every root the project declares with an exact pin, {@code group:artifact → version}. */
+    public void setExactRoots(Map<String, String> gaToVersion) {
+        this.exactRoots = Map.copyOf(Objects.requireNonNull(gaToVersion, "gaToVersion"));
+    }
+
+    /**
+     * The versions of {@code pkg} something has asked for by name: the project's exact pin and every
+     * plain version a POM edge wrote. A repository walk continues past the first catalog until
+     * it has seen them all.
+     */
+    private Set<String> wantedVersions(String pkg) {
+        LinkedHashSet<String> out = new LinkedHashSet<>(declaredVersions(pkg));
+        String root = firstNonBlank(
+                exactRoots.get(pkg), exactRoots.get(PackageId.parse(pkg).ga()));
+        if (root != null) out.add(root);
+        return out;
+    }
+
+    /**
+     * Forget the candidate lists of {@code pkg} when a version was asked for after they were
+     * computed: a later edge naming a version the first repository never listed is exactly what
+     * must send the walk on to the next one.
+     */
+    private void dropStaleCandidates(String pkg, Set<String> wanted) {
+        Set<String> known = wantedAtCache.get(pkg);
+        if (known != null && !known.containsAll(wanted)) {
+            versionCache.remove(pkg);
+            expandedVersionCache.remove(pkg);
+        }
+    }
+
+    @Override
+    public List<String> refusalNotes(String pkg) {
+        List<String> out = new ArrayList<>();
+        RepoGroup group = declared.reposFor(pkg);
+        for (String wanted : wantedVersions(pkg)) {
+            if (!Versions.isSnapshot(wanted)) continue;
+            List<MavenRepo> asked = group.repositoriesFor(withVersion(pkg, wanted));
+            List<String> serving = new ArrayList<>();
+            List<String> refusing = new ArrayList<>();
+            for (MavenRepo repo : asked) {
+                (repo.servesSnapshots() ? serving : refusing).add(repo.name() + " (" + repo.policyLabel() + ")");
+            }
+            String display = PackageId.parse(pkg).display();
+            if (serving.isEmpty()) {
+                out.add(wanted + " is a snapshot, and no repository " + display + " may resolve from serves"
+                        + " snapshots: " + String.join(", ", refusing) + ". Declare one under [repositories]"
+                        + " (snapshots are on there unless it says snapshots = false), or let the POM that names"
+                        + " it declare a <repository> with <snapshots><enabled>true</enabled>");
+            } else {
+                out.add(wanted + " is a snapshot; the repositories serving snapshots for " + display + " do not"
+                        + " list it: " + String.join(", ", serving));
+            }
+        }
+        return List.copyOf(out);
+    }
+
     /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */
     public List<String> nearestOverrides() {
         return nearestPins.renderedOverrides();
@@ -344,17 +410,20 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
+        Set<String> wanted = wantedVersions(pkg);
+        dropStaleCandidates(pkg, wanted);
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
 
         long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
         // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
         // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
-        List<String> ordered = orderedVersions(pkg);
+        List<String> ordered = orderedVersions(pkg, wanted);
         // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
         List<String> result =
                 List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
         versionCache.put(pkg, result);
+        wantedAtCache.put(pkg, Set.copyOf(wanted));
         if (ResolveProfile.on()) {
             ResolveProfile.versions(System.nanoTime() - t0);
         }
@@ -369,16 +438,27 @@ public final class MavenPackageSource implements PackageSource {
      */
     @Override
     public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+        Set<String> wanted = wantedVersions(pkg);
+        dropStaleCandidates(pkg, wanted);
         List<String> cached = expandedVersionCache.get(pkg);
         if (cached != null) return cached;
-        List<String> result = List.copyOf(orderedVersions(pkg));
+        List<String> result = List.copyOf(orderedVersions(pkg, wanted));
         expandedVersionCache.put(pkg, result);
+        wantedAtCache.put(pkg, Set.copyOf(wanted));
         return result;
     }
 
-    /** Advertised versions, highest-first, BOM/lock soft-prefers front-loaded. */
     private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {
-        List<String> available = declared.reposFor(pkg).availableVersions(withVersion(pkg, "any"));
+        return orderedVersions(pkg, wantedVersions(pkg));
+    }
+
+    /**
+     * Advertised versions, highest-first, BOM/lock soft-prefers front-loaded. Snapshots are
+     * candidates only for a {@code snapshot} package or when a wanted version is one.
+     */
+    private List<String> orderedVersions(String pkg, Set<String> wanted) throws IOException, InterruptedException {
+        boolean snapshots = isSnapshotPackage(pkg) || wanted.stream().anyMatch(Versions::isSnapshot);
+        List<String> available = declared.reposFor(pkg).availableVersions(withVersion(pkg, "any"), wanted, snapshots);
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
 

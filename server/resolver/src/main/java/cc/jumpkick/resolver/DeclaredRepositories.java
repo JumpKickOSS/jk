@@ -139,7 +139,9 @@ final class DeclaredRepositories {
             refuse(repository, "its URL names no host");
             return null;
         }
-        MavenRepo repo = base.repos().getFirst().declaredByPom(repository.id(), url);
+        MavenRepo repo = base.repos()
+                .getFirst()
+                .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots());
         built.putIfAbsent(repository.url(), repo);
         return repo;
     }
@@ -153,10 +155,13 @@ final class DeclaredRepositories {
     /** Once per repository and declaring POM, however many packages inherit it. */
     private void note(Pom.Repository repository) {
         if (refusedUrls.contains(repository.url())) return;
+        String policy = repository.releases() && repository.snapshots()
+                ? ""
+                : repository.snapshots() ? " for snapshots only" : " for releases only";
         notes.add("repository `" + repository.id() + "` at " + repository.url() + ", declared by the POM of "
-                + repository.declaredBy() + ", is consulted for that POM's dependencies and theirs after the"
-                + " project's repositories; a row it serves records it as `source`, and it is held to the same"
-                + " trust rule as a declared repository (https, published checksums)");
+                + repository.declaredBy() + ", is consulted" + policy + " for that POM's dependencies and theirs"
+                + " after the project's repositories; a row it serves records it as `source`, and it is held to"
+                + " the same trust rule as a declared repository (https, published checksums)");
     }
 
     private static String ga(String pkg) {

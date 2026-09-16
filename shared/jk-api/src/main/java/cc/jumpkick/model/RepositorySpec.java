@@ -11,8 +11,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Declared repository: name, URL, optional inline credential, object-store config, optional
- * exclusive Maven group bindings (dependency-confusion defense), and the two trust opt-ins a
- * repository table may carry.
+ * exclusive Maven group bindings (dependency-confusion defense), the two trust opt-ins a
+ * repository table may carry, and the release/snapshot policy Maven gives a {@code
+ * <repository>}: which kind of version it is asked for.
  */
 public record RepositorySpec(
         String name,
@@ -28,7 +29,14 @@ public record RepositorySpec(
          * {@code allow-unverified = true}: an artifact this repository publishes no checksum sidecar
          * for may still be pinned at lock time.
          */
-        boolean allowUnverified) {
+        boolean allowUnverified,
+        /** {@code releases = true} (the default): release versions are asked of this repository. */
+        boolean releases,
+        /**
+         * {@code snapshots = true} (the default for a declared repository): {@code -SNAPSHOT} versions
+         * are asked of this repository. Off for every built-in: Maven Central hosts no snapshots.
+         */
+        boolean snapshots) {
 
     /**
      * The one name Maven Central answers to inside jk — the {@code repos/<name>/} store directory,
@@ -44,7 +52,7 @@ public record RepositorySpec(
      * addressed to the alias is invisible to the rate-limit window and to the failover mirror.
      */
     public static final RepositorySpec MAVEN_CENTRAL =
-            new RepositorySpec(CENTRAL, URI.create("https://repo.maven.apache.org/maven2/"));
+            releasesOnly(new RepositorySpec(CENTRAL, URI.create("https://repo.maven.apache.org/maven2/")));
 
     /**
      * Synthetic first-party install store under {@code repos/jk-local/} (workers, {@code jk
@@ -90,12 +98,12 @@ public record RepositorySpec(
      * Google's Android / Play services Maven repository (after Central in the built-in list).
      * Exclusive for {@link #GOOGLE_ANDROID_EXCLUSIVE_GROUPS} by default.
      */
-    public static final RepositorySpec GOOGLE_MAVEN = new RepositorySpec(
+    public static final RepositorySpec GOOGLE_MAVEN = releasesOnly(new RepositorySpec(
             GOOGLE,
             URI.create("https://dl.google.com/dl/android/maven2/"),
             null,
             null,
-            GOOGLE_ANDROID_EXCLUSIVE_GROUPS);
+            GOOGLE_ANDROID_EXCLUSIVE_GROUPS));
 
     /**
      * The one name the official first-party repository answers to inside jk — store directory,
@@ -109,12 +117,12 @@ public record RepositorySpec(
      * {@code build.jumpkick.*}. The product URL is {@code https://jumpkick.build/repo/};
      * Hosting redirects that prefix to whatever object store is current (GCS today).
      */
-    public static final RepositorySpec JUMPKICK = new RepositorySpec(
+    public static final RepositorySpec JUMPKICK = releasesOnly(new RepositorySpec(
             JUMPKICK_NAME,
             URI.create("https://jumpkick.build/repo/"),
             null,
             null,
-            List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*"));
+            List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*")));
 
     /**
      * System property override for the official repo URL ({@code JK_OFFICIAL_REPO_URL} env as a
@@ -141,7 +149,23 @@ public record RepositorySpec(
     public static RepositorySpec officialJumpKick() {
         URI url = officialUrl();
         if (url.equals(JUMPKICK.url())) return JUMPKICK;
-        return new RepositorySpec(JUMPKICK.name(), url, null, null, JUMPKICK.groups());
+        return releasesOnly(new RepositorySpec(JUMPKICK.name(), url, null, null, JUMPKICK.groups()));
+    }
+
+    /** {@code spec} with snapshots off — the policy of every built-in remote. */
+    private static RepositorySpec releasesOnly(RepositorySpec spec) {
+        return spec.withPolicy(true, false);
+    }
+
+    /** This repository with the given release/snapshot policy. */
+    public RepositorySpec withPolicy(boolean releases, boolean snapshots) {
+        return new RepositorySpec(
+                name, url, credential, objectStore, groups, allowInsecure, allowUnverified, releases, snapshots);
+    }
+
+    /** True when a version of the given kind is asked of this repository. */
+    public boolean serves(boolean snapshot) {
+        return snapshot ? snapshots : releases;
     }
 
     /** Convenience: a repository with no inline credential, object-store, or exclusive groups. */
@@ -168,6 +192,18 @@ public record RepositorySpec(
             @Nullable ObjectStoreConfig objectStore,
             List<String> groups) {
         this(name, url, credential, objectStore, groups, false, false);
+    }
+
+    /** Convenience: Maven's default policy — releases and snapshots both asked of the repository. */
+    public RepositorySpec(
+            String name,
+            URI url,
+            @Nullable RepoCredential credential,
+            @Nullable ObjectStoreConfig objectStore,
+            List<String> groups,
+            boolean allowInsecure,
+            boolean allowUnverified) {
+        this(name, url, credential, objectStore, groups, allowInsecure, allowUnverified, true, true);
     }
 
     public Optional<RepoCredential> credentialOpt() {

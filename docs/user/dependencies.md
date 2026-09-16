@@ -91,9 +91,32 @@ with one rule:
   published checksum for every artifact. A POM has no table to opt out with, so a plaintext
   `http://` repository it declares is not used, and an artifact it publishes no checksum for fails
   the lock naming the repository.
+- Its `<releases>` and `<snapshots>` policies are read as Maven reads them: a repository declared
+  with `<releases><enabled>false</enabled></releases>` is asked for `-SNAPSHOT` versions only, and
+  one with snapshots disabled is never asked for a snapshot. The lock note says which.
 - `jk lock` says so: one note per repository names it, its URL and the POM that introduced it.
   Declaring the same URL under `[repositories]` makes it a project repository with the project's
   order and opt-ins.
+
+### Snapshots
+
+A `-SNAPSHOT` version is asked only of repositories whose snapshot policy is on — never of Maven
+Central or the other built-in remotes, which host releases only. A `[repositories]` entry serves
+snapshots unless it says `snapshots = false` ([Repositories](repositories.md#release-and-snapshot-policy)),
+and a repository a POM declares follows the policy the POM wrote. A snapshot is a candidate only
+when something asks for one by name — a `-SNAPSHOT` pin or a POM edge that names one — or through
+the `snapshot` selector; a floating selector such as `latest` or `^6.1` never lands on a snapshot
+a repository happens to advertise.
+
+When a snapshot is pinned and no repository the dependency may resolve from serves snapshots, the
+refusal says so, naming each repository asked and its policy:
+
+```text
+‼ Cannot resolve dependencies:
+  │ No versions of org.questdb:questdb-client match 1.3.10-SNAPSHOT
+  │   available: 1.3.9, 1.3.8, …
+  │   1.3.10-SNAPSHOT is a snapshot, and no repository org.questdb:questdb-client may resolve from serves snapshots: central (releases only). Declare one under [repositories] …
+```
 
 ### Classifiers that follow the host
 

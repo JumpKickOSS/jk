@@ -107,6 +107,27 @@ Both are refused on `central`: Maven Central serves https and publishes a checks
 artifact, so the opt-in would only ever hide an attack. `file://` repositories are local disk
 with no network path, so neither key applies to them.
 
+## Release and snapshot policy
+
+A repository is asked only for the kind of version its policy covers, as a Maven `<repository>`
+is:
+
+```toml
+[repositories]
+nightly = { url = "https://central.sonatype.com/repository/maven-snapshots/", releases = false }
+stable  = { url = "https://repo.example/releases", snapshots = false }
+```
+
+| Key | Default | Effect |
+|-----|---------|--------|
+| `releases` | `true` | Release versions are asked of the repository. `false` makes it snapshot-only: it is never read for a release catalog, so it can neither slow a lock nor supply a floating selector. |
+| `snapshots` | `true` | `-SNAPSHOT` versions are asked of the repository. `false` makes it releases-only. |
+
+A repository with both off is refused. The built-in remotes — `central`, `google`, `jumpkick` —
+serve releases only. A snapshot is a candidate only when a pin or a dependency's POM names one, or
+the `snapshot` selector asks for the newest published version: see
+[Dependencies](dependencies.md#snapshots).
+
 When a repository has opted out, the lock summary says so — `Resolved 42 dependencies ·
 2 unverified (allowed) · insecure (allowed): mirror` — so the count is visible on every lock
 instead of scrolling past as a warning. After the lock, builds enforce the pinned sha256 as
