@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlanResult;
@@ -38,6 +40,8 @@ class OpenApiGeneratorTest {
 
     @Test
     void the_example_generates_compiles_hits_and_regenerates_on_a_spec_edit(@TempDir Path tmp) throws Exception {
+        workerJarFromWorkspace(PluginJar.GENERATOR, "plugins/generator");
+        workerJarFromWorkspace(PluginJar.OPENAPI, "plugins/openapi");
         Path project = tmp.resolve("openapi-spring");
         PathUtil.copyTree(EXAMPLE, project);
         Files.deleteIfExists(project.resolve("jk-lock.toml"));
@@ -76,6 +80,19 @@ class OpenApiGeneratorTest {
         assertThat(generateStep(third).status())
                 .as("a spec edit re-runs the generate step")
                 .isEqualTo(TaskStatus.SUCCESS);
+    }
+
+    /**
+     * The worker jar this build produced, when the resident engine planning jk's own tests did not
+     * hand it over: that engine learns a new first-party worker only once it is installed, so until
+     * then the sibling module's jar stands in — the same jar the engine would name.
+     */
+    private static void workerJarFromWorkspace(PluginJar worker, String module) throws IOException {
+        if (System.getProperty(worker.jarProperty()) != null) return;
+        Path dir = RepoRoot.find(OpenApiGeneratorTest.class).resolve(module);
+        Path jar = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml"))).mainJar();
+        assertThat(jar).as(worker.artifactId() + " built by this workspace").isRegularFile();
+        System.setProperty(worker.jarProperty(), jar.toAbsolutePath().toString());
     }
 
     private static BuildPlanResult build(Path project, Path cache) throws Exception {
