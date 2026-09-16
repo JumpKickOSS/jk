@@ -38,6 +38,20 @@ Inheritance is resolved when the workspace loads members. Resolved values are fr
 
 `jk new path/to/mod` and `jk add ./path` register modules for you.
 
+## One name in two groups
+
+Two members may carry the same `name` when their `group` differs, the shape Maven's reactor
+allows (`org.thingsboard.common:edqs` under `common/edqs` and `org.thingsboard:edqs` under
+`edqs`). Each member's output lives under its own `target/<module-rel>/`, so
+`target/common/edqs/lib/edqs-4.4.0.jar` and `target/edqs/lib/edqs-4.4.0.jar` never meet. One
+`group:name:version` declared by two members is a `workspace module collision`: a workspace
+publishes one artifact per coordinate.
+
+A workspace edge (`edqs.workspace = true`, or a `[build] order-after` entry) is spelled by module
+name alone. An edge to a name two members carry is refused as ``workspace edge `edqs` is
+ambiguous``, naming the member that depends on it and both members that carry the name; rename one
+of them. Two same-named members nothing depends on by name build side by side.
+
 ## Workspace dependencies
 
 ```toml
