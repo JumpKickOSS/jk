@@ -53,6 +53,7 @@ class ClientEnvForwardTest {
         for (var e : resolved.entrySet()) {
             if (e.getKey().startsWith(ClientEnvForward.REPO_PREFIX)) continue; // by prefix, tested below
             if (BuildEnv.PROXY.contains(e.getKey())) continue; // by name, tested below
+            if (BuildEnv.DISPLAY.contains(e.getKey())) continue; // by name, tested below
             if (BuildEnv.JDK_ROOT.contains(e.getKey())) continue; // by name, tested below
             assertThat(ClientEnvForward.names()).contains(e.getKey());
             assertThat(e.getValue()).as(e.getKey()).isEqualTo(System.getenv(e.getKey()));
@@ -81,6 +82,29 @@ class ClientEnvForwardTest {
             System.clearProperty("jk.env.https_proxy");
             System.clearProperty("jk.env.NO_PROXY");
             System.clearProperty("jk.env.ftp_proxy");
+        }
+    }
+
+    /**
+     * The display is the one the terminal running {@code jk} has — under {@code xvfb-run}, the
+     * virtual one it just started. Left to the daemon's inherited value, a JavaFX or Swing suite
+     * would open whichever display the shell that spawned the engine had, or none.
+     */
+    @Test
+    void it_forwards_the_display_variables_so_the_running_shell_decides_the_display() {
+        System.setProperty("jk.env.DISPLAY", ":99");
+        System.setProperty("jk.env.XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority");
+        System.setProperty("jk.env.DESKTOP_SESSION", "gnome");
+        try {
+            assertThat(ClientEnvForward.resolve())
+                    .containsEntry("DISPLAY", ":99")
+                    .containsEntry("XAUTHORITY", "/tmp/xvfb-run.abc/Xauthority")
+                    .doesNotContainKey("DESKTOP_SESSION");
+            assertThat(ClientEnvForward.names()).doesNotContainAnyElementsOf(BuildEnv.DISPLAY);
+        } finally {
+            System.clearProperty("jk.env.DISPLAY");
+            System.clearProperty("jk.env.XAUTHORITY");
+            System.clearProperty("jk.env.DESKTOP_SESSION");
         }
     }
 

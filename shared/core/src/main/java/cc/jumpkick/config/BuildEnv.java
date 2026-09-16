@@ -96,9 +96,22 @@ public final class BuildEnv {
      * ({@code ClientEnvForward}), the engine inherits them from its spawning shell as the fallback
      * ({@code EngineEnvironment}), every forked worker is handed the request's values over the
      * engine's ({@code WorkerEnv}), and {@code ProxyEnvironment} decides each request from them.
+     * {@link #DISPLAY} travels the first three the same way.
      */
     public static final List<String> PROXY =
             List.of("http_proxy", "https_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY");
+
+    /**
+     * The variables that name the display this machine draws on — the X or Wayland server and the
+     * authority file a toolkit opens it with. Where the machine
+     * draws, like {@link #PROXY} is how it talks, and read the same way: the request's shell first,
+     * the engine's own environment second, so a JavaFX or Swing suite opens the display of the
+     * terminal that ran {@code jk test}, and {@code xvfb-run jk test} gives a headless host one, as
+     * it does for Surefire. Off {@link #MACHINE} for the same reason as the proxy: these enter no
+     * action key. jk sets no {@code java.awt.headless}; Surefire does not either, and a JavaFX
+     * toolkit does not read it.
+     */
+    public static final List<String> DISPLAY = List.of("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY");
 
     /**
      * The one variable that says where this machine keeps the JDKs jk manages ({@code JK_JDKS_DIR}).
@@ -134,14 +147,16 @@ public final class BuildEnv {
     }
 
     /**
-     * {@link #PROXY} values the request carried — the shell running {@code jk}, and nothing of the
-     * engine's own — omitting names it did not. What a forked worker is handed over the engine's
-     * inherited values, so a developer who moves networks and re-exports {@code https_proxy} has
-     * the next build, and its compilers, plugins and test JVMs, go through the new one. Empty off a
-     * request.
+     * {@link #PROXY} and {@link #DISPLAY} values the request carried — the shell running {@code jk},
+     * and nothing of the engine's own — omitting names it did not. What a forked worker is handed
+     * over the engine's inherited values, so a developer who moves networks and re-exports {@code
+     * https_proxy} has the next build, and its compilers, plugins and test JVMs, go through the new
+     * one, and a suite opens the display of the terminal running {@code jk}. Empty off a request.
      */
-    public static Map<String, String> proxyFromRequest() {
-        return resolve(PROXY, clientEnv()::get);
+    public static Map<String, String> fromRequest() {
+        Map<String, String> out = new LinkedHashMap<>(resolve(PROXY, clientEnv()::get));
+        out.putAll(resolve(DISPLAY, clientEnv()::get));
+        return Collections.unmodifiableMap(out);
     }
 
     /** {@code names} resolved through {@code env}, in listed order, omitting those it does not have. */
