@@ -34,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.Repository;
@@ -650,10 +649,6 @@ public final class PomImporter {
             report.warning("`<modules>` block present but this import was run in single-POM mode."
                     + " Re-run as `jk import pom.xml` from the project root to materialise a workspace.");
         }
-        Build build = model.getBuild();
-        if (build != null && !build.getExtensions().isEmpty()) {
-            report.error("`<build><extensions>` is not supported. Move build extensions to a custom"
-                    + " jk task once tasks land.");
-        }
+        BuildExtensions.report(model, report);
     }
 }
