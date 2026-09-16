@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.PackageId;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -23,12 +24,16 @@ final class LockProgress {
 
     private final ResolveObserver observer;
     private final Timings timings;
+    /** How often the graph phase says where it is, for a lock that runs with no progress bar. */
+    static final long HEARTBEAT_NANOS = 5_000_000_000L;
+
     private final Set<String> graphSeen = new LinkedHashSet<>();
     private final long lockStartNanos = System.nanoTime();
     private int estimate;
     private long graphStartNanos;
     private long graphMs;
     private long materializeStartNanos;
+    private long lastHeartbeatNanos;
 
     LockProgress(ResolveObserver observer, Timings timings) {
         this.observer = observer;
@@ -41,6 +46,7 @@ final class LockProgress {
         observer.onTotal(estimate * 2);
         observer.onPhase("Resolving dependency graph…");
         graphStartNanos = System.nanoTime();
+        lastHeartbeatNanos = graphStartNanos;
     }
 
     /**
@@ -54,6 +60,20 @@ final class LockProgress {
         if (graphSeen.size() > estimate) {
             observer.onTotal(graphSeen.size() * 2 + 16);
         }
+        heartbeat();
+    }
+
+    /**
+     * Every {@link #HEARTBEAT_NANOS} of graph time, one phase line saying how far the solve is: a
+     * reactor of a few hundred modules resolves for minutes, and a run without a progress bar
+     * otherwise shows nothing between the phase's first line and its outcome.
+     */
+    private void heartbeat() {
+        long now = Clock.SYSTEM.nanos();
+        if (now - lastHeartbeatNanos < HEARTBEAT_NANOS) return;
+        lastHeartbeatNanos = now;
+        long seconds = (now - graphStartNanos) / 1_000_000_000L;
+        observer.onPhase("Resolving dependency graph… " + graphSeen.size() + " packages so far, " + seconds + "s");
     }
 
     /** Catch-up ticks for the packages of a finished solve that the live decisions did not report. */

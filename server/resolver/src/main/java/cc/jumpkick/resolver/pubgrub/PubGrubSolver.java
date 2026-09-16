@@ -45,8 +45,8 @@ public class PubGrubSolver {
     /** Default max {@link PartialSolution#decide} calls per solve (env {@code JK_RESOLVE_MAX_DECISIONS}). */
     public static final int DEFAULT_MAX_DECISIONS = 100_000;
 
-    /** Default wall-clock budget in ms; {@code 0} = unlimited (env {@code JK_RESOLVE_TIMEOUT_MS}). */
-    public static final long DEFAULT_TIMEOUT_MS = 120_000L;
+    /** Default wall-clock budget in ms per graph, sized for a cold few-hundred-module reactor; {@code 0} = unlimited (env {@code JK_RESOLVE_TIMEOUT_MS}). */
+    public static final long DEFAULT_TIMEOUT_MS = 600_000L;
 
     /**
      * Multiplier on {@code maxDecisions} for total solver steps (outer loops, propagation rounds,

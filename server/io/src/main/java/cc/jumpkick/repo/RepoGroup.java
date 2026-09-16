@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -16,7 +17,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -333,8 +338,9 @@ public final class RepoGroup {
      * candidate, so a floating selector cannot land on one.
      *
      * <p>One {@code maven-metadata.xml} read per GAV is the common case: the first repo answers
-     * and nothing is wanted beyond what it lists. The union is paid only when a catalog is split
-     * across remotes for a version something asked for.
+     * and nothing is wanted beyond what it lists. When a version is wanted, every catalog is read
+     * at once and the union is folded in repository order, so a catalog split across remotes costs
+     * the slowest read rather than one read per remote.
      */
     public List<String> availableVersions(Coordinate coord, Set<String> wanted, boolean snapshots)
             throws IOException, InterruptedException {
@@ -353,35 +359,48 @@ public final class RepoGroup {
             if (cached != null) VERSIONS_CACHE.remove(key, cached);
         }
         List<MavenRepo> eligible = eligibleRepos(coord);
-        List<MavenRepo> asked = new ArrayList<>(eligible);
-        asked.addAll(lastResortRepos(coord, eligible));
+        List<MavenRepo> asked = new ArrayList<>();
+        for (MavenRepo repo : eligible) {
+            if (repo.servesReleases() || (snapshots && repo.servesSnapshots())) asked.add(repo);
+        }
+        for (MavenRepo repo : lastResortRepos(coord, eligible)) {
+            if (repo.servesReleases() || (snapshots && repo.servesSnapshots())) asked.add(repo);
+        }
+        // With nothing asked for by name the first catalog that answers ends the walk, so it alone
+        // is read. When a version is wanted, every catalog is read at once and folded in repository
+        // order: the answer a repo-by-repo walk gives, at the wall of the slowest remote rather than
+        // the sum of them.
+        boolean fanOut = asked.size() > 1 && (!wanted.isEmpty() || snapshots);
+        List<Future<List<String>>> catalogs = new ArrayList<>(asked.size());
+        if (fanOut) {
+            for (MavenRepo repo : asked) catalogs.add(concurrently(asked.size(), () -> repo.availableVersions(coord)));
+        }
         LinkedHashSet<String> union = new LinkedHashSet<>();
         boolean releaseFound = false;
         IOException firstFailure = null;
-        for (MavenRepo repo : asked) {
-            if (!repo.servesReleases() && !(snapshots && repo.servesSnapshots())) continue;
-            if (releaseFound && union.containsAll(wanted) && !(snapshots && repo.servesSnapshots())) continue;
-            List<String> found;
-            try {
-                found = repo.availableVersions(coord);
-            } catch (IOException transport) {
-                // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
-                // coordinate: the remaining candidates are still asked. Said once per run per
-                // repository, because a warm multi-repo lock asks this hundreds of times.
-                if (firstFailure == null) firstFailure = transport;
-                RunNotices.warnOnce(
-                        "repo-unreachable:" + repo.name(),
-                        () -> "jk: warning: repository " + repo.name() + " is unreachable (" + describe(transport)
-                                + "); trying the remaining repositories");
-                continue;
-            }
-            for (String v : found) {
-                boolean snapshot = Versions.isSnapshot(v);
-                if (snapshot ? snapshots && repo.servesSnapshots() : repo.servesReleases()) {
-                    union.add(v);
-                    releaseFound |= !snapshot;
+        try {
+            for (int i = 0; i < asked.size(); i++) {
+                MavenRepo repo = asked.get(i);
+                if (releaseFound && union.containsAll(wanted) && !(snapshots && repo.servesSnapshots())) continue;
+                List<String> found;
+                try {
+                    found = fanOut ? await(catalogs.get(i)) : repo.availableVersions(coord);
+                } catch (IOException transport) {
+                    // One remote's 429, 5xx or reset is that remote's problem, not an answer about the
+                    // coordinate: the remaining candidates are still asked. Said once per run per
+                    // repository, because a warm multi-repo lock asks this hundreds of times.
+                    if (firstFailure == null) firstFailure = transport;
+                    RunNotices.warnOnce(
+                            "repo-unreachable:" + repo.name(),
+                            () -> "jk: warning: repository " + repo.name() + " is unreachable (" + describe(transport)
+                                    + "); trying the remaining repositories");
+                    continue;
                 }
+                fold(found, repo, snapshots, union);
+                releaseFound |= union.stream().anyMatch(v -> !Versions.isSnapshot(v));
             }
+        } finally {
+            for (Future<List<String>> f : catalogs) f.cancel(false);
         }
         // Every candidate failed to answer: that is the failure, not an empty catalog, and an
         // empty answer must not be memoised over it.
@@ -394,6 +413,47 @@ public final class RepoGroup {
             VERSIONS_CACHE.put(key, new VersionsEntry(immutable, Clock.SYSTEM.nanos() + VERSIONS_TTL_NANOS));
         }
         return immutable;
+    }
+
+    /** Add {@code found} to {@code union} under {@code repo}'s policy: releases always, snapshots only when asked. */
+    private static void fold(List<String> found, MavenRepo repo, boolean snapshots, Set<String> union) {
+        for (String v : found) {
+            boolean snapshot = Versions.isSnapshot(v);
+            if (snapshot ? snapshots && repo.servesSnapshots() : repo.servesReleases()) union.add(v);
+        }
+    }
+
+    /**
+     * Run {@code work} on the io pool when {@code fanOut} repositories are asked at once, inline
+     * when there is one: a single-repository group pays for no thread hand-off. A pooled leg runs
+     * under the calling thread's session, so {@code --offline} and {@code --force} reach it.
+     */
+    private static <T> Future<T> concurrently(int fanOut, Callable<T> work) {
+        if (fanOut > 1) {
+            var session = SessionContext.current();
+            return JkThreads.io().submit(() -> SessionContext.where(session, work));
+        }
+        CompletableFuture<T> inline = new CompletableFuture<>();
+        try {
+            inline.complete(work.call());
+        } catch (Exception e) {
+            inline.completeExceptionally(e);
+        }
+        return inline;
+    }
+
+    /** The result of a fetch leg, rethrowing what the leg threw: not-found, transport or interrupt. */
+    private static <T> T await(Future<T> leg) throws IOException, InterruptedException {
+        try {
+            return leg.get();
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            if (cause instanceof IOException io) throw io;
+            if (cause instanceof InterruptedException ie) throw ie;
+            if (cause instanceof RuntimeException re) throw re;
+            if (cause instanceof Error err) throw err;
+            throw new IOException(cause);
+        }
     }
 
     /**
@@ -496,35 +556,60 @@ public final class RepoGroup {
         return out;
     }
 
+    /**
+     * The first candidate, in repository order, that has {@code coord}: a local mirror copy or a
+     * network answer. Every candidate ahead of the first local copy is asked over the network at
+     * once, and the answers are read in order, so a coordinate a later repository holds costs the
+     * slowest earlier miss, never the sum of them; each repository mirrors into its own directory,
+     * so a fetch that loses to an earlier answer leaves nothing another repository's copy could
+     * collide with.
+     */
     private Optional<RepoFetched> tryFetchFrom(
             List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
             throws IOException, InterruptedException {
-        IOException firstFailure = null;
-        for (MavenRepo repo : candidates) {
-            Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
-            if (local.isPresent()) {
-                return Optional.of(new RepoFetched(repo, local.get()));
-            }
-            // boundary between the local-probe leg and the network leg — a lock that
-            // already failed must not start another download; the probe above still completed.
-            if (abort.getAsBoolean()) {
-                throw new MavenRepo.FetchAbortedException(
-                        "fetch aborted before network leg for " + coord + " (lock already failed)");
-            }
-            try {
-                MavenRepo.Fetched f = fetcher.fetch(repo, coord);
-                return Optional.of(new RepoFetched(repo, f));
-            } catch (MavenRepo.ArtifactNotFoundException ignored) {
-                // try next eligible repo
-            } catch (MavenRepo.FetchAbortedException aborted) {
-                throw aborted;
-            } catch (IOException transport) {
-                // A failed remote falls through to the next candidate silently: the artifact that
-                // arrives is still checked against the lock's sha256, so where it came from does
-                // not change what is accepted. If nobody answers, the first failure is the reason.
-                if (firstFailure == null) firstFailure = transport;
+        int networkLegs = candidates.size();
+        Optional<RepoFetched> local = Optional.empty();
+        for (int i = 0; i < candidates.size(); i++) {
+            MavenRepo repo = candidates.get(i);
+            Optional<MavenRepo.Fetched> hit = localProbe.probe(repo, coord);
+            if (hit.isPresent()) {
+                local = Optional.of(new RepoFetched(repo, hit.get()));
+                networkLegs = i;
+                break;
             }
         }
+        if (networkLegs == 0) return local;
+        // boundary between the local-probe leg and the network leg — a lock that
+        // already failed must not start another download; the probes above still completed.
+        if (abort.getAsBoolean()) {
+            throw new MavenRepo.FetchAbortedException(
+                    "fetch aborted before network leg for " + coord + " (lock already failed)");
+        }
+        List<Future<MavenRepo.Fetched>> legs = new ArrayList<>(networkLegs);
+        for (int i = 0; i < networkLegs; i++) {
+            MavenRepo repo = candidates.get(i);
+            legs.add(concurrently(networkLegs, () -> fetcher.fetch(repo, coord)));
+        }
+        IOException firstFailure = null;
+        try {
+            for (int i = 0; i < networkLegs; i++) {
+                try {
+                    return Optional.of(new RepoFetched(candidates.get(i), await(legs.get(i))));
+                } catch (MavenRepo.ArtifactNotFoundException ignored) {
+                    // the next candidate in order
+                } catch (MavenRepo.FetchAbortedException aborted) {
+                    throw aborted;
+                } catch (IOException transport) {
+                    // A failed remote falls through to the next candidate silently: the artifact that
+                    // arrives is still checked against the lock's sha256, so where it came from does
+                    // not change what is accepted. If nobody answers, the first failure is the reason.
+                    if (firstFailure == null) firstFailure = transport;
+                }
+            }
+        } finally {
+            for (Future<MavenRepo.Fetched> leg : legs) leg.cancel(false);
+        }
+        if (local.isPresent()) return local;
         if (firstFailure != null) throw firstFailure;
         return Optional.empty();
     }
