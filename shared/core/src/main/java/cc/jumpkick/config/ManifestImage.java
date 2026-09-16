@@ -138,7 +138,7 @@ public final class ManifestImage {
         if (t == null) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();
         for (String k : t.keySet()) {
-            Object v = t.get(k);
+            Object v = t.get(List.of(k));
             out.put(k, v == null ? "" : v.toString());
         }
         return out;

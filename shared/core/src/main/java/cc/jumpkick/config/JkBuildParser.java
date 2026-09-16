@@ -501,7 +501,7 @@ public final class JkBuildParser {
         if (value instanceof TomlTable t) {
             Map<String, Object> map = new LinkedHashMap<>();
             for (String k : t.keySet()) {
-                Object converted = tomlToJava(t.get(k));
+                Object converted = tomlToJava(t.get(List.of(k)));
                 if (converted != null) map.put(k, converted);
             }
             return Collections.unmodifiableMap(map);

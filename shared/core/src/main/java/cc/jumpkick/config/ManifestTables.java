@@ -61,7 +61,7 @@ public final class ManifestTables {
         for (PluginDescriptor m : installed) byTable.put(m.table(), m);
         List<Variants.Dimension> dimensions = new ArrayList<>();
         for (String dim : table.keySet()) {
-            TomlTable dimTable = table.getTable(dim);
+            TomlTable dimTable = table.getTable(List.of(dim));
             if (dimTable == null) {
                 throw new JkBuildParseException("[variants." + dim + "] must be a table of named values");
             }
@@ -75,7 +75,7 @@ public final class ManifestTables {
                     }
                     continue;
                 }
-                TomlTable valueTable = dimTable.getTable(key);
+                TomlTable valueTable = dimTable.getTable(List.of(key));
                 if (valueTable == null) {
                     throw new JkBuildParseException("[variants." + dim + "]." + key
                             + " must be a table (a value's overlay) — or `default = \"<value>\"`");
@@ -108,7 +108,7 @@ public final class ManifestTables {
             }
             Scope scope = scopeForSection(key);
             if (scope != null) {
-                TomlTable scopeTable = valueTable.getTable(key);
+                TomlTable scopeTable = valueTable.getTable(List.of(key));
                 if (scopeTable == null) {
                     throw new JkBuildParseException("[" + where + "." + key + "] must be a dependency table");
                 }
@@ -119,7 +119,7 @@ public final class ManifestTables {
             }
             PluginDescriptor plugin = pluginsByTable.get(key);
             if (plugin != null) {
-                TomlTable overlay = valueTable.getTable(key);
+                TomlTable overlay = valueTable.getTable(List.of(key));
                 if (overlay == null) {
                     throw new JkBuildParseException(
                             "[" + where + "." + key + "] must be a table of [" + plugin.table() + "] key overlays");
@@ -299,7 +299,7 @@ public final class ManifestTables {
         if (table == null) return Map.of();
         Map<String, String> attrs = new LinkedHashMap<>();
         for (String key : table.keySet()) {
-            String value = table.getString(key);
+            String value = table.getString(List.of(key));
             if (value == null) {
                 throw new JkBuildParseException("manifest." + key + " must be a string");
             }
@@ -333,7 +333,7 @@ public final class ManifestTables {
         if (profiles == null) return Profiles.empty();
         Map<String, Profile> byName = new LinkedHashMap<>();
         for (String name : profiles.keySet()) {
-            TomlTable body = profiles.getTable(name);
+            TomlTable body = profiles.getTable(List.of(name));
             if (body == null) {
                 throw new JkBuildParseException("profiles." + name + " must be a table");
             }
@@ -383,7 +383,7 @@ public final class ManifestTables {
         Map<String, Feature> byName = new LinkedHashMap<>();
         for (String key : features.keySet()) {
             if (key.equals("default")) continue;
-            TomlTable body = features.getTable(key);
+            TomlTable body = features.getTable(List.of(key));
             if (body == null) {
                 throw new JkBuildParseException("features." + key + " must be a table with `deps` and/or `features`");
             }

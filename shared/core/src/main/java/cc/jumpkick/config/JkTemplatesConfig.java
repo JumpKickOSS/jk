@@ -91,7 +91,7 @@ public record JkTemplatesConfig(String officialUrl, List<Source> sources) {
         TomlTable sourcesTable = templates.getTable("sources");
         if (sourcesTable != null) {
             for (String name : sourcesTable.keySet()) {
-                Object value = sourcesTable.get(name);
+                Object value = sourcesTable.get(List.of(name));
                 try {
                     if (value instanceof String s && !s.isBlank()) {
                         sources.add(new Source(name, s));
