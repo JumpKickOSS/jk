@@ -329,6 +329,14 @@ try {
     if ($script:policyChanges.Count -ne 0) { throw "a policy locked by MachinePolicy was changed" }
     if (-not ($script:notes -match "MachinePolicy")) { throw "a locked policy did not name the locking scope" }
 
+    # ---- the profile block: the default home unasked, a private home only on request -------------
+    Import-InstallerFunction "Resolve-WriteRc"
+    $defaultHome = Join-Path $work ".jk"
+    if (-not (Resolve-WriteRc $defaultHome $defaultHome $false)) { throw "the default home did not claim the profile block" }
+    if (-not (Resolve-WriteRc ($defaultHome + [IO.Path]::DirectorySeparatorChar) $defaultHome $false)) { throw "a trailing separator made the default home private" }
+    if (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $false) { throw "a private JK_HOME claimed the profile block unasked" }
+    if (-not (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $true)) { throw "-Rc did not ask for the profile block on a private home" }
+
     Write-Host "PowerShell installer verification fixtures passed."
 } finally {
     $rsa.Dispose()

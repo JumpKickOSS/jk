@@ -162,12 +162,13 @@ Five names, and `JK_HOME` is the only one most people need.
 Every root override must be an absolute path; shell `~` expansion does not occur inside an
 environment value.
 
-`install.sh` writes the shell rc block (`# >>> jk installer >>>`) only when it installs into the
-default home, `$HOME/.jk`. With `JK_HOME` pointing anywhere else it leaves `~/.zshrc` and
-`~/.bashrc` alone and prints the line that activates that install in the current shell —
-`eval "$("$JK_HOME/bin/jk" activate zsh)"` — so a scratch build or a hermetic test home never
-becomes the jk every new shell runs. `bash install.sh --rc` asks for the block on a non-default
-home anyway. The root-specific variables win over `JK_HOME`, and they compose:
+The installers and `jk activate` write the shell rc block (`# >>> jk installer >>>`) only for the
+default home, `$HOME/.jk`. With `JK_HOME` pointing anywhere else they leave `~/.zshrc`,
+`~/.bashrc` and `$PROFILE` alone (and, on Windows, the User PATH) and print the line that
+activates that install in the current shell — `eval "$("$JK_HOME/bin/jk" activate zsh)"` — so a
+scratch build or a hermetic test home never becomes the jk every new shell runs. `bash install.sh
+--rc`, `install.ps1 -Rc` (`JK_RC=1` for `irm | iex`) and `jk activate --rc` ask for the block on a
+non-default home anyway. The root-specific variables win over `JK_HOME`, and they compose:
 `JK_HOME=/tmp/cold JK_STORE_DIR=$HOME/.jk/store` gives you a scratch everything with a warm store.
 
 Cold resolve without wiping your real store:
@@ -208,7 +209,8 @@ Bare `jk activate` (and the installer's `--yes`) writes a marker block into ever
 should own: zsh on macOS, bash on Linux, both PowerShell 7 (`pwsh`) and Windows PowerShell
 5.1 (`powershell`) on Windows — plus any other supported rc file that already exists
 (`.bashrc` on a zsh Mac, Git Bash, fish, …). Pass a name to print one eval snippet:
-`jk activate zsh`.
+`jk activate zsh`. Under a `JK_HOME` other than `$HOME/.jk` the bare form writes nothing and
+prints those snippets for that home's bin instead; `jk activate --rc` writes the block anyway.
 
 The installer / `jk activate` writes a marker block:
 
