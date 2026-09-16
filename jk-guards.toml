@@ -887,6 +887,20 @@ miss    = "int CURRENT_VERSION = 2;"
 instead = "keep version 1 until 1.0"
 why     = "a bump before 1.0 mints a dual reader with no users"
 
+# G107. A failure-path test never dials a closed port. `http://127.0.0.1:1/` refuses instantly on a
+# bare host and hangs to the 10 s connect timeout where loopback is relayed (WSL2, some VPN and
+# container stacks); under the retry ladder that was a minute per fetch and six minutes of the fast
+# tier. DeadEndpoint drops the connection on every OS; LoopbackHttp with nothing served is a 404.
+[guards.no-closed-port-endpoints]
+kind      = "text"
+languages = ["java"]
+pattern   = "https?://(?:127\\.0\\.0\\.1|localhost|\\[::1\\]):(?:[1-9][0-9]{0,2}|10[01][0-9]|102[0-3])(?![0-9])"
+count     = { max = 0, per = "tree" }
+hit       = "URI.create(\"http://127.0.0.1:1/\")"
+miss      = "DeadEndpoint.open().uri()"
+instead   = "cc.jumpkick.testing.DeadEndpoint for a transport failure, LoopbackHttp for a 404, a file: URI for a repo that is never dialed"
+why       = "a closed loopback port is refused instantly on one host and hangs to the connect timeout on another"
+
 # G94. A schema is compared to its constant, never to a number. G85 pins the constant; this pins
 # every comparison against it, so a constant that moves cannot leave an unsatisfiable test behind.
 [guards.schema-compared-to-its-constant]

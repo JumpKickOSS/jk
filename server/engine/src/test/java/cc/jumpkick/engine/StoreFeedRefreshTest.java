@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.http.Http;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.FakeClock;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -233,11 +234,17 @@ class StoreFeedRefreshTest {
         Path libs = tmp.resolve("libs.global.toml");
         Path jdks = tmp.resolve("jdks.json");
         List<String> logs = new ArrayList<>();
-        URI dead = URI.create("http://127.0.0.1:1/nope");
-        // failFast: connection-refused surfaces in one attempt — with the default backoff
-        // ladder this single method waited out ~6s of retries, 19% of the whole unit tier.
-        try (StoreFeedRefresh refresh =
-                new StoreFeedRefresh(logs::add, Http.failFast(), () -> libs, () -> jdks, dead, dead, null)) {
+        // A dropped connection behind a zero-retry client: one attempt per feed, no backoff, no
+        // connect timeout — a closed port hangs for 10 s per feed where loopback is relayed.
+        try (DeadEndpoint endpoint = DeadEndpoint.open();
+                StoreFeedRefresh refresh = new StoreFeedRefresh(
+                        logs::add,
+                        Http.failFast(),
+                        () -> libs,
+                        () -> jdks,
+                        endpoint.uri("/nope"),
+                        endpoint.uri("/nope"),
+                        null)) {
             refresh.tickQuietly();
         }
         assertThat(libs).doesNotExist();

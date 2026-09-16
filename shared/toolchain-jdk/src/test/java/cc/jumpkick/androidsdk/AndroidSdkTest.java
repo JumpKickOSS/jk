@@ -103,8 +103,9 @@ class AndroidSdkTest {
 
     @Test
     void installer_honours_offline_before_asking_google_for_the_feed(@TempDir Path tmp) throws Exception {
-        // Port 1 on loopback refuses every connection; offline must refuse before even trying.
-        System.setProperty(AndroidSdkInstaller.FEED_URL_PROPERTY, "http://127.0.0.1:1/repository2-3.xml");
+        // Offline must refuse before even trying: a reserved name nothing resolves, never a
+        // closed loopback port, which hangs to the connect timeout where loopback is relayed.
+        System.setProperty(AndroidSdkInstaller.FEED_URL_PROPERTY, "http://feed.invalid/repository2-3.xml");
         SessionContext.installConfig(JkConfig.empty().withOffline(true));
         try {
             AndroidSdk sdk = AndroidSdk.resolve(var -> null, tmp.resolve("android-sdk"));

@@ -201,3 +201,21 @@ scheduled wall measurement ([docs/perf](../perf/README.md)), not this assert.
 
 Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for
 cross-cutting cost filters inside a suite.
+
+## Failure paths in the fast tier
+
+A test of "the transport failed" never points at a closed port. `http://127.0.0.1:1/` is refused
+instantly on a bare Linux or macOS host and hangs to the 10 s connect timeout wherever loopback is
+relayed (WSL2, some VPN and container stacks); under the six-attempt retry ladder that is a minute
+per fetch, and three suites once cost the fast tier six minutes that way. Guard **G107** bans the
+literal. Use, in this order of fit:
+
+| The failure under test | Fixture (`:host` fixtures, `cc.jumpkick.testing`) |
+|------------------------|----------------------------------------------------|
+| a reset / dropped connection | `DeadEndpoint.open()` — accepts and drops every connection, one attempt |
+| a 404 / a repo that serves nothing | `LoopbackHttp` with nothing seeded |
+| a repo that is never dialed | a `file:` URI of an empty temp dir |
+
+Pair a dead endpoint with `Http.failFast()` where the test chooses the client: production's ladder
+adds ~3 s of backoff to a failure that is otherwise instant. A suite whose failure path still needs
+a real timeout is a `slow` suite, and says so with the tag.
