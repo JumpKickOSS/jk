@@ -322,6 +322,7 @@ public final class ClasspathResolver {
     private List<Entry> resolveEntries(
             List<Lockfile.Artifact> selected, boolean requirePresent, ArtifactLocator locator) {
         List<Entry> result = new ArrayList<>(selected.size());
+        List<String> missing = new ArrayList<>();
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
             if (checksum == null) {
@@ -339,8 +340,8 @@ public final class ClasspathResolver {
             Path jar = locate(locator, pkg);
             if (jar == null) {
                 if (requirePresent) {
-                    throw new IllegalStateException(
-                            "dependency " + pkg.displayCoord() + " is not on disk after sync — run `jk sync -F`");
+                    missing.add(pkg.displayCoord());
+                    continue;
                 }
                 Log.warn("jk: warning: lock row "
                         + pkg.name()
@@ -362,7 +363,16 @@ public final class ClasspathResolver {
             }
             result.add(new Entry(pkg, jar));
         }
+        if (!missing.isEmpty()) throw new IllegalStateException(notOnDisk(missing));
         return result;
+    }
+
+    /** Every checksummed row the store lacks, named in one line: the whole repair, not its first step. */
+    private static String notOnDisk(List<String> coords) {
+        return (coords.size() == 1
+                        ? "dependency " + coords.get(0) + " is"
+                        : "dependencies " + String.join(", ", coords) + " are")
+                + " not on disk after sync — run `jk sync -F`";
     }
 
     /** {@link #resolved}-backed {@code locate}; see that field for why this is worth caching. */

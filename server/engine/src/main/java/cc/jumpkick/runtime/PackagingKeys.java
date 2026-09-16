@@ -362,9 +362,10 @@ public final class PackagingKeys {
     public static PackagerKey pluginPackager(Packager p) throws IOException, InterruptedException {
         // The packager's runtime view IS its entry jars — coordinate-named lock artifacts plus
         // workspace sibling jars, the SAME set steps see via In.runtimeEntries(). Packaging from
-        // the lock alone drops sibling module jars and ships an artifact that cannot start.
+        // the lock alone drops sibling module jars and ships an artifact that cannot start; a lock
+        // row the store lacks fails here by name rather than shipping an artifact without it.
         List<PluginBuild.ProdEntry> entries =
-                PluginBuild.productionEntries(p.moduleDir(), p.cache(), p.lockFile(), p.project());
+                PluginBuild.productionEntries(p.moduleDir(), p.cas(), p.lockFile(), p.project());
         List<Path> entryJars = new ArrayList<>(entries.size());
         for (PluginBuild.ProdEntry e : entries) {
             if (e.jar() != null) entryJars.add(e.jar());

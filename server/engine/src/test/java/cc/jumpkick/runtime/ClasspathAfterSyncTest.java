@@ -11,6 +11,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -58,6 +59,67 @@ class ClasspathAfterSyncTest {
         assertThat(cp).contains(f.libJar.toAbsolutePath().normalize());
         assertThat(new ClasspathResolver(store).classpathFor(f.lock, ClasspathResolver.COMPILE_MAIN, true))
                 .contains(f.libJar.toAbsolutePath().normalize());
+    }
+
+    /**
+     * The runtime closure a plugin step or packager ships is held to the same bar as the compile
+     * classpaths: a lock row whose file has left the store fails by name, in the same words, rather
+     * than leaving the closure quietly.
+     */
+    @Test
+    void production_entries_fail_naming_every_lock_row_that_is_not_on_disk(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        Path lockFile = module.resolve("jk-lock.toml");
+        List<Lockfile.Artifact> rows = List.of(
+                materialized(tmp, store, "com.foo:kept", "1.0"),
+                materialized(tmp, store, "com.foo:gone", "2.0"),
+                materialized(tmp, store, "com.foo:lost", "3.0"));
+        LockfileWriter.write(
+                new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, rows), lockFile);
+        Cas cas = new Cas(store);
+
+        List<PluginBuild.ProdEntry> whole = PluginBuild.productionEntries(module, cas, lockFile, project);
+        assertThat(whole).extracting(PluginBuild.ProdEntry::artifact).containsExactlyInAnyOrder("kept", "gone", "lost");
+
+        Files.delete(store.resolve("repos/central/com/foo/gone/2.0/gone-2.0.jar"));
+        Files.delete(store.resolve("repos/central/com/foo/lost/3.0/lost-3.0.jar"));
+
+        assertThatThrownBy(() -> PluginBuild.productionEntries(module, cas, lockFile, project))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:gone:2.0")
+                .hasMessageContaining("com.foo:lost:3.0")
+                .hasMessageContaining("not on disk after sync")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("com.foo:kept"));
+        assertThatThrownBy(() -> PluginBuild.productionClasspath(module, cas, lockFile, project))
+                .as("the plain runtime classpath a step sees is judged the same way")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("com.foo:gone:2.0")
+                .hasMessageContaining("not on disk after sync");
+    }
+
+    /** One checksummed MAIN row whose jar is in {@code store} under the central repo layout. */
+    private static Lockfile.Artifact materialized(Path tmp, Path store, String module, String version)
+            throws Exception {
+        String artifact = module.substring(module.indexOf(':') + 1);
+        Path src = Files.writeString(tmp.resolve(artifact + ".bin"), artifact + "-bytes");
+        String hex = Hashing.sha256Hex(src);
+        String relative = "com/foo/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar";
+        RepoArtifactStore.forStoreId(store, "central").materialize(relative, src, hex);
+        return new Lockfile.Artifact(
+                module + ":jar:",
+                version,
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + hex,
+                null,
+                List.of(Scope.MAIN),
+                List.of());
     }
 
     /**
