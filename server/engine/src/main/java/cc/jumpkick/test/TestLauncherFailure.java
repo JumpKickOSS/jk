@@ -23,6 +23,12 @@ public final class TestLauncherFailure extends RuntimeException {
     private static final String DISCOVERY_PREFIX = "test discovery failed: ";
     private static final String CAUSE_PREFIX = "caused by: ";
 
+    /** The runner's line naming a class discovery could not load. */
+    private static final String CLASS_PREFIX = "class: ";
+
+    /** Frames kept under the first cause: enough to name where, not the whole trace. */
+    static final int FRAMES = 3;
+
     /** Java's own {@code printStackTrace} cause line. */
     private static final String JAVA_CAUSE_PREFIX = "Caused by: ";
 
@@ -109,6 +115,43 @@ public final class TestLauncherFailure extends RuntimeException {
         if (!causes.isEmpty()) return causes.getLast();
         String header = header(output);
         return header == null ? "" : header;
+    }
+
+    /**
+     * The classes the runner's discovery could not load, from its {@code class:} lines, in the
+     * order printed; empty when the fork named none.
+     */
+    public List<String> droppedClasses() {
+        List<String> out = new ArrayList<>();
+        for (String line : output.split("\n")) {
+            String t = line.strip();
+            if (t.startsWith(CLASS_PREFIX))
+                out.add(t.substring(CLASS_PREFIX.length()).strip());
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * The first frames under the first cause the fork printed — the {@code at …} lines that follow
+     * it, without the prefix, at most {@link #FRAMES} — or empty when no cause has frames.
+     */
+    public List<String> frames() {
+        List<String> out = new ArrayList<>();
+        boolean underCause = false;
+        for (String line : output.split("\n")) {
+            String t = line.strip();
+            if (t.startsWith(CAUSE_PREFIX) || t.startsWith(JAVA_CAUSE_PREFIX)) {
+                if (!out.isEmpty()) break;
+                underCause = true;
+            } else if (underCause && t.startsWith("at ")) {
+                if (out.size() < FRAMES) out.add(t.substring("at ".length()).strip());
+            } else if (underCause) {
+                // The frames of a cause follow it directly; anything else ends them.
+                underCause = false;
+                if (!out.isEmpty()) break;
+            }
+        }
+        return List.copyOf(out);
     }
 
     /** The JUnit Platform engine id in {@code TestEngine with ID '…'}, or {@code null}. */

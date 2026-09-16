@@ -8,12 +8,14 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.TestLauncherFailure;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
  * What the {@code run-tests} step records when the forked launcher never ran a test: one
  * {@code test-launcher} diagnostic — the exit, the exception and engine the runner named, the
- * cause chain, the two conflicting JUnit coordinates when the lock names them, and the repair —
+ * cause chain with its first frames, the classes discovery could not load, the two conflicting
+ * JUnit coordinates when the lock names them, and the repair —
  * with the fork's output as its stack. It renders as a failed step in {@code jk-results.md} and
  * as one row of {@code jk_diagnostics}, never as a red test.
  */
@@ -45,12 +47,24 @@ final class TestLauncherReport {
         String engine = e.engineId();
         if (engine != null) sb.append("\nengine: ").append(engine);
         for (String cause : e.causes()) sb.append("\ncaused by: ").append(cause);
+        for (String frame : e.frames()) sb.append("\n    at ").append(frame);
+        List<String> dropped = e.droppedClasses();
         if (conflict != null) {
             sb.append("\n\n").append(conflict.text());
             sb.append("\n\nFix: `jk why ")
                     .append(conflict.coordinate())
                     .append("` names who asked for each version; align the pin with the platform line"
                             + " (one version for every artifact of the line), then `jk lock`.");
+        } else if (!dropped.isEmpty()) {
+            sb.append("\n\nFix: the test JVM could not load ")
+                    .append(dropped.size() == 1 ? "the class " : "the classes ")
+                    .append(String.join(", ", dropped))
+                    .append(" — `")
+                    .append(e.rootCause())
+                    .append("`; the frames above name where. Loading a test class needs its supertypes on the test"
+                            + " classpath (`jk why <artifact>` names who brings one) and, for a framework that boots"
+                            + " the application while loading it (`@QuarkusTest`), an application that builds."
+                            + " Rerun with --verbose for the runner's own output.");
         } else if (engine != null) {
             sb.append("\n\nFix: the ")
                     .append(engine)

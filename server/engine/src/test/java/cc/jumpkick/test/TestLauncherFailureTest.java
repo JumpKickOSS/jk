@@ -33,6 +33,53 @@ class TestLauncherFailureTest {
         assertThat(f.exit()).isEqualTo(70);
     }
 
+    /**
+     * The shape the runner prints when the Platform's scan dropped a class it could not load: the
+     * header counts and names them, each {@code class:} line is followed by its cause chain, and
+     * the first frames sit under each cause.
+     */
+    private static final String CLASS_NOT_LOADABLE = """
+            jk-test-runner: test discovery failed: 1 class could not be loaded during discovery: com.acme.OrdersIT
+              under /ws/app/target/classes/test
+              class: com.acme.OrdersIT
+              caused by: java.lang.ExceptionInInitializerError: null
+                at com.acme.OrdersIT.boot(OrdersIT.java:31)
+                at com.acme.OrdersIT.<clinit>(OrdersIT.java:12)
+                at java.base/java.lang.Class.forName0(Native Method)
+              caused by: java.lang.IllegalStateException: application bootstrap failed
+                at com.acme.OrdersIT.boot(OrdersIT.java:31)
+            """;
+
+    @Test
+    void a_class_discovery_could_not_load_is_named_with_its_causes_and_first_frames() {
+        TestLauncherFailure f = TestLauncherFailure.discovery("com.acme:app", 70, CLASS_NOT_LOADABLE);
+
+        assertThat(f.getMessage())
+                .isEqualTo("test discovery exited 70 before any test ran"
+                        + " — 1 class could not be loaded during discovery: com.acme.OrdersIT");
+        assertThat(f.exceptionClass()).isEmpty();
+        assertThat(f.droppedClasses()).containsExactly("com.acme.OrdersIT");
+        assertThat(f.causes())
+                .containsExactly(
+                        "java.lang.ExceptionInInitializerError: null",
+                        "java.lang.IllegalStateException: application bootstrap failed");
+        assertThat(f.rootCause()).isEqualTo("java.lang.IllegalStateException: application bootstrap failed");
+        assertThat(f.frames())
+                .containsExactly(
+                        "com.acme.OrdersIT.boot(OrdersIT.java:31)",
+                        "com.acme.OrdersIT.<clinit>(OrdersIT.java:12)",
+                        "java.base/java.lang.Class.forName0(Native Method)");
+    }
+
+    @Test
+    void frames_belong_to_the_first_cause_not_to_a_trace_printed_after_it() {
+        TestLauncherFailure f = TestLauncherFailure.discovery("com.example:app", 70, ENGINE_COULD_NOT_START);
+        assertThat(f.droppedClasses()).isEmpty();
+        assertThat(f.frames())
+                .as("the cause line has no frames under it; the trailing trace is not its")
+                .isEmpty();
+    }
+
     @Test
     void a_jvm_that_never_reached_the_runner_has_an_exit_and_its_output_only() {
         TestLauncherFailure f = TestLauncherFailure.runner("m", 1, "Error: could not create the Java Virtual Machine");
