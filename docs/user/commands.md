@@ -13,7 +13,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk update` | Bump declared pins in `jk.toml` to the newest stable on the same major (`--major` to cross), relock | [Lockfile](lockfile.md#jk-update) |
 | `jk tree` / `jk why` | Inspect the graph | [Dependencies](dependencies.md) |
 | `jk compile` | Type-check | [Build](build.md) |
-| `jk build` | Compile + package | [Build](build.md) |
+| `jk build` | Compile + package; a `pom.xml` with no `jk.toml` builds in place | [Build](build.md), [Migration](migration.md#building-a-maven-repository-without-importing) |
 | `jk test` | Run tests (`--affected` / `--affected-since` list ranked classes) | [Test](test.md) |
 | `jk guard` | Run the house-rule lanes; `explain`, `freeze`, `hooks`, `commit-msg` | [Guards](guards.md) |
 | `jk run` | Run the app | [Run](run.md) |
