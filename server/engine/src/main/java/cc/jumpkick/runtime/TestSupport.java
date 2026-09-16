@@ -703,7 +703,7 @@ public final class TestSupport {
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.
-        boolean errored = JavacDiagnostics.report(ctx, r.diagnostics());
+        boolean errored = JavacDiagnostics.report(ctx, request.classpath(), r.diagnostics());
         if (!r.success()) {
             // A failure must never be silent: if the compiler produced no ERROR
             // diagnostic (crash, swallowed output), say so explicitly.

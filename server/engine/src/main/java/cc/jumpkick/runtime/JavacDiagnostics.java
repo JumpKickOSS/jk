@@ -3,12 +3,15 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.run.TaskContext;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
  * Forwards a javac run's diagnostics to the step's context by severity, {@code javac} as the tool
  * and the compiler's own key beside each: errors fail the build, warnings and notes are surfaced
- * and do not. One spelling for compile-main, compile-test, fixtures and the guard suite.
+ * and do not. A missing-package error first gains the coordinate that provides the package, when
+ * the lock or the catalog knows one ({@link PackageProviders}). One spelling for compile-main,
+ * compile-test, fixtures and the guard suite.
  */
 public final class JavacDiagnostics {
 
@@ -17,10 +20,13 @@ public final class JavacDiagnostics {
 
     private JavacDiagnostics() {}
 
-    /** Report every diagnostic; true when at least one was an error. */
-    public static boolean report(TaskContext ctx, List<CompileResult.Diagnostic> diagnostics) {
+    /**
+     * Report every diagnostic; true when at least one was an error. {@code classpath} is the
+     * compile's own classpath, so a missing-package provider is judged against what this step saw.
+     */
+    public static boolean report(TaskContext ctx, List<Path> classpath, List<CompileResult.Diagnostic> diagnostics) {
         boolean errored = false;
-        for (CompileResult.Diagnostic d : diagnostics) {
+        for (CompileResult.Diagnostic d : withProviders(ctx, classpath, diagnostics)) {
             if (d.severity() == CompileResult.Severity.ERROR) {
                 ctx.keyedError(TOOL, d.key(), d.describe());
                 errored = true;
@@ -29,5 +35,17 @@ public final class JavacDiagnostics {
             }
         }
         return errored;
+    }
+
+    /** The lookup runs only when a missing-package error is present. */
+    private static List<CompileResult.Diagnostic> withProviders(
+            TaskContext ctx, List<Path> classpath, List<CompileResult.Diagnostic> diagnostics) {
+        boolean missingPackage = false;
+        for (CompileResult.Diagnostic d : diagnostics) {
+            if (PackageProviders.missingPackage(d) != null) missingPackage = true;
+        }
+        if (!missingPackage) return diagnostics;
+        PackageProviders providers = PackageProviders.forContext(ctx, classpath);
+        return providers == null ? diagnostics : providers.enrich(diagnostics);
     }
 }

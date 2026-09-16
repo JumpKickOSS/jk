@@ -68,8 +68,8 @@ final class JkResultsHints {
             case CANT_RESOLVE,
                     "compiler.err.cant.resolve",
                     "compiler.err.cant.resolve.args",
-                    "compiler.err.cant.resolve.location.args" -> cantResolve(message);
-            case DOESNT_EXIST -> doesntExist(group(PACKAGE, first, "the imported package"));
+                    "compiler.err.cant.resolve.location.args" -> cantResolve(key, message);
+            case DOESNT_EXIST -> doesntExist(group(PACKAGE, first, "the imported package"), message);
             case PROB_FOUND_REQ -> {
                 Matcher m = CONVERT.matcher(first);
                 yield m.find()
@@ -88,9 +88,9 @@ final class JkResultsHints {
 
     /** The row the message's shape selects, for a javac diagnostic that arrived without a key. */
     private static @Nullable Hint javacByShape(String first, String message) {
-        if (first.startsWith("cannot find symbol")) return cantResolve(message);
+        if (first.startsWith("cannot find symbol")) return cantResolve(CANT_RESOLVE, message);
         Matcher m = PACKAGE.matcher(first);
-        if (m.find()) return doesntExist(m.group(1));
+        if (m.find()) return doesntExist(m.group(1), message);
         m = CONVERT.matcher(first);
         if (m.find()) return probFoundReq(m.group(1), m.group(2));
         m = UNREPORTED.matcher(first);
@@ -103,22 +103,36 @@ final class JkResultsHints {
         return null;
     }
 
-    private static Hint cantResolve(String message) {
+    private static Hint cantResolve(String key, String message) {
         String symbol = field(message, "symbol:");
         String location = field(message, "location:");
         String what = symbol.isEmpty() ? "the name" : "`" + symbol + "`";
         String where = location.isEmpty() ? "here" : "in `" + location + "`";
         return new Hint(
-                CANT_RESOLVE,
+                key,
                 what + " is not declared " + where + " and not imported: fix the name, add the import, or " + ADD
                         + ".");
     }
 
-    private static Hint doesntExist(String pkg) {
+    /**
+     * The compile step writes {@code provided by: g:a (where)} under the error when the lock or the
+     * catalog knows the package; the hint then names that coordinate for {@code jk add}.
+     */
+    private static Hint doesntExist(String pkg, String message) {
+        String provider = field(message, "provided by:");
+        if (provider.isEmpty()) {
+            return new Hint(
+                    DOESNT_EXIST,
+                    "nothing on this module's compile classpath provides package `" + pkg
+                            + "`: `jk add <group:artifact>` the library that ships it, or fix the import.");
+        }
+        int space = provider.indexOf(' ');
+        String coordinate = space < 0 ? provider : provider.substring(0, space);
+        String where = space < 0 ? "" : " (" + provider.substring(space + 1).replaceAll("^\\(|\\)$", "") + ")";
         return new Hint(
                 DOESNT_EXIST,
-                "nothing on this module's compile classpath provides package `" + pkg
-                        + "`: `jk add <group:artifact>` the library that ships it, or fix the import.");
+                "package `" + pkg + "` is provided by `" + coordinate + "`" + where + ": `jk add " + coordinate
+                        + "` in this module, or fix the import.");
     }
 
     private static Hint probFoundReq(String found, String required) {

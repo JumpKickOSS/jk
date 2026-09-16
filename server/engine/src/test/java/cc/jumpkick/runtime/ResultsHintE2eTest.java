@@ -60,7 +60,7 @@ class ResultsHintE2eTest {
                 .filteredOn(d -> d.code().equals("javac") && d.severity().equals("error"))
                 .as("the compile worker's key rides the diagnostic into the record")
                 .extracting(BuildRecord.Diag::key)
-                .containsExactly("compiler.err.cant.resolve.location");
+                .containsExactly("compiler.err.cant.resolve.location.args");
         String md = JkResultsMarkdown.render(record);
 
         assertThat(md).startsWith("# jk results — FAIL");
