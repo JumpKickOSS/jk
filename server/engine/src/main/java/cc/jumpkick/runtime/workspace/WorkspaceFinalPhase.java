@@ -69,7 +69,12 @@ final class WorkspaceFinalPhase {
         List<BuildPlan> plans =
                 run.prepared().plans().values().stream().map(ModulePlan::plan).toList();
         String verdict = NoTestsRan.verdict(
-                resources.request(), resources.preflight().entry(), SessionContext.current(), plans, run.outcomes());
+                resources.request(),
+                resources.preflight().entry(),
+                SessionContext.current(),
+                plans,
+                run.outcomes(),
+                resources.preflight().graph().topoOrder());
         if (verdict == null) return null;
         return new WorkspaceResult(false, Exit.CONFIG, run.outcomes(), List.of(verdict), false);
     }
