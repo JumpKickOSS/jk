@@ -10,15 +10,20 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -83,11 +88,35 @@ final class GuardSuiteRunner {
         return run(in, workspaceModules, GuardSuites.report(BuildLayout.moduleTargetDir(in.root(), in.moduleDir())));
     }
 
+    /**
+     * One run at a time per report: the build's guard lane and a standalone {@code jk guard} on the
+     * same tree share {@code target/<module>/guard/}, and a second fork appending to the same side
+     * file while the first is read leaves both short. Threads of this engine queue on the lock;
+     * another engine on the same tree queues on the file lock beside the report.
+     */
+    private static final ConcurrentHashMap<Path, ReentrantLock> RUNS = new ConcurrentHashMap<>();
+
+    /** The file the cross-process lock is taken on, beside the report. */
+    static final String LOCK_FILE = "run.lock";
+
     /** As above, with the report (and its run files) beside {@code report} — fixtures run the suite off to the side. */
     static List<String> run(Inputs in, List<Path> workspaceModules, Path report)
             throws IOException, InterruptedException {
         Path guardDir = Objects.requireNonNull(report.toAbsolutePath().getParent(), "report has a parent");
         Files.createDirectories(guardDir);
+        ReentrantLock turn = RUNS.computeIfAbsent(guardDir.normalize(), k -> new ReentrantLock());
+        turn.lockInterruptibly();
+        try (FileChannel channel = FileChannel.open(
+                        guardDir.resolve(LOCK_FILE), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                FileLock held = channel.lock()) {
+            return runLocked(in, workspaceModules, report, guardDir);
+        } finally {
+            turn.unlock();
+        }
+    }
+
+    private static List<String> runLocked(Inputs in, List<Path> workspaceModules, Path report, Path guardDir)
+            throws IOException, InterruptedException {
         // The fork appends to a side file; the report itself appears whole or not at all, so a run
         // cut short (a sibling lane failed first) never leaves a partial report for freeze or explain.
         Path part = report.resolveSibling(report.getFileName() + ".part");
