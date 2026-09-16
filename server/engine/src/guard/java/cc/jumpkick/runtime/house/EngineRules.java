@@ -37,12 +37,17 @@ final class EngineRules {
                     List.of(
                             "package-assembly",
                             "PlannerTails.java|PackagingKeys.assembly(",
-                            "ModuleForecast.java|PackagingKeys.assemblyActionCached("),
+                            "ForecastPackagingTails.java|PackagingKeys.assemblyActionCached("),
             "PackagingKeys.java|pkgKey",
                     List.of(
                             "plugin packager",
                             "PlannerPlugin.java|PackagingKeys.pluginPackager(",
                             "ModuleForecast.java|PackagingKeys.pluginPackagerStep("),
+            "PackagingKeys.java|jdKey",
+                    List.of(
+                            "package-javadoc",
+                            "PlannerJavadoc.java|PackagingKeys.javadoc(",
+                            "ForecastPackagingTails.java|PackagingKeys.javadoc("),
             "GuardKeys.java|key",
                     List.of(
                             "guard",

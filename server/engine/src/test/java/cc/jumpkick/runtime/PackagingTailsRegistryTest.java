@@ -35,12 +35,13 @@ class PackagingTailsRegistryTest {
         Map<String, Task> built = Map.of(
                 TaskNames.PACKAGE_ASSEMBLY, PlannerTails.assemblyStep(cache, lock),
                 TaskNames.PACKAGE_SOURCES, PlannerTails.sourcesStep(cache),
+                TaskNames.PACKAGE_JAVADOC, PlannerTails.javadocStep(cache),
                 TaskNames.NATIVE_IMAGE,
                         PlannerNative.nativeStep(tmp, cache, lock, tmp.resolve("jdks"), null, null, List.of()));
 
         // package-minified needs a full Inputs to construct, so it is asserted by count rather
-        // than built: add a fifth tail and this line fails until someone checks it here too.
-        assertThat(TaskNames.PACKAGING_TAILS).hasSize(4).containsAll(built.keySet());
+        // than built: add a sixth tail and this line fails until someone checks it here too.
+        assertThat(TaskNames.PACKAGING_TAILS).hasSize(5).containsAll(built.keySet());
 
         for (var e : built.entrySet()) {
             assertThat(TaskNames.PACKAGING_TAILS)

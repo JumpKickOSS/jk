@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -216,6 +217,24 @@ class JkResultsMarkdownTest {
         assertThat(md).contains("jid 7");
         assertThat(md).contains("commit: abc123");
         assertThat(md).doesNotContain("## Failed steps");
+    }
+
+    /** A javadoc warning carries its locus in the message; the Warnings section renders it as file:line. */
+    @Test
+    void a_javadoc_warning_renders_with_its_file_and_line() {
+        BuildRecord.Diag warn = BuildAccumulator.diagFromPlan(
+                "warning",
+                "/proj",
+                "/proj",
+                new BuildPlanResult.Diagnostic(
+                        "package-javadoc",
+                        "javadoc",
+                        "/proj/src/com/example/One.java:6: warning: unknown tag. Unregistered custom tag?"));
+        String md = JkResultsMarkdown.render(record(true, List.of(), List.of(warn), List.of()));
+        assertThat(md).contains("## Warnings");
+        assertThat(md).contains("`package-javadoc` `").contains("One.java:6`");
+        assertThat(md).contains("unknown tag");
+        assertThat(md).contains("Diagnostics: 1 warning");
     }
 
     @Test

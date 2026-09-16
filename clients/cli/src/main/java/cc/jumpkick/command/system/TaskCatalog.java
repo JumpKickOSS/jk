@@ -50,6 +50,8 @@ final class TaskCatalog {
                     case TaskNames.RUN_TESTS -> info.testResultsDir();
                     case TaskNames.PACKAGE_JAR -> info.mainJarPath();
                     case TaskNames.PACKAGE_ASSEMBLY -> info.assemblyJarPath();
+                    case TaskNames.PACKAGE_SOURCES -> info.sourcesJarPath();
+                    case TaskNames.PACKAGE_JAVADOC -> info.javadocJarPath();
                     default -> "";
                 };
         if (path == null || path.isBlank()) return Optional.empty();
@@ -83,6 +85,8 @@ final class TaskCatalog {
             def(TaskNames.BUILD_LOGIC_GUARD, "Workspace build-logic (GUARD)", null),
             def(TaskNames.PACKAGE_JAR, "Package main jar", BuildLayout::mainJar, "package", "jar"),
             def(TaskNames.PACKAGE_ASSEMBLY, "Package assembly (fat) jar", BuildLayout::assemblyJar, "assembly"),
+            def(TaskNames.PACKAGE_SOURCES, "Package sources jar (library)", BuildLayout::sourcesJar, "sources"),
+            def(TaskNames.PACKAGE_JAVADOC, "Package javadoc jar (library)", BuildLayout::javadocJar, "javadoc"),
             def(TaskNames.WRITE_STAMP, "Write Java compile freshness stamp", null),
             def(TaskNames.WRITE_STAMP_KOTLIN, "Write Kotlin compile freshness stamp", null),
             def(TaskNames.WRITE_STAMP_GROOVY, "Write Groovy compile freshness stamp", null));

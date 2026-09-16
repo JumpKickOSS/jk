@@ -22,7 +22,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.Task;
@@ -42,7 +41,7 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Declared packaging tails (assembly / minified / sources) and terminal re-root.
+ * Declared packaging tails (assembly / minified / sources / javadoc) and terminal re-root.
  */
 public final class PlannerTails {
 
@@ -62,7 +61,7 @@ public final class PlannerTails {
      * workspace prereq modules that must stay JVM-only.
      *
      * <p>{@link BuildPlan.Builder#terminal} keeps only the named task and its <em>upstream</em>
-     * requires-closure. Core ends at {@code package-jar}; assembly / native / sources-jar are
+     * requires-closure. Core ends at {@code package-jar}; assembly / native / sources / javadoc are
      * <em>downstream</em> of that terminal, so they must re-root the terminal (via a synthetic
      * join when more than one tail is present) or {@link BuildPlan.Builder#build()} prunes them
      * and fat jars / native images never run on {@code jk build}.
@@ -97,9 +96,14 @@ public final class PlannerTails {
                 leaves.add(TaskNames.NATIVE_IMAGE);
                 joinStage = BuildStage.NATIVE;
             }
-            if (project.project().sourcesMode() == SourcesMode.ALWAYS) {
+            // A library ships what Maven Central requires beside its jar: sources and javadoc.
+            if (PackagingKeys.libraryArtifacts(project, in.dir())) {
                 b.addTask(sourcesStep(in.cache(), !in.ephemeralActions()));
                 leaves.add(TaskNames.PACKAGE_SOURCES);
+                if (project.project().javadocMode().enabled()) {
+                    b.addTask(javadocStep(in.cache(), !in.ephemeralActions()));
+                    leaves.add(TaskNames.PACKAGE_JAVADOC);
+                }
             }
             // run-tests is a LEAF, not a gate: packaging does not require it, so without
             // joining it here the terminal's requires-closure would prune the suite out of
@@ -325,6 +329,24 @@ public final class PlannerTails {
                     storePackaged(cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar), persist);
                     ctx.progress(1);
                 })
+                .build();
+    }
+
+    /** Javadoc-jar packaging — a library tail beside {@link #sourcesStep}; see {@link PlannerJavadoc}. */
+    public static Task javadocStep(Path cache) {
+        return javadocStep(cache, true);
+    }
+
+    /** As {@link #javadocStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
+    public static Task javadocStep(Path cache, boolean persist) {
+        return Task.builder(TaskNames.PACKAGE_JAVADOC)
+                .stage(BuildStage.PACKAGE)
+                .label("Javadoc")
+                .kind(TaskKind.CPU)
+                .requires(TaskNames.PACKAGE_JAR)
+                .weight(W_JAVADOC)
+                .ticks(1)
+                .execute(ctx -> PlannerJavadoc.run(ctx, cache, persist))
                 .build();
     }
 }

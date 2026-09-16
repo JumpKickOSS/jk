@@ -431,6 +431,7 @@ public final class BuildPlanner {
     static final int W_STAMP = 1;
     static final int W_SHADOW = 10;
     static final int W_SOURCES = 3;
+    static final int W_JAVADOC = 8;
     /** Always-run tail for a fully-cached module (token touch, not full static weight). */
     static final int W_CACHED_TOUCH = 1;
 

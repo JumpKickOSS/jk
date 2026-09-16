@@ -195,11 +195,13 @@ public final class LocalProjectBuilder {
                 p.groovy(),
                 p.scala(),
                 p.sourcesMode(),
+                p.javadocMode(),
                 p.description(),
                 p.m2integration(),
                 p.m2install(),
                 p.layout(),
-                Set.of());
+                Set.of(),
+                p.jdkSpec());
         return JkBuild.builder(overridden)
                 .dependencies(project.dependencies())
                 .repositories(project.repositories())

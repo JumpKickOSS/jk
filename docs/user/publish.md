@@ -16,6 +16,10 @@ always a **dry-run** so tokens never enter the engine — [MCP](mcp.md).
 
 Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md).
 
+A library's release set — jar, POM, `-sources.jar`, `-javadoc.jar` — is what `jk build` already
+wrote; Maven Central refuses a release missing either classifier jar.
+See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
+
 ## SBOM
 
 `jk publish --sbom` uploads a CycloneDX 1.6 and an SPDX 2.3 document beside the artifact and
