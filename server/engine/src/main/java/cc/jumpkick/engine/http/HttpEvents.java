@@ -163,6 +163,7 @@ public final class HttpEvents {
     private static final Set<String> CRITICAL_TYPES = Set.of(
             EngineProtocol.WORKSPACE_PROGRESS,
             EngineProtocol.ETA,
+            "request-queued",
             "request-start",
             "request-finish",
             "run-snapshot",

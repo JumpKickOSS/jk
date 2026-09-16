@@ -60,7 +60,7 @@ class WireTokenParityTest {
         Map<String, String> sse = tokens("SSE");
         assertThat(sse)
                 .as("SSE tokens parsed out of wire.js — zero means the parse broke")
-                .hasSize(5);
+                .hasSize(6);
 
         Set<String> protocol = engineProtocolValues();
         StringBuilder writers = new StringBuilder();

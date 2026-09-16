@@ -4,25 +4,19 @@ package cc.jumpkick.engine.jobs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.engine.api.InFlightBuilds;
-import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildAccumulator;
-import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
-import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
@@ -37,19 +31,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.LongSupplier;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -59,7 +49,7 @@ class JobEnvelopeTest {
 
     @Test
     void draining_plan_is_refused_without_running() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.tryStart = false;
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
@@ -78,7 +68,7 @@ class JobEnvelopeTest {
 
     @Test
     void runner_completes_and_publishes_request_finish() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         AtomicBoolean ran = new AtomicBoolean();
         StringWriter out = new StringWriter();
@@ -101,7 +91,7 @@ class JobEnvelopeTest {
 
     @Test
     void maintenance_kind_never_writes_a_timeline() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         env.submit(
@@ -120,7 +110,7 @@ class JobEnvelopeTest {
 
     @Test
     void fire_and_forget_returns_jid_and_finishes_detached() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch ran = new CountDownLatch(1);
         long jid = env.submit(
@@ -145,7 +135,7 @@ class JobEnvelopeTest {
 
     @Test
     void duplicate_detached_build_is_refused_with_typed_already_running(@TempDir Path dir) throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -178,7 +168,7 @@ class JobEnvelopeTest {
 
     @Test
     void deadline_kill_records_the_reason_on_the_accumulator() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> host.accumulator)
@@ -199,7 +189,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_wall_deadline_cancels_a_running_job_and_names_the_deadline() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.clock = System::currentTimeMillis;
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
         JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L));
@@ -232,7 +222,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_detached_job_nobody_cancels_is_settled_at_the_default_detached_deadline() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         AtomicLong now = new AtomicLong(1_000L);
         host.clock = now::get;
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
@@ -257,7 +247,7 @@ class JobEnvelopeTest {
     /** EOF is a socket job's deadline: under the defaults the clock alone never cancels it. */
     @Test
     void a_socket_job_runs_unbounded_under_the_defaults() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         AtomicLong now = new AtomicLong(1_000L);
         host.clock = now::get;
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
@@ -295,7 +285,7 @@ class JobEnvelopeTest {
     /** A detached submission may bring its own deadline, or lift the engine's with {@code 0}. */
     @Test
     void a_detached_submission_may_carry_its_own_deadline_or_lift_the_cap() throws Exception {
-        FakeHost own = new FakeHost();
+        FakeEnvelopeHost own = new FakeEnvelopeHost();
         own.clock = System::currentTimeMillis;
         own.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
         CountDownLatch release = new CountDownLatch(1);
@@ -311,7 +301,7 @@ class JobEnvelopeTest {
                 .contains("50ms wall deadline")
                 .contains("the request's deadline");
 
-        FakeHost lifted = new FakeHost();
+        FakeEnvelopeHost lifted = new FakeEnvelopeHost();
         lifted.clock = System::currentTimeMillis;
         lifted.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
         new JobEnvelope(lifted, JobLimits.DEFAULTS.withDetachedDeadlineMs(50L))
@@ -353,7 +343,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_user_cancel_journals_the_interrupt_code_and_names_the_user() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
@@ -376,7 +366,7 @@ class JobEnvelopeTest {
     @Test
     @Tag("integration")
     void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L));
         AtomicReference<Process> worker = new AtomicReference<>();
@@ -424,7 +414,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_cancelled_detached_job_whose_body_ignores_interrupts_is_settled_within_the_grace() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
         JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L));
         CountDownLatch started = new CountDownLatch(1);
@@ -471,13 +461,13 @@ class JobEnvelopeTest {
      */
     @Test
     void a_wall_deadline_is_distinguishable_in_the_record_from_a_user_cancel() {
-        FakeHost byUser = new FakeHost();
+        FakeEnvelopeHost byUser = new FakeEnvelopeHost();
         byUser.accumulator = new BuildAccumulator("build", "/p", null, "cli");
         new JobEnvelope(byUser, JobLimits.DEFAULTS)
                 .live()
                 .beginUserCancel(1L, Session.CancelToken.live(), null, 0L, true);
 
-        FakeHost byDeadline = new FakeHost();
+        FakeEnvelopeHost byDeadline = new FakeEnvelopeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
         new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> byDeadline.accumulator)
                 .enforceDeadline(
@@ -501,7 +491,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_client_that_disconnects_mid_job_is_not_recorded_as_a_deliberate_cancel() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "cli");
 
         new JobEnvelope(host, JobLimits.DEFAULTS)
@@ -527,7 +517,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_body_that_ruled_success_is_not_relabelled_cancelled_by_the_end_of_request_eof() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("cache", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
@@ -554,7 +544,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_detached_runner_that_dies_without_ruling_journals_a_failure() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
@@ -582,7 +572,7 @@ class JobEnvelopeTest {
     @Test
     void run_notices_ride_the_wire_during_the_run_and_the_log_after_it() {
         RunNotices.clear();
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
         var errDuring = new ByteArrayOutputStream();
@@ -634,7 +624,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_runner_that_throws_after_clean_rows_journals_a_failure_not_green() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
@@ -667,7 +657,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_body_killed_by_an_error_is_logged_and_settles_a_terminal_for_the_client() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         StringWriter out = new StringWriter();
@@ -697,7 +687,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_runner_that_declines_with_clean_rows_still_derives_green() throws Exception {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
 
@@ -723,7 +713,7 @@ class JobEnvelopeTest {
      */
     @Test
     void a_successful_job_emits_its_effects_in_one_order_with_the_slot_released_first() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         // Detached: a socket whose reader is already at EOF reads as a client disconnect, which
         // would race the body's own verdict. The wire terminal is pinned by the journal test below.
@@ -768,7 +758,7 @@ class JobEnvelopeTest {
         for (JobBody body : List.<JobBody>of((line, tok, w) -> JobOutcome.failed(Exit.SOFTWARE), (line, tok, w) -> {
             throw new IllegalStateException("boom");
         })) {
-            FakeHost host = new FakeHost();
+            FakeEnvelopeHost host = new FakeEnvelopeHost();
             host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
             new JobEnvelope(host, JobLimits.DEFAULTS)
                     .submit(
@@ -793,7 +783,7 @@ class JobEnvelopeTest {
     /** A cancelled job adds exactly one key, cancelReason, and still ends on the same tail. */
     @Test
     void a_cancelled_job_adds_cancel_reason_and_nothing_else() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
         env.submit(
@@ -816,7 +806,7 @@ class JobEnvelopeTest {
     /** job-finish is written in a finally, so a throwing journal cannot strand the client on EOF. */
     @Test
     void a_throwing_journal_still_delivers_job_finish() {
-        FakeHost host = new FakeHost();
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
         host.journalThrows = true;
         StringWriter out = new StringWriter();
@@ -835,7 +825,7 @@ class JobEnvelopeTest {
     }
 
     /** The detached tail runs on its own thread; the idle boundary is its last effect. */
-    private static void awaitTail(FakeHost host) {
+    private static void awaitTail(FakeEnvelopeHost host) {
         try {
             Await.until(Duration.ofSeconds(30), () -> host.sequence.contains("idle-boundary"));
         } catch (InterruptedException e) {
@@ -843,7 +833,7 @@ class JobEnvelopeTest {
         }
     }
 
-    private static String requestFinish(FakeHost host) {
+    private static String requestFinish(FakeEnvelopeHost host) {
         return host.events.stream()
                 .filter(e -> e.startsWith("request-finish:"))
                 .map(e -> e.substring("request-finish:".length()))
@@ -857,204 +847,5 @@ class JobEnvelopeTest {
         Matcher m = Pattern.compile("\"(\\w+)\":").matcher(json);
         while (m.find()) keys.add(m.group(1));
         return keys;
-    }
-
-    private static final class FakeHost implements JobEnvelope.Host {
-        boolean tryStart = true;
-        volatile int abandoned;
-        volatile int finished;
-        volatile BuildAccumulator accumulator = new BuildAccumulator("build", "/p", null, "cli");
-        final List<String> events = Collections.synchronizedList(new ArrayList<>());
-        final List<Long> cleared = Collections.synchronizedList(new ArrayList<>());
-        final List<String> teardownOrder = Collections.synchronizedList(new ArrayList<>());
-        final InFlightBuilds inFlight = new InFlightBuilds();
-        final AtomicLong ids = new AtomicLong();
-        final ReentrantReadWriteLock gate = new ReentrantReadWriteLock();
-
-        @Override
-        public boolean tryStartBuildPlan() {
-            if (tryStart) activePlans++;
-            return tryStart;
-        }
-
-        @Override
-        public void abandonBuildPlanSlot() {
-            abandoned++;
-        }
-
-        @Override
-        public void noteBuildPlanFinished() {
-            finished++;
-            activePlans--;
-            sequence.add("plan-slot-released");
-        }
-
-        /** Every host call the envelope makes that the wire or the dashboard can observe, in order. */
-        final List<String> sequence = Collections.synchronizedList(new ArrayList<>());
-
-        volatile int activePlans;
-
-        @Override
-        public boolean draining() {
-            return !tryStart;
-        }
-
-        @Override
-        public long nextRequestId() {
-            return ids.incrementAndGet();
-        }
-
-        /** Frozen by default; a deadline test swaps in the wall clock. */
-        LongSupplier clock = () -> 1_000L;
-
-        @Override
-        public long nowMillis() {
-            return clock.getAsLong();
-        }
-
-        @Override
-        public void putMode(long id, ProgressBarMode mode) {}
-
-        @Override
-        public void publishRequestStart(long id, String kind, String dir, long buildNumber) {
-            sequence.add("request-start");
-        }
-
-        @Nullable
-        Boolean lastNoTimeline;
-
-        @Override
-        public void registerAccumulator(
-                long id,
-                String kind,
-                String dir,
-                String trigger,
-                @Nullable String session,
-                boolean noTimeline,
-                boolean rebuild,
-                long buildNumber,
-                @Nullable String journalId) {
-            lastNoTimeline = noTimeline;
-        }
-
-        @Override
-        public ReentrantReadWriteLock cacheGate() {
-            return gate;
-        }
-
-        @Override
-        public void bindEventRequestId(long id) {}
-
-        @Override
-        public void unbindEventRequestId() {}
-
-        final IoLedger io = new IoLedger();
-
-        @Override
-        public IoLedger runIo(long id) {
-            return io;
-        }
-
-        @Override
-        public InFlightBuilds inFlight() {
-            return inFlight;
-        }
-
-        @Override
-        public BuildAccumulator accumulatorOf(long id) {
-            return accumulator;
-        }
-
-        @Override
-        public void putLastProgress(long id, double percent) {
-            sequence.add("progress-pinned:" + percent);
-        }
-
-        @Override
-        public int activeBuildPlans() {
-            return activePlans;
-        }
-
-        @Override
-        public JsonOut withProgress(JsonOut payload, long id) {
-            return payload;
-        }
-
-        @Override
-        public JsonOut withIo(JsonOut payload, long id) {
-            return payload;
-        }
-
-        @Override
-        public void publishEvent(String type, JsonOut payload) {
-            events.add(type + ":" + payload);
-            sequence.add(type);
-        }
-
-        @Override
-        public void clearProgress(long id) {
-            teardownOrder.add("clearProgress");
-            sequence.add("clearProgress");
-            cleared.add(id);
-        }
-
-        volatile boolean journalWritten;
-        volatile boolean journalCancelled;
-        volatile long journalMillis;
-
-        volatile boolean journalThrows;
-
-        @Override
-        public void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer) {
-            teardownOrder.add("writeJournal");
-            sequence.add("writeJournal");
-            journalCancelled = cancelled;
-            journalMillis = millis;
-            journalWritten = true;
-            if (journalThrows) throw new IllegalStateException("journal disk full");
-        }
-
-        /** The row JournalWriter would persist for this run, built the same way it builds it. */
-        BuildRecord journalRecord() {
-            return accumulator.toRecord(
-                    2_000L, journalCancelled || accumulator.wasCancelled(), journalMillis, version(), null);
-        }
-
-        @Override
-        public void maybeIdleBoundary() {
-            sequence.add("idle-boundary");
-        }
-
-        @Override
-        public void maybeIdleGc() {
-            sequence.add("idle-gc");
-        }
-
-        final List<String> logs = Collections.synchronizedList(new ArrayList<>());
-
-        @Override
-        public void log(String message) {
-            logs.add(message);
-        }
-
-        @Override
-        public String version() {
-            return "0.0.0-test";
-        }
-
-        @Override
-        public JkHistoryConfig historyConfig() {
-            return new JkHistoryConfig(false, 0, 0); // never write real journal stubs from a unit test
-        }
-
-        @Override
-        public BuildJournal journal() {
-            return BuildJournal.current();
-        }
-
-        @Override
-        public String coordOf(String dir) {
-            return "test:job";
-        }
     }
 }

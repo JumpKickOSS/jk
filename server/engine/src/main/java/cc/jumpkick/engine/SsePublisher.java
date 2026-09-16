@@ -155,7 +155,10 @@ public final class SsePublisher implements SseEvents {
             // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
             // Builds Running and storage totals do not wait for the next timer tick.
             HttpEngineServer server = http.get();
-            if (server != null && ("request-start".equals(type) || "request-finish".equals(type))) {
+            if (server != null
+                    && ("request-start".equals(type)
+                            || "request-queued".equals(type)
+                            || "request-finish".equals(type))) {
                 server.notifyLiveStatus();
                 if ("request-finish".equals(type)) server.notifyLiveCache();
             }
@@ -327,6 +330,26 @@ public final class SsePublisher implements SseEvents {
      * dir's {@code jk.toml} parses — the dashboard renders coordinates, not paths, when it can
      * (the design's coord coloring). Best-effort and only attempted with a subscriber connected.
      */
+    /**
+     * A job admitted to the memory queue, not yet to the heap: the dashboard paints a queued card
+     * that {@code request-start} turns live. {@code ahead} is its place in line.
+     */
+    public void publishRequestQueued(long requestId, String kind, String dir, int ahead) {
+        if (!eventsWanted()) return;
+        publishEvent(
+                "request-queued",
+                JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "request-queued")
+                        .put("jid", requestId)
+                        .put("kind", kind)
+                        .put("dir", dir)
+                        .put("projectId", ProjectIds.idOf(dir))
+                        .put("ahead", ahead)
+                        .put("reason", "memory")
+                        .put("activeBuildPlans", activePlans.get()));
+    }
+
     public void publishRequestStart(long requestId, String kind, String dir) {
         publishRequestStart(requestId, kind, dir, 0L);
     }

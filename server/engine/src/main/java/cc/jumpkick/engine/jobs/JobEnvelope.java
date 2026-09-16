@@ -16,6 +16,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.base.LiveUnits;
+import cc.jumpkick.runtime.base.ProjectIds;
 import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -50,11 +51,18 @@ public final class JobEnvelope {
     private final JobWatchdog watchdogs;
     private final LiveJobRegistry live;
     private final JobSettlement settlement;
+    private final MemoryAdmission admission;
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
+        this(host, limits, MemoryAdmission.forRuntime());
+    }
+
+    /** As above with the memory gate supplied — tests hand in a fake heap and a fixed per-job cost. */
+    public JobEnvelope(Host host, JobLimits limits, MemoryAdmission admission) {
         this.host = host;
         this.limits = limits;
+        this.admission = admission;
         this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf);
         this.live = new LiveJobRegistry(host::accumulatorOf, host::log, limits.cancelGraceMs());
         this.settlement = new JobSettlement(host, host, host, host);
@@ -103,27 +111,35 @@ public final class JobEnvelope {
         boolean workspaceStream = job.workspaceTerminal();
         // Refuse new jobs while draining. The listener is already closed, so this is the race
         // on a connection accepted just before yield, or an already-open session.
-        // A plan claims its slot in the same breath, so shutdown can never observe zero
-        // plans for a job that is about to start.
-        boolean claimedBuildPlanSlot = false;
-        if (plan) {
-            claimedBuildPlanSlot = host.tryStartBuildPlan();
-        }
-        if (plan ? !claimedBuildPlanSlot : host.draining()) return refuseDraining(detached, writer);
-        Session.CancelToken cancelToken = Session.CancelToken.live();
-        CountDownLatch done = new CountDownLatch(1);
-        // Released by the first user cancel: the joiner parks on the runner's end and on this,
-        // so a cancel that reaches a body wedged past its interrupt still ends in a bounded join.
-        CountDownLatch cancelSignal = new CountDownLatch(1);
-        long eventRequestId = host.nextRequestId();
-        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
-        // startup env is not the client's.
-        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
+        if (host.draining()) return refuseDraining(detached, writer);
         // The kind rides explicitly from the dispatch site (never parsed back out of a thread
         // name); the journal dir falls back to a request's specific location field so non-build
         // requests never record the literal string "null".
         String eventKind = kind;
         String eventDir = journalDir(requestLine);
+        // exclusive fingerprint + start-time build number for journaled kinds. A same-fingerprint
+        // job already running is refused here, never queued behind itself; the definitive claim
+        // is JobAdmit's, below.
+        String fingerprint = BuildJobFingerprint.ofRequest(eventKind, requestLine);
+        if (BuildJobFingerprint.isExclusiveKind(eventKind) && fingerprint != null && !fingerprint.isEmpty()) {
+            var running = host.inFlight().peek(fingerprint);
+            if (running.isPresent()) return refuseAlreadyRunning(running.get(), eventKind, detached, false, writer);
+        }
+        long eventRequestId = host.nextRequestId();
+        boolean claimedBuildPlanSlot = false;
+        if (plan) {
+            Long refused = admitPlan(eventRequestId, eventKind, eventDir, workspaceStream, detached, writer);
+            if (refused != null) return refused;
+            claimedBuildPlanSlot = true;
+        }
+        Session.CancelToken cancelToken = Session.CancelToken.live();
+        CountDownLatch done = new CountDownLatch(1);
+        // Released by the first user cancel: the joiner parks on the runner's end and on this,
+        // so a cancel that reaches a body wedged past its interrupt still ends in a bounded join.
+        CountDownLatch cancelSignal = new CountDownLatch(1);
+        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
+        // startup env is not the client's.
+        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
         long eventStartMillis = host.nowMillis();
         boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
         // Who asked: default "cli"; optimize/calibrate mark synthetic history. The session (an MCP
@@ -131,10 +147,9 @@ public final class JobEnvelope {
         String trigger = Jsonl.str(requestLine, "trigger");
         if (trigger == null || trigger.isBlank()) trigger = "cli";
         String session = Jsonl.str(requestLine, "session");
-        // exclusive fingerprint + start-time build number for journaled kinds.
-        String fingerprint = BuildJobFingerprint.ofRequest(eventKind, requestLine);
         AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger, session);
         if (admit.rejected() != null) {
+            admission.release(eventRequestId);
             return refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
         }
         host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
@@ -209,6 +224,82 @@ public final class JobEnvelope {
         }
         finish.run();
         return eventRequestId;
+    }
+
+    /**
+     * Coordinator memory first, then the plan slot. A queued job is not a live plan — a drain does
+     * not wait for it and status does not count it — and the slot claim stays the atomic
+     * not-draining check: shutdown can never observe zero plans for a job about to start. {@code
+     * null} once the slot is claimed; otherwise the refusal already sent, for {@code submit} to
+     * return.
+     */
+    private @Nullable Long admitPlan(
+            long jid,
+            String kind,
+            String dir,
+            boolean workspaceStream,
+            boolean detached,
+            @Nullable BufferedWriter writer) {
+        MemoryAdmission.Verdict verdict =
+                admission.admit(jid, dir, ahead -> announceQueued(jid, kind, dir, ahead, writer), host::draining);
+        switch (verdict) {
+            case CANCELLED -> {
+                return refuseCancelledInQueue(jid, kind, dir, workspaceStream, detached, writer);
+            }
+            case DRAINING -> {
+                return refuseDraining(detached, writer);
+            }
+            case ADMITTED -> {
+                /* fall through to the slot claim */
+            }
+        }
+        if (!host.tryStartBuildPlan()) {
+            admission.release(jid);
+            return refuseDraining(detached, writer);
+        }
+        return null;
+    }
+
+    /**
+     * The job has to wait for coordinator memory: one {@code job-queued} line so the client can
+     * say so and keeps the jid as its cancel handle, one {@code request-queued} frame so the
+     * dashboard paints the queued card, one log line for the post-mortem.
+     */
+    private void announceQueued(long jid, String kind, String dir, int ahead, @Nullable BufferedWriter writer) {
+        if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobQueued(jid, ahead));
+        host.publishRequestQueued(jid, kind, dir, ahead);
+        host.log("jk engine: job " + jid + " (" + kind + " " + dir + ") waits for engine memory behind " + ahead
+                + (ahead == 1 ? " job" : " jobs"));
+    }
+
+    /**
+     * Cancelled while waiting: nothing ran, so the stream ends on the cancelled terminal its shape
+     * expects and the dashboard card resolves through {@code request-finish} — no journal row was
+     * ever begun for it.
+     */
+    private long refuseCancelledInQueue(
+            long jid,
+            String kind,
+            String dir,
+            boolean workspaceStream,
+            boolean detached,
+            @Nullable BufferedWriter writer) {
+        host.publishEvent(
+                "request-finish",
+                JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "request-finish")
+                        .put("jid", jid)
+                        .put("kind", kind)
+                        .put("dir", dir)
+                        .put("projectId", ProjectIds.idOf(dir))
+                        .put("success", false)
+                        .put("cancelled", true)
+                        .put("millis", 0L)
+                        .put("activeBuildPlans", host.activeBuildPlans()));
+        if (detached) throw new IllegalStateException("cancelled while waiting for engine memory");
+        if (writer != null) WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
+        return -1;
     }
 
     /** The engine is draining: a detached submit throws, a socket submit tells the client and returns -1. */
@@ -350,6 +441,7 @@ public final class JobEnvelope {
             // thread's teardown so a follow-up same-project build is not rejected.
             live.unregisterLiveJob(eventRequestId);
             host.inFlight().release(eventRequestId);
+            admission.release(eventRequestId);
             done.countDown();
             // Unblock the connection thread only if it is parked on client readLine
             // waiting for EOF — remote cancel finishes the runner without
@@ -408,6 +500,7 @@ public final class JobEnvelope {
             JobWorkers.clear(eventRequestId);
             // Idempotent: runner finally usually released already; covers admit-without-run paths.
             host.inFlight().release(eventRequestId);
+            admission.release(eventRequestId);
             settlement.settle(
                     eventRequestId,
                     eventKind,
@@ -466,14 +559,19 @@ public final class JobEnvelope {
         return rendered.toString();
     }
 
-    /** Cancel one live job by jid; {@code false} when unknown or already finished. */
+    /** Cancel one live or queued job by jid; {@code false} when unknown or already finished. */
     public boolean cancelJob(long jid) {
-        return live.cancelJob(jid);
+        return live.cancelJob(jid) || admission.cancel(jid);
     }
 
-    /** Cancel every live job whose dir matches (canonical absolute path). */
+    /** Cancel every live or queued job whose dir matches (canonical absolute path). */
     public int cancelJobsForDir(String dir) {
-        return live.cancelJobsForDir(dir);
+        return live.cancelJobsForDir(dir) + admission.cancelForDir(dir);
+    }
+
+    /** Jobs waiting for coordinator memory right now; the status vital behind {@code queuedBuildPlans}. */
+    public int queued() {
+        return admission.queued();
     }
 
     /** Whether a job's cancel token means a real cancel — see {@link JobSettlement#effectiveCancelled}. */

@@ -203,6 +203,11 @@ public final class ProtoLifecycle {
     }
 
     /** {@link EngineProtocol#JOB_START}: job admitted — {@code jid} is the public cancel handle. */
+    /** The one {@link EngineProtocol#JOB_QUEUED} line a job sends while it waits for memory. */
+    public static String jobQueued(long jid, int ahead) {
+        return new JobQueuedFrame(jid, ahead, JobQueuedFrame.MEMORY).encode();
+    }
+
     public static String jobStart(long jid, String kind, String dir, long buildNumber) {
         return jobStart(jid, kind, dir, buildNumber, null, -1);
     }

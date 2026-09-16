@@ -26,6 +26,7 @@ export const EVENT = Object.freeze({
  * LiveVitals), which is what the parity test checks them against.
  */
 export const SSE = Object.freeze({
+  requestQueued: 'request-queued',
   requestStart: 'request-start',
   requestFinish: 'request-finish',
   runSnapshot: 'run-snapshot',

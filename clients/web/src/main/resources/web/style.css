@@ -488,6 +488,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* --glow-rgb carries the card's build state — it drives both the left inward glow and the hover
  * halo, so "colour still means state" (success green, failed red, …). */
 .card.running { --glow-rgb: var(--run-rgb); }
+.card.queued { --glow-rgb: var(--dim-rgb); }
 .card.success { --glow-rgb: var(--ok-rgb); }
 .card.failed { --glow-rgb: var(--err-rgb); }
 .card.cancelled { --glow-rgb: var(--dim-rgb); }
@@ -970,6 +971,7 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 /* right group: the outcome pill (#buildNumber) and the reliability readout */
 .proj-stats { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
 .badge.running { background: var(--runc); color: #000; }
+.badge.queued { background: var(--dim); color: #000; }
 .badge.issue { background: var(--warn); color: #000; }
 
 .reliability {

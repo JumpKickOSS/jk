@@ -123,6 +123,9 @@ class RepoGroupBuilderWireNoticeTest {
         public void publishRequestStart(long id, String kind, String dir, long buildNumber) {}
 
         @Override
+        public void publishRequestQueued(long id, String kind, String dir, int ahead) {}
+
+        @Override
         public void registerAccumulator(
                 long id,
                 String kind,

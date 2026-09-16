@@ -98,6 +98,7 @@ public final class EngineStatusCommand implements CliCommand {
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
+        if (s.queuedBuildPlans() > 0) detail("Queued", s.queuedBuildPlans() + " (waiting for engine memory)");
         if (s.idleDropped() >= 0) {
             detail("Dropped", s.idleDropped() + (s.idleDropped() == 1 ? " idle connection" : " idle connections"));
         }
@@ -188,6 +189,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("uptimeSeconds", uptimeSeconds)
                 .number("activeRequests", s.activeRequests())
                 .number("idleDropped", s.idleDropped())
+                .number("queuedBuildPlans", s.queuedBuildPlans())
                 .number("heapUsedBytes", s.heapUsedBytes())
                 .number("heapCommittedBytes", s.heapCommittedBytes())
                 .number("heapMaxBytes", s.heapMaxBytes())

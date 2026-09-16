@@ -429,7 +429,8 @@ public final class EngineServer implements AutoCloseable {
                 idleDropped::get,
                 () -> EngineLogSink.sizeOf(paths.log()),
                 this::logRolledAtMillis,
-                TerminalSignals::ignoredSignals);
+                TerminalSignals::ignoredSignals,
+                jobs::queued);
     }
 
     private long logRolledAtMillis() {

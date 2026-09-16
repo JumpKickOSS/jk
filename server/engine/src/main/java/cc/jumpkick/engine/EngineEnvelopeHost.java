@@ -85,6 +85,11 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
+    public void publishRequestQueued(long id, String kind, String dir, int ahead) {
+        sse.publishRequestQueued(id, kind, dir, ahead);
+    }
+
+    @Override
     public void registerAccumulator(
             long id,
             String kind,

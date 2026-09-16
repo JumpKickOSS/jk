@@ -153,9 +153,9 @@
           <!-- Who asked: trigger · session, the same line the results header prints. -->
           <span v-if="card.trigger" class="origin" :class="'origin-' + card.trigger" data-tip="Trigger · session that asked">{{ originLabel(card) }}</span>
           <span class="spacer"></span>
-          <button v-if="outcome(card) === 'running' && card.id != null" class="rebuild icon danger"
+          <button v-if="isLive(card) && card.id != null" class="rebuild icon danger"
                   @click="cancelCard(card)" aria-label="Cancel" data-tip="Cancel this job (jid)"><jk-icon name="ban"></jk-icon></button>
-          <button v-if="outcome(card) !== 'running' && card.kind === 'build'" class="rebuild icon"
+          <button v-if="!isLive(card) && card.kind === 'build'" class="rebuild icon"
                   @click="triggerBuild(card.dir)" aria-label="Rebuild" data-tip="Re-run this build"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" data-tip="Delete this run from history"><jk-icon name="trash"></jk-icon></button>

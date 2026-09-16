@@ -63,7 +63,9 @@ public final class EngineProbe {
              * Signals the engine still ignores ({@code "HUP, INT"}) — an inherited ignore its startup
              * could not reset; {@code ""} when none, {@code null} when the engine did not report.
              */
-            @Nullable String ignoredSignals) {}
+            @Nullable String ignoredSignals,
+            /** Jobs waiting for engine memory; {@code 0} when none or when the engine did not report. */
+            int queuedBuildPlans) {}
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -153,7 +155,8 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "idleDropped", -1),
                     Jsonl.longValue(ack, "logBytes", -1),
                     Jsonl.longValue(ack, "logRolledAt", -1),
-                    Jsonl.str(ack, "ignoredSignals")));
+                    Jsonl.str(ack, "ignoredSignals"),
+                    Jsonl.intValue(ack, "queuedBuildPlans", 0)));
         } catch (IOException e) {
             return Optional.empty();
         }

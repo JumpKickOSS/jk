@@ -61,6 +61,15 @@ export function startAnchor(card) {
 export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
+    case SSE.requestQueued: {
+      // Admitted to the engine's memory queue, not yet to its heap: a card with no clock running.
+      // request-start for the same jid turns it live; request-finish (cancelled) resolves it.
+      if (!isBuildLikeKind(d.kind || 'build')) break;
+      if (cards.find((c) => c.id === d.jid)) break;
+      cards.unshift(queuedCard(d, event.at));
+      if (cards.length > MAX_CARDS) cards.length = MAX_CARDS;
+      break;
+    }
     case SSE.requestStart: {
       if (!isBuildLikeKind(d.kind || 'build')) break;
       // Engine startedAt (admission) beats client receipt time — late join / rehydrate must match TUI.
@@ -69,6 +78,11 @@ export function foldEvent(cards, event) {
       // Already attached (SSE connect rehydrate replayed, or this tab started the job).
       const attached = cards.find((c) => c.id === d.jid);
       if (attached) {
+        if (attached.state === 'queued') {
+          attached.state = 'running';
+          attached.ahead = null;
+          attached.startedAt = engineStart ?? event.at ?? null;
+        }
         if (engineStart != null && (attached.startedAt == null || engineStart < attached.startedAt)) {
           attached.startedAt = engineStart;
         }
@@ -978,4 +992,34 @@ export function stepTimingLabel(step) {
   return t ? step.name + ' (' + t + ')' : step.name;
 }
 
-
+/** A card for a job waiting in the engine's memory queue; {@code ahead} is its place in line. */
+function queuedCard(d, at) {
+  return {
+    id: d.jid,
+    kind: d.kind || 'request',
+    dir: d.dir || '',
+    coord: d.coord || null,
+    projectId: d.projectId || null,
+    buildNumber: null,
+    trigger: d.trigger || null,
+    session: d.session || null,
+    state: 'queued',
+    ahead: typeof d.ahead === 'number' ? d.ahead : null,
+    startedAt: null,
+    startedAtClient: at ?? null,
+    finishedAt: null,
+    millis: null,
+    cancelled: false,
+    success: null,
+    modules: [],
+    mods: {},
+    planWeight: 0,
+    progressPercent: null,
+    progressNum: 0,
+    progressDen: 0,
+    peakPct: undefined,
+    etaMillis: null,
+    etaAt: null,
+    output: [],
+  };
+}

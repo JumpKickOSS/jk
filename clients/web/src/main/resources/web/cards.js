@@ -19,7 +19,7 @@ export const cardMethods = {
   // Activity feed shows a spinner instead); 'issue' (alert) is reserved for the audit/CVE signal —
   // nothing drives it yet, but the state, colour, and chip are wired so a future signal only sets it.
   stateIcon(state) {
-    return { running: 'play', success: 'check', failed: 'x', cancelled: 'ban', issue: 'alert', finished: 'dot' }[state] || 'dot';
+    return { queued: 'activity', running: 'play', success: 'check', failed: 'x', cancelled: 'ban', issue: 'alert', finished: 'dot' }[state] || 'dot';
   },
   // Staggered entrance delay for the .rise-in cascade on feed items, capped so long lists don't
   // wait seconds. New SSE cards prepend at index 0, so they land immediately.
@@ -185,12 +185,22 @@ export const cardMethods = {
   outcome(card) {
     return outcomeOf(card);
   },
-  // Badge label for a job card — optional jid (running) + #buildNumber + capitalized outcome.
+  // Badge label for a job card — optional jid (live) + #buildNumber + capitalized outcome; a
+  // queued card says what it waits for and how many wait ahead of it.
   activityBadge(card) {
     const o = this.outcome(card);
-    const jid = card.id != null && o === 'running' ? 'jid=' + card.id + ' ' : '';
+    const jid = card.id != null && (o === 'running' || o === 'queued') ? 'jid=' + card.id + ' ' : '';
     const num = card.buildNumber ? '#' + card.buildNumber + ' ' : '';
+    if (o === 'queued') {
+      const ahead = typeof card.ahead === 'number' && card.ahead > 0 ? ' (' + card.ahead + ' ahead)' : '';
+      return jid + 'Queued for memory' + ahead;
+    }
     return jid + num + o.charAt(0).toUpperCase() + o.slice(1);
+  },
+  /** A card the engine still holds: queued for memory or running. */
+  isLive(card) {
+    const o = this.outcome(card);
+    return o === 'running' || o === 'queued';
   },
   summary(card) {
     return moduleSummary(card);
