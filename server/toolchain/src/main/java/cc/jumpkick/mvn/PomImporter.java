@@ -209,7 +209,7 @@ public final class PomImporter {
     /** Modules listed only in profiles Maven would not activate here leave nothing to build: a Tier-3 row says which. */
     private static void reportInactiveModules(EffectiveModel root, ImportReport.Builder report) {
         List<String> inactive = new ArrayList<>();
-        for (org.apache.maven.model.Profile profile : root.raw().getProfiles()) {
+        for (var profile : root.raw().getProfiles()) {
             if (!profile.getModules().isEmpty() && !root.isActive(profile)) inactive.add(profile.getId());
         }
         if (inactive.isEmpty()) return;

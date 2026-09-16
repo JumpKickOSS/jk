@@ -70,7 +70,8 @@ final class RepoModelResolver implements ModelResolver {
             Path pom = hit.get().fetched().cachePath();
             PomParser.parseXml(Files.readAllBytes(pom));
             return new FileModelSource(pom.toFile());
-        } catch (IOException | PomParseException e) {
+        } catch (IOException | PomParseException | IllegalArgumentException e) {
+            // IllegalArgumentException: a coordinate still carrying a ${placeholder} is not a path.
             throw new UnresolvableModelException(
                     coord.toGav() + ": " + e.getMessage(), groupId, artifactId, version, e);
         } catch (InterruptedException e) {
