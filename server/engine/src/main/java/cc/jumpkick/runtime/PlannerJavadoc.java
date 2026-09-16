@@ -26,7 +26,8 @@ import java.util.List;
 /**
  * The {@code package-javadoc} step body: javadoc over the module's Java sources into a scratch
  * tree, zipped as {@code <artifact>-<version>-javadoc.jar}. A module with no Java sources (Kotlin,
- * Groovy) gets a README-only jar, which Maven Central accepts. Cached under the key
+ * Groovy) or with no public or protected type gets a README-only jar, which Maven Central accepts.
+ * Cached under the key
  * {@link PackagingKeys#javadoc} derives for both this step and {@code jk explain}.
  */
 final class PlannerJavadoc {
@@ -36,6 +37,12 @@ final class PlannerJavadoc {
 
     static final String NO_JAVA_SOURCES = "The module has no Java sources to document; javadoc reads Java only,"
             + " and jk does not run a Kotlin or Groovy documentation tool.";
+
+    static final String NO_PUBLIC_API =
+            "The module declares no public or protected types; javadoc has nothing to document.";
+
+    /** javadoc's own words for a source set without a documentable type. */
+    private static final String NO_PUBLIC_API_MARKER = "No public or protected classes found to document";
 
     private PlannerJavadoc() {}
 
@@ -84,6 +91,12 @@ final class PlannerJavadoc {
         Files.createDirectories(out);
         JavadocTool.Result r = JavadocTool.run(javaHome, out, sources, classpath, options, layout.moduleRoot());
         for (String w : r.warnings()) ctx.warn(CODE, w);
+        // A library of package-private types (a rule pack, a fixtures module) is a library all the
+        // same; Central takes the README-only jar, and nothing here is the user's mistake.
+        if (!r.success() && r.output().contains(NO_PUBLIC_API_MARKER)) {
+            ctx.label("javadoc: no public types; README-only jar");
+            return JavadocJar.readmeOnly(NO_PUBLIC_API);
+        }
         if (!r.success()) {
             for (String e : r.errors()) ctx.error(CODE, e);
             if (r.errors().isEmpty()) {

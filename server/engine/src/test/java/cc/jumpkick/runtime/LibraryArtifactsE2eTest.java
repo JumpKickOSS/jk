@@ -27,6 +27,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -69,6 +70,15 @@ class LibraryArtifactsE2eTest {
         assertThat(app.javadocJar()).doesNotExist();
         assertThat(first.status("app", TaskNames.PACKAGE_JAVADOC)).isNull();
         assertThat(first.status("lib", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.SUCCESS);
+        // A library whose only types are package-private still ships a javadoc jar: README-only,
+        // no failure, no warning — the shape jk's own rule-pack modules have.
+        BuildLayout internal =
+                BuildLayout.of(ws, ws.resolve("internal"), JkBuildParser.parse(ws.resolve("internal/jk.toml")));
+        assertThat(first.status("internal", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(internal.javadocJar()).isRegularFile();
+        assertThat(entries(internal.javadocJar()))
+                .anyMatch(e -> e.toUpperCase(Locale.ROOT).startsWith("README"));
+        assertThat(first.warnings("internal", TaskNames.PACKAGE_JAVADOC)).isEmpty();
         // The unknown tag in One.java is a warning in the results, located at its line.
         assertThat(first.warnings("lib", TaskNames.PACKAGE_JAVADOC))
                 .anyMatch(w -> w.contains("One.java:6: warning: unknown tag"));
@@ -187,7 +197,7 @@ class LibraryArtifactsE2eTest {
                 java    = 25
 
                 [workspace]
-                modules = ["lib", "app"]
+                modules = ["lib", "app", "internal"]
                 """);
         Path lib = Files.createDirectories(ws.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
@@ -231,6 +241,28 @@ class LibraryArtifactsE2eTest {
                     public static int two() {
                         return 2 * One.one();
                     }
+                }
+                """);
+        Path internal = Files.createDirectories(ws.resolve("internal"));
+        Files.writeString(internal.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "internal"
+                version = "1.0.0"
+                java    = 25
+
+                [test-dependencies]
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
+
+                [repositories]
+                central = "https://repo.maven.apache.org/maven2/"
+                """);
+        Path internalSrc = Files.createDirectories(internal.resolve("src/com/example/internal"));
+        Files.writeString(internalSrc.resolve("Hidden.java"), """
+                package com.example.internal;
+
+                /** Package-private on purpose: nothing here is API. */
+                final class Hidden {
+                    private Hidden() {}
                 }
                 """);
         Path app = Files.createDirectories(ws.resolve("app"));
