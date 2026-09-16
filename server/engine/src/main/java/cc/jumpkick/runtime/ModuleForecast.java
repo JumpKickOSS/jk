@@ -649,7 +649,8 @@ final class ModuleForecast {
                     javacArgs,
                     project.build().javac().forTests(),
                     javaHome,
-                    testScala));
+                    testScala,
+                    layout.classesDir()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_TEST, testOut);
             Path actions = CacheTree.ACTIONS.under(cache);
             Path stateDir = ActionTree.INCREMENTAL_JAVA.under(actions).resolve(taskId);

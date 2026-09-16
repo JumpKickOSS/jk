@@ -236,7 +236,8 @@ public final class ZincJavaCompiler {
                     .withSources(sourceFiles)
                     .withClassesDirectory(classOutput)
                     .withScalacOptions(ScalaBridge.scalacOptions(mixed, release))
-                    .withJavacOptions(javacOptions(release, extraOptions, sourceOutput, processorPath))
+                    .withJavacOptions(
+                            javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath))
                     .withOrder(CompileOrder.Mixed)
                     .withConverter(converter)
                     .withStamper(stamper);
@@ -344,7 +345,7 @@ public final class ZincJavaCompiler {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }
         MiniSetup setup = prev.get().getMiniSetup();
-        String[] wantOpts = javacOptions(release, extraOptions, sourceOutput, processorPath);
+        String[] wantOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
         if (setup != null && optionsChanged(setup, wantOpts)) {
             return new Plan(true, "javac options changed", allSources(sources, "javac options changed"));
         }
@@ -684,8 +685,32 @@ public final class ZincJavaCompiler {
         return new URLClassLoader(urls, ClassLoader.getPlatformClassLoader());
     }
 
+    /** javac's spelling of a module descriptor source. */
+    static final String MODULE_INFO = "module-info.java";
+
+    /**
+     * Whether this compile runs inside a named module: it compiles a {@code module-info.java}, or
+     * its options patch one ({@code --patch-module}, a test compile against a modular main). Such a
+     * compile reads its dependencies from the module path, so the classpath rides
+     * {@code --module-path} as well — a plain jar there is an automatic module, a classes directory
+     * with a descriptor an explicit one, and a plain directory is ignored by the module system while
+     * still serving the classpath.
+     */
+    static boolean modular(List<Path> sources, List<String> extra) {
+        for (Path source : sources) {
+            Path name = source.getFileName();
+            if (name != null && MODULE_INFO.equals(name.toString())) return true;
+        }
+        return containsFlag(extra, "--patch-module");
+    }
+
     private static String[] javacOptions(
-            int release, List<String> extra, @Nullable Path sourceOutput, List<Path> processorPath) {
+            int release,
+            List<String> extra,
+            @Nullable Path sourceOutput,
+            List<Path> processorPath,
+            List<Path> sources,
+            List<Path> classpath) {
         List<String> opts = new ArrayList<>();
         // Unconditional: the charset a build decodes its sources with is not negotiable, because
         // nothing downstream can tell UTF-8 bytecode from Latin-1 bytecode. Neither reader here
@@ -707,6 +732,10 @@ public final class ZincJavaCompiler {
         if (processorPath != null && !processorPath.isEmpty() && !containsFlag(extra, "-processorpath")) {
             opts.add("-processorpath");
             opts.add(Classpaths.join(processorPath));
+        }
+        if (!classpath.isEmpty() && modular(sources, extra) && !containsFlag(extra, "--module-path")) {
+            opts.add("--module-path");
+            opts.add(Classpaths.join(classpath));
         }
         if (extra != null) opts.addAll(extra);
         return opts.toArray(String[]::new);

@@ -124,7 +124,16 @@ class ForecastKeyOwnerTest {
         var scala = new ScalaCompile.Setup("3.8.4", List.of(compiler), List.of(stdlib), compiler, compiler);
 
         CompileRequest full = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), JavacConfig.EMPTY, jdk, scala));
+                List.of(src),
+                List.of(),
+                List.of(),
+                out,
+                25,
+                List.of("-Xlint:all"),
+                JavacConfig.EMPTY,
+                jdk,
+                scala,
+                null));
 
         assertThat(full.javaHome()).isEqualTo(jdk);
         assertThat(full.scalaVersion()).isEqualTo("3.8.4");
@@ -134,7 +143,16 @@ class ForecastKeyOwnerTest {
                 .contains(stdlib);
 
         CompileRequest bare = PlannerCompile.testCompileRequest(new PlannerCompile.TestCompile(
-                List.of(src), List.of(), List.of(), out, 25, List.of("-Xlint:all"), JavacConfig.EMPTY, jdk, null));
+                List.of(src),
+                List.of(),
+                List.of(),
+                out,
+                25,
+                List.of("-Xlint:all"),
+                JavacConfig.EMPTY,
+                jdk,
+                null,
+                null));
         assertThat(ActionKey.forJavac("compile-test", full, "0.1.0"))
                 .isNotEqualTo(ActionKey.forJavac("compile-test", bare, "0.1.0"));
     }
@@ -190,6 +208,7 @@ class ForecastKeyOwnerTest {
                 List.of("-Xlint:all"),
                 project.build().javac(),
                 jdk,
+                null,
                 null));
         assertThat(test.extraOptions()).as("compile-test runs the same plugins").isEqualTo(main.extraOptions());
 
