@@ -498,7 +498,7 @@ public final class PlannerCompile {
                         ctx.require(LAYOUT).moduleTargetDir()));
         ctx.put(ACTION_KEY, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
-        reportJavacResult(ctx, r);
+        reportJavacResult(ctx, request, r);
         ctx.put(BUILD_OUTCOME, r.outcome());
         ctx.put(COMPILED_MAIN_SOURCES, r.compiledSources());
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
@@ -543,8 +543,8 @@ public final class PlannerCompile {
      * warnings/notes (e.g. deprecation) are surfaced but don't. Strip the leading severity word —
      * the console renderer adds its own ✗/⚠ marker.
      */
-    private static void reportJavacResult(TaskContext ctx, JavaCompile.Result r) {
-        boolean errored = JavacDiagnostics.report(ctx, r.diagnostics());
+    private static void reportJavacResult(TaskContext ctx, CompileRequest request, JavaCompile.Result r) {
+        boolean errored = JavacDiagnostics.report(ctx, request.classpath(), r.diagnostics());
         if (!r.success()) {
             // Never fail silently: if no ERROR diagnostic surfaced (crash,
             // swallowed output), say so explicitly.

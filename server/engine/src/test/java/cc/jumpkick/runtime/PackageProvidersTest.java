@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.compile.ClasspathResolver;
+import cc.jumpkick.compile.CompileResult;
+import cc.jumpkick.compile.PackageIndex;
+import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Scope;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * A {@code package does not exist} error names the coordinate that provides the package: a lock
+ * row whose jar holds it and is not on this module's compile classpath first, the catalog module
+ * whose group prefixes it second, nothing when neither knows. The jar's package list is read from
+ * the store's index once it has been written.
+ */
+class PackageProvidersTest {
+
+    private static final String SHA = "ab".repeat(32);
+
+    @Test
+    void a_lock_jar_off_this_modules_classpath_is_named_and_indexed_once(@TempDir Path tmp) throws Exception {
+        Path util = jar(tmp.resolve("acme-util.jar"), "org/acme/util/Strings.class", "META-INF/versions/9/x/Y.class");
+        Path app = jar(tmp.resolve("app-core.jar"), "com/example/App.class");
+        Path index = tmp.resolve("index");
+        PackageProviders providers = new PackageProviders(
+                List.of(entry("org.acme:acme-util", SHA, util), entry("com.example:app-core", "cd".repeat(32), app)),
+                List.of(app),
+                index,
+                LibraryCatalog.bundled());
+
+        List<CompileResult.Diagnostic> in = List.of(
+                error(
+                        "/ws/app/src/Main.java:3:22: error: package org.acme.util does not exist",
+                        "compiler.err.doesnt.exist"),
+                error(
+                        "/ws/app/src/Main.java:9:5: error: cannot find symbol\n  symbol: x",
+                        "compiler.err.cant.resolve"));
+        List<CompileResult.Diagnostic> enriched = providers.enrich(in);
+
+        assertThat(enriched.get(0).message())
+                .endsWith("\n  provided by: org.acme:acme-util (in the lock, not on this module's compile classpath)");
+        assertThat(enriched.get(0).key()).isEqualTo("compiler.err.doesnt.exist");
+        assertThat(enriched.get(1)).as("other diagnostics pass untouched").isSameAs(in.get(1));
+        assertThat(index.resolve(SHA + ".txt"))
+                .exists()
+                .content()
+                .contains("org.acme.util")
+                .doesNotContain("META-INF");
+
+        Files.delete(util);
+        assertThat(providers.provider("org.acme.util"))
+                .as("the index answers once the jar has been listed")
+                .startsWith("org.acme:acme-util");
+        assertThat(providers.provider("com.example"))
+                .as("a jar already on the classpath is not the repair")
+                .isNull();
+    }
+
+    @Test
+    void the_catalog_answers_by_group_prefix_when_the_lock_has_nothing(@TempDir Path tmp) {
+        PackageProviders providers =
+                new PackageProviders(List.of(), List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
+
+        assertThat(providers.provider("org.slf4j")).isEqualTo("org.slf4j:slf4j-api (library catalog)");
+        assertThat(providers.provider("com.google.common.collect"))
+                .as("a group that does not prefix the package is not guessed")
+                .isNull();
+        assertThat(providers.provider("com.fasterxml.jackson.databind"))
+                .as("jackson's group ends in .core, which prefixes no package it ships")
+                .isNull();
+        assertThat(providers.provider("org.apache.commons.lang3"))
+                .isEqualTo("org.apache.commons:commons-lang3 (library catalog)");
+        assertThat(providers.provider("com.nowhere.at.all")).isNull();
+    }
+
+    @Test
+    void a_keyless_message_of_the_right_shape_is_a_missing_package_and_a_keyed_one_of_another_kind_is_not() {
+        assertThat(PackageProviders.missingPackage(error("package a.b does not exist", "")))
+                .isEqualTo("a.b");
+        assertThat(PackageProviders.missingPackage(error("package a.b does not exist", "compiler.err.doesnt.exist")))
+                .isEqualTo("a.b");
+        assertThat(PackageProviders.missingPackage(error("package a.b does not exist", "compiler.err.other")))
+                .isNull();
+        assertThat(PackageProviders.missingPackage(new CompileResult.Diagnostic(
+                        CompileResult.Severity.WARNING, null, 0, 0, "package a.b does not exist", "")))
+                .isNull();
+    }
+
+    private static CompileResult.Diagnostic error(String message, String key) {
+        return new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, message, key);
+    }
+
+    private static ClasspathResolver.Entry entry(String ga, String sha, Path jar) {
+        return new ClasspathResolver.Entry(
+                new Lockfile.Artifact(
+                        ga + ":jar:",
+                        "1.0.0",
+                        "central+https://repo",
+                        "sha256:" + sha,
+                        null,
+                        List.of(Scope.MAIN),
+                        List.of(),
+                        null),
+                jar);
+    }
+
+    private static Path jar(Path file, String... entries) throws IOException {
+        try (OutputStream os = Files.newOutputStream(file);
+                ZipOutputStream zip = new ZipOutputStream(os)) {
+            for (String entry : entries) {
+                zip.putNextEntry(new ZipEntry(entry));
+                zip.write(new byte[] {(byte) 0xCA, (byte) 0xFE});
+                zip.closeEntry();
+            }
+        }
+        assertThat(PackageIndex.hex("sha256:" + SHA)).isEqualTo(SHA);
+        return file;
+    }
+}

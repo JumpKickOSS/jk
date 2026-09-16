@@ -257,7 +257,7 @@ public final class PlannerFixtures {
                                     in.dir(),
                                     ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
-                    boolean errored = JavacDiagnostics.report(ctx, r.diagnostics());
+                    boolean errored = JavacDiagnostics.report(ctx, request.classpath(), r.diagnostics());
                     if (!r.success()) {
                         if (!errored) {
                             ctx.error(

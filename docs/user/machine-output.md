@@ -61,8 +61,12 @@ own key for the diagnostic (`compiler.err.cant.resolve.location`), which the com
 beside every diagnostic and the record carries as `key`; the shape of the message is the fallback
 for kotlinc. The hint quotes the symbol, package or types from the compiler's own message —
 `symbol:` and `location:` for cannot find symbol — and names `jk add` when a dependency is the
-likely repair; it never names a coordinate, because the library catalog maps short names to
-coordinates, not packages to libraries. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
+likely repair. For package does not exist the compile step looks the package up before the
+diagnostic is journaled: a lock row whose jar holds the package and is not on this module's compile
+classpath is written under the error as `provided by: group:artifact (in the lock, not on this
+module's compile classpath)`, else the library catalog module whose group prefixes the package as
+`provided by: group:artifact (library catalog)`, and the hint names that coordinate for `jk add`.
+Each lock jar's package list is read once and kept under the store's `package-index/`. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
 test class together with the assertion frame above it — the middle is elided with a frame count —
 so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
 launcher missing from the classpath — is that shape with code `test-launcher`: the exit, the

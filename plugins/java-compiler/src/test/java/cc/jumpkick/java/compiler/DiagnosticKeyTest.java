@@ -33,9 +33,9 @@ class DiagnosticKeyTest {
         assertThat(r.diagnostics())
                 .as("diagnostics: %s", r.diagnostics())
                 .extracting(ZincJavaCompiler.Diag::key)
-                .contains("compiler.err.doesnt.exist", "compiler.err.cant.resolve.location");
+                .contains("compiler.err.doesnt.exist", "compiler.err.cant.resolve.location.args");
         ZincJavaCompiler.Diag missing = r.diagnostics().stream()
-                .filter(d -> d.key().equals("compiler.err.cant.resolve.location"))
+                .filter(d -> d.key().equals("compiler.err.cant.resolve.location.args"))
                 .findFirst()
                 .orElseThrow();
         assertThat(missing.kind()).isEqualTo("ERROR");

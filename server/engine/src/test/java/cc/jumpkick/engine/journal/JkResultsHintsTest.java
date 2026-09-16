@@ -36,6 +36,13 @@ class JkResultsHintsTest {
                 .contains("→ nothing on this module's compile classpath provides package `com.google.common.collect`: "
                         + "`jk add <group:artifact>` the library that ships it, or fix the import.");
         assertThat(code(javac("package a.b does not exist"))).isEqualTo("compiler.err.doesnt.exist");
+
+        String provided = render(javac("""
+                /ws/app/src/com/acme/Main.java:3:29: error: package com.google.common.collect does not exist
+                  provided by: com.google.guava:guava (library catalog)"""));
+        assertThat(provided)
+                .contains("→ package `com.google.common.collect` is provided by `com.google.guava:guava` "
+                        + "(library catalog): `jk add com.google.guava:guava` in this module, or fix the import.");
     }
 
     @Test
