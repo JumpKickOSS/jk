@@ -14,7 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -96,7 +95,7 @@ public final class JkResultsMarkdown {
         appendFiles(sb, record, detailsPath, latestPath, tests);
         appendFailures(sb, record, !tests.isEmpty());
         appendGuards(sb, record);
-        appendTests(sb, record, tests);
+        JkResultsTestsSection.append(sb, record, tests);
         appendDeliverables(sb, record);
         appendFailedSteps(sb, record);
         appendWarnings(sb, record);
@@ -197,9 +196,9 @@ public final class JkResultsMarkdown {
             else sb.append(" (all ok)");
             sb.append('\n');
         }
-        boolean testsLine = appendTestsCount(sb, r, tests);
+        boolean testsLine = JkResultsTestsSection.appendCount(sb, r, tests);
         int errors = 0, warnings = 0;
-        boolean coverTests = hasTestEntries(tests);
+        boolean coverTests = JkResultsTestsSection.hasTestEntries(tests);
         for (BuildRecord.Diag d : r.diagnostics()) {
             if (isError(d)) {
                 if (coverTests && isTest(d)) continue;
@@ -223,33 +222,6 @@ public final class JkResultsMarkdown {
     }
 
     /** {@code true} when a Tests count line was written. */
-    private static boolean appendTestsCount(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
-        if (hasTestEntries(tests)) {
-            TestRollup roll = rollup(tests);
-            sb.append("Tests: ");
-            boolean green = r.success() && roll.fail == 0 && !runTestsFailed(r);
-            if (green) sb.append("**100%** pass · ");
-            else if (roll.fail > 0) sb.append("**").append(roll.fail).append(" failed** · ");
-            sb.append(roll.pass).append(" passed");
-            if (roll.skip > 0) sb.append(", ").append(roll.skip).append(" skipped");
-            sb.append(" (").append(roll.total).append(" total)");
-            if (runTestsFailed(r) && roll.fail == 0) sb.append(" · **run-tests failed**");
-            if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
-            sb.append('\n');
-            return true;
-        }
-        BuildRecord.Tests t = r.tests();
-        if (t != null && t.total() > 0) {
-            sb.append("Tests: ");
-            if (t.failed() > 0) sb.append("**").append(t.failed()).append(" failed**, ");
-            sb.append(t.succeeded()).append(" passed");
-            if (t.skipped() > 0) sb.append(", ").append(t.skipped()).append(" skipped");
-            sb.append(" (").append(t.total()).append(" total)\n");
-            return true;
-        }
-        return false;
-    }
-
     private static void appendFiles(
             StringBuilder sb,
             BuildRecord r,
@@ -263,8 +235,8 @@ public final class JkResultsMarkdown {
         sb.append("- Step-by-step transcript: `")
                 .append(pathOr(detailsPath, "details.jsonl"))
                 .append("` — JSONL, same shape as `--output json`\n");
-        boolean ranTests =
-                hasTestEntries(tests) || (r.tests() != null && r.tests().total() > 0);
+        boolean ranTests = JkResultsTestsSection.hasTestEntries(tests)
+                || (r.tests() != null && r.tests().total() > 0);
         if (ranTests) {
             sb.append("- JUnit XML: `target/reports/test-results/`\n");
         }
@@ -403,138 +375,6 @@ public final class JkResultsMarkdown {
             if (s.startsWith(label)) return s.substring(label.length()).strip();
         }
         return "";
-    }
-
-    private static void appendTests(StringBuilder sb, BuildRecord r, List<MarkdownTestReport.ModuleRun> tests) {
-        if (!hasTestEntries(tests)) return;
-        TestRollup roll = rollup(tests);
-        sb.append("## Tests\n\n");
-        boolean runTestsFailed = runTestsFailed(r);
-        if (roll.fail == 0) {
-            if (runTestsFailed) {
-                sb.append("Recorded tests passed · **run-tests failed** — see Failures");
-            } else if (!r.success() || r.cancelled()) {
-                sb.append("Recorded tests passed");
-            } else {
-                sb.append("**100%** pass rate · No failures for **")
-                        .append(roll.total)
-                        .append("** ")
-                        .append(roll.total == 1 ? "test" : "tests");
-            }
-        } else {
-            int passRate = passRate(roll);
-            sb.append("**").append(passRate).append("%** pass rate · ");
-            if (roll.total == 1) {
-                sb.append("**1 failure** out of **1** test");
-            } else {
-                sb.append("**")
-                        .append(roll.fail)
-                        .append(roll.fail == 1 ? " failure**" : " failures**")
-                        .append(" out of **")
-                        .append(roll.total)
-                        .append("** tests");
-            }
-        }
-        if (roll.ms > 0) sb.append(" · _took ").append(fmtDuration(roll.ms)).append('_');
-        sb.append("\n\n");
-
-        boolean multi = tests.size() > 1;
-        sb.append(
-                multi
-                        ? "| Module | Package | Fail | Skip | Pass | Total |\n|---|---|---|---|---|---|\n"
-                        : "| Package | Fail | Skip | Pass | Total |\n|---|---|---|---|---|\n");
-        Map<String, long[]> byPkg = new LinkedHashMap<>();
-        List<String> order = new ArrayList<>();
-        for (MarkdownTestReport.ModuleRun run : tests) {
-            String mod = run.label().isBlank() ? run.scopeKey() : run.label();
-            for (MarkdownTestReport.Entry e : run.entries()) {
-                String pkg = packageOf(e.className());
-                String key = multi ? mod + "\0" + pkg : pkg;
-                long[] c = byPkg.computeIfAbsent(key, k -> {
-                    order.add(k);
-                    return new long[4];
-                });
-                c[3]++;
-                if (e.isFail()) c[0]++;
-                else if (e.isSkip()) c[1]++;
-                else c[2]++;
-            }
-        }
-        int shownPkg = 0;
-        for (String key : order) {
-            if (shownPkg >= MAX_PACKAGES) {
-                sb.append("| … | +").append(order.size() - shownPkg).append(" more | | |");
-                if (multi) sb.append(" |");
-                sb.append(" |\n");
-                break;
-            }
-            // `order` only ever holds keys computeIfAbsent put in byPkg, so a miss is a
-            // broken invariant rather than a missing row — say so instead of rendering zeros.
-            long[] c = Objects.requireNonNull(byPkg.get(key), key);
-            if (multi) {
-                int split = key.indexOf('\0');
-                sb.append("| ")
-                        .append(escCell(split < 0 ? key : key.substring(0, split)))
-                        .append(" | ")
-                        .append(escCell(split < 0 ? key : key.substring(split + 1)));
-            } else {
-                sb.append("| ").append(escCell(key));
-            }
-            sb.append(" | ")
-                    .append(c[0])
-                    .append(" | ")
-                    .append(c[1])
-                    .append(" | ")
-                    .append(c[2])
-                    .append(" | ")
-                    .append(c[3])
-                    .append(" |\n");
-            shownPkg++;
-        }
-
-        if (roll.fail > 0) {
-            sb.append("\n### Failed tests\n");
-            int shown = 0;
-            for (MarkdownTestReport.ModuleRun run : tests) {
-                Map<String, List<MarkdownTestReport.Entry>> byClass = new LinkedHashMap<>();
-                for (MarkdownTestReport.Entry e : run.entries()) {
-                    if (!e.isFail()) continue;
-                    byClass.computeIfAbsent(e.className(), k -> new ArrayList<>())
-                            .add(e);
-                }
-                if (byClass.isEmpty()) continue;
-                for (var kv : byClass.entrySet()) {
-                    if (shown >= MAX_FAILED_TESTS) break;
-                    sb.append("#### ").append(kv.getKey());
-                    if (multi && !run.label().isBlank()) sb.append(" — ").append(run.label());
-                    sb.append('\n');
-                    for (MarkdownTestReport.Entry e : kv.getValue()) {
-                        if (shown >= MAX_FAILED_TESTS) break;
-                        sb.append("##### `")
-                                .append(e.displayName() == null ? "" : e.displayName())
-                                .append("`");
-                        if (e.durationMs() > 0) {
-                            sb.append(" — _took ")
-                                    .append(fmtDuration(e.durationMs()))
-                                    .append('_');
-                        }
-                        sb.append('\n');
-                        String detail =
-                                e.failureStack() != null && !e.failureStack().isBlank()
-                                        ? e.failureStack().trim()
-                                        : (e.failureMessage() != null
-                                                ? e.failureMessage().trim()
-                                                : "");
-                        if (!detail.isEmpty()) fence(sb, clipLines(detail, MAX_STACK_LINES));
-                        shown++;
-                    }
-                }
-            }
-            if (roll.fail > shown) {
-                sb.append("_+").append(roll.fail - shown).append(" more failed tests — see `details.jsonl`._\n");
-            }
-        }
-        sb.append('\n');
     }
 
     private static String failureHeader(BuildRecord.Diag d) {
@@ -864,42 +704,6 @@ public final class JkResultsMarkdown {
         return slash < 0 ? dir : dir.substring(slash + 1);
     }
 
-    static boolean hasTestEntries(List<MarkdownTestReport.ModuleRun> tests) {
-        if (tests == null || tests.isEmpty()) return false;
-        for (MarkdownTestReport.ModuleRun r : tests) {
-            if (r != null && r.entries() != null && !r.entries().isEmpty()) return true;
-        }
-        return false;
-    }
-
-    private static int passRate(TestRollup roll) {
-        if (roll.total == 0 || roll.fail == 0) return 100;
-        // One failure in a large suite still rounds to 100. Never report a clean rate then.
-        int pct = (int) Math.round((double) (roll.total - roll.fail) / roll.total * 100);
-        return Math.min(pct, 99);
-    }
-
-    private static TestRollup rollup(List<MarkdownTestReport.ModuleRun> tests) {
-        long fail = 0, skip = 0, pass = 0, ms = 0;
-        for (MarkdownTestReport.ModuleRun run : tests) {
-            for (MarkdownTestReport.Entry e : run.entries()) {
-                if (e.isFail()) fail++;
-                else if (e.isSkip()) skip++;
-                else pass++;
-                ms += Math.max(0, e.durationMs());
-            }
-        }
-        return new TestRollup(fail, skip, pass, fail + skip + pass, ms);
-    }
-
-    private static String packageOf(String fqcn) {
-        if (fqcn == null || fqcn.isBlank()) return "(unknown)";
-        int dot = fqcn.lastIndexOf('.');
-        return dot < 0 ? fqcn : fqcn.substring(0, dot);
-    }
-
-    private record TestRollup(long fail, long skip, long pass, long total, long ms) {}
-
     static String fmtDuration(long ms) {
         if (ms < 0) return "";
         if (ms < 1000) return ms + "ms";
@@ -908,7 +712,7 @@ public final class JkResultsMarkdown {
         return (sec / 60) + "m " + String.format(Locale.ROOT, "%02ds", sec % 60);
     }
 
-    private static void fence(StringBuilder sb, String body) {
+    static void fence(StringBuilder sb, String body) {
         if (body == null || body.isBlank()) return;
         String fence = body.contains("```") ? "~~~~" : "```";
         sb.append(fence).append('\n').append(body);
@@ -947,7 +751,7 @@ public final class JkResultsMarkdown {
         return n < 0 ? s : s.substring(0, n);
     }
 
-    private static String escCell(String s) {
+    static String escCell(String s) {
         if (s == null || s.isEmpty()) return "";
         return s.replace("|", "\\|").replace("\n", " ");
     }
