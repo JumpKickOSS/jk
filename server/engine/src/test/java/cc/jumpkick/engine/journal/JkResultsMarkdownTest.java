@@ -515,6 +515,55 @@ class JkResultsMarkdownTest {
     }
 
     @Test
+    void a_run_with_a_previous_one_in_its_session_says_what_changed_since_it_counts_first() {
+        BuildRecord plain =
+                record(true, List.of(), List.of(), List.of(task("compile-java", "compile", "SUCCESS", 200)));
+        assertThat(JkResultsMarkdown.render(plain)).doesNotContain(JkResultsDeltaSection.HEADING);
+
+        JobDelta delta = new JobDelta(
+                6,
+                false,
+                8_400,
+                new JobDelta.Rows(3, List.of("src/main/java/Foo.java", "src/test/java/FooTest.java", "jk.toml")),
+                new JobDelta.Rows(0, List.of()),
+                new JobDelta.Rows(2, List.of("error · compile-java · src/main/java/Foo.java:12 · cannot find symbol")),
+                new JobDelta.Rows(0, List.of()),
+                new JobDelta.Rows(1, List.of("com.example.FooTest#adds()")),
+                new JobDelta.Rows(0, List.of()),
+                new JobDelta.Rows(0, List.of()));
+        String md = JkResultsMarkdown.render(plain.withDelta(delta));
+
+        int at = md.indexOf(JkResultsDeltaSection.HEADING);
+        assertThat(at).isPositive();
+        assertThat(at).as("sits above the Files section").isLessThan(md.indexOf("## Files"));
+        String section = md.substring(at, md.indexOf("## Files"));
+        assertThat(section)
+                .contains("_vs #6 (failed, 8.4s) · this run ")
+                .contains("- Files changed: **3** — `src/main/java/Foo.java`, `src/test/java/FooTest.java`, `jk.toml`")
+                .contains("- Diagnostics: **0** appeared, **2** gone")
+                .contains("  - gone: error · compile-java · src/main/java/Foo.java:12 · cannot find symbol")
+                .contains("  - gone: +1 more")
+                .contains("- Tests: **1** fixed, **0** broke, **0** new, **0** gone")
+                .contains("  - fixed: `com.example.FooTest#adds()`");
+
+        JobDelta quiet = new JobDelta(
+                7,
+                true,
+                plain.millis(),
+                new JobDelta.Rows(0, List.of()),
+                new JobDelta.Rows(0, List.of()),
+                new JobDelta.Rows(0, List.of()),
+                null,
+                null,
+                null,
+                null);
+        assertThat(JkResultsMarkdown.render(plain.withDelta(quiet)))
+                .contains("(ok, ")
+                .contains("(±0)")
+                .contains("- Nothing changed: same files, diagnostics and tests.");
+    }
+
+    @Test
     void a_publish_run_reports_its_target_deployment_and_every_validation_error() {
         BuildRecord base = record(false, List.of(), List.of(), List.of(task("publish", "publish", "FAIL", 900)));
         BuildRecord r = new BuildRecord(

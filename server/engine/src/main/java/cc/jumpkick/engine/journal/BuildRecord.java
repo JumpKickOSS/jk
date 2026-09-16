@@ -46,7 +46,8 @@ public record BuildRecord(
         @Nullable Io io,
         long requestId,
         @Nullable Publish publish,
-        List<Coverage> coverage) {
+        List<Coverage> coverage,
+        @Nullable JobDelta delta) {
 
     /**
      * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
@@ -60,6 +61,66 @@ public record BuildRecord(
         steps = steps == null ? List.of() : List.copyOf(steps);
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
         coverage = coverage == null ? List.of() : List.copyOf(coverage);
+    }
+
+    /** A run with no {@link JobDelta} yet: every producer but the journal writer's finish. */
+    public BuildRecord(
+            @Nullable String id,
+            long buildNumber,
+            int schema,
+            String kind,
+            String dir,
+            @Nullable String coord,
+            @Nullable String projectId,
+            long startedAt,
+            long finishedAt,
+            long millis,
+            boolean success,
+            boolean cancelled,
+            int exitCode,
+            String jkVersion,
+            @Nullable Tests tests,
+            List<Module> modules,
+            List<Task> steps,
+            List<Diag> diagnostics,
+            @Nullable String trigger,
+            @Nullable String session,
+            @Nullable String commit,
+            @Nullable CacheBenefit benefit,
+            boolean running,
+            @Nullable Io io,
+            long requestId,
+            @Nullable Publish publish,
+            List<Coverage> coverage) {
+        this(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                null);
     }
 
     /** A run that measured no coverage — every producer but the journal's drain of a coverage run. */
@@ -148,7 +209,8 @@ public record BuildRecord(
                 io,
                 requestId,
                 publish,
-                coverage);
+                coverage,
+                delta);
     }
 
     /** This record with its per-project build number set. */
@@ -180,7 +242,8 @@ public record BuildRecord(
                 io,
                 requestId,
                 publish,
-                coverage);
+                coverage,
+                delta);
     }
 
     /** This record with its journal id set (begin path). */
@@ -212,7 +275,41 @@ public record BuildRecord(
                 io,
                 requestId,
                 publish,
-                coverage);
+                coverage,
+                delta);
+    }
+
+    /** This record with what changed since the run before it from the same origin. */
+    public BuildRecord withDelta(@Nullable JobDelta delta) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                delta);
     }
 
     /**
@@ -258,7 +355,8 @@ public record BuildRecord(
                 io,
                 requestId,
                 publish,
-                coverage);
+                coverage,
+                delta);
     }
 
     /** {@code trigger}, then the session that asked when there is one: {@code mcp · claude-code 3f9a}. */
