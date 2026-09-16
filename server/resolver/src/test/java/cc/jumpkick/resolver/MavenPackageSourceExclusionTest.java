@@ -566,6 +566,47 @@ class MavenPackageSourceExclusionTest {
                 .isEqualTo("2.5");
     }
 
+    /**
+     * A stub's edge to its target carries the target's version as a floor, the way a POM
+     * dependency does: another edge that needs the target higher raises it instead of clashing
+     * with a pin the stub never meant.
+     */
+    @Test
+    void a_relocation_target_still_rises_to_what_another_edge_needs(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "old", "1.0");
+        upstream.metadata("com.foo", "new", "1.0", "2.0");
+        upstream.metadata("com.foo", "util", "2.0");
+        upstream.pomOnly("com.foo", "old", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>old</artifactId><version>1.0</version>
+                  <distributionManagement>
+                    <relocation><artifactId>new</artifactId></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        upstream.pomOnly("com.foo", "new", "1.0", MavenStub.emptyPom("com.foo", "new", "1.0"));
+        upstream.pomOnly("com.foo", "new", "2.0", MavenStub.emptyPom("com.foo", "new", "2.0"));
+        upstream.pomOnly("com.foo", "util", "2.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>util</artifactId><version>2.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>new</artifactId><version>[2.0,)</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(
+                        new Dependency("com.foo:old", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:util", VersionSelector.parse("=2.0"))));
+
+        assertThat(result.modules()).containsKeys("com.foo:old:jar:", "com.foo:new:jar:", "com.foo:util:jar:");
+        assertThat(requireNonNull(result.modules().get("com.foo:new:jar:")).version())
+                .isEqualTo("2.0");
+    }
+
     /** A → B → C: each hop is a normal expansion, so the chain terminates at real content. */
     @Test
     void a_relocation_chain_follows_to_the_end(@TempDir Path tempDir) throws Exception {
