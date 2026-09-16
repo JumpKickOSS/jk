@@ -48,17 +48,36 @@ final class JkResultsStopped {
     }
 
     /**
-     * A module that did not succeed, failed nothing of its own, and has a stopped step: fail-fast
-     * ended it before it could be judged.
+     * A module that did not succeed and failed nothing of its own: fail-fast ended it before it
+     * could be judged. Its recorded steps are the evidence — one the failure cancelled, or steps
+     * that all ran green before the workspace stopped admitting the next — and the failure it was
+     * stopped for is somewhere else in the run. A module with no step, or the only module with
+     * anything failed, keeps its own outcome.
      */
     static boolean stoppedModule(BuildRecord r, BuildRecord.Module m) {
-        if (r.cancelled() || m.success()) return false;
-        boolean stopped = false;
+        if (r.cancelled() || m.success() || m.steps().isEmpty()) return false;
         for (BuildRecord.Task t : m.steps()) {
-            if (JkResultsMarkdown.isFailedStatus(t.status()) && !isCancelledStatus(t.status())) return false;
-            if (isCancelledStatus(t.status())) stopped = true;
+            if (failedStep(t)) return false;
         }
-        return stopped;
+        return failedElsewhere(r, m);
+    }
+
+    private static boolean failedStep(BuildRecord.Task t) {
+        return JkResultsMarkdown.isFailedStatus(t.status()) && !isCancelledStatus(t.status());
+    }
+
+    /** A failed step in another module or at the root, or an error diagnostic another module owns. */
+    private static boolean failedElsewhere(BuildRecord r, BuildRecord.Module m) {
+        for (BuildRecord.Task t : r.steps()) if (failedStep(t)) return true;
+        for (BuildRecord.Module other : r.modules()) {
+            if (other == m) continue;
+            for (BuildRecord.Task t : other.steps()) if (failedStep(t)) return true;
+        }
+        for (BuildRecord.Diag d : r.diagnostics()) {
+            if (!"error".equalsIgnoreCase(d.severity()) || CANCELLED_CODE.equals(d.code())) continue;
+            if (d.dir() == null || d.dir().isBlank() || !d.dir().equals(m.dir())) return true;
+        }
+        return false;
     }
 
     /** The diagnostic a stopped step or test run left behind, in a run that failed. */
