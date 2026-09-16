@@ -200,6 +200,7 @@ public final class PomImporter {
                 }
             }
         }
+        SiblingNames.report(moduleBuilds, report);
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();

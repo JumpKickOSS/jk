@@ -102,8 +102,13 @@ a module jk builds) and into the modules a profile active on this machine adds, 
 181 POMs becomes one `[workspace]` of root-relative paths (`community/kernel`, `websocket/spi`).
 A dependency on any module of the reactor is a workspace edge — `{ workspace = true }`, with
 `kind = "tests"` for a `test-jar` — wherever the module sits and however its version is spelled,
-because siblings match by `groupId:artifactId`. A sibling answers as a parent and as an
-`import`-scope BOM before any repository is asked, so a `dependencyManagement` that imports a
+because siblings match by `groupId:artifactId`. Two leaves that share an artifactId under
+different groups (thingsboard's `common/edqs` and `edqs`) are both modules — each builds into its
+own `target/<path>/` — and the report names them: a Tier-2 row when no member depends on the name,
+a Tier-3 row naming both paths and the dependents when one does, since a workspace edge is spelled
+by module name alone and `edqs.workspace = true` cannot pick one of them; rename one module. A
+sibling answers as a parent and as an `import`-scope BOM before any repository is asked, so a
+`dependencyManagement` that imports a
 sibling BOM is applied to the declared dependencies and the BOM is not written as a `[platform]`
 entry (a workspace module is not a published BOM; the row says so). CI-friendly versions —
 `${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
