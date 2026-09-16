@@ -93,6 +93,7 @@ floor is the floating form of a framework version (`[spring-boot] version = "^4"
 | `[runtime-dependencies]` | Runtime only |
 | `[processor-dependencies]` | Annotation processors and javac plugins (own resolve graph); absent, processors registered on the compile classpath run — [Annotation processors](build.md#annotation-processors) |
 | `[platform-dependencies]` | BOMs — [Platforms](platforms.md) |
+| `[plugin-dependencies]` | Jars a plugin worker's fork needs and nothing else uses; `jk lock` writes a pinned third-party plugin's SDK floor here itself |
 | `[export-dependencies]` | Published API surface |
 | `[dev-dependencies]` / `[test-dev-dependencies]` | Optional extra scopes |
 

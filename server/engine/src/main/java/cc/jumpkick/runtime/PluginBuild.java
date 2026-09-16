@@ -13,12 +13,14 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
@@ -903,6 +905,25 @@ public final class PluginBuild {
         return (s == null || s.isBlank()) ? null : s;
     }
 
+    /**
+     * The SDK floor a pinned third-party plugin forks with: the {@code [[artifact]]} rows its
+     * consumer's lock carries under the plugin scope, resolved on this machine. Empty for a
+     * first-party or workspace plugin, whose classpath its own POM or the workspace supplies.
+     */
+    static List<Path> sdkFloor(Active active) throws IOException {
+        PluginDeclaration declaration = active.declaration();
+        if (declaration == null || !PluginSdkFloor.needsFloor(declaration)) return List.of();
+        Path lockFile = LockPaths.lockFile(active.moduleDir());
+        List<Path> floor = Files.isRegularFile(lockFile)
+                ? PluginSdkFloor.classpath(LockfileReader.read(lockFile), JkStores.storeCas())
+                : List.of();
+        if (floor.isEmpty()) {
+            throw new IOException("plugin " + active.manifest().id() + ": "
+                    + PluginSdkFloor.missing(declaration.coordinate(), JkVersion.VERSION));
+        }
+        return floor;
+    }
+
     /** As {@link #runWorker(Active, Path, Path, WorkerEnv, Consumer, Consumer)} with no diagnostic sink. */
     public static List<String> runWorker(
             Active active, Path cache, Path spec, WorkerEnv env, @Nullable Consumer<String> onLabel)
@@ -944,7 +965,8 @@ public final class PluginBuild {
                     if (tail.size() >= 20) tail.removeFirst();
                     tail.addLast(line);
                 });
-        int exit = client.run(PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix()), env);
+        int exit =
+                client.run(PluginLaunch.javaCommand(jar, spec, code(active).protocolPrefix(), sdkFloor(active)), env);
         if (error[0] != null) {
             throw new IOException(error[0]);
         }

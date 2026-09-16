@@ -4,11 +4,13 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
 
@@ -34,14 +36,27 @@ public final class PluginLaunch {
 
     /** {@code java [extraJvmArgs] -cp … PluginMain spec}, heap-sized for one requested JVM. */
     public static List<String> javaCommand(Path workerJar, List<String> extraJvmArgs, Path spec) throws IOException {
+        return javaCommand(workerJar, extraJvmArgs, spec, List.of());
+    }
+
+    /**
+     * As {@link #javaCommand(Path, List, Path)} with {@code extraClasspath} after the worker's own
+     * classpath: the SDK floor a pinned third-party plugin's lock carries ({@code PluginSdkFloor}).
+     */
+    public static List<String> javaCommand(
+            Path workerJar, List<String> extraJvmArgs, Path spec, List<Path> extraClasspath) throws IOException {
         PluginLoader.sealNetworkPolicy(spec);
         Path javaExe = JdkFingerprint.java(JavaHomes.runningJavaHome());
+        List<Path> classpath = new ArrayList<>(WorkerLaunchClasspath.paths(workerJar));
+        for (Path extra : extraClasspath) {
+            if (!classpath.contains(extra)) classpath.add(extra);
+        }
         // One argv assembly (PluginLoader.command), then JvmOptions re-heads it with the java
         // binary plus this job's memory flags — the heap plan is what this launcher adds over a
         // bare PluginLoader.command fork, and concurrency=1 is "one requested JVM".
         List<String> command = PluginLoader.command(
                 javaExe,
-                WorkerLaunchClasspath.resolve(workerJar),
+                Classpaths.join(classpath),
                 extraJvmArgs,
                 mainClassOf(workerJar),
                 List.of(spec.toAbsolutePath().toString()));
@@ -78,9 +93,15 @@ public final class PluginLaunch {
      * spring-boot plugin for Boot packaging) and ServiceLoader would otherwise see two plugins.
      */
     public static List<String> javaCommand(Path workerJar, Path spec, String protocolPrefix) throws IOException {
+        return javaCommand(workerJar, spec, protocolPrefix, List.of());
+    }
+
+    /** As {@link #javaCommand(Path, Path, String)} with the extra classpath of {@link #javaCommand(Path, List, Path, List)}. */
+    public static List<String> javaCommand(Path workerJar, Path spec, String protocolPrefix, List<Path> extraClasspath)
+            throws IOException {
         List<String> extra = protocolPrefix == null || protocolPrefix.isBlank()
                 ? List.of()
                 : List.of("-Djk.plugin.prefix=" + protocolPrefix);
-        return javaCommand(workerJar, extra, spec);
+        return javaCommand(workerJar, extra, spec, extraClasspath);
     }
 }

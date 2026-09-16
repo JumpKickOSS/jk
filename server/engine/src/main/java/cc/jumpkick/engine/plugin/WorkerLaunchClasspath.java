@@ -26,8 +26,9 @@ public final class WorkerLaunchClasspath {
 
     public static List<Path> paths(Path workerJar) {
         // A CAS blob can only reach a fork as a path-pinned plugin jar — coordinate pins and
-        // first-party workers resolve to Maven-layout paths. Path pins carry no POM by design,
-        // so the sha-verified jar is the whole classpath.
+        // first-party workers resolve to Maven-layout paths. A path pin carries no POM, so the
+        // sha-verified jar is its whole classpath here; the SDK floor it compiled against joins at
+        // the launch from the consumer's lock (PluginSdkFloor).
         if (Cas.isBlobPath(workerJar)) return List.of(workerJar);
         Path worker = workerJar.toAbsolutePath().normalize();
         List<Path> resolved = PomRuntimeClasspath.resolve(worker);
