@@ -152,88 +152,13 @@ public final class LockCommand implements CliCommand {
 
     /**
      * Hosted live path (AUTO / QUIET): one shared {@link JkManager} spanning root + all
-     * workspace modules, driven from wire events — one row per module, per-package completion lines
-     * (colorized here, never engine-side), and the final Lock chip.
+     * workspace modules, driven from wire events through a {@link LiveLockHandler}.
      */
     private int runHostedLive(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Lock", animate);
         long start = System.nanoTime();
-
-        AtomicInteger globalLocked = new AtomicInteger(0);
-        // Per-module package counts (cumulative wire samples, then the authoritative lockfile
-        // count). The engine restarts totalSeen per module, so the workspace total is the SUM
-        // of per-module counts — folding with max reported only the largest module.
-        Map<String, Integer> lockedByDir = new ConcurrentHashMap<>();
-        // What the downloads were checked against, summed over modules for the Lock chip.
-        AtomicLong unverified = new AtomicLong();
-        Set<String> insecureRepos = Collections.synchronizedSet(new LinkedHashSet<>());
-        List<String> errorLines = new ArrayList<>();
-        Map<String, String> coordByDir = new HashMap<>();
-
-        EngineRequests.LockHandler handler = new EngineRequests.LockHandler() {
-            @Override
-            public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                coordByDir.put(moduleDir, coord);
-                // The display label is empty so renderActiveRow produces "module › dep".
-                view.addTaskLabeled(coord, "lock", "");
-                view.stepRunning(coord, "lock");
-                // Lock is purely resolution — total is unknown upfront, so we show a
-                // static top-line label and record each resolved dep as a completion line.
-                view.solveLabel("Locking versions…");
-                return new BuildPlanListener() {};
-            }
-
-            @Override
-            public void onPackage(@Nullable String moduleDir, String name, @Nullable String version, int totalSeen) {
-                String coord = coordByDir.get(moduleDir);
-                // Show active dep in the step row (module › dep via renderActiveRow).
-                view.stepMessage(coord, "lock", Coords.module(name, version));
-                // Absolute count: engine cumulative per-module samples summed across modules;
-                // else +1 per event.
-                int n;
-                if (totalSeen >= 0) {
-                    lockedByDir.merge(moduleDir, totalSeen, Math::max);
-                    n = lockedByDir.values().stream()
-                            .mapToInt(Integer::intValue)
-                            .sum();
-                    globalLocked.set(Math.max(globalLocked.get(), n));
-                } else {
-                    n = globalLocked.incrementAndGet();
-                }
-                Theme t = Theme.active();
-                String line = Theme.colorize(Glyphs.CHECK, t.success())
-                        + " "
-                        + ConsoleSpec.countBracket(n, t)
-                        + " "
-                        + Coords.module(name, version);
-                if (view.animating()) {
-                    view.addCompletion(line);
-                } else {
-                    CliOutput.out(line);
-                }
-            }
-
-            @Override
-            public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
-                view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
-                // Authoritative package count from the written lockfile (not wire event cardinality).
-                if (counts != null && counts.packages() >= 0) {
-                    lockedByDir.put(moduleDir, (int) counts.packages());
-                    int sum = lockedByDir.values().stream()
-                            .mapToInt(Integer::intValue)
-                            .sum();
-                    globalLocked.set(Math.max(globalLocked.get(), sum));
-                }
-                if (counts != null) {
-                    unverified.addAndGet(Math.max(0, counts.unverified()));
-                    insecureRepos.addAll(counts.insecureRepos());
-                }
-                if (!result.success()) {
-                    ConsoleSpec.appendErrors(errorLines, result.errors());
-                }
-            }
-        };
+        LiveLockHandler handler = new LiveLockHandler(view);
 
         EngineRequests.LockOutcome outcome;
         try {
@@ -243,13 +168,106 @@ public final class LockCommand implements CliCommand {
             return Exit.SOFTWARE;
         }
         if (!outcome.success()) {
-            errorLines.addAll(outcome.errors());
-            view.finishBuildPlanFailure(lockFailTail(), errorLines);
+            handler.errorLines.addAll(outcome.errors());
+            view.finishBuildPlanFailure(lockFailTail(), handler.errorLines);
             return outcome.exitCode();
         }
-        view.finishBuildPlanSuccess(
-                lockSuccessTail(globalLocked.get(), unverified.get(), List.copyOf(insecureRepos), start, dir));
+        view.finishBuildPlanSuccess(lockSuccessTail(
+                handler.globalLocked.get(), handler.unverified.get(), List.copyOf(handler.insecureRepos), start, dir));
         return 0;
+    }
+
+    /**
+     * The live path's view of a lock cascade: one row per module, per-package completion lines
+     * (colorized here, never engine-side), and the lock's phase lines. With a live region the phase
+     * rides the module's row; without one ({@code --no-progress}, a pipe) each phase line prints as
+     * it arrives, so a transcript of a long solve shows the lock moving.
+     */
+    static final class LiveLockHandler implements EngineRequests.LockHandler {
+        private final JkManager view;
+        final AtomicInteger globalLocked = new AtomicInteger(0);
+        // Per-module package counts (cumulative wire samples, then the authoritative lockfile
+        // count). The engine restarts totalSeen per module, so the workspace total is the SUM
+        // of per-module counts — folding with max reported only the largest module.
+        private final Map<String, Integer> lockedByDir = new ConcurrentHashMap<>();
+        // What the downloads were checked against, summed over modules for the Lock chip.
+        final AtomicLong unverified = new AtomicLong();
+        final Set<String> insecureRepos = Collections.synchronizedSet(new LinkedHashSet<>());
+        final List<String> errorLines = new ArrayList<>();
+        private final Map<String, String> coordByDir = new HashMap<>();
+
+        LiveLockHandler(JkManager view) {
+            this.view = view;
+        }
+
+        @Override
+        public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
+            coordByDir.put(moduleDir, coord);
+            // The display label is empty so renderActiveRow produces "module › dep".
+            view.addTaskLabeled(coord, "lock", "");
+            view.stepRunning(coord, "lock");
+            // Lock is purely resolution — total is unknown upfront, so we show a
+            // static top-line label and record each resolved dep as a completion line.
+            view.solveLabel("Locking versions…");
+            return new BuildPlanListener() {};
+        }
+
+        @Override
+        public void onPhase(@Nullable String moduleDir, String label) {
+            if (view.animating()) {
+                view.stepMessage(coordByDir.get(moduleDir), "lock", label);
+            } else {
+                CliOutput.out(label);
+            }
+        }
+
+        @Override
+        public void onPackage(@Nullable String moduleDir, String name, @Nullable String version, int totalSeen) {
+            String coord = coordByDir.get(moduleDir);
+            // Show active dep in the step row (module › dep via renderActiveRow).
+            view.stepMessage(coord, "lock", Coords.module(name, version));
+            // Absolute count: engine cumulative per-module samples summed across modules;
+            // else +1 per event.
+            int n;
+            if (totalSeen >= 0) {
+                lockedByDir.merge(moduleDir, totalSeen, Math::max);
+                n = lockedByDir.values().stream().mapToInt(Integer::intValue).sum();
+                globalLocked.set(Math.max(globalLocked.get(), n));
+            } else {
+                n = globalLocked.incrementAndGet();
+            }
+            Theme t = Theme.active();
+            String line = Theme.colorize(Glyphs.CHECK, t.success())
+                    + " "
+                    + ConsoleSpec.countBracket(n, t)
+                    + " "
+                    + Coords.module(name, version);
+            if (view.animating()) {
+                view.addCompletion(line);
+            } else {
+                CliOutput.out(line);
+            }
+        }
+
+        @Override
+        public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+            view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
+            // Authoritative package count from the written lockfile (not wire event cardinality).
+            if (counts != null && counts.packages() >= 0) {
+                lockedByDir.put(moduleDir, (int) counts.packages());
+                int sum = lockedByDir.values().stream()
+                        .mapToInt(Integer::intValue)
+                        .sum();
+                globalLocked.set(Math.max(globalLocked.get(), sum));
+            }
+            if (counts != null) {
+                unverified.addAndGet(Math.max(0, counts.unverified()));
+                insecureRepos.addAll(counts.insecureRepos());
+            }
+            if (!result.success()) {
+                ConsoleSpec.appendErrors(errorLines, result.errors());
+            }
+        }
     }
 
     /** Hosted plain path (--verbose / --output json): one console listener per cascade module. */
@@ -261,6 +279,12 @@ public final class LockCommand implements CliCommand {
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
                 current = BuildPlanConsole.chooseConsoleListener("lock", steps, mode);
                 return current;
+            }
+
+            @Override
+            public void onPhase(@Nullable String moduleDir, String label) {
+                Objects.requireNonNull(current, "lock-phase before module-start")
+                        .label(TaskNames.RESOLVE_DEPS, label);
             }
 
             @Override

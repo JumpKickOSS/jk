@@ -368,6 +368,13 @@ public final class EngineRequests {
         default void onModuleFinish(String dir, BuildPlanResult result, LockCounts counts) {}
 
         /**
+         * The lock's current phase line for the module under {@code dir} ({@code Resolving dependency
+         * graph… N packages so far, Ts}, {@code Downloading N artifacts…}): what a client with no live
+         * region prints so a long solve is seen moving.
+         */
+        default void onPhase(@Nullable String dir, String label) {}
+
+        /**
          * One declared pin {@code jk update} moved in the manifest under {@code dir} ({@code handle}
          * in {@code table}, {@code from} → {@code to}); fires before that module's plan starts.
          */

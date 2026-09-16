@@ -358,6 +358,12 @@ class EngineProtocolTest {
         assertThat(EngineProtocol.typeOf(pkg)).isEqualTo(EngineProtocol.LOCK_PACKAGE);
         assertThat(Jsonl.str(pkg, "name")).isEqualTo("com.foo:leaf");
         assertThat(Jsonl.str(pkg, "version")).isEqualTo("1.0");
+
+        String phase = ProtoEvents.lockPhase("/work/api", "Resolving dependency graph… 12 packages so far, 5s");
+        assertThat(EngineProtocol.typeOf(phase)).isEqualTo(EngineProtocol.LOCK_PHASE);
+        LockPhaseEvent decoded = LockPhaseEvent.decode(phase);
+        assertThat(decoded.dir()).isEqualTo("/work/api");
+        assertThat(decoded.label()).isEqualTo("Resolving dependency graph… 12 packages so far, 5s");
     }
 
     @Test

@@ -400,6 +400,13 @@ public final class EngineProtocol {
     /** Server → client, repeated: one package was resolved and recorded ({@code ResolveObserver.onPackage}). */
     public static final String LOCK_PACKAGE = "lock-package";
 
+    /**
+     * Server → client, repeated: the lock's current phase line ({@code ResolveObserver.onPhase}) —
+     * the graph phase's heartbeat with its package count included, so a client with no live region
+     * can show a long solve moving.
+     */
+    public static final String LOCK_PHASE = "lock-phase";
+
     /** Server → client, terminal for {@link #LOCK_REQUEST}/{@link #UPDATE_REQUEST}: cascade outcome. */
     public static final String LOCK_FINISH = "lock-finish";
 

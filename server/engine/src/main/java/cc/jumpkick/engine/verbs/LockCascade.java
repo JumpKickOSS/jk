@@ -117,6 +117,11 @@ final class LockCascade {
                 public void onTotal(int total) {}
 
                 @Override
+                public void onPhase(String label) {
+                    host.sendQuiet(writer, ProtoEvents.lockPhase(dirTag, label));
+                }
+
+                @Override
                 public void onPackage(String module, String version) {
                     lockPkgs.onPackage(dirTag, module, version);
                 }

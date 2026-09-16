@@ -278,12 +278,9 @@ public final class LockPlans {
 
             @Override
             public void onPhase(String label) {
-                if (label != null && !label.isBlank()) {
-                    ctx.label(label);
-                    // A phase is also a line of the step's output, so a run with no progress bar
-                    // (--no-progress, CI, an agent reading the results) sees the lock move.
-                    ctx.output(label);
-                }
+                // The step's label alone: the hosted client prints or shows the phase as it arrives,
+                // and the results file's step output carries no heartbeat lines.
+                if (label != null && !label.isBlank()) ctx.label(label);
                 observer.onPhase(label);
             }
 

@@ -147,6 +147,9 @@ class EngineServerRequestTest extends EngineServerHarness {
             assertThat(Jsonl.str(lockModule, "dir")).isEqualTo(project.toString());
             assertThat(Jsonl.str(lockModule, "coord")).isEqualTo("com.example:app");
             assertThat(types).contains(EngineProtocol.PLAN_TASK, EngineProtocol.PLAN_DONE);
+            assertThat(types)
+                    .as("the graph phase announces itself as a lock-phase event")
+                    .contains(EngineProtocol.LOCK_PHASE);
             assertThat(sawAnyPackage)
                     .as("at least one coalesced lock-package event")
                     .isTrue();
