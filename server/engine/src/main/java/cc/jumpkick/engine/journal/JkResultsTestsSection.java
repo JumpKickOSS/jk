@@ -4,7 +4,6 @@ package cc.jumpkick.engine.journal;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.MAX_FAILED_TESTS;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.MAX_PACKAGES;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.MAX_STACK_LINES;
-import static cc.jumpkick.engine.journal.JkResultsMarkdown.clipLines;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.escCell;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.fence;
 import static cc.jumpkick.engine.journal.JkResultsMarkdown.fmtDuration;
@@ -180,7 +179,7 @@ final class JkResultsTestsSection {
                                     && !e.failureStack().isBlank()
                             ? e.failureStack().trim()
                             : (e.failureMessage() != null ? e.failureMessage().trim() : "");
-                    if (!detail.isEmpty()) fence(sb, clipLines(detail, MAX_STACK_LINES));
+                    if (!detail.isEmpty()) fence(sb, JkResultsStack.clip(detail, e.className(), MAX_STACK_LINES));
                     shown++;
                 }
             }

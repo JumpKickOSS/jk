@@ -464,7 +464,7 @@ public final class JkResultsMarkdown {
         }
         String stack = some(d.stack());
         if (stack != null) {
-            fence(sb, clipLines(stack, MAX_STACK_LINES));
+            fence(sb, JkResultsStack.clip(stack, d.className(), MAX_STACK_LINES));
         }
         sb.append('\n');
     }

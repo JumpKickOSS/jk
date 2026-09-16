@@ -50,7 +50,9 @@ at the HTML (`target/reports/coverage/index.html`; per module under
 
 A step that failed without a diagnostic of its own is one row of `## Failed steps`; a step that
 explained itself is also a `## Failures` entry headed `<step> — <module>`, its message fenced, then
-its output. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
+its output. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
+test class together with the assertion frame above it — the middle is elided with a frame count —
+so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
 launcher missing from the classpath — is that shape with code `test-launcher`: the exit, the
 exception and engine the runner named, the two conflicting JUnit coordinates when the lock names
 them, and the fix (`jk why <coordinate>`), with the fork's output as the fenced block. It is never
