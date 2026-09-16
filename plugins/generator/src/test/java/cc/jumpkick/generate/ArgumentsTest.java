@@ -3,7 +3,7 @@ package cc.jumpkick.generate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.File;
+import cc.jumpkick.host.Classpaths;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ class ArgumentsTest {
     @Test
     void inputs_embedded_joins_with_the_path_separator() {
         assertThat(Arguments.expand(List.of("--files=${inputs}"), SCOPE))
-                .containsExactly("--files=" + A + File.pathSeparator + B);
+                .containsExactly("--files=" + Classpaths.join(List.of(A, B)));
     }
 
     @Test
