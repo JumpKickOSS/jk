@@ -49,8 +49,20 @@ public final class JvmOptions {
     /** Metaspace cap outside the heap budget (avoids concurrent-worker native overcommit). */
     public static final long DEFAULT_MAX_METASPACE_MB = 256;
 
-    /** Worker JVMs (compilers, test runners) rarely need deep stacks; smaller reserve, more headroom. */
+    /**
+     * Thread stack for jk-owned batch workers (compilers, plugin tools): they rarely need deep
+     * stacks, so a smaller reserve buys headroom. Test suites never get it — see {@link
+     * #suiteFlags}.
+     */
     public static final long DEFAULT_STACK_KB = 512;
+
+    /** Which thread stack a fork gets: jk's batch reserve or the JVM's own default. */
+    private enum Stack {
+        /** {@code -Xss} at {@link #DEFAULT_STACK_KB} unless the tuning pins one. */
+        BATCH,
+        /** No {@code -Xss}: the platform default, as Surefire's and Gradle's test forks run. */
+        PLATFORM
+    }
 
     /**
      * Build the JVM flag list for {@code settings}, dividing the heap cap across {@code concurrency}
@@ -58,10 +70,10 @@ public final class JvmOptions {
      * worker count).
      */
     public static List<String> flags(PluginTuning settings, int concurrency) {
-        return flags(settings, concurrency, DEFAULT_GC);
+        return flags(settings, concurrency, DEFAULT_GC, Stack.BATCH);
     }
 
-    private static List<String> flags(PluginTuning settings, int concurrency, String defaultGc) {
+    private static List<String> flags(PluginTuning settings, int concurrency, String defaultGc, Stack stack) {
         PluginTuning s = settings == null ? PluginTuning.NONE : settings;
         double base = s.maxRamPercent() != null ? s.maxRamPercent() : DEFAULT_MAX_RAM_PERCENT;
         double perJvm = base / Math.max(1, concurrency);
@@ -86,7 +98,7 @@ public final class JvmOptions {
         if (dedup && (gc.equals("zgc") || gc.equals("g1"))) {
             out.add("-XX:+UseStringDeduplication");
         }
-        addHardening(out, s, concurrency);
+        addHardening(out, s, concurrency, stack);
         out.addAll(s.extraArgs());
         return out;
     }
@@ -120,7 +132,17 @@ public final class JvmOptions {
      * at once, so {@code concurrency} is ignored in that case.
      */
     public static List<String> workerFlags(int concurrency) {
-        return workerFlags(concurrency, DEFAULT_GC);
+        return workerFlags(concurrency, DEFAULT_GC, Stack.BATCH);
+    }
+
+    /**
+     * {@link #workerFlags} for the JVMs that run a module's test suite: the same heap, GC and
+     * hardening, without jk's {@code -Xss} reserve. A test thread gets the JVM's platform default
+     * stack, exactly what Surefire's and Gradle's forks give it, so a recursive test that passes
+     * under Maven passes here. An {@code -Xss} in the tuning's extra args still wins.
+     */
+    public static List<String> suiteFlags(int concurrency) {
+        return workerFlags(concurrency, DEFAULT_GC, Stack.PLATFORM);
     }
 
     /**
@@ -145,7 +167,7 @@ public final class JvmOptions {
      * the flag.
      */
     public static List<String> batchFlags(int concurrency, int hostFeature) {
-        List<String> out = new ArrayList<>(workerFlags(concurrency, BATCH_DEFAULT_GC));
+        List<String> out = new ArrayList<>(workerFlags(concurrency, BATCH_DEFAULT_GC, Stack.BATCH));
         appendJep498AllowIfSupported(out, hostFeature);
         return out;
     }
@@ -199,11 +221,11 @@ public final class JvmOptions {
         }
     }
 
-    private static List<String> workerFlags(int concurrency, String defaultGc) {
+    private static List<String> workerFlags(int concurrency, String defaultGc, Stack stack) {
         PluginTuning s = tuning();
         HeapPlan.Plan plan = processHeapPlan();
-        if (plan != null && autoHeapEnabled(s)) return absoluteFlags(plan, s, defaultGc);
-        return flags(s, concurrency, defaultGc);
+        if (plan != null && autoHeapEnabled(s)) return absoluteFlags(plan, s, defaultGc, stack);
+        return flags(s, concurrency, defaultGc, stack);
     }
 
     /** Process-wide heap budget from {@link #planAndApply}, or null when explicit tuning wins. */
@@ -298,10 +320,14 @@ public final class JvmOptions {
      * {@code gc = "none"} — G1 and ZGC honour it, everything else recognizes and ignores it.
      */
     static List<String> absoluteFlags(HeapPlan.Plan plan, PluginTuning s) {
-        return absoluteFlags(plan, s, DEFAULT_GC);
+        return absoluteFlags(plan, s, DEFAULT_GC, Stack.BATCH);
     }
 
     static List<String> absoluteFlags(HeapPlan.Plan plan, PluginTuning s, String defaultGc) {
+        return absoluteFlags(plan, s, defaultGc, Stack.BATCH);
+    }
+
+    private static List<String> absoluteFlags(HeapPlan.Plan plan, PluginTuning s, String defaultGc, Stack stack) {
         String gc = (s.gc() != null ? s.gc() : defaultGc).toLowerCase(Locale.ROOT);
         boolean dedup = s.stringDedup() == null || s.stringDedup();
         boolean softMaxAware = !gc.equals("none");
@@ -327,7 +353,7 @@ public final class JvmOptions {
             }
         }
         if (dedup && (gc.equals("zgc") || gc.equals("g1"))) out.add("-XX:+UseStringDeduplication");
-        addHardening(out, s, plan.parallelism());
+        addHardening(out, s, plan.parallelism(), stack);
         out.addAll(s.extraArgs());
         return out;
     }
@@ -336,10 +362,11 @@ public final class JvmOptions {
     static final int ZGC_UNCOMMIT_DELAY_SECONDS = 10;
 
     /**
-     * Default metaspace, CPU share, stack, IPv4 preference, and {@code ExitOnOutOfMemoryError} for
-     * workers, unless already set in {@code extraArgs}.
+     * Default metaspace, CPU share, the batch stack when {@code stack} asks for one, IPv4
+     * preference, and {@code ExitOnOutOfMemoryError} for workers, unless already set in {@code
+     * extraArgs}.
      */
-    private static void addHardening(List<String> out, PluginTuning s, int concurrency) {
+    private static void addHardening(List<String> out, PluginTuning s, int concurrency, Stack stack) {
         List<String> extra = s.extraArgs();
         if (!hasArgPrefix(extra, "-XX:MaxMetaspaceSize", "-XX:MetaspaceSize")) {
             out.add("-XX:MaxMetaspaceSize=" + DEFAULT_MAX_METASPACE_MB + "m");
@@ -348,7 +375,7 @@ public final class JvmOptions {
             int cores = Math.max(1, Runtime.getRuntime().availableProcessors() / Math.max(1, concurrency));
             out.add("-XX:ActiveProcessorCount=" + cores);
         }
-        if (!hasArgPrefix(extra, "-Xss")) {
+        if (stack == Stack.BATCH && !hasArgPrefix(extra, "-Xss")) {
             out.add("-Xss" + DEFAULT_STACK_KB + "k");
         }
         if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {

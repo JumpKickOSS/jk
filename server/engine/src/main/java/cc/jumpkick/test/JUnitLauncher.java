@@ -191,7 +191,7 @@ public final class JUnitLauncher {
      * {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir) {
-        List<String> flags = new ArrayList<>(JvmOptions.workerFlags(concurrency));
+        List<String> flags = new ArrayList<>(JvmOptions.suiteFlags(concurrency));
         // Surefire and Gradle fork test JVMs with assertions on; a Java or Kotlin `assert` in a
         // test is a check the author wrote to run.
         if (assertions) flags.add("-ea");

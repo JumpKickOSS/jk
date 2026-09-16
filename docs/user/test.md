@@ -378,6 +378,13 @@ assertions = false      # default true
 
 The setting is a run-tests input, so flipping it re-runs the suite.
 
+## The test JVM's thread stack
+
+Every test JVM jk forks runs on the JVM's default thread stack, as Surefire's and Gradle's do, so a
+recursive test that passes under Maven passes under jk. jk's own compiler and plugin workers run
+with a smaller reserve (`-Xss512k`); the suite never inherits it. A suite that needs a deeper stack
+puts `-Xss` in a profile's `jvm-args`, which is appended after jk's own flags and wins.
+
 ## Isolation contract
 
 Tests never run in the engine process (always a forked JVM). Defaults assume tests are

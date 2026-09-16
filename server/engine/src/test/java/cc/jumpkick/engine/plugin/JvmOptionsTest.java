@@ -50,6 +50,17 @@ class JvmOptionsTest {
     }
 
     @Test
+    void suite_flags_keep_the_platform_thread_stack() {
+        // Test suites run on the JVM's default stack, as Surefire's and Gradle's forks do; the
+        // batch reserve is for compilers and plugin tools.
+        List<String> suite = JvmOptions.suiteFlags(1);
+        assertThat(suite).noneMatch(f -> f.startsWith("-Xss"));
+        List<String> expected = new ArrayList<>(JvmOptions.workerFlags(1));
+        expected.remove("-Xss512k");
+        assertThat(suite).containsExactlyElementsOf(expected);
+    }
+
+    @Test
     void heap_cap_is_divided_across_concurrent_jvms() {
         // 4 concurrent test workers → each gets a quarter of the base cap.
         assertThat(JvmOptions.flags(PluginTuning.NONE, 4)).contains("-XX:MaxRAMPercentage=12.5");
