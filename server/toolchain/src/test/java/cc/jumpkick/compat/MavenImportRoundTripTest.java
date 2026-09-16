@@ -118,6 +118,41 @@ class MavenImportRoundTripTest {
         }
     }
 
+    @Test
+    void a_release_17_pom_writes_the_level_and_no_jdk_pin() {
+        JkBuild imported = importPom(levelPom("<maven.compiler.release>17</maven.compiler.release>"));
+        String rendered = JkBuildRenderer.render(imported);
+        assertThat(rendered).contains("java     = 17").doesNotContain("jdk");
+        assertThat(JkBuildParser.parse(rendered).project().jdk()).isNull();
+    }
+
+    @Test
+    void a_source_8_pom_is_raised_to_the_floor_with_a_row() {
+        var result = importer.importFromBytes(levelPom(
+                        "<maven.compiler.source>1.8</maven.compiler.source><maven.compiler.target>1.8</maven.compiler.target>")
+                .getBytes(StandardCharsets.UTF_8));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("java     = 17").doesNotContain("jdk");
+        assertThat(JkBuildParser.parse(rendered).project().java()).isEqualTo(17);
+        assertThat(result.report().issues())
+                .extracting(i -> i.message())
+                .anyMatch(
+                        m -> m.equals(
+                                "`maven.compiler.target` declared 8; jk's floor is 17; bytecode level raised — written as `java = 17`."));
+    }
+
+    private static String levelPom(String properties) {
+        return """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <properties>%s</properties>
+                </project>
+                """.formatted(properties);
+    }
+
     private static String pom(String scope, @Nullable String classifier, @Nullable String type) {
         StringBuilder dep = new StringBuilder("""
                     <dependency>
