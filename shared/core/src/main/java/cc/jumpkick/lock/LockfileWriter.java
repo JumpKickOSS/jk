@@ -196,6 +196,15 @@ public final class LockfileWriter {
                 }
                 out.append("]\n");
             }
+            if (!pkg.excludedBy().isEmpty()) {
+                List<String> excluded = new ArrayList<>(pkg.excludedBy());
+                excluded.sort(Comparator.naturalOrder());
+                out.append("excluded-by = [\n");
+                for (String line : excluded) {
+                    out.append("  ").append(quote(line)).append(",\n");
+                }
+                out.append("]\n");
+            }
         }
     }
 

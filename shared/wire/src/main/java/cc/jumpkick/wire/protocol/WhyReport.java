@@ -18,6 +18,12 @@ import org.jspecify.annotations.Nullable;
  * where the lock does not say; a range selector may contain {@code >}, which is why it does not
  * ride inside the path. The client owns matching-free rendering: split and style.
  *
+ * <p>{@code exclusions.get(i)} is one edge an exclusion pruned whose child matches the query:
+ * the child's {@code group:artifact}, the exclusion's origin ({@code jk.toml:<handle>} or
+ * {@code g:a@version}; empty when the lock does not say) and the {@code module@version} row whose
+ * expansion dropped it, joined with a tab ({@link #EXCLUSION_FIELD_SEPARATOR}). A coordinate can
+ * match here and in {@code matchNames} at once: pruned on one path, present through another.
+ *
  * <p>{@code error} non-null means the lookup could not run; its message is ready to print.
  */
 public record WhyReport(
@@ -26,13 +32,22 @@ public record WhyReport(
         List<String> matchVersions,
         List<String> pathOwners,
         List<String> paths,
-        List<String> pathSelectors) {
+        List<String> pathSelectors,
+        List<String> exclusions) {
 
     /** Joins the per-step selectors of one path; no selector grammar contains a tab. */
     public static final String STEP_SELECTOR_SEPARATOR = "\t";
 
+    /** Joins the three fields of one pruned edge; no coordinate or origin contains a tab. */
+    public static final String EXCLUSION_FIELD_SEPARATOR = "\t";
+
     public static WhyReport error(String message) {
-        return new WhyReport(message, List.of(), List.of(), List.of(), List.of(), List.of());
+        return new WhyReport(message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+    }
+
+    /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */
+    public List<String> exclusionFields(int index) {
+        return List.of(exclusions.get(index).split(EXCLUSION_FIELD_SEPARATOR, -1));
     }
 
     public String encode() {
@@ -43,6 +58,7 @@ public record WhyReport(
                 .array("pathOwners", pathOwners)
                 .array("paths", paths)
                 .array("pathSelectors", pathSelectors)
+                .array("exclusions", exclusions)
                 .finish();
     }
 
@@ -80,6 +96,16 @@ public record WhyReport(
             matches.add(row);
         }
         m.put("matches", matches);
+        List<Map<String, Object>> pruned = new ArrayList<>();
+        for (int i = 0; i < exclusions.size(); i++) {
+            List<String> fields = exclusionFields(i);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", fields.get(0));
+            row.put("excludedBy", fields.size() > 1 ? fields.get(1) : "");
+            row.put("under", fields.size() > 2 ? fields.get(2) : "");
+            pruned.add(row);
+        }
+        m.put("exclusions", pruned);
         return m;
     }
 
@@ -90,6 +116,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "matchVersions"),
                 Jsonl.strArray(line, "pathOwners"),
                 Jsonl.strArray(line, "paths"),
-                Jsonl.strArray(line, "pathSelectors"));
+                Jsonl.strArray(line, "pathSelectors"),
+                Jsonl.strArray(line, "exclusions"));
     }
 }

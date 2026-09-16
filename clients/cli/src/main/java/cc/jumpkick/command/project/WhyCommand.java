@@ -65,7 +65,7 @@ public final class WhyCommand implements CliCommand {
             CommandWedge.printFail("Why", report.error());
             return Exit.CONFIG;
         }
-        if (report.matchNames().isEmpty()) {
+        if (report.matchNames().isEmpty() && report.exclusions().isEmpty()) {
             CommandWedge.printFail("Why", query + " is not in jk-lock.toml");
             return 1;
         }
@@ -85,7 +85,31 @@ public final class WhyCommand implements CliCommand {
             }
             if (i + 1 < report.matchNames().size()) CliOutput.out();
         }
+        if (!report.exclusions().isEmpty()) {
+            if (!report.matchNames().isEmpty()) CliOutput.out();
+            for (int i = 0; i < report.exclusions().size(); i++)
+                CliOutput.out(renderExclusion(report.exclusionFields(i)));
+        }
         return 0;
+    }
+
+    /**
+     * One pruned edge: the child an exclusion kept out, the lock row whose expansion dropped it,
+     * and who declared the exclusion — the manifest handle or the POM.
+     */
+    private static String renderExclusion(List<String> fields) {
+        String child = fields.get(0);
+        String origin = fields.size() > 1 ? fields.get(1) : "";
+        String under = fields.size() > 2 ? fields.get(2) : "";
+        int at = under.lastIndexOf('@');
+        String row = at > 0 ? Coords.module(under.substring(0, at), under.substring(at + 1)) : under;
+        StringBuilder out =
+                new StringBuilder(child).append(" is excluded under ").append(row);
+        if (!origin.isEmpty()) {
+            out.append(Theme.colorize(
+                    " (excluded by " + origin + ")", Theme.active().darkGray()));
+        }
+        return out.toString();
     }
 
     /**

@@ -779,7 +779,13 @@ public record Lockfile(
              * keyed by the edge's {@code module@version} ref — the version that was asked for, beside
              * the one the solve picked. An edge with no entry declared nothing the lock knows of.
              */
-            Map<String, String> declared) {
+            Map<String, String> declared,
+            /**
+             * The edges an exclusion pruned from this row's POM, one {@code group:artifact <- origin}
+             * line each ({@code jk.toml:<handle>} for a manifest exclusion, {@code g:a@version} for a
+             * POM's); the coordinate may still sit in the lock through another path.
+             */
+            List<String> excludedBy) {
 
         public Artifact {
             Objects.requireNonNull(name, "name");
@@ -793,6 +799,35 @@ public record Lockfile(
             scopes = new ArrayList<>(set);
             deps = List.copyOf(deps);
             declared = declared == null || declared.isEmpty() ? Map.of() : Map.copyOf(declared);
+            excludedBy = excludedBy == null || excludedBy.isEmpty() ? List.of() : List.copyOf(excludedBy);
+        }
+
+        /** Every edge kept: nothing pruned. */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                @Nullable String checksum,
+                @Nullable String path,
+                List<Scope> scopes,
+                List<String> deps,
+                @Nullable String pinnedBy,
+                @Nullable GitInfo git,
+                @Nullable String sourcesChecksum,
+                Map<String, String> declared) {
+            this(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    List.of());
         }
 
         /** Every edge without a declared selector. */
