@@ -31,7 +31,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Build;
@@ -152,37 +151,26 @@ public final class PomImporter {
 
     /**
      * Import a multi-module Maven build into a workspace-root {@code JkBuild} plus per-module
-     * builds. No {@code <modules>} → single-POM import. Sibling POMs answer parent lookups first, so
-     * the reactor never goes to the network for itself.
+     * builds. No {@code <modules>} anywhere → single-POM import. The reactor is walked the way
+     * Maven walks it ({@link ReactorModules}): aggregators recurse, active profiles contribute, and
+     * sibling POMs answer parent and BOM lookups first, so the reactor never goes to the network
+     * for itself.
      */
     public WorkspaceImportResult importWorkspace(Path rootPom) throws IOException {
         Path rootFile = rootPom.toAbsolutePath();
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
-        List<String> modules = rootRaw.getModules();
-        if (modules.isEmpty()) {
+        if (!ReactorModules.declaresModules(rootRaw)) {
             Result single = importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null));
             return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report());
         }
 
         ImportReport.Builder report = ImportReport.builder();
         ReactorModelResolver reactor = new ReactorModelResolver(resolver);
-        reactor.add(rootFile, rootXml, rootRaw);
-        Path projectDir = Objects.requireNonNull(rootFile.getParent());
-        Map<String, Path> childPoms = new LinkedHashMap<>();
-        for (String module : modules) {
-            Path childPom = projectDir.resolve(module).resolve("pom.xml");
-            if (!Files.exists(childPom)) {
-                report.error("workspace module `" + module + "` has no pom.xml at " + childPom);
-                continue;
-            }
-            byte[] xml = Files.readAllBytes(childPom);
-            reactor.add(childPom, xml, EffectiveModel.rawModel(xml));
-            childPoms.put(module, childPom);
-        }
-
+        List<ReactorModules.Leaf> leaves = ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report);
         EffectiveModel rootModel = reactor.effective(rootFile);
         reportInheritanceFailure(rootModel, report);
+        if (leaves.isEmpty()) reportInactiveModules(rootModel, report);
         SourceTreePlugins.SourceTree rootSourceTree = SourceTreePlugins.map(rootModel, report);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
         warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true);
@@ -191,16 +179,17 @@ public final class PomImporter {
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
         // The workspace root is a coordination point — no deps of its own.
         JkBuild rootJkBuild = JkBuild.builder(rootProject)
-                .workspace(new Workspace(modules))
+                .workspace(new Workspace(
+                        leaves.stream().map(ReactorModules.Leaf::path).toList()))
                 .application(rootApplication)
                 .build();
 
         Map<String, JkBuild> moduleBuilds = new LinkedHashMap<>();
-        for (var e : childPoms.entrySet()) {
-            Result child = importModel(reactor.effective(e.getValue()));
-            moduleBuilds.put(e.getKey(), child.jkBuild());
+        for (ReactorModules.Leaf leaf : leaves) {
+            Result child = importModel(leaf.model());
+            moduleBuilds.put(leaf.path(), child.jkBuild());
             for (ImportReport.Issue issue : child.report().issues()) {
-                String prefixed = "[" + e.getKey() + "] " + issue.message();
+                String prefixed = "[" + leaf.path() + "] " + issue.message();
                 if (issue.severity() == ImportReport.Severity.ERROR) {
                     report.error(prefixed);
                 } else {
@@ -215,6 +204,18 @@ public final class PomImporter {
             rewritten.put(e.getKey(), rewriteSiblingDeps(e.getValue(), siblingByGa, e.getKey(), report));
         }
         return new WorkspaceImportResult(rootJkBuild, rewritten, report.build());
+    }
+
+    /** Modules listed only in profiles Maven would not activate here leave nothing to build: a Tier-3 row says which. */
+    private static void reportInactiveModules(EffectiveModel root, ImportReport.Builder report) {
+        List<String> inactive = new ArrayList<>();
+        for (org.apache.maven.model.Profile profile : root.raw().getProfiles()) {
+            if (!profile.getModules().isEmpty() && !root.isActive(profile)) inactive.add(profile.getId());
+        }
+        if (inactive.isEmpty()) return;
+        report.error("`<modules>` are declared only in profiles that are not active on this machine ("
+                + String.join(", ", inactive) + "); no module was imported, so the workspace builds nothing."
+                + " Activate one with Maven's `-P` and re-import, or list the modules at the top level.");
     }
 
     /**

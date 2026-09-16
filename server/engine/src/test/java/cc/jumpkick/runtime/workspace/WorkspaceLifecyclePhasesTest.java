@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.workspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -29,26 +30,39 @@ class WorkspaceLifecyclePhasesTest {
     @TempDir
     Path tmp;
 
+    /** A workspace with nothing to build is not a passing build: it fails after the graph preflight, once. */
     @Test
-    void empty_workspace_succeeds_and_finishes_after_graph_preflight() throws Exception {
+    void empty_workspace_built_nothing_and_finishes_after_graph_preflight() throws Exception {
         Path workspace = workspace(List.of());
         RecordingListener listener = new RecordingListener();
 
         WorkspaceResult result = WorkspaceExecute.buildWorkspace(request(workspace), listener);
 
-        assertThat(result.success()).isTrue();
-        assertThat(result.exitCode()).isZero();
-        assertThat(listener.events)
-                .containsSubsequence(
-                        "preflight:graph:0/0",
-                        "preflight:graph:1/1",
-                        "preflight:checking:0/0",
-                        "preflight:checking:1/1",
-                        "preflight:plan:0/1",
-                        "preflight:plan:1/1",
-                        "finish:0")
-                .endsWith("finish:0");
+        assertThat(result.success()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.errors()).containsExactly("built nothing: the workspace declares no modules");
+        assertThat(listener.events).containsExactly("preflight:graph:0/0", "preflight:graph:1/1", "finish:2");
         assertThat(listener.finished).containsExactly(result);
+    }
+
+    @Test
+    void modules_without_sources_are_built_nothing_and_one_source_tree_lifts_the_verdict() throws Exception {
+        Path workspace = workspace(List.of("bom", "api"));
+        RecordingListener listener = new RecordingListener();
+
+        WorkspaceResult result = WorkspaceExecute.buildWorkspace(request(workspace), listener);
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.exitCode()).isEqualTo(2);
+        assertThat(result.errors())
+                .containsExactly("built nothing: none of the 2 modules has sources (example:bom, example:api)");
+        assertThat(listener.events).endsWith("finish:2");
+
+        Files.createDirectories(workspace.resolve("api/src/main/java"));
+        var root = JkBuildParser.parse(Files.readString(workspace.resolve("jk.toml")));
+        assertThat(NothingToBuild.verdict(BuildGraph.resolve(workspace, root).topoOrder(), root))
+                .as("one module with a source tree is enough")
+                .isNull();
     }
 
     @Test

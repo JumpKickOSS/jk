@@ -10,6 +10,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
@@ -84,8 +85,11 @@ public final class WorkspacePreflightPhase {
         PreflightMemo.storeGraph(request.entryDir(), graph);
         if (graphMemoHit) Perf.note("preflight-graph-memo structure-match", "units", units.size());
         listener.onPreflight("graph", 1, 1, units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
-        if (units.isEmpty()) {
-            return completed(true, 0, List.of());
+        WorkspaceSpec requested = request.spec();
+        String nothing =
+                requested != null && requested.hasSelection() ? null : NothingToBuild.verdict(units, entryBuild);
+        if (nothing != null) {
+            return completed(false, Exit.CONFIG, List.of(nothing));
         }
 
         graph = applySelectionCone(graph, request);
