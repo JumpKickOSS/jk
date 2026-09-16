@@ -299,7 +299,8 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
 - **POM fidelity:** exclusions and Maven version ranges are honored on expand; optional deps
   stay out until features activate them.
 - **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
-  (default 120 s). Every prop/conflict step counts toward a step budget
+  (default 600 s per graph, sized for a cold multi-repository reactor of a few hundred modules).
+  Every prop/conflict step counts toward a step budget
   (`maxDecisions × 16`). Conflict **watermarks** fingerprint decision maps that already
   failed so the solver cannot re-enter them (cleared when a universe expands).
 
