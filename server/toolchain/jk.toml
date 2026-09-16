@@ -38,4 +38,5 @@ options = [
 [test-dependencies]
 jk-host = { workspace = true, fixtures = true }
 assertj-core = "3.27.7"
+jqwik = "1.10.1"
 junit-jupiter = "6.1.3"

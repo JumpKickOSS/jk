@@ -10,6 +10,7 @@ import cc.jumpkick.model.ProjectInherit;
 import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.ToolchainSpec;
 import cc.jumpkick.model.VersionSelector;
+import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -52,7 +53,9 @@ public final class ManifestProject {
      */
     static String strandedHint(TomlTable root, String key) {
         for (String table : root.keySet()) {
-            if (root.get(table) instanceof TomlTable t && t.contains(key) && !(t.get(key) instanceof TomlTable)) {
+            if (root.get(List.of(table)) instanceof TomlTable t
+                    && t.contains(key)
+                    && !(t.get(key) instanceof TomlTable)) {
                 return strandedSuffix(key, table);
             }
         }

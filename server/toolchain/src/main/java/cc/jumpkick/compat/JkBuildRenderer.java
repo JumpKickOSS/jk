@@ -427,15 +427,16 @@ public final class JkBuildRenderer {
     }
 
     /**
-     * TOML bare-key check — a name with only [A-Za-z0-9_-] can be emitted unquoted; anything else
-     * gets wrapped in a quoted key.
+     * A TOML key: bare when every character is one of {@code A-Za-z0-9_-} (the bare-key alphabet
+     * of the TOML spec; a letter outside ASCII is not in it), quoted otherwise.
      */
     private static String safeKey(String name) {
+        if (name.isEmpty()) return quote(name);
         for (int i = 0; i < name.length(); i++) {
             char c = name.charAt(i);
-            if (!(Character.isLetterOrDigit(c) || c == '_' || c == '-')) {
-                return quote(name);
-            }
+            boolean bare =
+                    (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-';
+            if (!bare) return quote(name);
         }
         return name;
     }

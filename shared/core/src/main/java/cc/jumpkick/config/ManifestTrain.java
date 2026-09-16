@@ -53,7 +53,7 @@ final class ManifestTrain {
         if (table == null) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();
         for (String key : table.keySet()) {
-            Object v = table.get(key);
+            Object v = table.get(List.of(key));
             if (v != null) out.put(key, String.valueOf(v));
         }
         return out;
