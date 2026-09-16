@@ -11,7 +11,6 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
-import java.net.URI;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -142,17 +141,20 @@ class MavenPackageSourceConstraintTest {
     }
 
     private static MavenPackageSource source(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
-        MavenRepo repo =
-                new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
+        MavenRepo repo = neverDialed(tmp);
         RepoGroup group = RepoGroup.of(repo);
         return new MavenPackageSource(group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy);
     }
 
     private static MavenPackageSource strictSource(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
-        MavenRepo repo =
-                new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
+        MavenRepo repo = neverDialed(tmp);
         RepoGroup group = RepoGroup.of(repo);
         return new MavenPackageSource(
                 group, new EffectivePomBuilder(group), bom, Map.of(), KmpRedirects.NONE, policy, UnmappedPolicy.STRICT);
+    }
+
+    /** These constraints resolve before any fetch; an empty local repo makes an accidental one a miss. */
+    private static MavenRepo neverDialed(Path tmp) {
+        return new MavenRepo("local", tmp.resolve("never-dialed").toUri(), new Http(), new Cas(tmp.resolve("c")));
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.watch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import com.sun.net.httpserver.HttpServer;
@@ -79,14 +80,16 @@ class ReadyProbeTest {
         p.waitFor();
         assertThat(new ReadyProbe("app", new ExecPlan.Probe("", "never", 5_000), 0, p, Clock.SYSTEM).await())
                 .isEqualTo("app exited with 3 before it was ready");
-        assertThat(new ReadyProbe(
-                                "sidecar `web`",
-                                new ExecPlan.Probe("http://127.0.0.1:9/", "", 5_000),
-                                0,
-                                p,
-                                Clock.SYSTEM)
-                        .await())
-                .isEqualTo("sidecar `web` exited with 3 before it was ready");
+        try (DeadEndpoint never = DeadEndpoint.open()) {
+            assertThat(new ReadyProbe(
+                                    "sidecar `web`",
+                                    new ExecPlan.Probe(never.uri().toString(), "", 5_000),
+                                    0,
+                                    p,
+                                    Clock.SYSTEM)
+                            .await())
+                    .isEqualTo("sidecar `web` exited with 3 before it was ready");
+        }
     }
 
     @Test

@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.testing.LoopbackHttp;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -21,6 +22,7 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -29,6 +31,14 @@ import org.junit.jupiter.api.io.TempDir;
  * classpath.
  */
 class PinnedWorkerJarTest {
+
+    /**
+     * The official repo for the pins nobody serves: a live server with nothing on it, so a fetch
+     * is a 404 in one attempt. A closed port instead hangs to the connect timeout where loopback
+     * is relayed, and the retry ladder turned each of those fetches into a minute.
+     */
+    @RegisterExtension
+    final LoopbackHttp official = new LoopbackHttp();
 
     private static final String MODULE = "com.acme:acme-rules";
     private static final String VERSION = "1.0.0";
@@ -122,7 +132,7 @@ class PinnedWorkerJarTest {
                                 "cc.jumpkick:jk-spring-boot", "0.0.1", "sha256:" + "ee".repeat(32)))),
                 tmp.resolve("jk-lock.toml"));
         String prior = System.getProperty("jk.official.repo.url");
-        System.setProperty("jk.official.repo.url", "http://127.0.0.1:1/");
+        System.setProperty("jk.official.repo.url", official.baseUrl());
         try {
             org.assertj.core.api.Assertions.assertThatThrownBy(
                             () -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
@@ -169,7 +179,7 @@ class PinnedWorkerJarTest {
                         List.of(Lockfile.PluginEntry.versionOnly("cc.jumpkick:jk-spring-boot", "0.0.1"))),
                 tmp.resolve("jk-lock.toml"));
         String prior = System.getProperty("jk.official.repo.url");
-        System.setProperty("jk.official.repo.url", "http://127.0.0.1:1/");
+        System.setProperty("jk.official.repo.url", official.baseUrl());
         try {
             assertThatThrownBy(() -> PluginBuild.lockedFirstPartyJar(tmp, "jk-spring-boot", tmp.resolve("cache")))
                     .isInstanceOf(IOException.class)

@@ -118,11 +118,11 @@ class RepoGroupBuilderTest {
     @Test
     void official_repo_url_override_governs_the_default_remotes() {
         String prior = System.getProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY);
-        System.setProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY, "http://127.0.0.1:1/mirror");
+        System.setProperty(RepositorySpec.OFFICIAL_REPO_URL_PROPERTY, "http://official.invalid/mirror");
         try {
             RepositorySpec jumpkick = RepoGroupBuilder.defaultRemoteRepos().getFirst();
             assertThat(jumpkick.name()).isEqualTo("jumpkick");
-            assertThat(jumpkick.url().toString()).isEqualTo("http://127.0.0.1:1/mirror/");
+            assertThat(jumpkick.url().toString()).isEqualTo("http://official.invalid/mirror/");
             assertThat(jumpkick.groups()).isEqualTo(RepositorySpec.JUMPKICK.groups());
         } finally {
             if (prior == null) {

@@ -12,7 +12,6 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import java.net.URI;
 import java.nio.file.Path;
 import java.util.EnumMap;
 import java.util.List;
@@ -28,7 +27,7 @@ class LockOrchestratorFloatingBomTest {
         JkBuild project = jkBuild(
                 Map.of(Scope.PLATFORM, List.of(Dependency.of("bom", "org.example:bom", VersionSelector.parse(">=4")))));
         LockOrchestrator orchestrator = new LockOrchestrator(RepoGroup.of(
-                new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tempDir.resolve("c")))));
+                new MavenRepo("local", tempDir.resolve("never-dialed").toUri(), new Http(), new Cas(tempDir.resolve("c")))));
         assertThatThrownBy(() -> orchestrator.lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("platform dependency")

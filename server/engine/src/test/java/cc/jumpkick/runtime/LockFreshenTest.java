@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
@@ -116,8 +117,10 @@ class LockFreshenTest {
 
         // Repo is now unreachable: only the single-flight skip can succeed.
         http.stop();
-        LockFlow.Result skipped =
-                LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, URI.create("http://127.0.0.1:9/"));
+        LockFlow.Result skipped;
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            skipped = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, dead.uri());
+        }
         assertThat(skipped.status()).isZero();
         assertThat(libVersion(requireNonNull(skipped.lockfile()))).isEqualTo("1.0");
     }

@@ -4,6 +4,7 @@ package cc.jumpkick.command.toolchain;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
@@ -108,15 +109,18 @@ class JdkCommandTest {
         // Point at a dead feed + empty cache so list stays offline (no outdated!
         // from the developer's real JetBrains cache / network).
         Path cache = tempDir.resolve("empty-feed.json");
-        String stdout = Capture.stdout(() -> run(
-                "jdk",
-                "list",
-                "--jdks-dir",
-                jdks.toString(),
-                "--feed-url",
-                "http://127.0.0.1:1/unreachable",
-                "--cache-file",
-                cache.toString()));
+        String stdout;
+        try (DeadEndpoint feed = DeadEndpoint.open()) {
+            stdout = Capture.stdout(() -> run(
+                    "jdk",
+                    "list",
+                    "--jdks-dir",
+                    jdks.toString(),
+                    "--feed-url",
+                    feed.uri("/unreachable").toString(),
+                    "--cache-file",
+                    cache.toString()));
+        }
         // Installed-only. Grouped by major desc: 23 first, then 21.0.5.
         int idx23 = stdout.indexOf("temurin-23");
         int idx21 = stdout.indexOf("temurin-21.0.5");

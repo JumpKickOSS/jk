@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.Scope;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,7 +54,10 @@ class LockfileWriterAtomicTest {
             }
         });
         reader.start();
-        for (int i = 0; i < 200 && readerFailure.get() == null; i++) {
+        // Each write fsyncs, which some filesystems make a 100 ms affair: 200 writes is a budget
+        // of interleavings, not a duration, so the loop also stops after two seconds of them.
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        for (int i = 0; i < 200 && readerFailure.get() == null && System.nanoTime() < deadline; i++) {
             LockfileWriter.write(lock, lockFile);
         }
         stop.set(true);
