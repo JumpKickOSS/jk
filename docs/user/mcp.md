@@ -18,6 +18,7 @@ Fix a failing build: [Troubleshooting](troubleshooting.md).
 | Session | `initialize` answers with an `Mcp-Session-Id` header; echo it on every later request. One id is one **session**: the runs it starts journal as `trigger: mcp · session: <clientInfo.name> <id>`. `DELETE /mcp` with the header ends it |
 | Protocol | Advertised `protocolVersion` `2024-11-05` (Streamable-HTTP) |
 | Server name | `jk-engine` |
+| Tool list | `tools/list` answers the **loop set** plus **`jk_tools`** by default; `[mcp] tools = "all"` (or `JK_MCP_TOOLS=all`) lists every card. Either way every tool is callable |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
 Token: `jk engine status` / `jk web` URL fragment, or the file under the state directory
@@ -52,20 +53,44 @@ watch. Absent when HTTP is not serving. Same facts as `target/jk-results.md`: [W
 
 ## Tools
 
-Bind once (`jk_bind`), then omit `dir` on later calls.
+Every MCP tool card an agent's host shows the model is paid for on every turn, and the metric jk
+is measured on is tokens to green. So the default `tools/list` is the **loop set** — the seven
+tools one fix-and-rerun loop needs — plus **`jk_tools`**, which lists and calls the rest:
+
+| Default list | |
+|------|------|
+| **`jk_run`** **`jk_results`** **`jk_diagnostics`** | run, read the report, read the structured failures |
+| **`jk_deps`** **`jk_manifest`** | edit `jk.toml` (dependencies; `java = N`) |
+| **`jk_manual`** **`jk_bind`** | the playbook; switch project dir |
+| **`jk_tools`** | `action=list` → every other tool's name and one-liner; `action=call name=… arguments={…}` → call it |
+
+Each default card is one sentence; the same sentences, and the arguments the cards leave out, are
+in the playbook's **MCP tools** page (`jk manual` / `jk_manual`), which a test holds to the served
+list byte for byte. Widen the list to every card with `[mcp] tools = "all"` in `~/.jk/config.toml`
+(`JK_MCP_TOOLS=all`), then restart the engine; `loop` is the default.
+
+**Binding.** `dir` is the project root. An unbound connection is bound by the **first call that
+carries `dir`** — that one result says `bound <dir>` (text and `structuredContent.bound`) — and
+later calls on that connection may omit it. **`jk_bind`** switches. The bind is per connection
+(`Mcp-Session-Id`), so two agents on one engine never clobber each other; a client that sends no
+session id has no bind of its own and falls back to the engine-wide one that every `jk_bind` also
+sets. A call that names `dir` always targets that dir, bound or not.
+
+The whole registry:
 
 | Tool | Role |
 |------|------|
 | **`jk_manual`** | JumpKick playbook (markdown). Same as CLI `jk manual`. Resource: `jk://manual` |
-| **`jk_bind`** | Set default workspace; returns a project card |
+| **`jk_bind`** | Set or switch the connection's project dir; returns a project card |
+| **`jk_tools`** | `list` the tools outside the default list with one-liners, or `call` one by name |
 | **`jk_status`** | Engine vitals (pid, version, heap, active jobs) |
 | **`jk_project`** | Project card (coord, java, members, last run) |
-| **`jk_run`** | Start a job: `build` \| `test` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional modules/tags/suites/`skip_tests`/`timeout_s`. `deadline_s` caps the job's wall time — the engine cancels it past that and the record says so; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
+| **`jk_run`** | Start a job: `build` (default) \| `test` \| `guard` \| `lock` \| `update` \| `format` \| `native` \| `image` \| `assemble` \| `compile` \| `clean` \| `publish` \| `install` \| `import`. **`wait` defaults true**. Publish is **always a dry-run**. Optional `modules`/`suites`/`include_tags`/`exclude_tags`/`skip_tests`/`timeout_s` (the card lists the first two; the playbook spells out the rest). `deadline_s` caps the job's wall time — the engine cancels it past that and the record says so; default is the engine's `detached-deadline-ms` (1 hour), `0` = none. `kind=test` defaults to the **unit** suite — do not pass every suite as a habit |
 | **`jk_build`** / **`jk_test`** / **`jk_lock`** | Async convenience aliases (return `jid` immediately) |
 | **`jk_job`** | `get` \| `wait` \| `cancel`; omit `jid` → latest live job for bound dir |
 | **`jk_cancel`** | Cancel by **`jid`**, or every live job for a `dir` |
 | **`jk_history`** | Recent runs as **summaries** (filters: dir, projectId, success, kind, limit, next). Avoid `view=full` |
-| **`jk_diagnostics`** | Structured compiler/test failures (`last-fail` default, or a history id) |
+| **`jk_diagnostics`** | Structured compiler/test failures (`last-fail` default, or a history id); `severity`, `module`, `unique`, `limit`, `next` |
 | **`jk_results`** | High-level markdown (same as CLI `jk results` / `target/jk-results.md`) |
 | **`jk_details`** | Budgeted tail of `details.jsonl` (default last-fail, `error` + `task-finish`, 80 events). CLI `jk results --details` dumps the full file |
 | **`jk_why`** | Why a dependency is on the graph |
@@ -88,7 +113,9 @@ Bind once (`jk_bind`), then omit `dir` on later calls.
 | **`jk_ide`** | Write IDE project files (`kind=idea` \| `vscode` \| `all`) plus `.bsp/jk.json`, same generators as `jk ide`; `preview=true` lists without writing |
 | **`jk_graph`** | Compact module/dep graph (transitive expansion opt-in and budget-capped) |
 
-Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal records.
+Start with **`jk_results`** or **`jk_diagnostics`**. Do not dump full journal records. A tool
+outside the default list is called as itself when the client knows the name, or through
+`jk_tools action=call`; the two paths are one dispatcher, so the bind and the session are the same.
 
 Token, loopback bind, and how to report a hole in that gate: [Security](security.md).
 
@@ -98,11 +125,11 @@ Token, loopback bind, and how to report a hole in that gate: [Security](security
 |-----|----------|
 | `jk://manual` | JumpKick playbook (same as `jk_manual` / CLI `jk manual`) |
 | `jk://session` | Bound dir + engine status |
-| `jk://project` | Project card (needs `jk_bind`) |
+| `jk://project` | Project card (needs an engine-wide bind: `jk_bind`) |
 | `jk://runs/latest` | Latest history summary |
 | `jk://runs/latest/results` | Latest `jk-results.md` (same as `jk_results`) |
 | `jk://runs/latest/details` | Budgeted tail of latest `details.jsonl` (same as `jk_details`) |
-| `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Needs `jk_bind`; an unknown id is a `-32602` error naming the nearest ids |
+| `jk://guards` | Guard catalog (same as `jk guard explain`); `jk://guards/<id>` is one rule's card (same as `jk guard explain <id>`). Needs an engine-wide bind (`jk_bind`); an unknown id is a `-32602` error naming the nearest ids |
 | `jk://disk` | Cache and store usage |
 | `jk://config` | Effective machine config |
 

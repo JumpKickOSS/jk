@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -175,6 +176,8 @@ public final class HttpEngineServer implements AutoCloseable {
                                 .map(r -> HttpHistoryApi.redactRecordJson(r, new HashMap<>()))
                                 .orElse(null))
                 : null;
+        // tools/list answers the loop set unless [mcp] tools = "all" asked for every card.
+        if (this.mcp != null) this.mcp.surface(McpTools.Surface.of(config.mcp().tools()));
         // jk_disk / jk_doctor / jk://disk read the same memoized walk as GET /api/cache.
         if (this.mcp != null) this.mcp.cacheSnapshot(cache);
         // jk_details serves a budgeted tail of the journal-owned details.jsonl transcript.

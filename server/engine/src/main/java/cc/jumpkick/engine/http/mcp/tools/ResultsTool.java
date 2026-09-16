@@ -9,22 +9,19 @@ import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
-/** {@code jk_results} — the markdown run report, the same file the CLI writes to target/. */
+/**
+ * {@code jk_results} — the markdown run report, the same file the CLI writes to target/. The
+ * card lists {@code dir}; {@code run} (a history id) is read too and the playbook's MCP page
+ * spells it out.
+ */
 public final class ResultsTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "jk_results",
-                "High-level markdown report for the last run (or a history id): compile, tests, "
-                        + "install, publish, native, image. Same as CLI `jk results` and "
-                        + "target/jk-results.md. Prefer this over tailing the build or --verbose. "
-                        + "Resource: jk://runs/latest/results.",
-                McpSchemas.object(Map.of(
-                        "run",
-                        McpSchemas.string("last (default) or history id"),
-                        "dir",
-                        McpSchemas.string(McpSchemas.CHECKOUT_FILTER))),
+                "Markdown report of the last run: what failed and where.",
+                McpSchemas.object(Map.of("dir", McpSchemas.string())),
                 McpSchemas.READ_ONLY);
     }
 

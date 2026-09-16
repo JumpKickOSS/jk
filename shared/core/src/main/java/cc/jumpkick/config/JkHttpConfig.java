@@ -38,9 +38,15 @@ public record JkHttpConfig(
     /** Relative to the jk home root — i.e. {@code ~/.jk/state/web} by default. */
     public static final String DEFAULT_WEB_ROOT = "state/web";
 
-    /** The {@code [mcp]} table: surface toggle + its own SSE budget ({@code GET /mcp}). */
-    public record Mcp(boolean enabled, int maxEventStreams) {
-        public static final Mcp DEFAULTS = new Mcp(true, DEFAULT_MAX_EVENT_STREAMS);
+    /** {@code [mcp] tools}: the default {@code tools/list} is the fix-and-rerun loop set. */
+    public static final String DEFAULT_MCP_TOOLS = "loop";
+
+    /**
+     * The {@code [mcp]} table: surface toggle, its own SSE budget ({@code GET /mcp}), and which
+     * tool cards {@code tools/list} serves — {@code loop} (the default) or {@code all}.
+     */
+    public record Mcp(boolean enabled, int maxEventStreams, String tools) {
+        public static final Mcp DEFAULTS = new Mcp(true, DEFAULT_MAX_EVENT_STREAMS, DEFAULT_MCP_TOOLS);
     }
 
     public static final JkHttpConfig DEFAULTS = new JkHttpConfig(
@@ -67,6 +73,10 @@ public record JkHttpConfig(
     private static final MachineConfig<String> WEB_ROOT = MachineConfig.of(DEFAULT_WEB_ROOT);
 
     private static final MachineConfig<Boolean> MCP_ENABLED = MachineConfig.of(Mcp.DEFAULTS.enabled());
+
+    /** Anything but the two surfaces falls back to the loop set rather than serving nothing. */
+    private static final MachineConfig<String> MCP_TOOLS =
+            MachineConfig.of(DEFAULT_MCP_TOOLS, t -> "loop".equals(t) || "all".equals(t));
 
     /**
      * Effective machine config (env &gt; file &gt; defaults). Empty when disabled or unreadable.
@@ -104,7 +114,10 @@ public record JkHttpConfig(
                         MAX_EVENT_STREAMS.layerOver(
                                 base.mcp.maxEventStreams(),
                                 EnvValues.intValue(env, "JK_MCP_MAX_EVENT_STREAMS")
-                                        .orElse(null)))));
+                                        .orElse(null)),
+                        MCP_TOOLS.layerOver(
+                                base.mcp.tools(),
+                                EnvValues.string(env, "JK_MCP_TOOLS").orElse(null)))));
     }
 
     /**
@@ -132,7 +145,8 @@ public record JkHttpConfig(
         return new Mcp(
                 MCP_ENABLED.layer(TomlValues.optBoolean(mcp, "enabled").orElse(null)),
                 MAX_EVENT_STREAMS.layer(
-                        TomlValues.optInt(mcp, "max-event-streams").orElse(null)));
+                        TomlValues.optInt(mcp, "max-event-streams").orElse(null)),
+                MCP_TOOLS.layer(TomlValues.optString(mcp, "tools").orElse(null)));
     }
 
     /** The admission-semaphore size: the configured cap, or the container-aware core count for 0. */

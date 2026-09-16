@@ -14,13 +14,13 @@ Product stance and event names: [Machine output](machine-output.md). MCP tool re
 
 ```text
 0. Playbook                  jk manual             or MCP jk_manual
-1. Bind the project          MCP jk_bind {dir}     (or just cd and use the CLI)
+1. Name the project          dir={root} on the first MCP call binds it (or just cd and use the CLI)
 2. What happened?            target/jk-results.md  (read/grep) or jk results or MCP jk_results
 3. Structured failures       MCP jk_diagnostics    (compiler / test)
 4. Raw step log (optional)   jk results --details  or MCP jk_details
 5. Rebuild                   same selection as the failure (jk test, not --all)
-6. Graph / ETA               jk why / jk explain   or MCP jk_why / jk_explain
-7. Stalled                   jk jobs / jk cancel   or MCP jk_status + jk_job cancel
+6. Graph / ETA               jk why / jk explain   or MCP jk_why / jk_explain (via jk_tools)
+7. Stalled                   jk jobs / jk cancel   or MCP jk_status + jk_job cancel (via jk_tools)
 ```
 
 Read **`target/jk-results.md` first** (same markdown as `jk results`). File tools beat
@@ -81,12 +81,13 @@ Most lines also carry aggregate `progress` (0–100 or `null`).
 ## MCP in one paragraph
 
 MCP is **on by default** when the engine HTTP server is on (loopback, token-gated). Discover
-the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Bind once
-(`jk_bind`), then omit `dir` on later calls.
+the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Pass `dir` on the first
+call — that binds the connection — then omit it; `jk_bind` switches.
 
-Server instructions (also returned from `initialize`): bind first → results/diagnostics on
-failure → `jk_run` to rebuild → `jk_why` / `jk_explain` for graph/ETA → `jk_job cancel`
-when stalled.
+The default `tools/list` is the loop: `jk_run`, `jk_results`, `jk_diagnostics`, `jk_deps`,
+`jk_manifest`, `jk_manual`, `jk_bind`, plus `jk_tools`, which lists and calls everything else
+(`jk_why`, `jk_explain`, `jk_history`, `jk_job`, …). Server instructions (also returned from
+`initialize`) say the same: run → results → edit → run; the rest through `jk_tools`.
 
 Catalog prompts include **`fix-failing-build`**. Full tool table: [MCP](mcp.md).
 

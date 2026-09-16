@@ -8,6 +8,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.http.EngineHttpJobs;
+import cc.jumpkick.engine.http.JsonFields;
 import cc.jumpkick.engine.http.McpHandler;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
@@ -168,16 +169,22 @@ class McpContractTest {
     }
 
     @Test
-    void tools_list_includes_bind() {
+    void tools_list_is_the_loop_set_until_the_engine_opts_into_every_card() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
-        assertThat(body).contains("jk_bind");
-        assertThat(body).contains("jk_history");
-        assertThat(body).contains("jk_diagnostics");
-        assertThat(body).contains("jk_run");
-        assertThat(body).contains("jk_why");
-        assertThat(body).contains("jk_config");
-        assertThat(body).contains("jk_jdk");
-        assertThat(body).contains("jk_results");
+        assertThat(body).contains("jk_bind", "jk_run", "jk_results", "jk_diagnostics", "jk_deps", "jk_manifest");
+        assertThat(body).contains("jk_manual", "jk_tools");
+        assertThat(body).doesNotContain("jk_history", "jk_why", "jk_config", "jk_jdk");
+
+        mcp.surface(McpTools.Surface.ALL);
+        String all = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
+        assertThat(all).contains("jk_history", "jk_why", "jk_config", "jk_jdk", "jk_tools", "jk_run");
+        assertThat(objects(JsonFields.object(JsonFields.parseObject(all), "result"), "tools"))
+                .hasSameSizeAs(McpTools.standard().names());
+
+        // Off the default list is not off the server: the card is hidden, the call still lands.
+        mcp.surface(McpTools.Surface.LOOP);
+        Map<String, Object> why = call("jk_history", "{}");
+        assertThat(why.get("type")).isEqualTo("history");
     }
 
     @Test

@@ -64,7 +64,6 @@ class WireKeyClosureTest {
     private static final Map<String, String> EXEMPT = Map.of(
             // jbang-catalog.json is somebody else's document format. jk reads it and never writes one.
             "aliases", "foreign format: jbang-catalog.json, read by JBangCatalog",
-            "arguments", "foreign format: jbang-catalog.json",
             "java-options", "foreign format: jbang-catalog.json",
             "script-ref", "foreign format: jbang-catalog.json",
             // The dashboard SPA writes this one, in JavaScript, as a query param and a POST body field.

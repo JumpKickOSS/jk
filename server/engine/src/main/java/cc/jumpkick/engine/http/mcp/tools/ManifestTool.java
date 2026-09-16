@@ -16,7 +16,7 @@ public final class ManifestTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_manifest",
-                "Set whitelisted jk.toml keys. java=N is language level, not jdk=N.",
+                "Set java=N (the language level, not a JDK) in jk.toml; apply=false previews.",
                 McpSchemas.object(
                         Map.of("java", McpSchemas.integer(), "apply", McpSchemas.bool(), "dir", McpSchemas.string())));
     }

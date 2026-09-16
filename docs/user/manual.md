@@ -29,8 +29,8 @@ Do not scrape the terminal UI. JumpKick writes a high-level report on every host
 1. Run **`jk manual`** (or MCP **`jk_manual`**) once per session.
 2. **Read** `target/jk-results.md` with your file/grep tools after a build or test (same
    markdown as `jk results`). Prefer the file over shelling out.
-3. If MCP is configured, prefer **`jk_results`** / **`jk_diagnostics`** over files; bind
-   first with **`jk_bind`**. See [Agents](agents.md) and [MCP](mcp.md).
+3. If MCP is configured, prefer **`jk_results`** / **`jk_diagnostics`** over files; pass `dir`
+   on your first call and the connection is bound. See [Agents](agents.md) and [MCP](mcp.md).
 4. Rebuild with `jk build` / `jk test`, or MCP `jk_run`. Format after edits: `jk format`.
 5. Need the live event stream? `--output json` / `jsonl`, or `jk results --details`.
    See [Machine output](machine-output.md).

@@ -10,30 +10,26 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** {@code jk_diagnostics} — the compiler/test failures of one run, deduped and paged. */
+/**
+ * {@code jk_diagnostics} — the compiler/test failures of one run, deduped and paged. The card
+ * lists the loop's arguments; {@code run}, {@code module}, {@code unique} and {@code next} are
+ * read too (a truncated page's hint names {@code next}) and the playbook's MCP page spells them
+ * out.
+ */
 public final class DiagnosticsTool implements McpTool {
 
     @Override
     public Spec spec() {
         return new Spec(
                 "jk_diagnostics",
-                "Structured compiler/test failures for last-fail (default) or a history id. "
-                        + "Unique by file:line:col + first message line.",
+                "Structured compiler and test failures of the last failed run.",
                 McpSchemas.object(Map.of(
-                        "run",
-                        McpSchemas.string("last-fail (default) or history id"),
                         "dir",
-                        McpSchemas.string(McpSchemas.CHECKOUT_FILTER),
-                        "module",
-                        McpSchemas.string("Filter by module dir substring"),
+                        McpSchemas.string(),
                         "severity",
-                        McpSchemas.string("error | warning"),
-                        "unique",
-                        McpSchemas.bool("Collapse duplicates (default true)"),
+                        McpSchemas.oneOf("error", "warning"),
                         "limit",
-                        McpSchemas.integer("Max rows (default 20)"),
-                        "next",
-                        McpSchemas.integer("Skip this many unique rows"))));
+                        McpSchemas.integer())));
     }
 
     @Override

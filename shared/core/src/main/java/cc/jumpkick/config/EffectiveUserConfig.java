@@ -102,6 +102,7 @@ public final class EffectiveUserConfig {
         add(out, "http.web-root", d.webRoot(), e.webRoot());
         add(out, "mcp.enabled", d.mcp().enabled(), e.mcp().enabled());
         add(out, "mcp.max-event-streams", d.mcp().maxEventStreams(), e.mcp().maxEventStreams());
+        add(out, "mcp.tools", d.mcp().tools(), e.mcp().tools());
     }
 
     private static void addEngine(List<Row> out, Path file, Function<String, @Nullable String> env) {

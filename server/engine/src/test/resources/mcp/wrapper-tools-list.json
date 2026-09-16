@@ -1,0 +1,53 @@
+{
+ "tools": [
+  {
+   "name": "run",
+   "description": "Run the build and tests (Maven `test` or Gradle `test` through the wrapper), wait for it, and return the results markdown it wrote. Call after every edit.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "args": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "Tool arguments; default the `test` goal/task."
+     },
+     "timeout_s": {
+      "type": "integer",
+      "description": "Wait timeout seconds; default 1800."
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "results",
+   "description": "High-level markdown for the last Maven or Gradle run (same shape as jk's target/jk-results.md): outcome, why it failed, tests, compiler errors with file:line:col, failed steps. Start here.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+   }
+  },
+  {
+   "name": "diagnostics",
+   "description": "Structured compiler and test failures from the last run: each diagnostic with task, module, file, line, col and message; each failing test with class, name, message and stack; the failed steps.",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "severity": {
+      "type": "string",
+      "enum": [
+       "error",
+       "warning",
+       "all"
+      ],
+      "description": "Which diagnostics to include; default error."
+     }
+    },
+    "additionalProperties": false
+   }
+  }
+ ]
+}

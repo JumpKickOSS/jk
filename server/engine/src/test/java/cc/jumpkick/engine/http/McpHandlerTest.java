@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.http.mcp.McpHistoryViews;
+import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.McpVitals;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.Jsonl;
@@ -79,21 +80,19 @@ class McpHandlerTest {
         assertThat(info.get("name")).isEqualTo("jk-engine");
         Map<String, Object> caps = object(result, "capabilities");
         assertThat(caps).containsKey("experimental");
-        assertThat(String.valueOf(result.get("instructions"))).contains("text/event-stream");
-        assertThat(String.valueOf(result.get("instructions"))).contains("jk_results");
-        assertThat(String.valueOf(result.get("instructions"))).contains("jk results");
-        assertThat(String.valueOf(result.get("instructions"))).contains("jk_manual");
-        assertThat(String.valueOf(result.get("instructions"))).contains("jk manual");
+        // The instructions are the loop and the door to the rest — the only names a default
+        // client can see; the CLI mirrors and the event stream are the playbook's business.
+        String instructions = String.valueOf(result.get("instructions"));
+        assertThat(instructions).contains("jk_run", "jk_results", "jk_diagnostics", "jk_manual", "jk_tools");
+        assertThat(instructions).doesNotContain("jk_why", "jk_status", "jk_history");
     }
 
     @Test
-    void tools_list_includes_status_and_build() {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
-        Map<String, Object> result = object(resp, "result");
-        List<Map<String, Object>> tools = objects(result, "tools");
-        assertThat(tools.stream().map(t -> t.get("name")).toList())
+    void tools_list_includes_status_and_build_once_the_engine_serves_every_card() {
+        List<Object> loop = listedNames();
+        assertThat(loop).contains("jk_bind").doesNotContain("jk_status", "jk_build", "jk_history");
+        mcp.surface(McpTools.Surface.ALL);
+        assertThat(listedNames())
                 .contains(
                         "jk_status",
                         "jk_build",
@@ -328,13 +327,10 @@ class McpHandlerTest {
     }
 
     @Test
-    void tools_list_includes_the_agent_followup_tools() {
-        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":20,\"method\":\"tools/list\"}");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
-        Map<String, Object> result = object(resp, "result");
-        List<Map<String, Object>> tools = objects(result, "tools");
-        assertThat(tools.stream().map(t -> t.get("name")).toList())
+    void tools_list_includes_the_agent_followup_tools_once_the_engine_serves_every_card() {
+        assertThat(listedNames()).contains("jk_manual", "jk_results").doesNotContain("jk_new", "jk_graph");
+        mcp.surface(McpTools.Surface.ALL);
+        assertThat(listedNames())
                 .contains(
                         "jk_manual",
                         "jk_new",
@@ -346,6 +342,16 @@ class McpHandlerTest {
                         "jk_results",
                         "jk_details",
                         "jk_graph");
+    }
+
+    /** The names {@code tools/list} answers right now. */
+    @SuppressWarnings("unchecked")
+    private List<Object> listedNames() {
+        String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+        Map<String, Object> resp = (Map<String, Object>) requireNonNull(MiniJson.parse(body));
+        return objects(object(resp, "result"), "tools").stream()
+                .map(t -> t.get("name"))
+                .toList();
     }
 
     @Test
@@ -509,14 +515,13 @@ class McpHandlerTest {
     void results_and_details_are_advertised_as_read_only() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"tools/list\"}");
         assertThat(body).contains("jk_results");
-        assertThat(body).contains("jk_details");
         assertThat(body).contains("jk_manual");
-        assertThat(body).contains("jk results");
-        assertThat(body).contains("jk results --details");
-        assertThat(body).contains("jk://runs/latest/results");
-        assertThat(body).contains("jk://runs/latest/details");
-        assertThat(body).contains("jk://manual");
         assertThat(body).contains("readOnlyHint");
+        mcp.surface(McpTools.Surface.ALL);
+        String every = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":30,\"method\":\"tools/list\"}");
+        assertThat(every).contains("jk_details");
+        assertThat(every).contains("jk results --details");
+        assertThat(every).contains("jk://runs/latest/details");
         String resources = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":31,\"method\":\"resources/list\"}");
         assertThat(resources).contains("jk://runs/latest/results");
         assertThat(resources).contains("jk://runs/latest/details");

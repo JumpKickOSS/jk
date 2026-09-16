@@ -92,18 +92,22 @@ public record McpCall(
         return action == null || action.isBlank() ? fallback : action;
     }
 
-    /** The target checkout: the explicit argument, else the bound dir, else {@code null}. */
+    /**
+     * The target checkout: the explicit argument, else this connection's bind, else the
+     * process-wide bind an anonymous {@code jk_bind} set, else {@code null}.
+     */
     public @Nullable String dir() {
         String dir = str("dir");
-        if (dir == null || dir.isBlank()) dir = ctx.session().dir();
-        return dir;
+        if (dir != null && !dir.isBlank()) return dir;
+        if (connection != null && connection.dir() != null) return connection.dir();
+        return ctx.session().dir();
     }
 
     /** {@link #dir()} for a tool that cannot run without one. */
     public String requiredDir() {
         String dir = dir();
         if (dir == null || dir.isBlank()) {
-            throw new McpError(-32602, "requires arguments.dir (or jk_bind first)");
+            throw new McpError(-32602, "requires arguments.dir (the first call that carries it binds the connection)");
         }
         return dir;
     }
