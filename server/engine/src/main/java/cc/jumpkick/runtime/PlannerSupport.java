@@ -766,16 +766,13 @@ public final class PlannerSupport {
      * predicts test-skip without drifting.
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
-        return testStampExtras(dir, project, ClasspathFingerprint.ON_DISK);
+        return testStampExtras(dir, project, null, ClasspathFingerprint.ON_DISK);
     }
 
-    /** As above with the plugin jars read through {@code identity} — see {@link #runTestsStampKey}. */
-    public static List<String> testStampExtras(Path dir, JkBuild project, ClasspathFingerprint.EntryIdentity identity)
-            throws IOException {
-        return testStampExtras(dir, project, null, identity);
-    }
-
-    /** As above under the named profile ({@code null} = the auto-selected one), as the live run keys it. */
+    /**
+     * As above under the named profile ({@code null} = the auto-selected one) with the plugin jars
+     * read through {@code identity} — see {@link #runTestsStampKey}.
+     */
     public static List<String> testStampExtras(
             Path dir, JkBuild project, @Nullable String profileName, ClasspathFingerprint.EntryIdentity identity)
             throws IOException {
@@ -870,7 +867,8 @@ public final class PlannerSupport {
                 lockFile,
                 testRuntimeCp,
                 TestStamp.CompileTestKeys.NONE,
-                ClasspathFingerprint.ON_DISK);
+                ClasspathFingerprint.ON_DISK,
+                null);
     }
 
     /**
@@ -880,31 +878,6 @@ public final class PlannerSupport {
      * {@code jk clean} the sibling jars and the fixtures tree the stamp hashes are gone until the
      * build restores them, and the forecast reads each as the bytes that come back.
      */
-    public static @Nullable String runTestsStampKey(
-            Path dir,
-            JkBuild project,
-            boolean compact,
-            Path mainClasses,
-            @Nullable String mainClassesFingerprint,
-            Path lockFile,
-            List<Path> testRuntimeCp,
-            TestStamp.CompileTestKeys compileTestKeys,
-            ClasspathFingerprint.EntryIdentity identity)
-            throws IOException {
-        return runTestsStampKey(
-                dir,
-                project,
-                compact,
-                mainClasses,
-                mainClassesFingerprint,
-                lockFile,
-                testRuntimeCp,
-                compileTestKeys,
-                identity,
-                null);
-    }
-
-    /** As above under the named profile, whose {@code jvm-args} are a run-tests input. */
     public static @Nullable String runTestsStampKey(
             Path dir,
             JkBuild project,

@@ -16,6 +16,7 @@ import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
 import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -25,6 +26,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -164,6 +166,8 @@ public final class JournalWriter {
                 if (writer != null) WireWriter.sendQuiet(writer, new TimelineEvent(path.toString()).encode());
             });
             List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
+            List<BuildRecord.Coverage> coverage = takeCoverage(a.dir());
+            if (!coverage.isEmpty()) record = record.withCoverage(coverage);
             if (record.synthetic()) {
                 if (historyConfig.enabled()) {
                     String jid = a.journalId();
@@ -191,10 +195,20 @@ public final class JournalWriter {
                 }
             }
             Path latest = writesProjectTarget(record.kind()) ? latestPath(a.dir()) : null;
+            BuildRecord previous = coverage.isEmpty() || !historyConfig.enabled()
+                    ? null
+                    : journal.previousWithCoverage(record).orElse(null);
             try {
-                JkResultsMarkdown.write(record, runDir, latest, tests);
+                JkResultsMarkdown.write(record, runDir, latest, tests, previous);
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: jk-results.md write failed: " + e);
+            }
+            if (!coverage.isEmpty() && latest != null) {
+                try {
+                    CoverageRollup.write(Path.of(a.dir()), record, previous);
+                } catch (IOException | RuntimeException e) {
+                    log.accept("jk engine: coverage roll-up write failed: " + e);
+                }
             }
             // --affected runs: the merged per-module ranking, written once per request so a new
             // run replaces the file instead of compounding an old one.
@@ -209,6 +223,27 @@ public final class JournalWriter {
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
         }
+    }
+
+    /** The coverage every module under {@code dir} published this run, as record rows. */
+    static List<BuildRecord.Coverage> takeCoverage(String dir) {
+        if (dir == null || dir.isBlank()) return List.of();
+        List<BuildRecord.Coverage> out = new ArrayList<>();
+        try {
+            for (CoverageResults.Module m : CoverageResults.takeUnder(Path.of(dir))) {
+                out.add(new BuildRecord.Coverage(
+                        m.dir(),
+                        m.label(),
+                        m.linesCovered(),
+                        m.linesMissed(),
+                        m.branchesCovered(),
+                        m.branchesMissed(),
+                        m.html()));
+            }
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+        return out;
     }
 
     static List<MarkdownTestReport.ModuleRun> takeTests(String dir) {

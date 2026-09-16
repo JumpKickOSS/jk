@@ -45,7 +45,8 @@ public record BuildRecord(
         boolean running,
         @Nullable Io io,
         long requestId,
-        @Nullable Publish publish) {
+        @Nullable Publish publish,
+        List<Coverage> coverage) {
 
     /**
      * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
@@ -58,6 +59,96 @@ public record BuildRecord(
         modules = modules == null ? List.of() : List.copyOf(modules);
         steps = steps == null ? List.of() : List.copyOf(steps);
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
+        coverage = coverage == null ? List.of() : List.copyOf(coverage);
+    }
+
+    /** A run that measured no coverage — every producer but the journal's drain of a coverage run. */
+    public BuildRecord(
+            @Nullable String id,
+            long buildNumber,
+            int schema,
+            String kind,
+            String dir,
+            @Nullable String coord,
+            @Nullable String projectId,
+            long startedAt,
+            long finishedAt,
+            long millis,
+            boolean success,
+            boolean cancelled,
+            int exitCode,
+            String jkVersion,
+            @Nullable Tests tests,
+            List<Module> modules,
+            List<Task> steps,
+            List<Diag> diagnostics,
+            @Nullable String trigger,
+            @Nullable String session,
+            @Nullable String commit,
+            @Nullable CacheBenefit benefit,
+            boolean running,
+            @Nullable Io io,
+            long requestId) {
+        this(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                null,
+                List.of());
+    }
+
+    /** This record with the coverage its modules measured. */
+    public BuildRecord withCoverage(List<Coverage> coverage) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage);
     }
 
     /** This record with its per-project build number set. */
@@ -88,7 +179,8 @@ public record BuildRecord(
                 running,
                 io,
                 requestId,
-                publish);
+                publish,
+                coverage);
     }
 
     /** This record with its journal id set (begin path). */
@@ -119,7 +211,8 @@ public record BuildRecord(
                 running,
                 io,
                 requestId,
-                publish);
+                publish,
+                coverage);
     }
 
     /**
@@ -164,7 +257,8 @@ public record BuildRecord(
                 /* running */ false,
                 io,
                 requestId,
-                publish);
+                publish,
+                coverage);
     }
 
     /** {@code trigger}, then the session that asked when there is one: {@code mcp · claude-code 3f9a}. */
@@ -247,7 +341,8 @@ public record BuildRecord(
                 true,
                 null,
                 requestId,
-                null);
+                null,
+                List.of());
     }
 
     /** Aggregate test counts for the run, or {@code null} when no tests ran. */
@@ -271,6 +366,37 @@ public record BuildRecord(
         public Publish {
             deploymentErrors = deploymentErrors == null ? List.of() : List.copyOf(deploymentErrors);
             bundle = bundle == null ? List.of() : List.copyOf(bundle);
+        }
+    }
+
+    /**
+     * One module's coverage from a coverage run ({@code --coverage} or {@code [test] coverage}):
+     * the whole-report LINE and BRANCH counters of its {@code jacoco.xml}, and its HTML report.
+     * {@code dir} is the module directory; {@code html} is the report's {@code index.html}, both
+     * absolute. The list is empty for a run that measured nothing.
+     */
+    public record Coverage(
+            String dir,
+            String label,
+            long linesCovered,
+            long linesMissed,
+            long branchesCovered,
+            long branchesMissed,
+            String html) {
+
+        /** Covered lines as a percentage of all lines; {@code 100} when the module has none. */
+        public double linePercent() {
+            return percent(linesCovered, linesMissed);
+        }
+
+        /** Covered branches as a percentage of all branches; {@code 100} when the module has none. */
+        public double branchPercent() {
+            return percent(branchesCovered, branchesMissed);
+        }
+
+        static double percent(long covered, long missed) {
+            long total = covered + missed;
+            return total == 0 ? 100.0 : covered * 100.0 / total;
         }
     }
 

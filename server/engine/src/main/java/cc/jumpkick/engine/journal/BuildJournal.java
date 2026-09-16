@@ -538,6 +538,35 @@ public final class BuildJournal {
         return out;
     }
 
+    /** How many earlier runs of a project the coverage delta looks back through. */
+    static final int PREVIOUS_COVERAGE_LOOKBACK = 50;
+
+    /**
+     * The newest earlier run of {@code current}'s project that measured coverage — the baseline its
+     * {@code jk-results.md} shows deltas against. Runs without coverage in between are skipped, so
+     * a plain build does not erase the comparison; the scan stops after {@value
+     * #PREVIOUS_COVERAGE_LOOKBACK} runs.
+     */
+    public Optional<BuildRecord> previousWithCoverage(BuildRecord current) {
+        if (current.buildNumber() <= 0 || current.dir() == null || current.dir().isBlank()) return Optional.empty();
+        Path home;
+        try {
+            home = ProjectBuilds.projectHome(buildsRoot, current.coord(), Path.of(current.dir()));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+        int seen = 0;
+        for (Path run : ProjectBuilds.listRuns(home)) {
+            long number = ProjectBuilds.runNumberOf(run);
+            if (number <= 0 || number >= current.buildNumber()) continue;
+            if (seen++ >= PREVIOUS_COVERAGE_LOOKBACK) break;
+            Optional<BuildRecord> record =
+                    readRecord(run).filter(r -> !r.running() && !r.coverage().isEmpty());
+            if (record.isPresent()) return record;
+        }
+        return Optional.empty();
+    }
+
     /** Look up by build-number directory name, {@code j-…} job directory, or record {@code id}. */
     public Optional<BuildRecord> get(String idOrLocator) {
         return switch (kindOf(idOrLocator)) {

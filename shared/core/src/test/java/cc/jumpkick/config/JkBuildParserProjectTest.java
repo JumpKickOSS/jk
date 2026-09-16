@@ -376,6 +376,23 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void test_coverage_is_off_unless_the_module_turns_every_run_into_a_coverage_run() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testCoverage()).isFalse();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                coverage = true
+                """).build().testCoverage()).isTrue();
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                coverage = "yes"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].coverage must be true or false");
+    }
+
+    @Test
     void parses_test_tools_as_names_on_path() {
         assertThat(JkBuildParser.parse(PROJECT).build().testTools()).isEmpty();
         assertThat(JkBuildParser.parse(PROJECT + """

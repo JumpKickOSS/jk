@@ -16,7 +16,7 @@ jk test --exclude-tags slow,bench
 jk test --include-tags smoke
 jk test --class OrdersTest           # one class (simple or qualified name, * wildcards; repeatable)
 jk test --debug-jvm                  # suspended test JVM listening on localhost:5005 — attach and go
-jk test --coverage                   # every suite JVM under the JaCoCo agent; reports/jacoco.xml per module
+jk test --coverage                   # JaCoCo agent on every suite JVM; Coverage block in jk-results.md, HTML per module
 jk test --affected                   # ranked classes for the working tree (does not run them)
 jk test --affected-since=HEAD~2      # ranked classes since that ref (does not run them)
 jk build --guard                      # package with the guards green (same flag on assemble, image, native, install)
@@ -331,10 +331,39 @@ the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the 
 A forked test JVM that exits without running a test is a **launcher failure**, not a failed test:
 `run-tests` fails as a step, and `jk-results.md` names the exit, the exception and the engine the
 runner reported (`TestEngine with ID 'junit-jupiter' failed to discover tests`), with the fork's
-output under it. The usual cause is two versions of one JUnit line — an exact pin such as
-`junit-jupiter-api = "=5.0.0"` beside `junit-jupiter 6.1.3` — and the report spells both out from
-the lock, marks the pinned one, and points at `jk why org.junit.jupiter:junit-jupiter-api`. Align
-the pin with the platform line (one version for every artifact of the line) and `jk lock`.
+output under it. The usual cause is two versions of one JUnit line — a pin such as
+`junit-platform-launcher = "=1.13.4"` beside `junit-jupiter 6.1.3` puts Platform 1 and Platform 6
+jars on one classpath — and the report spells both out from the lock, marks the declared one, and
+points at `jk why org.junit.platform:junit-platform-launcher`. Align the pin with the platform line
+(one version for every artifact of the line) and `jk lock`. A pin the solve itself cannot satisfy
+(`junit-jupiter-api = "=5.0.0"` under `junit-jupiter 6.1.3`) never gets this far: `jk lock` refuses
+it with the conflict.
+
+## Coverage (`--coverage`, `[test] coverage`)
+
+`jk test --coverage` starts every test JVM under the JaCoCo agent (fetched from the project's
+repositories at its newest release; not a lock entry) and, per module, writes
+`target/<module>/reports/jacoco.xml` and the JaCoCo HTML report at
+`target/<module>/reports/coverage/index.html` (a standalone project: `target/reports/…`). The
+results file gets a **Coverage** block after Tests — per module, covered lines and branches as a
+percentage with the counts, an **all** row for a workspace — and a `Coverage:` line in the
+headline; a workspace also gets a roll-up page at `target/reports/coverage/index.html` linking
+each module's report. MCP `jk_results` carries the same block; the figures are the whole-report
+`LINE` and `BRANCH` counters of each `jacoco.xml`.
+
+The second coverage run of a project shows a **Δ** column against the previous run that measured
+coverage (`_Δ vs run #41_`), read from the build journal; runs in between that measured nothing
+are skipped. A module that appears for the first time reads `new`.
+
+```toml
+[test]
+coverage = true          # every jk test / jk build of this module is a coverage run
+```
+
+Coverage is an inventory, not a verdict: a coverage run never fails on a number. To enforce a
+floor, declare a `metric` guard on `coverage.line` (or `coverage.branch`) with `min` and a `band`
+— a ratchet the baseline raises as the module climbs — and run `jk guard` after the coverage run;
+the rule reads the same `jacoco.xml`. [Guards](guards.md#baseline-and-ratchets).
 
 ## Assertions in the test JVM (`[test] assertions`)
 

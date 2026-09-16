@@ -45,6 +45,7 @@ final class ManifestBuildTable {
 
         final List<String> testSerialTags = new ArrayList<>();
         boolean testAssertions = true;
+        boolean testCoverage = false;
         final List<String> testTools = new ArrayList<>();
     }
 
@@ -198,6 +199,14 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[test].assertions must be true or false");
             }
             s.testAssertions = assertions;
+        }
+        // [test] coverage — every test JVM of this module runs under the JaCoCo agent and the
+        // module leaves its coverage report, as `jk test --coverage` does for the whole run.
+        if (test.contains("coverage")) {
+            if (!(test.get("coverage") instanceof Boolean coverage)) {
+                throw new JkBuildParseException("[test].coverage must be true or false");
+            }
+            s.testCoverage = coverage;
         }
         // [test] tools — external executables the suite shells out to, by the bare name the tests
         // invoke; each one's PATH location and --version become run-tests inputs. A path is refused:

@@ -11,6 +11,18 @@ import org.junit.jupiter.api.Test;
 class JsonTest {
 
     @Test
+    void coverage_rows_round_trip_and_an_absent_array_reads_as_none() {
+        BuildRecord plain = record(List.of());
+        assertThat(Json.read(Json.write(plain)).coverage()).isEmpty();
+        assertThat(Json.write(plain)).doesNotContain("\"coverage\"");
+
+        BuildRecord covered = plain.withCoverage(List.of(new BuildRecord.Coverage(
+                "/proj/lib", "com.example:lib", 120, 30, 6, 4, "/proj/target/lib/reports/coverage/index.html")));
+        BuildRecord back = Json.read(Json.write(covered));
+        assertThat(back.coverage()).containsExactlyElementsOf(covered.coverage());
+    }
+
+    @Test
     void roundtrips_a_fully_populated_record() {
         BuildRecord original = new BuildRecord(
                 "20260710T143022417-3f9a",

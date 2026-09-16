@@ -21,7 +21,7 @@ register.
 | java-compiler | `javac` / Zinc incremental compile, annotation processors, AOT-warmed worker | core | every build |
 | kotlin-compiler | `[kotlin]`, K2, KSP, `[[kotlin-plugins]]` | core | every Kotlin build |
 | groovy-compiler | `[groovy]`, joint compilation | core | Grails and Spock paths |
-| test-runner | JUnit Platform suites (Jupiter; JUnit 4 via Vintage), tags, profiles, `-ea` test JVMs, `--coverage` (JaCoCo XML) | core | every `jk test` |
+| test-runner | JUnit Platform suites (Jupiter; JUnit 4 via Vintage), tags, profiles (tag filters, test-JVM args), `-ea` test JVMs, coverage (`--coverage` / `[test] coverage`: JaCoCo XML + HTML per module, Coverage block in `jk-results.md`), launcher failures as failed steps | core | every `jk test` |
 | formatter | `jk format` | core | closes the agent edit loop |
 | publisher | `jk publish`: Maven layout, GPG, Sigstore, SLSA, CycloneDX/SPDX | core | the ship path for libraries |
 | image-builder | `jk image`: OCI images, JRE base, AOT cache | core | the ship path for services |

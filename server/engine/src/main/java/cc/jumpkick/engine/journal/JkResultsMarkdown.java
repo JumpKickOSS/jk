@@ -61,9 +61,20 @@ public final class JkResultsMarkdown {
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests)
             throws IOException {
+        write(record, runDir, latestPath, tests, null);
+    }
+
+    /** As above with {@code previous}, the earlier run the Coverage block shows deltas against. */
+    public static void write(
+            BuildRecord record,
+            @Nullable Path runDir,
+            @Nullable Path latestPath,
+            List<MarkdownTestReport.ModuleRun> tests,
+            @Nullable BuildRecord previous)
+            throws IOException {
         if (record == null) return;
         Path details = runDir == null ? null : runDir.resolve(ProjectBuilds.DETAILS);
-        String md = render(record, details, latestPath, tests);
+        String md = render(record, details, latestPath, tests, previous);
         if (runDir != null) {
             AtomicWrites.replace(runDir.resolve(FILE_NAME), md);
         }
@@ -85,6 +96,16 @@ public final class JkResultsMarkdown {
             @Nullable Path detailsPath,
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests) {
+        return render(record, detailsPath, latestPath, tests, null);
+    }
+
+    /** As above with {@code previous}, the earlier run the Coverage block shows deltas against. */
+    public static String render(
+            BuildRecord record,
+            @Nullable Path detailsPath,
+            @Nullable Path latestPath,
+            List<MarkdownTestReport.ModuleRun> tests,
+            @Nullable BuildRecord previous) {
         if (tests == null) tests = List.of();
         StringBuilder sb = new StringBuilder(2_048);
         String outcome = outcome(record);
@@ -97,6 +118,7 @@ public final class JkResultsMarkdown {
         appendGuards(sb, record);
         JkResultsTestsSection.append(sb, record, tests);
         appendPublish(sb, record);
+        JkResultsCoverageSection.append(sb, record, previous);
         appendDeliverables(sb, record);
         appendFailedSteps(sb, record);
         appendWarnings(sb, record);
@@ -210,6 +232,7 @@ public final class JkResultsMarkdown {
             sb.append('\n');
         }
         boolean testsLine = JkResultsTestsSection.appendCount(sb, r, tests);
+        boolean coverageLine = JkResultsCoverageSection.appendCount(sb, r);
         int errors = 0, warnings = 0;
         boolean coverTests = JkResultsTestsSection.hasTestEntries(tests);
         for (BuildRecord.Diag d : r.diagnostics()) {
@@ -229,7 +252,12 @@ public final class JkResultsMarkdown {
         if (b != null && b.savedMillis() > 0) {
             sb.append("Cache saved ~").append(fmtDuration(b.savedMillis())).append('\n');
         }
-        if (testsLine || errors > 0 || warnings > 0 || modules.size() > 1 || (b != null && b.savedMillis() > 0)) {
+        if (testsLine
+                || coverageLine
+                || errors > 0
+                || warnings > 0
+                || modules.size() > 1
+                || (b != null && b.savedMillis() > 0)) {
             sb.append('\n');
         }
     }
@@ -253,6 +281,7 @@ public final class JkResultsMarkdown {
         if (ranTests) {
             sb.append("- JUnit XML: `target/reports/test-results/`\n");
         }
+        JkResultsCoverageSection.appendFiles(sb, r);
         sb.append('\n');
     }
 

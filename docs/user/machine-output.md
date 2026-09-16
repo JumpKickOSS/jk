@@ -38,6 +38,16 @@ claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an I
 (`jk history`, `GET /api/history`, `jk_history`) and on the `session-start` line of
 `details.jsonl` — one vocabulary, every surface. [Web](web.md#who-asked).
 
+A coverage run (`jk test --coverage`, or a module with `[test] coverage = true`) adds a
+`Coverage:` line to the headline and a `## Coverage` table after `## Tests`: one row per module —
+`| Module | Lines | Branches |` as `85.2% (1204/1413)` — an `**all**` row for a workspace, and,
+when the journal holds an earlier coverage run of the project, `_Δ vs run #N_` with a `Δ` column
+of signed percentage points (`+1.3`, `−0.5`, `±0.0`, `new`) after each measure. `## Files` points
+at the HTML (`target/reports/coverage/index.html`; per module under
+`target/<module>/reports/coverage/`). The record carries the same rows as `coverage[]`
+(`dir`, `label`, `linesCovered`, `linesMissed`, `branchesCovered`, `branchesMissed`, `html`).
+[Test](test.md#coverage---coverage-test-coverage).
+
 A step that failed without a diagnostic of its own is one row of `## Failed steps`; a step that
 explained itself is also a `## Failures` entry headed `<step> — <module>`, its message fenced, then
 its output. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
