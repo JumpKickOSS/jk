@@ -5,6 +5,7 @@ import cc.jumpkick.host.ManifestNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Every file name jk itself owns on disk, spelled once.
@@ -27,10 +28,12 @@ import java.util.Objects;
  *
  * <p>{@link #manifestIn} is the one way to name a module's manifest. A directory with a {@code
  * pom.xml} and no {@code jk.toml} is <em>shadowed</em>: its manifest is the rendering of Maven's
- * effective POM under {@link #shadowDir}, a build artefact beside the module's other outputs, and
- * its lock lives beside that shadow so the repository is never dirtied. The engine installs the
- * {@link ShadowSource} that renders and refreshes the shadow; a process without one (the native
- * client) only names the path.
+ * effective POM under {@link #shadowDir}, a build artefact beside the module's other outputs. A
+ * reactor root's shadow carries the reactor's leaves as {@code [workspace] modules}, each leaf's
+ * shadow sits under the leaf's own {@link #SHADOW_DIR}, and the lock lives beside the shadow of the
+ * directory that owns it ({@link LockPaths#lockFile}) so the repository is never dirtied. The
+ * engine installs the {@link ShadowSource} that renders and refreshes shadows; a process without
+ * one (the native client) only names the path.
  */
 public final class ManifestPaths {
 
@@ -87,6 +90,29 @@ public final class ManifestPaths {
     /** The shadow manifest's path, whether or not it has been rendered. */
     public static Path shadowManifestPath(Path dir) {
         return shadowDir(dir).resolve(MANIFEST);
+    }
+
+    /**
+     * The module {@code manifest} defines: the directory holding it, or for a shadow manifest the
+     * module whose {@link #SHADOW_DIR} holds it. {@code null} for a manifest at a filesystem root.
+     */
+    public static @Nullable Path moduleOf(Path manifest) {
+        Path dir = manifest.toAbsolutePath().normalize().getParent();
+        if (dir == null || !dir.endsWith(SHADOW_DIR)) return dir;
+        Path module = dir;
+        for (int i = 0; i < SHADOW_DIR.split("/").length; i++) module = Objects.requireNonNull(module.getParent());
+        return module;
+    }
+
+    /**
+     * Why an edit of the manifest ({@code jk add}, {@code jk remove}, {@code jk update}, the MCP
+     * editors) refuses a shadowed directory: the shadow is rendered, never written to, so there are
+     * two ways to change what the build reads, and this names both.
+     */
+    public static String noManifestToEdit(String dir) {
+        return "no " + MANIFEST + " in " + dir + ": the project is built in place from " + POM
+                + " (effective POM), and this command edits " + MANIFEST + " only — run `jk import " + POM
+                + "` to own a " + MANIFEST + ", or edit the POM";
     }
 
     /** The build manifest that defines a project or a workspace member. */

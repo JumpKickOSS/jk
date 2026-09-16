@@ -30,7 +30,7 @@ public final class LockFreshness {
      */
     public static boolean needsRefresh(Path projectDir) {
         Path owner = LockPaths.lockOwnerDir(projectDir);
-        Path lockFile = owner.resolve(ManifestPaths.LOCK);
+        Path lockFile = LockPaths.lockFile(owner);
         if (!Files.isRegularFile(lockFile)) return true;
         return workspaceLockStale(owner, lockFile);
     }
@@ -71,8 +71,7 @@ public final class LockFreshness {
             if (stored == null || !isValidDigest(stored)) {
                 return true; // no trustworthy stamp → re-lock
             }
-            Path owner = lockFile.toAbsolutePath().normalize().getParent();
-            if (owner == null) return true; // a lock at a filesystem root stamps nothing
+            Path owner = LockPaths.lockOwnerDir(dir);
             String live = LockManifestDigest.compute(owner);
             if (!stored.equalsIgnoreCase(live)) return true;
             return missingNativePin(owner, lock);

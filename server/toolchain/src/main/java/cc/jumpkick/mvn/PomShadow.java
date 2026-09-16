@@ -3,79 +3,91 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
-import cc.jumpkick.host.Hashing;
-import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
- * The shadow manifest of a Maven module: the effective POM imported the way {@code jk import}
- * imports it, rendered as {@code jk.toml} text under a header that names the POM bytes it came
- * from. A shadow whose header names the current POM's digest (and the running jk) is current.
- *
- * <p>Single module only. A POM that lists {@code <modules>} — at the top level or in a profile —
- * is refused with the {@code jk import} remedy: a reactor becomes a workspace by import, not by
- * shadowing.
+ * The shadow manifests of a Maven build: each POM imported the way {@code jk import} imports it,
+ * rendered as {@code jk.toml} text under a {@link ShadowStamp} header naming the POM files it came
+ * from. A lone module gets one shadow; a reactor gets the root's, whose {@code [workspace]} lists
+ * the leaves, plus one per leaf with sibling dependencies as workspace edges. Every shadow of a
+ * reactor lists every POM of the tree, so an edit anywhere re-renders them all.
  */
 public final class PomShadow {
 
     private PomShadow() {}
 
-    /** Prefix of the shadow's first line; the rest of the line is {@link #stamp}'s value. */
-    static final String HEADER = "# shadow of " + ManifestPaths.POM + " ";
+    /** One rendered shadow: the module it defines, its text, and that module's Tier-3 rows. */
+    public record Shadow(Path moduleDir, String toml, List<String> tier3) {}
 
-    /** The rendered shadow and the rows of the import report that {@code jk import} would print. */
-    public record Rendered(String toml, ImportReport report) {
-
-        /** Tier-3 rows: what the effective POM declares that the shadow cannot carry. */
-        public List<String> tier3() {
-            List<String> rows = new ArrayList<>();
-            for (ImportReport.Issue issue : report.issues()) {
-                if (issue.severity() == ImportReport.Severity.ERROR) rows.add(issue.message());
-            }
-            return rows;
-        }
+    /** True when the shadow at {@code shadow} was rendered by this jk from the POM files it lists, as they stand. */
+    public static boolean isCurrent(Path shadow, Path moduleDir) {
+        return ShadowStamp.isCurrent(shadow, moduleDir);
     }
 
-    /** The value the shadow's header carries for these POM bytes under the running jk. */
-    public static String stamp(byte[] pomBytes) {
-        return Hashing.sha256Hex(pomBytes) + " jk " + JkVersion.VERSION;
-    }
-
-    /** True when the shadow at {@code shadow} was rendered from {@code pomBytes} by this jk. */
-    public static boolean isCurrent(Path shadow, byte[] pomBytes) {
-        if (!Files.isRegularFile(shadow)) return false;
-        try {
-            String first = Files.readAllLines(shadow).stream().findFirst().orElse("");
-            return first.equals(HEADER + stamp(pomBytes));
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    /** True when {@code pomBytes} lists modules anywhere, so the module is a reactor root. */
-    public static boolean declaresModules(byte[] pomBytes) {
-        return ReactorModules.declaresModules(EffectiveModel.rawModel(pomBytes));
-    }
-
-    /** One line: why a reactor is not shadowed, and the command that imports it instead. */
-    public static String reactorRefusal(Path pom) {
-        return pom + " declares <modules>: a reactor is built after `jk import " + ManifestPaths.POM
-                + "` writes its jk.toml workspace; in-place builds cover a single module";
+    /** A lone module's shadow; the header lists its POM and the relative-path parents on disk. */
+    public static Shadow render(PomImporter importer, Path pom) throws IOException {
+        PomImporter.Result imported = importer.importFrom(pom);
+        Path moduleDir = Objects.requireNonNull(pom.toAbsolutePath().normalize().getParent(), "module dir");
+        return shadow(moduleDir, imported.jkBuild(), rows(imported.report(), null, Set.of()), ShadowStamp.chain(pom));
     }
 
     /**
-     * Import {@code pom} through {@code importer} and render the shadow. The text starts with the
-     * header line for {@code pomBytes}, which must be the bytes {@code pom} holds.
+     * A reactor's shadows, the root's first: the root carries the leaves as {@code [workspace]
+     * modules}, each leaf the module {@code jk import} would write for it. The report's rows are
+     * handed to the module they name ({@code [path] } prefix) and the rest to the root.
      */
-    public static Rendered render(PomImporter importer, Path pom, byte[] pomBytes) throws IOException {
-        if (declaresModules(pomBytes)) throw new IllegalStateException(reactorRefusal(pom));
-        PomImporter.Result imported = importer.importFrom(pom);
-        String body = JkBuildRenderer.render(imported.jkBuild());
-        return new Rendered(HEADER + stamp(pomBytes) + "\n" + body, imported.report());
+    public static List<Shadow> renderReactor(PomImporter importer, Path rootPom) throws IOException {
+        PomImporter.WorkspaceImportResult imported = importer.importWorkspace(rootPom);
+        Path rootDir =
+                Objects.requireNonNull(rootPom.toAbsolutePath().normalize().getParent(), "root dir");
+        Set<Path> inputs = new LinkedHashSet<>();
+        for (Path pom : imported.pomFiles()) inputs.addAll(ShadowStamp.chain(pom));
+        Set<String> paths = imported.modules().keySet();
+        List<Shadow> out = new ArrayList<>();
+        out.add(shadow(rootDir, imported.root(), rows(imported.report(), null, paths), inputs));
+        for (Map.Entry<String, JkBuild> module : imported.modules().entrySet()) {
+            Path moduleDir = rootDir.resolve(module.getKey()).normalize();
+            out.add(shadow(moduleDir, module.getValue(), rows(imported.report(), module.getKey(), paths), inputs));
+        }
+        return out;
+    }
+
+    private static Shadow shadow(Path moduleDir, JkBuild build, List<String> tier3, Collection<Path> inputs) {
+        return new Shadow(moduleDir, ShadowStamp.header(moduleDir, inputs) + JkBuildRenderer.render(build), tier3);
+    }
+
+    /**
+     * The Tier-3 rows of {@code report} that belong to {@code path}: those prefixed {@code [path] }
+     * with the prefix removed, or for the root ({@code null}) the rows no module path prefixes.
+     */
+    private static List<String> rows(ImportReport report, @Nullable String path, Set<String> paths) {
+        List<String> out = new ArrayList<>();
+        for (ImportReport.Issue issue : report.issues()) {
+            if (issue.severity() != ImportReport.Severity.ERROR) continue;
+            String message = issue.message();
+            String owner = ownerOf(message, paths);
+            if (path == null ? owner == null : path.equals(owner)) {
+                out.add(owner == null ? message : message.substring(owner.length() + 3));
+            }
+        }
+        return out;
+    }
+
+    private static @Nullable String ownerOf(String message, Set<String> paths) {
+        if (!message.startsWith("[")) return null;
+        int close = message.indexOf("] ");
+        if (close < 0) return null;
+        String candidate = message.substring(1, close);
+        return paths.contains(candidate) ? candidate : null;
     }
 }

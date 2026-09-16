@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -13,7 +14,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
@@ -68,10 +68,8 @@ public final class AutoLock {
             ResolveObserver observer,
             @Nullable Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
-        // Serialize per lock dir; a concurrent job may have freshened while we waited.
-        Path lockDir =
-                Objects.requireNonNull(lockFile.toAbsolutePath().normalize().getParent(), "lock dir");
-        synchronized (LockGate.monitorFor(lockDir)) {
+        // Serialize per lock owner; a concurrent job may have freshened while we waited.
+        synchronized (LockGate.monitorFor(LockPaths.lockOwnerDir(dir))) {
             if (!isStale(dir, lockFile)) {
                 try {
                     return LockfileReader.read(lockFile);

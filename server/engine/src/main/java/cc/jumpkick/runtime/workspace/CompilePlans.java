@@ -7,7 +7,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildPlanner;
 import java.nio.file.Path;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
@@ -36,7 +35,7 @@ public final class CompilePlans {
                 cache,
                 buildFile,
                 lockFile,
-                Objects.requireNonNull(lockFile.getParent(), "lock dir"),
+                LockPaths.lockOwnerDir(dir),
                 1,
                 0,
                 profileName,

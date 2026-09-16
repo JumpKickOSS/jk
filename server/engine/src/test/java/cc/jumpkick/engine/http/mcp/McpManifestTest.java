@@ -45,6 +45,25 @@ class McpManifestTest {
     }
 
     @Test
+    void a_pom_only_directory_is_refused_with_both_remedies(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("pom.xml"), "<project/>", StandardCharsets.UTF_8);
+        for (Map<String, Object> out : List.of(
+                McpManifest.setJava(dir.toString(), 21, true),
+                McpManifest.deps(dir.toString(), "add", List.of("com.acme:thing:1.0.0"), "main", true),
+                McpManifest.workspace(dir.toString(), "add_member", "api", true),
+                McpUpdate.run(dir.toString(), List.of(), false, false))) {
+            assertThat(out.get("applied")).isEqualTo(false);
+            assertThat(String.valueOf(out.get("error")))
+                    .contains("built in place from pom.xml")
+                    .contains("jk import pom.xml")
+                    .contains("edit the POM");
+        }
+        try (var files = Files.list(dir)) {
+            assertThat(files.map(p -> p.getFileName().toString())).containsExactly("pom.xml");
+        }
+    }
+
+    @Test
     void applied_writes_are_atomic_and_leave_no_temp_sibling(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), TABLE_TERMINATED, StandardCharsets.UTF_8);
         McpManifest.setJava(dir.toString(), 21, true);

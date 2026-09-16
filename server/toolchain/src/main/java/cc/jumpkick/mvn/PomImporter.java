@@ -54,10 +54,12 @@ public final class PomImporter {
 
     /**
      * Outcome of importing a multi-module POM tree: the root's {@link JkBuild} (carrying the
-     * workspace block), each module's {@link JkBuild} keyed by the relative module path, and one
-     * aggregated {@link ImportReport} spanning the root + every child.
+     * workspace block), each module's {@link JkBuild} keyed by the relative module path, one
+     * aggregated {@link ImportReport} spanning the root + every child, and every pom.xml of the
+     * tree the import read (the root, each module's, the ones inactive profiles list included).
      */
-    public record WorkspaceImportResult(JkBuild root, Map<String, JkBuild> modules, ImportReport report) {}
+    public record WorkspaceImportResult(
+            JkBuild root, Map<String, JkBuild> modules, ImportReport report, Set<Path> pomFiles) {}
 
     private final RepoModelResolver resolver;
 
@@ -164,7 +166,7 @@ public final class PomImporter {
         Model rootRaw = EffectiveModel.rawModel(rootXml);
         if (!ReactorModules.declaresModules(rootRaw)) {
             Result single = importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null));
-            return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report());
+            return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report(), Set.of(rootFile));
         }
 
         ImportReport.Builder report = ImportReport.builder();
@@ -217,7 +219,7 @@ public final class PomImporter {
             report.warning("`" + bom + "` is a BOM (packaging `pom`, a `<dependencyManagement>` table and nothing"
                     + " else) that no module of the reactor imports; it is not a workspace module.");
         }
-        return new WorkspaceImportResult(rootJkBuild, rewritten, report.build());
+        return new WorkspaceImportResult(rootJkBuild, rewritten, report.build(), found.pomFiles());
     }
 
     /** {@code group:artifact} → root-relative path for every BOM leaf of the reactor. */

@@ -153,9 +153,9 @@ public final class JkBuildParser {
         }
     }
 
-    /** The directory holding {@code manifest}. A manifest at a filesystem root has no module. */
+    /** The module {@code manifest} defines ({@link ManifestPaths#moduleOf}). A manifest at a filesystem root has none. */
     private static Path moduleDirOf(Path manifest) {
-        Path dir = manifest.getParent();
+        Path dir = ManifestPaths.moduleOf(manifest);
         if (dir == null) throw new JkBuildParseException("jk.toml must live in a directory: " + manifest);
         return dir;
     }

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.PomReactorScan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.mvn.PomImporter;
@@ -12,27 +13,35 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The engine's {@link ManifestPaths.ShadowSource}: a module with a {@code pom.xml} and no {@code
  * jk.toml} gets its manifest rendered from the effective POM into {@link ManifestPaths#shadowDir},
- * and rendered again whenever the POM's bytes (or the running jk) change. Every reader of the
- * module's manifest goes through {@link ManifestPaths#manifestIn}, so the shadow is materialized
- * by the first reader and shared by the rest.
+ * and rendered again whenever a POM it read (or the running jk) changes. A reactor is rendered
+ * from its root: the root's shadow lists the leaves as a workspace and every leaf's shadow lands
+ * under the leaf's own shadow directory, whichever of them is read first. Every reader of a
+ * module's manifest goes through {@link ManifestPaths#manifestIn}, so a shadow is materialized by
+ * the first reader and shared by the rest.
  *
  * <p>Rendering happens once per POM change; the rows of the import report that {@code jk import}
  * would grade Tier 3 are parked per module until the next build's parse step {@linkplain
  * #drainTier3 drains} them into its warnings, so a build says once what the shadow does not carry.
+ * The reactor's own rows ride with the first leaf that drains.
  */
 public final class ShadowManifests {
 
     private ShadowManifests() {}
 
     private static final Map<Path, List<String>> PENDING_TIER3 = new ConcurrentHashMap<>();
+
+    /** Leaf module → the reactor root whose rendering wrote its shadow. */
+    private static final Map<Path, Path> ROOT_OF = new ConcurrentHashMap<>();
 
     /** Per-module render gate: two readers racing on the same POM render it once. */
     private static final Map<Path, Object> GATES = new ConcurrentHashMap<>();
@@ -43,39 +52,70 @@ public final class ShadowManifests {
     }
 
     /**
-     * The shadow manifest of {@code dir}, rendered now when absent or behind its POM. A reactor
-     * root is refused ({@link PomShadow#reactorRefusal}); an unreadable POM is an {@link
-     * UncheckedIOException}.
+     * The shadow manifest of {@code dir}, rendered now when absent or behind the POM files it read.
+     * A leaf of a reactor is rendered by its root; a directory the root lists that Maven would not
+     * build here (an aggregator, a module of an inactive profile) is an {@link IllegalStateException}
+     * naming the root to build from. An unreadable POM is an {@link UncheckedIOException}.
      */
     public static Path materialize(Path dir) {
         Path module = dir.toAbsolutePath().normalize();
-        Path pom = module.resolve(ManifestPaths.POM);
         Path shadow = ManifestPaths.shadowManifestPath(module);
         synchronized (GATES.computeIfAbsent(module, k -> new Object())) {
-            try {
-                byte[] pomBytes = Files.readAllBytes(pom);
-                if (PomShadow.isCurrent(shadow, pomBytes)) return shadow;
-                Cas cas = JkStores.storeCas();
-                PomImporter importer = new PomImporter(RepoGroupBuilder.buildDefault(cas), cas);
-                PomShadow.Rendered rendered = PomShadow.render(importer, pom, pomBytes);
-                Files.createDirectories(Objects.requireNonNull(shadow.getParent(), "shadow dir"));
-                AtomicWrites.replace(shadow, rendered.toml());
-                PENDING_TIER3.put(module, rendered.tier3());
-                Log.debug("shadow manifest rendered", shadow);
+            if (PomShadow.isCurrent(shadow, module)) return shadow;
+            Optional<Path> root = PomReactorScan.reactorRootOf(module);
+            if (root.isEmpty()) {
+                render(module);
                 return shadow;
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
             }
+            // The root renders every leaf; a stale or missing leaf shadow under a current root
+            // means the root has to render again, which is what a forced pass does.
+            materialize(root.get());
+            if (PomShadow.isCurrent(shadow, module)) return shadow;
+            synchronized (GATES.computeIfAbsent(root.get(), k -> new Object())) {
+                render(root.get());
+            }
+            if (PomShadow.isCurrent(shadow, module)) return shadow;
+            throw new IllegalStateException(
+                    module + " is listed by " + root.get().resolve(ManifestPaths.POM)
+                            + " but is not a module Maven would build here (an aggregator, or a module of a profile that is"
+                            + " not active); build from " + root.get());
+        }
+    }
+
+    /** Render {@code module}'s shadow, and with it every leaf's when {@code module} is a reactor root. */
+    private static void render(Path module) {
+        Path pom = module.resolve(ManifestPaths.POM);
+        try {
+            Cas cas = JkStores.storeCas();
+            PomImporter importer = new PomImporter(RepoGroupBuilder.buildDefault(cas), cas);
+            List<PomShadow.Shadow> shadows = PomReactorScan.declaresModules(pom)
+                    ? PomShadow.renderReactor(importer, pom)
+                    : List.of(PomShadow.render(importer, pom));
+            for (PomShadow.Shadow rendered : shadows) {
+                Path target = ManifestPaths.shadowManifestPath(rendered.moduleDir());
+                Files.createDirectories(Objects.requireNonNull(target.getParent(), "shadow dir"));
+                AtomicWrites.replace(target, rendered.toml());
+                PENDING_TIER3.put(rendered.moduleDir(), rendered.tier3());
+                if (!rendered.moduleDir().equals(module)) ROOT_OF.put(rendered.moduleDir(), module);
+                Log.debug("shadow manifest rendered", target);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
     /**
      * The Tier-3 rows of the most recent rendering of {@code dir}'s shadow that no build has
-     * reported yet, each with the {@code jk import} remedy; empty after the first call.
+     * reported yet — and, for a leaf, its reactor's own rows — each with the {@code jk import}
+     * remedy; empty after the first call.
      */
     public static List<String> drainTier3(Path dir) {
-        List<String> rows = PENDING_TIER3.remove(dir.toAbsolutePath().normalize());
-        if (rows == null || rows.isEmpty()) return List.of();
+        Path module = dir.toAbsolutePath().normalize();
+        List<String> rows = new ArrayList<>();
+        Path root = ROOT_OF.get(module);
+        if (root != null) rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(root), List.of()));
+        rows.addAll(Objects.requireNonNullElse(PENDING_TIER3.remove(module), List.of()));
+        if (rows.isEmpty()) return List.of();
         return rows.stream()
                 .map(row -> row + " — not carried by the in-place build of " + ManifestPaths.POM + "; `jk import "
                         + ManifestPaths.POM + "` writes a jk.toml to edit")

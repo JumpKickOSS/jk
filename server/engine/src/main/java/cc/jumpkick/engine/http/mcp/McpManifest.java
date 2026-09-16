@@ -35,6 +35,7 @@ public final class McpManifest {
             String dir, String action, List<String> coords, @Nullable String scopeName, boolean apply) {
         Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
+        if (refuseShadowed(file, out)) return out;
         try {
             String before = Files.readString(file, StandardCharsets.UTF_8);
             String after = before;
@@ -89,6 +90,7 @@ public final class McpManifest {
     public static Map<String, Object> workspace(String dir, String action, String path, boolean apply) {
         Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
+        if (refuseShadowed(file, out)) return out;
         try {
             String before = Files.readString(file, StandardCharsets.UTF_8);
             String after = "remove_member".equals(action)
@@ -111,6 +113,7 @@ public final class McpManifest {
     public static Map<String, Object> setJava(String dir, int java, boolean apply) {
         Path file = PathUtil.resolveUserPath(dir).resolve(ManifestPaths.MANIFEST);
         Map<String, Object> out = new LinkedHashMap<>();
+        if (refuseShadowed(file, out)) return out;
         out.put("note", "java = " + java + " is language/--release, not jdk = " + java);
         try {
             String before = Files.readString(file, StandardCharsets.UTF_8);
@@ -163,5 +166,16 @@ public final class McpManifest {
         if (p.length >= 3) return new Parsed(p[1], p[0], p[1], p[2]);
         if (p.length == 2) return new Parsed(p[1], p[0], p[1], null);
         return new Parsed(raw, "", raw, null);
+    }
+    /**
+     * A directory built in place from its {@code pom.xml} has no manifest to write: the answer is
+     * the error naming the two remedies, and {@code true} so the caller returns it.
+     */
+    static boolean refuseShadowed(Path manifest, Map<String, Object> out) {
+        Path dir = Objects.requireNonNull(manifest.getParent(), "manifest directory");
+        if (!ManifestPaths.isShadowed(dir)) return false;
+        out.put("error", ManifestPaths.noManifestToEdit(dir.toString()));
+        out.put("applied", false);
+        return true;
     }
 }
