@@ -34,6 +34,13 @@ public interface ResolveObserver {
      */
     default void onOverride(String line) {}
 
+    /**
+     * A fact about the lock worth one line beside it, rendered as a sentence: an edge whose
+     * classifier follows the host, or a repository a dependency's POM declared. Fires once per
+     * distinct line after the graphs are solved.
+     */
+    default void onNote(String line) {}
+
     /** No-op observer — used when no progress tracking is needed. */
     ResolveObserver NOOP = new ResolveObserver() {
         @Override

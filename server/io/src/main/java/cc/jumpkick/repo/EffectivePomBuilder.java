@@ -263,8 +263,9 @@ public final class EffectivePomBuilder {
             throw new PomParseException("cannot determine effective groupId/version for " + child.artifactId());
         }
 
-        // 2. Properties — parent first, child overrides. Implicit project.* always come from child.
-        Map<String, String> props = new LinkedHashMap<>();
+        // 2. Properties — host platform words first, parent next, child overrides. Implicit
+        // project.* always come from child.
+        Map<String, String> props = new LinkedHashMap<>(HostClassifiers.properties());
         if (parent != null) props.putAll(parent.properties());
         props.putAll(child.properties());
         props.put("project.groupId", groupId);
@@ -338,6 +339,7 @@ public final class EffectivePomBuilder {
             }
             finalDeps.add(dep);
         }
+        Map<String, String> hostClassified = hostClassified(finalDeps, props);
         finalDeps = substituteAll(finalDeps, props);
 
         // retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
@@ -372,7 +374,29 @@ public final class EffectivePomBuilder {
                 finalDeps,
                 retainedManaged,
                 retainedImportedKeys,
-                child.relocation());
+                child.relocation(),
+                hostClassified);
+    }
+
+    /**
+     * The dependencies whose classifier is still a {@code ${...}} expression that a host property
+     * (and not the chain's own properties) will fill, keyed by module, valued by the expression.
+     */
+    private static Map<String, String> hostClassified(List<Pom.Dep> deps, Map<String, String> props) {
+        Map<String, String> out = new LinkedHashMap<>();
+        Map<String, String> hostWords = HostClassifiers.properties();
+        for (Pom.Dep dep : deps) {
+            String classifier = dep.classifier();
+            if (classifier == null) continue;
+            Matcher m = PROPERTY_REF.matcher(classifier);
+            while (m.find()) {
+                String name = m.group(1);
+                if (HostClassifiers.names(name) && Objects.equals(props.get(name), hostWords.get(name))) {
+                    out.put(dep.module(), classifier);
+                }
+            }
+        }
+        return out;
     }
 
     // --- merge helpers -----------------------------------------------------

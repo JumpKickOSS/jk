@@ -19,6 +19,10 @@ import org.jspecify.annotations.Nullable;
  * EffectivePomBuilder#depKey Maven dependency key}) that an {@code import}-scoped BOM supplied
  * rather than this POM or a parent declaring them. A POM importing this one treats those as
  * imports again, so a declaration anywhere in its own chain still beats them.
+ *
+ * <p>{@code hostClassified} maps a dependency's {@code group:artifact} to the {@code ${...}}
+ * expression its classifier was written as, for every dependency whose classifier a {@link
+ * HostClassifiers host property} filled: the classifier in {@link #dependencies} is this machine's.
  */
 public record EffectivePom(
         String groupId,
@@ -29,7 +33,8 @@ public record EffectivePom(
         List<Pom.Dep> dependencies,
         List<Pom.Dep> managedDependencies,
         Set<String> importedManagedKeys,
-        @Nullable Relocation relocation) {
+        @Nullable Relocation relocation,
+        Map<String, String> hostClassified) {
 
     /** A POM whose managed entries are all its own and that declares no relocation. */
     public EffectivePom(
@@ -40,7 +45,17 @@ public record EffectivePom(
             Map<String, String> properties,
             List<Pom.Dep> dependencies,
             List<Pom.Dep> managedDependencies) {
-        this(groupId, artifactId, version, packaging, properties, dependencies, managedDependencies, Set.of(), null);
+        this(
+                groupId,
+                artifactId,
+                version,
+                packaging,
+                properties,
+                dependencies,
+                managedDependencies,
+                Set.of(),
+                null,
+                Map.of());
     }
 
     public EffectivePom {
@@ -52,5 +67,6 @@ public record EffectivePom(
         dependencies = List.copyOf(dependencies);
         managedDependencies = List.copyOf(managedDependencies);
         importedManagedKeys = Set.copyOf(importedManagedKeys);
+        hostClassified = Map.copyOf(hostClassified);
     }
 }

@@ -235,6 +235,7 @@ public final class LockOrchestrator {
                 .solve(roots, lockedVersionPrefs, progress);
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
+            for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
         }
         // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
         JupiterLine.checkAligned(solved.test());

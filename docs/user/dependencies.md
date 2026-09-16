@@ -69,6 +69,19 @@ a transitive with no pin on it keeps the highest-declared rule either way.
 
 **Maven relocations are followed** (`distributionManagement/relocation`).
 
+### Classifiers that follow the host
+
+Some POMs spell a platform artifact's classifier with a property a Maven build values from the
+machine: OpenJFX's `${javafx.platform}` (an OS-activated profile in its parent) and
+os-maven-plugin's `${os.detected.classifier}`, `${os.detected.name}` and `${os.detected.arch}`.
+jk values those from the running host — `linux`, `linux-aarch64`, `mac`, `mac-aarch64`, `win`
+for OpenJFX; `linux-x86_64`, `osx-aarch_64`, `windows-x86_64`, … for os-maven-plugin — in the
+effective model of every POM it reads and in the model `jk import` reads, so `javafx-graphics`
+resolves to this machine's `javafx-graphics-25.0.3-linux.jar`. A POM that defines the property
+itself keeps its own value. The lock pins the artifact of the host that ran `jk lock` and says
+so in a note naming the edge and the expression; a lock made on another platform pins that
+platform's artifact.
+
 ## Library catalog
 
 Short names resolve through layered maps **name → `group:artifact`** (no versions):

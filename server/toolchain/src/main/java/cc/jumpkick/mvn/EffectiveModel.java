@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.repo.HostClassifiers;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.maven.model.Dependency;
@@ -104,7 +106,7 @@ final class EffectiveModel {
         // Two phases on purpose: the phase-one model is inherited and interpolated but its BOM
         // imports are still listed, which is how they reach `[platform]` with resolved versions.
         request.setTwoPhaseBuilding(true);
-        request.setSystemProperties(System.getProperties());
+        request.setSystemProperties(systemProperties());
         request.setModelResolver(resolver);
         request.setWorkspaceModelResolver(reactor);
         if (pomFile != null) {
@@ -130,6 +132,18 @@ final class EffectiveModel {
             Model own = rawModel(xml);
             return new EffectiveModel(own, own, own, List.of(), List.of(), describe(e.getProblems()));
         }
+    }
+
+    /**
+     * What Maven's {@code -D} space holds here: the JVM's system properties, plus the platform words
+     * an OS-activated profile or os-maven-plugin would set for this host ({@code javafx.platform},
+     * {@code os.detected.classifier}, …), so a classifier spelled with one reads the running host.
+     */
+    private static Properties systemProperties() {
+        Properties props = new Properties();
+        props.putAll(System.getProperties());
+        HostClassifiers.properties().forEach(props::putIfAbsent);
+        return props;
     }
 
     /** The POM's own model, nothing inherited or interpolated. */
