@@ -373,9 +373,9 @@ public final class PlannerTest {
             if (mixedTestGv) javaCp.add(gvTestOut);
         }
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
-        // Run the same declared annotation processors over test sources:
-        // modern javac only honors processors named by -processorpath, so
-        // without this a Lombok-using test wouldn't see its generated modules.
+        // The same declared annotation processors run over test sources; the request
+        // builder discovers classpath processors when none are declared, exactly as
+        // compile-main does, so a Lombok-using test sees its generated members.
         List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);

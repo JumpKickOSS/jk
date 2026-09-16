@@ -91,7 +91,7 @@ floor is the floating form of a framework version (`[spring-boot] version = "^4"
 | `[test-dependencies]` | Tests only |
 | `[provided-dependencies]` | Compile, not packaged |
 | `[runtime-dependencies]` | Runtime only |
-| `[processor-dependencies]` | Annotation processors and javac plugins (own resolve graph) — [javac plugins](build.md#javac-plugins) |
+| `[processor-dependencies]` | Annotation processors and javac plugins (own resolve graph); absent, processors registered on the compile classpath run — [Annotation processors](build.md#annotation-processors) |
 | `[platform-dependencies]` | BOMs — [Platforms](platforms.md) |
 | `[export-dependencies]` | Published API surface |
 | `[dev-dependencies]` / `[test-dev-dependencies]` | Optional extra scopes |

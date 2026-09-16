@@ -15,6 +15,7 @@ import static cc.jumpkick.runtime.PlannerSupport.groovyCompileJar;
 import static cc.jumpkick.runtime.PlannerSupport.mergeLanguageOutput;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.ClasspathProcessors;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.GroovycRequest;
@@ -253,8 +254,22 @@ public final class PlannerCompile {
                 .release(in.release())
                 .extraOptions(javacOptions(options, in.javac()))
                 .javaHome(in.javaHome())
-                .processorPath(in.processorPath());
+                .processorPath(effectiveProcessorPath(in.processorPath(), classpath));
         return withScala(req, in.scala()).build();
+    }
+
+    /**
+     * The processor path a compile step hands javac. A module that declares
+     * {@code [processor-dependencies]} names its processors, and that path alone is searched: javac's
+     * own rule for {@code -processorpath}, and what Maven does under {@code annotationProcessorPaths}.
+     * A module that declares none compiles the way javac and Maven do by default: the processors
+     * registered on its compile classpath (Lombok or MapStruct declared as a plain or provided
+     * dependency) run, found through their {@code META-INF/services} entry. The found entries ARE the
+     * request's processor path, so the worker loads them, records what they generate and the key
+     * hashes their full content — a discovered processor and a declared one are one lane downstream.
+     */
+    public static List<Path> effectiveProcessorPath(List<Path> declared, List<Path> classpath) {
+        return declared.isEmpty() ? ClasspathProcessors.discover(classpath) : declared;
     }
 
     /**
@@ -289,7 +304,7 @@ public final class PlannerCompile {
                 .release(in.release())
                 .extraOptions(javacOptions(in.javacArgs(), in.javac()))
                 .javaHome(in.javaHome())
-                .processorPath(in.processorPath());
+                .processorPath(effectiveProcessorPath(in.processorPath(), classpath));
         return withScala(req, in.scala()).build();
     }
 

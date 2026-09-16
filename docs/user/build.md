@@ -51,6 +51,23 @@ build-logic run and packaging step once more: their keys carry the identity of t
 produced them, so nothing an older engine produced is restored under the new one. Compile steps
 keep their keys and stay cached.
 
+## Annotation processors
+
+Where javac looks for annotation processors follows the module's declarations, the way javac
+and Maven behave:
+
+| Declaration | Processors that run |
+|-------------|---------------------|
+| No `[processor-dependencies]` | Every compile-classpath entry that registers one in `META-INF/services/javax.annotation.processing.Processor` — Lombok or MapStruct declared as a plain or `provided` dependency runs |
+| `[processor-dependencies]` present | That path alone; a processor that is only on the compile classpath does not run |
+
+The discovered entries become the step's processor path, so a discovered processor and a
+declared one are the same thing downstream: the worker loads it, records what it generates, and
+the compile action key hashes its full content. `compile-main`, `compile-test`, fixtures and the
+guard suite all apply the rule. Declare `[processor-dependencies]` when the manifest should say
+what runs, when the processor needs dependencies of its own that do not belong on the compile
+classpath, or when a classpath jar registers a processor you want silent.
+
 ## javac plugins
 
 A javac **plugin** (Error Prone, NullAway, Checker Framework, Manifold) is a jar on the

@@ -109,8 +109,8 @@ public final class JavacRunner {
             lines.add(quote(Classpaths.join(request.classpath())));
         }
         if (!request.processorPath().isEmpty()) {
-            // An explicit -processorpath both runs the processors and keeps them off
-            // the compile classpath; modern javac won't auto-run classpath processors.
+            // The request names its processors: javac searches this path alone, and a
+            // processor jar that is only here stays off the compile classpath.
             lines.add("-processorpath");
             lines.add(quote(Classpaths.join(request.processorPath())));
         }
