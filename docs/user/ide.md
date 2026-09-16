@@ -16,8 +16,9 @@ files from the MCP tool `jk_ide` (`preview=true` lists them without writing) —
 
 ## Test suites in the IDE
 
-`jk ide` registers **every discovered test suite** as IDE **test** source roots in the
-same module (IntelliJ `.iml`, VS Code/JDT `.classpath`, BSP `buildTarget/sources`). One
+`jk ide` and the IntelliJ plugin register **every discovered test suite** as IDE **test** source
+roots in the same module (IntelliJ `.iml` or the plugin's resolved module, VS Code/JDT
+`.classpath`, BSP `buildTarget/sources`). One
 test output directory; no extra IDE module per suite. Named suite resource dirs are test
 resources when present.
 
@@ -111,11 +112,15 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
 
 ## Editor extensions
 
+- **IntelliJ** — the plugin in `clients/intellij/` is the IntelliJ path; package it with
+  `./scripts/package-intellij.sh`. It is an IntelliJ *external system*: opening a project with
+  `jk.toml` links it and resolves modules, every source and test-suite root, libraries with
+  sources, per-module JDKs and the `target/jdt` compiler outputs from the engine `ide-model`
+  (`jk ide --print-model`), with no `*.iml` or `.idea/modules.xml` written. A change to
+  `jk.toml` or `jk-lock.toml` — from the editor or a terminal `jk add` — re-resolves after a
+  2 s quiet window; **Tools → JumpKick → Sync project** re-resolves on demand with progress in
+  the Build tool window. `jk ide --idea` is the export for an IDE without the plugin.
 - **VS Code** — `clients/vscode/` in the JumpKick repo; package with
   `./scripts/package-vscode.sh`
-- **IntelliJ** — `clients/intellij/`; package with `./scripts/package-intellij.sh`.
-  **Tools → JumpKick → Sync project** runs `jk ide --print-model` + `jk ide --idea` +
-  `jk bsp install`. On open, projects with `jk.toml` are offered Sync (auto-Sync when no
-  IDEA modules yet).
 
-Both are **wire-only**.
+Both are **wire-only**: they run the `jk` CLI and never load engine jars.

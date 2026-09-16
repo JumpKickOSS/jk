@@ -52,6 +52,30 @@ public final class JkCliRunner {
             @Nullable ProgressIndicator indicator,
             @Nullable Consumer<String> sink)
             throws Exception {
+        return exec(cwd, args, indicator, sink, sink, sink != null);
+    }
+
+    /**
+     * Full stdout capture with stderr streamed to {@code stderrSink}: the shape a parsed verb
+     * needs when its progress still belongs in a console.
+     */
+    public static Result runCapture(
+            @NotNull File cwd,
+            @NotNull List<String> args,
+            @Nullable ProgressIndicator indicator,
+            @Nullable Consumer<String> stderrSink)
+            throws Exception {
+        return exec(cwd, args, indicator, null, stderrSink, false);
+    }
+
+    private static Result exec(
+            File cwd,
+            List<String> args,
+            @Nullable ProgressIndicator indicator,
+            @Nullable Consumer<String> outSink,
+            @Nullable Consumer<String> errSink,
+            boolean capped)
+            throws Exception {
         GeneralCommandLine cmd = new GeneralCommandLine();
         cmd.setExePath(JkBin.path());
         cmd.addParameters(args);
@@ -68,11 +92,9 @@ public final class JkCliRunner {
             public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
                 String text = event.getText();
                 if (text == null) return;
-                if (JkCliLines.isStderr(String.valueOf(outputType))) {
-                    JkCliLines.append(err, text, sink != null);
-                } else {
-                    JkCliLines.append(out, text, sink != null);
-                }
+                boolean stderr = JkCliLines.isStderr(String.valueOf(outputType));
+                JkCliLines.append(stderr ? err : out, text, capped);
+                Consumer<String> sink = stderr ? errSink : outSink;
                 if (sink != null) {
                     String line = text.stripTrailing();
                     if (!line.isEmpty()) sink.accept(line);
@@ -110,13 +132,13 @@ public final class JkCliRunner {
 
     /** Full stdout capture (for {@code --print-model}) — the explicit exception to streaming. */
     public static Result runCapture(@NotNull File cwd, @NotNull List<String> args) throws Exception {
-        return runCapture(cwd, args, null);
+        return exec(cwd, args, null, null, null, false);
     }
 
     /** {@link #runCapture(File, List)} with cancellation via {@code indicator}. */
     public static Result runCapture(
             @NotNull File cwd, @NotNull List<String> args, @Nullable ProgressIndicator indicator) throws Exception {
-        return run(cwd, args, indicator, null);
+        return exec(cwd, args, indicator, null, null, false);
     }
 
     public static List<String> args(String... parts) {

@@ -6,6 +6,7 @@ import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.externalSystem.service.execution.ProgressExecutionMode;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -86,7 +87,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                 .notify(project);
     }
 
-    /** Full Sync: print-model + ide --idea + bsp install + VFS refresh. */
+    /** Sync: re-resolve the project through the external system; progress in the Build tool window. */
     public static final class Sync extends AnAction implements DumbAware {
         public Sync() {
             super("Sync project");
@@ -104,33 +105,8 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                 balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
                 return;
             }
-            ProgressManager.getInstance().run(new Task.Backgroundable(project, "JumpKick: Sync", true) {
-                @Override
-                public void run(@NotNull ProgressIndicator indicator) {
-                    try {
-                        JkSyncService.SyncResult result = JkSyncService.sync(project, base, indicator);
-                        ApplicationManager.getApplication().invokeLater(() -> {
-                            if (result.success()) {
-                                balloon(
-                                        project,
-                                        result.message() != null ? result.message() : "Sync succeeded",
-                                        NotificationType.INFORMATION);
-                            } else {
-                                balloon(
-                                        project,
-                                        result.message() != null ? result.message() : "Sync failed",
-                                        NotificationType.ERROR);
-                            }
-                        });
-                    } catch (Exception ex) {
-                        ApplicationManager.getApplication()
-                                .invokeLater(() -> balloon(
-                                        project,
-                                        "Sync failed: " + ex.getMessage() + " — install jk and ensure PATH / JK_BIN",
-                                        NotificationType.ERROR));
-                    }
-                }
-            });
+            JkManifestWatcher.getInstance(project);
+            JkSync.refresh(project, base, ProgressExecutionMode.IN_BACKGROUND_ASYNC);
         }
     }
 
