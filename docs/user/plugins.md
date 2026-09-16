@@ -41,11 +41,17 @@ generation, lint as a cached step — in the order set by [the 1.0 plan](../cont
 
 Framework how-tos: [Frameworks](frameworks.md). Format: [Format](format.md).
 
-## Private / vendored plugins
+## Third-party and vendored plugins
 
-Pre-1.0 there is **no** public plugin marketplace and `jk-plugin-sdk` is **not** published
-to Maven Central. You can still pin a **private** jar (path or Maven coordinate + required
-`sha256`). Authoring that jar: [contributor plugin guide](../contributors/plugins.md).
+The plugin SDK, `cc.jumpkick:jk-plugin-sdk`, is a published coordinate: every jk release ships it
+(with `jk-host`, its one dependency) to `https://jumpkick.build/repo/` and to Maven Central through
+`jk publish --central` ([releases](../contributors/releases.md)), at the release's own version. A
+plugin authored outside the jk tree depends on that coordinate and declares the jk it needs with a
+`jk-compat` floor — [examples/third-party-plugin](examples/third-party-plugin/) is the complete
+shape, and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the
+SPI is still additive-only by intent rather than by contract, and there is **no** public plugin
+marketplace: a consumer pins a plugin jar by content (path or Maven coordinate + required
+`sha256`).
 
 ```toml
 # example shape — see the contributor doc for the current keys

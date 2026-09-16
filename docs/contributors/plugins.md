@@ -5,11 +5,12 @@ A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[grails]`,
 live under [`plugins/`](../../plugins/) (start with [`plugins/spring-boot`](../../plugins/spring-boot)
 or [`plugins/quarkus`](../../plugins/quarkus)).
 
-**Who this is for (pre-1.0):** **first-party** plugins in this monorepo, and **private/
-vendored** plugin jars (path or Maven pin + required `sha256`). A public third-party
-authoring path is **deferred until ~1.0** when the plugin SPI freezes — `jk-plugin-sdk` is
-**not** published to Maven Central yet. Do not plan on consuming a released SDK coordinate
-from outside this tree until that lands.
+**Who this is for:** **first-party** plugins in this monorepo, and plugins authored **outside**
+it against the published SDK coordinate `cc.jumpkick:jk-plugin-sdk:<jk version>` — see
+[Authoring against the published SDK](#authoring-against-the-published-sdk). A consumer pins any
+plugin not shipped inside jk by content (path or Maven pin + required `sha256`); there is no
+marketplace. Pre-1.0 the SPI is additive-only by intent, not yet by contract
+([compatibility](compatibility.md)).
 
 **The bar:** you declare *what*; jk owns *when* (ordering) and *whether it can be skipped*
 (caching / action keys). You do not hand-manage the content-addressed store.
@@ -29,9 +30,40 @@ templates/<lang>/<framework>/<name>.g8/  # optional Giter8 trees for jk new -t <
 - **Code layer** — runs in a **forked worker** over a JSONL protocol. The engine never
   classloads your classes.
 
-Compile against the in-tree **`plugin-sdk`** module (`shared/plugin-sdk`, artifact name
-`jk-plugin-sdk` when published later). Keep the worker at a JDK floor compatible with user
-projects (first-party workers target `--release 17` where they ride the user’s JVM).
+Compile against the **`plugin-sdk`** module: the workspace edge `jk-plugin-sdk.workspace = true`
+inside this tree, the coordinate `cc.jumpkick:jk-plugin-sdk:<version>` outside it. Keep the worker
+at a JDK floor compatible with user projects (first-party workers target `--release 17` where
+they ride the user’s JVM).
+
+### Authoring against the published SDK
+
+Every jk release publishes `cc.jumpkick:jk-plugin-sdk` and `cc.jumpkick:jk-host` (the SDK's one
+dependency) at the release's version — sources and javadoc jars, a POM with the metadata Central
+requires, GPG-signed — to `https://jumpkick.build/repo/` and, through `jk publish --central`, to
+Maven Central ([releases](releases.md#maven-central)). A plugin outside this tree:
+
+```toml
+[dependencies]
+jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.7"     # the release you compile against
+```
+
+```toml
+[plugin]
+id        = "hello"
+table     = "hello"
+version   = "0.1.0"
+jk-compat = ">=0.13"          # the floor: the jk line whose SDK you compiled against
+```
+
+The `jk-compat` floor is the contract between the two lines: a plugin built against release
+`N`'s SDK declares `>=N` and every later jk loads it, an older jk refuses it with an upgrade error
+before any code runs. Pick the oldest SDK whose SPI you use and name that release.
+
+The first-party plugins under `plugins/` keep the workspace edge on purpose: the self-host build
+compiles them against the SDK in the tree, so a release never depends on a prior release having
+been published. [`docs/user/examples/third-party-plugin`](../user/examples/third-party-plugin/) is
+the complete out-of-tree shape — manifest, code layer, consumer pin — and
+`ThirdPartyPluginExampleTest` builds it against a `jk publish`ed SDK end to end.
 
 ### Dependency boundary
 
@@ -238,7 +270,7 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 |---|---|
 | **First-party** plugins under `plugins/` | Ship with jk; `jk install` publishes them to `repos/jk-local` |
 | **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
-| **Public third-party** SDK on Maven | **Not available** until ~1.0 SPI freeze |
+| **Third-party** plugins against the published SDK | `cc.jumpkick:jk-plugin-sdk:<version>` on `jumpkick.build/repo` and Maven Central from each release; pinned by content in the consumer |
 | **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |
 
 ### Private plugins (path or Maven pin)
@@ -272,8 +304,8 @@ acme-rules = { group = "com.acme", name = "acme-rules", version = "1.0.0",
 
 1. Jar root must contain `jk-plugin.toml` (`[plugin]` id/table/version + `[schema]` + optional
    `[[contribute.*]]` + optional `[code]` for a worker main).
-2. Compile against in-tree `plugin-sdk` (or a future published `jk-plugin-sdk` after ~1.0);
-   never require engine classes on the plugin classpath.
+2. Compile against `cc.jumpkick:jk-plugin-sdk:<version>` (in-tree: the workspace edge); never
+   require engine classes on the plugin classpath.
 3. Pin: `sha256sum vendor/your-plugin.jar` → paste into `sha256`.
 4. `jk lock` materializes the manifest under `target/plugin-manifests/<sha>.jk-plugin.toml`.
 5. Code layer: trust once, then worker forks use the locked CAS jar (action keys include jar hash).

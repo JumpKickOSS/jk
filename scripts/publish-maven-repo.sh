@@ -24,6 +24,11 @@
 # JK_MAVEN_STAGE_ONLY=1 — write the layout to JK_MAVEN_STAGE_DIR and stop before gsutil
 # JK_MAVEN_STAGE_DIR default: a temp dir (removed on exit unless stage-only)
 # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE SA key for CI
+# JK_PUBLISH_CENTRAL=1 — after the upload, publish the plugin SDK (jk-host, then jk-plugin-sdk)
+#   to Maven Central with `jk publish --central`; needs JK_CENTRAL_GPG_KEY_FILE (the release GPG
+#   secret key; JK_GPG_PASSPHRASE for its passphrase) and the `central` credential from
+#   `jk repo login central`. JK_CENTRAL_PUBLISHING_TYPE=automatic releases without the Portal
+#   click; JK_CENTRAL_DRY_RUN=1 writes the bundles and uploads nothing. Never under stage-only.
 #
 # The upload is additive: older versions already in the bucket stay, so a runner that holds one
 # version in its store publishes that version without deleting the rest. Each maven-metadata.xml
@@ -236,3 +241,20 @@ gsutil -m -o "GSUtil:parallel_process_count=1" rsync -r "$STAGE/" "gs://${BUCKET
 echo "Public base: https://storage.googleapis.com/${BUCKET}/${PREFIX}/"
 echo "Canonical:   https://jumpkick.build/repo/"
 echo "Example:     https://storage.googleapis.com/${BUCKET}/${PREFIX}/cc/jumpkick/jk-test-runner/${VERSION}/jk-test-runner-${VERSION}.jar"
+
+# The plugin SDK to Maven Central, after repo/ holds the same bytes: jk-host first, because the
+# SDK's POM depends on it and a consumer resolving the SDK from Central fetches both there. Each
+# publish is a signed Portal bundle of the module's jar, POM, sources and javadoc jars polled to
+# the Portal's verdict; a refusal names its fix (a missing [publish] table, a missing jar).
+if [[ -n "${JK_PUBLISH_CENTRAL:-}" ]]; then
+  if [[ -z "${JK_CENTRAL_GPG_KEY_FILE:-}" ]]; then
+    echo "publish-maven-repo: JK_PUBLISH_CENTRAL is set but JK_CENTRAL_GPG_KEY_FILE names no GPG secret key — Central requires a signature on every file" >&2
+    exit 2
+  fi
+  central_args=(--central --sign --key-file "$JK_CENTRAL_GPG_KEY_FILE" --publishing-type "${JK_CENTRAL_PUBLISHING_TYPE:-user-managed}")
+  [[ -z "${JK_CENTRAL_DRY_RUN:-}" ]] || central_args+=(--dry-run)
+  for module in shared/host shared/plugin-sdk; do
+    echo "=== Maven Central: $module (${JK_CENTRAL_PUBLISHING_TYPE:-user-managed}${JK_CENTRAL_DRY_RUN:+, dry run}) ==="
+    (cd "$ROOT/$module" && jk publish "${central_args[@]}")
+  done
+fi

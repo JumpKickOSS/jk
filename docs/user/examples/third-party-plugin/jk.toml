@@ -1,0 +1,10 @@
+# A jk build plugin authored outside the jk tree: it compiles against the published SDK
+# coordinate, not a workspace edge. The SDK's version is the jk release it shipped with.
+group = "com.example"
+name = "hello-plugin"
+version = "0.1.0"
+description = "A jk plugin that owns the [hello] table"
+java = 25
+
+[dependencies]
+jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.13.7"

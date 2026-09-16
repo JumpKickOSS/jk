@@ -262,6 +262,8 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    A `workflow_dispatch` run leaves the draft in place: that is the dry run.
 8. Bump `.jk/ci-bootstrap-version` to the new release and add a matrix row for every platform
    it shipped a client for ([self-host](self-host.md#the-bootstrap-pin)).
+9. By hand, never from the workflow: the plugin SDK to Maven Central
+   ([below](#maven-central)).
 
 ### Platforms without a hosted client
 
@@ -360,6 +362,46 @@ scripts/publish-github-release.sh publish 0.13.6
 
 `release-public.pem` is the SPKI in `ReleaseVerifier.BUILT_IN_KEY` wrapped in
 `-----BEGIN PUBLIC KEY-----` / `-----END PUBLIC KEY-----` at 64 columns.
+
+### Maven Central
+
+The plugin SDK is a public coordinate: `cc.jumpkick:jk-plugin-sdk` and its one dependency
+`cc.jumpkick:jk-host` go to Maven Central through the Central Portal, from the same tree the
+release was built from, after `repo/` is uploaded (a plugin author resolving from `jumpkick.build`
+must see the same bytes). `jk publish --central` bundles each module's jar, POM, sources and
+javadoc jars — the `jk build` outputs under `target/shared/…/lib/` — signs every file with the
+release GPG key and polls the Portal to its verdict ([user doc](../user/publish.md#maven-central)).
+
+```bash
+# once per machine: the Portal user token, bound to the Portal's origin
+printf '%s' "$TOKEN_PASSWORD" | jk repo login central --url https://central.sonatype.com --username "$TOKEN_NAME"
+
+# 6. Central, host first (the SDK's POM depends on it): user-managed, so the deployment waits for
+#    a click in the Portal after a look at target/jk-results.md; --publishing-type automatic skips it.
+export JK_GPG_PASSPHRASE=…
+JK_PUBLISH_CENTRAL=1 JK_CENTRAL_GPG_KEY_FILE=/owner-only/path/release-gpg.asc scripts/publish-maven-repo.sh
+#    or by hand, module by module:
+(cd shared/host && jk publish --central --sign --key-file /owner-only/path/release-gpg.asc)
+(cd shared/plugin-sdk && jk publish --central --sign --key-file /owner-only/path/release-gpg.asc)
+```
+
+Central validates the POM's `<name>`, `<description>`, `<url>`, `<licenses>`, `<developers>` and
+`<scm>`: they come from the `[publish]` table, which the workspace root declares once for every
+member. The root gains it the first time a jk that reads the table is the installed one — the
+self-host build parses every manifest with the installed release, so a table the installed jk
+does not know fails the gate:
+
+```toml
+[publish]
+url = "https://jumpkick.build"
+licenses = [{ name = "Apache-2.0", url = "https://www.apache.org/licenses/LICENSE-2.0" }]
+developers = [{ id = "bsant", name = "Bryan Sant" }]
+scm = { url = "https://github.com/JumpKickOSS/jk", connection = "scm:git:https://github.com/JumpKickOSS/jk.git", developer-connection = "scm:git:ssh://git@github.com/JumpKickOSS/jk.git" }
+```
+
+Until then `jk publish --central` refuses with that table as the fix. A `--dry-run` writes the
+bundle to `target/shared/plugin-sdk/publish/central-bundle.zip` and lists it, for a look before
+the first real upload.
 
 ## Local dry-run
 

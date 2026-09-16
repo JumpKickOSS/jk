@@ -65,6 +65,14 @@ scripts/publish-maven-repo.sh
 The release workflow's linux-x86_64 lane runs `jk install` and then stages the repository with
 `publish-maven-repo.sh`; the publish job uploads it beside `releases/`.
 
+With `JK_PUBLISH_CENTRAL=1` (and `JK_CENTRAL_GPG_KEY_FILE` naming the release GPG secret key) the
+script follows the upload with the Maven Central step: `jk publish --central` from `shared/host`
+and then `shared/plugin-sdk`, so the plugin SDK a third party compiles against is on Central at
+the same version `repo/` serves. `JK_CENTRAL_PUBLISHING_TYPE=automatic` releases without the
+Portal click; `JK_CENTRAL_DRY_RUN=1` writes the bundles and uploads nothing. The step never runs
+under `JK_MAVEN_STAGE_ONLY` — Central is a hand-run release action
+([releases](releases.md#maven-central)).
+
 ### The worker POM
 
 A worker's POM is the one its launch classpath is rebuilt from. `jk install` renders it from the

@@ -1,0 +1,19 @@
+# The declarative layer jk reads in-process: the table this plugin owns, the keys it accepts,
+# and what it contributes. The jk floor is the release whose SDK the code compiled against.
+[plugin]
+id        = "hello"
+table     = "hello"
+version   = "0.1.0"
+jk-compat = ">=0.13"
+
+[schema]
+greeting = { type = "string", default = "hello", hint = "the word the plugin says" }
+
+# The code layer: jk forks this jar as a worker (once the consumer has run
+# `jk trust plugin com.example:hello-plugin`) and asks it what it registers.
+[code]
+protocol-prefix = "##HELLO:"
+
+# A contribution the consumer's build sees without any code running.
+[[contribute.compiler-args]]
+javac = ["-parameters"]
