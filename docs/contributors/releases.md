@@ -325,12 +325,13 @@ Before any of it, the tree is built and installed in the order the CI lane keeps
 `jk install --skip-tests` on the new tree. That pass shelves the new version's workers, installs
 the new engine and client into the home, and re-shelves under the new engine (the fixed point);
 only then can the new engine compile anything, because it looks for workers of its own version
-and the repository does not serve them yet. Installing the new engine first (`install.sh
-target/dist/jk` before `jk install`) leaves a home whose engine has no workers and whose
-`jk install` cannot run. Assemble `target/release/<version>/` from the `target/dist` that pass
-leaves, so the released bytes are the installed ones; stage the first-party repository from the
-shelf afterwards (`JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=target/release/repo
-scripts/publish-maven-repo.sh`) and upload it beside the version tree.
+and the repository does not serve them yet. (`install.sh target/dist/jk` shelves the dist's
+`repos/jk-local/` too, so a dist install is never an engine without workers; the release is still
+cut from the `jk install` pass, whose shelf the new engine packaged.) Assemble
+`target/release/<version>/` from the `target/dist` that pass leaves, so the released bytes are the
+installed ones; stage the first-party repository from the shelf afterwards (`JK_MAVEN_STAGE_ONLY=1
+JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh`) and upload it beside the
+version tree.
 
 ```bash
 # 1. After assemble-release-dir.sh / flatten-release.sh (or the merged workflow artifact):

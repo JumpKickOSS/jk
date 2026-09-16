@@ -675,9 +675,9 @@ reason = "the CLI embeds the bundled worker plugins' jar digests: build-order in
 # rename in one is silent in the other and pairs a fresh client with the released engine.
 [guards.ship-layout-installer-jk]
 kind  = "parity"
-left  = { regex = { file = "install.sh", pattern = 'SRC_LIB=.*pwd\)/([A-Za-z0-9_-]+)"' } }
+left  = { regex = { file = "install.sh", pattern = 'SRC_[A-Z]+="\$SRC_DIST/([A-Za-z0-9_-]+)"' } }
 right = { regex = { file = ".jk/after-build-dist.kts", pattern = 'dist\.resolve\("([A-Za-z0-9_-]+)"\)' } }
-why   = "install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past"
+why   = "install.sh reads <dir-of-binary>/<name> for the engine and the shelf; a dist that writes another name is one the installer walks past"
 
 # The rules of this file, listed where contributors read about the house rules; the block is
 # rendered, never edited.

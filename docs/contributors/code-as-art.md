@@ -937,7 +937,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G72 | the size caps code-as-art.md states and the caps `[guards.file-size]` enforces disagreeing, or the charter's Contents list drifting from its headings | parity | guard test `charter-parity` |
 | G73 | maven-artifact, plexus-utils, jline, test-fixtures or a test/analysis framework on the CLI runtime classpath | ban | `cli-runtime-classpath` (depend) |
 | G74 | a CLI workspace edge to an engine-side module (plugin-sdk, guard, resolver) — G73 reads the classpath, this `layers` rule the manifest | ban | `cli-runtime-modules` (layers) |
-| G75 | `install.sh` and jk's dist script (`.jk/after-build-dist.kts`) disagreeing on the ship layout's engine directory — G62's third anchor, one `parity` rule per pair | parity, two extractions must agree | `ship-layout-installer-jk` (parity) |
+| G75 | `install.sh` and jk's dist script (`.jk/after-build-dist.kts`) disagreeing on the ship layout's engine and shelf directories — G62's third anchor, one `parity` rule per pair | parity, two extractions must agree | `ship-layout-installer-jk` (parity) |
 | G76 | the declarative rules' registry block in `docs/contributors/code-as-art.md` not being what `jk-guards.toml` renders (id, kind, why) | generated, rendered from `guard-ids` | `guard-registry-doc` (generated) |
 | G77 | a doc publishing a stage list that is not `BuildStage`'s wire values in pipeline order — `machine-output.md` is a contract consumers integrate against | generated list, read off the enum | guard test `stage-docs` |
 | G78 | a relative link under `docs/` that resolves to nothing — code spans and fenced blocks are prose, not navigation | ban | guard test `doc-links-resolve` |
@@ -1056,7 +1056,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | schema-compared-to-its-constant | text | G85 pins the constant and nothing pinned the comparisons against it |
 | schema-freeze | text | a bump before 1.0 mints a dual reader with no users |
 | script-walks-never-follow-links | text | a walk that follows links can delete the install behind a stable JDK pointer |
-| ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name>/; a dist that writes another name is one the installer walks past |
+| ship-layout-installer-jk | parity | install.sh reads <dir-of-binary>/<name> for the engine and the shelf; a dist that writes another name is one the installer walks past |
 | single-home-root | text | jk has one home; a layout it does not have, named anywhere, misleads the reader |
 | spa-no-class-key | text | the dashboard hand-types every key it reads, so a retired key there is silent |
 | swallowed-broad-catch | text | a broad catch that only comments has written down its intent and dropped its evidence |
