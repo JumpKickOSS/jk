@@ -436,9 +436,35 @@ public final class JUnitLauncher {
     /**
      * As {@link #run(Path, Path, List, Path, int, Map, TestProgressListener, Path)} with {@code
      * testEnv} merged into the test JVM environment (isolated {@code JK_HOME}/{@code JK_STATE_DIR}
-     * for nested-engine suites).
+     * for nested-engine suites). A suite whose classes hold no test the runner could discover is a
+     * failed run, never an empty green one ({@link NoTestsGuard}).
      */
     public TestSummary run(
+            Path javaHome,
+            Path testClassesDir,
+            List<Path> runtimeClasspath,
+            Path cacheRoot,
+            int workers,
+            Map<String, String> workerJarProps,
+            WorkerEnv testEnv,
+            TestProgressListener listener,
+            @Nullable Path testResultsDir)
+            throws IOException, InterruptedException {
+        NoTestsGuard guard = new NoTestsGuard(Objects.requireNonNull(listener, "listener"));
+        TestSummary summary = runUnguarded(
+                javaHome,
+                testClassesDir,
+                runtimeClasspath,
+                cacheRoot,
+                workers,
+                workerJarProps,
+                testEnv,
+                guard,
+                testResultsDir);
+        return guard.verdict(summary, moduleLabel);
+    }
+
+    private TestSummary runUnguarded(
             Path javaHome,
             Path testClassesDir,
             List<Path> runtimeClasspath,

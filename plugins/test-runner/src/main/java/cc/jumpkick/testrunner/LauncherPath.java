@@ -227,34 +227,51 @@ final class LauncherPath {
         return sb.toString();
     }
 
+    /** The warning code the engine turns into a failed run-tests step. */
+    static final String NO_TESTS_DISCOVERED = "no-tests-discovered";
+
     /**
-     * Classpath-root discovery can drop classes when framework SPI (e.g. Quarkus
-     * {@code FacadeClassLoader}) fails to load them — the plan is simply empty. Surface a
-     * pointer so "No tests" is not a silent dead-end. Not under a class filter: a plan the filter
-     * emptied is the filter's doing — in a workspace every module but the one holding the named
-     * class is empty — and the engine judges an unmatched {@code --class} across the run.
+     * A plan with no test where test classes exist is a run that would report success having run
+     * nothing: an engine the Platform dropped, a framework SPI (Quarkus {@code FacadeClassLoader})
+     * that failed to load the classes. Judged against a second discovery without the tag filters,
+     * so a plan the filters emptied stays what it is — a tier with nothing in it. Not under a
+     * class filter: in a workspace every module but the one holding the named class is empty, and
+     * the engine judges an unmatched {@code --class} across the run.
      */
     private static void warnIfEmptyPlan(Path scanClasspath, @Nullable String filter, TestPlan plan, Adapter adapter) {
         if (plan == null || (filter != null && !filter.isBlank())) return;
-        boolean anyTest = false;
-        for (TestIdentifier root : plan.getRoots()) {
-            if (hasTest(plan, root)) {
-                anyTest = true;
-                break;
-            }
+        if (hasTest(plan)) return;
+        long classes = countClassFiles(scanClasspath);
+        if (classes <= 0) return;
+        TestPlan unfiltered;
+        try {
+            unfiltered = LauncherFactory.create()
+                    .discover(LauncherDiscoveryRequestBuilder.request()
+                            .selectors(DiscoverySelectors.selectClasspathRoots(Set.of(scanClasspath)))
+                            .build());
+        } catch (RuntimeException e) {
+            return;
         }
-        if (anyTest) return;
-        long classFiles = countClassFiles(scanClasspath);
-        if (classFiles <= 0) return;
+        if (hasTest(unfiltered)) return;
         // Protocol warning, not stderr: passthrough stderr is muted unless --verbose and the
-        // crash buffer only surfaces on non-zero exit — an empty plan exits 0, so the one
-        // diagnostic that explains "No tests" was invisible exactly when needed.
-        adapter.emitWarning(
-                "empty-plan",
-                "discovery found 0 tests under " + scanClasspath + " (" + classFiles
-                        + " .class file(s) present). If you expected @QuarkusTest / framework tests,"
-                        + " check classloader bootstrap errors (e.g. maven-resolver named-locks"
-                        + " version skew) — rerun with --verbose for the runner's own output.");
+        // crash buffer only surfaces on non-zero exit — an empty plan exits 0.
+        adapter.emitWarning(NO_TESTS_DISCOVERED, noTestsMessage(classes, scanClasspath));
+    }
+
+    /** The failure line: the class count, then where to look. */
+    static String noTestsMessage(long classes, Path scanClasspath) {
+        return "no tests discovered in " + classes + (classes == 1 ? " class" : " classes") + " under "
+                + scanClasspath
+                + " — the test framework's engine is not on the classpath or not on the launcher's"
+                + " Platform line (`jk why org.junit.platform:junit-platform-launcher`), or a framework"
+                + " classloader failed to load the classes; rerun with --verbose for the runner's own output.";
+    }
+
+    private static boolean hasTest(TestPlan plan) {
+        for (TestIdentifier root : plan.getRoots()) {
+            if (hasTest(plan, root)) return true;
+        }
+        return false;
     }
 
     private static boolean hasTest(TestPlan plan, TestIdentifier node) {
@@ -265,11 +282,13 @@ final class LauncherPath {
         return false;
     }
 
+    /** Top-level class files under {@code root}; a nested or anonymous class is part of its outer one. */
     private static long countClassFiles(Path root) {
         if (root == null || !Files.isDirectory(root)) return 0;
         try (var stream = Files.walk(root)) {
             return stream.filter(p -> p.getFileName() != null
-                            && p.getFileName().toString().endsWith(".class"))
+                            && p.getFileName().toString().endsWith(".class")
+                            && !p.getFileName().toString().contains("$"))
                     .count();
         } catch (Exception e) {
             return 0;
