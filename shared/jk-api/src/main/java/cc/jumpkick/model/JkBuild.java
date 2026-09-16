@@ -1027,8 +1027,7 @@ public record JkBuild(
             Integer testWorkers;
 
             List<String> testSerialTags;
-            List<String> testIncludeTags;
-            List<String> testExcludeTags;
+            List<String> testIncludeTags, testExcludeTags;
             boolean testAssertions;
             boolean testCoverage;
             PlatformPolicy platformPolicy;

@@ -137,22 +137,22 @@ final class Json {
             o.put("io", io);
         }
 
-        if (r.publish() != null) {
-            Map<String, Object> pub = new LinkedHashMap<>();
-            pub.put("destination", r.publish().destination());
-            pub.put("files", r.publish().files());
-            pub.put("dryRun", r.publish().dryRun());
-            if (r.publish().deploymentId() != null)
-                pub.put("deploymentId", r.publish().deploymentId());
-            if (r.publish().deploymentState() != null)
-                pub.put("deploymentState", r.publish().deploymentState());
-            if (!r.publish().deploymentErrors().isEmpty())
-                pub.put("deploymentErrors", r.publish().deploymentErrors());
-            if (!r.publish().bundle().isEmpty()) pub.put("bundle", r.publish().bundle());
-            o.put("publish", pub);
-        }
+        if (r.publish() != null) o.put("publish", publishMap(r.publish()));
 
         return MiniJson.writePretty(o);
+    }
+
+    /** The {@code publish} object: what a publish run sent where, absent keys for absent facts. */
+    private static Map<String, Object> publishMap(BuildRecord.Publish p) {
+        Map<String, Object> pub = new LinkedHashMap<>();
+        pub.put("destination", p.destination());
+        pub.put("files", p.files());
+        pub.put("dryRun", p.dryRun());
+        if (p.deploymentId() != null) pub.put("deploymentId", p.deploymentId());
+        if (p.deploymentState() != null) pub.put("deploymentState", p.deploymentState());
+        if (!p.deploymentErrors().isEmpty()) pub.put("deploymentErrors", p.deploymentErrors());
+        if (!p.bundle().isEmpty()) pub.put("bundle", p.bundle());
+        return pub;
     }
 
     private static List<Object> stepList(List<BuildRecord.Task> steps) {
