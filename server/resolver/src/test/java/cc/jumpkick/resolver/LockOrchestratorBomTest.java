@@ -626,17 +626,33 @@ class LockOrchestratorBomTest {
                 "<project><groupId>org.junit.jupiter</groupId>"
                         + "<artifactId>junit-jupiter</artifactId><version>5.10.0</version></project>");
         upstream.jar("org.junit.jupiter", "junit-jupiter", "5.10.0");
+        // Jupiter 5.10.0 ships with Platform 1.10.0; the launcher follows the declared line.
+        upstream.metadata("org.junit.platform", "junit-platform-launcher", "1.10.0", "6.1.0");
+        upstream.pom(
+                "org.junit.platform",
+                "junit-platform-launcher",
+                "1.10.0",
+                "<project><groupId>org.junit.platform</groupId>"
+                        + "<artifactId>junit-platform-launcher</artifactId><version>1.10.0</version></project>");
+        upstream.jar("org.junit.platform", "junit-platform-launcher", "1.10.0");
 
         JkBuild project = jkBuildWithDeps(Map.of(
                 Scope.TEST,
                 List.of(new Dependency("org.junit.jupiter:junit-jupiter", VersionSelector.parse("=5.10.0")))));
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
 
-        Lockfile.Artifact jupiter = lock.artifacts().stream()
-                .filter(p -> p.packageKey().equals("org.junit.jupiter:junit-jupiter:jar:"))
+        assertThat(version(lock, "org.junit.jupiter:junit-jupiter:jar:")).isEqualTo("5.10.0");
+        assertThat(version(lock, "org.junit.platform:junit-platform-launcher:jar:"))
+                .as("the injected launcher rides the declared Jupiter's Platform line")
+                .isEqualTo("1.10.0");
+    }
+
+    private static String version(Lockfile lock, String packageKey) {
+        return lock.artifacts().stream()
+                .filter(p -> p.packageKey().equals(packageKey))
                 .findFirst()
-                .orElseThrow();
-        assertThat(jupiter.version()).isEqualTo("5.10.0");
+                .orElseThrow()
+                .version();
     }
 
     private static String leaf(String artifact) {

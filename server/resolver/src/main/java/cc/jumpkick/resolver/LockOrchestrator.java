@@ -235,6 +235,8 @@ public final class LockOrchestrator {
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
         }
+        // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
+        JupiterLine.checkAligned(solved.test());
 
         progress.materializePhase(progress.graphPackages() + fileDeps.size());
         Lockfile lockfile = new LockfileAssembler(repos, kmp, pomBuilder, constraints, activatedFeatures)

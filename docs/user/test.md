@@ -310,9 +310,22 @@ key is test-scoped like `env`: nothing about it enters the compile or package ke
 puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
 declares no `[test-dependencies]` at all. Once you own that table, the framework is yours.
 
+The launcher follows the Jupiter you declare. Jupiter 5.x.y runs on Platform 1.x.y and Jupiter 6
+shares the Platform's number, so `junit-jupiter = "5.9.0"` locks `junit-platform-launcher 1.9.0`,
+`"^5.9"` locks `^1.9`, and a module with no Jupiter (or a range) takes `latest`. A Platform 6
+launcher beside a Jupiter 5 engine would drop the engine without a word and the run would report
+success with no tests; a lock whose launcher and Jupiter engine sit on different lines — your own
+launcher pin on the wrong line — is refused by `jk lock` with the pin that aligns them.
+
+A run that discovers no test where test classes exist fails the `run-tests` step with the count
+(`no tests discovered in 3 classes under …`): an engine missing from the classpath, a framework
+classloader that failed, a suite of helpers with no `@Test`. Tag filters do not trip it — a tier
+with nothing in it is judged against a second discovery without the filters — and neither does
+`--class`, which the run judges as a whole. A green with zero tests is never the answer.
+
 A framework that has no Platform engine of its own gets one from the lock. Declare `junit:junit`
-and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, at the launcher's
-own `latest` selector so both sit on one Platform line:
+and `jk lock` adds `org.junit.vintage:junit-vintage-engine` beside the launcher, on the declared
+Jupiter's line (`latest` when there is none) so both sit on one Platform line:
 
 ```toml
 [test-dependencies]
@@ -332,13 +345,13 @@ the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the 
 A forked test JVM that exits without running a test is a **launcher failure**, not a failed test:
 `run-tests` fails as a step, and `jk-results.md` names the exit, the exception and the engine the
 runner reported (`TestEngine with ID 'junit-jupiter' failed to discover tests`), with the fork's
-output under it. The usual cause is two versions of one JUnit line — a pin such as
-`junit-platform-launcher = "=1.13.4"` beside `junit-jupiter 6.1.3` puts Platform 1 and Platform 6
-jars on one classpath — and the report spells both out from the lock, marks the declared one, and
-points at `jk why org.junit.platform:junit-platform-launcher`. Align the pin with the platform line
-(one version for every artifact of the line) and `jk lock`. A pin the solve itself cannot satisfy
-(`junit-jupiter-api = "=5.0.0"` under `junit-jupiter 6.1.3`) never gets this far: `jk lock` refuses
-it with the conflict.
+output under it. The usual cause is two versions of one JUnit line on the classpath — a
+`junit-platform-engine` pin off the launcher's line — and the report spells both out from the lock,
+marks the declared one, and points at `jk why org.junit.platform:junit-platform-launcher`. Align
+the pin with the platform line (one version for every artifact of the line) and `jk lock`. A
+launcher pin on the wrong line (`junit-platform-launcher = "1.13.4"` beside `junit-jupiter 6.1.3`)
+and a pin the solve itself cannot satisfy (`junit-jupiter-api = "=5.0.0"` under `junit-jupiter
+6.1.3`) never get this far: `jk lock` refuses them with the fix.
 
 ## Coverage (`--coverage`, `[test] coverage`)
 

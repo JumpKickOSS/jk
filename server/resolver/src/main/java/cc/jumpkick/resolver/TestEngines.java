@@ -17,10 +17,11 @@ import org.jspecify.annotations.Nullable;
  * a framework with no engine of its own on the classpath is a suite the launcher cannot see; each
  * row here names such a framework and the engine that runs it.
  *
- * <p>A row's engine is injected {@code latest}, the selector the launcher itself rides, so PubGrub
- * aligns both on one Platform line. The framework's declared version stays the framework version:
- * an exact pin on the trigger mediates the engine's own edge onto it ({@link #declaredTriggerPins}),
- * as a direct dependency mediates a transitive one in Maven.
+ * <p>A row's engine is injected on the declared Jupiter's version line — the line the launcher
+ * rides too ({@link JupiterLine}) — and {@code latest} when no Jupiter is declared, so PubGrub
+ * aligns launcher and engines on one Platform line. The framework's declared version stays the
+ * framework version: an exact pin on the trigger mediates the engine's own edge onto it ({@link
+ * #declaredTriggerPins}), as a direct dependency mediates a transitive one in Maven.
  */
 public final class TestEngines {
 
@@ -31,7 +32,8 @@ public final class TestEngines {
      *
      * @param trigger the framework's {@code group:artifact}; declaring it in a test scope injects
      *     {@code engine}
-     * @param engine the Platform engine that runs the framework, at {@code latest}
+     * @param engine the Platform engine that runs the framework; its selector is replaced by the
+     *     declared Jupiter's line at injection
      * @param floor the lowest framework version the engine accepts at runtime; an exact declared pin
      *     below it is refused at lock time
      * @param suggested the framework version the refusal and the importer point at
@@ -86,10 +88,11 @@ public final class TestEngines {
     public static final List<Row> ROWS = List.of(JUNIT4);
 
     /**
-     * The engines {@code project}'s declared test dependencies call for, in row order. Refuses a
-     * declared exact framework pin below its engine's floor.
+     * The engines {@code project}'s declared test dependencies call for, in row order, each on
+     * the declared Jupiter's line. Refuses a declared exact framework pin below its engine's floor.
      */
     static List<Dependency> injected(JkBuild project) {
+        VersionSelector line = JupiterLine.engineSelector(project);
         return ROWS.stream()
                 .filter(row -> {
                     Dependency declared = row.declaredIn(project);
@@ -97,7 +100,7 @@ public final class TestEngines {
                     row.checkFloor(declared);
                     return true;
                 })
-                .map(Row::engine)
+                .map(row -> new Dependency(row.engine().module(), line))
                 .toList();
     }
 

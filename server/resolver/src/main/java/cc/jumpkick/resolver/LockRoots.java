@@ -49,11 +49,11 @@ final class LockRoots {
     /**
      * jk test infrastructure: always injected into the TEST classpath via {@code putIfAbsent} so
      * {@code jk test} (which forks {@code jk-test-runner} over the JUnit Platform Launcher API)
-     * works regardless of which test framework the user chose. The engines a declared framework
-     * needs ride beside it: {@link TestEngines}.
+     * works regardless of which test framework the user chose. Injected on the declared Jupiter's
+     * Platform line ({@link JupiterLine}); {@code latest} is the selector when no Jupiter names
+     * one. The engines a declared framework needs ride beside it: {@link TestEngines}.
      */
-    static final Dependency JUNIT_LAUNCHER =
-            new Dependency("org.junit.platform:junit-platform-launcher", VersionSelector.parse("latest"));
+    static final Dependency JUNIT_LAUNCHER = new Dependency(JupiterLine.LAUNCHER, VersionSelector.parse("latest"));
 
     /**
      * Passive JUnit 5 default: injected only when the user declared no {@code [test-dependencies]}
@@ -160,13 +160,14 @@ final class LockRoots {
     }
 
     /**
-     * What jk adds to the test graph beyond the declaration: the launcher always, Jupiter when the
-     * user declared no test dependencies, and the engine of every declared framework that has no
-     * engine of its own. One list, so the solve and the lockfile's scope tagging see the same roots.
+     * What jk adds to the test graph beyond the declaration: the launcher always, on the declared
+     * Jupiter's Platform line; Jupiter when the user declared no test dependencies; and the engine
+     * of every declared framework that has no engine of its own. One list, so the solve and the
+     * lockfile's scope tagging see the same roots.
      */
     static List<Dependency> injectedTestRoots(JkBuild project) {
         List<Dependency> roots = new ArrayList<>();
-        roots.add(JUNIT_LAUNCHER);
+        roots.add(new Dependency(JUNIT_LAUNCHER.module(), JupiterLine.launcherSelector(project)));
         if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(JUNIT_JUPITER);
         roots.addAll(TestEngines.injected(project));
         return roots;

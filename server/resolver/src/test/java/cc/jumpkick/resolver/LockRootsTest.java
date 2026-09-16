@@ -92,6 +92,69 @@ class LockRootsTest {
     }
 
     @Test
+    void the_injected_launcher_and_engines_follow_the_declared_jupiters_platform_line() throws Exception {
+        JkBuild old = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [test-dependencies]
+                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "5.9.0" }
+                junit         = { group = "junit", name = "junit", version = "4.13.2" }
+                """);
+        LockRoots.Declared declared = LockRoots.partition(old, List.of(), true);
+        assertThat(requireNonNull(declared.test().get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+                        .version()
+                        .raw())
+                .as("Jupiter 5.9.0 ships with Platform 1.9.0")
+                .isEqualTo("1.9.0");
+        assertThat(requireNonNull(
+                                declared.test().get(TestEngines.JUNIT4.engine().packageKey()))
+                        .version()
+                        .raw())
+                .as("Vintage shares Jupiter's own line")
+                .isEqualTo("5.9.0");
+
+        JkBuild caret = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [test-dependencies]
+                junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version = "^5.10" }
+                """);
+        assertThat(requireNonNull(LockRoots.partition(caret, List.of(), true)
+                                .test()
+                                .get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+                        .version()
+                        .raw())
+                .isEqualTo("^1.10");
+
+        JkBuild six = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [test-dependencies]
+                junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.3" }
+                """);
+        assertThat(requireNonNull(LockRoots.partition(six, List.of(), true)
+                                .test()
+                                .get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+                        .version()
+                        .raw())
+                .as("from Jupiter 6 the two share one number")
+                .isEqualTo("6.1.3");
+        assertThat(requireNonNull(LockRoots.partition(JkBuildParser.parse(MANIFEST), List.of(), true)
+                                .test()
+                                .get(LockRoots.JUNIT_LAUNCHER.packageKey()))
+                        .version()
+                        .raw())
+                .as("no Jupiter declared: the launcher stays at latest")
+                .isEqualTo("latest");
+    }
+
+    @Test
     void a_declared_vintage_engine_is_the_users_and_a_floating_junit4_pins_nothing() throws Exception {
         JkBuild own = JkBuildParser.parse("""
                 group = "com.example"
