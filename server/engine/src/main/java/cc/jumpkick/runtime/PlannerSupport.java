@@ -950,6 +950,8 @@ public final class PlannerSupport {
         extras.add("jk:" + BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
+        // Whether the suite JVM ran with -ea decides what an `assert` did.
+        extras.add("assertions:" + build.testAssertions());
         // [test] env changes what the suite sees, so it must retest. Resolved by the same owner the
         // fork uses, in its cache-key mode: ${target}/${module} stay tokens so the key is portable,
         // a .env-sourced value is hashed, and an unset ${VAR} fails here exactly as it fails at

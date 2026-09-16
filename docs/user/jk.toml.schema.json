@@ -267,7 +267,13 @@
     },
     "test": {
       "type": "object",
-      "description": "[test] table; keys are documented in docs/user."
+      "description": "[test] table; keys are documented in docs/user.",
+      "properties": {
+        "assertions": {
+          "type": "boolean",
+          "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
+        }
+      }
     },
     "dev": {
       "type": "object",

@@ -744,6 +744,12 @@ public record JkBuild(
              */
             List<String> testSerialTags,
             /**
+             * {@code [test] assertions}: whether every forked test JVM runs with {@code -ea}, as
+             * Surefire's and Gradle's do. Default {@code true}; {@code false} runs the suite with Java
+             * and Kotlin {@code assert} statements disabled.
+             */
+            boolean testAssertions,
+            /**
              * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
              * {@link PlatformPolicy#ENFORCED}.
              */
@@ -813,6 +819,7 @@ public record JkBuild(
                 null,
                 null,
                 List.of(),
+                true,
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
                 List.of(),
@@ -937,6 +944,7 @@ public record JkBuild(
             Integer testWorkers;
 
             List<String> testSerialTags;
+            boolean testAssertions;
             PlatformPolicy platformPolicy;
             UnmappedPolicy unmappedPolicy;
             List<EnvDecl> testEnv;
@@ -962,6 +970,7 @@ public record JkBuild(
                 fixtures = b.fixtures;
                 testWorkers = b.testWorkers;
                 testSerialTags = b.testSerialTags;
+                testAssertions = b.testAssertions;
                 platformPolicy = b.platformPolicy;
                 unmappedPolicy = b.unmappedPolicy;
                 testEnv = b.testEnv;
@@ -986,6 +995,7 @@ public record JkBuild(
                         fixtures,
                         testWorkers,
                         testSerialTags,
+                        testAssertions,
                         platformPolicy,
                         unmappedPolicy,
                         testEnv,

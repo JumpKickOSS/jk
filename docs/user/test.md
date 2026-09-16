@@ -199,7 +199,7 @@ than merging, so a workspace has one answer for "which tests". Running from insi
 directory makes no difference: the CLI rehomes to the workspace root first.
 
 Everything else under `[test]` is per-module and is never inherited, including `extra-src`,
-`workers` and `env`. This is not the `key.workspace = true` spelling that identity keys
+`workers`, `assertions` and `env`. This is not the `key.workspace = true` spelling that identity keys
 (`jdk`, `java`, `layout`, …) and dependency versions use — the tag filters describe the
 invocation, not the module.
 
@@ -322,6 +322,19 @@ the line, still runs `TestCase` suites); `jk import` writes that raise for you a
 notes. Results render per test as they do for Jupiter: the class from the runner, the method from
 the JUnit 4 display name. Declaring the Vintage engine yourself is fine — the injection is
 `putIfAbsent`, and your version wins.
+
+## Assertions in the test JVM (`[test] assertions`)
+
+Every test JVM jk forks runs with `-ea`, as Surefire's and Gradle's do: a Java `assert` or a Kotlin
+`assert()` in a test, or in the code it exercises, is a check that fails the test. Turn it off per
+module when a suite relies on assertions being inert:
+
+```toml
+[test]
+assertions = false      # default true
+```
+
+The setting is a run-tests input, so flipping it re-runs the suite.
 
 ## Isolation contract
 
