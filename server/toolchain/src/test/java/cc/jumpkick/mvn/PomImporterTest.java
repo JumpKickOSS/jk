@@ -41,12 +41,13 @@ class PomImporterTest {
                 </project>
                 """.formatted(secret.toAbsolutePath()));
 
-        assertThatThrownBy(() -> PomImporter.importFrom(pom))
+        PomImporter importer = TestImporters.offline(root);
+        assertThatThrownBy(() -> importer.importFrom(pom))
                 .as("the DOCTYPE is refused outright, not merely the reference to what it declares")
                 .hasMessageContaining("DOCTYPE")
                 .hasMessageNotContaining("TOP_SECRET_VALUE")
                 .isInstanceOf(PomParseException.class);
-        assertThatThrownBy(() -> PomImporter.importWorkspace(pom))
+        assertThatThrownBy(() -> importer.importWorkspace(pom))
                 .hasMessageContaining("DOCTYPE")
                 .hasMessageNotContaining("TOP_SECRET_VALUE")
                 .isInstanceOf(PomParseException.class);
@@ -112,7 +113,7 @@ class PomImporterTest {
                 </project>
                 """);
 
-        PomImporter.WorkspaceImportResult result = PomImporter.importWorkspace(root.resolve("pom.xml"));
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
         assertThat(result.root().isWorkspaceRoot()).isTrue();
         assertThat(requireNonNull(result.root().workspace()).modules()).containsExactly("lib", "app");
 
@@ -155,7 +156,8 @@ class PomImporterTest {
                 </project>
                 """);
 
-        JkBuild app = PomImporter.importFrom(root.resolve("pom.xml")).jkBuild();
+        JkBuild app =
+                TestImporters.offline(root).importFrom(root.resolve("pom.xml")).jkBuild();
         List<Dependency> test = app.dependencies().of(Scope.TEST);
         // Both packages survive with distinct, deterministic handles.
         assertThat(test).extracting(Dependency::library).containsExactly("log4j-core", "log4j-core-tests");
@@ -189,7 +191,7 @@ class PomImporterTest {
                 </project>
                 """);
 
-        PomImporter.Result result = PomImporter.importFrom(root.resolve("pom.xml"));
+        PomImporter.Result result = TestImporters.offline(root).importFrom(root.resolve("pom.xml"));
         List<Dependency> main = result.jkBuild().dependencies().of(Scope.MAIN);
         assertThat(main).extracting(Dependency::library).containsExactly("util", "util-2");
         assertThat(main).extracting(Dependency::module).containsExactly("com.a:util", "com.b:util");
@@ -217,7 +219,8 @@ class PomImporterTest {
                 """);
 
         // Single-module import path (not workspace rewrite).
-        JkBuild app = PomImporter.importFrom(root.resolve("pom.xml")).jkBuild();
+        JkBuild app =
+                TestImporters.offline(root).importFrom(root.resolve("pom.xml")).jkBuild();
         assertThat(app.dependencies().of(Scope.TEST))
                 .anyMatch(d -> d.isTestsKind()
                         && d.module().equals("com.acme:helpers")

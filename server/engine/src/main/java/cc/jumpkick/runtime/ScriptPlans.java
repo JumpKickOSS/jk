@@ -459,10 +459,12 @@ public final class ScriptPlans {
                     ctx.put(MAIN_CLASS, mainClass.get());
 
                     List<Dependency> declaredDeps = new ArrayList<>();
+                    Cas cas = JkStores.storeCas();
+                    PomImporter poms = new PomImporter(jarRepos(repoUrl, new Http(), cas), cas);
                     for (JarManifest.EmbeddedPom p : JarManifest.scanEmbeddedPoms(jar)) {
                         if (!p.hasPomXml()) continue;
                         try {
-                            var imported = PomImporter.importFromBytes(Objects.requireNonNull(p.pomXml()));
+                            var imported = poms.importFromBytes(Objects.requireNonNull(p.pomXml()));
                             var byScope = imported.jkBuild().dependencies().byScope();
                             for (Scope scope : EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)) {
                                 List<Dependency> scoped = byScope.get(scope);
@@ -504,12 +506,7 @@ public final class ScriptPlans {
                     ctx.label("fetch " + declaredDeps.size() + " embedded deps");
                     Files.createDirectories(cacheDir);
                     Cas cas = JkStores.storeCas();
-                    Http http = new Http();
-                    RepoGroup repos = new RepoGroup(List.of(new MavenRepo(
-                            RepositorySpec.CENTRAL,
-                            repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url(),
-                            http,
-                            cas)));
+                    RepoGroup repos = jarRepos(repoUrl, new Http(), cas);
                     try {
                         classpath.addAll(resolveClasspath(declaredDeps, repos));
                     } catch (RuntimeException e) {
@@ -604,6 +601,12 @@ public final class ScriptPlans {
         return name.toLowerCase(Locale.ROOT).endsWith(suffix)
                 ? name.substring(0, name.length() - suffix.length())
                 : name;
+    }
+
+    /** Central, or the one URL a test pins in its place. */
+    private static RepoGroup jarRepos(@Nullable URI repoUrl, Http http, Cas cas) {
+        return new RepoGroup(List.of(new MavenRepo(
+                RepositorySpec.CENTRAL, repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url(), http, cas)));
     }
 
     private static RepoGroup buildRepos(ScriptHeader header, @Nullable URI repoUrl, Http http, Cas cas) {

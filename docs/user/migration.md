@@ -26,13 +26,19 @@ those names, and only the exact spelling is taken — `--tools` is Maven's — s
 tool's is lost. `jk mvn --tools-dir /opt/jk-tools clean` therefore provisions Maven under
 `/opt/jk-tools` and runs `mvn clean`; `jk --help mvn` lists the three.
 
-**POM import** is the primary path, and today it is shallow: the importer maps
-`maven-compiler-plugin` and dependencies, reports a `<parent>` without flattening it, hands
-back a checklist for every `<profile>`, and drops the other plugins into the fidelity report.
-Read that report before trusting the generated `jk.toml`. Making an existing Maven project work
-under jk — effective-POM import, plugin-aware mapping, structured results from `jk mvn`, and a
-jk loop over an unmodified `pom.xml` — is the first epic of
-[the 1.0 plan](../contributors/plan-1.0.md).
+**POM import** is the primary path, and it reads the POM the way Maven does: the effective
+model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the
+reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows),
+`dependencyManagement` is merged so a dependency declared without a version gets the managed one,
+`import`-scope BOMs become `[platform]` entries with their versions resolved, `${property}`
+placeholders are interpolated, and profiles Maven would activate on this machine (active by
+default, JDK, OS) are folded in. The fidelity report names what each parent contributed —
+"versions for X, Y managed by parent g:a:v" — and a parent no repository has is a Tier-3 row, not
+a failed import. Still not mapped: profiles that are not active (each gets a hand-port checklist),
+plugins other than `maven-compiler-plugin`, exclusions and classifiers. Read that report before
+trusting the generated `jk.toml`. Making an existing Maven project work under jk — plugin-aware
+mapping, structured results from `jk mvn`, and a jk loop over an unmodified `pom.xml` — is the
+first epic of [the 1.0 plan](../contributors/plan-1.0.md).
 
 **Gradle import** does not execute build scripts (no Groovy/Kotlin evaluation). It does
 read on-disk `gradle/libs.versions.toml` (libraries, bundles, `version.ref`) and maps
