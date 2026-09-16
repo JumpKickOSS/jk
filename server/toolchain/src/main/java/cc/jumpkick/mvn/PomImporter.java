@@ -248,7 +248,8 @@ public final class PomImporter {
             rewritten.put(
                     e.getKey(),
                     rewriteSiblingDeps(
-                            e.getValue(), siblingByGa, sharedNames, bomByGa, importedBoms, e.getKey(), report));
+                            e.getValue(), siblingByGa, sharedNames, bomByGa, found.unbuilt(), importedBoms, e.getKey(),
+                            report));
         }
         for (String bom : bomByGa.values()) {
             if (importedBoms.contains(bom)) continue;
@@ -300,13 +301,16 @@ public final class PomImporter {
      * {@code sharedNames} carries the dependency's group so it picks one member. Maven
      * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A BOM of
      * the reactor leaves {@code [platform]}: its managed versions are already on the declared
-     * dependencies, and the lock fetches a BOM from a repository, which a reactor BOM is not in.
+     * dependencies, and the lock fetches a BOM from a repository, which a reactor BOM is not in. A
+     * dependency on a reactor POM the workspace does not build ({@code unbuilt}: an aggregator, a
+     * module of an inactive profile) is dropped with a row, since no repository has it either.
      */
     private static JkBuild rewriteSiblingDeps(
             JkBuild module,
             Map<String, String> siblingByGa,
             Set<String> sharedNames,
             Map<String, String> bomByGa,
+            Map<String, ReactorModules.Unbuilt> unbuilt,
             Set<String> importedBoms,
             String moduleKey,
             ImportReport.Builder report) {
@@ -329,6 +333,14 @@ public final class PomImporter {
                 }
                 String siblingName = siblingByGa.get(d.module());
                 if (siblingName == null) {
+                    ReactorModules.Unbuilt reactorPom = unbuilt.get(d.module());
+                    if (reactorPom != null) {
+                        changed = true;
+                        String row = "[" + moduleKey + "] " + reactorPom.row(d.module(), scope == Scope.PLATFORM);
+                        if (scope == Scope.PLATFORM && reactorPom.lossless()) report.warning(row);
+                        else report.error(row);
+                        continue;
+                    }
                     // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
                     out.add(d);
                     if (d.isTestsKind()) changed = true;

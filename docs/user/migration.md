@@ -113,7 +113,11 @@ own — is not a workspace module: a `dependencyManagement` that imports it is a
 declared dependencies and the BOM is not written as a `[platform]` row (the lock fetches a BOM from
 a repository, which a reactor BOM is not in; the row on each importing member says so), and a BOM
 no member imports is one row. A `pom`-packaged leaf with plugins of its own stays a module.
-CI-friendly versions —
+A dependency on a reactor POM the workspace does not build — a `<type>pom</type>` edge to an
+aggregator, or any edge to a module only an inactive profile lists — is dropped with a row naming
+the POM and its modules or its profile (and, for an aggregator with compile dependencies of its
+own, what the pom edge put on the classpath), because no repository has a reactor POM for the lock
+to fetch. CI-friendly versions —
 `${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
 `<properties>`, which is where Maven reads them without `-D`; a placeholder no POM defines is
 written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that lives only in
