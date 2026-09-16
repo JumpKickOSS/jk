@@ -39,17 +39,18 @@ final class GeneratorStep {
         List<String> output = new ArrayList<>();
         int exit = exec.java().classpath(classpath).mainClass(main).args(args).cwd(out).stream(output::add);
         for (String line : output) {
-            ToolDiagnostics.parse(line).ifPresent(d -> exec.diagnostic(
-                    d.severity() != null ? d.severity() : exit == 0 ? "warning" : "error",
-                    d.file(),
-                    d.line(),
-                    d.col(),
-                    d.message()));
+            ToolDiagnostics.parse(line)
+                    .ifPresent(d -> exec.diagnostic(
+                            d.severity() != null ? d.severity() : exit == 0 ? "warning" : "error",
+                            d.file(),
+                            d.line(),
+                            d.col(),
+                            d.message()));
         }
         if (exit != 0) {
             List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
-            throw new IllegalStateException(main + " failed (exit " + exit + ")"
-                    + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
+            throw new IllegalStateException(
+                    main + " failed (exit " + exit + ")" + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
         }
     }
 

@@ -10,6 +10,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -30,13 +31,15 @@ class GeneratorsPlanTest {
 
     @Test
     void one_task_per_entry_keyed_on_its_glob_bases_and_config(@TempDir Path dir) throws Exception {
-        List<String> lines = describe(dir, List.of(
-                entry("api", "tool", "string", "\"org.acme:gen:1.0\""),
-                entry("api", "inputs", "list", "[\"api/openapi.yaml\",\"api/*.json\"]"),
-                entry("grammar", "tool", "string", "\"org.antlr:antlr4:4.13.2\""),
-                entry("grammar", "inputs", "list", "[\"src/main/antlr/**/*.g4\"]"),
-                entry("grammar", "contributes", "string", "\"resources\""),
-                entry("grammar", "out", "string", "\"parsers\"")));
+        List<String> lines = describe(
+                dir,
+                List.of(
+                        entry("api", "tool", "string", "\"org.acme:gen:1.0\""),
+                        entry("api", "inputs", "list", "[\"api/openapi.yaml\",\"api/*.json\"]"),
+                        entry("grammar", "tool", "string", "\"org.antlr:antlr4:4.13.2\""),
+                        entry("grammar", "inputs", "list", "[\"src/main/antlr/**/*.g4\"]"),
+                        entry("grammar", "contributes", "string", "\"resources\""),
+                        entry("grammar", "out", "string", "\"parsers\"")));
 
         String api = task(lines, "generate-api");
         assertThat(arrayOf(api, "inputs")).containsExactly("project:api/openapi.yaml", "project:api", "config");
@@ -50,7 +53,8 @@ class GeneratorsPlanTest {
         assertThat(arrayOf(grammar, "outputs")).containsExactly("parsers");
         assertThat(arrayOf(grammar, "contributesResources")).containsExactly("parsers");
         assertThat(arrayOf(grammar, "contributesSources")).isEmpty();
-        assertThat(lines.stream().filter(l -> l.contains("\"t\":\"task\"")).count()).isEqualTo(2);
+        assertThat(lines.stream().filter(l -> l.contains("\"t\":\"task\"")).count())
+                .isEqualTo(2);
     }
 
     @Test
@@ -69,7 +73,7 @@ class GeneratorsPlanTest {
 
     private static List<String> describe(Path dir, List<String> config) throws Exception {
         Path spec = dir.resolve("describe.spec");
-        List<String> lines = new java.util.ArrayList<>();
+        List<String> lines = new ArrayList<>();
         lines.add("{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-generator\"}");
         lines.addAll(config);
         lines.add("{\"t\":\"project\",\"group\":\"com.example\",\"name\":\"svc\",\"version\":\"1\","

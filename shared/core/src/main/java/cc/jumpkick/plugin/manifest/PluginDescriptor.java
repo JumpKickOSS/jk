@@ -342,8 +342,8 @@ public record PluginDescriptor(
                     case "string-list" -> STRING_LIST;
                     case "string-map" -> STRING_MAP;
                     default ->
-                        throw new IllegalArgumentException(where + ": unknown schema type `" + raw
-                                + "` (string|bool|int|string-list|string-map)");
+                        throw new IllegalArgumentException(
+                                where + ": unknown schema type `" + raw + "` (string|bool|int|string-list|string-map)");
                 };
             }
         }

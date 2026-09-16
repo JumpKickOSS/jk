@@ -33,11 +33,13 @@ class OpenApiPresetPlanTest {
     @Test
     void spring_gets_the_interface_only_defaults_and_the_table_overrides_them() {
         GeneratorEntry entry = OpenApiPreset.entry(
-                new PluginConfig("openapi", Map.of(
-                        "spec", "api/openapi.yaml",
-                        "generator", "spring",
-                        "package", "com.acme.api",
-                        "options", Map.of("useTags", "false"))),
+                new PluginConfig(
+                        "openapi",
+                        Map.of(
+                                "spec", "api/openapi.yaml",
+                                "generator", "spring",
+                                "package", "com.acme.api",
+                                "options", Map.of("useTags", "false"))),
                 PROJECT);
 
         assertThat(entry.name()).isEqualTo("openapi");
@@ -49,13 +51,20 @@ class OpenApiPresetPlanTest {
         assertThat(entry.args())
                 .containsExactly(
                         "generate",
-                        "-i", "${in}",
-                        "-g", "spring",
-                        "-o", "${out}",
-                        "--api-package", "com.acme.api",
-                        "--model-package", "com.acme.api.model",
-                        "--invoker-package", "com.acme.api",
-                        "--package-name", "com.acme.api",
+                        "-i",
+                        "${in}",
+                        "-g",
+                        "spring",
+                        "-o",
+                        "${out}",
+                        "--api-package",
+                        "com.acme.api",
+                        "--model-package",
+                        "com.acme.api.model",
+                        "--invoker-package",
+                        "com.acme.api",
+                        "--package-name",
+                        "com.acme.api",
                         "--additional-properties",
                         "interfaceOnly=true,useSpringBoot3=true,useJakartaEe=true,documentationProvider=none,"
                                 + "annotationLibrary=none,openApiNullable=false,useTags=false");
@@ -76,12 +85,14 @@ class OpenApiPresetPlanTest {
     @Test
     void describe_shows_the_expanded_step(@TempDir Path dir) throws Exception {
         Path spec = dir.resolve("describe.spec");
-        Files.write(spec, List.of(
-                "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-openapi\"}",
-                "{\"t\":\"config\",\"key\":\"spec\",\"kind\":\"string\",\"value\":\"api/openapi.yaml\"}",
-                "{\"t\":\"config\",\"key\":\"generator\",\"kind\":\"string\",\"value\":\"spring\"}",
-                "{\"t\":\"project\",\"group\":\"com.acme\",\"name\":\"svc\",\"version\":\"1\","
-                        + "\"javaRelease\":25,\"nativeDeclared\":false,\"kotlin\":false}"));
+        Files.write(
+                spec,
+                List.of(
+                        "{\"t\":\"op\",\"op\":\"describe\",\"plugin\":\"jk-openapi\"}",
+                        "{\"t\":\"config\",\"key\":\"spec\",\"kind\":\"string\",\"value\":\"api/openapi.yaml\"}",
+                        "{\"t\":\"config\",\"key\":\"generator\",\"kind\":\"string\",\"value\":\"spring\"}",
+                        "{\"t\":\"project\",\"group\":\"com.acme\",\"name\":\"svc\",\"version\":\"1\","
+                                + "\"javaRelease\":25,\"nativeDeclared\":false,\"kotlin\":false}"));
         var buffer = new ByteArrayOutputStream();
         var writer = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKOA:");
         assertThat(new OpenApiPreset().run(List.of(spec.toString()), writer)).isZero();

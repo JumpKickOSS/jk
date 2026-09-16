@@ -33,7 +33,8 @@ class InputsTest {
 
     @Test
     void a_missing_plain_path_matches_nothing(@TempDir Path module) throws Exception {
-        assertThat(Inputs.expand(module, List.of("api/none.yaml", "proto/*.proto"))).isEmpty();
+        assertThat(Inputs.expand(module, List.of("api/none.yaml", "proto/*.proto")))
+                .isEmpty();
     }
 
     private static Path write(Path file) throws Exception {

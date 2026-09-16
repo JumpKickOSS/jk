@@ -16,7 +16,8 @@ final class ToolDiagnostics {
     /** A path token without whitespace, a line, an optional column, a separator, the message. */
     private static final Pattern LOCATED = Pattern.compile("^\\s*(\\S+?):(\\d+)(?::(\\d+))?:?\\s+(.*)$");
 
-    private static final Pattern SEVERITY = Pattern.compile("^(error|warning|warn|info)\\b[:\\s-]*", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SEVERITY =
+            Pattern.compile("^(error|warning|warn|info)\\b[:\\s-]*", Pattern.CASE_INSENSITIVE);
 
     private ToolDiagnostics() {}
 
@@ -39,6 +40,10 @@ final class ToolDiagnostics {
             message = message.substring(sev.end());
         }
         return Optional.of(new Located(
-                file, Integer.parseInt(m.group(2)), m.group(3) == null ? 0 : Integer.parseInt(m.group(3)), severity, message));
+                file,
+                Integer.parseInt(m.group(2)),
+                m.group(3) == null ? 0 : Integer.parseInt(m.group(3)),
+                severity,
+                message));
     }
 }

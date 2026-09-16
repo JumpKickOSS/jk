@@ -30,7 +30,8 @@ class ToolDiagnosticsTest {
 
     @Test
     void unlocated_lines_are_log() {
-        assertThat(ToolDiagnostics.parse("[main] INFO Generating with dryRun=false")).isEmpty();
+        assertThat(ToolDiagnostics.parse("[main] INFO Generating with dryRun=false"))
+                .isEmpty();
         assertThat(ToolDiagnostics.parse("see https://example.com:8080: docs")).isEmpty();
         assertThat(ToolDiagnostics.parse("Processed 12 files")).isEmpty();
         assertThat(ToolDiagnostics.parse("")).isEmpty();
