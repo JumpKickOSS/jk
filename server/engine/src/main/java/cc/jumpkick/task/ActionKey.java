@@ -382,6 +382,25 @@ public final class ActionKey {
         return result;
     }
 
+    /**
+     * The sources whose bytes differ from what {@code recorded} holds for them under {@link
+     * #snapshotInputs}' spelling (absolute normalized path to content hash), or that are gone. A
+     * compile compares its request's sources against the snapshot it took before the worker read
+     * them, so an edit that landed while the worker ran is named; the record diff for
+     * {@code jk why-rebuilt} asks the same question of a prior record.
+     */
+    public static List<Path> changedSources(List<Path> sources, Map<String, String> recorded) throws IOException {
+        List<Path> changed = new ArrayList<>();
+        for (Path s : sources) {
+            Path abs = s.toAbsolutePath().normalize();
+            String prior = recorded.get(abs.toString());
+            if (prior == null || !Files.isRegularFile(abs) || !prior.equals(FileHashMemo.contentHash(abs))) {
+                changed.add(s);
+            }
+        }
+        return changed;
+    }
+
     private static void snapshotSources(Map<String, String> into, List<Path> sources) throws IOException {
         List<Path> sorted = new ArrayList<>(sources);
         sorted.sort(Comparator.comparing(Path::toString));

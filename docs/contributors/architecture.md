@@ -324,6 +324,10 @@ and exclusions stay GA-scoped.
    whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
    (`BuildIdentity.buildId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
    build-logic and packaging once and never restores what the previous engine produced.
+   A compile key and the freshness stamp's instant are both taken before the compiler reads its
+   first source. A source whose bytes move while the compiler runs is re-read afterwards: the
+   compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads
+   stale for that source, so the next build compiles the module from what is then on disk.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A javac
    miss hands the worker the Zinc analyses of the jk-built entries on its classpath
    (`ProducerAnalyses`, found from the entry alone because a compile's state is keyed by its

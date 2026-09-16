@@ -116,6 +116,19 @@ public final class BuildPlanner {
     public static final BuildPlanKey<List<String>> GROOVY_STAMP_TOKENS =
             BuildPlanKey.list("groovy-stamp-tokens", String.class);
 
+    /**
+     * The filesystem clock ({@code FreshnessStamp.clockNow}) before compile-main read its first
+     * input, published for write-stamp as the stamp's instant: a source edited while javac ran is
+     * stale on the next check instead of hiding behind a stamp written after it.
+     */
+    public static final BuildPlanKey<Long> JAVA_STAMP_CLOCK = BuildPlanKey.scalar("java-stamp-clock", Long.class);
+
+    /** As {@link #JAVA_STAMP_CLOCK} for compile-kotlin. */
+    public static final BuildPlanKey<Long> KOTLIN_STAMP_CLOCK = BuildPlanKey.scalar("kotlin-stamp-clock", Long.class);
+
+    /** As {@link #JAVA_STAMP_CLOCK} for compile-groovy. */
+    public static final BuildPlanKey<Long> GROOVY_STAMP_CLOCK = BuildPlanKey.scalar("groovy-stamp-clock", Long.class);
+
     public static final BuildPlanKey<List<Path>> TEST_SOURCES = BuildPlanKey.list("test-sources", Path.class);
 
     /** Suite resource dirs copied into classes/test — a TestStamp input. */
@@ -170,6 +183,9 @@ public final class BuildPlanner {
             KOTLIN_STAMP_TOKENS,
             GROOVY_STAMP_DIGEST,
             GROOVY_STAMP_TOKENS,
+            JAVA_STAMP_CLOCK,
+            KOTLIN_STAMP_CLOCK,
+            GROOVY_STAMP_CLOCK,
             TEST_SOURCES,
             TEST_RESOURCE_DIRS,
             BUILD_OUTCOME,

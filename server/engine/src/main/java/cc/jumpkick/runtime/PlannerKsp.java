@@ -262,6 +262,8 @@ public final class PlannerKsp {
         }
 
         ctx.label("KSP: " + split.ksp().size() + " processor jar(s)");
+        // Before the round reads a source: a source edited while it runs is stale next time.
+        long readClock = FreshnessStamp.clockNow(outBase);
         KspToolchain toolchain = resolveKspToolchain(project, cx.cas(), kotlinVersion);
 
         // A stale round's outputs must not survive into the source union.
@@ -285,7 +287,15 @@ public final class PlannerKsp {
             ctx.warn(diagnostic.severity(), diagnostic.message());
         }
         FreshnessStamp.write(
-                outBase, BuildStamps.KSP, TaskNames.KSP, "", stampInputs, stampCp, ctx.require(RELEASE), optionsDigest);
+                outBase,
+                BuildStamps.KSP,
+                TaskNames.KSP,
+                "",
+                stampInputs,
+                stampCp,
+                ctx.require(RELEASE),
+                optionsDigest,
+                readClock);
         ctx.progress(1);
     }
 

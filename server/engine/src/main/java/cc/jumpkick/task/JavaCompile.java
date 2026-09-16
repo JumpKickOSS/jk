@@ -20,22 +20,36 @@ import org.jspecify.annotations.Nullable;
 /**
  * Action-cache front for Java compile. The {@code jk-java-compiler} worker owns Zinc incremental
  * recompile; this only does a whole-input action-key hit/miss around the fork.
+ *
+ * <p>The key hashes the sources before the worker reads them. A source whose bytes move while the
+ * worker runs is re-read afterwards and named in {@link Result#movedSources}: the classes on disk
+ * may come from either version, so no record is stored under the key and the Zinc analysis is
+ * dropped, and the next build compiles the module from what is then on disk.
  */
 public final class JavaCompile {
 
     private JavaCompile() {}
 
-    /** @param waitMillis time spent queued behind the shared compiler worker; see TaskContext#waited */
+    /** Test seam: runs once the key is taken and before the worker is forked. */
+    static volatile Runnable beforeFork = () -> {};
+
+    /**
+     * @param movedSources sources whose bytes changed between the key and the worker's return;
+     *     the compile is not recorded and the next build recompiles them
+     * @param waitMillis time spent queued behind the shared compiler worker; see TaskContext#waited
+     */
     public record Result(
             boolean success,
             String outcome,
             String actionKey,
             List<CompileResult.Diagnostic> diagnostics,
             List<Path> compiledSources,
+            List<Path> movedSources,
             long waitMillis) {
         public Result {
             diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
             compiledSources = compiledSources == null ? List.of() : List.copyOf(compiledSources);
+            movedSources = movedSources == null ? List.of() : List.copyOf(movedSources);
         }
 
         public boolean cacheHit() {
@@ -106,14 +120,14 @@ public final class JavaCompile {
         Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
-            return new Result(true, "no-sources", "", List.of(), List.of(), 0L);
+            return new Result(true, "no-sources", "", List.of(), List.of(), List.of(), 0L);
         }
 
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
-                return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), 0L);
+                return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of(), List.of(), List.of(), 0L);
             }
         }
 
@@ -128,6 +142,10 @@ public final class JavaCompile {
             Files.createDirectories(stateDir);
         }
 
+        // The record's inputs describe the bytes the key hashed, so they are taken here, before
+        // the worker reads a source; the same snapshot is what the post-fork re-read is held to.
+        Map<String, String> inputs = ActionKey.snapshotInputs(request);
+        beforeFork.run();
         CasPrewriter prewriter = CasPrewriter.watching(cas, out);
         ForkedJavac.Result wr;
         try {
@@ -158,18 +176,33 @@ public final class JavaCompile {
         }
         Map<String, String> outputs = prewriter.finish();
         if (!wr.success()) {
-            return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
+            return new Result(false, "errors", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
         }
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
             return new Result(
-                    true, "compiled-no-outputs", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
+                    true,
+                    "compiled-no-outputs",
+                    key,
+                    wr.diagnostics(),
+                    wr.compiledSources(),
+                    List.of(),
+                    wr.waitMillis());
+        }
+        List<Path> moved = ActionKey.changedSources(request.sources(), inputs);
+        if (!moved.isEmpty()) {
+            // Neither version of the moved source is what the key names, and the analysis may
+            // pair its earlier hash with classes from its later bytes: a revert to those earlier
+            // bytes would then compile nothing. Nothing is recorded and the analysis goes, so the
+            // next build compiles the module whole from what is on disk.
+            if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
+            return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), moved, wr.waitMillis());
         }
         if (persist) {
-            actionCache.storeWithOutputs(taskId, key, ActionKey.snapshotInputs(request), outputs);
+            actionCache.storeWithOutputs(taskId, key, inputs, outputs);
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
-        return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), wr.waitMillis());
+        return new Result(true, "compiled", key, wr.diagnostics(), wr.compiledSources(), List.of(), wr.waitMillis());
     }
 
     public static Prediction predict(
@@ -335,14 +368,7 @@ public final class JavaCompile {
 
     private static List<Path> changedSources(CompileRequest request, Map<String, String> priorInputs)
             throws IOException {
-        List<Path> changed = new ArrayList<>();
-        for (Path s : request.sources()) {
-            String key = s.toAbsolutePath().normalize().toString();
-            String prior = priorInputs.get(key);
-            String now = FileHashMemo.contentHash(s);
-            if (prior == null || !prior.equals(now)) changed.add(s);
-        }
-        return changed;
+        return ActionKey.changedSources(request.sources(), priorInputs);
     }
 
     private static boolean hasClasses(Path dir) throws IOException {
