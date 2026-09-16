@@ -61,7 +61,7 @@ final class SiblingEdges {
             Map<String, ReactorModules.Unbuilt> unbuilt,
             Set<String> importedBoms,
             String moduleKey,
-            ImportReport.Builder report) {
+            ModuleRows rows) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         Map<Scope, List<Dependency>> carried = new EnumMap<>(Scope.class);
         Set<String> declared = declaredModules(module);
@@ -75,10 +75,14 @@ final class SiblingEdges {
                 if (bomPath != null) {
                     changed = true;
                     importedBoms.add(bomPath);
-                    report.warning("[" + moduleKey + "] `<dependencyManagement>` imports the reactor BOM `" + bomPath
-                            + "` (" + d.module() + "); its managed versions are applied to the declared dependencies"
-                            + " and no `[platform]` row is written, because the lock fetches a BOM from a repository"
-                            + " and a reactor BOM is not published, so transitive versions follow the resolver.");
+                    rows.add(
+                            moduleKey,
+                            ImportReport.Severity.WARNING,
+                            "`<dependencyManagement>` imports the reactor BOM `" + bomPath + "` (" + d.module()
+                                    + "); its managed versions are applied to the declared dependencies and no"
+                                    + " `[platform]` row is written, because the lock fetches a BOM from a repository"
+                                    + " and a reactor BOM is not published, so transitive versions follow the"
+                                    + " resolver.");
                     continue;
                 }
                 String siblingName = siblingByGa.get(d.module());
@@ -90,9 +94,12 @@ final class SiblingEdges {
                         List<String> written = reactorPom.carriesOnto(platform)
                                 ? carry(reactorPom.classpath(), siblingByGa, sharedNames, declared, carried)
                                 : List.of();
-                        String row = "[" + moduleKey + "] " + reactorPom.row(d.module(), platform, written);
-                        if (reactorPom.carriesOnto(platform)) report.warning(row);
-                        else report.error(row);
+                        rows.add(
+                                moduleKey,
+                                reactorPom.carriesOnto(platform)
+                                        ? ImportReport.Severity.WARNING
+                                        : ImportReport.Severity.ERROR,
+                                reactorPom.row(d.module(), platform, written));
                         continue;
                     }
                     // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
@@ -102,10 +109,13 @@ final class SiblingEdges {
                 }
                 changed = true;
                 if (scope == Scope.PLATFORM) {
-                    report.warning("[" + moduleKey + "] `<dependencyManagement>` imports the sibling BOM " + d.module()
-                            + "; its managed versions are applied to the declared dependencies and no `[platform]`"
-                            + " entry is written, because a workspace module is not a published BOM, so transitive"
-                            + " versions follow the resolver.");
+                    rows.add(
+                            moduleKey,
+                            ImportReport.Severity.WARNING,
+                            "`<dependencyManagement>` imports the sibling BOM " + d.module()
+                                    + "; its managed versions are applied to the declared dependencies and no"
+                                    + " `[platform]` entry is written, because a workspace module is not a published"
+                                    + " BOM, so transitive versions follow the resolver.");
                     continue;
                 }
                 // Library handle matches the sibling project name so `{ workspace = true }` resolves.
@@ -126,7 +136,11 @@ final class SiblingEdges {
         for (var e : carried.entrySet()) {
             byScope.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).addAll(e.getValue());
         }
-        if (!carried.isEmpty()) PomImporter.uniquifyHandles(byScope, report);
+        if (!carried.isEmpty()) {
+            ImportReport.Builder handles = ImportReport.builder();
+            PomImporter.uniquifyHandles(byScope, handles);
+            rows.addAll(moduleKey, handles.build());
+        }
         JkBuild.Builder out = JkBuild.builder(module.project())
                 .dependencies(new JkBuild.Dependencies(byScope))
                 .repositories(module.repositories())

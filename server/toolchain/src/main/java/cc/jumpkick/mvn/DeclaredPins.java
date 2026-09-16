@@ -84,13 +84,16 @@ public final class DeclaredPins {
             if (issue.severity() == ImportReport.Severity.ERROR) out.error(issue.message());
             else out.warning(issue.message());
         }
+        ModuleRows rows = new ModuleRows();
         for (Map.Entry<String, List<String>> e : ownersByGav.entrySet()) {
             Verdict verdict = verdicts.get(e.getKey());
             if (verdict == null || verdict.listed()) continue;
-            String row = prefix(e.getValue()) + verdict.render(e.getKey());
-            if (verdict.unreachable().isEmpty()) out.error(row);
-            else out.warning(row);
+            ImportReport.Severity severity =
+                    verdict.unreachable().isEmpty() ? ImportReport.Severity.ERROR : ImportReport.Severity.WARNING;
+            String row = verdict.render(e.getKey());
+            for (String owner : e.getValue()) rows.add(owner, severity, row);
         }
+        rows.flush(out);
         return out.build();
     }
 
@@ -120,12 +123,6 @@ public final class DeclaredPins {
             return null;
         }
         return version;
-    }
-
-    private static String prefix(List<String> owners) {
-        List<String> named =
-                owners.stream().filter(o -> !o.isEmpty()).distinct().toList();
-        return named.isEmpty() ? "" : "[" + String.join(", ", named) + "] ";
     }
 
     /** One walk per GAV, {@link #WALKS_IN_FLIGHT} at a time on the io pool, under the caller's session. */
