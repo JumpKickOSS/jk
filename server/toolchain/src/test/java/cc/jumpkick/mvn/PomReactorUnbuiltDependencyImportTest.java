@@ -17,7 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A reactor POM the workspace does not build — an aggregator, or a module only an inactive profile
  * lists — is not published anywhere, so a dependency that names it is dropped with a row instead
- * of being written as a coordinate the lock would go looking for.
+ * of being written as a coordinate the lock would go looking for; a {@code <type>pom</type>} edge
+ * to an aggregator hands the aggregator's own classpath dependencies to the dependent instead.
  */
 class PomReactorUnbuiltDependencyImportTest {
 
@@ -68,8 +69,15 @@ class PomReactorUnbuiltDependencyImportTest {
                 });
     }
 
+    /**
+     * keycloak's shape: {@code docs/maven-plugin} depends on the {@code js} aggregator as a pom, and
+     * the aggregator declares compile dependencies of its own, one of them a reactor member. Maven
+     * put those on the dependent's classpath through the pom, so the import writes them on the
+     * dependent in the pom edge's place, the member as a workspace edge; what the dependent declares
+     * itself is left alone, and a {@code provided} dependency of the aggregator never rode.
+     */
     @Test
-    void an_aggregator_with_compile_dependencies_of_its_own_names_what_the_pom_edge_carried(@TempDir Path root)
+    void a_pom_type_dependency_on_an_aggregator_with_dependencies_carries_them_onto_the_dependent(@TempDir Path root)
             throws Exception {
         writeReactor(root, """
                 <dependencies>
@@ -77,6 +85,17 @@ class PomReactorUnbuiltDependencyImportTest {
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-api</artifactId>
                     <version>2.0.17</version>
+                  </dependency>
+                  <dependency>
+                    <groupId>org.demo</groupId>
+                    <artifactId>account-ui</artifactId>
+                    <version>1.0.0</version>
+                  </dependency>
+                  <dependency>
+                    <groupId>com.google.guava</groupId>
+                    <artifactId>guava</artifactId>
+                    <version>33.4.0-jre</version>
+                    <scope>runtime</scope>
                   </dependency>
                   <dependency>
                     <groupId>org.demo</groupId>
@@ -98,22 +117,41 @@ class PomReactorUnbuiltDependencyImportTest {
                       <version>1.0.0</version>
                       <type>pom</type>
                     </dependency>
+                    <dependency>
+                      <groupId>org.slf4j</groupId>
+                      <artifactId>slf4j-api</artifactId>
+                      <version>2.0.16</version>
+                    </dependency>
                   </dependencies>
                 </project>
                 """.formatted(PARENT));
 
         PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
 
+        JkBuild docs = requireNonNull(result.modules().get("docs"));
+        assertThat(docs.dependencies().of(Scope.PLATFORM)).isEmpty();
+        assertThat(docs.dependencies().of(Scope.MAIN))
+                .extracting(d -> d.isWorkspace()
+                        ? d.workspaceName() + " (workspace)"
+                        : d.module() + "=" + d.version().raw())
+                .as("the dependent's own pin stays; the aggregator's compile deps follow, the member as an edge")
+                .containsExactly("org.slf4j:slf4j-api=2.0.16", "account-ui (workspace)");
+        assertThat(docs.dependencies().of(Scope.RUNTIME))
+                .extracting(d -> d.module() + "=" + d.version().raw())
+                .containsExactly("com.google.guava:guava=33.4.0-jre");
+        assertThat(docs.dependencies().of(Scope.PROVIDED)).isEmpty();
         assertThat(result.report().issues())
                 .filteredOn(i -> i.message().contains("js-parent names"))
                 .singleElement()
                 .satisfies(issue -> {
                     assertThat(issue.severity())
-                            .as("Maven would have put slf4j-api on the classpath through the pom")
-                            .isEqualTo(ImportReport.Severity.ERROR);
+                            .as("nothing Maven put on the classpath is lost")
+                            .isEqualTo(ImportReport.Severity.WARNING);
                     assertThat(issue.message())
-                            .contains("its own dependencies org.slf4j:slf4j-api")
-                            .doesNotContain("org.demo:services");
+                            .contains("its own dependencies org.demo:account-ui (workspace), com.google.guava:guava")
+                            .contains("are written on this module in its place")
+                            .doesNotContain("org.demo:services")
+                            .doesNotContain("slf4j");
                 });
     }
 

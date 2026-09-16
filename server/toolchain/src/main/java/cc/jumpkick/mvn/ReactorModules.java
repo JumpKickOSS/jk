@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.repo.Pom;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,18 +39,21 @@ final class ReactorModules {
      * A pom.xml the reactor registered that is not a workspace module: an aggregator, or a module
      * only an inactive profile lists. {@code path} is root-relative; {@code why} completes "names
      * `path/pom.xml`, …"; {@code classpath} is what a {@code <type>pom</type>} edge to it puts on
-     * the dependent's classpath under Maven (the POM's own compile and runtime dependencies), empty
-     * when the effective model is not built here.
+     * the dependent's classpath under Maven (the POM's effective compile and runtime dependencies,
+     * versions resolved), empty when the effective model is not built here.
      */
-    record Unbuilt(String path, String why, List<String> classpath, boolean aggregator) {
+    record Unbuilt(String path, String why, List<Pom.Dep> classpath, boolean aggregator) {
 
-        /** True when dropping a {@code <type>pom</type>} edge to it loses nothing from the classpath. */
-        boolean lossless() {
-            return aggregator && classpath.isEmpty();
+        /** True when a {@code <type>pom</type>} edge to it is rewritten onto the dependent without loss. */
+        boolean carriesOnto(boolean platform) {
+            return platform && aggregator;
         }
 
-        /** The report row for {@code module}, a dependency of a member, that names this POM. */
-        String row(String module, boolean platform) {
+        /**
+         * The report row for {@code module}, a dependency of a member, that names this POM. {@code
+         * written} are the dependencies of this POM the dependent received in the pom edge's place.
+         */
+        String row(String module, boolean platform, List<String> written) {
             String subject =
                     (platform ? "`<type>pom</type>` on " : "") + module + " names `" + path + "/pom.xml`, " + why;
             if (!platform) {
@@ -59,8 +63,17 @@ final class ReactorModules {
             String row = subject + "; the lock fetches a `[platform]` entry from a repository, where a reactor POM"
                     + " is not published, so no row is written";
             if (classpath.isEmpty()) return row + ".";
-            return row + "; its own dependencies " + String.join(", ", classpath) + ", which Maven adds to the"
-                    + " dependent's classpath through the pom, were not carried — declare the ones the code uses.";
+            if (written.isEmpty()) {
+                return row + "; its own dependencies " + modules(classpath) + ", which Maven adds to the"
+                        + " dependent's classpath through the pom, are declared by this module already.";
+            }
+            return row + "; its own dependencies " + String.join(", ", written) + ", which Maven adds to the"
+                    + " dependent's classpath through the pom, are written on this module in its place, a"
+                    + " workspace module among them as a workspace edge.";
+        }
+
+        private static String modules(List<Pom.Dep> deps) {
+            return String.join(", ", deps.stream().map(Pom.Dep::module).toList());
         }
     }
 
@@ -186,12 +199,12 @@ final class ReactorModules {
     }
 
     private static Unbuilt aggregator(String path, Model model) {
-        List<String> classpath = new ArrayList<>();
+        List<Pom.Dep> classpath = new ArrayList<>();
         for (Dependency d : model.getDependencies()) {
             String scope = d.getScope();
             boolean onClasspath =
                     scope == null || scope.isBlank() || "compile".equals(scope) || "runtime".equals(scope);
-            if (onClasspath && !d.isOptional()) classpath.add(d.getGroupId() + ":" + d.getArtifactId());
+            if (onClasspath && !d.isOptional()) classpath.add(EffectiveModel.toDep(d));
         }
         String modules = "`" + String.join("`, `", model.getModules()) + "`";
         return new Unbuilt(

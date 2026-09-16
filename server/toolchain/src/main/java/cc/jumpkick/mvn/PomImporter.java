@@ -5,7 +5,6 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
-import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
@@ -241,7 +240,7 @@ public final class PomImporter {
                 .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
-        Map<String, String> siblingByGa = siblingGaIndex(rootJkBuild, moduleBuilds.values());
+        Map<String, String> siblingByGa = SiblingEdges.siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Set<String> sharedNames = SiblingNames.shared(moduleBuilds);
         Map<String, String> bomByGa = bomGaIndex(found.boms());
         Set<String> importedBoms = new HashSet<>();
@@ -249,7 +248,7 @@ public final class PomImporter {
         for (var e : moduleBuilds.entrySet()) {
             rewritten.put(
                     e.getKey(),
-                    rewriteSiblingDeps(
+                    SiblingEdges.rewrite(
                             e.getValue(),
                             siblingByGa,
                             sharedNames,
@@ -287,113 +286,6 @@ public final class PomImporter {
         report.error("`<modules>` are declared only in profiles that are not active on this machine ("
                 + String.join(", ", inactive) + "); no module was imported, so the workspace builds nothing."
                 + " Activate one with Maven's `-P` and re-import, or list the modules at the top level.");
-    }
-
-    /**
-     * Map {@code group:artifact} → sibling {@link Project#name()} for every unit in the
-     * workspace (root + members) so inter-module deps become {@code workspace = true}.
-     */
-    private static Map<String, String> siblingGaIndex(JkBuild root, Collection<JkBuild> modules) {
-        Map<String, String> ga = new LinkedHashMap<>();
-        ga.put(
-                root.project().group() + ":" + root.project().name(),
-                root.project().name());
-        for (JkBuild m : modules) {
-            ga.put(m.project().group() + ":" + m.project().name(), m.project().name());
-        }
-        return ga;
-    }
-
-    /**
-     * Convert deps whose GA matches a workspace sibling into workspace edges; an edge to a name in
-     * {@code sharedNames} carries the dependency's group so it picks one member. Maven
-     * {@code <type>test-jar</type>} becomes {@code kind = "tests"} (Mill testModuleDeps). A BOM of
-     * the reactor leaves {@code [platform]}: its managed versions are already on the declared
-     * dependencies, and the lock fetches a BOM from a repository, which a reactor BOM is not in. A
-     * dependency on a reactor POM the workspace does not build ({@code unbuilt}: an aggregator, a
-     * module of an inactive profile) is dropped with a row, since no repository has it either.
-     */
-    private static JkBuild rewriteSiblingDeps(
-            JkBuild module,
-            Map<String, String> siblingByGa,
-            Set<String> sharedNames,
-            Map<String, String> bomByGa,
-            Map<String, ReactorModules.Unbuilt> unbuilt,
-            Set<String> importedBoms,
-            String moduleKey,
-            ImportReport.Builder report) {
-        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
-        boolean changed = false;
-        for (Scope scope : Scope.values()) {
-            List<Dependency> in = module.dependencies().of(scope);
-            if (in.isEmpty()) continue;
-            List<Dependency> out = new ArrayList<>(in.size());
-            for (Dependency d : in) {
-                String bomPath = scope == Scope.PLATFORM ? bomByGa.get(d.module()) : null;
-                if (bomPath != null) {
-                    changed = true;
-                    importedBoms.add(bomPath);
-                    report.warning("[" + moduleKey + "] `<dependencyManagement>` imports the reactor BOM `" + bomPath
-                            + "` (" + d.module() + "); its managed versions are applied to the declared dependencies"
-                            + " and no `[platform]` row is written, because the lock fetches a BOM from a repository"
-                            + " and a reactor BOM is not published, so transitive versions follow the resolver.");
-                    continue;
-                }
-                String siblingName = siblingByGa.get(d.module());
-                if (siblingName == null) {
-                    ReactorModules.Unbuilt reactorPom = unbuilt.get(d.module());
-                    if (reactorPom != null) {
-                        changed = true;
-                        String row = "[" + moduleKey + "] " + reactorPom.row(d.module(), scope == Scope.PLATFORM);
-                        if (scope == Scope.PLATFORM && reactorPom.lossless()) report.warning(row);
-                        else report.error(row);
-                        continue;
-                    }
-                    // External test-jar keeps kind=tests (lock/resolve map to g:a:test-jar:tests).
-                    out.add(d);
-                    if (d.isTestsKind()) changed = true;
-                    continue;
-                }
-                changed = true;
-                if (scope == Scope.PLATFORM) {
-                    report.warning("[" + moduleKey + "] `<dependencyManagement>` imports the sibling BOM " + d.module()
-                            + "; its managed versions are applied to the declared dependencies and no `[platform]`"
-                            + " entry is written, because a workspace module is not a published BOM, so transitive"
-                            + " versions follow the resolver.");
-                    continue;
-                }
-                // Library handle matches the sibling project name so `{ workspace = true }` resolves.
-                // mapDependencies already forced tests-kind deps into a test scope, so kind is
-                // carried as-is — never emitted where the parser would reject it.
-                Dependency ws = sharedNames.contains(siblingName)
-                        ? Dependency.workspace(siblingName, d.group())
-                        : Dependency.workspace(siblingName);
-                ws = ws.withOptional(d.optional());
-                if (d.isTestsKind()) {
-                    ws = ws.withKind(DependencyKind.TESTS);
-                }
-                out.add(ws);
-            }
-            byScope.put(scope, out);
-        }
-        if (!changed) return module;
-        JkBuild.Builder out = JkBuild.builder(module.project())
-                .dependencies(new JkBuild.Dependencies(byScope))
-                .repositories(module.repositories())
-                .profiles(module.profiles())
-                .features(module.features())
-                .workspace(module.workspace())
-                .manifest(module.manifest())
-                .plugins(module.plugins())
-                .application(module.applicationOpt().orElse(null))
-                .nativeConfig(module.nativeConfigOpt().orElse(null))
-                .build(module.build())
-                .format(module.format())
-                .variants(module.variants());
-        for (var config : module.pluginConfigs().values()) {
-            out.pluginConfig(config);
-        }
-        return out.build();
     }
 
     // --- project ------------------------------------------------------------
@@ -685,7 +577,7 @@ public final class PomImporter {
      * keys each section on it, so a collision silently drops an edge. Maven allows same-artifactId
      * deps in one scope (different groups); disambiguate deterministically in declaration order.
      */
-    private static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+    static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Map.Entry<Scope, List<Dependency>> e : byScope.entrySet()) {
             List<Dependency> deps = e.getValue();
             Set<String> seen = new HashSet<>();
