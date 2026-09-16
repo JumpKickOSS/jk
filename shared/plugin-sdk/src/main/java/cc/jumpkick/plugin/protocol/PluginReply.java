@@ -30,10 +30,21 @@ public final class PluginReply {
 
     /** A structured compiler/format diagnostic; {@code file} may be null, {@code line}/{@code col} 0 when unknown. */
     public static String diagnostic(String sev, @Nullable String file, int line, int col, String msg) {
+        return diagnostic(sev, file, line, col, msg, "");
+    }
+
+    /**
+     * A compiler diagnostic with the compiler's own key for it ({@code
+     * compiler.err.cant.resolve.location}); the {@code key} field is written only when the compiler
+     * gave one.
+     */
+    public static String diagnostic(
+            String sev, @Nullable String file, int line, int col, String msg, @Nullable String key) {
         StringBuilder b = new StringBuilder("{\"t\":\"diagnostic\",\"sev\":").append(Jsonl.quote(sev));
         if (file != null) b.append(",\"file\":").append(Jsonl.quote(file));
         if (line > 0) b.append(",\"line\":").append(line);
         if (col > 0) b.append(",\"col\":").append(col);
+        if (key != null && !key.isEmpty()) b.append(",\"key\":").append(Jsonl.quote(key));
         b.append(",\"msg\":").append(Jsonl.quote(msg)).append('}');
         return b.toString();
     }

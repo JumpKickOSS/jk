@@ -105,7 +105,8 @@ public final class JavaIncrementalCompiler implements Plugin {
                                     spec.extra("scala-compiler").orElse(null))
                             : ZincJavaCompiler.compileJava(job);
             for (ZincJavaCompiler.Diag d : r.diagnostics()) {
-                out.emit(PluginReply.diagnostic(d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message()));
+                out.emit(PluginReply.diagnostic(
+                        d.kind(), d.file(), (int) d.line(), (int) d.col(), d.message(), d.key()));
             }
             for (Map.Entry<Path, Set<Path>> e : r.generated().entrySet()) {
                 out.emit(PluginReply.provenance(

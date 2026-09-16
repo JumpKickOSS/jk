@@ -41,7 +41,8 @@ public record ErrorLineEvent(
                 snippetStart,
                 worker,
                 snippet,
-                stack);
+                stack,
+                "");
     }
 
     /** The record for one failure's fields, with the caller's own dir/task/code/message/test. */

@@ -171,6 +171,37 @@ class JkResultsHintsTest {
     }
 
     @Test
+    void javacs_key_selects_the_row_whatever_the_message_says() {
+        // A localized javac: the message shape matches no row, the key still does.
+        BuildRecord.Diag localized = keyed("compiler.err.cant.resolve.location", """
+                /ws/app/src/Main.java:7:9: error: Symbol nicht gefunden
+                  Symbol:   Methode missing()
+                  Ort: Klasse Main""");
+        assertThat(code(localized)).isEqualTo("compiler.err.cant.resolve.location");
+        assertThat(render(localized)).contains("→ the name is not declared here and not imported:");
+
+        BuildRecord.Diag lossy = keyed(
+                "compiler.err.prob.found.req",
+                "/ws/app/src/Main.java:9:17: error: incompatible types: possible lossy conversion from double to int");
+        assertThat(code(lossy)).isEqualTo("compiler.err.prob.found.req");
+        assertThat(render(lossy)).contains("→ the value's type is not the one the declaration requires:");
+
+        BuildRecord.Diag pkg = keyed(
+                "compiler.err.doesnt.exist",
+                "/ws/app/src/Main.java:3:29: error: package com.google.common.collect does not exist");
+        assertThat(render(pkg)).contains("provides package `com.google.common.collect`");
+    }
+
+    @Test
+    void a_key_the_table_lacks_falls_back_to_the_message_shape_and_a_keyless_message_is_matched_by_shape() {
+        BuildRecord.Diag unknownKey = keyed("compiler.err.something.else", "cannot find symbol\n  symbol: x");
+        assertThat(code(unknownKey)).isEqualTo("compiler.err.cant.resolve.location");
+        assertThat(code(keyed("compiler.err.already.defined", "class A is already defined in package a")))
+                .isNull();
+        assertThat(code(javac("missing return statement"))).isEqualTo("compiler.err.missing.ret.stmt");
+    }
+
+    @Test
     void the_first_line_is_the_compiler_text_whatever_header_it_wears() {
         assertThat(JkResultsHints.firstLine("cannot find symbol\n  symbol: x")).isEqualTo("cannot find symbol");
         assertThat(JkResultsHints.firstLine("/ws/A.java:3:4: error: cannot find symbol"))
@@ -184,6 +215,29 @@ class JkResultsHintsTest {
     private static @Nullable String code(BuildRecord.Diag d) {
         JkResultsHints.Hint hint = JkResultsHints.forDiag(d);
         return hint == null ? null : hint.code();
+    }
+
+    private static BuildRecord.Diag keyed(String key, String message) {
+        return new BuildRecord.Diag(
+                "error",
+                "/ws/app",
+                "compile-java",
+                "javac",
+                message,
+                null,
+                null,
+                "g:app",
+                null,
+                null,
+                null,
+                null,
+                "",
+                0,
+                0,
+                0,
+                List.of(),
+                0,
+                key);
     }
 
     private static BuildRecord.Diag javac(String message) {

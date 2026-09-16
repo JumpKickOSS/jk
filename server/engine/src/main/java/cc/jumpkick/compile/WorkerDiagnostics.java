@@ -18,10 +18,16 @@ final class WorkerDiagnostics {
 
     /**
      * Structured worker diagnostic (groovyc, javac): when the worker supplied a file+line and the
-     * message does not already start with its own header, synthesize one.
+     * message does not already start with its own header, synthesize one. {@code key} is the
+     * compiler's own name for the diagnostic, {@code null} when it gave none.
      */
     static CompileResult.Diagnostic located(
-            @Nullable String sev, @Nullable String file, long line, long col, @Nullable String msg) {
+            @Nullable String sev,
+            @Nullable String file,
+            long line,
+            long col,
+            @Nullable String msg,
+            @Nullable String key) {
         CompileResult.Severity severity = CompileResult.Severity.fromName(sev);
         String text = msg == null ? "" : msg;
         if (file != null && !file.isBlank() && line > 0 && CompilerLocus.parse(text) == null) {
@@ -34,7 +40,12 @@ final class WorkerDiagnostics {
             text = sb.toString();
         }
         return new CompileResult.Diagnostic(
-                severity, file == null || file.isBlank() ? null : Path.of(file), line, col, text);
+                severity,
+                file == null || file.isBlank() ? null : Path.of(file),
+                line,
+                col,
+                text,
+                key == null ? "" : key);
     }
 
     /**

@@ -73,7 +73,7 @@ public final class PluginProtocol {
 
     public static final String LABEL = "label"; // free-text progress label
     public static final String COMMAND_OUT = "command-out"; // user-facing output line (command ops)
-    public static final String DIAGNOSTIC = "diagnostic"; // {sev,file?,line?,col?,msg}
+    public static final String DIAGNOSTIC = "diagnostic"; // {sev,file?,line?,col?,key?,msg}
     public static final String PROVENANCE = "provenance"; // {gen,src[]}
     public static final String TEST = "test"; // {event,…} test lifecycle event
     public static final String STEP = "step"; // describe declaration

@@ -536,7 +536,8 @@ public final class BuildAccumulator {
                 col,
                 d.snippetStart(),
                 d.snippet(),
-                d.worker());
+                d.worker(),
+                d.key());
     }
 
     public void setModuleEdges(Map<Path, Set<Path>> edges) {

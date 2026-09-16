@@ -31,7 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * End-to-end: a module whose compile fails on a missing symbol reaches {@code jk-results.md} with
  * javac's own {@code symbol:} and {@code location:} quoted in a repair hint under the diagnostic,
- * and the header sizes the file in tokens. The diagnostic travels the real path — the compiler
+ * the record carries javac's key for the diagnostic, and the header sizes the file in tokens. The diagnostic travels the real path — the compiler
  * worker, the module plan, the journal accumulator — and only the write to disk is left out.
  */
 @Tag("integration")
@@ -56,6 +56,11 @@ class ResultsHintE2eTest {
         for (ModuleOutcome o : result.modules()) acc.addModule(o);
         acc.stamp(new JobOutcome.Failed(result.exitCode()));
         BuildRecord record = acc.toRecord(2_000, false, 1_000, "test", null);
+        assertThat(record.diagnostics())
+                .filteredOn(d -> d.code().equals("javac") && d.severity().equals("error"))
+                .as("the compile worker's key rides the diagnostic into the record")
+                .extracting(BuildRecord.Diag::key)
+                .containsExactly("compiler.err.cant.resolve.location");
         String md = JkResultsMarkdown.render(record);
 
         assertThat(md).startsWith("# jk results — FAIL");

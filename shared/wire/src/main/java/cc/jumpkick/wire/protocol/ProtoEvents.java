@@ -154,13 +154,27 @@ public final class ProtoEvents {
     /** The three diagnostic shapes share one field order; the record is chosen by the wire type. */
     private static String diagnostic(
             String type, String dir, String step, String code, String message, String test, TestFailureInfo f) {
+        return diagnostic(type, dir, step, code, "", message, test, f);
+    }
+
+    /** As {@link #diagnostic(String, String, String, String, String, String, TestFailureInfo)} with the tool's key. */
+    private static String diagnostic(
+            String type,
+            String dir,
+            String step,
+            String code,
+            String key,
+            String message,
+            String test,
+            TestFailureInfo f) {
         String msg = message == null || message.isEmpty() ? f.message() : message;
         return switch (type) {
             case EngineProtocol.WARN ->
                 WarnEvent.of(dir, step, code, msg, test, f).encode();
             case EngineProtocol.ERROR_LINE ->
                 ErrorLineEvent.of(dir, step, code, msg, test, f).encode();
-            default -> PlanDiagnosticEvent.of(dir, step, code, msg, test, f).encode();
+            default ->
+                PlanDiagnosticEvent.of(dir, step, code, key, msg, test, f).encode();
         };
     }
 
@@ -202,11 +216,18 @@ public final class ProtoEvents {
 
     public static String planDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
+        return planDiagnostic(dir, step, code, message, test, exceptionClass, "");
+    }
+
+    /** A plan diagnostic with the tool's own key for it ({@code ""} when the tool gave none). */
+    public static String planDiagnostic(
+            String dir, String step, String code, String message, String test, String exceptionClass, String key) {
         return diagnostic(
                 EngineProtocol.BUILDPLAN_DIAGNOSTIC,
                 dir,
                 step,
                 code,
+                key,
                 message,
                 test,
                 failure("", "", "", "", exceptionClass, ""));

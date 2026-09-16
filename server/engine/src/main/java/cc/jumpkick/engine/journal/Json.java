@@ -73,6 +73,7 @@ final class Json {
             dm.put("dir", d.dir());
             dm.put("task", d.step());
             dm.put("code", d.code());
+            if (!d.key().isEmpty()) dm.put("key", d.key());
             dm.put("message", d.message());
             if (d.test() != null && !d.test().isEmpty()) dm.put("test", d.test());
             if (d.module() != null && !d.module().isEmpty()) dm.put("module", d.module());
@@ -312,7 +313,8 @@ final class Json {
                     (int) lng(dm, "col"),
                     (int) lng(dm, "snippetStart"),
                     strList(dm, "snippet"),
-                    (int) lng(dm, "worker")));
+                    (int) lng(dm, "worker"),
+                    text(dm, "key")));
         }
 
         return new BuildRecord(

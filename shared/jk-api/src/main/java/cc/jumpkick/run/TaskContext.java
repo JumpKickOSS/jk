@@ -54,6 +54,19 @@ public interface TaskContext {
      */
     void error(String code, String message);
 
+    /**
+     * {@link #warn(String, String)} with the tool's own key for the diagnostic ({@code
+     * compiler.err.cant.resolve.location}); {@code ""} when the tool gave none.
+     */
+    default void keyedWarn(String code, String key, String message) {
+        warn(code, message);
+    }
+
+    /** {@link #error(String, String)} with the tool's own key for the diagnostic. */
+    default void keyedError(String code, String key, String message) {
+        error(code, message);
+    }
+
     /** Two-field test-failure form of {@link #error(String, String)} (label + exception class). */
     default void error(String code, String message, String test, String exceptionClass) {
         error(code, message);

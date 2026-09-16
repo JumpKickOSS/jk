@@ -125,7 +125,7 @@ class ProvenanceJavacTest {
     @Test
     void a_source_that_is_not_a_file_on_disk_is_refused_rather_than_dropped(@TempDir Path dir) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("classes"));
-        ProvenanceJavac javac = new ProvenanceJavac(null, new ApProvenance(), StandardCharsets.UTF_8, null);
+        ProvenanceJavac javac = new ProvenanceJavac(null, new ApProvenance(), StandardCharsets.UTF_8, null, null);
         VirtualFile notOnDisk = new InMemorySource();
 
         assertThatThrownBy(() -> javac.run(

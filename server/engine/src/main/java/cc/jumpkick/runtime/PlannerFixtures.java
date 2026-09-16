@@ -13,7 +13,6 @@ import static cc.jumpkick.runtime.BuildPlanner.RELEASE;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
@@ -258,15 +257,7 @@ public final class PlannerFixtures {
                                     in.dir(),
                                     ctx.require(LAYOUT).moduleTargetDir()));
                     ctx.waited(Duration.ofMillis(r.waitMillis()));
-                    boolean errored = false;
-                    for (CompileResult.Diagnostic d : r.diagnostics()) {
-                        if (d.severity() == CompileResult.Severity.ERROR) {
-                            ctx.error("javac", d.describe());
-                            errored = true;
-                        } else {
-                            ctx.warn("javac", d.describe());
-                        }
-                    }
+                    boolean errored = JavacDiagnostics.report(ctx, r.diagnostics());
                     if (!r.success()) {
                         if (!errored) {
                             ctx.error(

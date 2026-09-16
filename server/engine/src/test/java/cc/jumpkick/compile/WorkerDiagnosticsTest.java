@@ -14,7 +14,7 @@ class WorkerDiagnosticsTest {
     @Test
     void groovy_structured_diagnostic_gets_a_javac_style_header() {
         CompileResult.Diagnostic d =
-                WorkerDiagnostics.located("ERROR", "src/main/groovy/Foo.groovy", 12, 5, "unexpected token: }");
+                WorkerDiagnostics.located("ERROR", "src/main/groovy/Foo.groovy", 12, 5, "unexpected token: }", null);
         assertThat(d.severity()).isEqualTo(CompileResult.Severity.ERROR);
         assertThat(d.source()).isEqualTo(Path.of("src/main/groovy/Foo.groovy"));
         assertThat(d.line()).isEqualTo(12);
@@ -28,7 +28,7 @@ class WorkerDiagnosticsTest {
 
     @Test
     void groovy_header_omits_column_zero() {
-        CompileResult.Diagnostic d = WorkerDiagnostics.located("WARNING", "A.groovy", 3, 0, "deprecated");
+        CompileResult.Diagnostic d = WorkerDiagnostics.located("WARNING", "A.groovy", 3, 0, "deprecated", null);
         assertThat(d.describe()).isEqualTo("A.groovy:3: warning: deprecated");
         assertThat(requireNonNull(CompilerLocus.parse(d.describe())).line()).isEqualTo(3);
     }
@@ -36,7 +36,7 @@ class WorkerDiagnosticsTest {
     @Test
     void unlocated_worker_diagnostic_keeps_the_message_and_severity() {
         CompileResult.Diagnostic d =
-                WorkerDiagnostics.located("ERROR", null, 0, 0, "General error during semantic analysis");
+                WorkerDiagnostics.located("ERROR", null, 0, 0, "General error during semantic analysis", null);
         assertThat(d.source()).isNull();
         assertThat(d.describe()).isEqualTo("General error during semantic analysis");
     }

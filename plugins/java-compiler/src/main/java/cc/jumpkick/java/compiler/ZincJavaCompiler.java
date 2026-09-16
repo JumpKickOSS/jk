@@ -105,7 +105,21 @@ public final class ZincJavaCompiler {
         }
     }
 
-    public record Diag(String kind, @Nullable String file, long line, long col, String message) {}
+    /**
+     * One compiler diagnostic. {@code key} is javac's own name for it ({@code
+     * compiler.err.cant.resolve.location}), {@code ""} when the diagnostic came without one — a
+     * thrown {@code CompileFailed}, an I/O failure, a compiler that reports text only.
+     */
+    public record Diag(String kind, @Nullable String file, long line, long col, String message, String key) {
+        public Diag {
+            key = key == null ? "" : key;
+        }
+
+        /** A diagnostic that carries no compiler key. */
+        public Diag(String kind, @Nullable String file, long line, long col, String message) {
+            this(kind, file, line, col, message, "");
+        }
+    }
 
     /** One source Zinc would compile, with the analysis reason. */
     public record Invalidation(Path source, String why) {}
@@ -173,6 +187,7 @@ public final class ZincJavaCompiler {
         RecordingJavaCompiler javac = null;
         ProcessorLoad processors = ProcessorLoad.none();
         CompilePhases phases = CompilePhases.open(job.phasesLog());
+        CollectingReporter reporter = new CollectingReporter();
         try {
             Files.createDirectories(classOutput);
             Files.createDirectories(workdir);
@@ -186,7 +201,7 @@ public final class ZincJavaCompiler {
             processors = processorsFor(processorPath);
             phases.mark("processors");
             ConstantDeps constants = new ConstantDeps();
-            javac = recordingJavac(converter, processors, provenance, constants);
+            javac = recordingJavac(converter, processors, provenance, constants, reporter);
             Compilers compilers = ScalaBridge.compilersFor(javac, mixed);
 
             VirtualFile[] sourceFiles = ZincSetup.virtual(sources, converter);
@@ -201,7 +216,6 @@ public final class ZincJavaCompiler {
             VirtualFile[] cpFiles = ZincSetup.virtual(cp, converter);
             phases.mark("virtualise");
 
-            CollectingReporter reporter = new CollectingReporter();
             AnalysisStore store = zinced.store();
             // One stamper for the compile and for the classpath hash: both must see the same
             // (mtime-cached) hash of a jar or the two could disagree mid-compile.
@@ -271,8 +285,12 @@ public final class ZincJavaCompiler {
             // the wire as the diagnostic text.
             return new Result(false, List.of(new Diag("ERROR", null, 0, 0, Errors.text(e))), List.of());
         } catch (CompileFailed failed) {
-            List<Diag> diags = new ArrayList<>();
-            for (Problem p : failed.problems()) diags.add(CollectingReporter.toDiag(p));
+            // The reporter's own rows carry javac's keys; the problems on the throw are the same
+            // rows without them, so they stand in only when the reporter logged nothing.
+            List<Diag> diags = new ArrayList<>(reporter.diagnostics());
+            if (diags.isEmpty()) {
+                for (Problem p : failed.problems()) diags.add(CollectingReporter.toDiag(p));
+            }
             if (diags.isEmpty()) {
                 diags.add(new Diag(
                         "ERROR", null, 0, 0, failed.getMessage() == null ? "compile failed" : failed.getMessage()));
@@ -527,12 +545,16 @@ public final class ZincJavaCompiler {
      * JDK — which is the one case {@link ProvenanceJavac} cannot serve.
      */
     private static RecordingJavaCompiler recordingJavac(
-            FileConverter converter, ProcessorLoad processors, ApProvenance provenance, ConstantDeps constants) {
-        // A forked javac cannot be listened to, so its compiles record no inlined-constant edges —
-        // the same limit Zinc's own forked mode has.
+            FileConverter converter,
+            ProcessorLoad processors,
+            ApProvenance provenance,
+            ConstantDeps constants,
+            CollectingReporter reporter) {
+        // A forked javac cannot be listened to, so its compiles record no inlined-constant edges
+        // and its diagnostics carry no keys — the same limit Zinc's own forked mode has.
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler() != null
                 ? new ProvenanceJavac(
-                        processors.any() ? processors.loader() : null, provenance, SOURCE_ENCODING, constants)
+                        processors.any() ? processors.loader() : null, provenance, SOURCE_ENCODING, constants, reporter)
                 : sbt.internal.inc.javac.JavaCompiler.fork(Option.empty());
         return new RecordingJavaCompiler(javac, converter);
     }
