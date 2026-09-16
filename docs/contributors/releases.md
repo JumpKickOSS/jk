@@ -4,6 +4,8 @@ How JumpKick ships installable binaries. For day-to-day use see [user install](.
 
 ## Versioning
 
+What a release may change in the formats projects depend on: [Compatibility](compatibility.md).
+
 | Line | Meaning |
 |------|---------|
 | **`0.13.7`** | Current product version (no `-SNAPSHOT` on `main`) |
