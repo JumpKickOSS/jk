@@ -44,8 +44,8 @@ class IntellijXmlEscapingTest {
 
         String iml = IntellijIdeGenerator.imlXml(appDir, app, List.of(), List.of(), all, null, null, List.of());
 
-        assertThat(iml).contains("<output url=\"file://$MODULE_DIR$/out&amp;put/classes\" />");
-        assertThat(iml).contains("<output-test url=\"file://$MODULE_DIR$/out&amp;put/test-classes\" />");
+        assertThat(iml).contains("<output url=\"file://$MODULE_DIR$/out&amp;put/jdt/classes/main\" />");
+        assertThat(iml).contains("<output-test url=\"file://$MODULE_DIR$/out&amp;put/jdt/classes/test\" />");
         assertThat(iml).doesNotContain("out&put");
     }
 

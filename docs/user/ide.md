@@ -26,6 +26,10 @@ Execution still follows the CLI default: `jk test` runs only the **test** (unit)
 one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries. Treat
 **all suites** as the nightly / release configuration, not the inner loop.
 
+IntelliJ and JDT compile into the IDE-owned `target/jdt/classes/{main,test}` of each module,
+never into jk's `target/classes`: a gutter run leaves nothing where the action cache stamps
+jk's own compile, so the next `jk build` is still a cache hit.
+
 ## BSP
 
 | Capability | Status |
