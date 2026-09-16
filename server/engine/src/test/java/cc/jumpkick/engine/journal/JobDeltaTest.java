@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -137,14 +138,15 @@ class JobDeltaTest {
                 JobDelta.compute(run(3, false, 1, List.of()), run(4, false, 1, List.of()), before, after, null, null);
 
         assertThat(d.comparedTests()).isTrue();
-        assertThat(d.fixed().shown()).containsExactly("FooTest#adds()");
-        assertThat(d.broke().shown()).containsExactly("FooTest#subtracts()");
-        assertThat(d.added().shown()).containsExactly("NewTest#fresh()");
-        assertThat(d.dropped().shown()).containsExactly("OldTest#gone()");
-        assertThat(d.fixed().count()
-                        + d.broke().count()
-                        + d.added().count()
-                        + d.dropped().count())
+        JobDelta.Rows fixed = requireNonNull(d.fixed());
+        JobDelta.Rows broke = requireNonNull(d.broke());
+        JobDelta.Rows added = requireNonNull(d.added());
+        JobDelta.Rows dropped = requireNonNull(d.dropped());
+        assertThat(fixed.shown()).containsExactly("FooTest#adds()");
+        assertThat(broke.shown()).containsExactly("FooTest#subtracts()");
+        assertThat(added.shown()).containsExactly("NewTest#fresh()");
+        assertThat(dropped.shown()).containsExactly("OldTest#gone()");
+        assertThat(fixed.count() + broke.count() + added.count() + dropped.count())
                 .isEqualTo(4);
     }
 
@@ -156,9 +158,9 @@ class JobDeltaTest {
         JobDelta d =
                 JobDelta.compute(run(1, true, 1, List.of()), run(2, true, 1, List.of()), null, null, before, after);
 
-        assertThat(d.files()).isNotNull();
-        assertThat(d.files().count()).isEqualTo(3);
-        assertThat(d.files().shown()).containsExactly("jk.toml (gone)", "src/B.java", "src/C.java (new)");
+        JobDelta.Rows files = requireNonNull(d.files());
+        assertThat(files.count()).isEqualTo(3);
+        assertThat(files.shown()).containsExactly("jk.toml (gone)", "src/B.java", "src/C.java (new)");
     }
 
     @Test
@@ -171,9 +173,10 @@ class JobDeltaTest {
         }
         JobDelta d =
                 JobDelta.compute(run(1, true, 1, List.of()), run(2, true, 1, List.of()), null, null, before, after);
-        assertThat(d.files().count()).isEqualTo(30);
-        assertThat(d.files().shown()).hasSize(JobDelta.MAX_SHOWN);
-        assertThat(d.files().more()).isEqualTo(30 - JobDelta.MAX_SHOWN);
+        JobDelta.Rows files = requireNonNull(d.files());
+        assertThat(files.count()).isEqualTo(30);
+        assertThat(files.shown()).hasSize(JobDelta.MAX_SHOWN);
+        assertThat(files.more()).isEqualTo(30 - JobDelta.MAX_SHOWN);
     }
 
     @Test

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.test.MarkdownTestReport;
@@ -9,13 +10,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The two snapshots a run leaves for the next one: every test's verdict and every file's hash. */
 class RunSnapshotsTest {
 
-    private static MarkdownTestReport.Entry entry(String cls, String name, String failure, String skip) {
+    private static MarkdownTestReport.Entry entry(
+            String cls, String name, @Nullable String failure, @Nullable String skip) {
         return new MarkdownTestReport.Entry(cls, name, 5, failure, null, skip);
     }
 
@@ -59,18 +62,18 @@ class RunSnapshotsTest {
         Files.createDirectories(root.resolve("node_modules/x"));
         Files.writeString(root.resolve("node_modules/x/index.js"), "");
 
-        Map<String, RunSnapshots.FileRow> rows = RunSnapshots.walk(root, Map.of());
+        Map<String, RunSnapshots.FileRow> rows = requireNonNull(RunSnapshots.walk(root, Map.of()));
 
         assertThat(rows).containsOnlyKeys("jk.toml", "src/com/A.java");
-        assertThat(rows.get("src/com/A.java").hash()).hasSize(64);
+        assertThat(requireNonNull(rows.get("src/com/A.java")).hash()).hasSize(64);
 
         // The next run reuses a known hash for a file whose size and mtime are unchanged, and
         // re-reads one that moved; the TSV round-trips both.
         Files.writeString(root.resolve("src/com/A.java"), "class A { int x; }\n");
-        Map<String, RunSnapshots.FileRow> again = RunSnapshots.walk(root, rows);
+        Map<String, RunSnapshots.FileRow> again = requireNonNull(RunSnapshots.walk(root, rows));
         assertThat(again.get("jk.toml")).isEqualTo(rows.get("jk.toml"));
-        assertThat(again.get("src/com/A.java").hash())
-                .isNotEqualTo(rows.get("src/com/A.java").hash());
+        assertThat(requireNonNull(again.get("src/com/A.java")).hash())
+                .isNotEqualTo(requireNonNull(rows.get("src/com/A.java")).hash());
         assertThat(RunSnapshots.decodeSources(RunSnapshots.encodeSources(again)))
                 .isEqualTo(again);
         assertThat(JobDelta.changedFiles(RunSnapshots.hashes(rows), RunSnapshots.hashes(again)))

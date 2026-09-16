@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
@@ -94,8 +95,7 @@ class JournalLineageTest {
     @Test
     void the_snapshots_survive_complete_and_are_readable_artifacts() throws Exception {
         BuildJournal journal = new BuildJournal(dir.resolve("builds"));
-        String locator = journal.begin(run(1_000, "build", "cli", null, true));
-        assertThat(locator).isNotNull();
+        String locator = requireNonNull(journal.begin(run(1_000, "build", "cli", null, true)));
         assertThat(journal.complete(locator, run(1_000, "build", "cli", null, false), snapshot("F\tT#a()\n")))
                 .isTrue();
         Path tests = journal.artifact(locator, BuildJournal.TEST_OUTCOMES_TSV).orElseThrow();
