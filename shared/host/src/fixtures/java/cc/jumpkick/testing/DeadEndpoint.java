@@ -55,7 +55,8 @@ public final class DeadEndpoint implements AutoCloseable {
 
     /** {@code http://127.0.0.1:<port>} plus {@code path}, which must start with a slash. */
     public URI uri(String path) {
-        return URI.create("http://" + listener.getInetAddress().getHostAddress() + ":" + listener.getLocalPort() + path);
+        return URI.create(
+                "http://" + listener.getInetAddress().getHostAddress() + ":" + listener.getLocalPort() + path);
     }
 
     private void dropEveryConnection() {

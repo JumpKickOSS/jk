@@ -4,11 +4,11 @@ package cc.jumpkick.command.toolchain;
 import static cc.jumpkick.cli.testing.JkRun.run;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.HostPlatform;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.FakeJdk;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

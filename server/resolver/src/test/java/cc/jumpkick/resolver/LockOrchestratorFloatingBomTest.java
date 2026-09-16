@@ -26,8 +26,8 @@ class LockOrchestratorFloatingBomTest {
     void open_range_platform_bom_is_rejected(@TempDir Path tempDir) {
         JkBuild project = jkBuild(
                 Map.of(Scope.PLATFORM, List.of(Dependency.of("bom", "org.example:bom", VersionSelector.parse(">=4")))));
-        LockOrchestrator orchestrator = new LockOrchestrator(RepoGroup.of(
-                new MavenRepo("local", tempDir.resolve("never-dialed").toUri(), new Http(), new Cas(tempDir.resolve("c")))));
+        LockOrchestrator orchestrator = new LockOrchestrator(RepoGroup.of(new MavenRepo(
+                "local", tempDir.resolve("never-dialed").toUri(), new Http(), new Cas(tempDir.resolve("c")))));
         assertThatThrownBy(() -> orchestrator.lock(project, "test"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("platform dependency")

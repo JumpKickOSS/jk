@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.Hashing;
@@ -13,6 +12,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.ByteArrayOutputStream;
