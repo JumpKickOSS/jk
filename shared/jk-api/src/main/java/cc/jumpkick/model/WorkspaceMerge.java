@@ -262,18 +262,21 @@ public final class WorkspaceMerge {
             // siblings are dropped.
             return Dependency.of(d.library(), module, VersionSelector.parse("=" + p.version()))
                     .withKind(d.kind())
-                    .withFixtures(d.fixtures());
+                    .withFixtures(d.fixtures())
+                    .withExclusions(d.exclusions());
         }
         Workspace.WorkspaceDependency ws = wsDeps.get(name);
         if (ws != null) {
             if (ws.gitSource() != null) {
                 return Dependency.git(d.library(), ws.module(), ws.gitSource())
                         .withKind(d.kind())
-                        .withFixtures(d.fixtures());
+                        .withFixtures(d.fixtures())
+                        .withExclusions(d.exclusions());
             }
             return Dependency.of(d.library(), ws.module(), Objects.requireNonNull(ws.version()))
                     .withKind(d.kind())
-                    .withFixtures(d.fixtures());
+                    .withFixtures(d.fixtures())
+                    .withExclusions(d.exclusions());
         }
         throw new IllegalStateException("no workspace dependency or sibling named `" + name + "`");
     }

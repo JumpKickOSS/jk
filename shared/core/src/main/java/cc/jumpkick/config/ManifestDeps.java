@@ -297,6 +297,7 @@ public final class ManifestDeps {
         dep = applyDependencyKind(dep, entry, scope, name);
         dep = applyClassifier(dep, entry, scope, name);
         dep = applyFixtures(dep, entry, scope, name);
+        dep = DependencyExclusions.apply(dep, entry, scope, name);
         // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
