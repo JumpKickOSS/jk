@@ -366,6 +366,44 @@ The release workflow assembles `target/dist` per platform (`scripts/assemble-rel
 G75 (`ship-layout-installer-jk`) holds the installer and the dist script to the same `lib/` and
 `repos/` names.
 
+## Try the tree on another project
+
+The checkout's own client and engine, run against a project that is not this tree, with `~/.jk`
+untouched: install the ship layout into a private home. `JK_HOME` is the one knob; everything the
+install writes lands under it, and the `jk` on your PATH keeps running the default home.
+
+```bash
+jk build --skip-tests                                   # target/dist/: client, engine jar, shelf
+export JK_HOME=$HOME/src/scratch/jk-home                # any absolute path that is not ~/.jk
+bash install.sh target/dist/jk                          # copies the binary, materializes the engine,
+                                                        # shelves repos/jk-local, starts that engine
+cd /path/to/another-project
+"$JK_HOME/bin/jk" build                                 # the tree's engine and workers, on that project
+"$JK_HOME/bin/jk" engine stop --now                     # stops only the private engine
+```
+
+The install prints the activation line for the private bin (`eval "$("$JK_HOME/bin/jk" activate
+zsh)"`) and writes no rc block: a scratch home is not the jk every new shell runs
+([install](../user/install.md#environment-overrides)). Calling the binary by its path, as above, needs
+neither. To try a change, rebuild in the checkout with the PATH jk and install again: `install.sh`
+stops the private engine, swaps the binary, the engine jar and the shelf, and starts the new engine.
+
+| Under `$JK_HOME` (private) | Shared with `~/.jk` |
+|---|---|
+| `bin/jk` — the binary `jk build` linked | the managed JDK root, `~/.jdks` (`JK_JDKS_DIR`): the private engine and its compilers run on JDKs the default home already installed |
+| `lib/jk-engine/` — the engine jar from `target/dist/lib/`, and the AOT cache it trains under `state/` | `~/.m2`, read for third-party jars when `[m2] integration` is on |
+| `store/repos/jk-local/` — every module jar from `target/dist/repos/`: the workers the engine launches, the rule packs, the libraries | nothing else: `JK_STORE_DIR=$HOME/.jk/store` shares the artifact store on purpose when a cold store is the wrong cost |
+| `store/` (artifacts, templates, the library catalog), `cache/` (action cache), `state/` (the engine's socket, log and build history), `config.toml`, `creds/` | |
+
+The engine a private client starts is the one under its own `lib/jk-engine/`, paired with the
+client by version, so the handshake is between two artifacts of the same build. `JK_ENGINE_EXE` is
+not that path: it names a dedicated engine executable whose `main` is the engine loop, the client
+appends the JVM flags to its argv and recognizes the engine process by its executable, and a shell
+script wrapping `java -cp … EngineMain` is neither. Use the private install.
+
+`JK_HOME=… jk engine status` answers for the private engine; the `jk` on your PATH knows nothing
+about it, and `jk engine stop` without `JK_HOME` stops the default home's engine, not this one.
+
 ## AOT during self-host / CI
 
 Live engines train AOT on miss by default. Nested engines under `jk test` and short-lived CI
