@@ -759,14 +759,29 @@ final class PlannerGuards {
         if (env.in().session().coverage()) return false;
         GuardsPlan g = env.guards();
         try {
-            for (OutputArtifacts.Module m :
-                    OutputArtifacts.of(g.root(), ectx.modules(), g.config().coverageReport())) {
+            List<OutputArtifacts.Module> modules =
+                    OutputArtifacts.of(g.root(), ectx.modules(), g.config().coverageReport());
+            // A module whose manifest makes every test run a coverage run is writing its report
+            // in this build too, unless the build skips tests.
+            if (!env.in().skipTests() && modules.stream().anyMatch(m -> declaresCoverage(m.dir()))) return false;
+            for (OutputArtifacts.Module m : modules) {
                 if (m.existingCoverage() != null) return true;
             }
         } catch (IOException e) {
             return false;
         }
         return false;
+    }
+
+    /** {@code [test] coverage = true} in the module's manifest; an unparseable manifest reads as false. */
+    private static boolean declaresCoverage(Path moduleDir) {
+        try {
+            return JkBuildParser.parse(moduleDir.resolve(ManifestPaths.MANIFEST))
+                    .build()
+                    .testCoverage();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static boolean readsCoverage(Rule rule) {

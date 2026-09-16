@@ -728,7 +728,8 @@ public final class BuildAccumulator {
                 false,
                 ioRow,
                 requestId,
-                publish);
+                publish,
+                List.of());
     }
 
     private static boolean notBlank(String s) {

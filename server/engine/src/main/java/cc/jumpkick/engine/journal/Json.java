@@ -110,6 +110,22 @@ final class Json {
             o.put("benefit", b);
         }
 
+        if (!r.coverage().isEmpty()) {
+            List<Object> coverage = new ArrayList<>();
+            for (BuildRecord.Coverage c : r.coverage()) {
+                Map<String, Object> cm = new LinkedHashMap<>();
+                cm.put("dir", c.dir());
+                cm.put("label", c.label());
+                cm.put("linesCovered", c.linesCovered());
+                cm.put("linesMissed", c.linesMissed());
+                cm.put("branchesCovered", c.branchesCovered());
+                cm.put("branchesMissed", c.branchesMissed());
+                cm.put("html", c.html());
+                coverage.add(cm);
+            }
+            o.put("coverage", coverage);
+        }
+
         if (r.io() == null) {
             o.put("io", null);
         } else {
@@ -210,6 +226,18 @@ final class Json {
                     strList(pub, "deploymentErrors"),
                     strList(pub, "bundle"));
         }
+        List<BuildRecord.Coverage> coverage = new ArrayList<>();
+        for (Object e : arr(o, "coverage")) {
+            Map<String, Object> cm = (Map<String, Object>) e;
+            coverage.add(new BuildRecord.Coverage(
+                    text(cm, "dir"),
+                    text(cm, "label"),
+                    lng(cm, "linesCovered"),
+                    lng(cm, "linesMissed"),
+                    lng(cm, "branchesCovered"),
+                    lng(cm, "branchesMissed"),
+                    text(cm, "html")));
+        }
 
         List<BuildRecord.Diag> diagnostics = new ArrayList<>();
         for (Object e : arr(o, "diagnostics")) {
@@ -261,7 +289,8 @@ final class Json {
                 bool(o, "running"),
                 io,
                 lng(o, "requestId"),
-                publish);
+                publish,
+                coverage);
     }
 
     /**

@@ -806,6 +806,12 @@ public record JkBuild(
              */
             boolean testAssertions,
             /**
+             * {@code [test] coverage}: whether every test run of this module is a coverage run —
+             * the JaCoCo agent on each forked test JVM and the module's report written — without
+             * {@code --coverage} on the command line. Default {@code false}.
+             */
+            boolean testCoverage,
+            /**
              * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
              * {@link PlatformPolicy#ENFORCED}.
              */
@@ -878,6 +884,7 @@ public record JkBuild(
                 List.of(),
                 List.of(),
                 true,
+                false,
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
                 List.of(),
@@ -1023,6 +1030,7 @@ public record JkBuild(
             List<String> testIncludeTags;
             List<String> testExcludeTags;
             boolean testAssertions;
+            boolean testCoverage;
             PlatformPolicy platformPolicy;
             UnmappedPolicy unmappedPolicy;
             List<EnvDecl> testEnv;
@@ -1051,6 +1059,7 @@ public record JkBuild(
                 testIncludeTags = b.testIncludeTags;
                 testExcludeTags = b.testExcludeTags;
                 testAssertions = b.testAssertions;
+                testCoverage = b.testCoverage;
                 platformPolicy = b.platformPolicy;
                 unmappedPolicy = b.unmappedPolicy;
                 testEnv = b.testEnv;
@@ -1078,6 +1087,7 @@ public record JkBuild(
                         testIncludeTags,
                         testExcludeTags,
                         testAssertions,
+                        testCoverage,
                         platformPolicy,
                         unmappedPolicy,
                         testEnv,

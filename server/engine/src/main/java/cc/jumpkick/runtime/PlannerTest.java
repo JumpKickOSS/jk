@@ -49,6 +49,7 @@ import cc.jumpkick.task.LangCompile;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.CoverageAgent;
+import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.TestLauncherFailure;
 import cc.jumpkick.test.TestProgressListener;
@@ -516,7 +517,8 @@ public final class PlannerTest {
                     // A debug request is a request for a JVM to attach to; a replayed green
                     // marker would leave the debugger with nothing to reach.
                     // A coverage run is a request for a report; a replayed green marker has none.
-                    boolean coverage = in.session().coverage();
+                    boolean coverage =
+                            in.session().coverage() || projectUnderTest.build().testCoverage();
                     boolean rerun = in.session().config().rebuildOr(false)
                             || in.session().debugJvm() != null
                             || coverage;
@@ -524,9 +526,7 @@ public final class PlannerTest {
                         return; // skip — nothing changed since last green run
                     }
                     reweightForRealRun(ctx, in);
-                    if (!profileJvmArgs.isEmpty()) {
-                        ctx.output("test jvm-args (profile): " + String.join(" ", profileJvmArgs));
-                    }
+                    noteJvmArgs(ctx, profileJvmArgs);
                     List<Path> runtimeCp = testRuntimeCpWithLanguageRuntimes(ctx, cx, cas, testRtCp, testSrcs);
                     String moduleLabel = projectUnderTest.project().group() + ":"
                             + projectUnderTest.project().name();
@@ -536,12 +536,7 @@ public final class PlannerTest {
                     // count is decided once the gate is held: a suite parked at the gate is
                     // not running, and the ones running when it starts are what it shares with.
                     boolean gated = !in.session().parallelTests();
-                    Path coverageExec = null;
-                    if (coverage) {
-                        coverageExec = ctx.require(LAYOUT).reportsDir().resolve("jacoco.exec");
-                        Files.deleteIfExists(coverageExec);
-                        Files.createDirectories(coverageExec.getParent());
-                    }
+                    Path coverageExec = coverage ? coverageExecFile(ctx) : null;
                     // The agent and the report tool come first: a coverage run that cannot fetch
                     // JaCoCo fails before any suite starts, not after the suite ran uninstrumented.
                     CoverageTools.Jacoco jacoco = resolveBeforeGate(
@@ -574,13 +569,7 @@ public final class PlannerTest {
                         try {
                             result = launch(ctx, in, launcher, runtimeCp, testWorkers, workerJars, testEnv, listener);
                         } catch (TestLauncherFailure e) {
-                            // The launcher never ran a test: a failed step with the fork's output,
-                            // not a red test — and a red marker, so the next build runs it again.
-                            TestLauncherReport.report(ctx, in.lockFile(), projectUnderTest, e);
-                            if (stampKey != null) {
-                                actionCache.storeWithOutputs(
-                                        testTaskId, stampKey, Map.of(), TestStamp.outcome(0, 0, 0, 1));
-                            }
+                            reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                             throw e;
                         }
                     } finally {
@@ -604,24 +593,82 @@ public final class PlannerTest {
                 .build();
     }
 
+    /** The step's own line naming the profile JVM flags the fork gets; silent without a profile. */
+    private static void noteJvmArgs(TaskContext ctx, List<String> profileJvmArgs) {
+        if (!profileJvmArgs.isEmpty()) ctx.output("test jvm-args (profile): " + String.join(" ", profileJvmArgs));
+    }
+
     /**
-     * The module's JaCoCo XML, where the {@code coverage.*} guard measures look for it: the report
-     * over every class directory the build produced, from the execution data every suite JVM of
-     * this module appended to.
+     * The launcher never ran a test: a failed step with the fork's output, not a red test — and a
+     * red marker under the run's stamp, so the next build runs the suite again.
+     */
+    private static void reportLauncherFailure(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            JkBuild project,
+            ActionCache actionCache,
+            String testTaskId,
+            @Nullable String stampKey,
+            TestLauncherFailure e)
+            throws IOException {
+        TestLauncherReport.report(ctx, in.lockFile(), project, e);
+        if (stampKey != null) {
+            actionCache.storeWithOutputs(testTaskId, stampKey, Map.of(), TestStamp.outcome(0, 0, 0, 1));
+        }
+    }
+
+    /** A fresh {@code target/reports/jacoco.exec}: every suite JVM of this module appends to it. */
+    private static Path coverageExecFile(TaskContext ctx) throws IOException {
+        Path exec = ctx.require(LAYOUT).reportsDir().resolve("jacoco.exec");
+        Files.deleteIfExists(exec);
+        Files.createDirectories(exec.getParent());
+        return exec;
+    }
+
+    /** {@code target/reports/coverage/} — the module's JaCoCo HTML report, {@code index.html} first. */
+    static final String COVERAGE_HTML_DIR = "coverage";
+
+    /**
+     * The module's JaCoCo XML, where the {@code coverage.*} guard measures look for it, and the HTML
+     * report beside it: both over every class directory the build produced, from the execution
+     * data every suite JVM of this module appended to. The whole-report counters are published for
+     * the run's record and {@code jk-results.md}.
      */
     private static void writeCoverageReport(
             TaskContext ctx, BuildPlanner.Inputs in, CoverageTools.Jacoco jacoco, Path exec, String moduleLabel)
             throws Exception {
         BuildLayout layout = ctx.require(LAYOUT);
         Path xml = layout.reportsDir().resolve(OutputArtifacts.DEFAULT_COVERAGE);
+        Path html = layout.reportsDir().resolve(COVERAGE_HTML_DIR);
         List<Path> classDirs = List.of(ctx.require(MAIN_CLASSES), layout.kotlinClassesDir(), layout.groovyClassesDir());
+        List<Path> sourceDirs = new ArrayList<>();
+        for (ModuleLayout.Root root : ModuleLayout.roots(in.dir())) {
+            if (root.kind() == ModuleLayout.Kind.SOURCE) sourceDirs.add(in.dir().resolve(root.relative()));
+        }
+        CoverageTools.Counters counters;
         try {
-            CoverageTools.writeReport(ctx.require(JAVA_HOME), jacoco, exec, classDirs, xml, moduleLabel);
+            CoverageTools.writeReport(
+                    ctx.require(JAVA_HOME), jacoco, exec, classDirs, sourceDirs, xml, html, moduleLabel);
+            counters = CoverageTools.counters(xml);
         } catch (IOException e) {
             ctx.error("coverage", Errors.text(e));
             throw e;
         }
-        ctx.output("coverage: jacoco " + jacoco.version() + " → " + in.dir().relativize(xml));
+        Path index = html.resolve("index.html");
+        CoverageResults.publish(
+                in.dir(),
+                new CoverageResults.Module(
+                        in.dir().toAbsolutePath().normalize().toString(),
+                        moduleLabel,
+                        counters.linesCovered(),
+                        counters.linesMissed(),
+                        counters.branchesCovered(),
+                        counters.branchesMissed(),
+                        index.toAbsolutePath().normalize().toString()));
+        ctx.output("coverage: jacoco " + jacoco.version() + " → " + in.dir().relativize(xml) + " · lines "
+                + CoverageResults.pct(counters.linesCovered(), counters.linesMissed()) + " · branches "
+                + CoverageResults.pct(counters.branchesCovered(), counters.branchesMissed()) + " · html "
+                + in.dir().relativize(index));
     }
 
     /**

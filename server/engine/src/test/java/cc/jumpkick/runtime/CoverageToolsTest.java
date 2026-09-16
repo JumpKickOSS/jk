@@ -10,21 +10,29 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The report command hands JaCoCo only class directories that exist and asks for the XML the guard reads. */
+/**
+ * The report command hands JaCoCo only the class and source directories that exist and asks for the
+ * XML the guard reads and the HTML beside it.
+ */
 class CoverageToolsTest {
 
     @Test
-    void the_report_command_names_existing_class_dirs_and_the_xml(@TempDir Path tmp) throws Exception {
+    void the_report_command_names_existing_class_dirs_the_xml_and_the_html(@TempDir Path tmp) throws Exception {
         Path main = Files.createDirectories(tmp.resolve("classes/main"));
         Path kotlin = tmp.resolve("classes/kotlin"); // never compiled: absent
+        Path src = Files.createDirectories(tmp.resolve("src"));
+        Path srcKotlin = tmp.resolve("src/main/kotlin"); // absent
         Path xml = tmp.resolve("reports/jacoco.xml");
+        Path html = tmp.resolve("reports/coverage");
 
         List<String> cmd = CoverageTools.reportCommand(
                 tmp.resolve("jdk"),
                 tmp.resolve("cli.jar"),
                 tmp.resolve("jacoco.exec"),
                 List.of(main, kotlin),
+                List.of(src, srcKotlin),
                 xml,
+                html,
                 "g:a");
 
         assertThat(cmd)
@@ -34,8 +42,12 @@ class CoverageToolsTest {
                         "report",
                         tmp.resolve("jacoco.exec").toString());
         assertThat(cmd).containsSequence("--classfiles", main.toString());
-        assertThat(cmd).doesNotContain(kotlin.toString());
-        assertThat(cmd).containsSequence("--xml", xml.toString()).containsSequence("--name", "g:a");
+        assertThat(cmd).doesNotContain(kotlin.toString(), srcKotlin.toString());
+        assertThat(cmd).containsSequence("--sourcefiles", src.toString());
+        assertThat(cmd)
+                .containsSequence("--xml", xml.toString())
+                .containsSequence("--html", html.toString())
+                .containsSequence("--name", "g:a");
         assertThat(cmd.get(0)).startsWith(tmp.resolve("jdk").resolve("bin").toString());
     }
 
@@ -47,7 +59,9 @@ class CoverageToolsTest {
                         tools,
                         tmp.resolve("missing.exec"),
                         List.of(),
+                        List.of(),
                         tmp.resolve("jacoco.xml"),
+                        tmp.resolve("coverage"),
                         "g:a"))
                 .hasMessageContaining("no execution data");
     }
