@@ -77,7 +77,11 @@ and a classifier a POM spells with `${os.detected.classifier}` or `${javafx.plat
 as this host's word. A `<type>` maps where jk has a spelling — `pom` to `[platform-dependencies]`,
 `test-jar` to `kind = "tests"`, `ejb-client` to the `client` classifier — and a type jk cannot
 spell (`aar`, `war`, `zip`) is a Tier-3 row with the dependency left out rather than written as a
-jar that does not exist. Exclusions are still rows. A `<version>` that no repository the lock reads
+jar that does not exist. `<exclusions>` are carried: each one is an entry in the dependency's
+`exclude` list (`group:artifact`, or `group:*` for a `*` artifactId —
+[Dependencies](dependencies.md#exclusions)), the lock prunes the subtree the way Maven does, and
+only a `<groupId>*</groupId>` exclusion, which jk cannot spell, is a Tier-2 row naming the
+dependency. A `<version>` that no repository the lock reads
 lists (`swing-layout 1.0.2`, which Central never published) is a Tier-3 row at import naming what the
 catalogs list instead, so the refusal arrives while the POM is still in front of you; a repository
 that cannot be reached during that check leaves a Tier-2 note, not a claim. Read that report before
