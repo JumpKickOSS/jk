@@ -280,6 +280,64 @@ acme-rules = { group = "com.acme", name = "acme-rules", version = "1.0.0",
 
 Private plugins **error** if they claim a table or id already owned by a built-in plugin.
 
+## Generators (design)
+
+Protobuf is the only generator jk owns. Every other generator a service reaches for — OpenAPI
+Generator, jOOQ codegen, Avro, ANTLR, JAXB `xjc` — has no home: not in `jk.toml`, not in the
+build-logic hatch (no declared inputs, so no honest cache key), not in the action cache. The
+design is **one worker, many tables**.
+
+### One worker: `[generate]`
+
+A first-party `generator` plugin owns the `[generate]` table. Each entry is a JVM tool run in the
+`generate` stage whose output is contributed to the compiler's source set, exactly the lane the
+protobuf plugin uses:
+
+```toml
+[generate.api]
+tool     = "org.openapitools:openapi-generator-cli:7.11.0"   # coordinate or catalog name; pinned by jk lock
+main     = "org.openapitools.codegen.OpenAPIGenerator"       # optional; default: the jar's Main-Class
+inputs   = ["api/openapi.yaml"]                              # module-relative globs; the cache key
+args     = ["generate", "-i", "${in}", "-g", "spring", "-o", "${out}", "--package-name", "com.acme.api"]
+contributes = "sources"                                      # sources | test-sources | resources
+```
+
+- **Tool classpath** resolves through the lock like any `[[contribute.step-dependency]]`: the
+  coordinate and its transitive closure are pinned, so the same generator runs on every machine.
+- **Action key** = input file bytes + tool jar hashes + `args` + `main` + the JDK the worker runs
+  on. Unchanged inputs restore `${out}` from the CAS; the step shows in `jk explain` and in the
+  results Deliverables table like any other.
+- **Isolation**: the tool runs in a forked JVM (the generator worker), never in the engine, with
+  `${out}` as its only writable directory. `${in}` expands to the first input, `${inputs}` to all,
+  `${module.dir}` to the module root.
+- **Diagnostics**: the tool's stderr is captured; lines matching `path:line[:col]` become
+  diagnostics with a location, the rest is the step's log.
+
+### Many tables: presets over the worker
+
+A preset is a first-party `jk-plugin.toml` with a `[schema]`, a `[[contribute.step-dependency]]`
+for the tool, and an argument template — no code of its own. It is sugar the user can read
+through: `jk explain` shows the `[generate]` entry the preset expands to.
+
+| Table | Tool | Default inputs | Notes |
+|---|---|---|---|
+| `[openapi]` | openapi-generator-cli | `api/*.yaml` | `generator`, `package`, `options` keys map to arguments |
+| `[jooq]` | jooq-codegen | `src/main/resources/db/*.sql` via `DDLDatabase` | a live JDBC schema is opt-in and marked uncached unless the user supplies a schema digest |
+| `[avro]` | avro-tools | `src/main/avro/**/*.avsc` | `compile schema` |
+| `[antlr]` | antlr4 | `src/main/antlr/**/*.g4` | `-package` from the module group by default |
+| `[jaxb]` | jaxb-xjc | `src/main/xsd/**/*.xsd` | `-p` package |
+
+The first preset is OpenAPI (most Spring services with a contract); jOOQ second; Avro, ANTLR and
+JAXB together. A tool with no preset still works through `[generate]`.
+
+### Why not the alternatives
+
+- **Build-logic scripts** have four anchors, no declared inputs and a whole-module cache key; a
+  generator that re-runs on every source edit is the wrong shape for the inner loop.
+- **A worker per tool** multiplies the plugin count by the tool count for no isolation gain; the
+  worker's contract (classpath, `${out}`, key) is identical for every generator.
+- **A Gradle-style task DSL** would put code in the manifest; `jk.toml` stays data.
+
 ## Further reading
 
 - Blueprint plugins: `plugins/spring-boot/`, `plugins/quarkus/`, `plugins/grails/`
