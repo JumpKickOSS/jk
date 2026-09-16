@@ -10,6 +10,10 @@ import io.quarkus.maven.dependency.DependencyFlags;
 import io.quarkus.maven.dependency.ResolvedDependency;
 import io.quarkus.maven.dependency.ResolvedDependencyBuilder;
 import java.nio.file.Path;
+import io.quarkus.paths.PathList;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -99,12 +103,51 @@ final class LockedAppModel {
      * is carried across unchanged.
      */
     static ApplicationModel withApplicationModule(ApplicationModel model, WorkspaceModule module) {
-        ApplicationModelBuilder rebuilt = new ApplicationModelBuilder();
         ResolvedDependencyBuilder app = copy(model.getAppArtifact()).setWorkspaceModule(module);
         Path root = module.getMainSources().getSourceDirs().isEmpty()
                 ? null
                 : module.getMainSources().getSourceDirs().iterator().next().getOutputDir();
         if (root != null) app.setResolvedPath(root);
+        List<ResolvedDependencyBuilder> deps = new ArrayList<>();
+        for (ResolvedDependency dep : model.getDependenciesWithAnyFlag(ANY_FLAG)) {
+            deps.add(copy(dep));
+        }
+        return rebuild(model, app, deps);
+    }
+
+    /**
+     * The model with every dependency file under {@code from} copied into {@code to} and pointed
+     * there. A resolve downloads what no mirror had into its private local repository, and a model
+     * that names those files has to outlive it — {@code to} is a plain directory of the step's
+     * output, which the action cache keeps and restores.
+     */
+    static ApplicationModel withPathsRelocated(ApplicationModel model, Path from, Path to) throws IOException {
+        List<ResolvedDependencyBuilder> deps = new ArrayList<>();
+        for (ResolvedDependency dep : model.getDependenciesWithAnyFlag(ANY_FLAG)) {
+            ResolvedDependencyBuilder builder = copy(dep);
+            List<Path> paths = new ArrayList<>();
+            boolean moved = false;
+            for (Path path : dep.getResolvedPaths()) {
+                if (path.startsWith(from) && Files.isRegularFile(path)) {
+                    Files.createDirectories(to);
+                    Path kept = to.resolve(path.getFileName().toString());
+                    Files.copy(path, kept, StandardCopyOption.REPLACE_EXISTING);
+                    paths.add(kept);
+                    moved = true;
+                } else {
+                    paths.add(path);
+                }
+            }
+            if (moved) builder.setResolvedPaths(PathList.from(paths));
+            deps.add(builder);
+        }
+        return rebuild(model, copy(model.getAppArtifact()), deps);
+    }
+
+    /** {@code model} re-wrapped around {@code app} and {@code deps}; everything else carried across. */
+    private static ApplicationModel rebuild(
+            ApplicationModel model, ResolvedDependencyBuilder app, List<ResolvedDependencyBuilder> deps) {
+        ApplicationModelBuilder rebuilt = new ApplicationModelBuilder();
         rebuilt.setAppArtifact(app);
         rebuilt.setPlatformImports(model.getPlatforms());
         for (ExtensionCapabilities capabilities : model.getExtensionCapabilities()) {
@@ -112,9 +155,7 @@ final class LockedAppModel {
         }
         rebuilt.addReloadableWorkspaceModules(model.getReloadableWorkspaceDependencies());
         model.getRemovedResources().forEach(rebuilt::addRemovedResources);
-        for (ResolvedDependency dep : model.getDependenciesWithAnyFlag(ANY_FLAG)) {
-            rebuilt.addDependency(copy(dep));
-        }
+        deps.forEach(rebuilt::addDependency);
         return rebuilt.build();
     }
 

@@ -28,8 +28,9 @@ import java.util.List;
  * the seam its Gradle plugin uses. jk writes that model: the locked test closure resolved the way
  * {@link QuarkusAugmentMain} resolves the runtime closure, the application artifact pointing at
  * {@code target/classes/main} as its one root, and a workspace module naming the module directory
- * so the test harness knows whose tests these are. With the model in hand the bootstrap indexes the
- * application archive once, augments once per test profile, and never reads a {@code pom.xml}.
+ * so the test harness knows whose tests these are, and the deployment jars the resolve had to
+ * download kept beside the model. With the model in hand the bootstrap indexes the application
+ * archive once, augments once per test profile, and never reads a {@code pom.xml}.
  */
 public final class QuarkusTestModelMain {
 
@@ -38,6 +39,9 @@ public final class QuarkusTestModelMain {
 
     /** The serialized model's file name under the step's output dir. */
     static final String MODEL_FILE = "test-app-model.json";
+
+    /** Where the jars the resolve had to download live, beside the model. */
+    static final String LIB_DIR = "lib";
 
     public static void main(String[] args) throws Exception {
         if (args.length != 10) {
@@ -71,6 +75,9 @@ public final class QuarkusTestModelMain {
         QuarkusAugmentMain.injectPlatform(resolved, quarkusVersion, platformProps, offline);
         ApplicationModel model = LockedAppModel.withApplicationModule(
                 resolved, workspaceModule(moduleDir, classesDir, group, artifact, version));
+        // The resolve downloads what no mirror had into its private local repository under the
+        // `.jk-` scratch, which the action cache never keeps; the model outlives it in lib/.
+        model = LockedAppModel.withPathsRelocated(model, scratch, outDir.resolve(LIB_DIR));
 
         Path file = outDir.resolve(MODEL_FILE);
         ApplicationModelSerializer.serialize(model, file);
