@@ -73,6 +73,18 @@ own graph and the graphs of members that depend on it, not an unrelated member's
 workspace's BOM-lifted version cannot serve gets its own rows
 ([Workspaces](workspaces.md#members-that-disagree)).
 
+`nearest` adopts exactly two of Maven's rules: a direct pin is the version, over any transitive's
+floor, and the first-declared BOM wins over a later one. It does not adopt Maven's mediation between
+transitives by depth and declaration order: an unmanaged module that two POMs ask for at different
+versions resolves to the highest declared version under both policies, and a workspace member's pin
+is the version for the whole lock. On the Maven top-20 corpus in jk-examples, the 14 repositories
+that lock were compared module by module against Maven's own resolution: 170 of 341 modules differ
+on at least one version, 705 (module, coordinate) pairs in all. 278 of those pairs are inline
+`<dependencyManagement>` entries Maven applies to transitives and jk applies to declared
+dependencies only, 172 are a Boot BOM one member's `[spring-boot]` table brings that governs every
+member's rows, and 111 pairs over 35 coordinates are depth mediation proper, where Maven's nearer
+declaration is older than the highest one jk picks.
+
 GAs the platform does **not** manage resolve to the highest version the POMs that name
 them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with
 `[resolve] unmapped = "strict"` (every unmanaged diamond is a hard error). Exact user
