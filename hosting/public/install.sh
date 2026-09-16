@@ -584,8 +584,11 @@ main() {
     info "Running \`jk activate\`..."
     # --yes: write shell integration without the interactive Yes/No wizard, which would
     # open a TUI over /dev/tty and wait for a keypress even on automated/local installs.
-    # Failure must not abort warm-up — the binary is already installed.
-    run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
+    # `jk activate` applies the same rc rule as this script, so `--rc` rides along when it was
+    # asked for here. Failure must not abort warm-up — the binary is already installed.
+    ACTIVATE_ARGS=(--yes)
+    [ "$RC_REQUESTED" = 1 ] && ACTIVATE_ARGS+=(--rc)
+    run_jk activate "${ACTIVATE_ARGS[@]}" || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
   else
     info "JK_HOME is $JK_HOME_DIR, not the default $DEFAULT_HOME_DIR: the shell rc files are left alone."
     note "To use this install in the current shell, run: $ACTIVATE_LINE"

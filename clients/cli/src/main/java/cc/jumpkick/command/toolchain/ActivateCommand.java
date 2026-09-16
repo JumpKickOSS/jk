@@ -35,6 +35,11 @@ import java.util.stream.Collectors;
 /**
  * {@code jk activate [<shell>]} — print the full shell integration script (PATH + hooks +
  * completions) or install a one-line marker-bounded rc block in every discovered profile.
+ *
+ * <p>The rc block names one home, so only the default home ({@code $HOME/.jk}) may claim it
+ * unasked: for a {@code JK_HOME} anywhere else the installer form leaves the rc files alone and
+ * prints the line that activates that install in the current shell, and {@code --rc} asks for the
+ * block anyway. The same rule the installers apply.
  */
 public final class ActivateCommand implements CliCommand {
 
@@ -69,7 +74,8 @@ public final class ActivateCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         // Global -y/--yes skips the interactive installer prompt (see Confirm / GlobalOptions).
-        return List.of();
+        // Only the default home ($HOME/.jk) claims the rc block unasked; --rc asks for it elsewhere.
+        return List.of(Opt.flag("Write the rc block for a non-default JK_HOME too", "--rc"));
     }
 
     /** True for {@code jk activate <shell>}, false for the bare rc-block installer. */
@@ -88,7 +94,7 @@ public final class ActivateCommand implements CliCommand {
         if (printsScript(in)) {
             return printScript(in.positionals().getFirst());
         }
-        return runInstaller(in.isSet("yes"));
+        return runInstaller(in.isSet("yes"), in.isSet("rc"));
     }
 
     private int printScript(String shellName) {
@@ -118,8 +124,11 @@ public final class ActivateCommand implements CliCommand {
         return JkxLink.ensure(JkDirs.binDir(), jkExe);
     }
 
-    private int runInstaller(boolean assumeYes) throws IOException {
+    private int runInstaller(boolean assumeYes, boolean rcRequested) throws IOException {
         List<Shell> targets = Shell.installTargets(home());
+        if (!rcRequested && !isDefaultHome()) {
+            return printPrivateHome(targets);
+        }
         if (assumeYes) {
             return writeActivation(targets);
         }
@@ -167,6 +176,42 @@ public final class ActivateCommand implements CliCommand {
         }
         Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
         return true;
+    }
+
+    /** True when the home jk runs from is {@code $HOME/.jk}, the one home an rc block may name unasked. */
+    private static boolean isDefaultHome() {
+        Path live = JkDirs.home().toAbsolutePath().normalize();
+        Path dflt = home().resolve(JkDirs.HOME_DIR).toAbsolutePath().normalize();
+        return live.equals(dflt);
+    }
+
+    /**
+     * A private {@code JK_HOME}: completions and the {@code jkx} launcher land inside that home, the
+     * rc files (and, on Windows, the User PATH) stay as they are, and the line that activates this
+     * install in the current shell is printed for every target shell.
+     */
+    private int printPrivateHome(List<Shell> targets) throws IOException {
+        ensureJkxLauncher();
+        ShellCompletions.writeAll(commands.get());
+        NerdFontCaps nerdFont = GlobalConfig.nerdFont();
+        Theme t = Theme.active();
+        Path jkExe = JkDirs.binDir().toAbsolutePath().normalize().resolve("jk");
+        CommandWedge.envelopeStart();
+        CliOutput.out(JkWedge.chipLine(
+                Glyphs.BANG,
+                "Activate",
+                nerdFont,
+                "JK_HOME is " + Theme.colorize(JkDirs.home().toString(), t.path()) + ", not the default "
+                        + Theme.colorize(home().resolve(JkDirs.HOME_DIR).toString(), t.path())
+                        + ": the shell rc files are left alone."));
+        CliOutput.out("  To use this install in the current shell, run:");
+        for (Shell shell : targets) {
+            String line = shell.activationLine(shell.commandExpr(jkExe, home()));
+            CliOutput.out(
+                    "    " + Theme.colorize(line, t.shell()) + "  " + Theme.colorize("# " + shell.name(), t.path()));
+        }
+        CliOutput.out("  To write the rc block for this home anyway: " + Theme.colorize("jk activate --rc", t.shell()));
+        return 0;
     }
 
     private int printManualInstructions(List<Shell> targets) throws IOException {

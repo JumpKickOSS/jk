@@ -156,14 +156,14 @@ rm -f "$WORK/jk-calls"
 INSTALLER_ARGS=(--rc)
 run_pinned_installer "$WORK/home-rc" || { cat "$WORK/last-install.log" >&2; echo "--rc install failed" >&2; exit 1; }
 INSTALLER_ARGS=()
-grep -q -- "activate --yes" "$WORK/jk-calls" || { echo "--rc did not run 'jk activate --yes'" >&2; exit 1; }
+grep -q -- "^activate --yes --rc\$" "$WORK/jk-calls" || { cat "$WORK/jk-calls" >&2; echo "--rc did not run 'jk activate --yes --rc'" >&2; exit 1; }
 grep -qF -- "$WORK/home-rc/bin/jk" "$WORK/user-home/.zshrc" || { echo "--rc did not write the rc block" >&2; exit 1; }
 seed_user_home "$WORK/user-home"
 
 # The default home ($HOME/.jk, JK_HOME unset) writes the block unasked.
 rm -f "$WORK/jk-calls"
 run_pinned_installer "" || { cat "$WORK/last-install.log" >&2; echo "default-home install failed" >&2; exit 1; }
-grep -q -- "activate --yes" "$WORK/jk-calls" || { echo "the default home did not run 'jk activate --yes'" >&2; exit 1; }
+grep -q -- "^activate --yes\$" "$WORK/jk-calls" || { cat "$WORK/jk-calls" >&2; echo "the default home did not run 'jk activate --yes'" >&2; exit 1; }
 cmp -s "$RELEASE/$ARTIFACT" "$WORK/user-home/.jk/bin/jk" || { echo "the default home did not land under \$HOME/.jk/bin" >&2; exit 1; }
 grep -qF -- "$WORK/user-home/.jk/bin/jk" "$WORK/user-home/.bashrc" || { echo "the default home did not write the rc block" >&2; exit 1; }
 seed_user_home "$WORK/user-home"
