@@ -27,7 +27,7 @@ class QuarkusTestModelMainTest {
         assertThat(ws.getId().getGroupId()).isEqualTo("com.ex");
         assertThat(ws.getId().getArtifactId()).isEqualTo("svc");
         assertThat(ws.getModuleDir()).isEqualTo(module);
-        assertThat(ws.getBuildDir()).isEqualTo(module.resolve("target"));
+        assertThat(ws.getBuildDir()).isEqualTo(classes.getParent().getParent());
         assertThat(ws.getMainSources().getSourceDirs())
                 .extracting(SourceDir::getOutputDir)
                 .containsExactly(classes);

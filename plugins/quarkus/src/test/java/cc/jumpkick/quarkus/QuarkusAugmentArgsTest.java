@@ -89,7 +89,8 @@ class QuarkusAugmentArgsTest {
     /** The fork's arguments name the model and the metaspace the bootstrap's resident applications need. */
     @Test
     void the_test_jvm_arguments_name_the_model_and_the_metaspace_cap() {
-        assertThat(QuarkusPlugin.testJvmArgs(Path.of("/m/target/plugin/quarkus-test-model/test-model/test-app-model.json")))
+        assertThat(QuarkusPlugin.testJvmArgs(
+                        Path.of("/m/target/plugin/quarkus-test-model/test-model/test-app-model.json")))
                 .containsExactly(
                         "-Dquarkus-internal-test.serialized-app-model.path="
                                 + "/m/target/plugin/quarkus-test-model/test-model/test-app-model.json",
