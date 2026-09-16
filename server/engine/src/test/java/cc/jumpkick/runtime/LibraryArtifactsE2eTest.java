@@ -94,6 +94,31 @@ class LibraryArtifactsE2eTest {
                 .isTrue();
     }
 
+    /**
+     * The same malformed comment ({@code a < b}, an unclosed tag) in two libraries: the default
+     * mode packages the jar with javadoc's complaints as warnings; {@code javadoc = "strict"} fails
+     * the step and names the line.
+     */
+    @Test
+    void a_malformed_comment_warns_under_the_default_mode_and_fails_only_under_strict() throws Exception {
+        Path ws = docWorkspace(tmp);
+        Path cache = TestCaches.dir("library-artifacts-cache");
+        lock(ws, cache);
+        BuildLayout loose = BuildLayout.of(ws, ws.resolve("loose"), JkBuildParser.parse(ws.resolve("loose/jk.toml")));
+
+        Steps steps = new Steps();
+        WorkspaceResult result = WorkspaceExecute.buildWorkspace(
+                new WorkspaceRequest(ws, cache, null, 0, null, true, false, 2, null, false, false), steps);
+
+        assertThat(result.success()).as("strict fails the workspace").isFalse();
+        assertThat(steps.status("strict", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.FAIL);
+        assertThat(steps.status("loose", TaskNames.PACKAGE_JAVADOC)).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(loose.javadocJar()).isRegularFile();
+        assertThat(entries(loose.javadocJar())).contains("com/example/loose/Doc.html");
+        assertThat(steps.warnings("loose", TaskNames.PACKAGE_JAVADOC))
+                .anyMatch(w -> w.contains("Doc.java:4: warning:"));
+    }
+
     private static TreeSet<String> entries(Path jar) throws IOException {
         TreeSet<String> names = new TreeSet<>();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
@@ -137,8 +162,11 @@ class LibraryArtifactsE2eTest {
         BuildPlan lock =
                 LockPlans.lockBuildPlan(ws, root, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("lib/jk-lock.toml"));
-        Files.copy(ws.resolve("jk-lock.toml"), ws.resolve("app/jk-lock.toml"));
+        for (String member : List.of("lib", "app")) {
+            if (Files.isDirectory(ws.resolve(member))) {
+                Files.copy(ws.resolve("jk-lock.toml"), ws.resolve(member + "/jk-lock.toml"));
+            }
+        }
     }
 
     /** Per module and step: final status, labels, and warnings. */
@@ -185,6 +213,48 @@ class LibraryArtifactsE2eTest {
         List<String> warnings(String module, String step) {
             return List.copyOf(warningsByModuleStep.getOrDefault(module + "/" + step, List.of()));
         }
+    }
+
+    /** Two libraries over one malformed comment: {@code loose} on the default mode, {@code strict} on strict. */
+    private static Path docWorkspace(Path tmp) throws IOException {
+        Path ws = Files.createDirectories(tmp.resolve("doc-ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "doc-ws"
+                version = "1.0.0"
+                java    = 25
+
+                [workspace]
+                modules = ["loose", "strict"]
+                """);
+        for (String module : List.of("loose", "strict")) {
+            Path dir = Files.createDirectories(ws.resolve(module));
+            Files.writeString(dir.resolve("jk.toml"), """
+                    group   = "com.example"
+                    name    = "%s"
+                    version = "1.0.0"
+                    java    = 25
+                    %s
+                    [test-dependencies]
+                    junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.3" }
+
+                    [repositories]
+                    central = "https://repo.maven.apache.org/maven2/"
+                    """.formatted(
+                            module, module.equals("strict") ? "javadoc = \"strict\"\n" : ""));
+            Path src = Files.createDirectories(dir.resolve("src/com/example/" + module));
+            Files.writeString(src.resolve("Doc.java"), """
+                    package com.example.%s;
+
+                    /**
+                     * Fires when a < b and the tag <b>is never closed.
+                     */
+                    public final class Doc {
+                        private Doc() {}
+                    }
+                    """.formatted(module));
+        }
+        return ws;
     }
 
     /** lib is a documented library with one unknown javadoc tag; app is an application over it. */
