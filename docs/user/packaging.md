@@ -53,8 +53,10 @@ javadoc = "strict"   # javadoc's own doclint checks fail the step instead of war
 - Javadoc runs the project JDK's `javadoc` over the module's Java sources with the compile
   classpath, **doclint off** (`-Xdoclint:none`) unless `javadoc = "strict"`. An imperfect
   comment still packages; every `file:line: warning:` javadoc prints lands under
-  **Warnings** in `target/jk-results.md`. Output carries no timestamps, so `jk verify` can
-  diff the jar.
+  **Warnings** in `target/jk-results.md`, and so does every line javadoc calls an error under
+  the default mode — the step never fails there, and the jar holds whatever javadoc wrote, or
+  a single `README` saying why when it wrote nothing. Only `javadoc = "strict"` lets an error
+  fail the step. Output carries no timestamps, so `jk verify` can diff the jar.
 - A Kotlin or Groovy module has nothing javadoc can read: its javadoc jar holds a single
   `README` saying so. Central accepts an empty javadoc jar; jk does not run Dokka.
 - A workspace root that only coordinates members, and a module with no sources, ship neither.
