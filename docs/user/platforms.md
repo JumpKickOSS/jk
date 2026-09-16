@@ -68,7 +68,10 @@ coordinate wins, in declaration order — and `jk import` writes the BOMs in the
 declares them, so an imported project resolves to the versions Maven built with. Your own exact
 pin on the module beats every BOM under both policies. In a workspace the table is the root's
 entries followed by each member's in `[workspace] modules` order, each in its own declaration
-order, so a BOM the root declares wins over one a member declares.
+order, so a BOM the root declares wins over one a member declares. A member's BOM constrains its
+own graph and the graphs of members that depend on it, not an unrelated member's — a member the
+workspace's BOM-lifted version cannot serve gets its own rows
+([Workspaces](workspaces.md#members-that-disagree)).
 
 GAs the platform does **not** manage resolve to the highest version the POMs that name
 them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with

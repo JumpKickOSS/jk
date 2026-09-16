@@ -265,6 +265,34 @@ way and is recorded the same way (`<- [2.0.18,)`). A workspace resolves under it
 member brought in the transitive that asked for more. Under the default `pins = "exact"` that
 shape is a conflict the lock refuses instead; see [Dependencies](dependencies.md#coordinates).
 
+## Rows a member owns
+
+A workspace row without a `members` key is the workspace's version: every member's classpath
+reads it. A row with `members` is one member's answer where the workspace's could not be its
+answer — see [Workspaces](workspaces.md#members-that-disagree) — and replaces the plain row of the
+same coordinate for the members it lists, by their `[[module]]` path:
+
+```toml
+[[artifact]]
+name     = "jakarta.jms:jakarta.jms-api:jar:"
+version  = "3.1.0"
+pinned-by = "org.springframework.boot:spring-boot-dependencies:3.5.12"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "jakarta.jms:jakarta.jms-api:jar:"
+version  = "2.0.3"
+scopes   = ["main"]
+members  = ["zipkin-collector/activemq"]
+```
+
+`zipkin-collector/activemq` compiles, tests and packages against 2.0.3; every other member reads
+3.1.0. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
+own graph reaches has only its `members` row. `jk lock` keeps the versions such a row holds like
+any other's, and says once per partitioned coordinate which member took which version and why the
+workspace's differs. `jk why` shows both versions with their members; the tools that read one
+module's classpath — the build, `jk run`, packaging — read that module's rows.
+
 ## What an exclusion records
 
 A row whose POM edge an exclusion pruned lists the edge under `excluded-by`: the child's

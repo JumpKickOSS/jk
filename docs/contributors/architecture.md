@@ -287,6 +287,10 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   by default; **`[resolve] unmapped = "strict"`** makes their fills exact. Explicit
   Maven ranges stay open.
 - **Lockfile:** one root `jk-lock.toml`; builds never re-resolve.
+- **Workspace members:** one solve over the merged manifest; a member whose own exact pin or
+  BOM scope the merged answer cannot serve is solved on its own (`MemberPartitions`), its
+  disagreeing rows carry `members = [path]`, and `Lockfile.forMember` narrows the lock to one
+  module's rows before any classpath is assembled.
 - **BOMs:** enforced platform by default; incomplete BOM families (e.g. maven-resolver
   named-locks) still get family alignment into the map. **`jk export bom`** freezes a lock
   scope into a Maven BOM POM for consumers.
