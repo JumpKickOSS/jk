@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.testing.HostLoad;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -69,10 +70,13 @@ class KotlinNullnessConsumerTest {
         // that on its own, so neither copy of it is spelled there: the launcher reads CLASSPATH,
         // the compiler reads its argfile.
         builder.environment().put("CLASSPATH", System.getProperty("java.class.path"));
+        // A hang guard, not a budget: the compiler boots in seconds on an idle machine and in
+        // minutes on one whose load average is in the hundreds, so the bound grows with the load.
+        Duration bound = HostLoad.stretch(Duration.ofSeconds(30));
         Process process = builder.start();
-        if (!process.waitFor(Duration.ofSeconds(30).toMillis(), TimeUnit.MILLISECONDS)) {
+        if (!process.waitFor(bound.toMillis(), TimeUnit.MILLISECONDS)) {
             process.destroyForcibly();
-            throw new IOException("Kotlin compiler did not exit within 30 seconds");
+            throw new IOException("Kotlin compiler did not exit within " + bound.toSeconds() + " seconds");
         }
         return new CompileResult(process.exitValue(), Files.readString(log));
     }
