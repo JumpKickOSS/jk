@@ -61,7 +61,7 @@ different versions, what happens is decided by `[resolve] pins`:
 | Policy | Two BOMs disagree on a module |
 |--------|-------------------------------|
 | `pins = "exact"` (default, hand-written manifests) | `jk lock` refuses: `platform BOM conflict on g:a: X constrains to 2.10.1, but Y constrains to 2.13.2` — pick one BOM, pin the module yourself, or opt into the rule below |
-| `pins = "nearest"` (what `jk import` writes) | Maven's rule: the first-declared BOM that manages the module wins, the later BOM's say is dropped, the lock row's `pinned-by` names the winner, and `jk lock` prints one line per such module naming the winner and every BOM it overrode |
+| `pins = "nearest"` (what `jk import` writes) | Maven's rule: the first-declared BOM that manages the module wins, the later BOM's say is dropped, the lock row's `pinned-by` names the winner, and `jk lock` prints one line per pair of winning and overridden BOM, counting and listing the modules they disagree on |
 
 The rule is Maven's for `<dependencyManagement>` imports — the first `import` that manages a
 coordinate wins, in declaration order — and `jk import` writes the BOMs in the order the POM

@@ -219,6 +219,68 @@ class LockOrchestratorEntryPointsTest {
     }
 
     /**
+     * Two BOMs that disagree on several modules are reported as one line per winning-BOM pair with
+     * a count and the modules, not one line per module, so a stack of framework BOMs does not crowd
+     * the warnings out of the results.
+     */
+    @Test
+    void boms_that_disagree_on_several_modules_are_reported_once_per_pair(@TempDir Path dir) throws Exception {
+        upstream.metadata("com.foo", "widget", "1.0", "2.0")
+                .pom("com.foo", "widget", "1.0", MavenStub.emptyPom("com.foo", "widget", "1.0"))
+                .pom("com.foo", "widget", "2.0", MavenStub.emptyPom("com.foo", "widget", "2.0"))
+                .metadata("com.foo", "gadget", "1.0", "3.0")
+                .pom("com.foo", "gadget", "1.0", MavenStub.emptyPom("com.foo", "gadget", "1.0"))
+                .pom("com.foo", "gadget", "3.0", MavenStub.emptyPom("com.foo", "gadget", "3.0"))
+                .pom(
+                        "org.example",
+                        "bom-a",
+                        "1.0",
+                        MavenStub.bom(
+                                "org.example", "bom-a", "1.0", List.of("com.foo:widget:1.0", "com.foo:gadget:1.0")))
+                .pom(
+                        "org.example",
+                        "bom-b",
+                        "1.0",
+                        MavenStub.bom(
+                                "org.example", "bom-b", "1.0", List.of("com.foo:widget:2.0", "com.foo:gadget:3.0")));
+        Dependency bomA = Dependency.of("bom-a", "org.example:bom-a", VersionSelector.parse("=1.0"));
+        Dependency bomB = Dependency.of("bom-b", "org.example:bom-b", VersionSelector.parse("=1.0"));
+        List<String> overrides = new ArrayList<>();
+        ResolveObserver observer = new ResolveObserver() {
+            @Override
+            public void onTotal(int total) {}
+
+            @Override
+            public void onPackage(String module, String version) {}
+
+            @Override
+            public void onOverride(String line) {
+                overrides.add(line);
+            }
+        };
+
+        new LockOrchestrator(repos(dir))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .lock(
+                        project(Map.of(
+                                Scope.PLATFORM,
+                                List.of(bomA, bomB),
+                                Scope.MAIN,
+                                List.of(
+                                        Dependency.platformManaged("widget", "com.foo:widget"),
+                                        Dependency.platformManaged("gadget", "com.foo:gadget")))),
+                        "test",
+                        List.of(),
+                        true,
+                        observer);
+
+        assertThat(overrides)
+                .containsExactly("org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 2 modules it manages first:"
+                        + " com.foo:widget 1.0 over 2.0, com.foo:gadget 1.0 over 3.0"
+                        + " — the first-declared BOM wins, as the first import does under Maven");
+    }
+
+    /**
      * A package whose POM resolves but whose artifact no repository serves fails the lock with the
      * coordinate, the layout path tried, and every repository consulted — including the type and
      * classifier when the package is not a plain jar.
