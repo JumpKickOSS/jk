@@ -21,8 +21,8 @@ class ToolClosureCacheKeyTest {
         List<Coordinate> a = closure("1.2.3");
         List<Coordinate> b = closure("1.2.4");
 
-        String keyA = PluginBuild.toolClosureCacheKey(a, "com.example.platform:platform-bom:9.9.9");
-        String keyB = PluginBuild.toolClosureCacheKey(b, "com.example.platform:platform-bom:9.9.9");
+        String keyA = ToolClosures.cacheKey(a, "com.example.platform:platform-bom:9.9.9");
+        String keyB = ToolClosures.cacheKey(b, "com.example.platform:platform-bom:9.9.9");
 
         assertThat(keyA).hasSizeLessThan(200).isNotEqualTo(keyB);
     }
@@ -31,26 +31,26 @@ class ToolClosureCacheKeyTest {
     void a_differing_bom_alone_changes_the_key() {
         List<Coordinate> roots = closure("1.2.3");
 
-        assertThat(PluginBuild.toolClosureCacheKey(roots, "com.example.platform:platform-bom:9.9.9"))
-                .isNotEqualTo(PluginBuild.toolClosureCacheKey(roots, "com.example.platform:platform-bom:9.9.8"));
+        assertThat(ToolClosures.cacheKey(roots, "com.example.platform:platform-bom:9.9.9"))
+                .isNotEqualTo(ToolClosures.cacheKey(roots, "com.example.platform:platform-bom:9.9.8"));
     }
 
     @Test
     void the_same_closure_names_the_same_directory_every_time() {
-        assertThat(PluginBuild.toolClosureCacheKey(closure("1.2.3"), "com.example:bom:1.0"))
-                .isEqualTo(PluginBuild.toolClosureCacheKey(closure("1.2.3"), "com.example:bom:1.0"));
+        assertThat(ToolClosures.cacheKey(closure("1.2.3"), "com.example:bom:1.0"))
+                .isEqualTo(ToolClosures.cacheKey(closure("1.2.3"), "com.example:bom:1.0"));
     }
 
     @Test
     void a_short_key_stays_readable() {
-        String key = PluginBuild.toolClosureCacheKey(List.of(Coordinate.of("com.android.tools", "r8", "8.5.35")), null);
+        String key = ToolClosures.cacheKey(List.of(Coordinate.of("com.android.tools", "r8", "8.5.35")), null);
 
         assertThat(key).isEqualTo("com.android.tools_r8_8.5.35");
     }
 
     @Test
     void a_hashed_key_is_still_a_safe_path_component() {
-        String key = PluginBuild.toolClosureCacheKey(closure("1.2.3"), "com.example:bom:1.0");
+        String key = ToolClosures.cacheKey(closure("1.2.3"), "com.example:bom:1.0");
 
         assertThat(key).doesNotContain("/").doesNotContain(":").doesNotContain("\\");
     }

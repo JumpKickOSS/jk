@@ -72,7 +72,8 @@ public final class LocalizerPreset implements Plugin, BuildExtension {
                 args,
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/localizer",
-                classpath);
+                classpath,
+                List.of());
     }
 
     /** This worker's own jar (or classes directory), which carries {@link LocalizerMain}. */

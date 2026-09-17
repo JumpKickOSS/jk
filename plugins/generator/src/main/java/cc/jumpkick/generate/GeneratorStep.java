@@ -6,6 +6,7 @@ import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
@@ -59,6 +60,27 @@ final class GeneratorStep {
             List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
             throw new IllegalStateException(
                     main + " failed (exit " + exit + ")" + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
+        }
+        discard(out, entry.discard());
+    }
+
+    /**
+     * Remove what the tool wrote beside its contribution: a plain path under {@code out} with
+     * everything below it, or every file a glob over {@code out} matches.
+     */
+    static void discard(Path out, List<String> patterns) throws IOException {
+        for (String pattern : patterns) {
+            if (!Inputs.isGlob(pattern)) {
+                PathUtil.deleteRecursivelyOrThrow(out.resolve(pattern));
+                continue;
+            }
+            List<PathMatcher> matchers = Inputs.matchers(pattern);
+            List<Path> matched = new ArrayList<>();
+            PathUtil.forEachRegularFile(out, (file, attrs) -> {
+                Path relative = out.relativize(file);
+                if (matchers.stream().anyMatch(m -> m.matches(relative))) matched.add(file);
+            });
+            for (Path file : matched) Files.delete(file);
         }
     }
 

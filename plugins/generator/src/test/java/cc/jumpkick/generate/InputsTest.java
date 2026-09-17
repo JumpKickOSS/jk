@@ -31,6 +31,18 @@ class InputsTest {
                 .containsExactly(a, b, nested);
     }
 
+    /** A double-star segment names a file right under its base as well as one nested deeper. */
+    @Test
+    void a_double_star_segment_matches_zero_directories(@TempDir Path module) throws Exception {
+        Path flat = write(module.resolve("src/main/resources/schema/shows.graphqls"));
+        Path nested = write(module.resolve("src/main/resources/schema/v2/actors.graphqls"));
+        write(module.resolve("src/main/resources/schema/README.md"));
+
+        assertThat(Inputs.expand(module, List.of("src/main/resources/schema/**/*.graphqls")))
+                .containsExactly(flat, nested);
+        assertThat(Inputs.expand(module, List.of("**/*.graphqls"))).containsExactly(flat, nested);
+    }
+
     @Test
     void a_missing_plain_path_matches_nothing(@TempDir Path module) throws Exception {
         assertThat(Inputs.expand(module, List.of("api/none.yaml", "proto/*.proto")))

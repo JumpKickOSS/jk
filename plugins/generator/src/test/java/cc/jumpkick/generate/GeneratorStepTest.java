@@ -112,6 +112,7 @@ class GeneratorStepTest {
                 List.of("--proto_path=${unpacked}", "-o", "${out}"),
                 GeneratorEntry.Contribution.TEST_SOURCES,
                 "generated/api",
+                List.of(),
                 List.of());
         GeneratorStep.run(io, entry);
 
@@ -141,10 +142,37 @@ class GeneratorStepTest {
                 List.of("-o", "${out}"),
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/api",
-                List.of(stubJar(tmp.resolve("shim/shim.jar"), null)));
+                List.of(stubJar(tmp.resolve("shim/shim.jar"), null)),
+                List.of());
         GeneratorStep.run(io, entry);
 
         assertThat(tmp.resolve("scratch/generated/api/Hello.java")).isRegularFile();
+    }
+
+    @Test
+    void discarded_paths_leave_the_output_once_the_tool_ran(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+
+        GeneratorEntry entry = new GeneratorEntry(
+                "api",
+                "api",
+                "com.example:stub-gen:1.0",
+                null,
+                List.of("api/a.yaml"),
+                null,
+                List.of("-i", "${in}", "-o", "${out}", "--example-dir"),
+                GeneratorEntry.Contribution.SOURCES,
+                "generated/api",
+                List.of(),
+                List.of("generated-examples", "**/*.txt"));
+        GeneratorStep.run(io, entry);
+
+        Path out = tmp.resolve("scratch/generated/api");
+        assertThat(out.resolve("Hello.java")).isRegularFile();
+        assertThat(out.resolve("generated-examples")).doesNotExist();
+        assertThat(out.resolve("argv.txt")).doesNotExist();
     }
 
     private static GeneratorEntry entry(@Nullable String main, List<String> inputs, List<String> args) {
@@ -158,6 +186,7 @@ class GeneratorStepTest {
                 args,
                 GeneratorEntry.Contribution.SOURCES,
                 "generated/api",
+                List.of(),
                 List.of());
     }
 

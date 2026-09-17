@@ -7,7 +7,9 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 
@@ -26,16 +28,42 @@ final class Inputs {
                 continue;
             }
             Path base = moduleDir.resolve(globBase(pattern));
-            PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
+            List<PathMatcher> matchers = matchers(pattern);
             List<Path> matched = new ArrayList<>();
             PathUtil.forEachRegularFile(base, (file, attrs) -> {
-                if (matcher.matches(moduleDir.relativize(file)))
+                Path relative = moduleDir.relativize(file);
+                if (matchers.stream().anyMatch(m -> m.matches(relative))) {
                     matched.add(file.toAbsolutePath().normalize());
+                }
             });
             matched.sort(null);
             out.addAll(matched);
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * The pattern's matcher and, for each {@code **} directory segment, the pattern without it: a
+     * double star names zero or more directories, as it does under Maven and Gradle, where the
+     * JDK's glob alone asks for at least one.
+     */
+    static List<PathMatcher> matchers(String pattern) {
+        LinkedHashSet<String> variants = new LinkedHashSet<>();
+        Deque<String> work = new ArrayDeque<>();
+        variants.add(pattern);
+        work.add(pattern);
+        while (!work.isEmpty()) {
+            String variant = work.poll();
+            for (int at = variant.indexOf("**/"); at >= 0; at = variant.indexOf("**/", at + 1)) {
+                String dropped = variant.substring(0, at) + variant.substring(at + 3);
+                if (variants.add(dropped)) work.add(dropped);
+            }
+        }
+        List<PathMatcher> matchers = new ArrayList<>();
+        for (String variant : variants) {
+            matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + variant));
+        }
+        return matchers;
     }
 
     /**
