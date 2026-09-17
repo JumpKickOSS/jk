@@ -51,8 +51,8 @@ public final class PlannerPackage {
 
     static Task packageJarStep(
             BuildPlanner.Ctx cx,
-            PluginBuild.@Nullable Active pluginActive,
-            PluginBuild.@Nullable Declarations pluginDecls,
+            @Nullable ActivePlugin pluginActive,
+            @Nullable PluginDeclarations pluginDecls,
             Map<String, String> variantSecrets) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -87,7 +87,7 @@ public final class PlannerPackage {
                     Path jarPath = layout.mainJar();
                     if (pluginDecls != null && pluginDecls.packager() != null) {
                         // The packager's declared artifact extension replaces .jar (an APK, …).
-                        PluginBuild.Active owner = Objects.requireNonNull(pluginActive, "packager plugin");
+                        ActivePlugin owner = Objects.requireNonNull(pluginActive, "packager plugin");
                         jarPath = PluginBuild.mainArtifactPath(layout, owner);
                         Files.createDirectories(jarPath.getParent());
                         packagePlugin(
@@ -187,7 +187,7 @@ public final class PlannerPackage {
      */
     static String[] packageRequires(
             BuildPlanner.Inputs in,
-            PluginBuild.@Nullable Declarations decls,
+            @Nullable PluginDeclarations decls,
             boolean useJava,
             boolean useKotlin,
             boolean useGroovy) {
@@ -198,7 +198,7 @@ public final class PlannerPackage {
         if (useKotlin) requires.add(TaskNames.WRITE_STAMP_KOTLIN);
         if (useGroovy) requires.add(TaskNames.WRITE_STAMP_GROOVY);
         if (decls != null) {
-            for (PluginBuild.TaskDecl step : decls.steps()) {
+            for (TaskDecl step : decls.steps()) {
                 if (step.packageTime()) requires.add("plugin-" + step.name());
             }
         }

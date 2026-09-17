@@ -143,7 +143,7 @@ public final class PackagingKeys {
         // Same jar set as PlannerTails.assemblyStep (ModuleRuntimeClasspath), the wiped sibling
         // jars the walk pinned included.
         List<Path> depJars = PlannerSupport.assemblyDependencyJars(dir, project, lockFile, cache, restoredJarShas);
-        PluginBuild.Declarations pkgDecls;
+        PluginDeclarations pkgDecls;
         try {
             pkgDecls = PlannerSupport.pluginDeclarationsFor(project, layout, cache);
         } catch (InterruptedException e) {
@@ -342,8 +342,8 @@ public final class PackagingKeys {
             Path classes,
             Path artifact,
             Path javaHome,
-            PluginBuild.@Nullable Active active,
-            PluginBuild.Declarations decls,
+            @Nullable ActivePlugin active,
+            PluginDeclarations decls,
             Map<String, String> secrets) {}
 
     /**
@@ -375,7 +375,8 @@ public final class PackagingKeys {
         // them — the unscoped ones plus those whose for-step names this packager (an AAB packager
         // forks bundletool exactly like a step forks aapt2). A packager-dependency wins a name
         // collision.
-        PluginBuild.PackagerDecl packager = Objects.requireNonNull(p.decls().packager(), "packager");
+        PluginDeclarations.PackagerDecl packager =
+                Objects.requireNonNull(p.decls().packager(), "packager");
         Map<String, String> sdkPins = PluginBuild.sdkPins(p.lockFile());
         List<PluginContributions.StepDep> tools =
                 p.tools().forConsumer(p.project(), p.moduleDir(), p.lockFile(), packager.name());
@@ -384,7 +385,7 @@ public final class PackagingKeys {
 
         ProjectFacts facts =
                 PluginBuild.facts(p.project(), PlannerPlugin.resolvedMain(p.project(), p.moduleDir(), p.classes()));
-        PluginBuild.Active active = Objects.requireNonNull(p.active(), "active");
+        ActivePlugin active = Objects.requireNonNull(p.active(), "active");
         // A packager keys on the runtime view; the compile view is resolved only when one declares it.
         List<Path> compileClasspath =
                 packager.inputs().contains(In.compileClasspath().wireName())
@@ -549,7 +550,7 @@ public final class PackagingKeys {
             ActivePlugins.@Nullable Declared plugin,
             ActionCache actionCache) {
         ActivePlugins.Declared owner = Objects.requireNonNull(plugin, "plugin owner");
-        PluginBuild.Active packagerPlugin = Objects.requireNonNull(owner.packager(), "packager plugin");
+        ActivePlugin packagerPlugin = Objects.requireNonNull(owner.packager(), "packager plugin");
         Path artifact = PluginBuild.mainArtifactPath(layout, packagerPlugin);
         String packager =
                 Objects.requireNonNull(owner.decls().packager(), "packager").name();

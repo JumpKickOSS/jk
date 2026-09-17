@@ -237,7 +237,7 @@ class BuildPlannerStagedClassesTest {
         return PlannerSupport.existingContributedDirs(f.decls, f.layout);
     }
 
-    private record Fixture(BuildLayout layout, Path classes, Path contributed, PluginBuild.Declarations decls) {}
+    private record Fixture(BuildLayout layout, Path classes, Path contributed, PluginDeclarations decls) {}
 
     private static Fixture fixture(Path tmp) throws IOException {
         Path project = Files.createDirectories(tmp.resolve("svc"));
@@ -246,7 +246,7 @@ class BuildPlannerStagedClassesTest {
         BuildLayout layout = BuildLayout.of(project, parsed);
 
         Path classes = Files.createDirectories(layout.classesDir());
-        var step = new PluginBuild.TaskDecl(
+        var step = new TaskDecl(
                 AOT_STEP,
                 List.of(),
                 List.of(),
@@ -259,7 +259,7 @@ class BuildPlannerStagedClassesTest {
                 List.of(),
                 null,
                 null);
-        var decls = new PluginBuild.Declarations(List.of(step), null, List.of());
+        var decls = new PluginDeclarations(List.of(step), null, List.of());
         Path contributed = Files.createDirectories(
                 PluginBuild.taskScratch(layout, AOT_STEP).resolve("generated/classes"));
         return new Fixture(layout, classes, contributed, decls);

@@ -29,16 +29,16 @@ class PluginTaskStageTest {
             "run-tests", BuildStage.TEST,
             "package-jar", BuildStage.PACKAGE);
 
-    private static PluginBuild.TaskDecl decl(
+    private static TaskDecl decl(
             String name, List<String> inputs, List<String> sources, List<String> testCp, @Nullable String stage) {
-        return new PluginBuild.TaskDecl(
+        return new TaskDecl(
                 name, List.of(), inputs, List.of(), List.of(), List.of(), sources, List.of(), testCp, List.of(), null,
                 stage);
     }
 
     /** The Android plugin's declared task set — the shape that regressed. */
-    private static Map<String, PluginBuild.TaskDecl> androidDecls() {
-        Map<String, PluginBuild.TaskDecl> m = new LinkedHashMap<>();
+    private static Map<String, TaskDecl> androidDecls() {
+        Map<String, TaskDecl> m = new LinkedHashMap<>();
         m.put(
                 "android-manifest",
                 decl("android-manifest", List.of("project-files", "config"), List.of(), List.of(), null));
@@ -63,8 +63,8 @@ class PluginTaskStageTest {
     }
 
     /** Every edge a plugin task declares must point at an equal-or-earlier stage. */
-    private static void assertEdgesValidate(Map<String, PluginBuild.TaskDecl> decls) {
-        for (PluginBuild.TaskDecl step : decls.values()) {
+    private static void assertEdgesValidate(Map<String, TaskDecl> decls) {
+        for (TaskDecl step : decls.values()) {
             BuildStage from = PlannerPlugin.pluginStage(step);
             for (String req : PlannerPlugin.pluginRequires(step, null)) {
                 BuildStage upstream = req.startsWith("plugin-")
@@ -79,7 +79,7 @@ class PluginTaskStageTest {
 
     @Test
     void android_task_set_stages_agree_with_its_edges() {
-        Map<String, PluginBuild.TaskDecl> decls = androidDecls();
+        Map<String, TaskDecl> decls = androidDecls();
 
         // android-manifest runs in the pre-compile window (no classes input, no contributions),
         // so it is `generate` — not `compile` by name, which is what made android-res illegal.
@@ -99,7 +99,7 @@ class PluginTaskStageTest {
     void run_tests_contributors_never_land_downstream_of_test() {
         // A test-classpath contributor that also emits classes is not `testOnly`, so it rides the
         // compile window — run-tests (TEST) still requires it, so it may not claim a later stage.
-        PluginBuild.TaskDecl step = new PluginBuild.TaskDecl(
+        TaskDecl step = new TaskDecl(
                 "boot-testjars",
                 List.of(),
                 List.of("classes"),
@@ -118,14 +118,14 @@ class PluginTaskStageTest {
 
     @Test
     void declared_stage_may_sharpen_the_fold_within_the_window() {
-        PluginBuild.TaskDecl dex = decl("android-dex", List.of("classes", "config"), List.of(), List.of(), "package");
+        TaskDecl dex = decl("android-dex", List.of("classes", "config"), List.of(), List.of(), "package");
         assertThat(PlannerPlugin.pluginStage(dex)).isEqualTo(BuildStage.PACKAGE);
         assertThat(BuildStage.PACKAGE.mayRequire(BuildStage.COMPILE)).isTrue();
     }
 
     @Test
     void unknown_declared_stage_is_an_error_not_a_silent_other() {
-        PluginBuild.TaskDecl typo = decl("mystery", List.of("config"), List.of(), List.of(), "packge");
+        TaskDecl typo = decl("mystery", List.of("config"), List.of(), List.of(), "packge");
         assertThatThrownBy(() -> PlannerPlugin.pluginStage(typo))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("mystery")
@@ -135,7 +135,7 @@ class PluginTaskStageTest {
 
     @Test
     void declared_stage_earlier_than_the_window_names_the_plugin_task() {
-        PluginBuild.TaskDecl bad = decl("late-codegen", List.of("classes"), List.of(), List.of(), "generate");
+        TaskDecl bad = decl("late-codegen", List.of("classes"), List.of(), List.of(), "generate");
         assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("late-codegen")
@@ -144,7 +144,7 @@ class PluginTaskStageTest {
 
     @Test
     void declared_stage_after_test_is_rejected_for_a_test_classpath_contributor() {
-        PluginBuild.TaskDecl bad = decl("fixtures", List.of("config"), List.of(), List.of("cp"), "package");
+        TaskDecl bad = decl("fixtures", List.of("config"), List.of(), List.of("cp"), "package");
         assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("fixtures")
@@ -155,7 +155,7 @@ class PluginTaskStageTest {
     void declared_stage_after_package_is_rejected_for_a_package_time_task() {
         // package-jar (PACKAGE) requires every packageTime() task unconditionally
         // (PlannerPackage#packageRequires) — mirrors the run-tests/TEST case above for PACKAGE.
-        PluginBuild.TaskDecl bad = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "native");
+        TaskDecl bad = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "native");
         assertThatThrownBy(() -> PlannerPlugin.pluginStage(bad))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("dex-native")
@@ -164,7 +164,7 @@ class PluginTaskStageTest {
 
     @Test
     void package_time_task_may_declare_up_to_package_stage() {
-        PluginBuild.TaskDecl ok = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "package");
+        TaskDecl ok = decl("dex-native", List.of("classes", "config"), List.of(), List.of(), "package");
         assertThat(PlannerPlugin.pluginStage(ok)).isEqualTo(BuildStage.PACKAGE);
     }
 }

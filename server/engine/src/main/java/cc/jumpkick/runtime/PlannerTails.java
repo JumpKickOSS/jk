@@ -171,13 +171,13 @@ public final class PlannerTails {
                     BuildLayout layout = ctx.require(LAYOUT);
                     // The minifier packages beside the main artifact, so among the module's plugins
                     // it is the one with a [packaging] table that does not replace that artifact.
-                    PluginBuild.Active minifier = ActivePlugins.of(project, layout.moduleRoot()).stream()
+                    ActivePlugin minifier = ActivePlugins.of(project, layout.moduleRoot()).stream()
                             .filter(a -> a.manifest().packaging() != null && !ActivePlugins.packagesMainArtifact(a))
                             .findFirst()
                             .orElseThrow(() -> new IllegalStateException(
                                     "[application] minified = true requires the minified plugin"
                                             + " — add a [minified] table or remove `minified`"));
-                    PluginBuild.Declarations decls = PluginBuild.declarations(
+                    PluginDeclarations decls = PluginBuild.declarations(
                             minifier, project, layout.moduleRoot(), in.cache(), layout.moduleTargetDir());
                     if (decls.packager() == null) {
                         throw new IllegalStateException("[application] minified = true, but the plugin `"

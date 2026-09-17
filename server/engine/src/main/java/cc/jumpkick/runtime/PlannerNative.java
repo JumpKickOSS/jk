@@ -555,7 +555,7 @@ public final class PlannerNative {
      */
     static @Nullable Path nativeImageSourcesDir(JkBuild project, Path dir, Path cache, BuildLayout layout)
             throws IOException, InterruptedException {
-        PluginBuild.Active packager = ActivePlugins.packager(project, dir).orElse(null);
+        ActivePlugin packager = ActivePlugins.packager(project, dir).orElse(null);
         String rel = nativeSourcesRel(packager);
         if (packager == null || rel == null) return null;
         Path sources = PluginBuild.taskScratch(layout, stepNameOf(packager, project, dir, cache))
@@ -564,7 +564,7 @@ public final class PlannerNative {
     }
 
     /** The packager's declared {@code native-image-sources} dir, or null when it declares none. */
-    private static @Nullable String nativeSourcesRel(PluginBuild.@Nullable Active packager) {
+    private static @Nullable String nativeSourcesRel(@Nullable ActivePlugin packager) {
         if (packager == null) return null;
         var packaging = packager.manifest().packaging();
         if (packaging == null) return null;
@@ -573,7 +573,7 @@ public final class PlannerNative {
     }
 
     /** The plugin's build step name — the scratch dir its declared outputs live under. */
-    static String stepNameOf(PluginBuild.Active active, JkBuild project, Path dir, Path cache)
+    static String stepNameOf(ActivePlugin active, JkBuild project, Path dir, Path cache)
             throws IOException, InterruptedException {
         var decls = PluginBuild.declarations(active, project, dir, cache, dir.resolve(BuildLayout.TARGET));
         for (var task : decls.steps()) {

@@ -57,7 +57,7 @@ final class CorePlan {
     private Map<String, String> variantSecrets = Map.of();
 
     private ActivePlugins.@Nullable Declared plugins;
-    private PluginBuild.@Nullable Declarations pluginDecls;
+    private @Nullable PluginDeclarations pluginDecls;
 
     CorePlan(BuildPlanner.Inputs in, boolean forceRebuild) {
         this.in = in;
@@ -170,7 +170,7 @@ final class CorePlan {
         // mixed-plan routing the KSP/Hilt case above takes, decided here because the
         // declarations only exist after the describe round.
         if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
-            for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
+            for (TaskDecl step : pluginDecls.steps()) {
                 if (!step.contributesSources().isEmpty()) {
                     useJava = true;
                     break;
@@ -324,9 +324,9 @@ final class CorePlan {
         }
         Task runTests = PlannerTest.runTestsStep(cx, pluginDecls, testStampRequires);
         List<Task> pluginSteps = new ArrayList<>();
-        PluginBuild.TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
+        TaskDecl transform = PlannerPlugin.transformStep(pluginDecls);
         if (plugins != null) {
-            for (PluginBuild.TaskDecl step : plugins.decls().steps()) {
+            for (TaskDecl step : plugins.decls().steps()) {
                 pluginSteps.add(PlannerPlugin.pluginTask(cx, plugins.ownerOf(step), step, transform));
             }
         }
@@ -540,12 +540,11 @@ final class CorePlan {
      * The plugin tasks a test-only plan still needs: what feeds the forked test JVM, the source
      * generators compile-java and compile-test read, and what those require.
      */
-    private static void addTestClasspathPlugins(
-            BuildPlan.Builder b, List<Task> pluginSteps, PluginBuild.Declarations decls) {
+    private static void addTestClasspathPlugins(BuildPlan.Builder b, List<Task> pluginSteps, PluginDeclarations decls) {
         Map<String, Task> pluginByName = new LinkedHashMap<>();
         for (Task p : pluginSteps) pluginByName.put(p.name(), p);
         ArrayDeque<String> want = new ArrayDeque<>();
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             if (step.testOnly() || step.feedsTests() || step.sourceGenerating()) {
                 want.add("plugin-" + step.name());
             }

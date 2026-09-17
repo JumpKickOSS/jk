@@ -8,11 +8,11 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The describe-reply decode — exactly what the content-keyed cache file replays. */
-class PluginBuildDeclarationsTest {
+class PluginDeclarationsTest {
 
     @Test
     void decodes_steps_packager_and_verbs() {
-        var decls = PluginBuild.decode(List.of(
+        var decls = PluginDeclarations.decode(List.of(
                 "{\"t\":\"step\",\"name\":\"gen\",\"after\":\"compile\",\"before\":\"package\","
                         + "\"inputs\":[\"classes\"],\"outputs\":[\"out\"],\"contributesClasses\":[\"out\"],"
                         + "\"contributesResources\":[],\"contributesSources\":[]}",

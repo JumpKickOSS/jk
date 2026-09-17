@@ -900,7 +900,7 @@ public final class PlannerSupport {
             TestStamp.CompileTestKeys compileTestKeys,
             ClasspathFingerprint.EntryIdentity identity,
             @Nullable String profileName,
-            PluginBuild.@Nullable Declarations pluginDecls)
+            @Nullable PluginDeclarations pluginDecls)
             throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
@@ -1018,7 +1018,7 @@ public final class PlannerSupport {
     }
 
     /** Package-private for {@link TaskForecaster} package-jar key parity with the live step. */
-    static PluginBuild.@Nullable Declarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
+    static @Nullable PluginDeclarations pluginDeclarationsFor(JkBuild project, BuildLayout layout, Path cache)
             throws IOException, InterruptedException {
         var plugins = ActivePlugins.declared(project, layout.moduleRoot(), cache, layout.moduleTargetDir());
         return plugins == null ? null : plugins.decls();
@@ -1033,7 +1033,7 @@ public final class PlannerSupport {
      * declaration order. Listing is cheap; {@link #stageClassesWithContributions} is the copy.
      */
     // Package-private for BuildPlannerStagedClassesTest.
-    static List<Path> existingContributedDirs(PluginBuild.@Nullable Declarations decls, BuildLayout layout) {
+    static List<Path> existingContributedDirs(@Nullable PluginDeclarations decls, BuildLayout layout) {
         if (decls == null) return List.of();
         List<Path> out = new ArrayList<>();
         for (Path pth : PluginBuild.contributedDirs(decls, layout)) {

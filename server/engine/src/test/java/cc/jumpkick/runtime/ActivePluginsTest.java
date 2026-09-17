@@ -37,7 +37,7 @@ class ActivePluginsTest {
                 generator = "spring"
                 """);
 
-        List<PluginBuild.Active> active = ActivePlugins.of(build, dir);
+        List<ActivePlugin> active = ActivePlugins.of(build, dir);
         assertThat(active).extracting(a -> a.manifest().id()).containsExactlyInAnyOrder("spring-boot", "openapi");
         assertThat(ActivePlugins.packager(active))
                 .as("the framework packages the jar; the generator only contributes a step")
@@ -75,7 +75,7 @@ class ActivePluginsTest {
                 [minified]
                 """);
 
-        List<PluginBuild.Active> active = ActivePlugins.of(build, dir);
+        List<ActivePlugin> active = ActivePlugins.of(build, dir);
         assertThat(active).extracting(a -> a.manifest().id()).containsExactlyInAnyOrder("spring-boot", "minified");
         assertThat(ActivePlugins.packager(active)).map(a -> a.manifest().id()).contains("spring-boot");
     }
@@ -90,7 +90,7 @@ class ActivePluginsTest {
                 spring-boot-dependencies = "4.1.1"
                 """);
 
-        List<PluginBuild.Active> active = ActivePlugins.of(build, dir);
+        List<ActivePlugin> active = ActivePlugins.of(build, dir);
         assertThat(active).extracting(a -> a.manifest().id()).containsExactly("openapi");
         assertThat(ActivePlugins.packager(active)).isEmpty();
     }
@@ -105,24 +105,24 @@ class ActivePluginsTest {
                 [openapi]
                 generator = "spring"
                 """);
-        List<PluginBuild.Active> active = ActivePlugins.of(build, dir);
-        Map<String, PluginBuild.Declarations> byId = Map.of(
+        List<ActivePlugin> active = ActivePlugins.of(build, dir);
+        Map<String, PluginDeclarations> byId = Map.of(
                 "spring-boot",
-                        new PluginBuild.Declarations(
+                        new PluginDeclarations(
                                 List.of(step("spring-aot")),
-                                new PluginBuild.PackagerDecl("boot-jar", List.of("classes")),
+                                new PluginDeclarations.PackagerDecl("boot-jar", List.of("classes")),
                                 List.of()),
                 "openapi",
-                        new PluginBuild.Declarations(
+                        new PluginDeclarations(
                                 List.of(step("generate-openapi")),
                                 null,
-                                List.of(new PluginBuild.CommandDecl("openapi-validate", "validate"))));
+                                List.of(new PluginDeclarations.CommandDecl("openapi-validate", "validate"))));
 
         ActivePlugins.Declared merged = ActivePlugins.merge(
                 active, a -> requireNonNull(byId.get(a.manifest().id())));
 
         assertThat(merged.decls().steps())
-                .extracting(PluginBuild.TaskDecl::name)
+                .extracting(TaskDecl::name)
                 .containsExactlyInAnyOrder("spring-aot", "generate-openapi");
         assertThat(merged.ownerOf(step("generate-openapi")).manifest().id()).isEqualTo("openapi");
         assertThat(merged.ownerOf(step("spring-aot")).manifest().id()).isEqualTo("spring-boot");
@@ -143,18 +143,18 @@ class ActivePluginsTest {
                 [openapi]
                 generator = "spring"
                 """);
-        List<PluginBuild.Active> active = ActivePlugins.of(build, dir);
+        List<ActivePlugin> active = ActivePlugins.of(build, dir);
 
         assertThatThrownBy(() -> ActivePlugins.merge(
-                        active, a -> new PluginBuild.Declarations(List.of(step("generate")), null, List.of())))
+                        active, a -> new PluginDeclarations(List.of(step("generate")), null, List.of())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("both register a step named `generate`")
                 .hasMessageContaining("[openapi]")
                 .hasMessageContaining("[spring-boot]");
     }
 
-    private static PluginBuild.TaskDecl step(String name) {
-        return new PluginBuild.TaskDecl(
+    private static TaskDecl step(String name) {
+        return new TaskDecl(
                 name, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null);
     }

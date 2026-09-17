@@ -51,7 +51,7 @@ public final class PlannerPlugin {
 
     private PlannerPlugin() {}
 
-    static boolean beforeCompile(PluginBuild.TaskDecl step) {
+    static boolean beforeCompile(TaskDecl step) {
         if (step.sourceGenerating()) return true;
         if (step.testOnly() || step.packageTime()) return false;
         // Intermediate tasks with no classes input (and no package/test contributions) run after
@@ -63,10 +63,10 @@ public final class PlannerPlugin {
      * The single classes-dir-replacing task ({@code transformsClasses}), if any. Two transforms are
      * an error; validated at BuildPlan construction.
      */
-    static PluginBuild.@Nullable TaskDecl transformStep(PluginBuild.@Nullable Declarations decls) {
+    static @Nullable TaskDecl transformStep(@Nullable PluginDeclarations decls) {
         if (decls == null) return null;
-        PluginBuild.TaskDecl transform = null;
-        for (PluginBuild.TaskDecl s : decls.steps()) {
+        TaskDecl transform = null;
+        for (TaskDecl s : decls.steps()) {
             if (!s.transforms()) continue;
             if (transform != null) {
                 throw new IllegalStateException("plugin tasks " + transform.name() + " and " + s.name()
@@ -109,7 +109,7 @@ public final class PlannerPlugin {
      * #pluginTask} uses to build its {@code requires} — inference must never contradict the
      * edges, or {@link BuildPlan} rejects a plan the planner itself produced.
      */
-    static BuildStage pluginWindow(PluginBuild.TaskDecl step) {
+    static BuildStage pluginWindow(TaskDecl step) {
         if (beforeCompile(step)) return BuildStage.GENERATE;
         if (step.testOnly()) return BuildStage.TEST;
         return BuildStage.COMPILE;
@@ -118,10 +118,10 @@ public final class PlannerPlugin {
     /**
      * The latest stage a plugin task may claim. {@code run-tests} (TEST) requires every
      * test-classpath contributor, and {@code package-jar} (PACKAGE) requires every
-     * {@link PluginBuild.TaskDecl#packageTime()} task ({@link #packageRequires}) — either
+     * {@link TaskDecl#packageTime()} task ({@link #packageRequires}) — either
      * consumer rejects a plan where the task claims a later stage than it.
      */
-    static BuildStage pluginCeiling(PluginBuild.TaskDecl step) {
+    static BuildStage pluginCeiling(TaskDecl step) {
         boolean requiredByTests = step.testOnly() || step.feedsTests();
         if (requiredByTests) return BuildStage.TEST;
         if (step.packageTime()) return BuildStage.PACKAGE;
@@ -133,7 +133,7 @@ public final class PlannerPlugin {
      * {@code package}, not {@code compile}), but only within the window its scheduling allows —
      * a contradiction is the plugin's error and says so.
      */
-    static BuildStage pluginStage(PluginBuild.TaskDecl step) {
+    static BuildStage pluginStage(TaskDecl step) {
         BuildStage window = pluginWindow(step);
         String declared = step.stage();
         if (declared == null || declared.isBlank()) return window;
@@ -153,10 +153,10 @@ public final class PlannerPlugin {
     /**
      * The DAG edges a declared plugin task rides: its own declarations, the window anchors, and
      * the peer/transform outputs its inputs name. Shares the {@link #beforeCompile} /
-     * {@link PluginBuild.TaskDecl#testOnly()} split with {@link #pluginWindow} so stage and edges
+     * {@link TaskDecl#testOnly()} split with {@link #pluginWindow} so stage and edges
      * cannot disagree.
      */
-    static List<String> pluginRequires(PluginBuild.TaskDecl step, PluginBuild.@Nullable TaskDecl transform) {
+    static List<String> pluginRequires(TaskDecl step, @Nullable TaskDecl transform) {
         boolean beforeCompile = beforeCompile(step);
         if (beforeCompile && step.inputs().contains("classes")) {
             throw new IllegalStateException("plugin task " + step.name()
@@ -209,8 +209,8 @@ public final class PlannerPlugin {
      * repositories when the step declared them.
      */
     private static Path writeStepSpec(
-            PluginBuild.TaskDecl step,
-            PluginBuild.Active active,
+            TaskDecl step,
+            ActivePlugin active,
             ProjectFacts facts,
             StepSpecPaths paths,
             InputSources src,
@@ -241,10 +241,7 @@ public final class PlannerPlugin {
      * {@code step:<name>} input, and each dependency sibling's directory per {@code sibling:<key>}.
      */
     private static void writeChainedInputs(
-            SpecWriter specWriter,
-            PluginBuild.TaskDecl step,
-            BuildLayout layout,
-            Map<String, List<Path>> siblingFiles) {
+            SpecWriter specWriter, TaskDecl step, BuildLayout layout, Map<String, List<Path>> siblingFiles) {
         for (String input : step.inputs()) {
             if (input.startsWith("step:")) {
                 String other = input.substring("step:".length());
@@ -393,12 +390,9 @@ public final class PlannerPlugin {
      * One declared build-plugin task: engine fingerprints inputs, restores on hit, forks on miss.
      */
     static Task pluginTask(
-            BuildPlanner.Ctx cx,
-            PluginBuild.@Nullable Active declared,
-            PluginBuild.TaskDecl step,
-            PluginBuild.@Nullable TaskDecl transform) {
+            BuildPlanner.Ctx cx, @Nullable ActivePlugin declared, TaskDecl step, @Nullable TaskDecl transform) {
         // The step exists because this plugin declared it.
-        PluginBuild.Active active = Objects.requireNonNull(declared, "active plugin");
+        ActivePlugin active = Objects.requireNonNull(declared, "active plugin");
         BuildPlanner.Inputs in = cx.in();
         boolean beforeCompile = beforeCompile(step);
         List<String> requires = pluginRequires(step, transform);
@@ -582,7 +576,7 @@ public final class PlannerPlugin {
      * contributes classes, resources, sources or test classpath. Such a step's empty run is a
      * failure to cache, never a verdict.
      */
-    static boolean producesOutputs(PluginBuild.TaskDecl step) {
+    static boolean producesOutputs(TaskDecl step) {
         return step.transforms()
                 || nonEmpty(step.outputs())
                 || nonEmpty(step.contributesClasses())
@@ -618,12 +612,12 @@ public final class PlannerPlugin {
             JkBuild project,
             Path classes,
             Path jarPath,
-            PluginBuild.@Nullable Active declaredActive,
-            PluginBuild.Declarations decls,
+            @Nullable ActivePlugin declaredActive,
+            PluginDeclarations decls,
             Map<String, String> secrets)
             throws Exception {
         // A plugin packager runs because this plugin declared one.
-        PluginBuild.Active active = Objects.requireNonNull(declaredActive, "active plugin");
+        ActivePlugin active = Objects.requireNonNull(declaredActive, "active plugin");
         Lockfile lock = ctx.require(LOCKFILE);
         BuildLayout layout = ctx.require(LAYOUT);
         // Key AND spec from one derivation (PackagingKeys): the facts, runtime entries and tool
@@ -675,7 +669,7 @@ public final class PlannerPlugin {
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
         spec.extra("sbom", sbomFile);
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             Path scratch = PluginBuild.taskScratch(layout, step.name());
             if (Files.isDirectory(scratch)) spec.stepOutput(step.name(), scratch);
         }
@@ -696,7 +690,7 @@ public final class PlannerPlugin {
             Files.deleteIfExists(specFile);
             Files.deleteIfExists(sbomFile);
         }
-        PluginBuild.PackagerDecl packager = Objects.requireNonNull(decls.packager(), "packager");
+        PluginDeclarations.PackagerDecl packager = Objects.requireNonNull(decls.packager(), "packager");
         if (!Files.isRegularFile(jarPath)) {
             throw new IOException(
                     "plugin packager " + packager.name() + " reported success but produced no " + jarPath);
