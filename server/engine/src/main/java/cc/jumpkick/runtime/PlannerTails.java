@@ -349,7 +349,7 @@ public final class PlannerTails {
                 .requires(TaskNames.PACKAGE_JAR)
                 .weight(W_JAVADOC)
                 .ticks(1)
-                .execute(ctx -> PlannerJavadoc.run(ctx, cache, persist))
+                .execute(ctx -> PlannerJavadoc.run(ctx, cache, JkStores.storeCas(), persist))
                 .build();
     }
 }

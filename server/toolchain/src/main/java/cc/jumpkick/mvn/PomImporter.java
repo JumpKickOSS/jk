@@ -169,7 +169,8 @@ public final class PomImporter {
                 .pluginConfig(generators.localizer())
                 .pluginConfig(generators.generate())
                 .build(buildBlock(em.model(), sourceTree, tests, report)
-                        .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null)))
+                        .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
+                        .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(JkBuild.Dokka.DEFAULT)))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);

@@ -51,6 +51,7 @@ public final class JkBuildRenderer {
         renderWorkspace(sb, jkBuild);
         renderBuild(sb, jkBuild.build());
         renderBuildInfo(sb, jkBuild.build().buildInfo());
+        renderDokka(sb, jkBuild.build().dokka());
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
         renderProfiles(sb, jkBuild);
@@ -98,6 +99,18 @@ public final class JkBuildRenderer {
             sb.append("file = ").append(quote(info.file())).append('\n');
         }
         if (info.buildTime()) sb.append("time = \"build\"\n");
+    }
+
+    /** {@code [dokka]} — only when a key is off its default. */
+    private static void renderDokka(StringBuilder sb, JkBuild.Dokka dokka) {
+        if (dokka.isDefault()) return;
+        sb.append("\n[dokka]\n");
+        if (!dokka.version().equals(JkBuild.Dokka.DEFAULT.version())) {
+            sb.append("version = ").append(quote(dokka.version().raw())).append('\n');
+        }
+        if (dokka.format() != JkBuild.Dokka.DEFAULT.format()) {
+            sb.append("format = ").append(quote(dokka.format().wireName())).append('\n');
+        }
     }
 
     /** {@code { key = "value", "dotted.key" = "value" }} in map order. */

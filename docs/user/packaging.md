@@ -57,9 +57,23 @@ javadoc = "strict"   # javadoc's own doclint checks fail the step instead of war
   the default mode — the step never fails there, and the jar holds whatever javadoc wrote, or
   a single `README` saying why when it wrote nothing. Only `javadoc = "strict"` lets an error
   fail the step. Output carries no timestamps, so `jk verify` can diff the jar.
-- A Kotlin or Groovy module has nothing javadoc can read: its javadoc jar holds a single
-  `README` saying so. Central accepts an empty javadoc jar; jk does not run Dokka.
+- A module with Kotlin sources is documented by **Dokka** instead — its Java sources included,
+  so a mixed module documents both languages — with Dokka's javadoc-shaped output, the form
+  Central's javadoc jar convention expects. Dokka is a pinned, cached tool: `[dokka] version`
+  names the release (default `2.2.0`; a bare version pins, `^2` floats within the line, `latest`
+  is the newest stable), `[dokka] format = "html"` asks for Dokka's own HTML instead. The
+  release and format are part of the step's key, so moving the pin re-documents and nothing
+  else. The lenient and strict modes mean the same as for javadoc: a Dokka failure is a
+  warning and a README-only jar by default, and fails the step under `javadoc = "strict"`.
+- A Groovy module has nothing either tool reads: its javadoc jar holds a single `README` saying
+  so, which Central accepts.
 - A workspace root that only coordinates members, and a module with no sources, ship neither.
+
+```toml
+[dokka]
+version = "2.2.0"     # the Dokka release; jk update moves a floating selector like any tool's
+format  = "javadoc"   # or "html"
+```
 
 ## Build info: `git.properties` and Boot's `build-info.properties`
 

@@ -3,10 +3,13 @@ package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
@@ -14,7 +17,7 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Git build info is the {@code [build-info]} table: both git-commit-id plugin ids write {@code
+ * Git build info is the {@code [build-info]} table, and Dokka is the {@code [dokka]} table: both git-commit-id plugin ids write {@code
  * git.properties} the way the table does, and Boot's {@code build-info} goal writes the {@code
  * build-info.properties} the table adds to a Boot module. A properties file placed under the output
  * directory keeps its name inside the jar; what jk does not reproduce — JSON output, another date
@@ -34,6 +37,29 @@ final class BuildInfoPlugins {
     private static final String OUTPUT_DIR = "${project.build.outputDirectory}";
 
     private BuildInfoPlugins() {}
+
+    private static final String DOKKA = "dokka-maven-plugin";
+
+    /**
+     * {@code dokka-maven-plugin} is the {@code [dokka]} table at the plugin's version; a plugin
+     * bound only to its {@code dokka} goal (HTML, no javadoc jar) keeps that format. Without a
+     * usable version the table is jk's default Dokka, which the report says.
+     */
+    static Optional<JkBuild.Dokka> mapDokka(EffectiveModel em, ImportReport.Builder report) {
+        Optional<Plugin> dokka = PluginFacts.plugin(em.model(), DOKKA);
+        if (dokka.isEmpty()) return Optional.empty();
+        Set<String> goals = new LinkedHashSet<>();
+        for (PluginExecution execution : dokka.get().getExecutions()) goals.addAll(execution.getGoals());
+        JkBuild.Dokka.Format format =
+                goals.equals(Set.of("dokka")) ? JkBuild.Dokka.Format.HTML : JkBuild.Dokka.Format.JAVADOC;
+        String version = PluginFacts.usable(dokka.get().getVersion());
+        if (version == null) {
+            report.warning("`" + DOKKA + "` is declared without a resolvable version; `[dokka]` documents with Dokka "
+                    + JkBuild.Dokka.DEFAULT_VERSION + " — set `[dokka] version` yourself to keep the plugin's.");
+            return Optional.of(new JkBuild.Dokka(JkBuild.Dokka.DEFAULT.version(), format));
+        }
+        return Optional.of(new JkBuild.Dokka(VersionSelector.parse(version), format));
+    }
 
     static Optional<JkBuild.BuildInfo> map(EffectiveModel em, ImportReport.Builder report) {
         Optional<Plugin> git = PluginFacts.plugin(em.model(), GIT_COMMIT_ID)

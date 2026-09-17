@@ -60,7 +60,6 @@ maintenance cost is a gated example per preset.
 
 | Gap | Count | Tier | Why |
 |---|--:|---|---|
-| Dokka for a Kotlin module's javadoc jar | 14k Gradle | core | a Kotlin library cannot publish to Central without it |
 | JavaFX module path for compile, run and packaging | 65k Maven, 12k Gradle | contrib | desktop; larger than the Quarkus plugin, outside the daily-loop target |
 | Hibernate bytecode enhancement | 8k Gradle, 2k Maven | contrib | a post-compile transformer; behaviour differs silently without it |
 
@@ -170,7 +169,7 @@ it is outer-loop work and is designed after 1.0.
 | 20 | `com.diffplug.spotless` | 18,232 | core | jk format |
 | 21 | `com.google.firebase.crashlytics` | 17,776 | contrib | android; not covered |
 | 22 | `com.gradleup.shadow` | 15,248 | core | same as shadow |
-| 23 | `org.jetbrains.dokka` | 14,296 | gap | javadoc jar exists; Kotlin API docs do not |
+| 23 | `org.jetbrains.dokka` | 14,296 | core | `[dokka]`: the javadoc jar of a Kotlin module is Dokka output |
 | 24 | `org.jetbrains.kotlin.kapt` | 14,024 | core | kapt via kotlin-compiler |
 | 25 | `org.openjfx.javafxplugin` | 11,956 | gap | JavaFX module path/run; module path compile exists |
 | 26 | `org.jetbrains.intellij` | 11,376 | no | IDE plugin development |
@@ -226,7 +225,7 @@ it is outer-loop work and is designed after 1.0.
 | 12 | `org.jetbrains.compose` | 20,815 | no | Compose Multiplatform desktop; not a goal |
 | 13 | `com.diffplug.spotless` | 18,232 | core | jk format |
 | 14 | `com.gradleup.shadow` | 15,248 | core | same as shadow |
-| 15 | `org.jetbrains.dokka` | 14,296 | gap | javadoc jar exists; Kotlin API docs do not |
+| 15 | `org.jetbrains.dokka` | 14,296 | core | `[dokka]`: the javadoc jar of a Kotlin module is Dokka output |
 | 16 | `org.jetbrains.kotlin.kapt` | 14,024 | core | kapt via kotlin-compiler |
 | 17 | `org.openjfx.javafxplugin` | 11,956 | gap | JavaFX module path/run; module path compile exists |
 | 18 | `org.jetbrains.intellij` | 11,376 | no | IDE plugin development |

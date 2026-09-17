@@ -85,7 +85,7 @@ feature matrix.
 |---|---|---|
 | Plugin SDK on Maven Central | publishable: `jk publish --central` from `shared/host` and `shared/plugin-sdk` is a release step; the sample plugin compiles against the coordinate, first-party plugins keep the workspace edge so a release never needs a prior one | published with every release |
 | Coverage | XML per module | summary in results, HTML report, guard floor |
-| Sources and javadoc jars | sources only | both, from `jk package` |
+| Sources and javadoc jars | both from `jk package`; javadoc for Java, Dokka (`[dokka]`) for a Kotlin or mixed module | done |
 | Central Portal publish | `jk publish --central`: signed bundle, Portal upload, status poll, Publish block in results | done |
 | Code generation | protobuf, annotation processors, KSP | a generator plugin; OpenAPI first, then jOOQ, Avro, ANTLR, JAXB |
 | Lint as a cached step | Error Prone and NullAway via `[javac]`; Checkstyle as a recipe | Checkstyle, PMD, SpotBugs with findings in results |

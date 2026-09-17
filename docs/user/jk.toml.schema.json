@@ -470,6 +470,15 @@
       "type": "object",
       "description": "[install] table; keys are documented in docs/user."
     },
+    "dokka": {
+      "type": "object",
+      "description": "[dokka]: how a Kotlin or mixed module's javadoc jar is documented (docs/user/packaging.md). A pure Java module never reads it.",
+      "properties": {
+        "version": { "type": "string", "description": "The Dokka release: a bare version pins, ^2 floats within the line, latest is the newest stable. Default \"2.2.0\"." },
+        "format": { "type": "string", "enum": ["javadoc", "html"], "description": "What Dokka writes into the jar: \"javadoc\" (default), the javadoc-shaped output Central's javadoc jar convention expects, or Dokka's own \"html\"." }
+      },
+      "additionalProperties": false
+    },
     "build-info": {
       "type": "object",
       "description": "[build-info]: the jar carries git.properties (git.commit.id, git.commit.id.abbrev, git.branch, git.commit.time, git.dirty, git.build.time, git.build.version, git.closest.tag.name) and, for a Spring Boot application, META-INF/build-info.properties. An empty table is the battery at its defaults (docs/user/packaging.md).",

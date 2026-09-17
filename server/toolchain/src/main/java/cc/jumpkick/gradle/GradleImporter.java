@@ -111,6 +111,12 @@ public final class GradleImporter {
     /** The Gradle plugin that writes {@code git.properties}; the {@code [build-info]} table in jk. */
     private static final String GIT_PROPERTIES_PLUGIN = "com.gorylenko.gradle-git-properties";
 
+    /** The Dokka Gradle plugin; its inline version is the {@code [dokka]} pin. */
+    private static final String DOKKA_PLUGIN = "org.jetbrains.dokka";
+
+    private static final Pattern DOKKA_ID_VERSION =
+            Pattern.compile("id\\s*\\(?\\s*[\"']" + Pattern.quote(DOKKA_PLUGIN) + "[\"']\\s*\\)?\\s*version\\s*" + STR);
+
     /** {@code springBoot { buildInfo() }} — Boot's own {@code build-info.properties}. */
     private static final Pattern BOOT_BUILD_INFO = Pattern.compile("\\bbuildInfo\\s*\\(");
 
@@ -188,6 +194,7 @@ public final class GradleImporter {
         // git.properties from the git-properties plugin, build-info.properties from Boot's
         // `springBoot { buildInfo() }`: both are the [build-info] table.
         JkBuild.BuildInfo buildInfo = BOOT_BUILD_INFO.matcher(stripped).find() ? JkBuild.BuildInfo.DEFAULT : null;
+        JkBuild.Dokka dokkaTable = JkBuild.Dokka.DEFAULT;
         Map<String, PluginImportRule> importRules = pluginImportRules();
         for (Matcher m = PLUGIN_ID.matcher(pluginsBody); m.find(); ) {
             String pluginId = firstNonNull(m.group(1), m.group(2));
@@ -198,6 +205,14 @@ public final class GradleImporter {
                     // implicit in jk — nothing to say.
                 }
                 case GIT_PROPERTIES_PLUGIN -> buildInfo = JkBuild.BuildInfo.DEFAULT;
+                case DOKKA_PLUGIN -> {
+                    // Dokka's version is the [dokka] pin; applied without one, jk's default Dokka runs.
+                    Matcher dokka = DOKKA_ID_VERSION.matcher(pluginsBody);
+                    if (dokka.find()) {
+                        String v = Objects.requireNonNull(firstNonNull(dokka.group(1), dokka.group(2)));
+                        dokkaTable = new JkBuild.Dokka(VersionSelector.parse(v), JkBuild.Dokka.Format.JAVADOC);
+                    }
+                }
                 default -> {
                     if (!importRules.containsKey(pluginId)) {
                         report.warning(
@@ -242,7 +257,7 @@ public final class GradleImporter {
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
                 .application(application)
-                .build(JkBuild.Build.EMPTY.withBuildInfo(buildInfo));
+                .build(JkBuild.Build.EMPTY.withBuildInfo(buildInfo).withDokka(dokkaTable));
         for (PluginConfig config : pluginConfigs) {
             builder.pluginConfig(config);
         }

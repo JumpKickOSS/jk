@@ -599,26 +599,33 @@ public final class PackagingKeys {
     }
 
     /**
-     * The javadoc jar's key: the Java sources' content, the classpath's ABI (through {@code cp},
-     * so the forecast can answer for a tree it has not restored), the javadoc options and the JDK.
-     * One body for the step and its forecast; a module with no Java sources keys a constant.
+     * The javadoc jar's key: the documented sources' content (Java, and Kotlin when Dokka runs),
+     * the classpath's ABI (through {@code cp}, so the forecast can answer for a tree it has not
+     * restored), the tool — javadoc's options, or the Dokka release and format as {@code dokka} —
+     * and the JDK. One body for the step and its forecast; a module with no source of either
+     * language keys a constant.
      */
     public static Keyed javadoc(
             Path javadocJar,
             Path moduleDir,
             List<Path> javaSources,
+            List<Path> kotlinSources,
             List<Path> classpath,
             ActionKey.EntryToken cp,
             List<String> options,
-            @Nullable Path javaHome)
+            @Nullable Path javaHome,
+            @Nullable String dokka)
             throws IOException {
-        // A module with no Java sources gets the README-only jar, a constant: nothing about the
-        // classpath, the options or the JDK reaches it, so none of them may reach its key.
-        boolean readme = javaSources.isEmpty();
+        // A module with nothing to document gets the README-only jar, a constant: nothing about the
+        // classpath, the tool or the JDK reaches it, so none of them may reach its key.
+        boolean readme = javaSources.isEmpty() && kotlinSources.isEmpty();
+        List<Path> documented = new ArrayList<>(javaSources);
+        documented.addAll(kotlinSources);
+        String tool = dokka != null ? "dokka " + dokka : String.join(" ", options);
         List<String> tokens = List.of(
-                "sources:" + (readme ? "" : sourcesToken(moduleDir, javaSources)),
+                "sources:" + (readme ? "" : sourcesToken(moduleDir, documented)),
                 "classpath:" + (readme ? "" : classpathAbiToken(classpath, cp)),
-                "options:" + (readme ? "" : String.join(" ", options)),
+                "options:" + (readme ? "" : tool),
                 "jdk:" + (readme ? "" : ActionKey.jdkToken(javaHome)),
                 "packaging:" + (readme ? "javadoc-readme" : "javadoc"));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAVADOC, javadocJar);

@@ -189,6 +189,40 @@ public final class ManifestTables {
         return Optional.of(new JkBuild.Install(productLib, productBin));
     }
 
+    static final List<String> DOKKA_KEYS = List.of("version", "format");
+
+    /**
+     * {@code [dokka]} — the Dokka release and output format a Kotlin or mixed module's javadoc jar
+     * is built with; see {@link JkBuild.Dokka}. Absent keys keep their defaults.
+     */
+    static Optional<JkBuild.Dokka> parseDokka(TomlTable root) {
+        if (root.contains("dokka") && !root.isTable("dokka")) {
+            throw new JkBuildParseException("`dokka` must be a table — use [dokka] with version and format keys");
+        }
+        TomlTable table = root.getTable("dokka");
+        if (table == null) return Optional.empty();
+        rejectUnknownKeys(table, DOKKA_KEYS, "[dokka]");
+        String version = stringOrThrow(table, "version", "dokka.version");
+        VersionSelector selector = JkBuild.Dokka.DEFAULT.version();
+        if (version != null) {
+            try {
+                selector = VersionSelector.parse(version);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("[dokka] version: " + e.getMessage());
+            }
+        }
+        String format = stringOrThrow(table, "format", "dokka.format");
+        JkBuild.Dokka.Format shape = JkBuild.Dokka.DEFAULT.format();
+        if (format != null) {
+            try {
+                shape = JkBuild.Dokka.Format.parse(format);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("[dokka] format: " + e.getMessage());
+            }
+        }
+        return Optional.of(new JkBuild.Dokka(selector, shape));
+    }
+
     static final List<String> BUILD_INFO_KEYS = List.of("file", "time");
 
     /**
