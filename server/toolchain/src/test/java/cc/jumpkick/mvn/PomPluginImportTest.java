@@ -237,6 +237,116 @@ class PomPluginImportTest {
     }
 
     @Test
+    void a_compile_goal_executions_args_reach_compile_main_alone(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <properties><maven.compiler.release>21</maven.compiler.release></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <configuration>
+                      <compilerArgs><arg>-parameters</arg></compilerArgs>
+                      <annotationProcessorPaths>
+                        <path><groupId>com.uber.nullaway</groupId><artifactId>nullaway</artifactId><version>0.13.0</version></path>
+                      </annotationProcessorPaths>
+                    </configuration>
+                    <executions>
+                      <execution>
+                        <id>java-compile</id>
+                        <goals><goal>compile</goal></goals>
+                        <configuration>
+                          <compilerArgs>
+                            <arg>-XDcompilePolicy=simple</arg>
+                            <arg>-Xplugin:ErrorProne -Xep:NullAway:ERROR</arg>
+                          </compilerArgs>
+                        </configuration>
+                      </execution>
+                      <execution>
+                        <id>java-test-compile</id>
+                        <goals><goal>testCompile</goal></goals>
+                        <configuration>
+                          <compilerArgs><arg>-Xlint:none</arg></compilerArgs>
+                          <annotationProcessorPaths>
+                            <path><groupId>org.mapstruct</groupId><artifactId>mapstruct-processor</artifactId><version>1.6.3</version></path>
+                          </annotationProcessorPaths>
+                        </configuration>
+                      </execution>
+                    </executions>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.build().javac().args())
+                .as("the plugin's own configuration and the compile goal's execution")
+                .containsExactly("-parameters", "-XDcompilePolicy=simple", "-Xplugin:ErrorProne -Xep:NullAway:ERROR");
+        assertThat(build.build().javac().forTests().args())
+                .as("the plugin's own configuration and the testCompile goal's execution")
+                .containsExactly("-parameters", "-Xlint:none");
+        assertThat(versions(build.dependencies().of(Scope.PROCESSOR)))
+                .as("one processor path serves both compiles")
+                .containsExactly("com.uber.nullaway:nullaway=0.13.0", "org.mapstruct:mapstruct-processor=1.6.3");
+        List<String> messages = messages(result);
+        assertThat(messages)
+                .anySatisfy(m -> assertThat(m)
+                        .contains("execution `java-compile`")
+                        .contains("goal `compile`")
+                        .contains("[javac.test]"))
+                .anySatisfy(m -> assertThat(m)
+                        .contains("`<annotationProcessorPaths>` on execution `java-test-compile`")
+                        .contains("goal `testCompile`")
+                        .contains("[processor-dependencies]"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains("[javac]\nargs = [\"-parameters\", \"-XDcompilePolicy=simple\","
+                        + " \"-Xplugin:ErrorProne -Xep:NullAway:ERROR\"]")
+                .contains("[javac.test]\nargs = [\"-parameters\", \"-Xlint:none\"]");
+        JkBuild reparsed = JkBuildParser.parse(rendered);
+        assertThat(reparsed.build().javac().args())
+                .isEqualTo(build.build().javac().args());
+        assertThat(reparsed.build().javac().forTests().args())
+                .isEqualTo(build.build().javac().forTests().args());
+    }
+
+    @Test
+    void a_compile_goal_execution_that_is_all_the_arguments_leaves_the_suite_with_none(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0.0</version>
+                  <build><plugins><plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.14.0</version>
+                    <executions><execution>
+                      <id>default-compile</id>
+                      <configuration><compilerArgs><arg>-Werror</arg></compilerArgs></configuration>
+                    </execution></executions>
+                  </plugin></plugins></build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.build().javac().args()).containsExactly("-Werror");
+        assertThat(build.build().javac().forTests().args())
+                .as("the default-compile execution is the compile goal's")
+                .isEmpty();
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered).contains("[javac.test]\nplugins = {}\n");
+        assertThat(JkBuildParser.parse(rendered).build().javac().forTests().args())
+                .isEmpty();
+    }
+
+    @Test
     void a_toolchain_pin_is_the_only_thing_that_writes_jdk(@TempDir Path tempDir) throws Exception {
         PomImporter.Result pinned = importXml(tempDir, """
                 <project>
