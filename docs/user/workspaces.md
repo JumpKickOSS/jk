@@ -117,7 +117,10 @@ member's graph, and so do the [`[managed-dependencies]`](dependencies.md#managed
 of the same manifests, folded in the same order. They do not reach a member that never depends on it: `zipkin-server`'s
 `spring-boot-dependencies` lifts `jakarta.jms-api` to 3.1.0 for `zipkin-server`, and the collector
 that only depends on `activemq-client` compiles against the 2.0.3 that library declares, as it
-does under Maven.
+does under Maven. The table's BOM does govern the member that declares the table, even where that
+member's POM imported no BOM and Maven took each library's declared version: a `[spring-boot]`
+module resolves as a Boot application, on Boot's managed versions, and so does a member that
+depends on it.
 
 A BOM a framework table implies is a coordinate the lock fetches like any other: `[quarkus]
 version = "3.39.2"` is `io.quarkus.platform:quarkus-bom:3.39.2`, and repositories publish it for
@@ -133,8 +136,9 @@ So a member is resolved on its own exactly when the workspace's answer cannot be
 
 - it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`
   in one member, `"1.5.32"` in three others), or
-- a coordinate in its graph was pinned by a BOM the member does not hold, and an edge of the
-  member's own graph declared something else.
+- a coordinate in its graph was pinned by a BOM the member does not hold, and the member's own
+  platform table manages it at another version or an edge of the member's own graph declared
+  something else.
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the

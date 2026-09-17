@@ -130,8 +130,9 @@ final class MemberPartitions {
     /**
      * The {@code group:artifact}s on which the merged answer cannot be this member's: an exact pin of
      * the member the merged version does not equal, or a merged version a BOM the member does not
-     * hold pinned while an edge in the member's closure declared another version. Empty means the
-     * member reads the merged rows as they are.
+     * hold pinned while the member's own platform table manages the module at another version or an
+     * edge in the member's closure declared another version. Empty means the member reads the
+     * merged rows as they are.
      */
     private Set<String> flagged(JkBuild manifest, PlatformConstraints own) {
         Set<String> flagged = new LinkedHashSet<>();
@@ -158,8 +159,11 @@ final class MemberPartitions {
             if (merged == null) continue;
             String ga = PackageId.parse(key).ga();
             if (union.constraints().pinnedBy(ga, merged.version()) == null) continue;
-            if (merged.version().equals(own.versions().get(ga))) continue;
-            if (edgeDeclaresAnother(key, merged.version(), closure, declaredAt.get(key))) flagged.add(ga);
+            String ownManaged = own.versions().get(ga);
+            if (merged.version().equals(ownManaged)) continue;
+            if (ownManaged != null || edgeDeclaresAnother(key, merged.version(), closure, declaredAt.get(key))) {
+                flagged.add(ga);
+            }
         }
         return flagged;
     }

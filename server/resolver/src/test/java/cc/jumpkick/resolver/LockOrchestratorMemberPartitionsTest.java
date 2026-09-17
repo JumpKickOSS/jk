@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
@@ -81,6 +82,72 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(rows(lock.forMember("other"), "com.foo:leaf:jar:"))
                 .extracting(Lockfile.Artifact::version)
                 .containsExactly("2.0");
+    }
+
+    /**
+     * The BOM a framework table implies ({@code [spring-boot] version} → {@code
+     * spring-boot-dependencies}) is the declaring member's platform like one it wrote out: it
+     * governs that member's rows and reaches no member that never depends on it.
+     */
+    @Test
+    void a_bom_a_framework_table_implies_constrains_only_the_member_that_holds_it(@TempDir Path tempDir)
+            throws Exception {
+        serveMiddleOverLeaf();
+        Dependency implied =
+                new Dependency("org.example:the-bom", VersionSelector.parse("=1.0")).withImpliedBy("spring-boot");
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        JkBuild server = manifest("server", Map.of(Scope.PLATFORM, List.of(implied), Scope.MAIN, List.of(middle)));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
+        JkBuild merged = manifest("root", Map.of(Scope.PLATFORM, List.of(implied), Scope.MAIN, List.of(middle)));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .withMembers(
+                        List.of(new LockOrchestrator.Member("server", server), new LockOrchestrator.Member("lib", lib)))
+                .lock(merged, "test");
+
+        assertThat(rows(lock.forMember("server"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("2.0", "org.example:the-bom:1.0"));
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", List.of("lib")));
+    }
+
+    /**
+     * Two members manage one versionless coordinate through different BOMs. The first-declared BOM
+     * decides the workspace row under {@code nearest}; the member whose own BOM says another
+     * version is solved on its own and reads that version.
+     */
+    @Test
+    void a_members_own_bom_beats_a_siblings_bom_on_the_members_rows(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        upstream.pom(
+                "org.example",
+                "lib-bom",
+                "1.0",
+                MavenStub.bom("org.example", "lib-bom", "1.0", List.of("com.foo:leaf:1.0")));
+        Dependency serverBom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency libBom = Dependency.of("lib-bom", "org.example:lib-bom", VersionSelector.parse("=1.0"));
+        Dependency leaf = Dependency.platformManaged("leaf", "com.foo:leaf");
+        JkBuild server = manifest("server", Map.of(Scope.PLATFORM, List.of(serverBom), Scope.MAIN, List.of(leaf)));
+        JkBuild lib = manifest("lib", Map.of(Scope.PLATFORM, List.of(libBom), Scope.MAIN, List.of(leaf)));
+        // The merged manifest carries the first declaration of each BOM and root, as WorkspaceMerge does.
+        JkBuild merged =
+                manifest("root", Map.of(Scope.PLATFORM, List.of(serverBom, libBom), Scope.MAIN, List.of(leaf)));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .withMembers(
+                        List.of(new LockOrchestrator.Member("server", server), new LockOrchestrator.Member("lib", lib)))
+                .lock(merged, "test");
+
+        assertThat(rows(lock.forMember("server"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", List.of("lib")));
     }
 
     @Test
