@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.cli.testing.TranscriptOf;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -85,6 +86,8 @@ class ReadSideIntegrationTest {
         String resync =
                 Capture.stdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", freshCache.toString()));
         assertThat(resync).contains("4 up-to-date");
+        // The run record's transcript line names a file the command wrote, as a lock's does.
+        assertThat(TranscriptOf.results(tempDir)).exists();
     }
 
     @Test
