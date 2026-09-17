@@ -12,7 +12,10 @@ jk add ./path/to/module           # workspace / path
 jk remove jackson3-databind
 ```
 
-`jk add` / `jk remove` edit `[dependencies]` (or another scope you pass). Catalog names
+`jk add` / `jk remove` edit `[dependencies]`, or the table a scope flag names: `--test`,
+`--runtime`, `--provided`, `--processor`, and `--processor --test` together for
+`[test-processor-dependencies]`, the processors compile-test alone runs
+([Build](build.md#annotation-processors)). Two flags that name two tables are refused. Catalog names
 map to `group:artifact` only — versions live on the dependency or a BOM, never in the
 catalog. See [Catalogs](#library-catalog) below and [Platforms](platforms.md). The version
 `jk add` writes is a **pin**; move it later with `jk update` — [Lockfile](lockfile.md#jk-update).
