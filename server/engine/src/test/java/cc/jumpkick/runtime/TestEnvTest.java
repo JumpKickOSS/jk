@@ -71,6 +71,34 @@ class TestEnvTest {
     }
 
     /**
+     * The engine's own roots never reach a test JVM. {@link WorkerEnv} lets the engine's {@code
+     * JK_STATE_DIR}, {@code JK_STORE_DIR} and {@code JK_CACHE_DIR} through by name, so a gate whose
+     * engine was started with a private state or store would otherwise hand every suite the
+     * engine's real build history — and a nested {@code jk self nuke} the engine's real store.
+     */
+    @Test
+    void the_engines_own_roots_are_replaced_by_the_sandboxes(@TempDir Path tmp) throws Exception {
+        JkBuild project = project(tmp, "");
+        Map<String, String> engine = Map.of(
+                "JK_HOME", "/engine/home",
+                "JK_STATE_DIR", "/engine/state",
+                "JK_STORE_DIR", "/engine/store",
+                "JK_CACHE_DIR", "/engine/cache",
+                "JK_JDKS_DIR", "/engine/jdks");
+        Map<String, String> env = WorkerEnv.withEngineEnvironment(
+                engine, () -> TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project))
+                        .environment());
+
+        Path sandbox = TestHomes.pathFor(tmp);
+        assertThat(env.get("JK_HOME")).isEqualTo(sandbox.toString());
+        assertThat(env.get("JK_STATE_DIR")).isEqualTo(sandbox.resolve("state").toString());
+        assertThat(env.get("JK_STORE_DIR")).isEqualTo(sandbox.resolve("store").toString());
+        assertThat(env.get("JK_CACHE_DIR")).isEqualTo(sandbox.resolve("cache").toString());
+        assertThat(env.get("JK_JDKS_DIR")).isEqualTo(sandbox.resolve("jdks").toString());
+        assertThat(env.values()).noneMatch(v -> v.startsWith("/engine/"));
+    }
+
+    /**
      * The launcher derives the shared test cache as a sibling of {@code JK_HOME}, so the home cannot be
      * the slot itself: flattening it would give every module on the machine one shared cache.
      */
