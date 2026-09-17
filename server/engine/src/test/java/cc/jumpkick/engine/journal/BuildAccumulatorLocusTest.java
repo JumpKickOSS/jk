@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanResult;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +39,9 @@ class BuildAccumulatorLocusTest {
         var d = new BuildPlanResult.Diagnostic(
                 "compile-kotlin", "kotlinc", "file:///ws/app/src/Main.kt:14:21 Unresolved reference 'missingThing'.");
         BuildRecord.Diag out = BuildAccumulator.diagFromPlan("error", "/ws/app", "/ws/app", d);
-        assertThat(out.file()).isEqualTo("/ws/app/src/Main.kt");
+        // The file:// header resolves to a real Path, so its separator is the host's: a POSIX
+        // literal here reads /ws/app/src/Main.kt everywhere but Windows.
+        assertThat(out.file()).isEqualTo(Path.of("/ws/app/src/Main.kt").toString());
         assertThat(out.line()).isEqualTo(14);
         assertThat(out.col()).isEqualTo(21);
     }
