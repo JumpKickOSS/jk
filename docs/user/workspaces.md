@@ -195,8 +195,11 @@ the coordinates it reads its own rows for with the member's version and the work
 workspace's version that lacks edges its exclusions pruned reads `com.foo:leaf 1.0 (the
 workspace's without com.foo:deep)`); the same notes land
 in the run record — the `Lock notes` section of `jk-results.md` and its `details.jsonl` — and the
-web view. `jk update` rewrites the declared pins and relocks, so a partition that stops being
-necessary disappears on its own.
+web view. While the pass runs, the progress label names the member being solved and how many
+are flagged (`Solving members on their own… 2 of 7: services/api`): each flagged member costs a
+solve of its own, which on a cold large reactor is where the lock's time goes. `jk update`
+rewrites the declared pins and relocks, so a partition that stops being necessary disappears on
+its own.
 
 A member that holds no `[platform-dependencies]` table reads the workspace's plain rows, and
 nothing aligns them for it. When two artifacts of one library family land there on different

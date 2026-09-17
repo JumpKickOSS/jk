@@ -121,14 +121,17 @@ final class MemberPartitions {
         Map<String, EnumMap<Scope, Boolean>> partitionScopes = new LinkedHashMap<>();
         // name@version → the provenance a holder's table lends a merged row it agrees with.
         Map<String, String> carried = new LinkedHashMap<>();
-        for (LockOrchestrator.Member member : members) {
-            JkBuild manifest = solvable(member.manifest());
-            PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, bomTables, pinPolicy);
-            Reach reach = reach(manifest);
-            carryProvenance(reach, own, merged, carried);
-            Set<String> flagged = flagged(reach, own);
-            if (flagged.isEmpty() && !prunes(reach, own)) continue;
-            Map<String, String> prefs = prefsFor(flagged, memberPrefs.getOrDefault(member.path(), Map.of()));
+        List<Flagged> flaggedMembers = flaggedMembers(members, merged, carried);
+        int solved = 0;
+        for (Flagged flaggedMember : flaggedMembers) {
+            LockOrchestrator.Member member = flaggedMember.member();
+            JkBuild manifest = flaggedMember.manifest();
+            PlatformConstraints own = flaggedMember.own();
+            // Each flagged member costs a solve of its own; on a cold large reactor that is where
+            // the lock's time goes, so the label says which member and how many remain.
+            observer.onPhase(passLabel(member.path(), ++solved, flaggedMembers.size()));
+            Map<String, String> prefs =
+                    prefsFor(flaggedMember.flagged(), memberPrefs.getOrDefault(member.path(), Map.of()));
             // The table read to flag the member is the table its solve runs under.
             Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs, own);
             Map<String, String> differing = new TreeMap<>();
@@ -171,6 +174,35 @@ final class MemberPartitions {
             rows.add(row);
         }
         return merged.withArtifacts(rows);
+    }
+
+    /** A member whose own platform table or pins flag it for a solve of its own, with what the flagging read. */
+    private record Flagged(
+            LockOrchestrator.Member member, JkBuild manifest, PlatformConstraints own, Set<String> flagged) {}
+
+    /**
+     * The members that need a solve of their own, in workspace order — counted before the first solve
+     * runs; each holder's provenance is carried onto the merged rows it agrees with on the way.
+     */
+    private List<Flagged> flaggedMembers(
+            List<LockOrchestrator.Member> members, Lockfile merged, Map<String, String> carried)
+            throws IOException, InterruptedException {
+        List<Flagged> out = new ArrayList<>();
+        for (LockOrchestrator.Member member : members) {
+            JkBuild manifest = solvable(member.manifest());
+            PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, bomTables, pinPolicy);
+            Reach reach = reach(manifest);
+            carryProvenance(reach, own, merged, carried);
+            Set<String> flagged = flagged(reach, own);
+            if (flagged.isEmpty() && !prunes(reach, own)) continue;
+            out.add(new Flagged(member, manifest, own, flagged));
+        }
+        return out;
+    }
+
+    /** The phase label of one member's solve: {@code Solving members on their own… 2 of 7: services/api}. */
+    static String passLabel(String memberPath, int index, int total) {
+        return "Solving members on their own… " + index + " of " + total + ": " + memberPath;
     }
 
     /**

@@ -352,6 +352,48 @@ class LockOrchestratorMemberPartitionsTest {
     }
 
     /**
+     * Each flagged member costs a solve of its own, so the pass says which member it is on and how
+     * many there are; a member that agrees with the workspace needs no solve and no label.
+     */
+    @Test
+    void the_member_pass_labels_each_solve_with_its_member_and_the_count(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "widget", "1.0", "2.0");
+        for (String v : List.of("1.0", "2.0")) {
+            upstream.pom("com.foo", "widget", v, leafPom("widget", v));
+            upstream.jar("com.foo", "widget", v);
+        }
+        Dependency widgetOld = new Dependency("com.foo:widget", VersionSelector.parse("=1.0"));
+        Dependency widgetNew = new Dependency("com.foo:widget", VersionSelector.parse("=2.0"));
+        JkBuild legacy = manifest("legacy", Map.of(Scope.PROVIDED, List.of(widgetOld)));
+        JkBuild current = manifest("current", Map.of(Scope.MAIN, List.of(widgetNew)));
+        JkBuild merged = manifest("root", Map.of(Scope.PROVIDED, List.of(widgetOld)));
+        List<String> phases = new ArrayList<>();
+        ResolveObserver observer = new ResolveObserver() {
+            @Override
+            public void onTotal(int total) {}
+
+            @Override
+            public void onPackage(String module, String version) {}
+
+            @Override
+            public void onPhase(String label) {
+                phases.add(label);
+            }
+        };
+
+        new LockOrchestrator(repoGroup(tempDir))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .withMembers(List.of(
+                        new LockOrchestrator.Member("legacy", legacy), new LockOrchestrator.Member("current", current)))
+                .lock(merged, "test", List.of(), true, observer);
+
+        // legacy's provided pin is the workspace's row already: one member is flagged, one solve is labelled.
+        assertThat(phases)
+                .contains("Solving members on their own… 1 of 1: current")
+                .noneMatch(label -> label.contains("legacy"));
+    }
+
+    /**
      * One member holds a framework table whose BOM manages Jupiter at the version its versionless
      * test starter declares and a widget below its latest release; two plain members hold no
      * platform table, one asks for the widget at {@code latest} and none declares a test dependency.
