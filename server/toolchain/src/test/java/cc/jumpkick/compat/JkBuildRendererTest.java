@@ -25,6 +25,8 @@ import cc.jumpkick.model.SourcesMode;
 import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import java.net.URI;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -373,6 +375,41 @@ class JkBuildRendererTest {
                 .build();
         String out = JkBuildRenderer.render(model);
         assertThat(out).contains("[nonesuch]").contains("spec = \"api/x.yaml\"").contains("options = { a = \"1\" }");
+    }
+
+    /**
+     * A table whose built-in manifest is not installed yet is rendered against the manifest the
+     * engine's fetcher installs for it, so its defaults are elided the way an installed table's are.
+     */
+    @Test
+    void a_plugin_table_installs_its_built_in_manifest_before_rendering() {
+        PluginTableRegistry.missingBuiltInFetcher(table -> {
+            if ("zz-lazy-render".equals(table)) {
+                PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                                [plugin]
+                                id      = "zz-lazy-render"
+                                table   = "zz-lazy-render"
+                                version = "1.0.0"
+
+                                [schema]
+                                spec      = { type = "string", default = "api/*.yaml" }
+                                generator = { type = "string", required = true }
+                                """, "lazy-render-test"), null);
+            }
+            return null;
+        });
+        try {
+            JkBuild model = JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
+                    .pluginConfig(
+                            new PluginConfig("zz-lazy-render", Map.of("spec", "api/*.yaml", "generator", "spring")))
+                    .build();
+            String out = JkBuildRenderer.render(model);
+            assertThat(out)
+                    .contains("[zz-lazy-render]\ngenerator = \"spring\"\n")
+                    .doesNotContain("spec =");
+        } finally {
+            PluginTableRegistry.missingBuiltInFetcher(null);
+        }
     }
 
     /** A table of entries renders one {@code [<table>.<name>]} sub-table per entry and round-trips. */
