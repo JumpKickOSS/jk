@@ -2,14 +2,13 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.host.PathUtil;
-import java.io.IOException;
+import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Optional;
-import java.util.regex.Pattern;
+import java.util.Map;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.Resource;
@@ -17,54 +16,66 @@ import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code localizer-maven-plugin}: a {@code Messages} class for every {@code Messages.properties}
- * under the resource directories, generated into {@code target/generated-sources/localizer}. The
- * plugin ships a Maven mojo and an Ant task and no {@code main}, so no {@code [generate]} entry
- * can run it; the module gets a Tier-3 row naming the classes its sources import, and an
- * {@code add-source} root inside the plugin's output is that output, not an {@code extra-src}.
+ * {@code localizer-maven-plugin} is the {@code [localizer]} preset: {@code <fileMask>} is
+ * {@code mask}, the POM's resource directories are {@code resources}, {@code <outputEncoding>} is
+ * {@code encoding}, {@code <accessModifierAnnotations>}, {@code <strictTypes>} and
+ * {@code <keyPattern>} are their keys, the plugin version is {@code version} — each written only
+ * when it differs from the preset's default. The plugin's {@code <outputDirectory>} is the preset's
+ * own contribution, so an {@code add-source} root inside it is not written as an {@code extra-src}.
  */
 final class LocalizerPlugin {
 
     static final String ARTIFACT = "localizer-maven-plugin";
 
     /** What an {@code add-source} root inside the output is, for the build-helper row. */
-    static final String ADD_SOURCE_ROW =
-            "the localizer plugin's output, which nothing fills under jk, so no `extra-src` root is written";
+    static final String ADD_SOURCE_ROW = "the localizer preset's output; `[localizer]` folds the generated"
+            + " `Messages` classes into the compile itself, so no `extra-src` root is written";
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/localizer";
     private static final String DEFAULT_MASK = "Messages.properties";
+    private static final String DEFAULT_ENCODING = "UTF-8";
     private static final String MAIN_RESOURCES = "src/main/resources";
-    private static final int NAMED = 5;
+
+    /** The table (null without the plugin) and the output root the plugin fills. */
+    record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots) {
+        static final Mapped NONE = new Mapped(null, Map.of());
+    }
 
     private LocalizerPlugin() {}
 
-    /**
-     * The module-relative output root the plugin fills, after the row is written; empty when the
-     * POM has no localizer plugin.
-     */
-    static Optional<String> outputRoot(Model model, ImportReport.Builder report) {
-        Optional<Plugin> plugin = PluginFacts.plugin(model, ARTIFACT);
-        if (plugin.isEmpty()) return Optional.empty();
+    static Mapped map(Model model, ImportReport.Builder report) {
+        Plugin plugin = PluginFacts.plugin(model, ARTIFACT).orElse(null);
+        if (plugin == null) return Mapped.NONE;
         Path baseDir = model.getProjectDirectory() == null
                 ? null
                 : model.getProjectDirectory().toPath();
-        String mask = DEFAULT_MASK;
+        Map<String, Object> values = new LinkedHashMap<>();
         String output = DEFAULT_OUTPUT;
-        for (Xpp3Dom config : PluginFacts.configurations(plugin.get())) {
-            String declaredMask = PluginFacts.child(config, "fileMask");
-            if (declaredMask != null) mask = declaredMask;
+        for (Xpp3Dom config : PluginFacts.configurations(plugin)) {
+            String mask = PluginFacts.child(config, "fileMask");
+            if (mask != null && !mask.equals(DEFAULT_MASK)) values.put("mask", mask);
+            String encoding = PluginFacts.child(config, "outputEncoding");
+            if (encoding != null && !encoding.equalsIgnoreCase(DEFAULT_ENCODING)) values.put("encoding", encoding);
+            String keyPattern = PluginFacts.child(config, "keyPattern");
+            if (keyPattern != null) values.put("key-pattern", keyPattern);
+            if (EnvValues.parseBool(PluginFacts.child(config, "strictTypes")).orElse(false)) {
+                values.put("strict-types", true);
+            }
+            if (EnvValues.parseBool(PluginFacts.child(config, "accessModifierAnnotations"))
+                    .orElse(false)) {
+                values.put("access-modifier-annotations", true);
+            }
             String declaredOutput = PluginFacts.child(config, "outputDirectory");
             if (declaredOutput != null) output = SourceTreePlugins.moduleRelative(declaredOutput, baseDir);
         }
         List<String> resourceDirs = resourceDirs(model, baseDir);
-        List<String> classes = baseDir == null ? List.of() : classes(baseDir, resourceDirs, mask);
-        report.error("`" + ARTIFACT + "` generates " + describe(classes) + " from `" + mask + "` files under "
-                + String.join(", ", resourceDirs) + " into `" + output + "`, and the plugin has no `main` a"
-                + " `[generate]` entry could run (a Maven mojo and an Ant task only), so a source importing those"
-                + " classes does not compile under jk. Run `jk mvn generate-sources` once, move `" + output
-                + "` to a source root of its own (`src/generated/java`, listed in `[build] extra-src`) and check"
-                + " it in, or keep the module under `jk mvn`.");
-        return Optional.of(output);
+        if (!resourceDirs.equals(List.of(MAIN_RESOURCES))) values.put("resources", resourceDirs);
+        String version = PluginFacts.usable(plugin.getVersion());
+        if (version != null) values.put("version", version);
+        report.warning("`" + ARTIFACT + "` is `[localizer]`: the `Messages` classes are generated into the compile"
+                + " from the bundles under " + String.join(", ", resourceDirs) + "; the module's"
+                + " `org.jvnet.localizer:localizer` dependency stays, the generated classes read it at run time.");
+        return new Mapped(new PluginConfig("localizer", values), Map.of(output, ADD_SOURCE_ROW));
     }
 
     /** The module-relative main resource directories the plugin scans, the layout's when the POM lists none. */
@@ -80,42 +91,5 @@ final class LocalizerPlugin {
         }
         if (dirs.isEmpty()) dirs.add(MAIN_RESOURCES);
         return dirs;
-    }
-
-    /** The generated classes by qualified name: the file's directory is the package, its stem the class. */
-    private static List<String> classes(Path baseDir, List<String> resourceDirs, String mask) {
-        Pattern file = Pattern.compile(Pattern.quote(mask).replace("*", "\\E.*\\Q"));
-        List<String> classes = new ArrayList<>();
-        for (String resourceDir : resourceDirs) {
-            Path root = baseDir.resolve(resourceDir);
-            try {
-                PathUtil.forEachRegularFile(root, (path, attrs) -> {
-                    if (file.matcher(path.getFileName().toString()).matches()) classes.add(className(root, path));
-                });
-            } catch (IOException e) {
-                // An unreadable resource tree names no classes; the row still names the plugin.
-            }
-        }
-        Collections.sort(classes);
-        return classes;
-    }
-
-    private static String className(Path root, Path file) {
-        String name = file.getFileName().toString();
-        int dot = name.indexOf('.');
-        String simple = dot > 0 ? name.substring(0, dot) : name;
-        Path dir = file.getParent();
-        String pkg = dir == null || dir.equals(root)
-                ? ""
-                : root.relativize(dir).toString().replace('/', '.').replace('\\', '.');
-        return pkg.isEmpty() ? simple : pkg + "." + simple;
-    }
-
-    private static String describe(List<String> classes) {
-        if (classes.isEmpty()) return "a `Messages` class per directory";
-        List<String> named = classes.subList(0, Math.min(NAMED, classes.size()));
-        String text = "`" + String.join("`, `", named) + "`";
-        int more = classes.size() - named.size();
-        return more > 0 ? text + " and " + more + " more" : text;
     }
 }

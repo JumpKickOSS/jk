@@ -23,7 +23,15 @@ class BuiltInManifestClasspathTest {
         assertThat(PluginTableRegistry.manifests().stream().map(m -> m.id()).toList())
                 .as("BuiltInPluginJars.install must register located table plugins")
                 .contains(
-                        "spring-boot", "grails", "quarkus", "android", "protobuf", "generator", "openapi", "minified");
+                        "spring-boot",
+                        "grails",
+                        "quarkus",
+                        "android",
+                        "protobuf",
+                        "generator",
+                        "openapi",
+                        "localizer",
+                        "minified");
     }
 
     /**

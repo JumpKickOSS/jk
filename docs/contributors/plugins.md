@@ -421,6 +421,7 @@ manifest carries the schema and the tool's `[[contribute.step-dependency]]` scop
 | Table | Tool | Default inputs | Status |
 |---|---|---|---|
 | `[openapi]` | openapi-generator-cli | `api/*.yaml` | shipped (`plugins/openapi`): `generator`, `package`, `version`, `options` |
+| `[localizer]` | localizer-maven-plugin's jar + `LocalizerMain` from the worker's own jar | `src/main/resources/**/Messages.properties` | shipped (`plugins/localizer`): `mask`, `resources`, `encoding`, `access-modifier-annotations`, `strict-types`, `key-pattern`, `version` |
 | `[jooq]` | jooq-codegen | `src/main/resources/db/*.sql` via `DDLDatabase` | planned; a live JDBC schema is opt-in and marked uncached unless the user supplies a schema digest |
 | `[avro]` | avro-tools | `src/main/avro/**/*.avsc` | planned (`compile schema`) |
 | `[antlr]` | antlr4 | `src/main/antlr/**/*.g4` | planned (`-package` from the module group by default) |

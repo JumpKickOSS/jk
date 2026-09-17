@@ -95,6 +95,7 @@ class SelfHostingTomlTest {
                         "plugins/protobuf",
                         "plugins/generator",
                         "plugins/openapi",
+                        "plugins/localizer",
                         "plugins/android",
                         "plugins/micronaut");
     }
