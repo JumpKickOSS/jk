@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * {@code per-entry} tool declaration {@code ${entry.name}} / {@code ${entry.<key>}}. Unknown vars
  * fail at {@link #validate} (install time), not mid-build.
  */
-final class Interpolation {
+public final class Interpolation {
 
     private static final Pattern VAR = Pattern.compile("\\$\\{([^}]*)}");
 
@@ -28,7 +28,7 @@ final class Interpolation {
     private Interpolation() {}
 
     /** One {@code [entries]} sub-table as a template scope: its name and its validated values. */
-    record Entry(String name, Map<String, Object> values) {}
+    public record Entry(String name, Map<String, Object> values) {}
 
     /** As {@link #validate(String, Set, Set, String)} outside a per-entry declaration. */
     static void validate(String template, Set<String> schemaKeys, String where) {
@@ -121,13 +121,13 @@ final class Interpolation {
      * Resolve a validated template. Null {@code kotlinVersion} makes {@code ${kotlin.version}} an
      * evaluation error.
      */
-    static String resolve(
+    public static String resolve(
             @Nullable String template, PluginConfig config, Project project, @Nullable String kotlinVersion) {
         return resolve(template, config, project, kotlinVersion, null);
     }
 
     /** As {@link #resolve(String, PluginConfig, Project, String)} inside one entry's scope. */
-    static String resolve(
+    public static String resolve(
             @Nullable String template,
             PluginConfig config,
             Project project,
