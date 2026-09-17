@@ -9,11 +9,14 @@ instead    = "the overload that takes a Locale or a Charset, spelled out"
 why        = "a library runs on machines it did not choose; a default locale or charset is a bug that ships"
 fixture    = "guard-fixtures/no-unsafe-defaults"
 
+# A Kotlin class carries its nullness in its types, so a package of Kotlin classes alone is out of
+# scope; a package with a Java class in it is marked like any other.
 [guards.null-marked-packages]
-kind    = "annotate"
-require = "org.jspecify.annotations.NullMarked"
-on      = "package"
-why     = "a library's nullness is part of its API; an unmarked package leaves every caller guessing"
+kind     = "annotate"
+require  = "org.jspecify.annotations.NullMarked"
+on       = "package"
+matching = { annotated-with = "!kotlin.Metadata" }
+why      = "a library's nullness is part of its API; an unmarked package leaves every caller guessing"
 
 [guards.no-snapshot-versions]
 kind        = "depend"

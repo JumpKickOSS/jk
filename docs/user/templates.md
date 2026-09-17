@@ -78,7 +78,7 @@ Third-party monorepos must use `<lang>/<framework>/<name>.g8`.
 |------|-----------|-----------|--------|-----------|
 | `cli` | none | java, kotlin | Simple executable | house rules |
 | `cli-native` | none | java | Interactive Java CLI with JLine | house rules |
-| `library` | none | java | Published library: `@NullMarked` API, unit test | `library` |
+| `library` | none | java, kotlin | Published library: sources and javadoc jars (Dokka's for Kotlin), `[build-info]`, unit test; the Java one a `@NullMarked` API | `library` |
 | `ktor-3` | none | kotlin | Ktor + Koin + Exposed | house rules |
 | `hello` | spring-boot | java, kotlin | Plugin hello app | `spring` |
 | `webmvc` | spring-boot | java, kotlin | Clean-architecture WebMVC workspace | `spring`, `monorepo` |

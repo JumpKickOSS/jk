@@ -51,16 +51,6 @@ final class AnnotateEvaluator implements Evaluator {
         String withValue = t.isString("with-value") ? t.getString("with-value") : null;
         TypeHierarchy types = ctx.hierarchy();
 
-        String internal = Descriptors.internalName(annotation);
-        var retention = types.retention(internal);
-        if (retention.isEmpty()) {
-            return Evaluation.failed(
-                    "annotation " + annotation + " does not resolve on this module's classpath or JDK");
-        }
-        if (retention.get().equals("SOURCE")) {
-            return Evaluation.failed("annotation " + annotation
-                    + " has retention SOURCE: this fact is not in the class file, so no bytecode rule can see it");
-        }
         ClassPredicates.Compiled matching =
                 ClassPredicates.compile(t.isTable("matching") ? t.getTable("matching") : null, types);
         if (matching.error() != null) return Evaluation.failed("matching: " + matching.error());
@@ -70,6 +60,23 @@ final class AnnotateEvaluator implements Evaluator {
             FactsIndex test = ctx.testFacts();
             if (test == null) return Evaluation.noTestClasses();
             facts = test;
+        }
+        // Nothing the predicate selects leaves nothing to judge, whether or not the annotation is
+        // on the classpath: a library pack's Java-only rule passes a module of Kotlin classes alone.
+        if (matching.predicate() != null && facts.classList().stream().noneMatch(matching::test)) {
+            return Evaluation.of(
+                    Map.of("elements", 0L, "classes", (long) facts.classes().size()), List.of());
+        }
+
+        String internal = Descriptors.internalName(annotation);
+        var retention = types.retention(internal);
+        if (retention.isEmpty()) {
+            return Evaluation.failed(
+                    "annotation " + annotation + " does not resolve on this module's classpath or JDK");
+        }
+        if (retention.get().equals("SOURCE")) {
+            return Evaluation.failed("annotation " + annotation
+                    + " has retention SOURCE: this fact is not in the class file, so no bytecode rule can see it");
         }
 
         Scan scan = new Scan(rule, ctx, require, annotation, withValue);
