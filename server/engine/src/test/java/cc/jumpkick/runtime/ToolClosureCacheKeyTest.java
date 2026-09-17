@@ -9,8 +9,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The tool-closure CAS lookup is {@code Files.isDirectory(dir)} with no content check,
- * so two distinct closures sharing a directory name silently serve each other's jars.
+ * Two distinct closures never share a directory name — the key carries every root, the BOM and
+ * the resolving jk, and hashes whole rather than truncating — and a short key stays readable.
  */
 class ToolClosureCacheKeyTest {
 
@@ -45,7 +45,7 @@ class ToolClosureCacheKeyTest {
     void a_short_key_stays_readable() {
         String key = ToolClosures.cacheKey(List.of(Coordinate.of("com.android.tools", "r8", "8.5.35")), null);
 
-        assertThat(key).isEqualTo("com.android.tools_r8_8.5.35");
+        assertThat(key).isEqualTo("com.android.tools_r8_8.5.35__by_" + ToolClosures.resolverKey());
     }
 
     @Test
