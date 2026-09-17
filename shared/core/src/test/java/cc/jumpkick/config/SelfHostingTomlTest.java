@@ -96,6 +96,8 @@ class SelfHostingTomlTest {
                         "plugins/generator",
                         "plugins/openapi",
                         "plugins/localizer",
+                        "plugins/antlr",
+                        "plugins/taglib",
                         "plugins/android",
                         "plugins/micronaut");
     }

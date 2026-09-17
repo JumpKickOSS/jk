@@ -2,7 +2,7 @@ version = 1
 generated-by = "jk 0.13.7"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.12.0"
-manifests-sha256 = "5ce573d4669e5471ce5901c32ae81506730398d11a47461e6a003a59c669f260"
+manifests-sha256 = "0293151ad1ebfd2060ceb75273f1f3c7aec6e048b957606d374cdfe4204b49a7"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -416,6 +416,9 @@ deps = [
   "com.google.guava:guava:jar:@33.7.1-jre <- 30.1-jre",
   "javax.inject:javax.inject:jar:@1 <- 1",
 ]
+excluded-by = [
+  "com.google.guava:guava <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+]
 
 [[artifact]]
 name     = "com.google.j2objc:j2objc-annotations:jar:"
@@ -484,6 +487,13 @@ version  = "1.2.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d954c2"
 scopes   = ["main"]
+
+[[artifact]]
+name     = "com.ibm.icu:icu4j:jar:"
+version  = "72.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3df572b240a68d13b5cd778ad2393e885d26411434cd8f098ac5987ea2e64ce3"
+scopes   = ["test"]
 
 [[artifact]]
 name     = "com.lmax:disruptor:jar:"
@@ -582,6 +592,9 @@ deps = [
   "org.scala-lang:scala-library:jar:@3.9.0 <- 2.13.17",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
 ]
+excluded-by = [
+  "org.scala-lang:scala-library <- org.scala-lang:scala3-repl_3@3.9.0",
+]
 
 [[artifact]]
 name     = "io.github.eisop:checker-qual:jar:"
@@ -679,6 +692,9 @@ deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2 <- 3.0.2",
   "com.google.guava:guava:jar:@33.7.1-jre <- 33.6.0-android",
   "io.grpc:grpc-api:jar:@1.84.0 <- 1.84.0",
+]
+excluded-by = [
+  "com.google.protobuf:protobuf-javalite <- io.grpc:grpc-protobuf@1.84.0",
 ]
 
 [[artifact]]
@@ -821,6 +837,11 @@ deps = [
   "org.apache.maven:maven-resolver-provider:jar:@3.9.16 <- 4.0.0-rc-5",
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0 <- 1.0.1",
 ]
+excluded-by = [
+  "javax.inject:javax.inject <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.apache.maven:maven-resolver-provider <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.eclipse.sisu:org.eclipse.sisu.inject <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+]
 
 [[artifact]]
 name     = "io.quarkus:quarkus-classloader-commons:jar:"
@@ -885,6 +906,10 @@ deps = [
   "org.eclipse.sisu:org.eclipse.sisu.inject:jar:@1.1.0 <- 0.3.5",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0 <- 0.3.5",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final <- 3.6.1.Final",
+]
+excluded-by = [
+  "commons-io:commons-io <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.jsoup:jsoup <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
 ]
 
 [[artifact]]
@@ -1109,11 +1134,18 @@ deps = [
 ]
 
 [[artifact]]
+name     = "org.abego.treelayout:org.abego.treelayout.core:jar:"
+version  = "1.0.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:fa5e31395c39c2e7d46aca0f81f72060931607b2fa41bd36038eb2cb6fb93326"
+scopes   = ["test"]
+
+[[artifact]]
 name     = "org.antlr:ST4:jar:"
 version  = "4.3.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f927ac384c46d749f8b5ec68972a53aed21e00313509299616edb73bfa15ff33"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 deps = [
   "org.antlr:antlr-runtime:jar:@3.5.3 <- 3.5.3",
 ]
@@ -1123,14 +1155,28 @@ name     = "org.antlr:antlr-runtime:jar:"
 version  = "3.5.3"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:68bf9f5a33dfcb34033495c587e6236bef4e37aa6612919f5b1e843b90669fb9"
-scopes   = ["main"]
+scopes   = ["main", "test"]
 
 [[artifact]]
 name     = "org.antlr:antlr4-runtime:jar:"
 version  = "4.11.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e06c6553c1ccc14d36052ec4b0fc6f13b808cf957b5b1dc3f61bf401996ada59"
-scopes   = ["main"]
+scopes   = ["main", "test"]
+
+[[artifact]]
+name     = "org.antlr:antlr4:jar:"
+version  = "4.13.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e6f0b10d2ad206f338afe16867fc47148b6729d6e3a260ea28379b91f03a3657"
+scopes   = ["test"]
+deps = [
+  "com.ibm.icu:icu4j:jar:@72.1 <- 72.1",
+  "org.abego.treelayout:org.abego.treelayout.core:jar:@1.0.3 <- 1.0.3",
+  "org.antlr:ST4:jar:@4.3.4 <- 4.3.4",
+  "org.antlr:antlr-runtime:jar:@3.5.3 <- 3.5.3",
+  "org.antlr:antlr4-runtime:jar:@4.11.1 <- 4.13.2",
+]
 
 [[artifact]]
 name     = "org.apache.commons:commons-compress:jar:"
@@ -1284,6 +1330,9 @@ deps = [
   "commons-io:commons-io:jar:@2.22.0 <- 2.11.0",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
 ]
+excluded-by = [
+  "commons-io:commons-io <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+]
 
 [[artifact]]
 name     = "org.apache.maven.wagon:wagon-file:jar:"
@@ -1432,6 +1481,10 @@ deps = [
   "org.codehaus.plexus:plexus-utils:jar:@4.1.0 <- 3.6.1",
   "org.eclipse.sisu:org.eclipse.sisu.plexus:jar:@1.1.0 <- 1.0.0",
   "org.slf4j:slf4j-api:jar:@2.0.18 <- 1.7.36",
+]
+excluded-by = [
+  "org.codehaus.plexus:plexus-utils <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+  "org.slf4j:slf4j-api <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
 ]
 
 [[artifact]]
@@ -1801,6 +1854,9 @@ deps = [
   "org.eclipse.parsson:parsson:jar:@1.1.9 <- 1.1.7",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final <- 3.6.2.Final",
 ]
+excluded-by = [
+  "org.jboss.modules:jboss-modules <- io.quarkus:quarkus-bootstrap-maven-resolver@3.38.0",
+]
 
 [[artifact]]
 name     = "org.jboss.slf4j:slf4j-jboss-logmanager:jar:"
@@ -1847,6 +1903,9 @@ scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.10 <- 2.4.10",
 ]
+excluded-by = [
+  "org.jetbrains.kotlin:kotlin-stdlib <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.10",
+]
 
 [[artifact]]
 name     = "org.jetbrains.kotlin:kotlin-script-runtime:jar:"
@@ -1874,6 +1933,10 @@ scopes   = ["test"]
 deps = [
   "org.jetbrains.kotlin:kotlin-stdlib:jar:@2.4.10 <- 2.2.20",
   "org.jetbrains:annotations:jar:@26.1.0 <- 23.0.0",
+]
+excluded-by = [
+  "org.jetbrains.kotlin:kotlin-stdlib <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.10",
+  "org.jetbrains:annotations <- org.jetbrains.kotlin:kotlin-compiler-embeddable@2.4.10",
 ]
 
 [[artifact]]
@@ -2129,6 +2192,9 @@ checksum = "sha256:abc8a5fe3c9fa739bc13d0f434832dd9d28e84da871fe71bf02dfbc8fb8a6
 scopes   = ["test"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.9.0 <- 3.9.0",
+]
+excluded-by = [
+  "org.scala-lang:scala3-library_3 <- org.scala-lang:scala3-repl_3@3.9.0",
 ]
 
 [[artifact]]
@@ -2492,6 +2558,14 @@ java    = 25
 description = "JumpKick's Android packaging plugin"
 
 [[module]]
+path    = "plugins/antlr"
+group   = "cc.jumpkick"
+name    = "jk-antlr"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's ANTLR preset: [antlr] as one generator entry running the ANTLR tool over a module's grammars, a package per grammar directory"
+
+[[module]]
 path    = "plugins/auditor"
 group   = "cc.jumpkick"
 name    = "jk-auditor"
@@ -2618,6 +2692,14 @@ name    = "jk-spring-boot"
 version = "0.13.7"
 java    = 25
 description = "JumpKick's Spring Boot packaging plugin"
+
+[[module]]
+path    = "plugins/taglib"
+group   = "cc.jumpkick"
+name    = "jk-taglib"
+version = "0.13.7"
+java    = 25
+description = "JumpKick's taglib preset: [taglib] as one generator entry writing the typed Jelly tag-library interfaces a Jenkins module's Groovy views call"
 
 [[module]]
 path    = "plugins/test-runner"

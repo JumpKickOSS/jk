@@ -1,0 +1,19 @@
+# The built-in taglib preset's declarative manifest. Owns [taglib]; the code layer turns the table
+# into one generator entry — jk's own main over the module's resource directories, a typed
+# interface per Jelly tag library (a directory holding a `taglib` marker), into the generate stage,
+# contributed as sources — and runs it through the generator plugin's step. `jk explain` shows that
+# entry as the step `generate-taglib`.
+
+[plugin]
+id        = "taglib"
+table     = "taglib"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-taglib"
+protocol-prefix = "##JKTL:"
+
+[schema]
+resources = { type = "string-list", default = ["src/main/resources"], hint = "the module-relative directories scanned for tag libraries; a library's directory is its interface's package, `hudson` read as `jenkins`" }
+encoding  = { type = "string", default = "UTF-8", hint = "the generated sources' encoding" }

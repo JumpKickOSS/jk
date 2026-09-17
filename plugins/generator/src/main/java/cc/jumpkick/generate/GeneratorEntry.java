@@ -19,9 +19,10 @@ import org.jspecify.annotations.Nullable;
  *
  * @param name the entry name; the step is {@code generate-<name>}
  * @param toolArtifact the step-dependency artifact the engine hands the body (the tool's jar, or
- *     the directory holding its runtime closure)
+ *     the directory holding its runtime closure), or null for a preset whose {@code main} needs no
+ *     tool beyond {@code classpath}
  * @param toolCoordinate the tool's {@code group:artifact[:version]}, which names the jar whose
- *     {@code Main-Class} runs when {@code main} is null
+ *     {@code Main-Class} runs when {@code main} is null; null with {@code toolArtifact}
  * @param main the class to run, or null for the tool jar's {@code Main-Class}
  * @param inputs module-relative files or globs the tool reads; may be empty when {@code unpack}
  *     names what it reads
@@ -37,8 +38,8 @@ import org.jspecify.annotations.Nullable;
  */
 public record GeneratorEntry(
         String name,
-        String toolArtifact,
-        String toolCoordinate,
+        @Nullable String toolArtifact,
+        @Nullable String toolCoordinate,
         @Nullable String main,
         List<String> inputs,
         @Nullable String unpack,
@@ -75,6 +76,10 @@ public record GeneratorEntry(
         if (inputs.isEmpty() && unpack == null) {
             throw new IllegalArgumentException("[generate." + name + "] declares no inputs — name the files the tool"
                     + " reads (inputs), or the jar whose contents it reads (unpack)");
+        }
+        if (toolArtifact == null && (main == null || classpath.isEmpty())) {
+            throw new IllegalArgumentException(
+                    "[generate." + name + "] names no tool, so it needs a main and the classpath carrying it");
         }
     }
 

@@ -33,9 +33,10 @@ import org.jspecify.annotations.Nullable;
  * the option. The generator's output directory is reported back so the {@code add-source} that
  * put it on Maven's compile path is not written as an {@code extra-src} root.
  * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table,
- * {@code localizer-maven-plugin} {@link LocalizerPlugin}'s {@code [localizer]}, {@code wire-maven-plugin}
- * {@link WirePlugin}'s {@code [generate.wire]} entry; the GraphQL codegen plugins are a row naming
- * the recipe.
+ * {@code localizer-maven-plugin} {@link LocalizerPlugin}'s {@code [localizer]}, {@code antlr4-maven-plugin}
+ * {@link AntlrPlugin}'s {@code [antlr]}, {@code maven-hpi-plugin}'s taglib goal {@link TaglibPlugin}'s
+ * {@code [taglib]}, {@code wire-maven-plugin} {@link WirePlugin}'s {@code [generate.wire]} entry; the
+ * GraphQL codegen plugins are a row naming the recipe.
  */
 final class GeneratorPlugins {
 
@@ -49,6 +50,8 @@ final class GeneratorPlugins {
             @Nullable PluginConfig openapi,
             @Nullable PluginConfig protobuf,
             @Nullable PluginConfig localizer,
+            @Nullable PluginConfig antlr,
+            @Nullable PluginConfig taglib,
             @Nullable PluginConfig generate,
             Map<String, String> outputRoots,
             /** Plugins another mapping consumed, which get no "not imported" row of their own. */
@@ -95,19 +98,27 @@ final class GeneratorPlugins {
         outputRoots.putAll(localizer.outputRoots());
         ProtobufPlugin.Mapped protobuf = ProtobufPlugin.map(model, report);
         outputRoots.putAll(protobuf.outputRoots());
+        AntlrPlugin.Mapped antlr = AntlrPlugin.map(model, report);
+        outputRoots.putAll(antlr.outputRoots());
+        TaglibPlugin.Mapped taglib = TaglibPlugin.map(model, report);
+        outputRoots.putAll(taglib.outputRoots());
         WirePlugin.Mapped wire = WirePlugin.map(model, report);
         outputRoots.putAll(wire.outputRoots());
         PluginConfig generate = wire.entry() == null
                 ? null
                 : new PluginConfig("generator", Map.of(PluginConfig.ENTRIES, Map.of(WirePlugin.ENTRY, wire.entry())));
         reportGraphQl(model, report);
+        Set<String> consumed = new LinkedHashSet<>(wire.consumed());
+        consumed.addAll(taglib.consumed());
         return new Generators(
                 openapi,
                 protobuf.table(),
                 localizer.table(),
+                antlr.table(),
+                taglib.table(),
                 generate,
                 Collections.unmodifiableMap(outputRoots),
-                wire.consumed());
+                Collections.unmodifiableSet(consumed));
     }
 
     /** The GraphQL code generators: a row each naming where the step lands. */
