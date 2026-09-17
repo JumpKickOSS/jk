@@ -258,12 +258,13 @@ the lock does not carry a selector for is written without the `<-` part.
 Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
 sit below the declared one: `jakarta.inject-api:jar:@2.0.1 <- 2.0.1.MR` says the project pinned
 `2.0.1` and the parent's floor of `2.0.1.MR` gave way to it, as a transitive's version gives way to
-a direct dependency's under Maven. `jk lock` prints one warning per such edge, naming the pin, the
-parent and what it asked for. A floor written as an open range (`[2.0.18,)`) gives way the same
-way and is recorded the same way (`<- [2.0.18,)`). A workspace resolves under its root's
-`[resolve]` table, and a pin any member declares is the version for the whole lock, whichever
-member brought in the transitive that asked for more. Under the default `pins = "exact"` that
-shape is a conflict the lock refuses instead; see [Dependencies](dependencies.md#coordinates).
+a direct dependency's under Maven. `jk lock` prints one note per pinned module, naming the pin,
+how many dependencies it overrode and what each asked for. A floor written as an open range
+(`[2.0.18,)`) gives way the same way and is recorded the same way (`<- [2.0.18,)`). A workspace
+resolves under its root's `[resolve]` table, and a pin any member declares is the version for the
+whole lock, whichever member brought in the transitive that asked for more. Under the default
+`pins = "exact"` that shape is a conflict the lock refuses instead; see
+[Dependencies](dependencies.md#coordinates).
 
 `nearest` covers direct pins and BOM order and nothing else: a module only transitive POMs name
 resolves highest-declared under both policies, so a lock row can sit above the version Maven's
