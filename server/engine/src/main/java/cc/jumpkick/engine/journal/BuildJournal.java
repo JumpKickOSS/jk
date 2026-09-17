@@ -7,6 +7,7 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.TaskPhases;
@@ -55,6 +56,13 @@ public final class BuildJournal {
 
     /** Whitelist name for journal rows that still carry a test-only markdown snapshot. */
     public static final String TEST_RESULTS_MD = "test-results.md";
+
+    /**
+     * Sidecar of an in-flight entry naming the engine that owns it: {@code <pid> <startMillis>},
+     * the process's own start instant so a recycled pid is not mistaken for it. Read by a starting
+     * engine to tell a row a dead engine left from one a draining predecessor is still finishing.
+     */
+    static final String ENGINE_OWNER = "engine-owner.txt";
 
     public static final String DIAGNOSTICS_TXT = "diagnostics.txt";
 
@@ -168,7 +176,12 @@ public final class BuildJournal {
                 BuildRecord withIds = withId(record.withBuildNumber(n), timestamp);
                 Files.writeString(tmp.resolve(RECORD), Json.write(withIds), StandardCharsets.UTF_8);
                 writeSnapshot(tmp, snapshot);
-                if (!record.running()) writeRunMetricsToml(tmp, withIds);
+                if (record.running()) {
+                    Files.writeString(
+                            tmp.resolve(ENGINE_OWNER), EngineOwner.current().line(), StandardCharsets.UTF_8);
+                } else {
+                    writeRunMetricsToml(tmp, withIds);
+                }
                 if (Files.exists(target)) {
                     // Replacing an existing run dir (complete path uses complete(); append for finished
                     // orphan may overwrite). Prefer atomic replace of contents.
@@ -227,6 +240,7 @@ public final class BuildJournal {
             writeSnapshot(tmp, snapshot);
             writeRunMetricsToml(tmp, toWrite);
             Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
+            Files.deleteIfExists(target.resolve(ENGINE_OWNER));
             if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
                 Files.move(
                         tmp.resolve(ProjectBuilds.METRICS),
@@ -477,18 +491,46 @@ public final class BuildJournal {
     }
 
     /** Close out every {@code running=true} row an engine left behind — see {@link BuildRecord#abandoned}. */
-    public int abandonStaleRunning(String jkVersion) {
-        int n = 0;
-        long now = System.currentTimeMillis();
+    public StaleSweep abandonStaleRunning(String jkVersion) {
+        return abandonStaleRunning(jkVersion, EngineOwner::alive);
+    }
+
+    /**
+     * Close out every {@code running} row whose engine is gone. A row's owner is the engine that
+     * wrote it ({@link #ENGINE_OWNER}); one {@code alive} accepts is a draining predecessor's, still
+     * finishing, and is left alone. A row with no owner sidecar is a dead engine's.
+     */
+    StaleSweep abandonStaleRunning(String jkVersion, Predicate<EngineOwner> alive) {
+        int abandoned = 0;
+        int live = 0;
+        long now = Clock.SYSTEM.millis();
         for (BuildRecord r : list()) {
             if (r == null || !r.running()) continue;
-            BuildRecord done = r.abandoned(now, jkVersion);
             String locator = r.buildNumber() > 0
                     ? ProjectBuilds.runDirName(r.buildNumber())
                     : (r.id() != null ? "j-" + r.id() : null);
-            if (locator != null && complete(locator, done, Snapshot.NONE)) n++;
+            if (locator == null) continue;
+            EngineOwner owner = runDir(locator, r).map(BuildJournal::ownerOf).orElse(null);
+            if (owner != null && alive.test(owner)) {
+                live++;
+                continue;
+            }
+            if (complete(locator, r.abandoned(now, jkVersion), Snapshot.NONE)) abandoned++;
         }
-        return n;
+        return new StaleSweep(abandoned, live);
+    }
+
+    /** What a startup sweep did: rows closed out, and rows left to an engine still alive. */
+    public record StaleSweep(int abandoned, int live) {}
+
+    private static @Nullable EngineOwner ownerOf(Path runDir) {
+        Path sidecar = runDir.resolve(ENGINE_OWNER);
+        if (!Files.isRegularFile(sidecar)) return null;
+        try {
+            return EngineOwner.parse(Files.readString(sidecar, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     private static void moveIfPresent(Path from, Path to, String name) throws IOException {
