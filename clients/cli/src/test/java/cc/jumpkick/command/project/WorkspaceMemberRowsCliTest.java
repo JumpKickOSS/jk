@@ -27,15 +27,16 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A two-member workspace whose members disagree: {@code app} holds a BOM that lifts {@code
- * com.foo:leaf} to 2.0, {@code lib} reaches leaf through {@code middle}, whose POM declares 1.0.
- * The lock partitions leaf per member, and every surface that reads one member's rows says so.
+ * A two-member workspace whose members disagree: {@code app} holds a BOM that manages {@code
+ * com.foo:leaf} at 2.0, {@code lib} reaches leaf through {@code middle}, whose POM declares 1.0.
+ * The workspace's row is the 1.0 the POM declares, {@code app} reads a row of its own at the BOM's
+ * 2.0, and every surface that reads one member's rows says so.
  */
 @Tag("integration")
 @SysProps.TempRoots("jk.m2.local")
 class WorkspaceMemberRowsCliTest {
 
-    private static final String LIB_NOTE = "lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)";
+    private static final String APP_NOTE = "app reads its own rows for 1 coordinate: com.foo:leaf 2.0 (workspace 1.0)";
 
     @RegisterExtension
     final MockMavenServer maven = new MockMavenServer();
@@ -85,13 +86,13 @@ class WorkspaceMemberRowsCliTest {
         Capture.Streams lock = Capture.both(() -> exit[0] = lock(root));
         assertThat(exit[0]).as(lock.out() + lock.err()).isEqualTo(0);
         String out = lock.out().replaceAll("\u001b\\[[\\d;]*m", "");
-        assertThat(out).contains("Workspace lock successful").contains(LIB_NOTE);
-        assertThat(out.indexOf(LIB_NOTE))
+        assertThat(out).contains("Workspace lock successful").contains(APP_NOTE);
+        assertThat(out.indexOf(APP_NOTE))
                 .as("the note follows the summary line")
                 .isGreaterThan(out.indexOf("Workspace lock successful"));
 
         String results = Files.readString(root.resolve("target/jk-results.md"));
-        assertThat(results).contains("## Lock notes").contains(LIB_NOTE);
+        assertThat(results).contains("## Lock notes").contains(APP_NOTE);
         Matcher details =
                 Pattern.compile("transcript: `([^`]+details\\.jsonl)`").matcher(results);
         assertThat(details.find())
@@ -99,7 +100,7 @@ class WorkspaceMemberRowsCliTest {
                 .isTrue();
         Path transcript = Path.of(details.group(1));
         assertThat(transcript).as("the lock's run record has a transcript").exists();
-        assertThat(Files.readString(transcript)).contains("lock-note").contains("lib reads its own rows");
+        assertThat(Files.readString(transcript)).contains("lock-note").contains("app reads its own rows");
     }
 
     @Test
@@ -117,12 +118,15 @@ class WorkspaceMemberRowsCliTest {
         int libNode = whole.indexOf("com.acme:lib:0.1.0");
         assertThat(appNode).isNotNegative();
         assertThat(libNode).isGreaterThan(appNode);
-        assertThat(whole.substring(appNode, libNode)).contains("com.foo:leaf:2.0");
-        // middle was shown under app, yet lib reads its own leaf below it: lib's node expands middle
-        // again and names the row's readers, so no 2.0 is claimed for lib.
+        // app reads its own leaf: its node names the row's readers and claims no 1.0 for app.
+        assertThat(whole.substring(appNode, libNode))
+                .contains("com.foo:leaf:2.0")
+                .contains("(for app)")
+                .doesNotContain("leaf:1.0");
+        // lib reads the workspace's row, shown plain under its own expansion of middle.
         assertThat(whole.substring(libNode))
                 .contains("com.foo:leaf:1.0")
-                .contains("(for lib)")
+                .doesNotContain("(for ")
                 .doesNotContain("leaf:2.0");
     }
 

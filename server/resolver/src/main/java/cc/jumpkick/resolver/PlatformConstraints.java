@@ -14,6 +14,7 @@ import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -46,6 +47,9 @@ public final class PlatformConstraints {
 
     private final Map<String, String> versions = new LinkedHashMap<>();
     private final Map<String, String> provenance = new LinkedHashMap<>();
+
+    /** {@link #versions} as collected, before the solve's edits; see {@link #collectedVersion}. */
+    private final Map<String, String> collected = new LinkedHashMap<>();
 
     /** Per module, the later BOMs whose say the first-declared BOM's version kept. */
     private final Map<String, ManagementOverride> overrides = new LinkedHashMap<>();
@@ -158,8 +162,9 @@ public final class PlatformConstraints {
      */
     record BomTable(Map<String, String> versions, Map<String, List<String>> exclusions) {
         BomTable {
-            versions = Map.copyOf(versions);
-            exclusions = Map.copyOf(exclusions);
+            // In the BOM's declaration order: the fold reports two BOMs' disagreements in it.
+            versions = Collections.unmodifiableMap(new LinkedHashMap<>(versions));
+            exclusions = Collections.unmodifiableMap(new LinkedHashMap<>(exclusions));
         }
 
         static BomTable of(EffectivePom bomPom) {
@@ -193,6 +198,7 @@ public final class PlatformConstraints {
             throws IOException, InterruptedException {
         PlatformConstraints c = new PlatformConstraints(pinPolicy == null ? PinPolicy.EXACT : pinPolicy);
         c.fold(project, repos, pomBuilder, tables);
+        c.collected.putAll(c.versions);
         return c;
     }
 
@@ -218,6 +224,32 @@ public final class PlatformConstraints {
     String pinnedBy(String ga, String version) {
         String constrained = versions.get(ga);
         return constrained != null && constrained.equals(version) ? provenance.get(ga) : null;
+    }
+
+    /**
+     * The version the table managed {@code ga} at as collected from the manifest's entries and BOMs,
+     * whatever the solve did to it since: an exact root strips the table's say on its module from
+     * {@link #versions()}, and this still answers what the table said. {@code null} when no entry
+     * or BOM of the table manages {@code ga}.
+     */
+    @Nullable
+    String collectedVersion(String ga) {
+        return collected.get(ga);
+    }
+
+    /**
+     * Take {@code module}'s version, provenance and BOM exclusions as {@code from}'s table has them,
+     * where this table does not manage it and {@code from} does. A workspace's shared table adopts a
+     * versionless root's module this way from the table that folds every member's BOM.
+     */
+    void adopt(String module, PlatformConstraints from) {
+        String version = from.versions.get(module);
+        if (version == null || versions.containsKey(module)) return;
+        versions.put(module, version);
+        collected.put(module, version);
+        provenance.put(module, Objects.requireNonNull(from.provenance.get(module)));
+        List<String> exclusions = from.bomExclusions.get(module);
+        if (exclusions != null) bomExclusions.put(module, exclusions);
     }
 
     /**

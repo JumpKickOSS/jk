@@ -70,12 +70,13 @@ declares them, so an imported project resolves to the versions Maven built with.
 pin on the module beats every BOM under both policies, and so does a
 [`[managed-dependencies]`](dependencies.md#managed-versions) entry — the POM's own
 `dependencyManagement` line, which under Maven beats every import; `jk lock` prints the BOM it
-overrode. In a workspace the table is the root's
-entries followed by each member's in `[workspace] modules` order, each in its own declaration
-order, so a BOM the root declares wins over one a member declares. A member's BOM constrains its
-own graph and the graphs of members that depend on it, not an unrelated member's — a member the
-workspace's BOM-lifted version cannot serve gets its own rows
-([Workspaces](workspaces.md#members-that-disagree)).
+overrode. In a workspace the rows every member reads are solved under the BOMs every member
+holds — the root's entries, then any BOM every member declares, in `[workspace] modules` order and
+each in its own declaration order — so a BOM the root declares wins over one a member declares. A
+member's own table is the root's entries, then its own, then those of the siblings it depends on:
+a member's BOM constrains its own graph and the graphs of members that depend on it, not an
+unrelated member's and not the workspace's plain rows — the member reads rows of its own where its
+BOM's version differs from the workspace's ([Workspaces](workspaces.md#members-that-disagree)).
 
 `nearest` adopts exactly two of Maven's rules: a direct pin is the version, over any transitive's
 floor, and the first-declared BOM wins over a later one. It does not adopt Maven's mediation between
@@ -85,9 +86,9 @@ is the version for the whole lock. On the Maven top-20 corpus in jk-examples, th
 that lock were compared module by module against Maven's own resolution: 170 of 341 modules differ
 on at least one version, 705 (module, coordinate) pairs in all. 278 of those pairs are inline
 `<dependencyManagement>` entries Maven applies to transitives and jk applies to declared
-dependencies only, 172 are a Boot BOM one member's `[spring-boot]` table brings that governs every
-member's rows, and 111 pairs over 35 coordinates are depth mediation proper, where Maven's nearer
-declaration is older than the highest one jk picks.
+dependencies only, others are a Boot BOM one member's `[spring-boot]` table brings to that member
+and the members that depend on it, and 111 pairs over 35 coordinates are depth mediation proper,
+where Maven's nearer declaration is older than the highest one jk picks.
 
 GAs the platform does **not** manage resolve to the highest version the POMs that name
 them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with

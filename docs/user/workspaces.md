@@ -144,15 +144,23 @@ same rule covers `[spring-boot]` and `spring-boot-dependencies`). A framework ta
 at such a version fails the lock with an error that names the table and the BOM it implies; a
 missing BOM never fails the lock as a bare coordinate.
 
-So a member is resolved on its own exactly when the workspace's answer cannot be its answer:
+The workspace's rows are solved under the BOMs every member holds — the root's
+`[platform-dependencies]` and any BOM every member declares or depends into — so a BOM only some
+members hold never moves a plain row. A member is resolved on its own exactly when the workspace's
+answer cannot be its answer:
 
 - it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`
   in one member, `"1.5.32"` in three others), or
-- a coordinate in its graph was pinned by a BOM the member does not hold, and the member's own
-  platform table manages it at another version or a dependency's POM in the member's own graph
-  declared a version the pinned one cannot stand in for: below the declaration, or past its
-  compatible line (`^` of what the POM declared — `jakarta.jms-api` 2.0.3 lifted to 3.1.0), or
-  outside a range it wrote.
+- a BOM of its own table that not every member holds — its own, one a framework table implies, or
+  a sibling's it depends on — manages a coordinate in its graph at a version the workspace's row
+  does not carry (`zipkin-server`'s Boot BOM lifts `jakarta.jms-api` to 3.1.0 where the workspace's
+  row is the 2.0.3 `activemq-client` declares), or
+- a coordinate in its graph was pinned by a BOM the member does not hold — a versionless
+  dependency (`group:artifact` alone) a sibling declares under such a BOM takes the BOM's version
+  as the workspace's row, as an exact pin would — and the member's own platform table manages it
+  at another version or a dependency's POM in the member's own graph declared a version the pinned
+  one cannot stand in for: below the declaration, or past its compatible line (`^` of what the POM
+  declared), or outside a range it wrote.
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
@@ -161,9 +169,10 @@ a test row is not on any member's main classpath, so a member whose main graph w
 gets a main-scoped row of its own rather than reading the workspace's main row. A workspace whose members all agree has no `members` key
 anywhere, and nothing about it changes.
 
-A declaration the pinned version does satisfy is a floor, as a sibling's higher edge is: Boot's
-`commons-logging` 1.3.6 stands in for the 1.3.5 a `spring-context` module's graph declares, and
-the member reads the workspace's row. A floating selector on the member's own root — `latest`, a
+A declaration a pinned workspace row does satisfy is a floor, as a sibling's higher edge is: where
+a versionless root under a sibling's Boot BOM puts `commons-logging` 1.3.6 on the workspace's row,
+it stands in for the 1.3.5 a `spring-context` module's graph declares, and the member reads the
+workspace's row. A floating selector on the member's own root — `latest`, a
 caret, the Jupiter the test runner adds to a member that declares no test dependencies — asks
 the workspace for its answer and never disagrees with it; so a member that holds no platform table
 and pins nothing exactly reads the plain rows alone. A `--features` name reaches a member's own

@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PinPolicy;
@@ -17,8 +18,11 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -259,7 +263,9 @@ public final class LockOrchestrator {
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         // ... and one table per BOM, shared by the merged manifest's platform table and every member's.
         PlatformConstraints.BomTables bomTables = new PlatformConstraints.BomTables();
-        PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder, bomTables, pinPolicy);
+        PlatformConstraints constraints =
+                PlatformConstraints.collect(sharedPlatform(project), repos, pomBuilder, bomTables, pinPolicy);
+        adoptVersionlessRoots(project, constraints, pomBuilder, bomTables);
         Solve union = solveManifest(
                 project,
                 featuresRequested,
@@ -305,6 +311,64 @@ public final class LockOrchestrator {
         CentralMirror.standard().note().ifPresent(observer::onNote);
         progress.finished(lockfile.artifacts().size());
         return lockfile;
+    }
+
+    /**
+     * The manifest whose platform table the merged solve runs under: {@code project} with its
+     * {@code [platform-dependencies]} cut to the BOMs every member's table holds — the root's, which
+     * each member folds first, and one every member declares or depends into. A BOM only some
+     * members hold constrains those members' own solves ({@link MemberPartitions}) and never the
+     * workspace's rows. A standalone project's table is its own.
+     */
+    private JkBuild sharedPlatform(JkBuild project) {
+        List<Dependency> declared = project.dependencies().of(Scope.PLATFORM);
+        if (members.isEmpty() || declared.isEmpty()) return project;
+        Set<String> shared = heldBoms(members.getFirst());
+        for (Member member : members.subList(1, members.size())) shared.retainAll(heldBoms(member));
+        List<Dependency> kept = new ArrayList<>(declared.size());
+        for (Dependency bom : declared) if (shared.contains(bom.module())) kept.add(bom);
+        if (kept.size() == declared.size()) return project;
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.putAll(project.dependencies().byScope());
+        if (kept.isEmpty()) {
+            byScope.remove(Scope.PLATFORM);
+        } else {
+            byScope.put(Scope.PLATFORM, kept);
+        }
+        return project.withDependencies(new JkBuild.Dependencies(byScope));
+    }
+
+    /** The modules of the BOMs one member's table holds. */
+    private static Set<String> heldBoms(Member member) {
+        Set<String> held = new HashSet<>();
+        for (Dependency bom : member.manifest().dependencies().of(Scope.PLATFORM)) held.add(bom.module());
+        return held;
+    }
+
+    /**
+     * A versionless root of the merged manifest that only some members' BOMs manage takes their
+     * version in the merged solve, as the exact pin the declaring member could have written would:
+     * the shared table adopts that module's say from the table folding every BOM the manifest
+     * declares, which is collected only when such a root exists.
+     */
+    private void adoptVersionlessRoots(
+            JkBuild project,
+            PlatformConstraints shared,
+            EffectivePomBuilder pomBuilder,
+            PlatformConstraints.BomTables bomTables)
+            throws IOException, InterruptedException {
+        if (members.isEmpty()) return;
+        PlatformConstraints whole = null;
+        for (Map.Entry<Scope, List<Dependency>> scope :
+                project.dependencies().byScope().entrySet()) {
+            if (scope.getKey() == Scope.PLATFORM || scope.getKey() == Scope.MANAGED) continue;
+            for (Dependency root : scope.getValue()) {
+                if (!root.isPlatformManaged() || shared.versions().containsKey(root.module())) continue;
+                if (whole == null)
+                    whole = PlatformConstraints.collect(project, repos, pomBuilder, bomTables, pinPolicy);
+                shared.adopt(root.module(), whole);
+            }
+        }
     }
 
     /**
