@@ -24,6 +24,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -400,7 +401,7 @@ public final class IdeOps {
             throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return;
-        Lockfile lock = LockfileReader.read(lockFile);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
 
         if (fetchMissing) {
             try {
@@ -546,7 +547,7 @@ public final class IdeOps {
             throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
-        Lockfile lock = LockfileReader.read(lockFile);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
         Set<String> siblingCoords = siblingCoordinates(module, allModules);
 
         List<String[]> result = new ArrayList<>();
@@ -573,7 +574,7 @@ public final class IdeOps {
             throws IOException {
         Path lockFile = LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
-        Lockfile lock = LockfileReader.read(lockFile);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
         Set<String> siblingCoords = siblingCoordinates(module, modules);
         List<String> out = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {

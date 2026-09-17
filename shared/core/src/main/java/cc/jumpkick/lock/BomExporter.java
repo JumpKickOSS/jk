@@ -64,14 +64,19 @@ public final class BomExporter {
                 .thenComparing(Lockfile.Artifact::version, Versions::compare));
         // One dependencyManagement entry per module: the lock can carry main/test duals of the
         // same G:A at different versions, and Maven consumers warn on duplicate managed entries
-        // then keep one arbitrarily. MAIN-scoped rows outrank test duals; same-priority
-        // collisions keep the higher version (the later row after the sort, which orders
-        // versions as Maven versions, so 1.10.0 follows 1.9.0).
+        // then keep one arbitrarily. The workspace's plain row outranks a member's partition of
+        // the module (a member's own export is already narrowed to its rows); MAIN-scoped rows
+        // outrank test duals; same-priority collisions keep the higher version (the later row
+        // after the sort, which orders versions as Maven versions, so 1.10.0 follows 1.9.0).
         Map<String, Lockfile.Artifact> byModule = new LinkedHashMap<>();
         for (Lockfile.Artifact a : selected) {
             Lockfile.Artifact prev = byModule.get(a.name());
             if (prev == null) {
                 byModule.put(a.name(), a);
+                continue;
+            }
+            if (prev.isPartition() != a.isPartition()) {
+                if (prev.isPartition()) byModule.put(a.name(), a);
                 continue;
             }
             boolean prevMain = prev.scopes().contains(Scope.MAIN);

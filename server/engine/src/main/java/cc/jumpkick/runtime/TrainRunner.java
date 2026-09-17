@@ -15,6 +15,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.surface.DynamicSurface;
@@ -74,7 +75,7 @@ public final class TrainRunner {
         if (!Files.isRegularFile(mainJar)) {
             throw new IOException("train needs a packaged main jar at " + mainJar + " — build first");
         }
-        List<String> launch = launchArgs(project, layout, cache, lockFile, mainJar, log);
+        List<String> launch = launchArgs(moduleDir, project, layout, cache, lockFile, mainJar, log);
 
         String fingerprint = fingerprint(project, lockFile, mainJar, javaHome, config, profiles);
         Path fpFile = TrainLayout.fingerprint(target);
@@ -302,7 +303,13 @@ public final class TrainRunner {
      * runtime closure as an explicit {@code -cp}.
      */
     static List<String> launchArgs(
-            JkBuild project, BuildLayout layout, Path cache, Path lockFile, Path mainJar, Consumer<String> log)
+            Path moduleDir,
+            JkBuild project,
+            BuildLayout layout,
+            Path cache,
+            Path lockFile,
+            Path mainJar,
+            Consumer<String> log)
             throws IOException {
         Path assembly = layout.assemblyJar();
         if (assembly != null && Files.isRegularFile(assembly)) {
@@ -314,7 +321,7 @@ public final class TrainRunner {
         String mainClass = project.mainClass();
         if (cache != null && mainClass != null && Files.isRegularFile(lockFile)) {
             var resolver = new ClasspathResolver(JkStores.storeCas());
-            var lock = LockfileReader.read(lockFile);
+            var lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
             List<Path> cp = new ArrayList<>();
             cp.add(mainJar);
             for (var entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME, false, project)) {

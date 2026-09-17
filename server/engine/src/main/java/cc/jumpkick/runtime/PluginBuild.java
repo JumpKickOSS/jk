@@ -16,6 +16,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -326,7 +327,7 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         Map<String, Path> out = new LinkedHashMap<>();
         List<PluginContributions.PackagerDep> deps =
-                PluginContributions.packagerDependencies(project, moduleDir, platformPins(lockFile));
+                PluginContributions.packagerDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
         if (deps.isEmpty()) return out;
         RepoGroup repos = RepoGroupBuilder.buildFor(project, null, cas);
         for (PluginContributions.PackagerDep dep : deps) {
@@ -349,7 +350,7 @@ public final class PluginBuild {
             JkBuild project, Path moduleDir, Cas cas, Path lockFile, boolean lenient)
             throws IOException, InterruptedException {
         List<PluginContributions.StepDep> lane =
-                PluginContributions.stepDependencies(project, moduleDir, platformPins(lockFile));
+                PluginContributions.stepDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
         return fetchTools(lane, project, cas, sdkPins(lockFile), lenient);
     }
 
@@ -366,7 +367,7 @@ public final class PluginBuild {
         private synchronized List<PluginContributions.StepDep> lane(JkBuild project, Path moduleDir, Path lockFile) {
             List<PluginContributions.StepDep> l = lane;
             if (l == null) {
-                l = PluginContributions.stepDependencies(project, moduleDir, platformPins(lockFile));
+                l = PluginContributions.stepDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
                 lane = l;
             }
             return l;
@@ -427,7 +428,7 @@ public final class PluginBuild {
             JkBuild project, Path moduleDir, Cas cas, Path lockFile, boolean lenient)
             throws IOException, InterruptedException {
         List<PluginContributions.StepDep> lane =
-                PluginContributions.commandDependencies(project, moduleDir, platformPins(lockFile));
+                PluginContributions.commandDependencies(project, moduleDir, platformPins(moduleDir, lockFile));
         return fetchTools(lane, project, cas, sdkPins(lockFile), lenient);
     }
 
@@ -629,10 +630,16 @@ public final class PluginBuild {
         return pins;
     }
 
-    /** {@link Lockfile#platformPins()} of {@code lockFile}, or empty (no lock / nothing managed). */
-    public static Map<String, String> platformPins(Path lockFile) {
+    /**
+     * {@link Lockfile#platformPins()} of {@code lockFile} as the module at {@code moduleDir} reads
+     * it — a member's own partition rows before the workspace's — or empty (no lock / nothing
+     * managed).
+     */
+    public static Map<String, String> platformPins(Path moduleDir, Path lockFile) {
         Lockfile lock = lockOrNull(lockFile);
-        return lock == null ? Map.of() : lock.platformPins();
+        return lock == null
+                ? Map.of()
+                : MemberRows.view(lock, lockFile, moduleDir).platformPins();
     }
 
     /** The lock at {@code lockFile}, or null when there is none readable — a pin lookup before the first lock. */

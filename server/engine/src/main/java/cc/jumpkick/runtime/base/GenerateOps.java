@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.mvn.PomExporter;
@@ -89,7 +90,7 @@ public final class GenerateOps {
         if (!Files.isRegularFile(lockPath)) {
             return GeneratedFiles.error("no jk-lock.toml — run `jk lock` before `jk export bom`");
         }
-        Lockfile lock = LockfileReader.read(lockPath);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockPath), lockPath, dir);
         String scopeName = params.getOrDefault("scope", "main");
         String xml = BomExporter.render(loaded.root(), lock, BomExporter.scopesFor(scopeName));
         String outRel = params.get("out");

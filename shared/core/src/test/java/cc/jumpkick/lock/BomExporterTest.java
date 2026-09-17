@@ -96,4 +96,37 @@ class BomExporterTest {
         assertThat(xml).contains("<version>1.10.0</version>");
         assertThat(xml).doesNotContain("<version>1.9.0</version>");
     }
+
+    /**
+     * A coordinate a member partitions has two rows; the workspace's BOM freezes the workspace's
+     * version and the member's own export, narrowed to its rows, freezes the member's.
+     */
+    @Test
+    void a_members_partition_row_does_not_reach_the_workspaces_bom() {
+        JkBuild project = JkBuild.of(new Project("com.example", "ws", "1.0.0", 25));
+        Lockfile.Artifact workspace = new Lockfile.Artifact(
+                "com.foo:widget:jar:",
+                "1.0",
+                "central+",
+                "sha256:aa",
+                "widget-1.0.jar",
+                List.of(Scope.MAIN),
+                List.of());
+        Lockfile.Artifact partition = new Lockfile.Artifact(
+                        "com.foo:widget:jar:",
+                        "2.0",
+                        "central+",
+                        "sha256:bb",
+                        "widget-2.0.jar",
+                        List.of(Scope.MAIN),
+                        List.of())
+                .withMembers(List.of("lib"));
+        Lockfile lock = new Lockfile(1, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(workspace, partition));
+
+        String whole = BomExporter.render(project, lock, BomExporter.MAIN_SCOPES);
+        assertThat(whole).contains("<version>1.0</version>").doesNotContain("<version>2.0</version>");
+
+        String lib = BomExporter.render(project, lock.forMember("lib"), BomExporter.MAIN_SCOPES);
+        assertThat(lib).contains("<version>2.0</version>").doesNotContain("<version>1.0</version>");
+    }
 }
