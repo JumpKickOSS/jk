@@ -559,13 +559,15 @@ public final class DependencyTree {
         boolean pinSource = pinTag != null && pkg == null;
         String displayVersion = pkg != null ? pkg.version() : (pinTag != null ? declaredVersion : null);
         boolean missing = pkg == null && pinTag == null;
-        String tag = pinSource ? Objects.requireNonNull(pinTag) : "";
+        String tag = pinSource ? Objects.requireNonNull(pinTag) : graph.membersTag(module);
 
         // ╰─ for the last child (rounded arc); ├─ for the rest.
         // Standard "rounded tree" convention used by eza, tre, etc.
         String connector = isLast ? "╰─ " : "├─ ";
 
-        if (!seen.add(module)) {
+        // A subtree is marked by what this reader sees of it: the same coordinate over a member's
+        // own partition rows is a fresh expansion, not a back-reference to the workspace's.
+        if (!seen.add(graph.subtreeKey(module))) {
             // Already shown higher up — dim the WHOLE row (connector + coord + ⎋)
             // so it reads as a back-reference, not a fresh expansion.
             String coord;

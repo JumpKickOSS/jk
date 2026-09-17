@@ -654,6 +654,65 @@ class DependencyTreeTest {
     }
 
     /**
+     * Both members reach {@code leaf} through the shared {@code middle}; module {@code b} reads its
+     * own partition of {@code leaf}. In the workspace-rooted tree {@code middle} is expanded again
+     * under {@code b}, because the subtree b reads is not the one a read, and the partition row is
+     * annotated with its members as {@code jk why} annotates it. The member-rooted tree and the
+     * flattened views carry the same annotation.
+     */
+    @Test
+    void a_partition_below_a_shared_transitive_is_shown_for_its_members(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "9.9.9"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        for (String module : List.of("a", "b")) {
+            Path dir = Files.createDirectories(root.resolve(module));
+            Files.writeString(dir.resolve("jk.toml"), """
+                    group = "com.acme"
+                    name = "%s"
+                    version = "9.9.9"
+
+                    [dependencies]
+                    middle = { group = "com.foo", version = "1.0" }
+                    """.formatted(module));
+        }
+        Lockfile lock = lockOf(
+                pkg("com.foo:middle:jar:", "1.0", List.of("com.foo:leaf:jar:@2.0")),
+                pkg("com.foo:leaf:jar:", "2.0", List.of()),
+                pkg("com.foo:leaf:jar:", "1.0", List.of()).withMembers(List.of("b")));
+        LockfileWriter.write(lock, root.resolve("jk-lock.toml"));
+
+        JkBuild rootProject = JkBuildParser.parse(root.resolve("jk.toml"));
+        String whole =
+                DependencyTree.render(rootProject, lock, root, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
+        int b = whole.indexOf("com.acme:b:9.9.9");
+        assertThat(whole.substring(0, b)).contains("com.foo:leaf:2.0").doesNotContain("(for ");
+        assertThat(whole.substring(b))
+                .as("b's subtree is its own, not a back-reference to a's")
+                .doesNotContain("middle:1.0 ⎋")
+                .contains("com.foo:leaf:1.0 (for b)")
+                .doesNotContain("leaf:2.0");
+
+        String flat = DependencyTree.render(
+                rootProject, lock, root, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true);
+        assertThat(flat).contains("com.foo:leaf:2.0\n").contains("com.foo:leaf:1.0 (for b)\n");
+
+        JkBuild member = JkBuildParser.parse(root.resolve("b/jk.toml"));
+        String own = DependencyTree.render(
+                member,
+                MemberRows.view(lock, root.resolve("jk-lock.toml"), root.resolve("b")),
+                root.resolve("b"),
+                Integer.MAX_VALUE,
+                DependencyTreeStyle.Styling.plain());
+        assertThat(own).contains("com.foo:leaf:1.0 (for b)").doesNotContain("leaf:2.0");
+    }
+
+    /**
      * A coordinate the lock holds at one version for main and another for test is printed under
      * each scope at that scope's version, nested and flattened alike.
      */

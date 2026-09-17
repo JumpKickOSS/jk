@@ -118,8 +118,12 @@ class WorkspaceMemberRowsCliTest {
         assertThat(appNode).isNotNegative();
         assertThat(libNode).isGreaterThan(appNode);
         assertThat(whole.substring(appNode, libNode)).contains("com.foo:leaf:2.0");
-        // middle was shown under app, so lib's node folds it to a back-reference: no 2.0 is claimed for lib.
-        assertThat(whole.substring(libNode)).doesNotContain("leaf:2.0");
+        // middle was shown under app, yet lib reads its own leaf below it: lib's node expands middle
+        // again and names the row's readers, so no 2.0 is claimed for lib.
+        assertThat(whole.substring(libNode))
+                .contains("com.foo:leaf:1.0")
+                .contains("(for lib)")
+                .doesNotContain("leaf:2.0");
     }
 
     @Test
