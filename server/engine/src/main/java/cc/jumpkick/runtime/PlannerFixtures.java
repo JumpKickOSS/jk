@@ -244,6 +244,7 @@ public final class PlannerFixtures {
                     ctx.label("compiling " + sources.size() + " fixture sources");
                     JavaCompile.Result r = JavaCompile.run(
                             taskId,
+                            PlannerCompile.compileLabel(ctx, TaskNames.COMPILE_TEST_FIXTURES),
                             request,
                             BuildIdentity.cacheKeyVersion(),
                             !rerun,

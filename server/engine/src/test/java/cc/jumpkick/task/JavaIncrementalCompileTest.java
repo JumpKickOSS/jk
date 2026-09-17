@@ -362,6 +362,7 @@ class JavaIncrementalCompileTest {
             CompileRequest req = request(classpath, 21);
             JavaCompile.Result result = JavaCompile.run(
                     "compile-main",
+                    "test:module compile-main",
                     req,
                     "jk-test",
                     true,
@@ -398,6 +399,7 @@ class JavaIncrementalCompileTest {
             CompileRequest req = request(List.of(), 21);
             JavaCompile.Result result = JavaCompile.run(
                     "compile-main",
+                    "test:module compile-main",
                     req,
                     "jk-test",
                     useCache,

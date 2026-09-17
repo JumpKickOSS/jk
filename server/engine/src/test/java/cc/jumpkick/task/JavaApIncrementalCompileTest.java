@@ -194,6 +194,7 @@ class JavaApIncrementalCompileTest {
                     .build();
             JavaCompile.Result r = JavaCompile.run(
                     "compile-main",
+                    "test:module compile-main",
                     req,
                     "jk-test",
                     true,

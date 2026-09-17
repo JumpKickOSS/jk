@@ -22,11 +22,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -49,9 +48,10 @@ import org.jspecify.annotations.Nullable;
 public final class JavaCompilerHost {
 
     /**
-     * Pools keyed by job, by the JDK their workers run on, and by the environment the workers start
-     * with: one job may compile modules at two levels, and a module that opted into {@code [env]
-     * inherit} must not share a resident worker with one that did not.
+     * Pools keyed by job, by the JDK their workers run on, by the environment the workers start
+     * with and by the {@link WorkerHeap} they start with: one job may compile modules at two levels,
+     * a module that opted into {@code [env] inherit} must not share a resident worker with one that
+     * did not, and a module whose classpath needs a larger heap gets a worker started with one.
      */
     private static final ConcurrentHashMap<String, Lanes> POOLS = new ConcurrentHashMap<>();
 
@@ -98,18 +98,41 @@ public final class JavaCompilerHost {
     static ForkedJavac.Result compile(ForkedJavac.Request req) {
         Long id = JobWorkers.currentRequestId();
         if (id == null) return ForkedJavac.oneshot(req);
-        return pool(id, req).submit(Work.compile(req));
+        Long heap = WorkerHeap.forRequest(req);
+        return pool(id, req, heap).submit(CompileWork.compile(req, heap));
     }
 
     static ForkedJavac.Plan plan(ForkedJavac.Request req) {
         Long id = JobWorkers.currentRequestId();
         if (id == null) return ForkedJavac.oneshotPlan(req);
-        return pool(id, req).submitPlan(Work.plan(req));
+        Long heap = WorkerHeap.forRequest(req);
+        return pool(id, req, heap).submitPlan(CompileWork.plan(req, heap));
     }
 
-    private static Lanes pool(long id, ForkedJavac.Request req) {
+    private static Lanes pool(long id, ForkedJavac.Request req, @Nullable Long heapBytes) {
         Path home = ForkedJavac.workerJavaHome(req);
-        return POOLS.computeIfAbsent(id + "|" + home + "|" + req.env().fingerprint(), k -> new Lanes(id, req, home));
+        String key = id + "|" + home + "|" + req.env().fingerprint() + "|" + (heapBytes == null ? "" : heapBytes);
+        return POOLS.computeIfAbsent(key, k -> new Lanes(id, req, home, heapBytes));
+    }
+
+    /**
+     * The worker compiling {@code failed} ran out of heap: compile it once more on a worker started
+     * with {@code heapBytes}, and let that attempt's outcome be the caller's. The retry remembers the
+     * heap that failed, so a second exhaustion names both.
+     */
+    private static void retryWithHeap(long id, CompileWork failed, long heapBytes) {
+        ForkedJavac.Request req = Objects.requireNonNull(failed.req, "a retried item carries its request");
+        CompileWork again = failed.plan ? CompileWork.plan(req, heapBytes) : CompileWork.compile(req, heapBytes);
+        again.previousHeapBytes = failed.heapBytes;
+        again.compile.whenComplete((r, e) -> {
+            if (e != null) failed.compile.completeExceptionally(e);
+            else failed.compile.complete(r);
+        });
+        again.forecast.whenComplete((r, e) -> {
+            if (e != null) failed.forecast.completeExceptionally(e);
+            else failed.forecast.complete(r);
+        });
+        pool(id, req, heapBytes).enqueue(again);
     }
 
     /** Test seam: live lanes for {@code requestId} across its pools, or 0 when the job has none. */
@@ -207,46 +230,10 @@ public final class JavaCompilerHost {
         Path write(ForkedJavac.Request req) throws IOException;
     }
 
-    static final class Work {
-        final ForkedJavac.@Nullable Request req;
-        final boolean plan;
-        final CompletableFuture<ForkedJavac.Result> compile = new CompletableFuture<>();
-        final CompletableFuture<ForkedJavac.Plan> forecast = new CompletableFuture<>();
-        final List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
-        final Map<Path, Set<Path>> generated = new TreeMap<>();
-        final List<Path> compiledSources = new ArrayList<>();
-        final List<String> whys = new ArrayList<>();
-
-        @Nullable
-        Path spec;
-
-        @Nullable
-        String status;
-
-        @Nullable
-        String outcome;
-
-        @Nullable
-        String reason;
-        /** nanoTime at enqueue and the queue wait measured at dispatch — the step's wait, not its work. */
-        long enqueuedNanos;
-
-        long waitNanos;
-
-        private Work(ForkedJavac.@Nullable Request req, boolean plan) {
-            this.req = req;
-            this.plan = plan;
-        }
-
-        static Work compile(ForkedJavac.Request req) {
-            return new Work(req, false);
-        }
-
-        static Work plan(ForkedJavac.Request req) {
-            return new Work(req, true);
-        }
-
-        static final Work POISON = new Work(null, false);
+    /** Compiles an item again on a worker with {@code heapBytes} after its worker ran out of heap. */
+    @FunctionalInterface
+    interface HeapRetry {
+        void retry(CompileWork failed, long heapBytes);
     }
 
     /**
@@ -266,31 +253,44 @@ public final class JavaCompilerHost {
      */
     static final class Lanes {
 
-        private final BlockingQueue<Work> queue = new LinkedBlockingQueue<>();
+        private final BlockingQueue<CompileWork> queue = new LinkedBlockingQueue<>();
         private final int budget;
         private final LaneStarter starter;
         final SpecFile specs;
+        final HeapRetry retry;
 
         /** Live lanes. Guarded by {@code this}; {@link Session#working} is read without the lock. */
         private final List<Session> lanes = new ArrayList<>();
 
         private boolean closed;
 
-        Lanes(long id, ForkedJavac.Request template, Path workerJavaHome) {
+        Lanes(long id, ForkedJavac.Request template, Path workerJavaHome, @Nullable Long heapBytes) {
             this(
                     laneBudget(),
-                    (owner, index) -> new Session(owner, id, index, self -> self.converse(template, workerJavaHome)),
-                    ForkedJavac::writeSpec);
+                    (owner, index) ->
+                            new Session(owner, id, index, self -> self.converse(template, workerJavaHome, heapBytes)),
+                    ForkedJavac::writeSpec,
+                    (failed, bigger) -> retryWithHeap(id, failed, bigger));
         }
 
         /** Test seam: a pool whose lanes run {@code starter}'s body instead of forking a worker. */
         Lanes(int budget, LaneStarter starter, SpecFile specs) {
+            this(budget, starter, specs, (failed, bigger) -> {
+                IOException none = new IOException("no pool to retry on");
+                failed.compile.completeExceptionally(none);
+                failed.forecast.completeExceptionally(none);
+            });
+        }
+
+        /** Test seam: as above, with the pool's answer to a worker that ran out of heap. */
+        Lanes(int budget, LaneStarter starter, SpecFile specs, HeapRetry retry) {
             this.budget = budget;
             this.starter = starter;
             this.specs = specs;
+            this.retry = retry;
         }
 
-        ForkedJavac.Result submit(Work w) {
+        ForkedJavac.Result submit(CompileWork w) {
             enqueue(w);
             try {
                 return w.compile.get();
@@ -301,7 +301,7 @@ public final class JavaCompilerHost {
             }
         }
 
-        ForkedJavac.Plan submitPlan(Work w) {
+        ForkedJavac.Plan submitPlan(CompileWork w) {
             enqueue(w);
             try {
                 return w.forecast.get();
@@ -316,7 +316,7 @@ public final class JavaCompilerHost {
          * The submitter was interrupted (job cancel). Take the item back off the queue so no lane
          * compiles for a caller that has left, keep the interrupt, and say what happened.
          */
-        private RuntimeException interrupted(Work w, InterruptedException e) {
+        private RuntimeException interrupted(CompileWork w, InterruptedException e) {
             Thread.currentThread().interrupt();
             queue.remove(w);
             w.compile.completeExceptionally(e);
@@ -330,7 +330,7 @@ public final class JavaCompilerHost {
          * died between the add and now, its drain has already run and would never see this item,
          * hanging {@code compile.get} forever.
          */
-        void enqueue(Work w) {
+        void enqueue(CompileWork w) {
             w.enqueuedNanos = CLOCK.nanos();
             queue.add(w);
             if (!grow()) drainFailQueued(new IOException("zinc worker exited"));
@@ -394,16 +394,16 @@ public final class JavaCompilerHost {
          */
         private void drainFailQueued(Throwable e) {
             int poisons = 0;
-            Work w;
+            CompileWork w;
             while ((w = queue.poll()) != null) {
-                if (w == Work.POISON) {
+                if (w == CompileWork.POISON) {
                     poisons++;
                     continue;
                 }
                 w.compile.completeExceptionally(e);
                 w.forecast.completeExceptionally(e);
             }
-            for (int i = 0; i < poisons; i++) queue.add(Work.POISON);
+            for (int i = 0; i < poisons; i++) queue.add(CompileWork.POISON);
         }
 
         /**
@@ -418,7 +418,7 @@ public final class JavaCompilerHost {
                 closed = true;
                 live = List.copyOf(lanes);
             }
-            for (int i = 0; i < live.size(); i++) queue.add(Work.POISON);
+            for (int i = 0; i < live.size(); i++) queue.add(CompileWork.POISON);
             long deadline = CLOCK.nanos() + TimeUnit.SECONDS.toNanos(15);
             for (Session lane : live) {
                 lane.join(Math.max(1L, TimeUnit.NANOSECONDS.toMillis(deadline - CLOCK.nanos())));
@@ -442,7 +442,7 @@ public final class JavaCompilerHost {
         private final Thread io;
         // Atomic because the pump thread that dispatches an item and the io thread that notices
         // the worker's death both try to take it out: whoever swaps it to null owns its fate.
-        private final AtomicReference<@Nullable Work> inflight = new AtomicReference<>();
+        private final AtomicReference<@Nullable CompileWork> inflight = new AtomicReference<>();
         // Set the instant an item leaves the queue for this lane, before the slot wait and the spec
         // write; inflight is set only once the command is on the wire. grow() reads this one:
         // a lane parked in PluginSlots.acquire() holds an item and is not capacity.
@@ -500,19 +500,27 @@ public final class JavaCompilerHost {
          * Fork the worker JVM on {@code hostJavaHome} and drive its READY / COMPILE / RESULT
          * conversation until it exits.
          */
-        private void converse(ForkedJavac.Request template, Path hostJavaHome) throws Exception {
+        private void converse(ForkedJavac.Request template, Path hostJavaHome, @Nullable Long heapBytes)
+                throws Exception {
             Path javaExe = JdkFingerprint.java(hostJavaHome);
             String workerCp = ForkedJavac.workerClasspath(template);
-            List<String> jvmFlags = ForkedJavac.workerJvmFlags(PluginAot.javaCompilerFlags(
-                    hostJavaHome,
-                    workerCp,
-                    (aotOutput, scratch) ->
-                            ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)));
+            List<String> jvmFlags = ForkedJavac.workerJvmFlags(
+                    PluginAot.javaCompilerFlags(
+                            hostJavaHome,
+                            workerCp,
+                            (aotOutput, scratch) ->
+                                    ForkedJavac.trainerCommand(template, workerCp, hostJavaHome, aotOutput, scratch)),
+                    heapBytes);
             List<String> command = PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("--pull"));
             int exit = new PluginClient(ForkedJavac.PREFIX)
-                    .passthrough(transcript::record)
+                    .passthrough(this::output)
                     .converseNoSlot(command, template.env(), (json, convo) -> onLine(json, convo));
             if (exit != 0) throw new IOException("zinc worker exited with status " + exit);
+        }
+
+        /** A non-protocol line the worker wrote: kept for the report should this item's worker die. */
+        void output(String line) {
+            transcript.record(line);
         }
 
         /** How long a parked lane goes between looks at whether its worker is still there. */
@@ -521,19 +529,19 @@ public final class JavaCompilerHost {
         /**
          * Block for the pool's next item; the lane is busy from the moment it has one. A lane whose
          * worker has died hands anything it takes straight back to the pool and reports {@link
-         * Work#POISON} so the pump unwinds: an item dispatched to a dead worker would never complete.
+         * CompileWork#POISON} so the pump unwinds: an item dispatched to a dead worker would never complete.
          */
-        Work takeNext() throws InterruptedException {
+        CompileWork takeNext() throws InterruptedException {
             while (true) {
-                Work next = owner.queue.poll(TAKE_POLL_MS, TimeUnit.MILLISECONDS);
+                CompileWork next = owner.queue.poll(TAKE_POLL_MS, TimeUnit.MILLISECONDS);
                 if (next == null) {
-                    if (dead) return Work.POISON;
+                    if (dead) return CompileWork.POISON;
                     continue;
                 }
                 if (dead) {
-                    if (next == Work.POISON) owner.queue.add(next);
+                    if (next == CompileWork.POISON) owner.queue.add(next);
                     else owner.enqueue(next);
-                    return Work.POISON;
+                    return CompileWork.POISON;
                 }
                 busy = true;
                 return next;
@@ -546,7 +554,7 @@ public final class JavaCompilerHost {
                 dispatchNext(convo);
                 return;
             }
-            Work w = inflight.get();
+            CompileWork w = inflight.get();
             if (w == null) return;
             if (PluginProtocol.DIAGNOSTIC.equals(t)) {
                 // Through WorkerDiagnostics, never a bare `new Diagnostic(...)`: downstream
@@ -606,7 +614,7 @@ public final class JavaCompilerHost {
          */
         private void dispatchNext(PluginProcess.Conversation convo) {
             while (true) {
-                Work next;
+                CompileWork next;
                 try {
                     next = takeNext();
                 } catch (InterruptedException e) {
@@ -615,7 +623,7 @@ public final class JavaCompilerHost {
                     convo.closeInput();
                     return;
                 }
-                if (next == Work.POISON || next.req == null) {
+                if (next == CompileWork.POISON || next.req == null) {
                     convo.send("DONE");
                     convo.closeInput();
                     return;
@@ -659,7 +667,7 @@ public final class JavaCompilerHost {
         }
 
         /** Delete a work item's spec temp file on every terminal path. */
-        private static void deleteSpec(Work w) {
+        private static void deleteSpec(CompileWork w) {
             if (w == null || w.spec == null) return;
             try {
                 Files.deleteIfExists(w.spec);
@@ -668,11 +676,11 @@ public final class JavaCompilerHost {
             }
         }
 
-        private static long waitMillis(Work w) {
+        private static long waitMillis(CompileWork w) {
             return TimeUnit.NANOSECONDS.toMillis(Math.max(0, w.waitNanos));
         }
 
-        private static void complete(Work w) {
+        private static void complete(CompileWork w) {
             deleteSpec(w);
             if (w.plan) {
                 boolean full = "full".equalsIgnoreCase(w.outcome);
@@ -698,15 +706,44 @@ public final class JavaCompilerHost {
          */
         private void failAll(Throwable e) {
             releaseSlot();
-            Work cur = inflight.getAndSet(null);
+            CompileWork cur = inflight.getAndSet(null);
             busy = false;
             if (cur != null) {
                 deleteSpec(cur);
-                Throwable withTail = withWorkerTail(e);
-                cur.compile.completeExceptionally(withTail);
-                cur.forecast.completeExceptionally(withTail);
+                settle(cur, e);
             }
             owner.laneDied(this, e);
+        }
+
+        /**
+         * The item the dead worker was compiling. A worker that ran out of heap is answered with a
+         * retry on twice the heap, once: the second exhaustion, or a heap already at the host's
+         * ceiling, fails the item naming the module and the heaps it had. Any other death fails it
+         * with the worker's output attached.
+         */
+        private void settle(CompileWork cur, Throwable e) {
+            String output = transcript.render();
+            Long heap = cur.heapBytes;
+            if (heap == null || !WorkerHeap.outOfMemory(output)) {
+                fail(cur, withWorkerTail(e));
+                return;
+            }
+            String label = cur.req == null ? "" : cur.req.label();
+            if (cur.previousHeapBytes != null) {
+                fail(cur, WorkerHeap.exhausted(label, cur.previousHeapBytes, heap, output));
+                return;
+            }
+            Long bigger = WorkerHeap.grown(heap);
+            if (bigger == null) {
+                fail(cur, WorkerHeap.exhausted(label, heap, null, output));
+                return;
+            }
+            owner.retry.retry(cur, bigger);
+        }
+
+        private static void fail(CompileWork w, Throwable cause) {
+            w.compile.completeExceptionally(cause);
+            w.forecast.completeExceptionally(cause);
         }
 
         /**
