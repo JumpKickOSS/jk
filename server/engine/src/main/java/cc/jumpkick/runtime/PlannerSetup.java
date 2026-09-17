@@ -20,6 +20,7 @@ import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkEnsureProgress;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
+import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.MemberRows;
@@ -136,16 +137,22 @@ public final class PlannerSetup {
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
                         ctx.label("jk.toml changed — updating lock");
                         Lockfile existing = LockfileReader.read(in.lockFile());
-                        Lockfile updated = AutoLock.maybeReLock(
-                                in.dir(),
-                                existing,
-                                in.lockFile(),
-                                in.cache(),
-                                null,
-                                List.of(),
-                                true,
-                                ResolveObserver.NOOP,
-                                ctx::output);
+                        Lockfile updated;
+                        try {
+                            updated = AutoLock.maybeReLock(
+                                    in.dir(),
+                                    existing,
+                                    in.lockFile(),
+                                    in.cache(),
+                                    null,
+                                    List.of(),
+                                    true,
+                                    ResolveObserver.NOOP,
+                                    ctx::output);
+                        } catch (LockRewriteGuard.LockRewriteRefused e) {
+                            ctx.error("verbatim", Errors.text(e));
+                            throw new RuntimeException("lock refused");
+                        }
                         ctx.put(LOCKFILE, memberView(in, updated != null ? updated : existing));
                     } else {
                         ctx.put(LOCKFILE, memberView(in, followFirstPartyPins(in, project, ctx)));

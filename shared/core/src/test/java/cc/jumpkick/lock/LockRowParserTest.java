@@ -79,7 +79,8 @@ class LockRowParserTest {
                 "0.12.0",
                 "ca15c7a42c4048bd5320cd9280fcd1734c58322e432462c0a56c56ebb4bdd2db",
                 "6cae4ae05a1df8b09b0db36dad722df4",
-                new Lockfile.NativeMetadata("0.3.16", "sha256:0123"));
+                new Lockfile.NativeMetadata("0.3.16", "sha256:0123"),
+                null);
     }
 
     @Test

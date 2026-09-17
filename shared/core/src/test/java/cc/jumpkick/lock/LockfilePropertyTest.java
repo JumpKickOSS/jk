@@ -93,6 +93,7 @@ class LockfilePropertyTest {
                         m,
                         d,
                         p,
+                        null,
                         null));
     }
 

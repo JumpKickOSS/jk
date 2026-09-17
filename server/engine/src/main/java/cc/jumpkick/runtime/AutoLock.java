@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -105,9 +106,9 @@ public final class AutoLock {
                     withDefaults,
                     new LockMode.Freshen());
             return pipeline.run(existing, observer, LockPipeline.Progress.SILENT);
-        } catch (UnsatisfiableException e) {
-            // Hard failure: dependencies are genuinely unsatisfiable — re-throw so
-            // the build fails instead of silently continuing with a stale lock.
+        } catch (UnsatisfiableException | LockRewriteGuard.LockRewriteRefused e) {
+            // Hard failures: dependencies genuinely unsatisfiable, or a lock a newer jk wrote —
+            // re-throw so the build fails instead of silently continuing with a stale lock.
             throw e;
         } catch (Exception e) {
             // Soft failure (network, I/O, etc.): warn and fall back to the existing

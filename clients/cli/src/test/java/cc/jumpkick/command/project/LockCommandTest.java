@@ -12,12 +12,14 @@ import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
@@ -544,6 +546,44 @@ class LockCommandTest {
         assertThat(rootVersion(tempDir))
                 .as("-F floats to the newest compatible")
                 .isEqualTo("1.1");
+    }
+
+    /**
+     * A lock a newer jk wrote is not rewritten by this one when the manifest moves: the lock stays
+     * as it was and the command fails, and {@code --force} is the override that rewrites it.
+     */
+    @Test
+    void a_lock_a_newer_jk_wrote_is_left_alone_unless_forced(@TempDir Path tempDir) throws Exception {
+        registerRootLeafGraph();
+        writeProjectWithRootDep(tempDir);
+        String[] lockArgs = {
+            "lock",
+            "-C",
+            tempDir.toString(),
+            "--repo-url",
+            maven.base().toString(),
+            "--cache-dir",
+            tempDir.resolve("cache").toString()
+        };
+        assertThat(run(lockArgs)).isEqualTo(0);
+
+        Path lock = tempDir.resolve("jk-lock.toml");
+        String byNewerJk = Files.readString(lock)
+                .replaceFirst("(?m)^generated-by = \"jk [^\"]*\"$", "generated-by = \"jk 99.0.0\"");
+        Files.writeString(lock, byNewerJk);
+        Files.writeString(tempDir.resolve("jk.toml"), Files.readString(tempDir.resolve("jk.toml")) + "\n# moved\n");
+        LockfileReader.clearCache();
+
+        assertThat(run(lockArgs))
+                .as("an older jk does not rewrite a newer jk's lock")
+                .isNotEqualTo(0);
+        assertThat(Files.readString(lock)).contains("generated-by = \"jk 99.0.0\"");
+
+        String[] forced = Arrays.copyOf(lockArgs, lockArgs.length + 1);
+        forced[lockArgs.length] = "--force";
+        assertThat(run(forced)).isEqualTo(0);
+        LockfileReader.clearCache();
+        assertThat(LockfileReader.read(lock).generatedBy()).isEqualTo("jk " + JkVersion.VERSION);
     }
 
     /** The lockfile text minus its manifest stamp, so a re-stamp compares equal. */

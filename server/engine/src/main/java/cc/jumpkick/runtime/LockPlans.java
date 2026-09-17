@@ -7,6 +7,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -177,6 +178,12 @@ public final class LockPlans {
                 .ticks(preflightTicks)
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
+                    try {
+                        pipeline.refuseOlderWriter();
+                    } catch (LockRewriteGuard.LockRewriteRefused e) {
+                        ctx.error("verbatim", Errors.text(e));
+                        throw e;
+                    }
                     ctx.put(MANIFESTS_SHA, pipeline.manifestsSha());
                     ctx.progress(preflightTicks);
                 })
@@ -454,7 +461,8 @@ public final class LockPlans {
                 // previous lock pinned is still what this image should be built against.
                 oldLock != null && oldLock.nativeMetadata() != null
                         ? oldLock.nativeMetadata()
-                        : newLock.nativeMetadata());
+                        : newLock.nativeMetadata(),
+                newLock.writerBuild());
         pipeline.write(finalLock, manifestsSha);
         return refreshed;
     }

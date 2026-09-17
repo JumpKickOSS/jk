@@ -2,8 +2,10 @@
 package cc.jumpkick.model;
 
 import cc.jumpkick.host.Hashing;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -97,14 +99,38 @@ public final class BuildIdentity {
         }
     }
 
-    private static String computeCodeSha() {
+    /**
+     * When the running code archive was written — the jar's last-modified instant — or {@code
+     * null} when the code runs from no archive. Two builds of one version have no order in their
+     * digests; this is what orders them.
+     */
+    public static @Nullable Instant codeModifiedAt() {
+        Path location = codeArchive();
+        if (location == null) return null;
+        try {
+            return Files.getLastModifiedTime(location).toInstant();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** The jar the running code was loaded from, or {@code null} for a classes directory or a native image. */
+    private static @Nullable Path codeArchive() {
         try {
             var source = BuildIdentity.class.getProtectionDomain().getCodeSource();
-            if (source == null || source.getLocation() == null) return "";
+            if (source == null || source.getLocation() == null) return null;
             Path location = Path.of(source.getLocation().toURI());
-            if (!Files.isRegularFile(location) || !location.toString().endsWith(".jar")) {
-                return ""; // classes dir (tests) or a native image — no jar identity
-            }
+            if (!Files.isRegularFile(location) || !location.toString().endsWith(".jar")) return null;
+            return location;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String computeCodeSha() {
+        Path location = codeArchive();
+        if (location == null) return ""; // classes dir (tests) or a native image — no jar identity
+        try {
             return Hashing.sha256Hex(location);
         } catch (Exception e) {
             return ""; // identity is best-effort; the version-string rule still applies

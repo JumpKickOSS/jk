@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.Scope;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -434,5 +435,25 @@ class LockfileRoundTripTest {
         assertThat(parsed.isVersionOnly()).isTrue();
         assertThat(parsed.isWorkspace()).isFalse();
         assertThat(parsed.sha256Hex()).isNull();
+    }
+
+    /** The writer's build and its time sit beside {@code generated-by}; a lock without them reads as unstamped. */
+    @Test
+    void the_writers_build_and_its_time_round_trip() {
+        Instant at = Instant.parse("2026-09-17T15:57:16Z");
+        Lockfile lock = Lockfile.empty("0.13.7").withWriterBuild(new WriterBuild("4ee07400a592", at));
+        String rendered = LockfileWriter.render(lock);
+
+        assertThat(rendered)
+                .contains("generated-by = \"jk 0.13.7\"\ngenerated-by-build = \"4ee07400a592\"\n"
+                        + "generated-by-build-time = \"2026-09-17T15:57:16Z\"\n");
+        assertThat(LockfileReader.parse(rendered).writerBuild()).isEqualTo(new WriterBuild("4ee07400a592", at));
+        assertThat(LockfileReader.parse(LockfileWriter.render(Lockfile.empty("0.13.7")))
+                        .writerBuild())
+                .isNull();
+        assertThat(LockfileReader.parse(rendered.replace("2026-09-17T15:57:16Z", "yesterday"))
+                        .writerBuild())
+                .as("a time that does not parse keeps the id and drops the order")
+                .isEqualTo(new WriterBuild("4ee07400a592", null));
     }
 }

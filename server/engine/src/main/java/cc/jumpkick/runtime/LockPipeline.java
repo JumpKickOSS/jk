@@ -23,6 +23,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileModules;
 import cc.jumpkick.lock.LockfileReader;
@@ -686,8 +687,18 @@ public final class LockPipeline {
 
     // ---- stage 5: write ------------------------------------------------------
 
+    /**
+     * Refuse when the lock on disk was written by a newer jk than this one, unless the session is
+     * forced ({@code jk lock --force}). Plans call it before the resolve so the refusal costs
+     * nothing; {@link #write} calls it again as the choke point every entry shares.
+     */
+    public void refuseOlderWriter() {
+        LockRewriteGuard.refuseUnlessForced(lockFile(), SessionContext.current().force());
+    }
+
     /** Freeze resolved first-party project identity, then write. Returns the lock as written. */
     public Lockfile write(Lockfile lock, String manifestsSha) throws IOException {
+        refuseOlderWriter();
         Lockfile stamped = LockfileModules.stamp(lock, lockDir);
         LockfileWriter.write(stamped, lockFile(), manifestsSha);
         return stamped;
@@ -695,6 +706,7 @@ public final class LockPipeline {
 
     /** Every stage, for the callers that do not split the pipeline across plan steps. */
     public Lockfile run(@Nullable Lockfile existing, ResolveObserver observer, Progress progress) throws Exception {
+        refuseOlderWriter();
         String manifestsSha = manifestsSha();
         Lockfile lock = resolve(existing, observer, progress);
         lock = pinPlugins(lock, progress);
