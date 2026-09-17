@@ -148,6 +148,25 @@ public final class CentralMirror {
         return EnvValues.parseBool(env.apply(ENV_DISABLE)).orElse(true);
     }
 
+    /** True unless {@link #ENV_DISABLE} switched the mirror off, leaving Central's refusals as the answer. */
+    public boolean enabled() {
+        return enabled;
+    }
+
+    /**
+     * Cloudflare's block of this host reaching a caller with the mirror switched off: there is
+     * nowhere to reissue the request, so the block itself is the answer, named as such with the
+     * switch that keeps the mirror off. Not retried — every retry feeds a block that escalates on
+     * traffic.
+     */
+    public static final class BlockedException extends IOException {
+        public BlockedException(URI uri) {
+            super(Cause.BLOCKED.text + ": HTTP 403 fetching " + SafeUri.forMessage(uri) + ". The mirror that routes"
+                    + " around a block is off (" + ENV_DISABLE + "=off); unset it to send Central-bound requests to "
+                    + MIRROR_BASE + " for " + DEFAULT_WINDOW.toHours() + " h");
+        }
+    }
+
     /** True when {@code uri} targets the host this instance treats as Central. */
     public boolean matches(URI uri) {
         return uri != null && centralHost.equalsIgnoreCase(uri.getHost());

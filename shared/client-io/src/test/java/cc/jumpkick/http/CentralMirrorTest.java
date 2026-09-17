@@ -2,9 +2,11 @@
 package cc.jumpkick.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.util.JkDirs;
 import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -361,6 +363,46 @@ class CentralMirrorTest {
             assertThat(hits).containsExactly("central", "mirror");
             assertThat(m.active()).isTrue();
             assertThat(m.note()).contains("Maven Central is blocking this host (Cloudflare); using the mirror for 4 h");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * With the mirror switched off there is nowhere to reissue the request, so the block itself is
+     * the answer: one request, named as Cloudflare's block with the switch that keeps the mirror
+     * off, not a bare 403 the caller retries.
+     */
+    @Test
+    void with_the_mirror_off_a_cloudflare_403_is_named_as_a_block(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/maven2/", ex -> {
+            hits.add("central");
+            ex.getResponseHeaders().set("Server", "cloudflare");
+            ex.sendResponseHeaders(403, -1);
+            ex.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror off = new CentralMirror(
+                    dir, Duration.ofHours(4), false, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1)},
+                    off);
+            URI uri = URI.create("http://127.0.0.1:" + port + "/maven2/a/b/1.0/b-1.0.jar");
+
+            assertThatThrownBy(() -> http.get(uri, Map.of()))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("Maven Central is blocking this host (Cloudflare)")
+                    .hasMessageContaining("HTTP 403 fetching " + uri)
+                    .hasMessageContaining(CentralMirror.ENV_DISABLE + "=off");
+            assertThat(hits).as("a block is not retried").hasSize(1);
+            assertThat(off.active()).isFalse();
         } finally {
             server.stop(0);
         }
