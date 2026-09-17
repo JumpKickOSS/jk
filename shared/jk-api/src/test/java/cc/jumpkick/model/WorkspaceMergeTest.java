@@ -4,6 +4,7 @@ package cc.jumpkick.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.net.URI;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -273,6 +274,49 @@ class WorkspaceMergeTest {
     }
 
     // --- helpers -----------------------------------------------------------
+
+    @Test
+    void a_members_repositories_join_the_workspaces_keyed_by_id() {
+        RepositorySpec central = new RepositorySpec("central", URI.create("https://repo.example/central/"));
+        RepositorySpec jitpack = new RepositorySpec("jitpack", URI.create("https://jitpack.example/"));
+        RepositorySpec confluent =
+                new RepositorySpec("confluent", URI.create("https://packages.confluent.example/maven/"));
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "root", "0.1.0", 0))
+                .workspace(new Workspace(List.of("a", "b")))
+                .repositories(List.of(central))
+                .build();
+        JkBuild a = JkBuild.builder(new Project("cc.jumpkick", "a", "0.1.0", 0))
+                .repositories(List.of(jitpack, central))
+                .build();
+        JkBuild b = JkBuild.builder(new Project("cc.jumpkick", "b", "0.1.0", 0))
+                .repositories(List.of(confluent, jitpack))
+                .build();
+
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(a, b));
+
+        assertThat(merged.repositories()).containsExactly(central, jitpack, confluent);
+    }
+
+    @Test
+    void one_repository_id_at_two_urls_is_refused_naming_both_modules() {
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "root", "0.1.0", 0))
+                .workspace(new Workspace(List.of("a", "b")))
+                .build();
+        JkBuild a = JkBuild.builder(new Project("cc.jumpkick", "a", "0.1.0", 0))
+                .repositories(List.of(new RepositorySpec("mirror", URI.create("https://one.example/m2/"))))
+                .build();
+        JkBuild b = JkBuild.builder(new Project("cc.jumpkick", "b", "0.1.0", 0))
+                .repositories(List.of(new RepositorySpec("mirror", URI.create("https://two.example/m2/"))))
+                .build();
+
+        assertThatThrownBy(() -> WorkspaceMerge.merge(root, List.of(a, b)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("[repositories] mirror")
+                .hasMessageContaining("cc.jumpkick:a")
+                .hasMessageContaining("https://one.example/m2/")
+                .hasMessageContaining("cc.jumpkick:b")
+                .hasMessageContaining("https://two.example/m2/");
+    }
 
     private static JkBuild newProject(String artifact, Map<Scope, List<Dependency>> depsByScope) {
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);

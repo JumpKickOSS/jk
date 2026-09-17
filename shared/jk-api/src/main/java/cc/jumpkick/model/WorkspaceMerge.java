@@ -5,6 +5,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -186,8 +187,9 @@ public final class WorkspaceMerge {
     /**
      * The one manifest a workspace lock resolves: the root's dependencies, then every member's, in
      * {@code [workspace] modules} order and each in declaration order, one row per package (the
-     * first declaration wins). The root's {@code [resolve]} table travels with it — a workspace's
-     * pin and platform policies are the root's.
+     * first declaration wins). Its repositories are the root's followed by every member's, keyed by
+     * id ({@link #joinRepositories}). The root's {@code [resolve]} table travels with it — a
+     * workspace's pin and platform policies are the root's.
      */
     public static JkBuild merge(JkBuild root, Collection<JkBuild> modules) {
         if (modules.isEmpty()) return Variants.unionDependencies(root);
@@ -230,7 +232,7 @@ public final class WorkspaceMerge {
         }
         return JkBuild.builder(root.project())
                 .dependencies(new JkBuild.Dependencies(mergedByScope))
-                .repositories(root.repositories())
+                .repositories(joinRepositories(root, modules))
                 .profiles(root.profiles())
                 .features(root.features())
                 .workspace(root.workspace())
@@ -240,6 +242,40 @@ public final class WorkspaceMerge {
                 .nativeConfig(root.nativeConfigOpt().orElse(null))
                 .build(root.build())
                 .build();
+    }
+
+    /**
+     * The workspace's one repository set: the root's {@code [repositories]} entries, then each
+     * member's in {@code [workspace] modules} order, keyed by id — an id already declared adds
+     * nothing. One id at two URLs is refused naming both modules: the lock resolves every member
+     * against one set, so the two repositories need two ids or one URL.
+     */
+    static List<RepositorySpec> joinRepositories(JkBuild root, Collection<JkBuild> modules) {
+        Map<String, RepositorySpec> byId = new LinkedHashMap<>();
+        Map<String, String> declaredIn = new HashMap<>();
+        String rootCoord = coordinate(root);
+        for (RepositorySpec spec : root.repositories()) {
+            if (byId.putIfAbsent(spec.name(), spec) == null) declaredIn.put(spec.name(), rootCoord);
+        }
+        for (JkBuild module : modules) {
+            String coord = coordinate(module);
+            for (RepositorySpec spec : module.repositories()) {
+                RepositorySpec first = byId.putIfAbsent(spec.name(), spec);
+                if (first == null) {
+                    declaredIn.put(spec.name(), coord);
+                } else if (!first.url().equals(spec.url())) {
+                    throw new IllegalStateException("[repositories] " + spec.name() + " is " + first.url() + " in "
+                            + declaredIn.get(spec.name()) + " and " + spec.url() + " in " + coord
+                            + "; a workspace resolves against one repository set — give the two repositories two ids,"
+                            + " or one URL");
+                }
+            }
+        }
+        return List.copyOf(byId.values());
+    }
+
+    private static String coordinate(JkBuild build) {
+        return build.project().group() + ":" + build.project().name();
     }
 
     /**
