@@ -125,9 +125,12 @@ member agrees on stays a plain row. A workspace whose members all agree has no `
 anywhere, and nothing about it changes.
 
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
-belongs to; `jk lock` prints one line per coordinate it partitioned, naming the member, its version
-and the workspace's; the same line reaches the results file and the web view. `jk update` rewrites
-the declared pins and relocks, so a partition that stops being necessary disappears on its own.
+belongs to. `jk lock` prints one note per member solved on its own, after the summary line, naming
+the coordinates it reads its own rows for with the member's version and the workspace's
+(`lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)`); the same notes land
+in the run record — the `Lock notes` section of `jk-results.md` and its `details.jsonl` — and the
+web view. `jk update` rewrites the declared pins and relocks, so a partition that stops being
+necessary disappears on its own.
 
 ## Nothing to build
 

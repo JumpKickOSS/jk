@@ -123,6 +123,7 @@ public final class JkResultsMarkdown {
         JkResultsCoverageSection.append(sb, record, previous);
         appendDeliverables(sb, record);
         appendFailedSteps(sb, record);
+        JkResultsLockNotesSection.append(sb, record);
         appendWarnings(sb, record);
         appendModules(sb, record);
         // Sized over the whole file, this line included: the header is written before the body
@@ -254,19 +255,20 @@ public final class JkResultsMarkdown {
         boolean testsLine = JkResultsTestsSection.appendCount(sb, r, tests);
         boolean coverageLine = JkResultsCoverageSection.appendCount(sb, r);
         int errors = 0, warnings = 0;
+        int lockNotes = JkResultsLockNotesSection.count(r);
         boolean coverTests = JkResultsTestsSection.hasTestEntries(tests);
         for (BuildRecord.Diag d : r.diagnostics()) {
             if (isError(d)) {
                 if ((coverTests && isTest(d)) || JkResultsStopped.collateral(r, d)) continue;
                 errors++;
-            } else if (isWarning(d)) warnings++;
+            } else if (isWarning(d) && !JkResultsLockNotesSection.isLockNote(d)) warnings++;
         }
-        if (errors > 0 || warnings > 0) {
-            sb.append("Diagnostics: ");
-            if (errors > 0) sb.append("**").append(errors).append(errors == 1 ? " error**" : " errors**");
-            if (errors > 0 && warnings > 0) sb.append(", ");
-            if (warnings > 0) sb.append(warnings).append(warnings == 1 ? " warning" : " warnings");
-            sb.append('\n');
+        if (errors > 0 || warnings > 0 || lockNotes > 0) {
+            List<String> counts = new ArrayList<>(3);
+            if (errors > 0) counts.add("**" + errors + (errors == 1 ? " error**" : " errors**"));
+            if (warnings > 0) counts.add(warnings + (warnings == 1 ? " warning" : " warnings"));
+            if (lockNotes > 0) counts.add(lockNotes + (lockNotes == 1 ? " lock note" : " lock notes"));
+            sb.append("Diagnostics: ").append(String.join(", ", counts)).append('\n');
         }
         BuildRecord.CacheBenefit b = r.benefit();
         if (b != null && b.savedMillis() > 0) {
@@ -276,6 +278,7 @@ public final class JkResultsMarkdown {
                 || coverageLine
                 || errors > 0
                 || warnings > 0
+                || lockNotes > 0
                 || modules.size() > 1
                 || (b != null && b.savedMillis() > 0)) {
             sb.append('\n');
@@ -631,7 +634,7 @@ public final class JkResultsMarkdown {
     private static void appendWarnings(StringBuilder sb, BuildRecord r) {
         List<BuildRecord.Diag> warnings = new ArrayList<>();
         for (BuildRecord.Diag d : r.diagnostics()) {
-            if (isWarning(d)) warnings.add(d);
+            if (isWarning(d) && !JkResultsLockNotesSection.isLockNote(d)) warnings.add(d);
         }
         if (warnings.isEmpty()) return;
         sb.append("## Warnings\n\n");

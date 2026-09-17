@@ -297,8 +297,8 @@ members  = ["zipkin-collector/activemq"]
 `zipkin-collector/activemq` compiles, tests and packages against 2.0.3; every other member reads
 3.1.0. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
 own graph reaches has only its `members` row. `jk lock` keeps the versions such a row holds like
-any other's, and says once per partitioned coordinate which member took which version and why the
-workspace's differs. `jk why` shows both versions with their members; the tools that read one
+any other's, and says once per member which coordinates it reads its own rows for, with its version
+and the workspace's. `jk why` shows both versions with their members; the tools that read one
 module's classpath — the build, `jk run`, packaging — read that module's rows.
 
 ## What an exclusion records

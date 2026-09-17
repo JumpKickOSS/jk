@@ -4,7 +4,9 @@ package cc.jumpkick.command.project;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.run.BuildPlanListener;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -41,5 +43,29 @@ class LockCommandLiveHandlerTest {
         assertThat(region.toString(StandardCharsets.UTF_8))
                 .as("no region was drawn")
                 .doesNotContain("120 packages");
+    }
+
+    /**
+     * The warnings a module's plan raises — the lock's notes and the nearest-wins lines — are kept
+     * and printed once each after the chip, not dropped with the module's listener.
+     */
+    @Test
+    void the_locks_notes_are_collected_from_the_plan_and_printed_after_the_summary() {
+        JkManager view = JkManager.plan(
+                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8), "Lock", false);
+        LockCommand.LiveLockHandler handler = new LockCommand.LiveLockHandler(view);
+        String note = "lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)";
+        String override = "com.foo:leaf 1.0 is the project's pin; com.foo:middle 1.0 asked for 2.0";
+
+        BuildPlanListener plan = handler.onModuleStart("/w", "com.acme:ws", List.of());
+        plan.warn("resolve-deps", "lock-note", note);
+        plan.warn("resolve-deps", "nearest-wins", override);
+        plan.warn("resolve-deps", "lock-note", note);
+
+        assertThat(handler.notes()).containsExactly(note, override);
+        String out =
+                Capture.stdout(() -> LockCommand.printNotes(handler.notes())).replaceAll("\u001b\\[[\\d;]*m", "");
+        assertThat(out.lines().toList())
+                .containsExactly("  " + Glyphs.bang() + " " + note, "  " + Glyphs.bang() + " " + override);
     }
 }

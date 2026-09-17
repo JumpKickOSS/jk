@@ -77,13 +77,20 @@ public final class JobAdmit {
     /**
      * Job-start wire line with buildNumber + details path for the CLI transcript. The path is the
      * run's own: build numbers are per project, so it is resolved under this project's home and
-     * never by number across homes, where another project's run of the same number would answer.
+     * never by number across homes, where another project's run of the same number would answer. A
+     * journaled job without a build number — a lock — names its run directory's file by the
+     * journal id instead.
      */
     public static String jobStartLine(JobEnvelope.Host host, long jid, String kind, String dir, AdmitResult admit) {
         String detailsPath = null;
         if (admit.buildNumber() > 0) {
             detailsPath = host.journal()
                     .detailsFile(host.coordOf(dir), dir, admit.buildNumber())
+                    .map(Path::toString)
+                    .orElse(null);
+        } else if (admit.journalId() != null) {
+            detailsPath = host.journal()
+                    .detailsFile(admit.journalId())
                     .map(Path::toString)
                     .orElse(null);
         }
