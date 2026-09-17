@@ -258,6 +258,18 @@ repository, with that repository as its lock `source`.
 `jk import` hoists every reactor module's `<repositories>` onto the workspace root, since the
 workspace lock resolves every member against the root's list.
 
+### A repository that fails mid-lock
+
+One remote's reset, timeout or 5xx is that remote's problem, not an answer about the coordinate.
+While catalogs are read, the failing repository is skipped with one warning per run
+(`repository jboss is unreachable (…); trying the remaining repositories`) and the others are
+asked; the lock fails on it only when every repository failed. On the artifact leg the repository
+that served a coordinate's POM is the one whose answer counts — a GAV's POM and its files are
+published together — so when that repository says there is no jar (a relocation stub, a BOM), another
+remote's failure during the same fan-out is warned about once and the coordinate is judged
+POM-only rather than failing the lock on a remote that never held it. When the holding repository
+itself fails, or no repository is known to hold the POM, the failure stands.
+
 ### Classifiers that follow the host
 
 Some POMs spell a platform artifact's classifier with a property a Maven build values from the

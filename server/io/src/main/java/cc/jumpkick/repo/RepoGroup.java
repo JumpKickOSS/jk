@@ -318,12 +318,22 @@ public final class RepoGroup {
                 + (coord.classifier() == null ? "" : coord.classifier());
         RepoFetched hit = liveHit(ARTIFACT_HIT_CACHE, key);
         if (hit != null) return Optional.of(hit);
-        Optional<RepoFetched> found =
-                tryFetch(coord, MavenRepo::tryLocalArtifact, (repo, c) -> repo.fetchArtifact(c, abort), abort);
+        Optional<RepoFetched> found = tryFetch(
+                coord, MavenRepo::tryLocalArtifact, (repo, c) -> repo.fetchArtifact(c, abort), abort, pomHolder(coord));
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             ARTIFACT_HIT_CACHE.putIfAbsent(key, found.get());
         }
         return found;
+    }
+
+    /**
+     * The repository that served {@code coord}'s POM through this group, when the process memo still
+     * holds it; null when no POM was asked here. Its answer on the artifact leg settles the coordinate:
+     * a GAV's POM and its files are published together, so a jar it says is not there is not there.
+     */
+    private @Nullable MavenRepo pomHolder(Coordinate coord) {
+        RepoFetched pom = liveHit(POM_HIT_CACHE, repoIdentity + "|" + coord.toGav());
+        return pom == null ? null : pom.repo();
     }
 
     /**
@@ -357,7 +367,9 @@ public final class RepoGroup {
         Optional<RepoFetched> found = tryFetch(
                 coord,
                 (repo, c) -> repo.tryLocalArtifact(c).filter(f -> expectedSha256Hex.equalsIgnoreCase(f.sha256())),
-                (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT));
+                (repo, c) -> repo.fetchArtifact(c, expectedSha256Hex, NO_ABORT),
+                NO_ABORT,
+                pomHolder(coord));
         if (found.isPresent() && ARTIFACT_HIT_CACHE.size() < HIT_CACHE_MAX) {
             // put, not putIfAbsent: a pinned fetch is the authority on what is on disk now.
             ARTIFACT_HIT_CACHE.put(key, found.get());
@@ -785,17 +797,26 @@ public final class RepoGroup {
      */
     private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
             throws IOException, InterruptedException {
-        return tryFetch(coord, localProbe, fetcher, NO_ABORT);
+        return tryFetch(coord, localProbe, fetcher, NO_ABORT, null);
     }
 
+    /**
+     * @param holder the repository whose answer settles {@code coord} — the one that served its POM —
+     *     or null when none is known, in which case every candidate's answer counts
+     */
     private Optional<RepoFetched> tryFetch(
-            Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
+            Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort, @Nullable MavenRepo holder)
             throws IOException, InterruptedException {
         List<MavenRepo> eligible = eligibleRepos(coord);
-        Optional<RepoFetched> found = tryFetchFrom(serving(eligible, coord), coord, localProbe, fetcher, abort);
+        FetchFanOut fanOut = new FetchFanOut(coord, holder);
+        Optional<RepoFetched> found = tryFetchFrom(serving(eligible, coord), coord, localProbe, fetcher, abort, fanOut);
         if (found.isPresent()) return found;
         // Full miss on the fast path: consult non-claiming specialists before giving up.
-        return tryFetchFrom(serving(lastResortRepos(coord, eligible), coord), coord, localProbe, fetcher, abort);
+        found = tryFetchFrom(
+                serving(lastResortRepos(coord, eligible), coord), coord, localProbe, fetcher, abort, fanOut);
+        if (found.isPresent()) return found;
+        fanOut.settle();
+        return Optional.empty();
     }
 
     /** {@code repos} whose policy covers {@code coord}'s version: a snapshot is never asked of a releases-only repo. */
@@ -816,7 +837,12 @@ public final class RepoGroup {
      * collide with.
      */
     private Optional<RepoFetched> tryFetchFrom(
-            List<MavenRepo> candidates, Coordinate coord, LocalProbe localProbe, Fetcher fetcher, BooleanSupplier abort)
+            List<MavenRepo> candidates,
+            Coordinate coord,
+            LocalProbe localProbe,
+            Fetcher fetcher,
+            BooleanSupplier abort,
+            FetchFanOut fanOut)
             throws IOException, InterruptedException {
         int networkLegs = candidates.size();
         Optional<RepoFetched> local = Optional.empty();
@@ -838,29 +864,26 @@ public final class RepoGroup {
         }
         List<Leg<MavenRepo.Fetched>> legs =
                 legs(candidates.subList(0, networkLegs), repo -> fetcher.fetch(repo, coord));
-        IOException firstFailure = null;
         try {
             for (int i = 0; i < networkLegs; i++) {
                 try {
                     return Optional.of(
                             new RepoFetched(candidates.get(i), await(legs.get(i).future())));
-                } catch (MavenRepo.ArtifactNotFoundException ignored) {
-                    // the next candidate in order
+                } catch (MavenRepo.ArtifactNotFoundException notFound) {
+                    fanOut.notFound(candidates.get(i)); // the next candidate in order
                 } catch (MavenRepo.FetchAbortedException aborted) {
                     throw aborted;
                 } catch (IOException transport) {
                     // A failed remote falls through to the next candidate silently: the artifact that
                     // arrives is still checked against the lock's sha256, so where it came from does
-                    // not change what is accepted. If nobody answers, the first failure is the reason.
-                    if (firstFailure == null) firstFailure = transport;
+                    // not change what is accepted. If nobody answers, the fan-out settles on the failure.
+                    fanOut.failed(candidates.get(i), transport);
                 }
             }
         } finally {
             settle(legs);
         }
-        if (local.isPresent()) return local;
-        if (firstFailure != null) throw firstFailure;
-        return Optional.empty();
+        return local;
     }
 
     /** Abort supplier for fetch paths with no abort semantics (POM / metadata). */
