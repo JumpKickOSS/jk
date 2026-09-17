@@ -6,6 +6,9 @@ java = $java$
 [dependencies]
 jspecify = "1.0.1"
 
+# `git.properties` in the jar: the commit, branch and dirty flag the library was built from.
+[build-info]
+
 # Test tiers: `jk test` is the fast tier; each profile owns one cost tag, so every tagged
 # test runs in exactly one tier (`jk test --profile integration`).
 [test]

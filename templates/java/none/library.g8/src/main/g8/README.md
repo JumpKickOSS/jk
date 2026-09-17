@@ -6,7 +6,7 @@ what to do.
 
 ```bash
 jk test          # unit tier
-jk build         # jar + sources under target/
+jk build         # jar with git.properties, plus sources and javadoc jars, under target/
 jk publish       # dry-run by default; see `jk manual`
 ```
 
