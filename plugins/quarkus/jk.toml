@@ -34,5 +34,9 @@ options = [
 [test-dependencies]
 jk-plugin-sdk = { workspace = true, fixtures = true }
 jk-host = { workspace = true, fixtures = true }
+# The Aether types the repository-routes reader maps to, so the suite that holds the fork's
+# remotes to jk's routing runs under the test JVM; the bootstrap closure itself stays provided.
+maven-resolver-api = { group = "org.apache.maven.resolver", version = "2.0.22" }
+maven-resolver-util = { group = "org.apache.maven.resolver", version = "2.0.22" }
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"

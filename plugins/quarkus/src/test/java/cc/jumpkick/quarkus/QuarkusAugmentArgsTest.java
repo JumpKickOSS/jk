@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.Test;
  * The augment runs in a grandchild JVM, so the engine's per-job decisions — {@code --offline} and
  * the platform-properties path the engine fetched — can only reach it as arguments. The two ends
  * of this vector are pinned together on purpose: {@code QuarkusAugmentMain.main} rejects anything
- * but eleven arguments, so a drift on either side is a startup failure rather than a silently
+ * but twelve arguments, so a drift on either side is a startup failure rather than a silently
  * dropped policy.
  */
 class QuarkusAugmentArgsTest {
@@ -29,6 +30,7 @@ class QuarkusAugmentArgsTest {
     private static final Path TEST_MODEL = MODULE.resolve("target/plugin/quarkus-test-model/test-model");
     private static final Path PROPS =
             ShortTempDirs.path().resolve("store/cas/quarkus-bom-quarkus-platform-properties-3.38.3.properties");
+    private static final Path ROUTES = ShortTempDirs.path().resolve("jk-quarkus-repositories-1.jsonl");
 
     @Test
     void the_offline_decision_is_the_last_argument_the_augment_is_given() {
@@ -38,8 +40,8 @@ class QuarkusAugmentArgsTest {
 
     @Test
     void the_vector_is_the_arity_the_augment_requires() {
-        // QuarkusAugmentMain.main exits USAGE on anything but 11.
-        assertThat(argsFor(false)).hasSize(11);
+        // QuarkusAugmentMain.main exits USAGE on anything but 12.
+        assertThat(argsFor(false)).hasSize(12);
     }
 
     /**
@@ -51,6 +53,16 @@ class QuarkusAugmentArgsTest {
         assertThat(argsFor(false)).element(9).isEqualTo(PROPS.toString());
     }
 
+    /**
+     * The repository-routes file rides the vector before the policy: the remotes the fork's own
+     * resolver may ask are the ones jk routed, never Maven's defaults.
+     */
+    @Test
+    void the_repository_routes_file_is_the_argument_before_the_policy() {
+        assertThat(argsFor(false)).element(10).isEqualTo(ROUTES.toString());
+        assertThat(testModelArgsFor(false)).element(9).isEqualTo(ROUTES.toString());
+    }
+
     /** A launch without the fetched artifact fails naming the step-dependency, not silently. */
     @Test
     void a_missing_platform_properties_extra_refuses_to_build_the_vector() {
@@ -60,7 +72,8 @@ class QuarkusAugmentArgsTest {
                         MODULE.resolve("target/quarkus-app"),
                         "widget",
                         MODULE.resolve("target/runtime-jars.tsv"),
-                        "3.38.3"))
+                        "3.38.3",
+                        ROUTES))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(QuarkusPlugin.PLATFORM_PROPS_EXTRA);
     }
@@ -83,7 +96,7 @@ class QuarkusAugmentArgsTest {
     void the_test_model_vector_carries_the_same_decisions() {
         List<String> offline = testModelArgsFor(true);
         List<String> online = testModelArgsFor(false);
-        assertThat(offline).hasSize(10).last().isEqualTo("true");
+        assertThat(offline).hasSize(11).last().isEqualTo("true");
         assertThat(online).last().isEqualTo("false");
         assertThat(offline).element(8).isEqualTo(PROPS.toString());
         assertThat(offline).element(2).isEqualTo(TEST_MODEL.toString());
@@ -105,7 +118,8 @@ class QuarkusAugmentArgsTest {
                 MODULE.resolve("target/classes/main"),
                 TEST_MODEL,
                 MODULE.resolve("target/test-runtime-jars.tsv"),
-                "3.38.3");
+                "3.38.3",
+                ROUTES);
     }
 
     private static List<String> argsFor(boolean offline) {
@@ -115,10 +129,11 @@ class QuarkusAugmentArgsTest {
                 MODULE.resolve("target/quarkus-app"),
                 "widget",
                 MODULE.resolve("target/runtime-jars.tsv"),
-                "3.38.3");
+                "3.38.3",
+                ROUTES);
     }
 
-    /** Only the four accessors {@code augmentArgs} reads; anything else is not part of the vector. */
+    /** Only the accessors {@code augmentArgs} reads; anything else is not part of the vector. */
     private record ProbeExec(boolean offline, @Nullable Path platformProps) implements TaskExec {
         @Override
         public Path moduleDir() {
@@ -180,6 +195,11 @@ class QuarkusAugmentArgsTest {
         @Override
         public Path javaHome() {
             return Path.of("/jdk");
+        }
+
+        @Override
+        public List<RepositoryRoute> repositories() {
+            return List.of();
         }
 
         @Override

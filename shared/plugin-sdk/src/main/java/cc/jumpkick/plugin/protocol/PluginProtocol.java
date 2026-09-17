@@ -66,6 +66,13 @@ public final class PluginProtocol {
     public static final String EXTRA = "extra";
     public static final String SIBLING_FILES =
             "sibling-files"; // {key, path}: one dependency sibling's dir under a config key
+    /**
+     * One routed remote repository ({@code id}, {@code url}, optional {@code username} and {@code
+     * secret}), in resolve order — a declared {@code repositories} input. The secret is a
+     * credential; a worker never echoes the line.
+     */
+    public static final String REPOSITORY = "repository";
+
     public static final String SECRET = "secret";
     public static final String COMMAND_ARGS = "command-args";
     public static final String ARG = "arg"; // raw compiler-arg passthrough

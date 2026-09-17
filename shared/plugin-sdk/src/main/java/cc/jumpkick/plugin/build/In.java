@@ -53,7 +53,15 @@ public record In(Kind kind, @Nullable String step) {
          * sibling's ({@code queue.proto} importing {@code tbmsg.proto} from the module it depends
          * on) reads them as include roots; the engine fingerprints each directory's content.
          */
-        SIBLING_PROJECT_FILES
+        SIBLING_PROJECT_FILES,
+        /**
+         * The remote repositories this module resolves against, as the engine routes them: the
+         * {@code [repositories]} set over the built-in remotes, each at the URL jk itself opens
+         * (a {@code settings.xml} mirror, Central's mirror while Central refuses this host) with
+         * its credential. For a step whose own resolver fetches outside the lock. The key carries
+         * the declared set, not the routing: a mirror window opening re-runs nothing.
+         */
+        REPOSITORIES
     }
 
     public In {
@@ -105,6 +113,11 @@ public record In(Kind kind, @Nullable String step) {
      */
     public static In siblingProjectFiles(String configKey) {
         return new In(Kind.SIBLING_PROJECT_FILES, configKey);
+    }
+
+    /** The module's routed remote repositories — read in the body via {@code exec.repositories()}. */
+    public static In repositories() {
+        return new In(Kind.REPOSITORIES, null);
     }
 
     /**

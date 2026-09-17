@@ -20,6 +20,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -204,7 +205,8 @@ public final class PlannerPlugin {
      * The step's spec file: the op and config, the project facts, the layout, the JDK, the runtime
      * closure and the compile classpath each under its role, every production entry, the tool
      * artifacts by name, the scratch of every step this one chains from and the directories of
-     * every dependency sibling a {@code sibling:<key>} input names.
+     * every dependency sibling a {@code sibling:<key>} input names, and the routed remote
+     * repositories when the step declared them.
      */
     private static Path writeStepSpec(
             PluginBuild.TaskDecl step,
@@ -230,6 +232,7 @@ public final class PlannerPlugin {
             specWriter.extra(tool.getKey(), tool.getValue());
         }
         writeChainedInputs(specWriter, step, paths.layout(), src.siblingFiles());
+        for (RepositoryRoute route : src.repositories().routes()) specWriter.repository(route);
         return specWriter.writeTempSpec();
     }
 
@@ -266,7 +269,9 @@ public final class PlannerPlugin {
             BuildLayout layout,
             Path moduleDir,
             /** The directories of each declared {@code sibling:<key>} input, by key ({@link SiblingFiles}). */
-            Map<String, List<Path>> siblingFiles) {}
+            Map<String, List<Path>> siblingFiles,
+            /** The routed remotes of a declared {@code repositories} input ({@link PluginRepositories}). */
+            PluginRepositories repositories) {}
 
     /**
      * The declared inputs as action-key tokens: the one renderer the step arm and the packager arm
@@ -326,6 +331,8 @@ public final class PlannerPlugin {
                 case PROJECT_FILES ->
                     tokens.add(input + ":"
                             + ClasspathFingerprint.entry(src.moduleDir().resolve(declared.step())));
+                case REPOSITORIES ->
+                    tokens.add("repositories:" + src.repositories().token());
                 case SIBLING_PROJECT_FILES -> {
                     // Include order is part of the artifact (the first root to answer an import
                     // wins), so the token is the ordered join, not a sorted set.
@@ -437,6 +444,8 @@ public final class PlannerPlugin {
                     Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), sdkPins);
                     Map<String, List<Path>> siblingFiles =
                             SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
+                    PluginRepositories repositories =
+                            PluginRepositories.forInputs(step.inputs(), project, cx.cas(), in.env());
 
                     // Action key: exactly the declared inputs, plus the very facts the body sees —
                     // the same ProjectFacts instance rides the spec below, so no fact can reach the
@@ -452,7 +461,8 @@ public final class PlannerPlugin {
                                     active.config(),
                                     layout,
                                     in.dir(),
-                                    siblingFiles)));
+                                    siblingFiles,
+                                    repositories)));
                     tokens.addAll(toolTokens(tools, toolExtras, sdkPins));
                     tokens.add("facts:" + facts.token());
                     // The JDK is handed to the body as spec.javaHome and is what its forked tools
@@ -504,7 +514,8 @@ public final class PlannerPlugin {
                                     active.config(),
                                     layout,
                                     in.dir(),
-                                    siblingFiles),
+                                    siblingFiles,
+                                    repositories),
                             toolExtras);
                     try {
                         PluginBuild.runWorker(

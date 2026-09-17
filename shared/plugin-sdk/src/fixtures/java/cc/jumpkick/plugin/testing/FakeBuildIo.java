@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.testing;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -55,6 +56,7 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     private final Map<String, Path> extras = new LinkedHashMap<>();
     private final Map<String, Path> steps = new LinkedHashMap<>();
     private final Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
+    private final List<RepositoryRoute> repositories = new ArrayList<>();
     private final List<RuntimeEntry> entries = new ArrayList<>();
 
     /** Jars on the compile classpath only — the {@code provided} scope's view. */
@@ -180,6 +182,12 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     /** A dependency sibling's directory under {@code configKey} — {@code In.siblingProjectFiles(key)}'s value. */
     public FakeBuildIo siblingFiles(String configKey, Path dir) {
         siblingFiles.computeIfAbsent(configKey, k -> new ArrayList<>()).add(dir);
+        return this;
+    }
+
+    /** One routed remote repository — {@code In.repositories()}'s value, in resolve order. */
+    public FakeBuildIo repository(RepositoryRoute route) {
+        repositories.add(route);
         return this;
     }
 
@@ -329,6 +337,11 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     @Override
     public List<Path> siblingFiles(String configKey) {
         return List.copyOf(siblingFiles.getOrDefault(configKey, List.of()));
+    }
+
+    @Override
+    public List<RepositoryRoute> repositories() {
+        return List.copyOf(repositories);
     }
 
     @Override

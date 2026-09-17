@@ -186,6 +186,20 @@ public final class MavenRepo {
     }
 
     /**
+     * The credential every request carries: the mirror's when a {@link #mirror()} answers the
+     * requests, else the one resolved for this repository. {@link RepoCredential.Anonymous} for a
+     * public repository.
+     */
+    public RepoCredential credential() {
+        return credential;
+    }
+
+    /** Where a request for a relative path opens: the mirror's URL, else {@link #baseUrl()}. */
+    public URI fetchBase() {
+        return fetchBase;
+    }
+
+    /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code m2integration}
      * is the resolving project's {@code m2integration} value; {@code allowUnverified} is the

@@ -21,7 +21,7 @@ import java.util.List;
  * Forked entry point for the {@code @QuarkusTest} application model.
  *
  * <p>Args: {@code moduleDir classesDir outDir group artifact version runtimeListFile
- * quarkusVersion platformPropsFile offline}
+ * quarkusVersion platformPropsFile repositoriesFile offline}
  *
  * <p>Quarkus's test bootstrap reads a serialized {@code ApplicationModel} from the {@link
  * #SERIALIZED_TEST_APP_MODEL} system property before it looks for a Maven or Gradle workspace —
@@ -44,9 +44,9 @@ public final class QuarkusTestModelMain {
     static final String LIB_DIR = "lib";
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 10) {
+        if (args.length != 11) {
             System.err.println("usage: QuarkusTestModelMain moduleDir classesDir outDir group artifact version"
-                    + " runtimeListFile quarkusVersion platformPropsFile offline");
+                    + " runtimeListFile quarkusVersion platformPropsFile repositoriesFile offline");
             System.exit(Exit.USAGE);
         }
         Path moduleDir = Path.of(args[0]).toAbsolutePath().normalize();
@@ -58,7 +58,9 @@ public final class QuarkusTestModelMain {
         Path runtimeList = Path.of(args[6]).toAbsolutePath().normalize();
         String quarkusVersion = args[7];
         Path platformProps = Path.of(args[8]).toAbsolutePath().normalize();
-        boolean offline = EnvValues.parseBool(args[9]).orElse(false);
+        RepositoryRoutes routes =
+                RepositoryRoutes.read(Path.of(args[9]).toAbsolutePath().normalize());
+        boolean offline = EnvValues.parseBool(args[10]).orElse(false);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
         System.err.println("jk-quarkus-test-model: locked test closure="
@@ -71,7 +73,7 @@ public final class QuarkusTestModelMain {
         AppJar.write(classesDir, appJar);
 
         ApplicationModel resolved = QuarkusAugmentMain.resolveModel(
-                locked, localRepo, offline, group, artifact, version, appJar, classesDir, quarkusVersion);
+                locked, localRepo, offline, routes, group, artifact, version, appJar, classesDir, quarkusVersion);
         QuarkusAugmentMain.injectPlatform(resolved, quarkusVersion, platformProps, offline);
         ApplicationModel model = LockedAppModel.withApplicationModule(
                 resolved, workspaceModule(moduleDir, classesDir, group, artifact, version));

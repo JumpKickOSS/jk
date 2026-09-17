@@ -85,6 +85,14 @@ block then fails the request as `Maven Central is blocking this host (Cloudflare
 fetching …`, naming the switch that keeps the mirror off, and is not retried. A 403 without
 Cloudflare's headers is a permission answer and is reported as one.
 
+A plugin whose own resolver fetches outside the lock — the Quarkus augment reads its build-time
+deployment closure through Quarkus's embedded Maven resolver — is handed this module's remotes as
+jk routes them: the `[repositories]` set over the built-in remotes, in resolve order, a
+`settings.xml` mirror standing in for the repository it mirrors, and Central at the mirror while
+the window is open, each with the credential jk would send. The fork asks those and nothing else;
+Maven's own defaults and `~/.m2/settings.xml`'s repositories are never consulted, so a Central
+refusal is answered by the window here rather than by a failed package step.
+
 ## Exclusive groups (your internals)
 
 When you declare an **internal** repository next to a public one, bind *your* Maven

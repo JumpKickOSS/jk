@@ -71,6 +71,14 @@ public interface TaskExec {
      */
     List<Path> siblingFiles(String configKey);
 
+    /**
+     * The remote repositories this module resolves against, in resolve order and as the engine
+     * routes them ({@link RepositoryRoute}) — {@link In#repositories()}. A step whose own
+     * resolver fetches outside the lock asks exactly these; it never names Central itself. Empty
+     * unless declared.
+     */
+    List<RepositoryRoute> repositories();
+
     /** As {@link #stepOutput} but required — a declared {@code In.stepOutput} is never absent. */
     default Path requireStepOutput(String step) {
         return stepOutput(step)
