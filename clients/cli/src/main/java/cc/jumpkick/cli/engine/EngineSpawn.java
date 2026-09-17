@@ -34,7 +34,6 @@ import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -782,7 +781,7 @@ public final class EngineSpawn {
         EngineArtifact engine = target.engine();
         JkEngineConfig config = JkEngineConfig.resolve();
         OwnerOnlyFiles.directory(paths.dir());
-        rotateLog(paths.log());
+        boolean freshLog = EngineLogRotation.rotate(paths.log(), Clock.SYSTEM);
         // The child detaches ITSELF into its own session (setsid(2) via PosixDetach, first thing
         // in the engine role) — without that it stays in THIS client's process group, and a
         // Ctrl-C/SIGTERM aimed at the client (or its whole group) would take down the engine and
@@ -804,13 +803,14 @@ public final class EngineSpawn {
         // stable for the engine's whole life and is never removed by cache maintenance.
         pb.directory(paths.dir().toFile());
         // Merge stderr into stdout inside the child (one fd, no interleaving risk from two
-        // independently-opened streams onto the same file), then route that to the log — a fresh
-        // file every start, per docs/architecture.md. The spawner writes the log's first line itself
-        // (which artifact it chose — the one fact the engine can't know), then the child appends;
-        // if that header can't be written, fall back to plain truncate-and-redirect.
+        // independently-opened streams onto the same file), then route that to the log. The spawner
+        // writes the log's first line itself (which artifact it chose — the one fact the engine
+        // can't know), then the child appends; if that header can't be written, the child opens the
+        // log the way the header would have.
         pb.redirectErrorStream(true);
+        boolean headed = writeSpawnHeader(paths.log(), engine, freshLog);
         pb.redirectOutput(
-                writeSpawnHeader(paths.log(), engine)
+                headed || !freshLog
                         ? ProcessBuilder.Redirect.appendTo(paths.log().toFile())
                         : ProcessBuilder.Redirect.to(paths.log().toFile()));
         pb.redirectInput(ProcessBuilder.Redirect.PIPE);
@@ -820,17 +820,17 @@ public final class EngineSpawn {
     }
 
     /**
-     * Start the fresh log with the spawn decision, truncating whatever {@link #rotateLog} left
-     * behind (it's best-effort). {@code false} — and no header — if the file isn't writable; the
-     * caller then falls back to the truncating redirect so log semantics stay identical.
+     * Write the spawn decision as the log's next line: the first of a fresh file, or appended to a
+     * spawn moments old ({@link EngineLogRotation}). {@code false} — and no header — if the file
+     * isn't writable.
      */
-    private static boolean writeSpawnHeader(Path log, EngineArtifact engine) {
+    private static boolean writeSpawnHeader(Path log, EngineArtifact engine, boolean fresh) {
         try {
             Files.writeString(
                     log,
-                    "jk engine: spawning " + engine.path() + " (" + engine.how() + ")" + System.lineSeparator(),
+                    EngineLogRotation.header(engine.path(), engine.how(), Clock.SYSTEM) + System.lineSeparator(),
                     StandardOpenOption.CREATE,
-                    StandardOpenOption.TRUNCATE_EXISTING);
+                    fresh ? StandardOpenOption.TRUNCATE_EXISTING : StandardOpenOption.APPEND);
             return true;
         } catch (IOException e) {
             return false;
@@ -840,23 +840,6 @@ public final class EngineSpawn {
     /** True when this client runs as a GraalVM native image (so the spawned engine will too). */
     static boolean isNativeImage() {
         return System.getProperty("org.graalvm.nativeimage.imagecode") != null;
-    }
-
-    /**
-     * Keep exactly one historical log ({@code <key>.log} → {@code <key>.log.1}) before each fresh
-     * engine start truncates {@code <key>.log}. Without this, a crash followed by the next lazy
-     * respawn (which happens automatically, often before anyone looks) would silently destroy the
-     * crashed engine's own log — the one file {@link EngineClient#ensureRunning}'s error message and {@code jk
-     * engine status} both point at for post-mortem. Best-effort: a failure here (e.g. permissions)
-     * never blocks starting the engine.
-     */
-    private static void rotateLog(Path log) {
-        if (!Files.exists(log)) return;
-        try {
-            Files.move(log, log.resolveSibling(log.getFileName() + ".1"), StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException ignored) {
-            // Best-effort — the next start still truncates/overwrites `log` either way.
-        }
     }
 
     /** Outcome of waiting for a freshly spawned engine — lets the ladder tell a crash from a slow boot. */

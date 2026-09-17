@@ -62,7 +62,7 @@ public final class EngineControls {
                     "JK_ENGINE_LOG_MAX_MB",
                     "16",
                     ENGINE_START,
-                    "Engine log size cap in MiB; at the cap the log rolls to .1 (one generation kept). 0 = no cap."),
+                    "Engine log size cap in MiB; at the cap the log rolls to .1. 0 = no cap."),
             control(
                     "log-level",
                     "JK_LOG_LEVEL",
