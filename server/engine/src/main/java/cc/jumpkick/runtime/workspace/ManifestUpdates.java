@@ -37,10 +37,12 @@ import org.jspecify.annotations.Nullable;
 /**
  * The manifest phase of {@code jk update}: every exact pin a manifest declares moves to the newest
  * stable release on its Maven major ({@code --major} lifts that gate), in every dependency scope
- * table, in {@code [workspace.dependencies]}, and in every workspace member. Ranges, {@code
- * latest}, git, path and platform-managed entries keep their text; the relock that follows floats
- * them. Candidates come from the project's declared repositories, revalidated past the metadata
- * TTL like the relock itself.
+ * table, in {@code [workspace.dependencies]}, in the tool tables ({@link ToolPins}: {@code [dokka]
+ * version}, {@code [protobuf] version}, a {@code [protobuf.<id>] plugin}, a {@code [generate.<name>]
+ * tool} or {@code unpack}) and in every workspace member. Ranges, {@code latest}, git, path and
+ * platform-managed entries keep their text; the relock that follows floats them. Candidates come
+ * from the project's declared repositories, revalidated past the metadata TTL like the relock
+ * itself.
  */
 public final class ManifestUpdates {
 
@@ -64,12 +66,18 @@ public final class ManifestUpdates {
         boolean selects(String handle, String module) {
             return deps.isEmpty() || deps.contains(handle) || deps.contains(module);
         }
+
+        /** As {@link #selects(String, String)}, also by the tool pin's table path ({@code protobuf.grpc-java}). */
+        boolean selects(ToolPins.ToolPin pin) {
+            return selects(pin.handle(), pin.module()) || deps.contains(pin.table());
+        }
     }
 
     /**
      * One pin move: {@code handle} in {@code table} of the manifest under {@code dir} goes {@code
-     * from} → {@code to}. {@code moduleLabel} is the workspace member's coordinate, empty for a
-     * standalone project.
+     * from} → {@code to}. {@code table} is the scope table's name, {@link #WORKSPACE_TABLE}, or a
+     * tool pin's {@code <table>.<key>} ({@code dokka.version}, {@code protobuf.grpc-java.plugin}).
+     * {@code moduleLabel} is the workspace member's coordinate, empty for a standalone project.
      */
     public record Rewrite(
             Path dir, String moduleLabel, String table, String handle, String module, String from, String to) {
@@ -167,9 +175,39 @@ public final class ManifestUpdates {
                 rewrites.add(
                         new Rewrite(dir, moduleLabel, WORKSPACE_TABLE, e.getKey(), wd.module(), exact.version(), to));
             }
+            text = moveToolPins(dir, moduleLabel, build, text, repos, selection, versionsByModule, rewrites);
             if (!text.equals(before)) contents.put(manifest, text);
         }
         return new Plan(rewrites, contents);
+    }
+
+    /**
+     * {@code text} with every selected tool pin of {@code build} moved to its newest stable, each
+     * move recorded in {@code rewrites}; a pin whose key the editor cannot find is left as written.
+     */
+    private static String moveToolPins(
+            Path dir,
+            String moduleLabel,
+            JkBuild build,
+            String text,
+            RepoGroup repos,
+            Selection selection,
+            Map<String, List<String>> versionsByModule,
+            List<Rewrite> rewrites) {
+        for (ToolPins.ToolPin pin : ToolPins.of(build, text)) {
+            if (!selection.selects(pin)) continue;
+            String to = newer(pin.version(), available(pin.module(), repos, versionsByModule), selection.major());
+            if (to == null) continue;
+            try {
+                text = JkBuildEditor.setTableString(text, pin.table(), pin.key(), pin.rewritten(to));
+            } catch (IllegalStateException unwritable) {
+                Log.debug("update: [" + pin.table() + "] " + pin.key() + " not rewritten", unwritable);
+                continue;
+            }
+            rewrites.add(new Rewrite(
+                    dir, moduleLabel, pin.table() + "." + pin.key(), pin.handle(), pin.module(), pin.version(), to));
+        }
+        return text;
     }
 
     /** Write every manifest the plan changed. A build parsing concurrently never sees a torn file. */

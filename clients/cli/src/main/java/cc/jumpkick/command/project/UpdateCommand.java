@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -220,11 +221,12 @@ public final class UpdateCommand implements CliCommand {
 
     /**
      * One moved pin: {@code   handle  1.2.3 → 1.2.5} (workspace members prefix the manifest's
-     * directory; a {@code [workspace.dependencies]} entry says so).
+     * directory; an entry outside the dependency scope tables — {@code [workspace.dependencies]}, a
+     * tool table's key — names its table).
      */
     static void printRewrite(Path manifestDir, String table, String handle, String from, String to, Path workingDir) {
         String where = manifestDir.equals(workingDir) ? "" : PathDisplay.of(manifestDir, workingDir) + "  ";
-        String tableTag = "workspace.dependencies".equals(table) ? "  [dim](workspace.dependencies)[/]" : "";
+        String tableTag = isScopeTable(table) ? "" : "  [dim](" + RichText.escape(table) + ")[/]";
         CliOutput.out(RichText.parse("  [dim]" + RichText.escape(where) + "[/][bold]" + RichText.escape(handle)
                         + "[/]  " + RichText.escape(from) + " → [yellow]" + RichText.escape(to) + "[/]" + tableTag)
                 .render());
@@ -236,6 +238,14 @@ public final class UpdateCommand implements CliCommand {
      */
     static void printUpdatedLine(Path lockFile, int packages, Path workingDir) {
         JkWedge.ok("Update", updatedTail(lockFile, packages, workingDir)).print();
+    }
+
+    /** True for a dependency scope table ({@code dependencies}, {@code test-dependencies}, …). */
+    private static boolean isScopeTable(String table) {
+        for (Scope scope : Scope.values()) {
+            if (scope.tomlSection().equals(table)) return true;
+        }
+        return false;
     }
 
     /** Settle-line tail: {@code Updated [yellow]N[/] packages in [path]jk-lock.toml[/]}. */

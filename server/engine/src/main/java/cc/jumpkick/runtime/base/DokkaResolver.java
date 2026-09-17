@@ -30,7 +30,9 @@ public final class DokkaResolver {
     public static final String DEFAULT_VERSION = "2.2.0";
 
     private static final String GROUP = "org.jetbrains.dokka";
-    private static final String CLI = GROUP + ":dokka-cli";
+    /** The {@code dokka-cli} module a {@code [dokka] version} pins. */
+    public static final String CLI = GROUP + ":dokka-cli";
+
     private static final String ANALYSIS = GROUP + ":analysis-kotlin-symbols";
     private static final String JAVADOC_PLUGIN = GROUP + ":javadoc-plugin";
     private static final String BASE_PLUGIN = GROUP + ":dokka-base";
