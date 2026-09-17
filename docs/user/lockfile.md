@@ -329,7 +329,10 @@ members  = ["zipkin-server"]
 ```
 
 `zipkin-server`, whose `[spring-boot]` table brings the BOM, compiles, tests and packages against
-3.1.0; every other member reads the 2.0.3 `activemq-client` declares. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
+3.1.0; every other member reads the 2.0.3 `activemq-client` declares. A member's row can also be
+the workspace's version with fewer `deps`: the edges a BOM or `[managed-dependencies]` entry only
+that member holds excluded, listed under its `excluded-by`, so the member's classpath walk never
+reaches them where every other member's does. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
 own graph reaches has only its `members` row. A member's row is written with the member's own
 scopes, so a version the workspace holds only as a test row and a member wants on its main
 classpath is a `members` row with `scopes = ["main"]`. `jk lock` keeps the versions such a row holds like

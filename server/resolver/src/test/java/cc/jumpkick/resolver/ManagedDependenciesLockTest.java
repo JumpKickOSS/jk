@@ -246,7 +246,9 @@ class ManagedDependenciesLockTest {
     }
 
     private static List<Lockfile.Artifact> rows(Lockfile lock, String packageKey) {
-        return lock.artifacts().stream().filter(a -> a.packageKey().equals(packageKey)).toList();
+        return lock.artifacts().stream()
+                .filter(a -> a.packageKey().equals(packageKey))
+                .toList();
     }
 
     /** leaf 1.0 brings deep; the managed entry on leaf excludes everything under it. */
