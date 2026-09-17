@@ -31,11 +31,13 @@ import java.util.TreeMap;
 /**
  * The rows a workspace member reads instead of the merged solve's. The merged manifest is solved
  * once and its rows are the workspace's answer; a member is solved on its own only when that
- * answer cannot be its answer: it declares an exact version the merged row does not carry, or a
- * coordinate in its closure was pinned by a BOM the member does not hold at a version an edge of
- * the member's own graph cannot take — its own platform table manages the module at another
- * version, or a dependency's POM declared one the pinned version is below or past the compatible
- * line of. A floating selector and a compatible lift are floors the workspace's row satisfies.
+ * answer cannot be its answer: it declares an exact version the merged row does not carry, a BOM
+ * of its own table that not every member holds manages a coordinate in its closure at a version
+ * the merged row does not carry, or a coordinate in its closure was pinned by a BOM the member
+ * does not hold at a version an edge of the member's own graph cannot take — its own platform
+ * table manages the module at another version, or a dependency's POM declared one the pinned
+ * version is below or past the compatible line of. A floating selector and a compatible lift are
+ * floors the workspace's row satisfies.
  * Where the member's solve disagrees with a merged row, its row is added with {@code members =
  * [path]}; where it agrees, nothing is added. See {@code docs/user/workspaces.md}.
  */
@@ -157,9 +159,11 @@ final class MemberPartitions {
 
     /**
      * The {@code group:artifact}s on which the merged answer cannot be this member's: an exact pin of
-     * the member the merged version does not equal, or a merged version a BOM the member does not
-     * hold pinned while the member's own platform table manages the module at another version or an
-     * edge in the member's closure declared a version the pinned one cannot stand in for. A root the
+     * the member the merged version does not equal, a module the member's own table manages through
+     * a BOM the workspace's table never folded at a version the merged row does not carry, or a
+     * merged version a BOM the member does not hold pinned while the member's own platform table
+     * manages the module at another version or an edge in the member's closure declared a version
+     * the pinned one cannot stand in for. A root the
      * member asks for with a floating selector takes the merged row whatever it is, and so does a
      * test-scope exact pin on a module the member's main graph reaches: main's version is the one
      * on its test classpath, and a solve of its own would say the same. Empty means the member
@@ -191,10 +195,17 @@ final class MemberPartitions {
             Resolution.ResolvedModule merged = unionByKey.get(key);
             if (merged == null) continue;
             String ga = PackageId.parse(key).ga();
-            if (union.constraints().pinnedBy(ga, merged.version()) == null) continue;
             String ownManaged = own.versions().get(ga);
             if (merged.version().equals(ownManaged)) continue;
-            if (ownManaged != null || edgeDeclaresOutside(key, merged.version(), closure)) flagged.add(ga);
+            if (union.constraints().pinnedBy(ga, merged.version()) != null) {
+                // A BOM the member does not hold pinned the merged version.
+                if (ownManaged != null || edgeDeclaresOutside(key, merged.version(), closure)) flagged.add(ga);
+            } else if (ownManaged != null
+                    && !ownManaged.equals(union.constraints().collectedVersion(ga))) {
+                // A BOM the workspace's table never folded — the member's own, or a sibling's it depends
+                // on — manages the module at a version the merged row does not carry.
+                flagged.add(ga);
+            }
         }
         return flagged;
     }

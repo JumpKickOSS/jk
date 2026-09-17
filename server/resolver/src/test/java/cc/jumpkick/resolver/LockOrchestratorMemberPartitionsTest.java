@@ -15,6 +15,8 @@ import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.Workspace;
+import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
@@ -24,6 +26,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -31,8 +34,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A workspace lock partitions a coordinate per member only where the merged answer cannot be a
- * member's: a BOM one member holds lifts a transitive the other member's graph declares lower, or
- * two members pin one coordinate exactly at different versions. Members that agree share one row.
+ * member's: a BOM one member holds manages a transitive at a version the workspace's row — solved
+ * under the BOMs every member holds — does not carry, or two members pin one coordinate exactly at
+ * different versions. Members that agree share one row.
  */
 class LockOrchestratorMemberPartitionsTest {
 
@@ -47,8 +51,13 @@ class LockOrchestratorMemberPartitionsTest {
         upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
     }
 
+    /**
+     * The merged manifest carries the BOM one member holds, as {@code WorkspaceMerge} merges it; the
+     * merged solve runs under the BOMs every member holds, so the workspace's row is the version
+     * {@code middle} declares and the holder reads a row of its own at the BOM's.
+     */
     @Test
-    void a_bom_one_member_holds_does_not_lift_the_other_members_transitive(@TempDir Path tempDir) throws Exception {
+    void a_bom_one_member_holds_gives_that_member_its_row_and_lifts_no_other(@TempDir Path tempDir) throws Exception {
         serveMiddleOverLeaf();
         Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
         Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
@@ -61,20 +70,21 @@ class LockOrchestratorMemberPartitionsTest {
                 .lock(merged, "test");
 
         List<Lockfile.Artifact> leaf = rows(lock, "com.foo:leaf:jar:");
-        assertThat(leaf).extracting(Lockfile.Artifact::version).containsExactlyInAnyOrder("2.0", "1.0");
+        assertThat(leaf).extracting(Lockfile.Artifact::version).containsExactlyInAnyOrder("1.0", "2.0");
         Lockfile.Artifact workspace =
                 leaf.stream().filter(r -> !r.isPartition()).findFirst().orElseThrow();
-        assertThat(workspace.version()).isEqualTo("2.0");
-        assertThat(workspace.pinnedBy()).isEqualTo("org.example:the-bom:1.0");
-        Lockfile.Artifact libs =
+        assertThat(workspace.version()).isEqualTo("1.0");
+        assertThat(workspace.pinnedBy()).isNull();
+        Lockfile.Artifact apps =
                 leaf.stream().filter(Lockfile.Artifact::isPartition).findFirst().orElseThrow();
-        assertThat(libs.version()).isEqualTo("1.0");
-        assertThat(libs.members()).containsExactly("lib");
-        assertThat(libs.scopes()).contains(Scope.MAIN);
+        assertThat(apps.version()).isEqualTo("2.0");
+        assertThat(apps.pinnedBy()).isEqualTo("org.example:the-bom:1.0");
+        assertThat(apps.members()).containsExactly("app");
+        assertThat(apps.scopes()).contains(Scope.MAIN);
         // middle is the same for both members: one row, no partition.
         assertThat(rows(lock, "com.foo:middle:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
 
-        // Each member's classpath reads its own row.
+        // Each member's classpath reads its own row; a member on no row reads the workspace's.
         assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
                 .extracting(Lockfile.Artifact::version)
                 .containsExactly("1.0");
@@ -83,29 +93,32 @@ class LockOrchestratorMemberPartitionsTest {
                 .containsExactly("2.0");
         assertThat(rows(lock.forMember("other"), "com.foo:leaf:jar:"))
                 .extracting(Lockfile.Artifact::version)
-                .containsExactly("2.0");
+                .containsExactly("1.0");
     }
 
     /**
-     * The BOM one member holds lifts a transitive within the line the other member's graph declared
-     * it on: {@code middle} declares leaf 1.0 and the BOM manages 1.1. The declaration is a floor 1.1
-     * satisfies, so both members read the workspace's row and no partition is written.
+     * A versionless root under the BOM one member holds puts leaf 1.1 on the workspace's row, within
+     * the line the other member's graph declared it on: {@code middle} declares leaf 1.0. The
+     * declaration is a floor 1.1 satisfies, so both members read the workspace's row and no
+     * partition is written.
      */
     @Test
     void a_compatible_lift_by_a_siblings_bom_is_a_floor_the_member_shares(@TempDir Path tempDir) throws Exception {
         serveMiddleOverLeaf();
         upstream.metadata("com.foo", "leaf", "1.0", "1.1");
         upstream.pom("com.foo", "leaf", "1.1", leafPom("leaf", "1.1"));
+        upstream.jar("com.foo", "leaf", "1.1");
         upstream.pom(
                 "org.example",
                 "the-bom",
                 "1.0",
                 MavenStub.bom("org.example", "the-bom", "1.0", List.of("com.foo:leaf:1.1")));
         Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency leaf = Dependency.platformManaged("leaf", "com.foo:leaf");
         Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
-        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(leaf)));
         JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
-        JkBuild merged = manifest("root", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+        JkBuild merged = manifest("root", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(leaf, middle)));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
                 .withMembers(List.of(new LockOrchestrator.Member("app", app), new LockOrchestrator.Member("lib", lib)))
@@ -120,7 +133,8 @@ class LockOrchestratorMemberPartitionsTest {
     /**
      * The BOM a framework table implies ({@code [spring-boot] version} → {@code
      * spring-boot-dependencies}) is the declaring member's platform like one it wrote out: it
-     * governs that member's rows and reaches no member that never depends on it.
+     * governs that member's rows, written beside the workspace's, and reaches no member that never
+     * depends on it, whose rows stay the workspace's.
      */
     @Test
     void a_bom_a_framework_table_implies_constrains_only_the_member_that_holds_it(@TempDir Path tempDir)
@@ -140,11 +154,11 @@ class LockOrchestratorMemberPartitionsTest {
                 .lock(merged, "test");
 
         assertThat(rows(lock.forMember("server"), "com.foo:leaf:jar:"))
-                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
-                .containsExactly(tuple("2.0", "org.example:the-bom:1.0"));
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
+                .containsExactly(tuple("2.0", "org.example:the-bom:1.0", List.of("server")));
         assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
-                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::members)
-                .containsExactly(tuple("1.0", List.of("lib")));
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", null, List.of()));
     }
 
     /**
@@ -240,11 +254,12 @@ class LockOrchestratorMemberPartitionsTest {
     }
 
     /**
-     * One member holds a framework table whose BOM manages Jupiter and a widget below their latest
-     * releases; three plain members hold no platform table, one asks for the widget at {@code latest}
-     * and none declares a test dependency, so the runner injects Jupiter at {@code latest} for them. A
-     * floating selector is a floor the workspace's row satisfies, so every member reads the BOM's
-     * versions and the lock carries no {@code members} key.
+     * One member holds a framework table whose BOM manages Jupiter at the version its versionless
+     * test starter declares and a widget below its latest release; two plain members hold no
+     * platform table, one asks for the widget at {@code latest} and none declares a test dependency.
+     * The BOM moves no plain row: the widget is the latest the floating selector asks for, Jupiter is
+     * the starter's declaration, and the holder's table agrees with that row, so every member reads
+     * the workspace's rows and the lock carries no {@code members} key.
      */
     @Test
     void a_member_without_a_platform_table_reads_the_workspaces_rows(@TempDir Path tempDir) throws Exception {
@@ -308,10 +323,13 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
         assertThat(rows(lock, "org.junit.jupiter:junit-jupiter:jar:"))
                 .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
-                .containsExactly(tuple("6.0.3", "org.example:boot-bom:1.0"));
+                .containsExactly(tuple("6.0.3", null));
+        assertThat(rows(lock, "com.foo:starter-test:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("1.0", "org.example:boot-bom:1.0"));
         assertThat(rows(lock, "com.foo:widget:jar:"))
                 .extracting(Lockfile.Artifact::version)
-                .containsExactly("1.0");
+                .containsExactly("2.0");
         for (String member : List.of("domain", "service", "web")) {
             assertThat(rows(lock.forMember(member), "org.junit.jupiter:junit-jupiter:jar:"))
                     .extracting(Lockfile.Artifact::version)
@@ -394,6 +412,165 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
                 .extracting(Lockfile.Artifact::version)
                 .containsExactlyInAnyOrder("2.0", "3.0");
+    }
+
+    /**
+     * The jk-quarkus shape: one of three members holds a BOM that manages thirty transitives at a
+     * version above the one every member's graph declares. The workspace's rows are the rows the same
+     * workspace locks to without the BOM, and the holder alone reads rows of its own at the BOM's
+     * versions.
+     */
+    @Test
+    void a_bom_one_member_holds_leaves_the_plain_rows_and_gives_the_holder_its_own(@TempDir Path tempDir)
+            throws Exception {
+        List<String> managed = new ArrayList<>();
+        StringBuilder edges = new StringBuilder();
+        for (int i = 1; i <= 30; i++) {
+            String artifact = "lib" + i;
+            upstream.metadata("com.foo", artifact, "1.0", "2.0");
+            for (String v : List.of("1.0", "2.0")) {
+                upstream.pom("com.foo", artifact, v, leafPom(artifact, v));
+                upstream.jar("com.foo", artifact, v);
+            }
+            managed.add("com.foo:" + artifact + ":2.0");
+            edges.append("<dependency><groupId>com.foo</groupId><artifactId>")
+                    .append(artifact)
+                    .append("</artifactId><version>1.0</version></dependency>");
+        }
+        upstream.metadata("com.foo", "hub", "1.0");
+        upstream.pom(
+                "com.foo",
+                "hub",
+                "1.0",
+                "<project><groupId>com.foo</groupId><artifactId>hub</artifactId><version>1.0</version>"
+                        + "<dependencies>" + edges + "</dependencies></project>");
+        upstream.jar("com.foo", "hub", "1.0");
+        upstream.pom("org.example", "the-bom", "1.0", MavenStub.bom("org.example", "the-bom", "1.0", managed));
+        Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency hub = new Dependency("com.foo:hub", VersionSelector.parse("=1.0"));
+        JkBuild cli = manifest("cli", Map.of(Scope.MAIN, List.of(hub)));
+        JkBuild engine = manifest("engine", Map.of(Scope.MAIN, List.of(hub)));
+        JkBuild plainQuarkus = manifest("quarkus", Map.of(Scope.MAIN, List.of(hub)));
+        JkBuild quarkus = manifest("quarkus", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(hub)));
+
+        Lockfile without = lockWorkspace(tempDir, Map.of(), List.of(plainQuarkus, cli, engine));
+        Lockfile with = lockWorkspace(tempDir, Map.of(), List.of(quarkus, cli, engine));
+
+        assertThat(plainRows(with)).containsExactlyInAnyOrderElementsOf(plainRows(without));
+        List<Lockfile.Artifact> partitions =
+                with.artifacts().stream().filter(Lockfile.Artifact::isPartition).toList();
+        assertThat(partitions).hasSize(30).allSatisfy(row -> {
+            assertThat(row.members()).containsExactly("quarkus");
+            assertThat(row.version()).isEqualTo("2.0");
+            assertThat(row.pinnedBy()).isEqualTo("org.example:the-bom:1.0");
+        });
+        assertThat(rows(with.forMember("cli"), "com.foo:lib7:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+        assertThat(rows(with.forMember("quarkus"), "com.foo:lib7:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+    }
+
+    /**
+     * A member that depends on the holder folds the holder's BOM into its own table, so it reads the
+     * holder's rows; a member that does not depend on it reads the workspace's.
+     */
+    @Test
+    void a_members_bom_reaches_the_members_that_depend_on_it_and_no_other(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        JkBuild quarkus = manifest("quarkus", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+        JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(Dependency.workspace("quarkus"))));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(quarkus, app, lib));
+
+        assertThat(rows(lock, "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
+                .containsExactlyInAnyOrder(
+                        tuple("1.0", null, List.of()),
+                        tuple("2.0", "org.example:the-bom:1.0", List.of("app", "quarkus")));
+        assertThat(rows(lock, "com.foo:middle:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+    }
+
+    /**
+     * A versionless dependency a member declares under its own BOM takes the BOM's version as the
+     * workspace's row, as an exact pin the member wrote would; a sibling whose graph declares the
+     * module below that line reads a row of its own.
+     */
+    @Test
+    void a_versionless_root_under_a_members_own_bom_is_the_workspaces_row(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency leaf = Dependency.platformManaged("leaf", "com.foo:leaf");
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        JkBuild quarkus = manifest("quarkus", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(leaf)));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(quarkus, lib));
+
+        assertThat(rows(lock, "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
+                .containsExactlyInAnyOrder(
+                        tuple("2.0", "org.example:the-bom:1.0", List.of()), tuple("1.0", null, List.of("lib")));
+    }
+
+    /** A BOM the root holds, or one every member holds, is the workspace's constraint: one row, no partition. */
+    @Test
+    void a_bom_the_root_or_every_member_holds_is_the_workspaces_constraint(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        JkBuild plainApp = manifest("app", Map.of(Scope.MAIN, List.of(middle)));
+        JkBuild plainLib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
+        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+        JkBuild lib = manifest("lib", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+
+        Lockfile underRoot = lockWorkspace(tempDir, Map.of(Scope.PLATFORM, List.of(bom)), List.of(plainApp, plainLib));
+        Lockfile underEvery = lockWorkspace(tempDir, Map.of(), List.of(app, lib));
+
+        for (Lockfile lock : List.of(underRoot, underEvery)) {
+            assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
+            assertThat(rows(lock, "com.foo:leaf:jar:"))
+                    .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                    .containsExactly(tuple("2.0", "org.example:the-bom:1.0"));
+        }
+    }
+
+    /** The workspace locked as the pipeline locks it: the merged manifest, with every member behind it. */
+    private Lockfile lockWorkspace(Path tempDir, Map<Scope, List<Dependency>> rootDeps, List<JkBuild> modules)
+            throws Exception {
+        List<String> names = modules.stream().map(m -> m.project().name()).toList();
+        EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
+        copy.putAll(rootDeps);
+        JkBuild root = JkBuild.builder(new Project("com.example", "root", "0.1.0", 25))
+                .dependencies(new JkBuild.Dependencies(copy))
+                .workspace(new Workspace(names))
+                .build();
+        List<LockOrchestrator.Member> members = new ArrayList<>();
+        for (JkBuild module : modules) {
+            members.add(new LockOrchestrator.Member(
+                    module.project().name(), WorkspaceMerge.applyToModule(root, module, modules)));
+        }
+        return new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(members)
+                .lock(WorkspaceMerge.merge(root, modules), "test");
+    }
+
+    /** Every row without a {@code members} key as (package, version, scopes, pinned-by). */
+    private static List<String> plainRows(Lockfile lock) {
+        return lock.artifacts().stream()
+                .filter(r -> !r.isPartition())
+                .map(r -> r.packageKey() + "@" + r.version() + " " + r.scopes() + " " + r.pinnedBy())
+                .collect(Collectors.toList());
     }
 
     /** {@code the-bom} manages leaf at 2.0; {@code middle} declares leaf 1.0; both leaf releases exist. */

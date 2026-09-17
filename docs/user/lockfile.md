@@ -310,19 +310,19 @@ same coordinate for the members it lists, by their `[[module]]` path:
 ```toml
 [[artifact]]
 name     = "jakarta.jms:jakarta.jms-api:jar:"
-version  = "3.1.0"
-pinned-by = "org.springframework.boot:spring-boot-dependencies:3.5.12"
+version  = "2.0.3"
 scopes   = ["main"]
 
 [[artifact]]
 name     = "jakarta.jms:jakarta.jms-api:jar:"
-version  = "2.0.3"
+version  = "3.1.0"
+pinned-by = "org.springframework.boot:spring-boot-dependencies:3.5.12"
 scopes   = ["main"]
-members  = ["zipkin-collector/activemq"]
+members  = ["zipkin-server"]
 ```
 
-`zipkin-collector/activemq` compiles, tests and packages against 2.0.3; every other member reads
-3.1.0. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
+`zipkin-server`, whose `[spring-boot]` table brings the BOM, compiles, tests and packages against
+3.1.0; every other member reads the 2.0.3 `activemq-client` declares. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
 own graph reaches has only its `members` row. A member's row is written with the member's own
 scopes, so a version the workspace holds only as a test row and a member wants on its main
 classpath is a `members` row with `scopes = ["main"]`. `jk lock` keeps the versions such a row holds like
