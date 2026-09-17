@@ -359,6 +359,13 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   equals its parent's shares the parent's; jar POMs retain no table at all. A reactor whose every
   module chains to a three-thousand-row BOM therefore holds one table, not one per chain link,
   which is what keeps a thousand-package lock inside the engine's default heap.
+- **Repeated strings are shared:** `Interned` (in `host`) is a bounded process-wide table of the
+  short strings a lock repeats — a POM's group ids, artifact ids, versions, scopes, property names,
+  the resolver's package and edge keys — so the effective-POM memo and every solve in flight hold
+  one instance of `io.quarkus` or `test`, not one per POM that spells it. What each platform BOM
+  says (`PlatformConstraints.BomTable`) is derived once per lock and copied into each member's own
+  table, which stays the member's because the solve edits it; a member's table is collected once,
+  to decide whether it needs a solve of its own and then to run that solve.
 - **Where a lock's time went:** with `JK_RESOLVE_PROFILE=1` (or `-Djk.resolve.profile=true`) in
   the engine's environment, `LockPipeline` logs one `resolve-profile` line per lock — POM builds
   and their memo hits, dependency and version-catalog reads, the solve, and the prep / resolve /

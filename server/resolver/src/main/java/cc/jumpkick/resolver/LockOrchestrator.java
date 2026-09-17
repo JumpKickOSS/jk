@@ -257,8 +257,18 @@ public final class LockOrchestrator {
         LockProgress progress = new LockProgress(observer, timings);
         // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
+        // ... and one table per BOM, shared by the merged manifest's platform table and every member's.
+        PlatformConstraints.BomTables bomTables = new PlatformConstraints.BomTables();
+        PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder, bomTables, pinPolicy);
         Solve union = solveManifest(
-                project, featuresRequested, withDefaults, lockedVersionPrefs, progress, observer, pomBuilder);
+                project,
+                featuresRequested,
+                withDefaults,
+                lockedVersionPrefs,
+                progress,
+                observer,
+                pomBuilder,
+                constraints);
         for (String line : repos.weakChecksumNotes()) observer.onNote(line);
         for (String line : repos.mirrorNotes()) observer.onNote(line);
         // A launcher and a Jupiter engine on different Platform lines run nothing and report success.
@@ -272,16 +282,16 @@ public final class LockOrchestrator {
             for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
         }
         if (!members.isEmpty()) {
-            MemberPartitions.MemberSolver solver = (manifest, features, prefs) -> {
+            MemberPartitions.MemberSolver solver = (manifest, features, prefs, own) -> {
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
                 Solve solve = solveManifest(
-                        manifest, features, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder);
+                        manifest, features, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder, own);
                 silent.materializePhase(0);
                 return assemble(solve, manifest, jkVersion, silent, pomBuilder);
             };
-            MemberPartitions partitions =
-                    new MemberPartitions(union, repos, pomBuilder, pinPolicy, featuresRequested, withDefaults);
+            MemberPartitions partitions = new MemberPartitions(
+                    union, repos, pomBuilder, bomTables, pinPolicy, featuresRequested, withDefaults);
             ResolveProfile.Phases pass = ResolveProfile.phases();
             pass.begin(ResolveProfile::phasePartition);
             try {
@@ -310,6 +320,10 @@ public final class LockOrchestrator {
             @Nullable MavenPackageSource source,
             KmpRedirects kmp) {}
 
+    /**
+     * @param constraints the manifest's platform table, collected by the caller; the solve edits it
+     *     (exact roots strip their BOM say, the runtime inject and the test-framework pins add to it)
+     */
     private Solve solveManifest(
             JkBuild project,
             Collection<String> featuresRequested,
@@ -317,10 +331,10 @@ public final class LockOrchestrator {
             Map<String, String> prefs,
             LockProgress progress,
             ResolveObserver observer,
-            EffectivePomBuilder pomBuilder)
+            EffectivePomBuilder pomBuilder,
+            PlatformConstraints constraints)
             throws IOException, InterruptedException {
         LockRoots.Declared declared = LockRoots.partition(project, featuresRequested, withDefaults);
-        PlatformConstraints constraints = PlatformConstraints.collect(project, repos, pomBuilder, pinPolicy);
         Map<String, String> bomConstraints = constraints.versions();
 
         // Language runtimes must be lock deps so package-jar / boot-jar nest them.

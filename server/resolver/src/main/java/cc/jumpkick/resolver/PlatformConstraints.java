@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -149,15 +150,46 @@ public final class PlatformConstraints {
     }
 
     /**
+     * What one BOM says, read off its effective POM once and shared by every table that imports it:
+     * the version it manages each module at and the exclusions it writes on a module.
+     */
+    record BomTable(Map<String, String> versions, Map<String, List<String>> exclusions) {
+        BomTable {
+            versions = Map.copyOf(versions);
+            exclusions = Map.copyOf(exclusions);
+        }
+
+        static BomTable of(EffectivePom bomPom) {
+            return new BomTable(managedVersionsByModule(bomPom), bomExclusionsByModule(bomPom));
+        }
+    }
+
+    /**
+     * The {@link BomTable} of each BOM a lock has read, keyed by {@code group:artifact:version}. One
+     * lock collects a platform table for the merged manifest and again for every workspace member,
+     * and the members of a reactor import the same few BOMs, so the tables are derived once and each
+     * collection copies from them; a member's own table stays its own because {@link #apply} and
+     * the runtime inject edit it.
+     */
+    static final class BomTables {
+        private final Map<String, BomTable> byGav = new ConcurrentHashMap<>();
+
+        BomTable of(String gav, EffectivePom bomPom) {
+            return byGav.computeIfAbsent(gav, k -> BomTable.of(bomPom));
+        }
+    }
+
+    /**
      * Fold every {@code [managed-dependencies]} entry, then load every {@code [platform-dependencies]}
      * BOM in declaration order and fold its managed versions in; a module an earlier entry manages
-     * at another version follows {@code pinPolicy}.
+     * at another version follows {@code pinPolicy}. {@code tables} is the lock's memo of what each
+     * BOM says; a caller that collects once may hand a fresh one.
      */
     static PlatformConstraints collect(
-            JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, PinPolicy pinPolicy)
+            JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, BomTables tables, PinPolicy pinPolicy)
             throws IOException, InterruptedException {
         PlatformConstraints c = new PlatformConstraints(pinPolicy == null ? PinPolicy.EXACT : pinPolicy);
-        c.fold(project, repos, pomBuilder);
+        c.fold(project, repos, pomBuilder, tables);
         return c;
     }
 
@@ -202,7 +234,7 @@ public final class PlatformConstraints {
                 roots.fileDeps());
     }
 
-    private void fold(JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder)
+    private void fold(JkBuild project, RepoGroup repos, EffectivePomBuilder pomBuilder, BomTables tables)
             throws IOException, InterruptedException {
         foldManaged(project, repos);
         for (Dependency platformDep : project.dependencies().of(Scope.PLATFORM)) {
@@ -213,7 +245,8 @@ public final class PlatformConstraints {
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
             EffectivePom bomPom = load(platformDep, bomCoord, pomBuilder);
             String bomLabel = bomCoord.toGav();
-            for (Map.Entry<String, String> m : managedVersionsByModule(bomPom).entrySet()) {
+            BomTable table = tables.of(bomLabel, bomPom);
+            for (Map.Entry<String, String> m : table.versions().entrySet()) {
                 String existing = versions.get(m.getKey());
                 if (existing == null) {
                     versions.put(m.getKey(), m.getValue());
@@ -222,7 +255,7 @@ public final class PlatformConstraints {
                     laterBomDisagrees(m.getKey(), existing, bomLabel, m.getValue());
                 }
             }
-            bomExclusionsByModule(bomPom).forEach(bomExclusions::putIfAbsent);
+            table.exclusions().forEach(bomExclusions::putIfAbsent);
             // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
             // often omit named-locks. Bare edges are exact under a platform (EffectivePom fill),
             // but keep the family in the platform map for preferredVersion / pinned-by when an

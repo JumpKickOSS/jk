@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
@@ -892,7 +893,8 @@ public final class MavenPackageSource implements PackageSource {
     static String packageKey(Pom.Dep dep) {
         String type = solverType(dep.type());
         String classifier = dep.classifier() == null ? "" : dep.classifier();
-        return PackageId.of(dep.groupId(), dep.artifactId(), type, classifier).key();
+        return Interned.of(
+                PackageId.of(dep.groupId(), dep.artifactId(), type, classifier).key());
     }
 
     /** A packaging that is still one library on the classpath keys as the default type. */
@@ -1226,12 +1228,12 @@ public final class MavenPackageSource implements PackageSource {
     static String rawEdgesCacheKey(String pkg, String version) {
         try {
             if (PackageId.isMavenPackageKey(pkg)) {
-                return PackageId.parse(pkg).ga() + "@" + version;
+                return Interned.of(PackageId.parse(pkg).ga() + "@" + version);
             }
         } catch (RuntimeException e) {
             // fall through
             Log.debug("rawEdgesCacheKey: fall through", e);
         }
-        return pkg + "@" + version;
+        return Interned.of(pkg + "@" + version);
     }
 }

@@ -42,11 +42,12 @@ import java.util.TreeMap;
 final class MemberPartitions {
 
     /**
-     * Solves one member's effective manifest under the requested features it declares and the given
-     * soft preferences, and assembles its rows.
+     * Solves one member's effective manifest under the requested features it declares, the given
+     * soft preferences and its own platform table, and assembles its rows.
      */
     interface MemberSolver {
-        Lockfile solve(JkBuild manifest, Collection<String> features, Map<String, String> prefs)
+        Lockfile solve(
+                JkBuild manifest, Collection<String> features, Map<String, String> prefs, PlatformConstraints own)
                 throws IOException, InterruptedException;
     }
 
@@ -56,6 +57,7 @@ final class MemberPartitions {
     private final LockOrchestrator.Solve union;
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
+    private final PlatformConstraints.BomTables bomTables;
     private final PinPolicy pinPolicy;
     private final Collection<String> featuresRequested;
     private final boolean withDefaults;
@@ -67,12 +69,14 @@ final class MemberPartitions {
             LockOrchestrator.Solve union,
             RepoGroup repos,
             EffectivePomBuilder pomBuilder,
+            PlatformConstraints.BomTables bomTables,
             PinPolicy pinPolicy,
             Collection<String> featuresRequested,
             boolean withDefaults) {
         this.union = union;
         this.repos = repos;
         this.pomBuilder = pomBuilder;
+        this.bomTables = bomTables;
         this.pinPolicy = pinPolicy;
         this.featuresRequested = featuresRequested;
         this.withDefaults = withDefaults;
@@ -108,11 +112,12 @@ final class MemberPartitions {
         Map<String, EnumMap<Scope, Boolean>> partitionScopes = new LinkedHashMap<>();
         for (LockOrchestrator.Member member : members) {
             JkBuild manifest = solvable(member.manifest());
-            PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, pinPolicy);
+            PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, bomTables, pinPolicy);
             Set<String> flagged = flagged(manifest, own);
             if (flagged.isEmpty()) continue;
             Map<String, String> prefs = prefsFor(flagged, memberPrefs.getOrDefault(member.path(), Map.of()));
-            Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs);
+            // The table read to flag the member is the table its solve runs under.
+            Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs, own);
             Map<String, String> differing = new TreeMap<>();
             for (Lockfile.Artifact row : mine.artifacts()) {
                 String key = row.packageKey() + "@" + row.version();

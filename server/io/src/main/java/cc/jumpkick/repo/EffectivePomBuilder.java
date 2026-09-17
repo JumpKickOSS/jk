@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.host.Interned;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.run.JkThreads;
@@ -612,7 +613,15 @@ public final class EffectivePomBuilder {
                 && classifier == d.classifier()
                 && type == d.type();
         if (unchanged) return d;
-        return new Pom.Dep(groupId, artifactId, version, scope, d.optional(), classifier, type, d.exclusions());
+        return new Pom.Dep(
+                Interned.of(groupId),
+                Interned.of(artifactId),
+                Interned.ofNullable(version),
+                Interned.ofNullable(scope),
+                d.optional(),
+                Interned.ofNullable(classifier),
+                Interned.ofNullable(type),
+                d.exclusions());
     }
 
     /**

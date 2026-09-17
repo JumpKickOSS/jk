@@ -7,6 +7,7 @@ import static cc.jumpkick.host.DomXml.childText;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.Interned;
 import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.io.InputStream;
@@ -144,16 +145,16 @@ public final class PomParser {
             String packaging,
             Pom.@Nullable Parent parent) {
         for (String prefix : List.of("project.", "pom.")) {
-            if (groupId != null) ctx.put(prefix + "groupId", groupId);
-            ctx.put(prefix + "artifactId", artifactId);
-            if (version != null) ctx.put(prefix + "version", version);
-            ctx.put(prefix + "packaging", packaging);
+            if (groupId != null) ctx.put(Interned.of(prefix + "groupId"), Interned.of(groupId));
+            ctx.put(Interned.of(prefix + "artifactId"), Interned.of(artifactId));
+            if (version != null) ctx.put(Interned.of(prefix + "version"), Interned.of(version));
+            ctx.put(Interned.of(prefix + "packaging"), Interned.of(packaging));
         }
         if (parent == null) return;
         for (String prefix : List.of("project.parent.", "parent.")) {
-            ctx.put(prefix + "groupId", parent.groupId());
-            ctx.put(prefix + "artifactId", parent.artifactId());
-            ctx.put(prefix + "version", parent.version());
+            ctx.put(Interned.of(prefix + "groupId"), Interned.of(parent.groupId()));
+            ctx.put(Interned.of(prefix + "artifactId"), Interned.of(parent.artifactId()));
+            ctx.put(Interned.of(prefix + "version"), Interned.of(parent.version()));
         }
     }
 
@@ -241,9 +242,9 @@ public final class PomParser {
     private static Pom.@Nullable Parent parseParent(Element project) {
         Element parent = childElement(project, "parent");
         if (parent == null) return null;
-        String g = required(parent, "groupId", "<parent>");
-        String a = required(parent, "artifactId", "<parent>");
-        String v = required(parent, "version", "<parent>");
+        String g = Interned.of(required(parent, "groupId", "<parent>"));
+        String a = Interned.of(required(parent, "artifactId", "<parent>"));
+        String v = Interned.of(required(parent, "version", "<parent>"));
         return new Pom.Parent(g, a, v);
     }
 
@@ -252,7 +253,9 @@ public final class PomParser {
         if (propsElement == null) return Map.of();
         Map<String, String> props = new LinkedHashMap<>();
         for (Element child : childElements(propsElement)) {
-            props.put(child.getNodeName(), child.getTextContent().trim());
+            props.put(
+                    Interned.of(child.getNodeName()),
+                    Interned.of(child.getTextContent().trim()));
         }
         return props;
     }
@@ -271,13 +274,13 @@ public final class PomParser {
 
             List<Pom.Dep.Exclusion> exclusions = parseExclusions(childElement(dep, "exclusions"));
             result.add(new Pom.Dep(
-                    substitute(g, ctx),
-                    substitute(a, ctx),
-                    substituteOrNull(v, ctx),
-                    substituteOrNull(scope, ctx),
+                    Interned.of(substitute(g, ctx)),
+                    Interned.of(substitute(a, ctx)),
+                    Interned.ofNullable(substituteOrNull(v, ctx)),
+                    Interned.ofNullable(substituteOrNull(scope, ctx)),
                     "true".equalsIgnoreCase(optionalStr),
-                    substituteOrNull(classifier, ctx),
-                    substituteOrNull(type, ctx),
+                    Interned.ofNullable(substituteOrNull(classifier, ctx)),
+                    Interned.ofNullable(substituteOrNull(type, ctx)),
                     exclusions));
         }
         return result;
@@ -288,7 +291,8 @@ public final class PomParser {
         List<Pom.Dep.Exclusion> result = new ArrayList<>();
         for (Element e : childElements(exclusions, "exclusion")) {
             result.add(new Pom.Dep.Exclusion(
-                    required(e, "groupId", "<exclusion>"), required(e, "artifactId", "<exclusion>")));
+                    Interned.of(required(e, "groupId", "<exclusion>")),
+                    Interned.of(required(e, "artifactId", "<exclusion>"))));
         }
         return result;
     }
