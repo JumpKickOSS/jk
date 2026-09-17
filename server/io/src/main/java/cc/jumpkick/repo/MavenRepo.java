@@ -52,8 +52,8 @@ public final class MavenRepo {
     private final @Nullable MavenMetadataCache metadataCache;
 
     /**
-     * The HTTP client, retained for the small sidecar GETs that are not artifact fetches — currently the
-     * {@code .sha1} that confirms an {@code ~/.m2} candidate. Null for non-HTTP transports.
+     * The HTTP client behind the metadata cache, and the one a POM-declared repository is built
+     * over. Null for non-HTTP transports.
      */
     private final @Nullable Http http;
 
@@ -225,7 +225,7 @@ public final class MavenRepo {
         this.metadataCache = (httpOrNull != null && isHttp(this.baseUrl))
                 ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), MavenMetadataCache.DEFAULT_TTL)
                 : null;
-        this.m2 = new M2Adoption(name, isHttp(this.baseUrl) ? httpOrNull : null, repoStore, m2integration);
+        this.m2 = new M2Adoption(name, transport, credential, isHttp(this.baseUrl), repoStore, m2integration);
         this.download = new DownloadLeg(name, this.baseUrl, transport, credential, storeDir(), allowUnverified);
     }
 
