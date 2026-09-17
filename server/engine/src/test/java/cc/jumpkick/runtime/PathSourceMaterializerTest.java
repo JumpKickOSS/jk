@@ -10,6 +10,8 @@ import cc.jumpkick.model.PathSource;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.runtime.base.TestStoreSeed;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,8 +45,9 @@ class PathSourceMaterializerTest {
                 """.formatted(returnValue));
     }
 
-    private static PathSourceMaterializer materializer(Path root, Path artifactsRoot) {
+    private static PathSourceMaterializer materializer(Path root, Path artifactsRoot) throws IOException {
         Cas cas = new Cas(root.resolve("cas"));
+        TestStoreSeed.seed(JkDirs.store(), cas.root());
         RepoGroup buildRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         return new PathSourceMaterializer(

@@ -9,6 +9,8 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.runtime.base.TestStoreSeed;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +45,7 @@ class SourceProjectBuilderTest {
                 """);
 
         Cas cas = new Cas(dir.resolve("cache"));
+        TestStoreSeed.seed(JkDirs.store(), cas.root());
         RepoGroup repos = RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         Path javaHome = Path.of(System.getProperty("java.home"));
 
@@ -76,6 +79,7 @@ class SourceProjectBuilderTest {
         Files.writeString(src, "package example; public class A {}");
 
         Cas cas = new Cas(dir.resolve("cache"));
+        TestStoreSeed.seed(JkDirs.store(), cas.root());
         RepoGroup repos = RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         SourceProjectBuilder.Built built =
                 SourceProjectBuilder.build(dir, null, Path.of(System.getProperty("java.home")), cas, repos, "test");
@@ -84,8 +88,9 @@ class SourceProjectBuilderTest {
     }
 
     @Test
-    void unsupported_target_fails_fast(@TempDir Path dir) {
+    void unsupported_target_fails_fast(@TempDir Path dir) throws Exception {
         Cas cas = new Cas(dir.resolve("cache"));
+        TestStoreSeed.seed(JkDirs.store(), cas.root());
         RepoGroup repos = RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         assertThatThrownBy(() -> SourceProjectBuilder.build(
                         dir, null, Path.of(System.getProperty("java.home")), cas, repos, "test"))

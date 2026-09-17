@@ -15,8 +15,10 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.LockOrchestrator;
+import cc.jumpkick.runtime.base.TestStoreSeed;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -60,6 +62,7 @@ class PathSourceResolutionTest {
     void materializes_and_pins_a_path_dependency(@TempDir Path tmp) throws Exception {
         writeLibrary(tmp.resolve("lib"));
         Cas cas = new Cas(tmp.resolve("cas"));
+        TestStoreSeed.seed(JkDirs.store(), cas.root());
         RepoGroup baseRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
 
@@ -91,6 +94,7 @@ class PathSourceResolutionTest {
     @Test
     void a_project_without_path_deps_is_a_no_op(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(tmp.resolve("cas"));
+        TestStoreSeed.seed(JkDirs.store(), cas.root());
         RepoGroup baseRepos =
                 RepoGroup.of(new MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), new Http(), cas));
         JkBuild plain = new JkBuild(new Project("com.example", "app", "0.1.0", 25), new JkBuild.Dependencies(Map.of()));
