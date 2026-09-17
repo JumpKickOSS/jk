@@ -257,7 +257,7 @@ public final class LockPlans {
      * hosted): ticks grow to the solver's real total, and every graph/materialize event advances
      * them.
      */
-    private static ResolveObserver barObserver(
+    static ResolveObserver barObserver(
             TaskContext ctx,
             ResolveObserver observer,
             AtomicInteger estimate,
@@ -287,12 +287,10 @@ public final class LockPlans {
 
             @Override
             public void onGraphPackage(String module, String version) {
-                // Graph phase: advance the bar without implying the jar is on disk yet.
-                if (coordLabel != null) {
-                    ctx.label("Resolving " + coordLabel.apply(module, version));
-                } else if (module != null) {
-                    ctx.label("Resolving " + module + (version != null ? ":" + version : ""));
-                }
+                // Graph phase: advance the bar without implying the jar is on disk yet. Without a
+                // formatter (the hosted path) no per-package label leaves the step: the client
+                // renders packages from lock-package events, and a label it would drop is wire noise.
+                if (coordLabel != null) ctx.label("Resolving " + coordLabel.apply(module, version));
                 ctx.progress(1);
                 observer.onGraphPackage(module, version);
             }
