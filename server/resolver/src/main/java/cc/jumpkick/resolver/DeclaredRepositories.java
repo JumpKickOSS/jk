@@ -185,6 +185,11 @@ final class DeclaredRepositories {
         return PackageId.isMavenPackageKey(pkg) ? PackageId.parse(pkg).ga() : pkg;
     }
 
+    /** URL → the declaration that first granted a repository, with the policy its POM wrote. */
+    Map<String, Pom.Repository> byUrl() {
+        return Map.copyOf(declared);
+    }
+
     /** Package-visible for tests: the repositories granted to {@code pkg}. */
     Map<String, Set<Pom.Repository>> grants() {
         return Map.copyOf(granted);

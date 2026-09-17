@@ -12,6 +12,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -61,6 +63,9 @@ public final class LockOrchestrator {
 
     /** The workspace members behind a merged manifest, each with its own effective manifest. */
     private List<Member> members = List.of();
+
+    /** URL → the repository a dependency POM declared during {@link #lock}, with the policy the POM wrote. */
+    private final Map<String, Pom.Repository> declaredRepositories = new ConcurrentHashMap<>();
 
     /**
      * One workspace member as the lock sees it: its {@code [[module]]} path and its manifest with
@@ -156,10 +161,12 @@ public final class LockOrchestrator {
     /**
      * Resolve the {@code -sources.jar} for every Maven package in {@code lock} and return a copy
      * with {@link Lockfile.Artifact#sourcesChecksum} populated where sources exist. Sources that
-     * return 404 are silently skipped — not all packages publish sources.
+     * return 404 are silently skipped — not all packages publish sources. A row's repository outside
+     * the project's set is rebuilt with the policy the POM that declared it wrote during this
+     * orchestrator's {@link #lock}.
      */
     public Lockfile attachSources(Lockfile lock) throws InterruptedException {
-        return new SourcesAttacher(repos).attach(lock);
+        return new SourcesAttacher(repos, Map.copyOf(declaredRepositories)).attach(lock);
     }
 
     public Lockfile lock(JkBuild project, String jkVersion, Collection<String> featuresRequested, boolean withDefaults)
@@ -343,6 +350,7 @@ public final class LockOrchestrator {
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
+            declaredRepositories.putAll(sharedSource.declaredRepositoriesByUrl());
         }
         return new Solve(constraints, roots, solved, sharedSource, kmp);
     }
