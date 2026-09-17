@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.task.RunNotices;
@@ -221,6 +222,21 @@ public final class RepoGroup {
             if (repo.isPlaintext()) insecure.add(repo.name());
         }
         return new TrustSummary(verified, unverified, List.copyOf(insecure));
+    }
+
+    /**
+     * One sentence per repository a settings.xml mirror answers for: which mirror, at which URL,
+     * and that the lock keeps recording the repository itself.
+     */
+    public List<String> mirrorNotes() {
+        List<String> out = new ArrayList<>();
+        for (MavenRepo repo : repos) {
+            repo.mirror()
+                    .ifPresent(m -> out.add("repository `" + repo.name() + "` is reached through " + m.label() + " at "
+                            + SafeUri.forMessage(m.url()) + "; the lock records `" + repo.name() + "` at "
+                            + SafeUri.forMessage(repo.baseUrl())));
+        }
+        return List.copyOf(out);
     }
 
     /**

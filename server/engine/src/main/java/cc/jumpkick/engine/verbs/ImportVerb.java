@@ -108,7 +108,7 @@ public final class ImportVerb implements HostedVerb {
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 Cas cas = JkStores.storeCas();
-                PomImporter poms = new PomImporter(RepoGroupBuilder.buildDefault(cas), cas);
+                PomImporter poms = new PomImporter(RepoGroupBuilder.buildForImport(cas), cas);
                 BuildPlan plan = CompatPlans.importBuildPlan(
                         poms,
                         Path.of(body.source()),

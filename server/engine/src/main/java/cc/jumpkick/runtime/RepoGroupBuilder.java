@@ -10,6 +10,7 @@ import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
@@ -17,6 +18,7 @@ import cc.jumpkick.repo.ExclusiveGroups;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.RepoTransports;
 import cc.jumpkick.task.RunNotices;
@@ -46,6 +48,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Resolve order (logical): local materialization (CAS, {@code repos/*}, {@code ~/.m2}) then
  * remotes among the eligible set above.
+ *
+ * <p>Every repository of the group is routed through the {@code <mirror>} Maven's {@code
+ * settings.xml} names for it ({@link RepoMirrors}); the group's names and URLs — what the lock
+ * records — are unchanged by that.
  */
 public final class RepoGroupBuilder {
 
@@ -55,7 +61,7 @@ public final class RepoGroupBuilder {
      * A method, not a constant: the official-repo URL override is read per call so a redirected
      * deployment or hermetic test governs every resolution path.
      */
-    static List<RepositorySpec> defaultRemoteRepos() {
+    public static List<RepositorySpec> defaultRemoteRepos() {
         return List.of(RepositorySpec.officialJumpKick(), RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
     }
 
@@ -163,6 +169,15 @@ public final class RepoGroupBuilder {
     }
 
     /**
+     * The repositories a POM is imported against — {@code jk import} and the coexistence shadow:
+     * the repositories of the active {@code settings.xml} profiles, the way Maven consults them for
+     * a parent or a BOM the POM does not name a repository for, over {@link #buildDefault}'s set.
+     */
+    public static RepoGroup buildForImport(Cas cas) {
+        return build(MavenSettings.current().profileRepositories(), false, cas, BuildEnv.ambient());
+    }
+
+    /**
      * Merge {@code projectRepos} > global repos > built-in public baseline (first declaration of a
      * name wins) into one group, with credentials resolved against {@code env}.
      *
@@ -187,7 +202,8 @@ public final class RepoGroupBuilder {
         // Resolve credentials per declared repo (env / store / settings.xml /
         // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
         // transparent for Maven Central, Google Maven, and other open mirrors.
-        RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply);
+        MavenSettings settings = MavenSettings.current();
+        RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply, settings);
         List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
         List<List<String>> routedGroups = new ArrayList<>(effective.size());
         List<List<String>> bindings = new ArrayList<>(effective.size());
@@ -204,7 +220,7 @@ public final class RepoGroupBuilder {
             // Hand the client through, not just the transport: the transport-only constructor nulls it,
             // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
             // build.
-            repos.add(MavenRepo.overTransport(
+            MavenRepo repo = MavenRepo.overTransport(
                             spec.name(),
                             spec.url(),
                             transport,
@@ -214,7 +230,8 @@ public final class RepoGroupBuilder {
                             mirrorToM2,
                             spec.allowUnverified(),
                             spec.allowInsecure())
-                    .withPolicy(spec.releases(), spec.snapshots()));
+                    .withPolicy(spec.releases(), spec.snapshots());
+            repos.add(RepoMirrors.apply(repo, settings, creds));
             exclusiveGroups.add(exclusiveGroupsFor(spec));
             routedGroups.add(routedGroupsFor(spec));
             var bound = new LinkedHashSet<>(exclusiveGroupsFor(spec));

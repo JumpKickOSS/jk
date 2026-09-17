@@ -15,7 +15,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.TokenStore;
-import cc.jumpkick.repo.MavenSettings;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.run.TestFailureInfo;

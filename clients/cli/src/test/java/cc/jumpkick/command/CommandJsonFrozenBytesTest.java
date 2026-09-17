@@ -10,6 +10,7 @@ import cc.jumpkick.command.system.DoctorCommand;
 import cc.jumpkick.command.system.EngineAotCommand;
 import cc.jumpkick.command.system.EngineStatusCommand;
 import cc.jumpkick.command.system.EnvCommand;
+import cc.jumpkick.command.system.MavenSettingsRows;
 import cc.jumpkick.command.system.RepoStores;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.util.AotManifest;
@@ -172,8 +173,10 @@ class CommandJsonFrozenBytesTest {
         assertThat(DoctorCommand.checkJson(fail)).isEqualTo("{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"}");
         var noWorkers = new DoctorCommand.Workers(List.of(), null);
         var noRepos = new RepoStores.Stores(List.of(), null);
+        var noSettings = new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null);
+        String emptySettings = "\"settings\":{\"files\":[],\"mirrors\":[],\"proxies\":[],\"repositories\":[]}";
         assertThat(DoctorCommand.reportJson(
-                        ok, warn, ok, fail, ok, ok, warn, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos))
+                        ok, warn, ok, fail, ok, ok, warn, 3, 1, 0, 0, 2, 0, null, noWorkers, noRepos, noSettings))
                 .isEqualTo("{\"engine\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
@@ -182,10 +185,10 @@ class CommandJsonFrozenBytesTest {
                         + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"mvn\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
-                        + "\"workers\":[],\"repos\":[]}");
+                        + "\"workers\":[],\"repos\":[]," + emptySettings + "}");
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers, noRepos))
-                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]}");
+                        ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, "scan failed", noWorkers, noRepos, noSettings))
+                .endsWith("\"empty\":0,\"error\":\"scan failed\"},\"workers\":[],\"repos\":[]," + emptySettings + "}");
         var one = new DoctorCommand.Workers(
                 List.of(new DoctorCommand.Worker(
                         "jk-image-builder",
@@ -203,12 +206,28 @@ class CommandJsonFrozenBytesTest {
                 List.of(new RepoStores.Store(
                         "nexus.acme-0123456789ab", "private", "https://nexus.acme/maven", 2, 40, false)),
                 null);
-        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos))
+        var settings = new MavenSettingsRows.Rows(
+                List.of(new MavenSettingsRows.File("/home/me/.m2/settings.xml", true)),
+                List.of(new MavenSettingsRows.Mirror(
+                        "nexus",
+                        "*",
+                        "https://nexus.acme/maven-public/",
+                        List.of("jumpkick", "central", "google"),
+                        null)),
+                List.of(new MavenSettingsRows.Proxy("corp", "https", "proxy.acme:3128", List.of("*.acme"))),
+                List.of(new MavenSettingsRows.Repository("acme-releases", "https://nexus.acme/releases/")),
+                null);
+        assertThat(DoctorCommand.reportJson(ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"
                                 + "0".repeat(52) + "\"}],"
                                 + "\"repos\":[{\"id\":\"nexus.acme-0123456789ab\",\"name\":\"private\",\"origin\":\"https://nexus.acme/maven\","
-                                + "\"files\":2,\"bytes\":40,\"state\":\"ok\"}]}");
+                                + "\"files\":2,\"bytes\":40,\"state\":\"ok\"}],"
+                                + "\"settings\":{\"files\":[{\"path\":\"/home/me/.m2/settings.xml\",\"state\":\"read\"}],"
+                                + "\"mirrors\":[{\"id\":\"nexus\",\"mirrorOf\":\"*\",\"url\":\"https://nexus.acme/maven-public/\","
+                                + "\"captures\":[\"jumpkick\",\"central\",\"google\"],\"refusal\":null}],"
+                                + "\"proxies\":[{\"id\":\"corp\",\"protocol\":\"https\",\"via\":\"proxy.acme:3128\",\"nonProxyHosts\":[\"*.acme\"]}],"
+                                + "\"repositories\":[{\"id\":\"acme-releases\",\"url\":\"https://nexus.acme/releases/\"}]}}");
     }
 }

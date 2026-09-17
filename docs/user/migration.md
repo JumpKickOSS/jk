@@ -183,6 +183,18 @@ The manifest in this mode is the POM, so the commands that edit `jk.toml` — `j
 `jk update` and the `jk_deps` / `jk_manifest` / `jk_update` MCP tools — refuse a directory built
 this way and name the two ways forward: `jk import pom.xml` to own a `jk.toml`, or edit the POM.
 
+#### Behind a corporate mirror
+
+A Maven shop that reaches Central only through Nexus or Artifactory has that in
+`~/.m2/settings.xml` — a `<mirror>` with `mirrorOf` `central` or `*`, often a `<proxy>`, and the
+internal repositories in an active profile. A coexistence build and `jk import` read the same file:
+every request the resolver makes for `central` opens at the mirror's URL, the proxy carries it, and
+the profile's repositories join the shadow manifest's `[repositories]` beside the POM's own. The
+lock still records `central` at Central's own URL — the mirror is this machine's transport, so a
+lock written behind Nexus is the lock a laptop on the open internet would write. `jk lock` says so
+once per mirrored repository, and `jk doctor` lists the mirrors the engine applies. Details and the
+`mirrorOf` grammar: [Repositories § Maven `settings.xml`](repositories.md#maven-settingsxml-mirrors-proxies-profiles).
+
 ### Where import stands on real repositories
 
 The [Maven top-20 corpus](https://github.com/JumpKickOSS/jk-examples/tree/main/corpus/maven-top20)

@@ -13,6 +13,7 @@ import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.forge.ResolvedToken;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import java.net.URI;
@@ -36,8 +37,9 @@ import org.jspecify.annotations.Nullable;
  * machine holds under that name. A name-keyed credential therefore reaches a repository only when
  * something the project does not control binds the name to the repository's origin (scheme, host,
  * port): the origin {@code jk repo login} recorded, a {@code [repositories.<id>]} declaration in
- * the user's own {@code ~/.jk/config.toml}, a {@code JK_REPO_<ID>_HOST} variable from the caller's
- * shell, or an id that is itself the host. Anything else is refused with a warning that names the
+ * the user's own {@code ~/.jk/config.toml}, a {@code <mirror>} or active-profile {@code
+ * <repository>} with that id in the user's {@code settings.xml}, a {@code JK_REPO_<ID>_HOST}
+ * variable from the caller's shell, or an id that is itself the host. Anything else is refused with a warning that names the
  * repository, the origin and the source that was not sent.
  *
  * <p>An inline {@code ${VAR}} reference reads this machine's environment too, and which manifest
@@ -70,7 +72,7 @@ public final class RepoCredentialResolver {
     private final Supplier<List<RepositorySpec>> userRepositories;
 
     public RepoCredentialResolver() {
-        this(System::getenv);
+        this(System::getenv, MavenSettings.current());
     }
 
     /** Every collaborator explicit — tests. */
@@ -91,13 +93,13 @@ public final class RepoCredentialResolver {
         this.userRepositories = Objects.requireNonNull(userRepositories, "userRepositories");
     }
 
-    private RepoCredentialResolver(Function<String, @Nullable String> env) {
+    private RepoCredentialResolver(Function<String, @Nullable String> env, MavenSettings settings) {
         // Host bindings come from the ambient environment — the request's shell, then the engine's
         // own — read at lookup time so a resolver built before the session is installed still
         // answers for the session that asks.
         this(
                 env,
-                MavenSettings.load(),
+                settings,
                 new RepoCredentialStore(),
                 new ForgeAuth(),
                 ForgeIdentity.real(),
@@ -107,7 +109,15 @@ public final class RepoCredentialResolver {
 
     /** The default resolver, but reading environment variables through {@code env}. */
     public static RepoCredentialResolver withEnv(Function<String, @Nullable String> env) {
-        return new RepoCredentialResolver(env);
+        return new RepoCredentialResolver(env, MavenSettings.current());
+    }
+
+    /**
+     * As {@link #withEnv(Function)} over the Maven settings the caller already holds, so the
+     * mirrors it applies and the credentials this resolver reads come from one parse.
+     */
+    public static RepoCredentialResolver withEnv(Function<String, @Nullable String> env, MavenSettings settings) {
+        return new RepoCredentialResolver(env, settings);
     }
 
     /**
@@ -349,10 +359,11 @@ public final class RepoCredentialResolver {
     }
 
     /**
-     * In order of authority: the user's own {@code ~/.jk/config.toml} declaration, then a
-     * {@code JK_REPO_<ID>_HOST} variable from the shell, then an id that is the host itself (a
-     * container registry logged into as {@code jk repo login ghcr.io}). A declaration or a binding
-     * that names another origin is a mismatch, not an absence.
+     * In order of authority: the user's own {@code ~/.jk/config.toml} declaration, then the URL
+     * the user's {@code settings.xml} gives the id (a {@code <mirror>} or an active profile's
+     * {@code <repository>}), then a {@code JK_REPO_<ID>_HOST} variable from the shell, then an id
+     * that is the host itself (a container registry logged into as {@code jk repo login ghcr.io}).
+     * A declaration or a binding that names another origin is a mismatch, not an absence.
      */
     Binding bindingOf(String repoId, @Nullable URI url) {
         if (url == null || url.getHost() == null) return Binding.UNBOUND;
@@ -360,6 +371,12 @@ public final class RepoCredentialResolver {
             if (!spec.name().equals(repoId)) continue;
             if (Http.sameOrigin(spec.url(), url)) return Binding.BOUND;
             return Binding.mismatch("~/.jk/config.toml declares `" + repoId + "` at " + originText(spec.url())
+                    + ", not " + originText(url));
+        }
+        Optional<URI> fromSettings = settings.declaredUrl(repoId);
+        if (fromSettings.isPresent()) {
+            if (Http.sameOrigin(fromSettings.get(), url)) return Binding.BOUND;
+            return Binding.mismatch("~/.m2/settings.xml declares `" + repoId + "` at " + originText(fromSettings.get())
                     + ", not " + originText(url));
         }
         String hostVar = envVarPrefix(repoId) + "HOST";
