@@ -144,7 +144,8 @@ with one rule:
   declarations or for another dependency's subtree, and an [exclusive group](repositories.md#exclusive-groups-your-internals)
   bound to a declared repository stays bound.
 - A row it serves records it in the lock's `source` (`jitpack.io+https://jitpack.io`), so
-  `jk build` and `jk sync` fetch from it without a `[repositories]` entry.
+  `jk build` and `jk sync` fetch from it without a `[repositories]` entry, and `jk lock --sources`
+  asks it for that row's `-sources.jar` too.
 - It is held to the trust rule a project-declared repository meets by default: https and a
   published checksum for every artifact. A POM has no table to opt out with, so a plaintext
   `http://` repository it declares is not used, and an artifact it publishes no checksum for fails
