@@ -92,6 +92,38 @@ class PluginTableRegistryTest {
                 .hasMessageContaining("[spring-boot].aot must be a boolean");
     }
 
+    /**
+     * A {@code coordinate} key is refused by the parser when it has fewer than three segments,
+     * naming the table and key; a fetch-time coordinate error would name neither.
+     */
+    @Test
+    void a_protoc_plugin_coordinate_with_fewer_than_three_segments_is_refused_naming_the_key() {
+        var manifest = PluginTableRegistry.byTable("protobuf").orElseThrow();
+        var pluginKey = Objects.requireNonNull(
+                Objects.requireNonNull(manifest.subSchemas().get("protoc-plugin"))
+                        .get("plugin"),
+                "plugin key");
+        assertThat(pluginKey.type()).isEqualTo(PluginDescriptor.SchemaKey.Type.COORDINATE);
+
+        assertThatThrownBy(() -> PluginTableRegistry.validate(
+                        manifest,
+                        Toml.parse("version = \"4.33.1\"\n[grpc-java]\nplugin = \"io.grpc:protoc-gen-grpc-java\"\n")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[protobuf.grpc-java].plugin")
+                .hasMessageContaining("group:artifact:version")
+                .hasMessageContaining("io.grpc:protoc-gen-grpc-java");
+        assertThatThrownBy(() -> PluginTableRegistry.validate(
+                        manifest, Toml.parse("version = \"4.33.1\"\n[grpc-java]\nplugin = \"io.grpc: :1.81.0\"\n")))
+                .hasMessageContaining("[protobuf.grpc-java].plugin");
+
+        var ok = PluginTableRegistry.validate(
+                manifest,
+                Toml.parse("version = \"4.33.1\"\n[grpc-java]\nplugin = \"io.grpc:protoc-gen-grpc-java:1.81.0\"\n"
+                        + "[js]\nplugin = \"com.acme:protoc-gen-js:^2.1:linux-x86_64!exe\"\n"));
+        assertThat(ok.entries().get("grpc-java")).containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0");
+        assertThat(ok.entries().get("js")).containsEntry("plugin", "com.acme:protoc-gen-js:^2.1:linux-x86_64!exe");
+    }
+
     @Test
     void manifest_parser_rejects_bad_manifests() {
         assertThatThrownBy(() -> PluginDescriptors.parse("[schema]\nx = { type = \"string\" }", "p.toml"))

@@ -160,7 +160,8 @@ protoc runs once over every `.proto` under `src`, writing `--java_out` (and `--k
 each entry's `--<id>_out` into one generated directory that joins the module's sources, so a
 `service` compiles against its gRPC stubs with no source root to declare. protoc and every
 plugin executable are fetched from the repositories for the host's OS and architecture and pinned
-in `jk-lock.toml`. A `.proto` a dependency jar carries — `google/protobuf/*.proto` in
+in `jk-lock.toml`; an entry's `plugin` is a `group:artifact:version` and fewer segments fail the
+parse naming the entry. A `.proto` a dependency jar carries — `google/protobuf/*.proto` in
 protobuf-java, `google/rpc/status.proto` in proto-google-common-protos — is importable, as it is
 under Maven. The step re-runs when a proto, the table, a tool or the dependency classpath changes.
 `jk import` writes the table and its entries from a POM's `protobuf-maven-plugin`

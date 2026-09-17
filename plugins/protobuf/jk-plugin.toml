@@ -27,7 +27,7 @@ kotlin  = { type = "bool", default = false }       # also emit Kotlin DSL codege
 schema = "protoc-plugin"
 
 [sub-schema.protoc-plugin]
-plugin  = { type = "string", required = true, example = "io.grpc:protoc-gen-grpc-java:1.81.0", hint = "the plugin executable's group:artifact:version — the host's os-arch classifier and exe packaging are implied, as protoc's are" }
+plugin  = { type = "coordinate", required = true, example = "io.grpc:protoc-gen-grpc-java:1.81.0", hint = "the plugin executable's group:artifact:version — the host's os-arch classifier and exe packaging are implied, as protoc's are" }
 options = { type = "string-list", default = [] }   # the plugin's parameter, comma-joined ahead of its output dir (--<id>_out=a,b:<gen>)
 
 # protoc ships as a per-OS/arch native binary published straight to Maven (no jar

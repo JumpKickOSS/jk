@@ -83,7 +83,7 @@ public final class PluginDescriptors {
                 // A same-named [schema] key is the REFERENCE spelling (signing = "release") — legal,
                 // because TOML itself forbids one key being both a string and a table: a module
                 // either declares [<table>.<group>.<name>] definitions or sets the string.
-                if (schema.containsKey(name) && schema.get(name).type() != PluginDescriptor.SchemaKey.Type.STRING) {
+                if (schema.containsKey(name) && !stringShaped(schema.get(name).type())) {
                     throw new JkBuildParseException(where + " collides with a non-string [schema] key");
                 }
                 if (spec.contains("variant-axis") || spec.contains("dimensioned")) {
@@ -663,10 +663,15 @@ public final class PluginDescriptors {
         return out;
     }
 
+    /** A key whose TOML value is a string: the plain string and the coordinate. */
+    private static boolean stringShaped(PluginDescriptor.SchemaKey.Type type) {
+        return type == PluginDescriptor.SchemaKey.Type.STRING || type == PluginDescriptor.SchemaKey.Type.COORDINATE;
+    }
+
     private static @Nullable Object defaultFor(TomlTable spec, PluginDescriptor.SchemaKey.Type type, String where) {
         if (!spec.contains("default")) return null;
         return switch (type) {
-            case STRING -> spec.getString("default");
+            case STRING, COORDINATE -> spec.getString("default");
             case BOOL -> spec.getBoolean("default");
             case INT -> spec.getLong("default");
             case STRING_LIST -> {
