@@ -275,7 +275,7 @@ public final class EngineServer implements AutoCloseable {
         String bid = this.buildId.isEmpty() ? "" : "+" + this.buildId;
         this.engineEpoch = version + bid + "@" + this.startedAtMillis;
         this.aot = new AotTrainer(this.log);
-        this.election = new EngineElection(paths, this.version, this.buildId, this.pid, this.startedAtMillis, this.log);
+        this.election = new EngineElection(paths, this.version, this.buildId, this.pid, this.log);
         this.drain = newDrainReporter();
         this.watchdog = newDisplacementWatchdog();
         this.idle = newIdleHousekeeping();

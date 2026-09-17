@@ -72,11 +72,11 @@ class EngineElectionTest {
     }
 
     private EngineElection election(EnginePaths.Paths p, String buildId, long pid) {
-        return new EngineElection(p, VERSION, buildId, pid, 1_700_000_000_000L, s -> {});
+        return new EngineElection(p, VERSION, buildId, pid, s -> {});
     }
 
     private EngineElection election(EnginePaths.Paths p, String buildId, long pid, Consumer<String> log) {
-        return new EngineElection(p, VERSION, buildId, pid, 1_700_000_000_000L, log);
+        return new EngineElection(p, VERSION, buildId, pid, log);
     }
 
     /**
@@ -155,7 +155,9 @@ class EngineElectionTest {
         assertThat(won.active().socket()).isEqualTo(gen1.socket());
         assertThat(won.displaced()).as("nothing was live before us").isNull();
         assertThat(gen1.socket()).exists();
-        assertThat(Files.readString(gen1.pid())).startsWith("4242\n");
+        String pidFile = Files.readString(gen1.pid());
+        assertThat(pidFile).as("the pid file holds the pid and nothing else").isEqualTo("4242\n");
+        assertThat(Long.parseLong(pidFile.strip())).isEqualTo(4242L);
         assertThat(Files.readString(EnginePaths.endpoint(p)).trim())
                 .isEqualTo(gen1.socket().getFileName().toString());
         assertThat(e.endpointNamesThisEngine()).isTrue();
