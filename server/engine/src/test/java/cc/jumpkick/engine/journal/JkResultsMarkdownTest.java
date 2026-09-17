@@ -339,6 +339,32 @@ class JkResultsMarkdownTest {
         assertThat(md).doesNotContain("## Failed steps");
     }
 
+    /**
+     * The resolve's notes sit in their own section, listed in full: a run with more override
+     * warnings than the Warnings cap still says which member reads its own rows.
+     */
+    @Test
+    void lock_notes_have_their_own_section_apart_from_the_warnings_cap() {
+        List<BuildRecord.Diag> diags = new ArrayList<>();
+        for (int i = 0; i < JkResultsMarkdown.MAX_WARNINGS + 5; i++) {
+            diags.add(planWarning("nearest-wins", "com.foo:m" + i + " 1.0 is the project's pin"));
+        }
+        String note = "lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)";
+        diags.add(planWarning("lock-note", note));
+
+        String md = JkResultsMarkdown.render(record(true, List.of(), diags, List.of()));
+
+        assertThat(md).contains("## Lock notes\n\n- " + note + "\n");
+        assertThat(md).contains("Diagnostics: 25 warnings, 1 lock note");
+        assertThat(md.indexOf("## Lock notes")).isLessThan(md.indexOf("## Warnings"));
+        assertThat(md.indexOf("## Warnings")).isLessThan(md.indexOf("- _+5 more"));
+    }
+
+    private static BuildRecord.Diag planWarning(String code, String message) {
+        return BuildAccumulator.diagFromPlan(
+                "warning", "/proj", "/proj", new BuildPlanResult.Diagnostic("resolve-deps", code, message));
+    }
+
     /** A javadoc warning carries its locus in the message; the Warnings section renders it as file:line. */
     @Test
     void a_javadoc_warning_renders_with_its_file_and_line() {

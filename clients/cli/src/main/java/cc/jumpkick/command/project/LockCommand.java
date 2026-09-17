@@ -11,7 +11,10 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.CliSessionTranscript;
+import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -64,6 +67,7 @@ public final class LockCommand implements CliCommand {
     private @Nullable URI repoUrl;
     private @Nullable Path cacheDir;
     private GlobalOptions global;
+    private @Nullable CliSessionTranscript session;
 
     @Override
     public String name() {
@@ -131,7 +135,28 @@ public final class LockCommand implements CliCommand {
         // Optimize/start the engine before the Lock plan console so a one-time AOT training shows the
         // "Engine — optimizing…" wedge first, then the Lock TUI takes over (never interleaved).
         EnginePrewarm.ensure();
-        return live ? runHostedLive(dir, cache, mode) : runHostedPlain(dir, cache, mode);
+        // The lock's run record carries a details.jsonl like a build's: the transcript binds to the
+        // engine job when its job-start arrives and mirrors the plan events the handlers see.
+        session = CliSessionTranscript.open(dir, "lock", lockArgv());
+        int code = live ? runHostedLive(dir, cache, mode) : runHostedPlain(dir, cache, mode);
+        return CliSessionTranscript.finish(session, code, global.verbose);
+    }
+
+    /** Compact argv snapshot for details.jsonl. */
+    private List<String> lockArgv() {
+        List<String> argv = new ArrayList<>();
+        argv.add("lock");
+        if (!features.isEmpty()) argv.add("--features=" + String.join(",", features));
+        if (noDefaultFeatures) argv.add("--no-default-features");
+        if (sources) argv.add("--sources");
+        return argv;
+    }
+
+    /** The plan listener a hosted module's wire events drive, mirrored into the open transcript when there is one. */
+    private static BuildPlanListener mirrored(BuildPlanListener listener, BuildPlanConsole.Mode mode) {
+        CliSessionTranscript active = CliSessionTranscript.active();
+        if (active == null || mode == BuildPlanConsole.Mode.JSON) return listener;
+        return CompositeBuildPlanListener.of(listener, new SessionMirrorListener(active));
     }
 
     // ---- engine-hosted paths -------------------------------------------------
@@ -158,7 +183,7 @@ public final class LockCommand implements CliCommand {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Lock", animate);
         long start = System.nanoTime();
-        LiveLockHandler handler = new LiveLockHandler(view);
+        LiveLockHandler handler = new LiveLockHandler(view, mode);
 
         EngineRequests.LockOutcome outcome;
         try {
@@ -170,11 +195,23 @@ public final class LockCommand implements CliCommand {
         if (!outcome.success()) {
             handler.errorLines.addAll(outcome.errors());
             view.finishBuildPlanFailure(lockFailTail(), handler.errorLines);
+            printNotes(handler.notes());
             return outcome.exitCode();
         }
         view.finishBuildPlanSuccess(lockSuccessTail(
                 handler.globalLocked.get(), handler.unverified.get(), List.copyOf(handler.insecureRepos), start, dir));
+        printNotes(handler.notes());
         return 0;
+    }
+
+    /**
+     * The lock's notes, after the summary chip: which member reads its own rows, which pin or BOM
+     * overrode what a POM asked for, which repository a POM declared served a row. One line each.
+     */
+    static void printNotes(List<String> notes) {
+        if (notes.isEmpty()) return;
+        String bang = Theme.colorize(Glyphs.bang(), Theme.active().warning());
+        for (String note : notes) CliOutput.out("  " + bang + " " + note);
     }
 
     /**
@@ -185,7 +222,10 @@ public final class LockCommand implements CliCommand {
      */
     static final class LiveLockHandler implements EngineRequests.LockHandler {
         private final JkManager view;
+        private final BuildPlanConsole.Mode mode;
         final AtomicInteger globalLocked = new AtomicInteger(0);
+        // Every warning the lock plans raised, once each, in arrival order: printed after the chip.
+        private final Set<String> notes = Collections.synchronizedSet(new LinkedHashSet<>());
         // Per-module package counts (cumulative wire samples, then the authoritative lockfile
         // count). The engine restarts totalSeen per module, so the workspace total is the SUM
         // of per-module counts — folding with max reported only the largest module.
@@ -197,7 +237,19 @@ public final class LockCommand implements CliCommand {
         private final Map<String, String> coordByDir = new HashMap<>();
 
         LiveLockHandler(JkManager view) {
+            this(view, BuildPlanConsole.Mode.AUTO);
+        }
+
+        LiveLockHandler(JkManager view, BuildPlanConsole.Mode mode) {
             this.view = view;
+            this.mode = mode;
+        }
+
+        /** The notes collected so far, in arrival order. */
+        List<String> notes() {
+            synchronized (notes) {
+                return List.copyOf(notes);
+            }
         }
 
         @Override
@@ -209,7 +261,13 @@ public final class LockCommand implements CliCommand {
             // Lock is purely resolution — total is unknown upfront, so we show a
             // static top-line label and record each resolved dep as a completion line.
             view.solveLabel("Locking versions…");
-            return new BuildPlanListener() {};
+            BuildPlanListener collector = new BuildPlanListener() {
+                @Override
+                public void warn(String step, String code, String message) {
+                    if (message != null && !message.isBlank()) notes.add(message);
+                }
+            };
+            return mirrored(collector, mode);
         }
 
         @Override
@@ -277,7 +335,7 @@ public final class LockCommand implements CliCommand {
 
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                current = BuildPlanConsole.chooseConsoleListener("lock", steps, mode);
+                current = mirrored(BuildPlanConsole.chooseConsoleListener("lock", steps, mode), mode);
                 return current;
             }
 
