@@ -935,11 +935,16 @@ public final class MavenPackageSource implements PackageSource {
      * atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
      * version —; unmapped bare fills follow {@link cc.jumpkick.model.UnmappedPolicy}.
      * </ul>
+     *
+     * <p>A classified edge ({@code netty-transport-native-epoll:linux-x86_64}) follows the same
+     * rules as the plain one: two POMs naming it at different versions mediate to the highest
+     * declared, as Maven does, rather than standing as two exact pins that cannot both hold. The
+     * pick stays among the versions edges declared, so a classifier only some releases publish is
+     * not chased to a release without it.
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
         String trimmed = version.trim();
-        PackageId id = PackageId.parse(depPkg);
-        String ga = id.ga();
+        String ga = PackageId.parse(depPkg).ga();
         String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
 
         // Maven bracket ranges in POMs (AndroidX loves `[1.4.0]` exact / floor-as-bracket).
@@ -954,15 +959,6 @@ public final class MavenPackageSource implements PackageSource {
                 return VersionSet.exact(bomPin);
             }
             return VersionSelectors.constraintFromPomVersion(trimmed);
-        }
-
-        // Classified artifacts (guice:jar:classes): GA maven-metadata highest-wins picks versions
-        // that often have no classifier POM → Unavailable thrash.
-        if (!id.classifier().isEmpty()) {
-            if (bomPin != null && platformPolicy == PlatformPolicy.FLOOR) {
-                return VersionSet.atLeast(floorOf(bomPin, trimmed), true);
-            }
-            return VersionSet.exact(bomPin != null ? bomPin : trimmed);
         }
 
         // Platform map entry.

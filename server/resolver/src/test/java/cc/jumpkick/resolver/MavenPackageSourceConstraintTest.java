@@ -83,16 +83,21 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
-    void classified_artifact_pins_exact_declared_or_bom(@TempDir Path tmp) {
-        // guice:jar:classes — highest-wins on the GA list misses classifier jars.
+    void classified_artifact_follows_the_plain_modules_rules(@TempDir Path tmp) {
+        // A platform pin on the module governs its classified edge as it does the plain one.
         MavenPackageSource withBom = source(tmp, Map.of("com.google.inject:guice", "5.1.0"));
-        assertThat(withBom.constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
+        assertThat(withBom.constraintForManagedEdge("com.google.inject:guice:jar:classes", "4.2.1")
                         .asExactSingleton())
                 .contains("5.1.0");
+        // Without one, a bare classified edge is a floor: two POMs naming different versions of
+        // netty-transport-native-epoll:linux-x86_64 mediate instead of conflicting as exact pins.
         MavenPackageSource noBom = source(tmp, Map.of());
-        assertThat(noBom.constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
-                        .asExactSingleton())
-                .contains("5.1.0");
+        VersionSet floor = noBom.constraintForManagedEdge(
+                "io.netty:netty-transport-native-epoll:jar:linux-x86_64", "4.1.132.Final");
+        assertThat(floor.asExactSingleton()).isEmpty();
+        assertThat(floor.contains("4.1.132.Final")).isTrue();
+        assertThat(floor.contains("4.1.133.Final")).isTrue();
+        assertThat(floor.contains("4.1.131.Final")).isFalse();
     }
 
     @Test

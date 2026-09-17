@@ -123,7 +123,10 @@ reach for the newest release in range — a bare version is a pin. Version order
 an unknown qualifier such as `2.0.1.MR` counts as newer than `2.0.1` when a selector floats —
 a POM that declares `2.0.1` still gets `2.0.1`. A version a POM declares is a candidate even when
 the repository's version catalog (`maven-metadata.xml`) omits it: the POM it names is what has to
-exist. Conflicts get PubGrub prose. With a BOM: [Platforms](platforms.md).
+exist. A classified artifact (`io.netty:netty-transport-native-epoll:linux-x86_64`) follows the
+same rule as the plain module — two POMs naming it at different versions mediate to the highest
+declared, and a platform pin on the module governs its classified edges as it does the plain one.
+Conflicts get PubGrub prose. With a BOM: [Platforms](platforms.md).
 
 Your own exact pin is one constraint among the transitives' by default: a pin below a floor some
 POM declares is a conflict, explained. `[resolve] pins = "nearest"` makes the pin the version

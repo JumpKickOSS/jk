@@ -171,6 +171,61 @@ class DeclaredVersionResolutionTest {
     }
 
     /**
+     * Two POMs name one classified artifact ({@code io.netty:netty-transport-native-epoll} with
+     * classifier {@code linux-x86_64}) at different plain versions. Without a platform pinning the
+     * module, the edges are floors like any bare edge — the pick is the highest declared version,
+     * as Maven mediates them — not two exact pins that cannot both hold.
+     */
+    @Test
+    void bare_edges_on_a_classified_artifact_mediate_to_the_highest_declared_version(@TempDir Path tempDir)
+            throws Exception {
+        String epoll = "io.netty:netty-transport-native-epoll:jar:linux-x86_64";
+        upstream.metadata("io.netty", "netty-transport-native-epoll", "4.1.132.Final", "4.1.133.Final", "4.2.18.Final");
+        for (String v : List.of("4.1.132.Final", "4.1.133.Final", "4.2.18.Final")) {
+            upstream.pomOnly(
+                    "io.netty",
+                    "netty-transport-native-epoll",
+                    v,
+                    MavenStub.emptyPom("io.netty", "netty-transport-native-epoll", v));
+        }
+        upstream.metadata("org.apache.pulsar", "pulsar-common", "4.2.1");
+        upstream.pomOnly(
+                "org.apache.pulsar",
+                "pulsar-common",
+                "4.2.1",
+                pomDeclaringClassified("org.apache.pulsar", "pulsar-common", "4.2.1", "4.1.132.Final"));
+        upstream.metadata("org.asynchttpclient", "async-http-client", "2.16.0");
+        upstream.pomOnly(
+                "org.asynchttpclient",
+                "async-http-client",
+                "2.16.0",
+                pomDeclaringClassified("org.asynchttpclient", "async-http-client", "2.16.0", "4.1.133.Final"));
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(
+                        new Dependency("org.apache.pulsar:pulsar-common", VersionSelector.parse("=4.2.1")),
+                        new Dependency("org.asynchttpclient:async-http-client", VersionSelector.parse("=2.16.0"))));
+
+        assertThat(requireNonNull(result.modules().get(epoll)).version()).isEqualTo("4.1.133.Final");
+    }
+
+    private static String pomDeclaringClassified(String group, String artifact, String version, String epollVersion) {
+        return """
+                <project>
+                  <groupId>%s</groupId>
+                  <artifactId>%s</artifactId>
+                  <version>%s</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>io.netty</groupId><artifactId>netty-transport-native-epoll</artifactId>
+                      <version>%s</version><classifier>linux-x86_64</classifier>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(group, artifact, version, epollVersion);
+    }
+
+    /**
      * A catalog that omits a published release: drone names spacelift 1.0.2, whose POM is served,
      * while maven-metadata lists only the Alphas. The declared version is a candidate in a solve
      * that reads full catalogs up front (the retry a compact-list unsat earns) as it is in the
