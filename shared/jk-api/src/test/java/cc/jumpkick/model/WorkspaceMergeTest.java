@@ -326,6 +326,28 @@ class WorkspaceMergeTest {
     }
 
     @Test
+    void one_repository_spelled_with_and_without_its_trailing_slash_is_one_repository() {
+        RepositorySpec bare = new RepositorySpec("confluent", URI.create("https://packages.confluent.example/maven"));
+        RepositorySpec slashed =
+                new RepositorySpec("confluent", URI.create("https://packages.confluent.example/maven/"));
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "root", "0.1.0", 0))
+                .workspace(new Workspace(List.of("a", "b")))
+                .build();
+        JkBuild a = JkBuild.builder(new Project("cc.jumpkick", "a", "0.1.0", 0))
+                .repositories(List.of(bare))
+                .build();
+        JkBuild b = JkBuild.builder(new Project("cc.jumpkick", "b", "0.1.0", 0))
+                .repositories(List.of(slashed))
+                .build();
+
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(a, b));
+
+        assertThat(merged.repositories())
+                .as("the first spelling stands for both")
+                .containsExactly(bare);
+    }
+
+    @Test
     void one_repository_id_at_two_urls_is_refused_naming_both_modules() {
         JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "root", "0.1.0", 0))
                 .workspace(new Workspace(List.of("a", "b")))
