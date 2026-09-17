@@ -103,6 +103,11 @@ class PomProfileBoundPluginImportTest {
                         <groupId>org.springframework.boot</groupId>
                         <artifactId>spring-boot-maven-plugin</artifactId>
                         <version>3.5.5</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>repackage</goal></goals>
+                          </execution>
+                        </executions>
                       </plugin>
                     </plugins>
                   </build>
