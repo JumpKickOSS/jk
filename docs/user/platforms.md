@@ -76,7 +76,9 @@ each in its own declaration order — so a BOM the root declares wins over one a
 member's own table is the root's entries, then its own, then those of the siblings it depends on:
 a member's BOM constrains its own graph and the graphs of members that depend on it, not an
 unrelated member's and not the workspace's plain rows — the member reads rows of its own where its
-BOM's version differs from the workspace's ([Workspaces](workspaces.md#members-that-disagree)).
+BOM's version differs from the workspace's ([Workspaces](workspaces.md#members-that-disagree)). A
+member's `[managed-dependencies]` entries fold by the same rule: an entry every member declares
+alike constrains the workspace's rows, one only some members hold constrains the holders' graphs.
 
 `nearest` adopts exactly two of Maven's rules: a direct pin is the version, over any transitive's
 floor, and the first-declared BOM wins over a later one. It does not adopt Maven's mediation between

@@ -175,8 +175,10 @@ under `[dependencies]` beats the managed entry; the managed entry beats every
 ([Platforms](platforms.md#two-boms-that-manage-one-module)); a module none of them manage takes the
 highest version the POMs that name it declare. The lock row records the entry as
 `pinned-by = "jk.toml:<handle>"`, so `jk why` names it. In a workspace the root's table applies to
-every member, then each member's own; a member's entry on a module another member pins exactly is
-that member's [own row](workspaces.md#members-that-disagree).
+every member, and so does an entry every member declares alike; an entry only some members hold
+constrains the holders' graphs and the graphs of the members that depend on them, as a member's
+BOM does, and where its version differs from the workspace's row the holder reads a
+[row of its own](workspaces.md#members-that-disagree).
 
 An entry may carry `exclude` like any dependency, and it reaches further than an edge's: the
 managed exclusions apply to *every* edge onto the module — a dependency POM's as much as your

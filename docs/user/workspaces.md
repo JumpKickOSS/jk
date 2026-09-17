@@ -145,15 +145,17 @@ at such a version fails the lock with an error that names the table and the BOM 
 missing BOM never fails the lock as a bare coordinate.
 
 The workspace's rows are solved under the BOMs every member holds — the root's
-`[platform-dependencies]` and any BOM every member declares or depends into — so a BOM only some
-members hold never moves a plain row. A member is resolved on its own exactly when the workspace's
-answer cannot be its answer:
+`[platform-dependencies]` and any BOM every member declares or depends into — and under the
+[`[managed-dependencies]`](dependencies.md#managed-versions) entries every member holds — the
+root's, and an entry every member declares alike, module, version and `exclude` list — so a BOM or
+entry only some members hold never moves a plain row. A member is resolved on its own exactly when
+the workspace's answer cannot be its answer:
 
 - it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`
   in one member, `"1.5.32"` in three others), or
-- a BOM of its own table that not every member holds — its own, one a framework table implies, or
-  a sibling's it depends on — manages a coordinate in its graph at a version the workspace's row
-  does not carry (`zipkin-server`'s Boot BOM lifts `jakarta.jms-api` to 3.1.0 where the workspace's
+- a BOM or `[managed-dependencies]` entry of its own table that not every member holds — its own,
+  one a framework table implies, or a sibling's it depends on — manages a coordinate in its graph
+  at a version the workspace's row does not carry (`zipkin-server`'s Boot BOM lifts `jakarta.jms-api` to 3.1.0 where the workspace's
   row is the 2.0.3 `activemq-client` declares), or
 - a coordinate in its graph was pinned by a BOM the member does not hold — a versionless
   dependency (`group:artifact` alone) a sibling declares under such a BOM takes the BOM's version
