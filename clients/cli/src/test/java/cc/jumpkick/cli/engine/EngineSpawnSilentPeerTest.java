@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cli.engine.EngineSpawn.Patience;
 import cc.jumpkick.cli.engine.EngineSpawn.Reachability;
@@ -40,6 +41,14 @@ class EngineSpawnSilentPeerTest {
 
     /** Quick enough for a unit test; the shape (probe, back off, probe again) is what is under test. */
     private static final Patience QUICK = new Patience(200, 3, Duration.ofMillis(20));
+
+    /** A young peer's grace at a unit test's scale: young for the whole test, waited out for half a second. */
+    private static final SilentPeer.Grace BRIEF_GRACE = new SilentPeer.Grace(
+            Duration.ofMinutes(5), Duration.ofMillis(500), Duration.ofMillis(100), Duration.ofSeconds(2));
+
+    /** No startup grace at all: only workers or CPU can show life, and neither does a sleeping JVM. */
+    private static final SilentPeer.Grace NO_GRACE =
+            new SilentPeer.Grace(Duration.ZERO, Duration.ofMillis(200), Duration.ofMillis(100), Duration.ofSeconds(1));
 
     @RegisterExtension
     final ShortTempDirs tempDirs = new ShortTempDirs("jks-");
@@ -112,6 +121,58 @@ class EngineSpawnSilentPeerTest {
 
             assertThat(reach).isInstanceOf(Reachability.Live.class);
             assertThat(engine.connections.get()).isEqualTo(QUICK.probes());
+        }
+    }
+
+    /**
+     * The holder is a JVM that just started and is still silent through every probe: a coordinator
+     * loading, or mid-build with its wire starved. Ensure leaves it alone and fails naming it —
+     * displacing it would kill every job it runs for every other terminal.
+     */
+    @Test
+    void a_young_peer_silent_through_every_probe_is_left_alone_not_displaced() throws Exception {
+        EnginePaths.Paths paths = paths();
+        Path socket = EnginePaths.activeSocket(paths);
+        Process holder = SleepMain.spawn(120_000);
+        try (FakeEngine engine = new FakeEngine(socket, Integer.MAX_VALUE)) {
+            Files.writeString(EnginePaths.pidFor(socket), Long.toString(holder.pid()));
+
+            assertThatThrownBy(() -> EngineSpawn.ensure(paths, VERSION, QUICK, BRIEF_GRACE))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("pid " + holder.pid())
+                    .hasMessageContaining("not displaced");
+            assertThat(holder.isAlive())
+                    .as("a young engine that accepts connections is never displaced for a slow handshake")
+                    .isTrue();
+            assertThat(Files.readString(paths.log())).doesNotContain("displacing unresponsive engine");
+            assertThat(engine.connections.get()).isGreaterThan(QUICK.probes());
+        } finally {
+            holder.destroyForcibly();
+            holder.waitFor();
+        }
+    }
+
+    /** Past its startup grace, a holder that runs no worker and burns no CPU shows no life, and is displaced. */
+    @Test
+    void a_peer_silent_through_every_probe_that_shows_no_life_is_displaced() throws Exception {
+        EnginePaths.Paths paths = paths();
+        Path socket = EnginePaths.activeSocket(paths);
+        Process idle = SleepMain.spawn(120_000);
+        try (FakeEngine ignored = new FakeEngine(socket, Integer.MAX_VALUE)) {
+            Files.writeString(EnginePaths.pidFor(socket), Long.toString(idle.pid()));
+            // Let the JVM's own start-up CPU settle, so two readings apart show no step.
+            Thread.sleep(1_500);
+
+            Reachability reach = EngineSpawn.waitOutSilentPeer(paths, socket, VERSION, QUICK, NO_GRACE);
+
+            assertThat(reach).isInstanceOf(Reachability.Absent.class);
+            assertThat(idle.waitFor(5, TimeUnit.SECONDS))
+                    .as("the lifeless holder is gone")
+                    .isTrue();
+            assertThat(Files.readString(paths.log()))
+                    .contains("displacing unresponsive engine (pid " + idle.pid() + ")");
+        } finally {
+            idle.destroyForcibly();
         }
     }
 

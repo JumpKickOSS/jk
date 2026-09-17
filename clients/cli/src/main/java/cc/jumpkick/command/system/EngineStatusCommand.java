@@ -7,11 +7,13 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineHeapDump;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineProcessControl;
+import cc.jumpkick.cli.engine.SilentPeer;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -74,8 +76,7 @@ public final class EngineStatusCommand implements CliCommand {
                 CommandWedge.envelopeStart();
                 String headline;
                 if (stray > 0) {
-                    headline = "Engine pid " + stray + " holds this directory's engine state but does not"
-                            + " answer — `jk engine stop --now` clears it";
+                    headline = strayHeadline(stray);
                 } else if (others.isEmpty()) {
                     headline = "Engine is not running";
                 } else {
@@ -202,6 +203,23 @@ public final class EngineStatusCommand implements CliCommand {
      * alongside the pid, which is what {@code stop --pid} takes. Without this the only way to discover a
      * second engine was {@code ps}.
      */
+    /**
+     * The holder that does not answer its socket: alive and busy — young, or with worker processes
+     * — is what a client waits for rather than displaces, and the line says so; anything else is
+     * the wedge {@code stop --now} clears.
+     */
+    private static String strayHeadline(long stray) {
+        var life = SilentPeer.Life.of(stray, Clock.SYSTEM);
+        if (life.isPresent()
+                && (life.get().workers() > 0 || life.get().youngerThan(SilentPeer.Grace.DEFAULT.startup()))) {
+            return "Engine pid " + stray + " holds this directory's engine state and is alive and busy ("
+                    + life.get().describe() + ") but does not answer its socket yet — clients wait for it rather"
+                    + " than displace it; `jk engine stop --now` stops it regardless";
+        }
+        return "Engine pid " + stray + " holds this directory's engine state but does not"
+                + " answer — `jk engine stop --now` clears it";
+    }
+
     private static void printFleet(List<EngineFleet.Member> fleet) {
         if (fleet.isEmpty()) return;
         CliOutput.out("");

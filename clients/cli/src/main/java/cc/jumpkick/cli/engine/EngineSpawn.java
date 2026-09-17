@@ -12,6 +12,7 @@ import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.EngineJvmFlags;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -81,8 +82,17 @@ public final class EngineSpawn {
     }
 
     static EngineProbe.Handshake ensure(EnginePaths.Paths paths, String clientVersion) throws IOException {
+        return ensure(paths, clientVersion, Patience.DEFAULT, SilentPeer.Grace.DEFAULT);
+    }
+
+    /** As {@link #ensure(EnginePaths.Paths, String)} with the probe patience and the silent peer's grace explicit. */
+    static EngineProbe.Handshake ensure(
+            EnginePaths.Paths paths, String clientVersion, Patience patience, SilentPeer.Grace grace)
+            throws IOException {
         Path socket = EnginePaths.activeSocket(paths);
-        Reachability reach = probePatiently(socket, clientVersion, Patience.DEFAULT);
+        Reachability reach = probePatiently(socket, clientVersion, patience);
+        if (reach instanceof Reachability.Silent)
+            reach = waitOutSilentPeer(paths, socket, clientVersion, patience, grace);
         if (reach instanceof Reachability.Live live) {
             EngineProbe.Handshake hs = live.handshake();
             // A draining engine has unbound its listener; this branch is the race before unbind.
@@ -99,11 +109,59 @@ public final class EngineSpawn {
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
             // a kill: spawn this client's engine; its startup atomically repoints the endpoint and
             // drains the displaced engine — in-flight jobs finish untouched.
-        } else if (reach instanceof Reachability.Silent) {
-            displaceSilent(paths, socket);
         }
         // Absent / unusable / version skew → spawn (takeover or cold start).
         return startWithSelfHeal(paths, clientVersion);
+    }
+
+    /**
+     * A peer silent through the patience. The process the pid file names is read for the life it
+     * shows without a reply — {@link SilentPeer}: age, worker children, CPU advancing — and probed
+     * again between readings for as long as that life earns. A reply, or the holder's death, hands
+     * the outcome back to the caller as any probe would. A holder that shows no life is displaced;
+     * one that shows life past its patience is left alone and the command fails naming it, so a
+     * busy shared engine is never killed mid-build by a second client. Nothing alive holding the
+     * state is the stale-pid case, displaced as before over the socket.
+     */
+    static Reachability waitOutSilentPeer(
+            EnginePaths.Paths paths, Path socket, String clientVersion, Patience patience, SilentPeer.Grace grace)
+            throws IOException {
+        Clock clock = Clock.SYSTEM;
+        long pid = EngineProcessControl.unresponsiveHolderPid(socket);
+        Optional<SilentPeer.Life> reading = pid > 0 ? SilentPeer.Life.of(pid, clock) : Optional.empty();
+        if (reading.isEmpty()) {
+            displaceSilent(paths, socket);
+            return new Reachability.Absent();
+        }
+        SilentPeer.Life before = null;
+        SilentPeer.Life now = reading.get();
+        long since = clock.nanos();
+        while (true) {
+            Duration waited = Duration.ofNanos(clock.nanos() - since);
+            switch (SilentPeer.judge(before, now, waited, grace)) {
+                case DISPLACE -> {
+                    displaceSilent(paths, socket);
+                    return new Reachability.Absent();
+                }
+                case LEAVE_ALONE -> {
+                    logReason(
+                            paths,
+                            "left a silent engine alone (pid " + pid + ", " + now.describe() + ") after "
+                                    + SilentPeer.human(waited) + " — not displaced");
+                    throw new IOException(SilentPeer.refusal(now, waited));
+                }
+                case KEEP_WAITING -> {
+                    /* back off, probe, read again */
+                }
+            }
+            sleepQuietly(patience.backoff().toMillis());
+            Reachability again = probe(socket, clientVersion, patience.replyTimeoutMillis());
+            if (!(again instanceof Reachability.Silent)) return again;
+            Optional<SilentPeer.Life> next = SilentPeer.Life.of(pid, clock);
+            if (next.isEmpty()) return new Reachability.Absent(); // the holder went away on its own
+            before = now;
+            now = next.get();
+        }
     }
 
     /**
