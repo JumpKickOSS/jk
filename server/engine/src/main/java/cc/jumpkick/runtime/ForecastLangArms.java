@@ -129,22 +129,21 @@ final class ForecastLangArms {
                     new TaskForecast.Task(
                             TaskNames.COMPILE_KOTLIN,
                             TaskForecast.Status.FULL,
-                            "full compile · " + TaskForecaster.count(ktSrc.size(), "source")
-                                    + " · toolchain unresolved",
+                            "full compile · " + ForecastSteps.count(ktSrc.size(), "source") + " · toolchain unresolved",
                             null),
                     null);
         }
-        boolean hit = TaskForecaster.present(actionCache, key);
+        boolean hit = ForecastSteps.present(actionCache, key);
         String why = "";
         if (!hit) {
             try {
-                why = TaskForecaster.langMissReason(actionCache, taskId, ActionKey.kotlincInputs(request, snapshotter));
+                why = ForecastSteps.langMissReason(actionCache, taskId, ActionKey.kotlincInputs(request, snapshotter));
             } catch (IOException e) {
                 Log.debug("kotlinStep: no miss reason", e);
             }
         }
         return new LangStep(
-                TaskForecaster.langCompileStep(
+                ForecastSteps.langCompileStep(
                         TaskNames.COMPILE_KOTLIN, hit, key, ktSrc.size(), compileDepDirty || force, why, depHint),
                 key);
     }
@@ -181,7 +180,7 @@ final class ForecastLangArms {
         BuildLayout layout = prepared.layout();
         List<Path> gvSrc = prepared.gvSrc();
         boolean mixed = prepared.mixedGroovy();
-        String full = "full compile · " + TaskForecaster.count(gvSrc.size(), "source");
+        String full = "full compile · " + ForecastSteps.count(gvSrc.size(), "source");
         GroovycRequest req;
         try {
             WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
@@ -239,10 +238,10 @@ final class ForecastLangArms {
         }
         String taskId = ActionKey.qualifiedTaskId(TaskNames.COMPILE_GROOVY, layout.classesDir());
         String key = ActionKey.forGroovyc(taskId, req, BuildIdentity.cacheKeyVersion(), classpathToken);
-        boolean hit = TaskForecaster.present(actionCache, key);
-        String why = hit ? "" : TaskForecaster.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
+        boolean hit = ForecastSteps.present(actionCache, key);
+        String why = hit ? "" : ForecastSteps.langMissReason(actionCache, taskId, ActionKey.snapshotInputs(req));
         return new LangStep(
-                TaskForecaster.langCompileStep(
+                ForecastSteps.langCompileStep(
                         TaskNames.COMPILE_GROOVY, hit, key, gvSrc.size(), compileDepDirty || force, why, depHint),
                 key);
     }

@@ -165,7 +165,7 @@ public final class PlannerFixtures {
                 layout.generatedSourcesDir("annotations", "fixtures"),
                 WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
                 restored.abiToken());
-        TaskForecast.Task fxStep = TaskForecaster.compileStep(TaskNames.COMPILE_TEST_FIXTURES, fxPred, false, fxReq);
+        TaskForecast.Task fxStep = ForecastSteps.compileStep(TaskNames.COMPILE_TEST_FIXTURES, fxPred, false, fxReq);
         steps.add(fxStep);
         if (fxStep.cached()) {
             // The fixtures tree is on own tests' and fixtures-consumers' classpaths and on the

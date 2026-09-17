@@ -218,7 +218,7 @@ public final class PlannerGuardSuite {
                 layout.generatedSourcesDir("annotations", "guard"),
                 WorkerEnv.forModule(project.build().env(), layout.moduleRoot(), layout.moduleTargetDir()),
                 restored.abiToken());
-        TaskForecast.Task step = TaskForecaster.compileStep(TaskNames.COMPILE_GUARD, pred, false, req);
+        TaskForecast.Task step = ForecastSteps.compileStep(TaskNames.COMPILE_GUARD, pred, false, req);
         steps.add(step);
         return !step.cached();
     }

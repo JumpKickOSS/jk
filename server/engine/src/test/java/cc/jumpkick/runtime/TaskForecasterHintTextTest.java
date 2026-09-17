@@ -33,7 +33,7 @@ class TaskForecasterHintTextTest {
                         UTIL, hint("util", SourceApiIndex.Kind.BODY_ONLY)));
         assertThat(h.kind()).isEqualTo(SourceApiIndex.Kind.BODY_ONLY);
         assertThat(h.text()).isEqualTo("likely up to date · body-only edit in lib, util (hint)");
-        assertThat(TaskForecaster.dependencyChanged(h)).isEqualTo(h.text());
+        assertThat(ForecastSteps.dependencyChanged(h)).isEqualTo(h.text());
     }
 
     @Test
@@ -52,7 +52,7 @@ class TaskForecasterHintTextTest {
         TaskForecaster.DepHint unknown =
                 TaskForecaster.depHint(List.of(LIB, UTIL), Map.of(LIB, hint("lib", SourceApiIndex.Kind.BODY_ONLY)));
         assertThat(unknown).isEqualTo(TaskForecaster.DepHint.NONE);
-        assertThat(TaskForecaster.dependencyChanged(unknown)).isEqualTo("recompile · dependency changed");
+        assertThat(ForecastSteps.dependencyChanged(unknown)).isEqualTo("recompile · dependency changed");
         assertThat(TaskForecaster.depHint(List.of(), Map.of())).isEqualTo(TaskForecaster.DepHint.NONE);
     }
 
@@ -61,14 +61,14 @@ class TaskForecasterHintTextTest {
         TaskForecaster.DepHint body =
                 TaskForecaster.depHint(List.of(LIB), Map.of(LIB, hint("lib", SourceApiIndex.Kind.BODY_ONLY)));
         TaskForecast.Task depDirtyHit =
-                TaskForecaster.langCompileStep("compile-kotlin", true, "0123456789abcdef", 3, true, "", body);
+                ForecastSteps.langCompileStep("compile-kotlin", true, "0123456789abcdef", 3, true, "", body);
         assertThat(depDirtyHit.status()).isEqualTo(TaskForecast.Status.RUN);
         assertThat(depDirtyHit.text()).isEqualTo(body.text());
-        TaskForecast.Task hit = TaskForecaster.langCompileStep(
+        TaskForecast.Task hit = ForecastSteps.langCompileStep(
                 "compile-kotlin", true, "0123456789abcdef", 3, false, "", TaskForecaster.DepHint.NONE);
         assertThat(hit.cached()).isTrue();
         assertThat(hit.key()).isEqualTo("01234567");
-        TaskForecast.Task miss = TaskForecaster.langCompileStep(
+        TaskForecast.Task miss = ForecastSteps.langCompileStep(
                 "compile-groovy",
                 false,
                 "k",

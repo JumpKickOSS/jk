@@ -108,9 +108,9 @@ final class ForecastPackagingTails {
                         prepared.javaHome(),
                         PlannerJavadoc.dokkaToken(project, dokkaVersion))
                 .key();
-        return TaskForecaster.present(actionCache, jdKey)
+        return ForecastSteps.present(actionCache, jdKey)
                 ? new TaskForecast.Task(
-                        TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.CACHED, "", TaskForecaster.key8(jdKey))
+                        TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.CACHED, "", ForecastSteps.key8(jdKey))
                 : new TaskForecast.Task(TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.RUN, "javadoc", null);
     }
 

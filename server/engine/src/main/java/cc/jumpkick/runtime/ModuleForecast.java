@@ -411,7 +411,7 @@ final class ModuleForecast {
                         restored.abiToken());
                 Perf.end("  predict-compile-main", tc);
                 compileMainKey = pred.actionKey();
-                steps.add(TaskForecaster.compileStep(
+                steps.add(ForecastSteps.compileStep(
                         TaskNames.COMPILE_MAIN, pred, compileDepDirty || force, req, depHint));
                 if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 // The key hit against the dependency's current output: nothing of this module's
@@ -694,7 +694,7 @@ final class ModuleForecast {
                     javaHome,
                     "out",
                     testOut);
-            TaskForecast.Task p = TaskForecaster.compileStep(TaskNames.COMPILE_TEST, pred, false, req);
+            TaskForecast.Task p = ForecastSteps.compileStep(TaskNames.COMPILE_TEST, pred, false, req);
             steps.add(p);
             compileTestKey = pred.actionKey();
             if (!p.cached()) testDirty = true;
@@ -736,7 +736,7 @@ final class ModuleForecast {
         // ---- run-tests ----
         int estimated = TestSupport.estimateAllSuiteTestCount(dir, compact);
         testCount = estimated;
-        String tests = estimated > 0 ? "~" + TaskForecaster.count(estimated, "test") : "tests";
+        String tests = estimated > 0 ? "~" + ForecastSteps.count(estimated, "test") : "tests";
         // testDepDirty: sibling on test classpath is rebuilding — suite must re-run even
         // when main compile stays cached (cli ← engine test-dep dogfood).
         if (compileDirty || testDirty || testDepDirty) {
@@ -781,7 +781,7 @@ final class ModuleForecast {
                     prepared.pkgDecls());
             Perf.end("  test-stamp-key", ts);
             Optional<ActionCache.ActionRecord> marker =
-                    stampKey == null ? Optional.empty() : TaskForecaster.presentRecord(actionCache, stampKey);
+                    stampKey == null ? Optional.empty() : ForecastSteps.presentRecord(actionCache, stampKey);
             boolean hit = marker.isPresent() && TestStamp.green(marker.get());
             // The same key with a red record is the one shape a live run never skips:
             // say so, or the ETA reads "only the suite is dirty" as stamp drift.
@@ -910,7 +910,7 @@ final class ModuleForecast {
             Perf.end("  package-fingerprint", tp);
             String pkgKey = ActionKey.forArtifact(
                     ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, jar), BuildIdentity.cacheKeyVersion(), tokens);
-            boolean hit = TaskForecaster.present(actionCache, pkgKey);
+            boolean hit = ForecastSteps.present(actionCache, pkgKey);
             // A source-less module's jar (its copied resources) is one sibling classpaths demand:
             // forecasting nothing would leave it unscheduled while its consumers fail on it, so a
             // missing jar with no record is scheduled until it exists.
@@ -920,7 +920,7 @@ final class ModuleForecast {
             steps.add(
                     hit
                             ? new TaskForecast.Task(
-                                    TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", TaskForecaster.key8(pkgKey))
+                                    TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", ForecastSteps.key8(pkgKey))
                             : new TaskForecast.Task(TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, miss, null));
             if (hit && !Files.isRegularFile(jar)) {
                 // Publish the wiped jar's content sha from THIS key's record so downstream
