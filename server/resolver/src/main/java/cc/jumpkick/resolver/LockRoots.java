@@ -174,7 +174,8 @@ final class LockRoots {
         return roots;
     }
 
-    private static GraphGroup graphGroup(Scope scope) {
+    /** The graph a scope's roots are solved in: processor, test (with test-dev), else main. */
+    static GraphGroup graphGroup(Scope scope) {
         return switch (scope) {
             case PROCESSOR -> GraphGroup.PROCESSOR;
             case TEST, TEST_DEV -> GraphGroup.TEST;

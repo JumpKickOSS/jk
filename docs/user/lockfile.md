@@ -302,7 +302,9 @@ members  = ["zipkin-collector/activemq"]
 
 `zipkin-collector/activemq` compiles, tests and packages against 2.0.3; every other member reads
 3.1.0. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
-own graph reaches has only its `members` row. `jk lock` keeps the versions such a row holds like
+own graph reaches has only its `members` row. A member's row is written with the member's own
+scopes, so a version the workspace holds only as a test row and a member wants on its main
+classpath is a `members` row with `scopes = ["main"]`. `jk lock` keeps the versions such a row holds like
 any other's, and says once per member which coordinates it reads its own rows for, with its version
 and the workspace's. `jk why` shows both versions with their members; every tool that reads one
 module's rows — the build, `jk run`, packaging and its SBOM, `jk native` training, a plugin's

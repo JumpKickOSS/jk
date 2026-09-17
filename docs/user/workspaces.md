@@ -156,7 +156,9 @@ So a member is resolved on its own exactly when the workspace's answer cannot be
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
-member agrees on stays a plain row. A workspace whose members all agree has no `members` key
+member agrees on stays a plain row. Agreement is per scope: a version the workspace carries only as
+a test row is not on any member's main classpath, so a member whose main graph wants that version
+gets a main-scoped row of its own rather than reading the workspace's main row. A workspace whose members all agree has no `members` key
 anywhere, and nothing about it changes.
 
 A declaration the pinned version does satisfy is a floor, as a sibling's higher edge is: Boot's

@@ -19,16 +19,19 @@ public final class MemberRows {
 
     /** The rows of {@code artifacts} the member at {@code memberPath} reads, in their original order. */
     public static List<Lockfile.Artifact> narrow(List<Lockfile.Artifact> artifacts, String memberPath) {
-        Map<String, Lockfile.Artifact> mine = new LinkedHashMap<>();
+        // package key → every partition row the member reads for it (a main and a test dual may both be its own).
+        Map<String, List<Lockfile.Artifact>> mine = new LinkedHashMap<>();
         for (Lockfile.Artifact row : artifacts) {
-            if (row.members().contains(memberPath)) mine.put(row.packageKey(), row);
+            if (row.members().contains(memberPath)) {
+                mine.computeIfAbsent(row.packageKey(), k -> new ArrayList<>()).add(row);
+            }
         }
         if (mine.isEmpty() && artifacts.stream().noneMatch(Lockfile.Artifact::isPartition)) return artifacts;
         List<Lockfile.Artifact> out = new ArrayList<>(artifacts.size());
         for (Lockfile.Artifact row : artifacts) {
-            Lockfile.Artifact own = mine.get(row.packageKey());
+            List<Lockfile.Artifact> own = mine.get(row.packageKey());
             if (own != null) {
-                if (own == row) out.add(row);
+                if (own.contains(row)) out.add(row);
                 continue;
             }
             if (!row.isPartition()) out.add(row);

@@ -352,6 +352,50 @@ class LockOrchestratorMemberPartitionsTest {
                 .containsExactly("1.0");
     }
 
+    /**
+     * A member row agrees with the workspace only where a merged row at that version carries the
+     * member row's scope group: {@code lib} pins leaf 3.0 for its main classpath while the workspace
+     * holds 3.0 as a test-only dual under a main row at 2.0, so {@code lib} gets a main-scoped row
+     * of its own instead of reading the workspace's 2.0.
+     */
+    @Test
+    void a_member_row_matching_only_a_test_dual_is_a_partition(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "leaf", "1.0", "2.0", "3.0");
+        for (String v : List.of("1.0", "2.0", "3.0")) {
+            upstream.pom("com.foo", "leaf", v, leafPom("leaf", v));
+            upstream.jar("com.foo", "leaf", v);
+        }
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.pom("com.foo", "middle", "1.0", depending("middle", "leaf", "[1.0,2.0]"));
+        upstream.jar("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "tester", "1.0");
+        upstream.pom("com.foo", "tester", "1.0", depending("tester", "leaf", "3.0"));
+        upstream.jar("com.foo", "tester", "1.0");
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency tester = new Dependency("com.foo:tester", VersionSelector.parse("=1.0"));
+        JkBuild app = manifest("app", Map.of(Scope.MAIN, List.of(middle), Scope.TEST, List.of(tester)));
+        JkBuild lib = manifest(
+                "lib", Map.of(Scope.MAIN, List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=3.0")))));
+        JkBuild merged = manifest("root", Map.of(Scope.MAIN, List.of(middle), Scope.TEST, List.of(tester)));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(List.of(new LockOrchestrator.Member("app", app), new LockOrchestrator.Member("lib", lib)))
+                .lock(merged, "test");
+
+        assertThat(rows(lock, "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::scopes, Lockfile.Artifact::members)
+                .containsExactlyInAnyOrder(
+                        tuple("2.0", List.of(Scope.MAIN), List.of()),
+                        tuple("3.0", List.of(Scope.TEST), List.of()),
+                        tuple("3.0", List.of(Scope.MAIN), List.of("lib")));
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::scopes)
+                .containsExactly(tuple("3.0", List.of(Scope.MAIN)));
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactlyInAnyOrder("2.0", "3.0");
+    }
+
     /** {@code the-bom} manages leaf at 2.0; {@code middle} declares leaf 1.0; both leaf releases exist. */
     private void serveMiddleOverLeaf() {
         upstream.pom(
@@ -378,6 +422,19 @@ class LockOrchestratorMemberPartitionsTest {
             upstream.pom("com.foo", "leaf", v, leafPom("leaf", v));
             upstream.jar("com.foo", "leaf", v);
         }
+    }
+
+    private static String depending(String artifact, String dep, String version) {
+        return """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>%s</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>%s</artifactId><version>%s</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(artifact, dep, version);
     }
 
     private static String leafPom(String artifact, String version) {
