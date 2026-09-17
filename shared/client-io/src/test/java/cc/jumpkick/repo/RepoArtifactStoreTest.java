@@ -16,6 +16,56 @@ import org.junit.jupiter.api.io.TempDir;
 
 class RepoArtifactStoreTest {
 
+    /**
+     * A loopback origin is whatever process holds the port right now, so a tree another process
+     * filled under it is a predecessor's: emptied the first time this process touches it, then this
+     * process's own for the rest of its life.
+     */
+    @Test
+    void a_loopback_tree_another_process_filled_is_emptied_on_this_process_first_touch(@TempDir Path cache)
+            throws IOException {
+        URI stub = URI.create("http://127.0.0.1:4711/");
+        String rel = "com/example/lib/1.0/lib-1.0.jar";
+        leftByAnotherProcess(cache, stub, rel);
+
+        RepoArtifactStore store = RepoArtifactStore.forRepository(cache, "stub", stub);
+        assertThat(store.contains(rel))
+                .as("a stub on a reused port never finds its predecessor's artifact")
+                .isFalse();
+
+        Path source = cache.resolve("src.jar");
+        Files.writeString(source, "the successor's bytes");
+        store.materialize(rel, source, Hashing.sha256Hex(source));
+        assertThat(RepoArtifactStore.forRepository(cache, "stub", stub).contains(rel))
+                .as("what this process stored, this process finds")
+                .isTrue();
+    }
+
+    @Test
+    void a_remote_tree_outlives_the_process_that_filled_it(@TempDir Path cache) throws IOException {
+        URI remote = URI.create("https://repo.example/maven/");
+        String rel = "com/example/lib/1.0/lib-1.0.jar";
+        leftByAnotherProcess(cache, remote, rel);
+
+        assertThat(RepoArtifactStore.forRepository(cache, "remote", remote).contains(rel))
+                .isTrue();
+    }
+
+    /** The tree a run of another jk process leaves: the origin marker under that process's claim, one stored artifact. */
+    private static void leftByAnotherProcess(Path cache, URI origin, String rel) throws IOException {
+        Path tree = cache.resolve("repos").resolve(RepoIdentity.storeId(origin));
+        Files.createDirectories(tree);
+        Files.writeString(
+                tree.resolve(RepoArtifactStore.ORIGIN_FILE),
+                "origin = \"" + RepoIdentity.canonicalOrigin(origin)
+                        + "\"\nname = \"theirs\"\nprocess = \"predecessor\"\n");
+        Path artifact = tree.resolve(rel);
+        Files.createDirectories(Objects.requireNonNull(artifact.getParent()));
+        Files.writeString(artifact, "the predecessor's bytes");
+        ArtifactMemo.ofBlob(artifact, "com.example:lib:1.0", Hashing.sha256Hex(artifact))
+                .write(ArtifactMemo.jkPath(tree, rel));
+    }
+
     @Test
     void materialize_copies_and_writes_jk_memo(@TempDir Path dir) throws IOException {
         Path cache = dir.resolve("cache");

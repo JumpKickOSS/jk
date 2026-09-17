@@ -317,7 +317,11 @@ opened, so a mirror that appears is asked afresh for a coordinate the repository
 existed, and a mirror removed leaves the repository asked afresh at its own URL. A `file://`
 repository and a loopback one are never memoized — not their misses, not their version lists: a
 directory on this disk (a workspace path, a git materialization) that gains an artifact is seen on
-the next ask, without `--force`.
+the next ask, without `--force`. A loopback repository's store tree (`repos/127.0.0.1-…`) is
+likewise one process's: the first time an engine process touches it, whatever a previous process
+stored there is removed, so a stub that reappears on a reused port in a later run never serves a
+predecessor's artifacts from disk. Within one engine's lifetime the tree is a warm store like any
+other; an ssh-tunnelled repository re-downloads once per engine lifetime.
 
 **A `<proxy>` is jk's proxy** for the protocol it names, between `~/.jk/config.toml [network]` and
 the shell's `https_proxy` / `http_proxy` — see [Config § Network](config.md#network). Its

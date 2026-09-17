@@ -26,6 +26,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -49,7 +50,7 @@ import org.jspecify.annotations.Nullable;
 public final class RepoArtifactStore {
 
     /** No-op store for callers that don't participate in per-repo storage. */
-    public static final RepoArtifactStore NONE = new RepoArtifactStore(null, null, null);
+    public static final RepoArtifactStore NONE = new RepoArtifactStore(null, null, null, false);
 
     /**
      * Beside each identity-keyed tree: {@code origin = "<canonical origin>"} and {@code name =
@@ -61,10 +62,24 @@ public final class RepoArtifactStore {
     private final @Nullable String label;
     private final @Nullable String origin;
 
-    private RepoArtifactStore(@Nullable Path root, @Nullable String label, @Nullable String origin) {
+    /** A loopback origin: the tree is one process's, see {@link #claim}. */
+    private final boolean loopback;
+
+    /**
+     * This process's claim on the loopback trees it touches, written into their markers. A
+     * loopback origin names whatever process holds the port right now — a test's stub, a proxy under
+     * development — so a tree another process filled under it holds a predecessor's artifacts.
+     */
+    private static final String PROCESS_TOKEN = processToken(ProcessHandle.current());
+
+    /** The loopback trees this process has claimed; a claim runs once per tree, others wait on it. */
+    private static final ConcurrentHashMap<Path, Boolean> CLAIMS = new ConcurrentHashMap<>();
+
+    private RepoArtifactStore(@Nullable Path root, @Nullable String label, @Nullable String origin, boolean loopback) {
         this.root = root;
         this.label = label;
         this.origin = origin;
+        this.loopback = loopback;
     }
 
     /**
@@ -73,7 +88,7 @@ public final class RepoArtifactStore {
      * and for walking ids {@link #storeIds} listed.
      */
     public RepoArtifactStore(Path cacheRoot, String storeId) {
-        this(dirFor(cacheRoot, storeId), null, null);
+        this(dirFor(cacheRoot, storeId), null, null, false);
     }
 
     private static Path dirFor(Path cacheRoot, String storeId) {
@@ -93,7 +108,8 @@ public final class RepoArtifactStore {
     /**
      * The store for the repository at {@code origin}, whatever a project calls it. A repository
      * served out of this very store ({@code file:} at {@code <cacheRoot>/repos/<id>}, the view the
-     * worker launcher reads through) is that tree itself, not a copy of it.
+     * worker launcher reads through) is that tree itself, not a copy of it. A loopback origin's tree
+     * is this process's alone: the first touch here removes what a previous process stored under it.
      */
     public static RepoArtifactStore forRepository(Path cacheRoot, String name, URI origin) {
         Objects.requireNonNull(cacheRoot, "cacheRoot");
@@ -102,7 +118,40 @@ public final class RepoArtifactStore {
         String self = selfView(cacheRoot, origin);
         if (self != null) return new RepoArtifactStore(cacheRoot, self);
         String canonical = RepoIdentity.canonicalOrigin(origin);
-        return new RepoArtifactStore(dirFor(cacheRoot, RepoIdentity.storeId(origin)), name, canonical);
+        boolean loopback = RepositorySpec.loopback(origin.getHost());
+        RepoArtifactStore store =
+                new RepoArtifactStore(dirFor(cacheRoot, RepoIdentity.storeId(origin)), name, canonical, loopback);
+        if (loopback) store.claim();
+        return store;
+    }
+
+    /** The pid and start instant of {@code process}: distinct from every other process this machine ran. */
+    static String processToken(ProcessHandle process) {
+        String started = process.info()
+                .startInstant()
+                .map(instant -> Long.toHexString(instant.toEpochMilli()))
+                .orElse("0");
+        return Long.toHexString(process.pid()) + "-" + started;
+    }
+
+    /**
+     * Make a loopback tree this process's: once per tree per process, a tree whose marker carries
+     * another process's token (or none) is removed whole, so a stub that reappears on a reused port
+     * in a later run never serves a predecessor's artifacts from disk; the first write then marks the
+     * tree with this process's token, and a tree so marked is left as it is — within one process the
+     * port is one holder. A tree nothing is written to is not created.
+     */
+    private void claim() {
+        Path tree = Objects.requireNonNull(root, "a loopback store has a root");
+        CLAIMS.computeIfAbsent(tree, t -> {
+            if (PROCESS_TOKEN.equals(describe(t).process())) return Boolean.TRUE;
+            try {
+                if (Files.isDirectory(t)) PathUtil.deleteRecursivelyOrThrow(t);
+            } catch (IOException e) {
+                Log.warn("jk: warning: could not empty the loopback repository tree " + t + ": " + e);
+            }
+            return Boolean.TRUE;
+        });
     }
 
     /**
@@ -118,7 +167,7 @@ public final class RepoArtifactStore {
             return forRepository(cacheRoot, Objects.requireNonNull(name), new URI(url.strip()));
         } catch (URISyntaxException | IllegalArgumentException malformed) {
             return new RepoArtifactStore(
-                    dirFor(cacheRoot, RepoIdentity.storeId(url)), name, RepoIdentity.canonicalOrigin(url));
+                    dirFor(cacheRoot, RepoIdentity.storeId(url)), name, RepoIdentity.canonicalOrigin(url), false);
         }
     }
 
@@ -305,9 +354,15 @@ public final class RepoArtifactStore {
     // Identity
     // -------------------------------------------------------------------------
 
-    /** What a store is on disk: its id, the label it was first filled under, and its canonical origin. */
+    /**
+     * What a store is on disk: its id, the label it was first filled under, its canonical origin,
+     * and — a loopback tree — the token of the process that claimed it.
+     */
     public record Origin(
-            String id, @Nullable String name, @Nullable String origin) {
+            String id,
+            @Nullable String name,
+            @Nullable String origin,
+            @Nullable String process) {
         /** True when nothing says which origin filled the tree: keyed by name, read by nothing. */
         public boolean isLegacy() {
             return origin == null && !RepoArtifactResolver.JK_LOCAL.equals(id);
@@ -316,7 +371,8 @@ public final class RepoArtifactStore {
 
     /**
      * Write {@link #ORIGIN_FILE} once for a store that knows its origin. A reserved tree gets one
-     * too, so a listing does not have to know the reserved table; the first-party shelf has none.
+     * too, so a listing does not have to know the reserved table; the first-party shelf has none. A
+     * loopback tree's marker carries the claiming process's token as well.
      */
     private void recordOrigin() {
         if (root == null || origin == null) return;
@@ -324,7 +380,9 @@ public final class RepoArtifactStore {
         if (Files.exists(marker)) return;
         try {
             Files.createDirectories(root);
-            String text = "origin = \"" + origin + "\"\n" + (label == null ? "" : "name = \"" + label + "\"\n");
+            String text = "origin = \"" + origin + "\"\n"
+                    + (label == null ? "" : "name = \"" + label + "\"\n")
+                    + (loopback ? "process = \"" + PROCESS_TOKEN + "\"\n" : "");
             Path tmp = Files.createTempFile(root, ".origin.", ".part");
             boolean moved = false;
             try {
@@ -349,6 +407,7 @@ public final class RepoArtifactStore {
         String id = String.valueOf(dir.getFileName());
         String name = null;
         String origin = null;
+        String process = null;
         Path marker = dir.resolve(ORIGIN_FILE);
         if (Files.isRegularFile(marker)) {
             try {
@@ -362,6 +421,7 @@ public final class RepoArtifactStore {
                     }
                     if (key.equals("origin")) origin = value;
                     else if (key.equals("name")) name = value;
+                    else if (key.equals("process")) process = value;
                 }
             } catch (IOException unreadable) {
                 // fall through to the reserved table
@@ -369,7 +429,7 @@ public final class RepoArtifactStore {
         }
         if (origin == null) origin = RepoIdentity.reservedOrigin(id);
         if (name == null && (origin != null || RepoArtifactResolver.JK_LOCAL.equals(id))) name = id;
-        return new Origin(id, name, origin);
+        return new Origin(id, name, origin, process);
     }
 
     /**
