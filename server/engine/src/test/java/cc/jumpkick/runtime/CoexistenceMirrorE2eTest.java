@@ -15,6 +15,8 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.runtime.base.TestStoreSeed;
+import cc.jumpkick.util.JkDirs;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -69,6 +71,9 @@ class CoexistenceMirrorE2eTest {
             "/" + GROUP_PATH + "/" + ARTIFACT + "/" + VERSION + "/" + ARTIFACT + "-" + VERSION + ".jar";
     private static final String METADATA_PATH = "/" + GROUP_PATH + "/" + ARTIFACT + "/maven-metadata.xml";
 
+    /** The build's store: warm with the JUnit Platform from this engine's, like a suite's sandbox. */
+    private static final Path CACHE = Path.of("build/test-cache/coexistence-mirror");
+
     /** The corporate repository. It answers for Central; the build never addresses Central itself. */
     private final Nexus nexus = new Nexus();
 
@@ -86,6 +91,8 @@ class CoexistenceMirrorE2eTest {
         // another test in this JVM resolved would answer here without a request reaching the mirror.
         RepoGroup.clearProcessFetchCache();
         RepoGroup.clearProcessVersionsCache();
+        Files.createDirectories(CACHE);
+        TestStoreSeed.seed(JkDirs.store(), CACHE);
         nexus.start();
     }
 
@@ -115,9 +122,8 @@ class CoexistenceMirrorE2eTest {
                 """.formatted(nexus.base()));
         System.setProperty(MavenSettings.SETTINGS_PROPERTY, settings.toString());
         Path project = writeProject(tmp.resolve("shop"));
-        Path cache = Files.createDirectories(Path.of("build/test-cache/coexistence-mirror"));
 
-        BuildPlan plan = plan(project, cache);
+        BuildPlan plan = plan(project, CACHE);
         BuildPlanResult built = plan.run();
 
         assertThat(built.errors()).isEmpty();
@@ -176,9 +182,10 @@ class CoexistenceMirrorE2eTest {
     }
 
     /**
-     * A loopback stand-in for Nexus: serves what it hosts, relays every other path to Central and
-     * answers 404 for what Central has not got. Checksum sidecars of hosted artifacts are computed
-     * on request, the way a repository manager publishes them.
+     * A loopback stand-in for Nexus: serves what it hosts, then what the seeded store holds of
+     * Central's layout (the JUnit Platform the test runner injects, version lists included), relays
+     * every other path to Central and answers 404 for what Central has not got. Checksum sidecars of
+     * hosted artifacts are computed on request, the way a repository manager publishes them.
      */
     private static final class Nexus {
         final Map<String, byte[]> hosted = new ConcurrentHashMap<>();
@@ -201,9 +208,9 @@ class CoexistenceMirrorE2eTest {
             bound.createContext("/", exchange -> {
                 String path = exchange.getRequestURI().getPath();
                 requested.add(path);
-                byte[] body = hosted.get(path);
+                byte[] body = served(path);
                 if (body == null && path.endsWith(".sha1")) {
-                    byte[] artifact = hosted.get(path.substring(0, path.length() - ".sha1".length()));
+                    byte[] artifact = served(path.substring(0, path.length() - ".sha1".length()));
                     if (artifact != null) {
                         body = Hashing.hashHex("SHA-1", artifact).getBytes(StandardCharsets.UTF_8);
                     }
@@ -219,6 +226,17 @@ class CoexistenceMirrorE2eTest {
             });
             bound.start();
             server = bound;
+        }
+
+        /** What this repository holds itself: the hosted coordinate, then the seeded Central layout. */
+        private byte @Nullable [] served(String path) {
+            byte[] hostedBody = hosted.get(path);
+            if (hostedBody != null || path.startsWith("/" + GROUP_PATH + "/")) return hostedBody;
+            try {
+                return TestStoreSeed.seeded(CACHE, path.substring(1)).orElse(null);
+            } catch (IOException e) {
+                return null; // an unreadable seed is what the relay is for
+            }
         }
 
         private byte @Nullable [] relay(String path) {

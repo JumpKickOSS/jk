@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeSet;
 
 /**
@@ -78,6 +79,28 @@ public final class TestStoreSeed {
             if (writeVersionList(sandbox, hostCentral.relativize(e.getKey()), e.getValue())) materialised[0]++;
         }
         return materialised[0];
+    }
+
+    /**
+     * The bytes a Central-layout {@code relativePath} would fetch, read from {@code store}: the
+     * artifact under {@code repos/central}, or the version list a seed wrote for the artifact whose
+     * {@code maven-metadata.xml} is asked for. Empty for anything the store does not hold, so a
+     * loopback stand-in for a repository manager can answer the JUnit Platform from disk and relay
+     * only what it must.
+     */
+    public static Optional<byte[]> seeded(Path store, String relativePath) throws IOException {
+        Path central = store.resolve("repos").resolve(RepositorySpec.CENTRAL);
+        Path relative = Path.of(relativePath);
+        Path body = central.resolve(relative).normalize();
+        if (!body.startsWith(central)) return Optional.empty();
+        if (Files.isRegularFile(body)) return Optional.of(Files.readAllBytes(body));
+        Path artifactDir = relative.getParent();
+        if (artifactDir == null
+                || !"maven-metadata.xml".equals(relative.getFileName().toString())) {
+            return Optional.empty();
+        }
+        Path list = store.resolve("metadata").resolve(metadataKey(artifactDir));
+        return Files.isRegularFile(list) ? Optional.of(Files.readAllBytes(list)) : Optional.empty();
     }
 
     /** The metadata body for {@code artifactDir} under the sandbox, unless one is already there. */

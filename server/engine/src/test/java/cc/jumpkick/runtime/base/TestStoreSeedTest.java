@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.RepositorySpec;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,25 @@ import org.junit.jupiter.api.io.TempDir;
 class TestStoreSeedTest {
 
     private static final String LAUNCHER = "org/junit/platform/junit-platform-launcher";
+
+    @Test
+    void a_seeded_store_answers_central_layout_paths_bodies_and_version_lists(@TempDir Path tmp) throws Exception {
+        Path host = tmp.resolve("host");
+        artifact(host, RepositorySpec.CENTRAL, LAUNCHER, "6.1.3", ".pom", ".jar");
+        Path sandbox = tmp.resolve("sandbox");
+        TestStoreSeed.seed(host, sandbox);
+
+        assertThat(TestStoreSeed.seeded(sandbox, LAUNCHER + "/6.1.3/junit-platform-launcher-6.1.3.jar"))
+                .isPresent();
+        assertThat(TestStoreSeed.seeded(sandbox, LAUNCHER + "/maven-metadata.xml")
+                        .map(xml -> new String(xml, StandardCharsets.UTF_8)))
+                .hasValueSatisfying(xml -> assertThat(xml).contains("<latest>6.1.3</latest>"));
+        assertThat(TestStoreSeed.seeded(sandbox, LAUNCHER + "/6.0.3/junit-platform-launcher-6.0.3.jar"))
+                .isEmpty();
+        assertThat(TestStoreSeed.seeded(sandbox, "org/scala-sbt/zinc_3/maven-metadata.xml"))
+                .isEmpty();
+        assertThat(TestStoreSeed.seeded(sandbox, "../../metadata/x")).isEmpty();
+    }
 
     @Test
     void the_junit_closure_and_its_version_lists_come_from_the_host_store(@TempDir Path tmp) throws Exception {
