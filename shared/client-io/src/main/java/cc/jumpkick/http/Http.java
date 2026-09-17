@@ -69,9 +69,9 @@ public final class Http {
     private final ProxyEnvironment proxies;
 
     /**
-     * Central-rate-limit failover. Applied here, at the single transport choke point, so
-     * every caller benefits and no repository's configured URL — hence nothing in {@code jk-lock.toml}
-     * changes when it engages.
+     * Central failover for a rate limit or a Cloudflare block. Applied here, at the single transport
+     * choke point, so every caller benefits and no repository's configured URL — hence nothing in
+     * {@code jk-lock.toml} — changes when it engages.
      */
     private final CentralMirror centralMirror;
 
@@ -378,12 +378,18 @@ public final class Http {
                             HostCooldown.parseRetryAfter(
                                     response.headers().firstValue("Retry-After").orElse(null), clock.instant()));
                 }
-                // Central's per-IP quota. Open the mirror window and reissue this very
-                // request against the mirror, so the resolve that tripped the limit still completes
-                // rather than failing and being re-run — a re-run would only spend more of a quota
-                // that is already exhausted.
-                if (status == 429 && centralMirror.matches(request.uri()) && !centralMirror.active()) {
-                    centralMirror.noteRateLimited();
+                // Central refusing this host: its per-IP quota (429) or Cloudflare's block (403 with
+                // Cloudflare's headers). Open the mirror window and reissue this very request against
+                // the mirror, so the resolve that tripped the refusal still completes rather than
+                // failing and being re-run — a re-run would only spend more of a quota that is already
+                // exhausted, or feed a block that escalates on traffic.
+                boolean blocked = CentralMirror.isCloudflareBlock(status, response.headers());
+                if ((status == 429 || blocked) && centralMirror.matches(request.uri()) && !centralMirror.active()) {
+                    if (blocked) {
+                        centralMirror.noteBlocked();
+                    } else {
+                        centralMirror.noteRateLimited();
+                    }
                     URI mirrored = centralMirror.route(request.uri());
                     if (!mirrored.equals(request.uri())) {
                         // The refusal's body is abandoned like a retried 5xx's: a streamed one left

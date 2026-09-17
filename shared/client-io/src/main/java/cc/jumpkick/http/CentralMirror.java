@@ -2,25 +2,31 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.net.http.HttpHeaders;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * When Maven Central rate-limits us, route Central traffic to Google's GCS mirror for a while
+ * When Maven Central refuses this host, route Central traffic to Google's GCS mirror for a while.
  *
- *
- * <p>Sonatype enforces a <b>per-IP</b> quota on Central and it is sticky: once tripped, it does not
- * clear for hours, and a rejected request still costs something. jk's own request rate is not the
- * problem — a single-dependency project is refused just as readily as a large one — so throttling
- * further would not help. The only recovery is to ask somewhere else.
+ * <p>Central refuses a host two ways. Sonatype enforces a <b>per-IP</b> quota and answers HTTP 429
+ * above it; Cloudflare, which fronts Central's edge, blocks a host it judges abusive and answers
+ * HTTP 403 with {@code Server: cloudflare} (or {@code cf-mitigated}) on every request — a plain
+ * 403 without those headers is a permission answer and is handed back as one. Both are sticky:
+ * once tripped, they do not clear for hours, and a rejected request still costs something. jk's own
+ * request rate is not the problem — a single-dependency project is refused just as readily as a
+ * large one — so throttling further would not help. The only recovery is to ask somewhere else.
  *
  * <h2>Why a wholesale, sticky switch</h2>
  *
@@ -53,13 +59,38 @@ public final class CentralMirror {
     /** Google's GCS-hosted Central mirror. The {@code /maven2/} prefix is the live one. */
     public static final String MIRROR_BASE = "https://maven-central.storage-download.googleapis.com/maven2";
 
-    /** How long one 429 keeps us on the mirror. */
+    /** How long one refusal keeps us on the mirror. */
     public static final Duration DEFAULT_WINDOW = Duration.ofHours(4);
 
     /** Set to {@code off}/{@code false}/{@code 0} to keep using Central even when rate-limited. */
     public static final String ENV_DISABLE = "JK_CENTRAL_MIRROR";
 
     private static final String STAMP_NAME = "central-rate-limited.stamp";
+
+    /**
+     * Why the window is open, recorded as the stamp's first line so the note can name it. A stamp
+     * without a recognisable first line — one armed by hand with {@code touch} — reads as a rate
+     * limit.
+     */
+    enum Cause {
+        RATE_LIMITED("rate-limited", "Maven Central is rate-limiting this host (HTTP 429)"),
+        BLOCKED("blocked", "Maven Central is blocking this host (Cloudflare)");
+
+        final String line;
+        final String text;
+
+        Cause(String line, String text) {
+            this.line = line;
+            this.text = text;
+        }
+
+        static Cause parse(@Nullable String firstLine) {
+            for (Cause c : values()) {
+                if (c.line.equals(firstLine)) return c;
+            }
+            return RATE_LIMITED;
+        }
+    }
 
     /** The one instance production uses; see {@link #standard()}. */
     private static final CentralMirror STANDARD =
@@ -127,40 +158,84 @@ public final class CentralMirror {
         return uri != null && CENTRAL_HOST.equalsIgnoreCase(uri.getHost());
     }
 
-    /** True while a recent 429 still has us on the mirror. */
+    /**
+     * True when {@code status} and {@code headers} are Cloudflare blocking the requesting host: a 403
+     * whose {@code Server} is {@code cloudflare} or that carries {@code cf-mitigated}. A 403 from
+     * anything else, and every other status Cloudflare merely passes through, is not a block.
+     */
+    public static boolean isCloudflareBlock(int status, HttpHeaders headers) {
+        if (status != 403) return false;
+        boolean cloudflare = headers.firstValue("server")
+                .map(v -> v.trim().equalsIgnoreCase("cloudflare"))
+                .orElse(false);
+        return cloudflare || headers.firstValue("cf-mitigated").isPresent();
+    }
+
+    /** True while a recent refusal still has us on the mirror. */
     public boolean active() {
         if (!enabled) return false;
         try {
             if (!Files.isRegularFile(stamp)) return false;
             Instant seen = Files.getLastModifiedTime(stamp).toInstant();
-            return Duration.between(seen, Instant.now()).compareTo(window) < 0;
+            return Duration.between(seen, Clock.SYSTEM.instant()).compareTo(window) < 0;
         } catch (IOException e) {
             return false; // unreadable stamp: prefer Central over guessing
         }
     }
 
     /**
-     * Record that Central rate-limited us, starting (or restarting) the window.
+     * Record that Central rate-limited us (HTTP 429), starting (or restarting) the window.
      *
-     * <p>Touched rather than appended: a later 429 legitimately extends the window, because it means
-     * the quota is still in force.
+     * <p>A later refusal legitimately extends the window, because it means the refusal is still in
+     * force.
      */
     public void noteRateLimited() {
+        note(Cause.RATE_LIMITED);
+    }
+
+    /** Record that Cloudflare is blocking this host on Central's behalf, starting (or restarting) the window. */
+    public void noteBlocked() {
+        note(Cause.BLOCKED);
+    }
+
+    /**
+     * Start or extend the window under {@code cause}. The stamp is touched when it already names
+     * {@code cause} and rewritten when the cause changed, so the note always names the latest refusal.
+     */
+    private void note(Cause cause) {
         if (!enabled) return;
         try {
             Files.createDirectories(stamp.getParent());
-            if (Files.exists(stamp)) {
-                Files.setLastModifiedTime(stamp, FileTime.from(Instant.now()));
-            } else {
-                Files.writeString(
-                        stamp,
-                        "Maven Central returned HTTP 429 (per-IP quota). Central-bound requests route to\n"
-                                + mirrorBase + " until this file is older than " + window.toHours()
-                                + "h. Delete it to retry Central immediately.\n");
+            if (Files.exists(stamp) && recordedCause() == cause) {
+                Files.setLastModifiedTime(stamp, FileTime.from(Clock.SYSTEM.instant()));
+                return;
             }
+            Files.writeString(
+                    stamp,
+                    cause.line + "\n" + cause.text + ". Central-bound requests route to\n" + mirrorBase
+                            + " until this file is older than " + window.toHours()
+                            + "h. Delete it to retry Central immediately.\n");
         } catch (IOException e) {
             // Losing the stamp only costs us the optimisation; never fail a build over it.
         }
+    }
+
+    /** The cause the stamp records; a rate limit when the stamp is missing, empty or hand-made. */
+    private Cause recordedCause() {
+        try (var lines = Files.lines(stamp)) {
+            return Cause.parse(lines.findFirst().orElse(null));
+        } catch (IOException | UncheckedIOException e) {
+            return Cause.RATE_LIMITED;
+        }
+    }
+
+    /**
+     * The one line the results carry while the window is open — which refusal Central gave and how
+     * long Central-bound requests go to the mirror — or empty when Central is being asked directly.
+     */
+    public Optional<String> note() {
+        if (!active()) return Optional.empty();
+        return Optional.of(recordedCause().text + "; using the mirror for " + window.toHours() + " h");
     }
 
     /** When the window expires, or null when not currently mirrored. */
@@ -183,13 +258,13 @@ public final class CentralMirror {
     }
 
     /**
-     * The mirror URI for a Central-bound <em>artifact byte</em> fetch, regardless of the 429 window.
+     * The mirror URI for a Central-bound <em>artifact byte</em> fetch, regardless of the window.
      *
-     * <p>{@link #route} is the rate-limit reaction: only reroute once Central has refused. This is the
+     * <p>{@link #route} is the refusal reaction: only reroute once Central has refused. This is the
      * standing preference for the download leg, and it is safe for a different reason — a locked artifact
      * is pinned by sha256, so the bytes are verified on arrival and where they came from does not matter.
      * Version <em>enumeration</em> is the opposite case: the mirror can lag, so metadata and POMs keep
-     * asking Central and only fall back on a 429.
+     * asking Central and only fall back once refused.
      *
      * <p>Also spends the mirror's much larger concurrency budget instead of Sonatype's per-IP quota, which
      * is the point of {@link HostRateLimiter#MIRROR_PERMITS}.
