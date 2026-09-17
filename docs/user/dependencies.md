@@ -360,9 +360,11 @@ The selector rides the lock's edge lines; see [Lockfile](lockfile.md#what-an-edg
 
 `jk tree` prints a coordinate under each scope section at that section's version: a coordinate the
 lock holds at one version for main and another for test reads its main row under `[main]` and its
-test row under `[test]`, nested and flattened (`-f`) alike. A pin source that is no lock row is
-tagged by its kind: `(platform)` for a BOM, `(managed)` for a `[managed-dependencies]` entry under
-`-s managed`. In a workspace the root's own tables sit under the root's node, ahead of the
+test row under `[test]`, nested and flattened (`-f`) alike. A row only some workspace members read
+carries `(for <members>)`, as `jk why` prints it, and a subtree that reaches such a row is expanded
+again under those members instead of folding to a `⎋` back-reference. A pin source that is no lock
+row is tagged by its kind: `(platform)` for a BOM, `(managed)` for a `[managed-dependencies]` entry
+under `-s managed`. In a workspace the root's own tables sit under the root's node, ahead of the
 members.
 
 ## Related

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,6 +35,9 @@ import org.jspecify.annotations.Nullable;
 public final class LockGraph {
 
     private static final LockGraph EMPTY = new LockGraph(Map.of(), Map.of(), Map.of(), Set.of(), Map.of());
+
+    /** Module → the members-annotation of every partition row its subtree reaches; see {@link #subtreeKey}. */
+    private final Map<String, String> subtreeMembers = new HashMap<>();
 
     private final Map<String, Lockfile.Artifact> byModule;
     /** Artifact name → version-stripped dep modules, lock order. */
@@ -127,6 +131,53 @@ public final class LockGraph {
         Lockfile.Artifact pkg = byModule.get(moduleOrGa);
         if (pkg == null) pkg = byModule.get(ga(moduleOrGa));
         return pkg;
+    }
+
+    /**
+     * The members a partition row is read by, as the tree and {@code jk why} print it: {@code " (for
+     * a, b)"}; empty for the workspace's own row or a module not in the lock.
+     */
+    public String membersTag(String module) {
+        Lockfile.Artifact pkg = artifact(module);
+        return pkg == null ? "" : membersTag(pkg);
+    }
+
+    private static String membersTag(Lockfile.Artifact pkg) {
+        return pkg.isPartition() ? " (for " + String.join(", ", pkg.members()) + ")" : "";
+    }
+
+    /**
+     * What makes {@code module}'s subtree the one this graph's reader sees: the module, plus the
+     * members of every partition row the subtree reaches. Two members whose locks fold the same
+     * coordinate to different rows below it get different keys, so a tree that marks a subtree as
+     * shown by this key expands it again for the reader whose rows differ instead of folding it to
+     * a back-reference.
+     */
+    public String subtreeKey(String module) {
+        Lockfile.Artifact pkg = artifact(module);
+        if (pkg == null) return module;
+        return module + subtreeMembers(pkg.name(), new HashSet<>());
+    }
+
+    private String subtreeMembers(String name, Set<String> onPath) {
+        String known = subtreeMembers.get(name);
+        if (known != null) return known;
+        if (!onPath.add(name)) return "";
+        Lockfile.Artifact pkg = artifact(name);
+        TreeSet<String> tags = new TreeSet<>();
+        if (pkg != null) {
+            if (pkg.isPartition()) tags.add(membersTag(pkg));
+            for (String child : forward.getOrDefault(pkg.name(), List.of())) {
+                Lockfile.Artifact row = artifact(child);
+                if (row == null) continue;
+                String below = subtreeMembers(row.name(), onPath);
+                if (!below.isEmpty()) tags.add(below);
+            }
+        }
+        onPath.remove(name);
+        String joined = String.join("", tags);
+        subtreeMembers.put(name, joined);
+        return joined;
     }
 
     /** Version-stripped children of {@code module} in lock order; empty when not in the lock. */

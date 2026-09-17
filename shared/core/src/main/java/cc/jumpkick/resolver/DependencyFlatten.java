@@ -32,8 +32,16 @@ final class DependencyFlatten {
 
     private DependencyFlatten() {}
 
-    /** One flattened dependency: {@code group:artifact}, optional resolved version, and a tag. */
-    private record FlatDep(String module, @Nullable String version, String tag) {}
+    /**
+     * One flattened dependency: {@code group:artifact}, optional resolved version, and a tag — a pin
+     * source's kind, or the members a partition row is read by.
+     */
+    private record FlatDep(String module, @Nullable String version, String tag) {
+        /** The list key: a member's partition of a coordinate lists beside the workspace's row. */
+        String key() {
+            return module + tag;
+        }
+    }
 
     /** Single-project flatten: each scope lists its full transitive dep closure, flat + sorted. */
     static void renderScopes(
@@ -209,7 +217,8 @@ final class DependencyFlatten {
             put(out, new FlatDep(ws.collapsedCoord(module), null, " [workspace]"));
             return;
         }
-        if (!visited.add(module)) return;
+        // A member's partition rows below a coordinate make its closure a different one.
+        if (!visited.add(graph.subtreeKey(module))) return;
         Lockfile.Artifact pkg = graph.artifact(module);
         if (pkg == null) {
             if (pinTag != null) {
@@ -219,17 +228,20 @@ final class DependencyFlatten {
             }
             return;
         }
-        put(out, new FlatDep(module, pkg.version(), ""));
+        put(out, new FlatDep(module, pkg.version(), graph.membersTag(module)));
         for (String child : graph.forward(module)) {
             collect(child, graph, ws, visited, out);
         }
     }
 
-    /** Dedup by {@code group:artifact}, preferring an entry that carries a resolved version. */
+    /**
+     * Dedup by {@code group:artifact} and tag, preferring an entry that carries a resolved version;
+     * a partition row lists beside the workspace's row under its members.
+     */
     private static void put(Map<String, FlatDep> out, FlatDep dep) {
-        FlatDep existing = out.get(dep.module());
+        FlatDep existing = out.get(dep.key());
         if (existing == null || (existing.version() == null && dep.version() != null)) {
-            out.put(dep.module(), dep);
+            out.put(dep.key(), dep);
         }
     }
 }

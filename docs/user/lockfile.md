@@ -318,7 +318,8 @@ and the workspace's. `jk why` shows both versions with their members; every tool
 module's rows — the build, `jk run`, packaging and its SBOM, `jk native` training, a plugin's
 platform pins, `jk export bom` from the member's directory, the IntelliJ libraries `jk ide` writes
 for the module — reads that module's rows, and `jk tree` shows each member's node the version it
-reads. `jk export bom` from the root freezes the workspace's rows.
+reads, the row tagged `(for <members>)`, expanding a shared subtree again where the member's rows
+differ from the workspace's. `jk export bom` from the root freezes the workspace's rows.
 
 ## What an exclusion records
 
