@@ -480,11 +480,38 @@ public final class EngineServer implements AutoCloseable {
         storeFeedRefresh = started.feeds();
         engineMaintenance = started.maintenance();
         watchdog.start();
+        Thread lastWords = lastWordsOnSignal();
+        Runtime.getRuntime().addShutdownHook(lastWords);
         acceptLoop();
         awaitDrainComplete();
         cleanup();
+        removeQuietly(lastWords);
         log.accept("jk engine: stopped");
         return true;
+    }
+
+    /**
+     * The engine's last words when a signal ends it. A stop request and a displacement each log
+     * why the engine goes; a SIGTERM from outside — a kill, a fleet sweep, a stop that escalated —
+     * runs the shutdown hooks and nothing else, so this one line is what says the engine did not
+     * choose to exit and how many jobs went with it. A SIGKILL leaves nothing.
+     */
+    private Thread lastWordsOnSignal() {
+        return new Thread(
+                () -> {
+                    if (shuttingDown || draining) return;
+                    log.accept("jk engine: exiting on a signal with " + activeBuildPlans.get()
+                            + " job(s) in flight — no stop was requested of it");
+                },
+                "jk-engine-last-words");
+    }
+
+    private static void removeQuietly(Thread hook) {
+        try {
+            Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException exiting) {
+            // The JVM is already shutting down: the hook runs, and says nothing once stopped.
+        }
     }
 
     private void acceptLoop() {
@@ -599,6 +626,8 @@ public final class EngineServer implements AutoCloseable {
         synchronized (lifecycleLock) {
             n = activeBuildPlans.get();
             willDrain = !force && n > 0;
+            log.accept("jk engine: stop requested" + (force ? " (--now)" : "") + " with " + n + " job(s) in flight — "
+                    + (willDrain ? "draining them first" : "stopping now"));
             if (!willDrain) {
                 // Decision and flag settle in one critical section, so a plan about to claim its
                 // slot can never slip between "zero plans observed" and "shutting down".
