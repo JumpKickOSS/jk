@@ -277,11 +277,19 @@ public final class EffectivePomBuilder {
         // only the keys still open — the child's imports in declaration order, then the ones the
         // parent inherited, first wins. The imports are expanded in parallel, then spliced back in
         // that order.
+        // Two views of the declared entries: the child's own, valued in its context, and the ones a
+        // child of this POM inherits, with the implicit project.* spellings kept for that child.
         List<Pom.Dep> declaredManaged = new ArrayList<>();
+        List<Pom.Dep> declaredInheritable = new ArrayList<>();
         List<Pom.Dep> importedManaged = new ArrayList<>();
         if (parent != null) {
-            for (Pom.Dep m : parent.managedDependencies()) {
-                (parent.importedManagedKeys().contains(depKey(m)) ? importedManaged : declaredManaged).add(m);
+            for (Pom.Dep m : parent.inheritedManaged()) {
+                if (parent.importedManagedKeys().contains(depKey(m))) {
+                    importedManaged.add(m);
+                } else {
+                    declaredManaged.add(m);
+                    declaredInheritable.add(m);
+                }
             }
         }
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
@@ -305,15 +313,23 @@ public final class EffectivePomBuilder {
                 declaredManaged.add(dep);
             }
         }
+        for (Pom.Dep dep : child.inheritableManaged()) {
+            if (!isBomImport(dep)) declaredInheritable.add(dep);
+        }
         importedManaged.addAll(0, childImported);
         List<Pom.Dep> mergedManaged = dedupeByModule(declaredManaged);
+        List<Pom.Dep> inheritedManaged = dedupeByModule(declaredInheritable);
         Set<String> declaredKeys = new HashSet<>();
         for (Pom.Dep m : mergedManaged) declaredKeys.add(depKey(m));
         Set<String> importedKeys = new HashSet<>();
         for (Pom.Dep m : importedManaged) {
             if (declaredKeys.contains(depKey(m))) continue;
-            if (importedKeys.add(depKey(m))) mergedManaged.add(m);
+            if (importedKeys.add(depKey(m))) {
+                mergedManaged.add(m);
+                inheritedManaged.add(m);
+            }
         }
+        inheritedManaged = substituteAll(inheritedManaged, withoutImplicit(props));
         mergedManaged = substituteAll(mergedManaged, props);
 
         // 4. Effective deps — parent first, child overrides by module.
@@ -346,6 +362,8 @@ public final class EffectivePomBuilder {
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
         boolean pomPackaging = "pom".equalsIgnoreCase(child.packaging());
         List<Pom.Dep> retainedManaged = pomPackaging ? mergedManaged : List.of();
+        List<Pom.Dep> retainedInherited =
+                !pomPackaging ? List.of() : inheritedManaged.equals(mergedManaged) ? retainedManaged : inheritedManaged;
         Set<String> retainedImportedKeys = pomPackaging ? importedKeys : Set.of();
 
         // Same rule for properties: the flattened ancestor map is only read when this
@@ -373,7 +391,19 @@ public final class EffectivePomBuilder {
                 retainedImportedKeys,
                 child.relocation(),
                 hostClassified,
-                repositories(child, parent));
+                repositories(child, parent),
+                retainedInherited);
+    }
+
+    /**
+     * {@code props} without the implicit {@code project.*}, {@code pom.*}, {@code project.parent.*}
+     * and {@code parent.*} entries, so a managed entry spelled with one keeps the spelling for the
+     * child that inherits it to value in its own context.
+     */
+    private static Map<String, String> withoutImplicit(Map<String, String> props) {
+        Map<String, String> out = new LinkedHashMap<>(props);
+        out.keySet().removeIf(PomParser::isImplicitProperty);
+        return out;
     }
 
     /** The child's own {@code <repositories>} first, then the parent chain's, one entry per URL. */

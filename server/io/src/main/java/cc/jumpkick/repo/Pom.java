@@ -11,6 +11,11 @@ import org.jspecify.annotations.Nullable;
  * The parsed contents of a single Maven POM. Property substitution within the POM's own scope
  * ({@code ${project.*}} and {@code <properties>}) has already been applied; cross-POM concerns
  * (parent inheritance, BOM imports, external properties) are the resolver's job.
+ *
+ * <p>{@code inheritableManaged} is the same {@code <dependencyManagement>} table with the implicit
+ * {@code project.*}, {@code pom.*} and {@code parent.*} properties left as written: a child that
+ * inherits the table values them in its own context, as Maven does, so a parent's {@code
+ * ${project.parent.version}} is the child's parent's version, not this POM's parent's.
  */
 public record Pom(
         @Nullable String groupId,
@@ -22,9 +27,13 @@ public record Pom(
         List<Dep> dependencies,
         List<Dep> managedDependencies,
         @Nullable Relocation relocation,
-        List<Repository> repositories) {
+        List<Repository> repositories,
+        List<Dep> inheritableManaged) {
 
-    /** A POM with no {@code <distributionManagement>} redirect and no {@code <repositories>}. */
+    /**
+     * A POM with no {@code <distributionManagement>} redirect and no {@code <repositories>}, whose
+     * managed table spells no implicit property.
+     */
     public Pom(
             String groupId,
             String artifactId,
@@ -44,7 +53,8 @@ public record Pom(
                 dependencies,
                 managedDependencies,
                 null,
-                List.of());
+                List.of(),
+                managedDependencies);
     }
 
     public Pom {
@@ -56,6 +66,7 @@ public record Pom(
         dependencies = List.copyOf(dependencies);
         managedDependencies = List.copyOf(managedDependencies);
         repositories = List.copyOf(repositories);
+        inheritableManaged = List.copyOf(inheritableManaged);
     }
 
     /**
