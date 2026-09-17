@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -19,13 +20,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.TomlTable;
 
 /**
- * Short-name → {@code group:artifact} catalog. Layers (high → low):
+ * Short-name → {@code group:artifact} catalog, with a {@code [packages]} table naming the library a
+ * package prefix belongs to for the libraries whose group prefixes none of their packages (guava,
+ * Jackson, SLF4J). Layers (high → low):
  *
  * <ol>
  *   <li>{@code jk-libs.toml} at the workspace root (or standalone project root) — optional
@@ -180,19 +184,19 @@ public final class LibraryCatalog {
 
     /** Test seam: build a catalog from a single in-memory map. */
     public static LibraryCatalog of(Map<String, Module> libraries) {
-        return new LibraryCatalog(List.of(new Layer("test", Map.copyOf(libraries))));
+        return new LibraryCatalog(List.of(new Layer("test", Map.copyOf(libraries), Map.of())));
     }
 
     /** Test seam: parse a single layer from a TOML string. */
     public static LibraryCatalog parse(String toml) {
-        return new LibraryCatalog(List.of(new Layer("inline", parseTable(toml, "inline"))));
+        return new LibraryCatalog(List.of(parseTable(toml, "inline").layer("inline")));
     }
 
     /** View with project {@code jk-libs.toml} entries as the top layer. */
     public LibraryCatalog withProjectOverrides(@Nullable Map<String, Module> projectLibraries) {
         if (projectLibraries == null || projectLibraries.isEmpty()) return this;
         List<Layer> chain = new ArrayList<>(layers.size() + 1);
-        chain.add(new Layer("project", Map.copyOf(projectLibraries)));
+        chain.add(new Layer("project", Map.copyOf(projectLibraries), Map.of()));
         chain.addAll(layers);
         return new LibraryCatalog(chain);
     }
@@ -208,6 +212,32 @@ public final class LibraryCatalog {
             if (hit != null) return Optional.of(hit);
         }
         return Optional.empty();
+    }
+
+    /**
+     * The library a package belongs to, by the {@code [packages]} tables: the longest package
+     * prefix ({@code com.google.common} covers {@code com.google.common.collect}, not
+     * {@code com.google.commonest}) in the highest layer that has one, its name resolved through
+     * {@link #lookup}. Empty when no table names a prefix of the package.
+     */
+    public Optional<Module> moduleForPackage(@Nullable String pkg) {
+        if (pkg == null || pkg.isBlank()) return Optional.empty();
+        for (Layer layer : layers) {
+            String best = null;
+            for (String prefix : layer.packages.keySet()) {
+                if (!(pkg.equals(prefix) || pkg.startsWith(prefix + "."))) continue;
+                if (best == null || prefix.length() > best.length()) best = prefix;
+            }
+            if (best != null) return lookup(layer.packages.get(best));
+        }
+        return Optional.empty();
+    }
+
+    /** Every {@code [packages]} row across the layers, package prefix → short name, a higher layer's row winning. */
+    public Map<String, String> packages() {
+        Map<String, String> out = new TreeMap<>();
+        for (int i = layers.size() - 1; i >= 0; i--) out.putAll(layers.get(i).packages);
+        return Collections.unmodifiableMap(out);
     }
 
     /**
@@ -310,7 +340,15 @@ public final class LibraryCatalog {
     /** Where a lookup resolved — used by {@code jk library list}. */
     public record Source(String layer, Module module) {}
 
-    private record Layer(String name, Map<String, Module> libraries) {}
+    /** One catalog layer: its libraries and its {@code [packages]} rows (package prefix → short name). */
+    private record Layer(String name, Map<String, Module> libraries, Map<String, String> packages) {}
+
+    /** A parsed catalog file's two tables. */
+    record Parsed(Map<String, Module> libraries, Map<String, String> packages) {
+        Layer layer(String name) {
+            return new Layer(name, libraries, packages);
+        }
+    }
 
     private static Layer loadBundledLayer() {
         try (InputStream in = LibraryCatalog.class.getResourceAsStream(BUNDLED_RESOURCE)) {
@@ -318,7 +356,7 @@ public final class LibraryCatalog {
                 throw new IOException("missing classpath resource: " + BUNDLED_RESOURCE);
             }
             String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-            return new Layer("bundled", parseTable(text, BUNDLED_RESOURCE));
+            return parseTable(text, BUNDLED_RESOURCE).layer("bundled");
         } catch (IOException e) {
             throw new UncheckedIOException("failed to load bundled library catalog from " + BUNDLED_RESOURCE, e);
         }
@@ -328,7 +366,7 @@ public final class LibraryCatalog {
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
-            return Optional.of(new Layer(layerName, parseTable(text, file.toString())));
+            return Optional.of(parseTable(text, file.toString()).layer(layerName));
         } catch (IOException | IllegalStateException e) {
             // Fail soft: a malformed downloaded/project layer should warn, not break every jk
             // invocation. Hand the message to the caller's sink and skip the layer.
@@ -338,31 +376,33 @@ public final class LibraryCatalog {
     }
 
     /**
-     * Parse a {@code [libraries]} table from catalog TOML source. A line scanner, not tomlj: the
-     * catalog files (bundled resource, system global, {@code jk-libs.toml}) are a jk-owned flat
-     * format — {@code name = "group:artifact"} — and this parse runs client-side (list/search/
+     * Parse the {@code [libraries]} table, and the optional {@code [packages]} table, from catalog
+     * TOML source. A line scanner, not tomlj: the catalog files (bundled resource, system global,
+     * {@code jk-libs.toml}) are a jk-owned flat format — {@code name = "group:artifact"} and
+     * {@code "package.prefix" = "name"} — and this parse runs client-side (list/search/
      * suggestions, tool targets, scaffold), where the thin client ships no TOML parser. Validation
      * is per-entry and strict: a malformed entry throws with a path-qualified message.
      */
-    static Map<String, Module> parseTable(String toml, String displayPath) {
+    static Parsed parseTable(String toml, String displayPath) {
         Map<String, Module> out = new LinkedHashMap<>();
+        Map<String, String> packages = new LinkedHashMap<>();
         boolean seenTable = false;
-        boolean inTable = false;
+        String table = "";
         for (String raw : toml.split("\n", -1)) {
             String line = raw.strip();
             if (line.isEmpty() || line.startsWith("#")) continue;
             if (line.startsWith("[")) {
                 int close = line.indexOf(']');
-                String section = close > 1
+                table = close > 1
                         ? line.substring(line.startsWith("[[") ? 2 : 1, close)
                                 .replace("]", "")
                                 .strip()
                         : "";
-                inTable = section.equals("libraries");
-                seenTable |= inTable;
+                seenTable |= table.equals("libraries");
                 continue;
             }
-            if (!inTable) continue;
+            boolean libraries = table.equals("libraries");
+            if (!libraries && !table.equals("packages")) continue;
             int eq = line.indexOf('=');
             if (eq <= 0) {
                 throw new IllegalStateException(displayPath + " has invalid TOML: unexpected line `" + line + "`");
@@ -370,14 +410,18 @@ public final class LibraryCatalog {
             String name = unquoteKey(line.substring(0, eq).strip());
             String rest = line.substring(eq + 1).strip();
             if (rest.length() < 2 || rest.charAt(0) != '"') {
-                throw new IllegalStateException(
-                        displayPath + ".libraries." + name + " must be a string of the form \"group:artifact\"");
+                throw new IllegalStateException(displayPath + "." + table + "." + name
+                        + " must be a string of the form " + (libraries ? "\"group:artifact\"" : "\"<library name>\""));
             }
             int end = rest.indexOf('"', 1);
             if (end < 0) {
                 throw new IllegalStateException(displayPath + " has invalid TOML: unterminated string for " + name);
             }
             String coord = rest.substring(1, end);
+            if (!libraries) {
+                packages.put(name, coord);
+                continue;
+            }
             int sep = coord.indexOf(':');
             if (sep <= 0 || sep == coord.length() - 1) {
                 throw new IllegalStateException(
@@ -396,7 +440,14 @@ public final class LibraryCatalog {
         if (!seenTable) {
             throw new IllegalStateException(displayPath + " is missing the required [libraries] table");
         }
-        return out;
+        for (Map.Entry<String, String> row : packages.entrySet()) {
+            if (!out.containsKey(row.getValue())) {
+                throw new IllegalStateException(displayPath + ".packages.\"" + row.getKey() + "\" names `"
+                        + row.getValue() + "`, which is not a library of this catalog file; [packages] rows point at"
+                        + " [libraries] names");
+            }
+        }
+        return new Parsed(Collections.unmodifiableMap(out), Collections.unmodifiableMap(packages));
     }
 
     /**

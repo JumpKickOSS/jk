@@ -67,8 +67,10 @@ for kotlinc. The hint quotes the symbol, package or types from the compiler's ow
 likely repair. For package does not exist the compile step looks the package up before the
 diagnostic is journaled: a lock row whose jar holds the package and is not on this module's compile
 classpath is written under the error as `provided by: group:artifact (in the lock, not on this
-module's compile classpath)`, else the library catalog module whose group prefixes the package as
-`provided by: group:artifact (library catalog)`, and the hint names that coordinate for `jk add`.
+module's compile classpath)`, else the library catalog's answer as `provided by: group:artifact
+(library catalog)` — the module its `[packages]` table names for the longest prefix of the package
+(guava for `com.google.common.collect`, jackson-databind for `com.fasterxml.jackson.databind`),
+else the module whose group prefixes the package — and the hint names that coordinate for `jk add`.
 Each lock jar's package list is read once and kept under the store's `package-index/`. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
 test class together with the assertion frame above it — the middle is elided with a frame count —
 so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a

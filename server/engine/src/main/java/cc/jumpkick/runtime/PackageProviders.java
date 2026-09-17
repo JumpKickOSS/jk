@@ -118,10 +118,13 @@ public final class PackageProviders {
     }
 
     /**
-     * The catalog module whose group is the longest dotted prefix of {@code pkg}; among modules of
+     * The catalog's {@code [packages]} answer when a table names a prefix of {@code pkg}; else the
+     * catalog module whose group is the longest dotted prefix of {@code pkg} — among modules of
      * that group, the one whose artifact name shares the most segments with the package.
      */
     private @Nullable String fromCatalog(String pkg) {
+        LibraryCatalog.Module named = catalog.moduleForPackage(pkg).orElse(null);
+        if (named != null) return named.moduleKey();
         LibraryCatalog.Module best = null;
         int bestGroup = -1;
         int bestShared = -1;

@@ -290,6 +290,24 @@ internal-core = "com.acme:core"
 
 Major coordinate forks get distinct names when curated (`jackson2-*` / `jackson3-*`).
 
+A catalog file may also carry a **`[packages]`** table — package prefix → catalog name — for the
+libraries whose group prefixes none of their packages: `com.google.common` is guava's, not
+`com.google.guava`'s; Jackson 2 lives under `com.fasterxml.jackson.*` with a group ending in
+`.core`. A build failing on `package X does not exist` reads it to name the coordinate to `jk add`
+([the hint](machine-output.md#jk-results)): the longest prefix in the highest layer that has one wins,
+and a row must name a `[libraries]` entry of the same file. The bundled table covers guava, gson,
+Jackson 2 and 3 (databind, core, annotations), SLF4J, commons-lang3, commons-io, JUnit Jupiter,
+AssertJ, Mockito, OkHttp, picocli and JSpecify; a project's `jk-libs.toml` adds its own.
+
+```toml
+# jk-libs.toml
+[libraries]
+acme-commons = "com.acme:commons"
+
+[packages]
+"org.acme.util" = "acme-commons"
+```
+
 ```bash
 jk library search jackson
 jk library list

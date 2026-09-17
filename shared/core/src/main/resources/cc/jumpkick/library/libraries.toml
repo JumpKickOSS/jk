@@ -211,3 +211,30 @@ spring-boot-starter-webmvc-test     = "org.springframework.boot:spring-boot-star
 spring-boot-devtools                = "org.springframework.boot:spring-boot-devtools"
 spring-boot-docker-compose          = "org.springframework.boot:spring-boot-docker-compose"
 spring-boot-testcontainers          = "org.springframework.boot:spring-boot-testcontainers"
+
+# The library a package prefix belongs to, for the libraries whose group prefixes none of their
+# packages: `jk build`'s "package X does not exist" hint names the coordinate from here (a group
+# that does prefix the package needs no row). A row names a [libraries] entry above; the longest
+# prefix wins.
+[packages]
+"com.google.common"                 = "guava"
+"com.google.gson"                   = "gson"
+"com.fasterxml.jackson.databind"    = "jackson2-databind"
+"com.fasterxml.jackson.core"        = "jackson2-core"
+"com.fasterxml.jackson.annotation"  = "jackson2-annotations"
+"tools.jackson.databind"            = "jackson3-databind"
+"tools.jackson.core"                = "jackson3-core"
+"tools.jackson.annotation"          = "jackson3-annotations"
+"org.slf4j"                         = "slf4j-api"
+"org.apache.commons.lang3"          = "commons-lang3"
+"org.apache.commons.io"             = "commons-io"
+"org.junit.jupiter"                 = "junit-jupiter"
+"org.junit.jupiter.api"             = "junit-jupiter"
+"org.junit.jupiter.params"          = "junit-jupiter-params"
+"org.junit.platform.launcher"       = "junit-platform-launcher"
+"org.assertj.core"                  = "assertj-core"
+"org.mockito"                       = "mockito-core"
+"org.mockito.junit.jupiter"         = "mockito-junit-jupiter"
+"okhttp3"                           = "okhttp"
+"picocli"                           = "picocli"
+"org.jspecify"                      = "jspecify"

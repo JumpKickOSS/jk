@@ -125,6 +125,64 @@ class LibraryCatalogTest {
                 .isEqualTo("com.acme:foo");
     }
 
+    /** {@code [packages]} maps a package prefix to a catalog name, for the libraries whose group prefixes none. */
+    @Test
+    void the_packages_table_names_the_module_a_package_prefix_belongs_to() {
+        LibraryCatalog r = LibraryCatalog.parse("""
+                [libraries]
+                guava = "com.google.guava:guava"
+                jackson2-databind = "com.fasterxml.jackson.core:jackson-databind"
+
+                [packages]
+                "com.google.common" = "guava"
+                "com.fasterxml.jackson.databind" = "jackson2-databind"
+                """);
+        assertThat(r.moduleForPackage("com.google.common.collect"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.google.guava:guava");
+        assertThat(r.moduleForPackage("com.google.common"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.google.guava:guava");
+        assertThat(r.moduleForPackage("com.google.commonest"))
+                .as("a package prefix, not a string prefix")
+                .isEmpty();
+        assertThat(r.moduleForPackage("com.fasterxml.jackson.core")).isEmpty();
+        assertThat(r.packages()).containsKeys("com.google.common", "com.fasterxml.jackson.databind");
+    }
+
+    @Test
+    void a_packages_row_must_name_a_catalog_library() {
+        assertThatThrownBy(() -> LibraryCatalog.parse("""
+                [libraries]
+                guava = "com.google.guava:guava"
+
+                [packages]
+                "com.google.common" = "goova"
+                """))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("goova")
+                .hasMessageContaining("[packages]");
+    }
+
+    @Test
+    void the_bundled_packages_table_covers_the_libraries_whose_group_prefixes_no_package() {
+        LibraryCatalog r = LibraryCatalog.bundled();
+        assertThat(r.moduleForPackage("com.google.common.base"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.google.guava:guava");
+        assertThat(r.moduleForPackage("org.slf4j.event"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("org.slf4j:slf4j-api");
+        assertThat(r.moduleForPackage("org.mockito.junit.jupiter"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("org.mockito:mockito-junit-jupiter");
+    }
+
     @Test
     void parse_rejects_coord_with_version() {
         assertThatThrownBy(() -> LibraryCatalog.parse("""
