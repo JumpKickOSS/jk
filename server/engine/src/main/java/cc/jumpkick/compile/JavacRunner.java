@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.JavacLevel;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.task.ActionKey;
@@ -102,8 +103,7 @@ public final class JavacRunner {
         lines.add(quote(outDir.toAbsolutePath().toString()));
         lines.add("-encoding");
         lines.add(ActionKey.SOURCE_ENCODING);
-        lines.add("--release");
-        lines.add(Integer.toString(request.release()));
+        lines.addAll(JavacLevel.options(request.release(), request.extraOptions()));
         if (!request.classpath().isEmpty()) {
             lines.add("-cp");
             lines.add(quote(Classpaths.join(request.classpath())));

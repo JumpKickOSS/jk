@@ -34,6 +34,34 @@ class JavacRunnerTest {
         assertThat(tempDir.resolve("out/Hello.class")).exists();
     }
 
+    /** An export of a system module is refused beside {@code --release}, so the level rides as source/target. */
+    @Test
+    void an_export_of_a_system_module_compiles_at_the_level_with_source_and_target(@TempDir Path tempDir)
+            throws IOException {
+        Path source = tempDir.resolve("UsesInternal.java");
+        Files.writeString(source, """
+                public class UsesInternal {
+                    public static Class<?> tool() { return jdk.javadoc.internal.tool.Main.class; }
+                }
+                """);
+
+        CompileResult result = new JavacRunner()
+                .compile(CompileRequest.builder()
+                        .sources(List.of(source))
+                        .outputDir(tempDir.resolve("out"))
+                        .release(17)
+                        .extraOptions(List.of(
+                                "--add-modules",
+                                "jdk.javadoc",
+                                "--add-exports",
+                                "jdk.javadoc/jdk.javadoc.internal.tool=ALL-UNNAMED"))
+                        .build());
+
+        assertThat(result.diagnostics()).noneMatch(d -> d.severity() == CompileResult.Severity.ERROR);
+        assertThat(result.success()).isTrue();
+        assertThat(tempDir.resolve("out/UsesInternal.class")).exists();
+    }
+
     @Test
     void reports_syntax_error(@TempDir Path tempDir) throws IOException {
         Path source = tempDir.resolve("Broken.java");
