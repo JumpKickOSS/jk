@@ -42,6 +42,7 @@ final class TaskCatalog {
                     case TaskNames.COMPILE_JAVA,
                             TaskNames.ASSEMBLE_CLASSES,
                             TaskNames.COPY_RESOURCES,
+                            TaskNames.BUILD_INFO,
                             TaskNames.BUILD_LOGIC_AFTER_COMPILE,
                             TaskNames.BUILD_LOGIC_BEFORE_PACKAGE -> info.classesDir();
                     case TaskNames.COMPILE_KOTLIN -> info.kotlinClassesDir();
@@ -78,6 +79,7 @@ final class TaskCatalog {
                     "Copy main resources + AFTER_RESOURCES build-logic",
                     BuildLayout::classesDir,
                     "resources"),
+            def(TaskNames.BUILD_INFO, "Write [build-info] git.properties into classes", BuildLayout::classesDir),
             def(TaskNames.COMPILE_TEST, "Compile test sources", BuildLayout::testClassesDir),
             def(TaskNames.RUN_TESTS, "Run tests", BuildLayout::testResultsDir, "test"),
             def(TaskNames.BUILD_LOGIC_BEFORE_PACKAGE, "Project build-logic (BEFORE_PACKAGE)", BuildLayout::classesDir),

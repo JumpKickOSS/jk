@@ -254,7 +254,7 @@ public final class PlannerResources {
     }
 
     /** Anchor {@code BEFORE_PACKAGE}: stem-script tasks immediately before jar/image. */
-    static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx) {
+    static Task buildLogicBeforePackageStep(BuildPlanner.Ctx cx, boolean buildInfo) {
         BuildPlanner.Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
@@ -263,7 +263,7 @@ public final class PlannerResources {
                 .stage(BuildLogicAnchor.BEFORE_PACKAGE.stage())
                 .label("Build logic (before package)")
                 .kind(TaskKind.CPU)
-                .requires(beforePackageRequires(in))
+                .requires(beforePackageRequires(buildInfo))
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
                 .execute(ctx -> {
@@ -419,9 +419,10 @@ public final class PlannerResources {
     /**
      * BEFORE_PACKAGE waits on resources only — never on tests. Packaging needs a complete
      * classes tree, which tests do not contribute to. A failing suite still fails the build;
-     * the artifact is built concurrently.
+     * the artifact is built concurrently. {@code [build-info]} is the last writer of that tree
+     * when the module declares it.
      */
-    static String[] beforePackageRequires(BuildPlanner.Inputs in) {
-        return new String[] {TaskNames.COPY_RESOURCES};
+    static String[] beforePackageRequires(boolean buildInfo) {
+        return new String[] {buildInfo ? TaskNames.BUILD_INFO : TaskNames.COPY_RESOURCES};
     }
 }

@@ -161,7 +161,7 @@ jk build        # still fully reproducible from that lock
 
 - Web dashboard (same facts as MCP/CLI)
 - `jk audit` · `jk deny` · Sigstore / SLSA · CycloneDX/SPDX SBOM · `jk verify`
-- `jk image` (Jib-core) · `jk native` (GraalVM) · Spring Boot / Quarkus / Micronaut / protobuf; Android and Grails as contrib batteries ([tiers](docs/user/plugins.md#batteries-and-their-tiers))
+- `jk image` (Jib-core) · `jk native` (GraalVM) · Spring Boot / Quarkus / Micronaut / protobuf · `[build-info]` git properties; Android and Grails as contrib batteries ([tiers](docs/user/plugins.md#batteries-and-their-tiers))
 - Git and path dependencies (SHA-pinned in the lock)
 
 More detail: **[User docs](docs/user/README.md)** · **[Manual](docs/user/manual.md)** ·

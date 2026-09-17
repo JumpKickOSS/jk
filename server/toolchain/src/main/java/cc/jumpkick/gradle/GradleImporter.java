@@ -108,6 +108,12 @@ public final class GradleImporter {
         return out;
     }
 
+    /** The Gradle plugin that writes {@code git.properties}; the {@code [build-info]} table in jk. */
+    private static final String GIT_PROPERTIES_PLUGIN = "com.gorylenko.gradle-git-properties";
+
+    /** {@code springBoot { buildInfo() }} — Boot's own {@code build-info.properties}. */
+    private static final Pattern BOOT_BUILD_INFO = Pattern.compile("\\bbuildInfo\\s*\\(");
+
     // application { mainClass.set("X") } / mainClass = "X" — groups 1/2 (set) or 3/4 (=).
     private static final Pattern APPLICATION_MAIN_CLASS =
             Pattern.compile("mainClass\\s*(?:\\.set\\s*\\(\\s*" + STR + "\\s*\\)|=\\s*" + STR + ")");
@@ -179,6 +185,9 @@ public final class GradleImporter {
         // rules map to that plugin's table below; the rest are diagnostics only.
         String pluginsBody = extractBlock(stripped, "plugins").orElse("");
         VersionSelector kotlin = detectKotlinVersion(pluginsBody, report);
+        // git.properties from the git-properties plugin, build-info.properties from Boot's
+        // `springBoot { buildInfo() }`: both are the [build-info] table.
+        JkBuild.BuildInfo buildInfo = BOOT_BUILD_INFO.matcher(stripped).find() ? JkBuild.BuildInfo.DEFAULT : null;
         Map<String, PluginImportRule> importRules = pluginImportRules();
         for (Matcher m = PLUGIN_ID.matcher(pluginsBody); m.find(); ) {
             String pluginId = firstNonNull(m.group(1), m.group(2));
@@ -188,6 +197,7 @@ public final class GradleImporter {
                 case "java", "java-library", "application" -> {
                     // implicit in jk — nothing to say.
                 }
+                case GIT_PROPERTIES_PLUGIN -> buildInfo = JkBuild.BuildInfo.DEFAULT;
                 default -> {
                     if (!importRules.containsKey(pluginId)) {
                         report.warning(
@@ -231,7 +241,8 @@ public final class GradleImporter {
         JkBuild.Builder builder = JkBuild.builder(project)
                 .dependencies(new JkBuild.Dependencies(deps))
                 .repositories(repos)
-                .application(application);
+                .application(application)
+                .build(JkBuild.Build.EMPTY.withBuildInfo(buildInfo));
         for (PluginConfig config : pluginConfigs) {
             builder.pluginConfig(config);
         }

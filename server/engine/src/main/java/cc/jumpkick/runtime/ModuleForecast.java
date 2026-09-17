@@ -13,6 +13,7 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.ModuleLayout;
@@ -103,6 +104,8 @@ final class ModuleForecast {
     private @Nullable Boolean knownResourceDrift;
     private final Path lockFile;
     private boolean mainResourceDrift;
+    /** {@code [build-info]} would rewrite its files: the checkout moved since the classes tree was written. */
+    private boolean buildInfoDrift;
     /** The compile-main classpath, once {@link #compileMain} has derived it; the javadoc arm keys on it. */
     private List<Path> mainCp = List.of();
 
@@ -807,10 +810,18 @@ final class ModuleForecast {
         // in between — a copy-resources step for a tree that no longer drifts, with the
         // package token projected from yet another read.
         mainResourceDrift = false;
+        buildInfoDrift = false;
         testResourceDrift = false;
         knownResourceDrift = null;
         if (!compileDirty && Files.isDirectory(layout.classesDir())) {
             mainResourceDrift = TaskForecaster.mainResourcesOutOfSync(dir, compact, layout.classesDir());
+            JkBuild.BuildInfo buildInfo = project.build().buildInfo();
+            if (buildInfo != null) {
+                // A rewritten git.properties changes the classes tree package-jar keys on, so the
+                // jar is forecast as the resource drift it is.
+                buildInfoDrift = PlannerBuildInfo.outOfSync(dir, project, buildInfo, layout.classesDir(), Clock.SYSTEM);
+                mainResourceDrift |= buildInfoDrift;
+            }
             knownResourceDrift = mainResourceDrift;
             if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                 Path resTest = ModuleLayout.testResourcesDir(dir, compact);
@@ -1041,6 +1052,9 @@ final class ModuleForecast {
         if (mainResourceDrift) {
             steps.add(new TaskForecast.Task(
                     TaskNames.COPY_RESOURCES, TaskForecast.Status.RUN, "resources changed", null));
+        }
+        if (buildInfoDrift) {
+            steps.add(new TaskForecast.Task(TaskNames.BUILD_INFO, TaskForecast.Status.RUN, "checkout moved", null));
         }
         if (testResourceDrift) {
             // Distinct name: test-resource drift schedules the module (material) but

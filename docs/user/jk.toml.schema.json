@@ -470,6 +470,15 @@
       "type": "object",
       "description": "[install] table; keys are documented in docs/user."
     },
+    "build-info": {
+      "type": "object",
+      "description": "[build-info]: the jar carries git.properties (git.commit.id, git.commit.id.abbrev, git.branch, git.commit.time, git.dirty, git.build.time, git.build.version, git.closest.tag.name) and, for a Spring Boot application, META-INF/build-info.properties. An empty table is the battery at its defaults (docs/user/packaging.md).",
+      "properties": {
+        "file": { "type": "string", "description": "Resource path of the git properties file inside the jar. Default \"git.properties\"." },
+        "time": { "type": "string", "enum": ["commit", "build"], "description": "What git.build.time and build.time record: \"commit\" (default) is the HEAD commit's time, so one commit's builds are byte-identical; \"build\" is the wall clock, so every build regenerates the file and repackages the jar." }
+      },
+      "additionalProperties": false
+    },
     "publish": {
       "type": "object",
       "description": "[publish]: the POM metadata a release carries (docs/user/publish.md). A workspace root's table applies to every member that declares none. Maven Central requires all of them.",

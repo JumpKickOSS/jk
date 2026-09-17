@@ -45,7 +45,7 @@ class PluginTableRegistryTest {
     void built_in_spring_boot_manifest_loads_and_owns_its_table() {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();
         assertThat(manifest.id()).isEqualTo("spring-boot");
-        assertThat(manifest.schema()).containsKeys("version", "aot", "build-info", "include-tools", "aot-args");
+        assertThat(manifest.schema()).containsKeys("version", "aot", "include-tools", "aot-args");
         assertThat(Objects.requireNonNull(manifest.schema().get("version")).required())
                 .isTrue();
         assertThat(Objects.requireNonNull(manifest.schema().get("aot")).defaultValue())
@@ -62,7 +62,6 @@ class PluginTableRegistryTest {
         PluginConfig config = PluginTableRegistry.validate(manifest, table);
         assertThat(config.string("version")).isEqualTo("4.0.0");
         assertThat(config.bool("aot")).isEmpty();
-        assertThat(config.bool("build-info", true)).isFalse(); // schema default false wins
         assertThat(config.bool("include-tools", false)).isTrue(); // schema default true wins
         assertThat(config.stringList("aot-args")).isEmpty();
     }
@@ -75,7 +74,7 @@ class PluginTableRegistryTest {
         var version = Objects.requireNonNull(manifest.schema().get("version"), "version field");
         assertThat(version.example()).isNotBlank();
         assertThat(version.hint()).isNotBlank();
-        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("build-info = true")))
+        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest, Toml.parse("include-tools = true")))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[spring-boot].version is required")
                 .hasMessageContaining("e.g. version = \"" + version.example() + "\"")

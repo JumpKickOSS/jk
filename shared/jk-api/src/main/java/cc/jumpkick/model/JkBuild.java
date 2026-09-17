@@ -759,6 +759,32 @@ public record JkBuild(
     }
 
     /**
+     * {@code [build-info]}: the module's jar carries {@code git.properties} — the keys Spring Boot's
+     * {@code GitProperties} and the git-commit-id plugins' consumers read — and, when the module is
+     * a Spring Boot application, {@code META-INF/build-info.properties} with Boot's {@code build.*}
+     * keys. Both are written into the classes tree as cached resources, so every jar shape (thin,
+     * fat, Boot) carries them.
+     *
+     * @param file the resource path of the git properties file inside the jar, default {@code
+     *     git.properties}
+     * @param buildTime {@code time = "build"}: the {@code git.build.time} and {@code build.time}
+     *     keys read the wall clock at build time, so every build regenerates the file and
+     *     repackages the jar. The default reads the commit time, which keeps one commit's builds
+     *     byte-identical.
+     */
+    public record BuildInfo(String file, boolean buildTime) {
+
+        public static final String DEFAULT_FILE = "git.properties";
+
+        /** The table with every key at its default. */
+        public static final BuildInfo DEFAULT = new BuildInfo(DEFAULT_FILE, false);
+
+        public BuildInfo {
+            file = file == null || file.isBlank() ? DEFAULT_FILE : file;
+        }
+    }
+
+    /**
      * Optional {@code [build]} block: order-only deps, test plugin jars, lint, debug info, Kotlin
      * plugins, KSP options, javac plugins, extra source roots, and per-module test worker pin —
      * never on a classpath or lockfile.
@@ -874,7 +900,12 @@ public record JkBuild(
              * {@code [env]} — what this module's workers may take from the environment beyond the
              * allow-list, and whether they inherit all of it. Per module, like {@code [test]}.
              */
-            EnvConfig env) {
+            EnvConfig env,
+            /**
+             * {@code [build-info]} — the git build-info resources the module's jar carries. {@code
+             * null} when the table is absent: nothing is written.
+             */
+            @Nullable BuildInfo buildInfo) {
 
         /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
         public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -905,7 +936,8 @@ public record JkBuild(
                 List.of(),
                 null,
                 List.of(),
-                EnvConfig.EMPTY);
+                EnvConfig.EMPTY,
+                null);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -1024,6 +1056,11 @@ public record JkBuild(
         /** The same block with {@code [audit] ignore} set. */
         public Build withAuditIgnores(List<AuditIgnore> ignores) {
             return with(f -> f.auditIgnores = ignores);
+        }
+
+        /** The same block with the {@code [build-info]} table set. */
+        public Build withBuildInfo(@Nullable BuildInfo info) {
+            return with(f -> f.buildInfo = info);
         }
 
         /** One component changed, the rest copied — the one spelling of the copy every {@code with*} shares. */

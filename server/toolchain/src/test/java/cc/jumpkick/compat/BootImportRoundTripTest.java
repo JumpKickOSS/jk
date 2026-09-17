@@ -4,6 +4,7 @@ package cc.jumpkick.compat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.gradle.GradleImporter;
+import cc.jumpkick.model.JkBuild;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -41,6 +42,32 @@ class BootImportRoundTripTest {
         assertThat(rendered).doesNotContain("build-info");
         // dependency-management is recognized (no warning) and produces no table of its own
         assertThat(result.report().issues()).noneMatch(i -> i.message().contains("io.spring.dependency-management"));
+    }
+
+    @Test
+    void the_git_properties_plugin_and_boots_build_info_are_the_build_info_table() {
+        var gitProperties = GradleImporter.importFromString("""
+                plugins {
+                    id("java")
+                    id("com.gorylenko.gradle-git-properties") version "2.5.0"
+                }
+                """, "demo");
+        assertThat(gitProperties.jkBuild().build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(gitProperties.report().issues()).noneMatch(i -> i.message().contains("gradle-git-properties"));
+        assertThat(JkBuildRenderer.render(gitProperties.jkBuild())).contains("\n[build-info]\n");
+
+        var bootInfo = GradleImporter.importFromString("""
+                plugins {
+                    id("java")
+                    id("org.springframework.boot") version "4.0.2"
+                }
+
+                springBoot {
+                    buildInfo()
+                }
+                """, "demo");
+        assertThat(bootInfo.jkBuild().build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(bootInfo.report().issues()).noneMatch(i -> i.message().contains("buildInfo"));
     }
 
     @Test

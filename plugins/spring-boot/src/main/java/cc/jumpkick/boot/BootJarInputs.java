@@ -11,7 +11,7 @@ import java.util.List;
  * The Boot-launcher facts read off a {@link PackageIo}, shared by the two frameworks that produce
  * this archive: {@code spring-boot} and {@code grails} (a Grails 8 jar IS a Boot 4.1 jar). Only the
  * inputs are shared — what each framework then puts <em>into</em> the jar differs and stays in its
- * own plugin: Boot adds AOT roots, build-info, an SBOM and the jarmode tools jar; Grails adds a
+ * own plugin: Boot adds AOT roots, an SBOM and the jarmode tools jar; Grails adds a
  * {@code Grails-Version} attribute and nothing else.
  *
  * @param bootVersion the Boot line this jar actually carries, resolved

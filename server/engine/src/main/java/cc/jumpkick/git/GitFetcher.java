@@ -71,6 +71,26 @@ public final class GitFetcher {
     }
 
     /** A remote's advertised refs: tag names + the {@code HEAD} sha (null when the remote has none). */
+    /**
+     * A checkout as {@link GitBackend#describeWorktree} reads it. {@code branch} is the commit sha
+     * when {@code HEAD} is detached, the spelling the git-commit-id plugins write; {@code dirty}
+     * is true when the working tree or the index differs from {@code HEAD}, untracked files
+     * included.
+     */
+    public record Worktree(String sha, String branch, Instant commitTime, boolean dirty, Optional<String> nearestTag) {
+        public Worktree {
+            Objects.requireNonNull(sha, "sha");
+            Objects.requireNonNull(branch, "branch");
+            Objects.requireNonNull(commitTime, "commitTime");
+            Objects.requireNonNull(nearestTag, "nearestTag");
+        }
+
+        /** The seven-character abbreviation of {@link #sha}. */
+        public String abbrev() {
+            return sha.length() > 7 ? sha.substring(0, 7) : sha;
+        }
+    }
+
     public record RemoteRefs(List<String> tags, @Nullable String headSha) {
         public RemoteRefs {
             tags = List.copyOf(Objects.requireNonNull(tags, "tags"));
@@ -104,6 +124,11 @@ public final class GitFetcher {
      * Enumerate the remote's tags + HEAD via {@code ls-remote} — no clone. Used by {@code jk
      * outdated} to find newer tags for a git dependency without materializing the repo.
      */
+    /** The checkout containing {@code dir}; empty outside a repository. */
+    public Optional<Worktree> describeWorktree(Path dir) throws IOException {
+        return backend.describeWorktree(dir);
+    }
+
     public RemoteRefs listRefs(GitSource source) throws IOException {
         Objects.requireNonNull(source, "source");
         return backend.listRefs(source);

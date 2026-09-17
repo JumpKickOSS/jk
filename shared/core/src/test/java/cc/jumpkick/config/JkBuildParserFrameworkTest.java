@@ -55,7 +55,6 @@ class JkBuildParserFrameworkTest {
         assertThat(b.isSpringBoot()).isTrue();
         var sb = b.pluginConfig(JkBuild.SPRING_BOOT_ID).orElseThrow();
         assertThat(sb.string("version")).isEqualTo("4.0.0");
-        assertThat(sb.bool("build-info", false)).isFalse();
         assertThat(sb.bool("include-tools", true)).isTrue();
         assertThat(sb.bool("aot")).isEmpty(); // unset aot = tri-state auto (follows [native] presence)
         // version = "4.0.0" alone imports the BOM — no [platform-dependencies] boilerplate.
@@ -73,7 +72,7 @@ class JkBuildParserFrameworkTest {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
 
                 [spring-boot]
-                build-info = true
+                include-tools = false
                 """))
                 .hasMessageContaining("[spring-boot].version is required");
     }
@@ -85,13 +84,11 @@ class JkBuildParserFrameworkTest {
                 [spring-boot]
                 version = "4.0.0"
                 aot = true
-                build-info = true
                 include-tools = false
                 aot-args = ["--spring.profiles.active=prod"]
                 """);
         var sb = b.pluginConfig(JkBuild.SPRING_BOOT_ID).orElseThrow();
         assertThat(sb.bool("aot")).contains(true); // explicit aot wins over [native] absence
-        assertThat(sb.bool("build-info", false)).isTrue();
         assertThat(sb.bool("include-tools", true)).isFalse();
         assertThat(sb.stringList("aot-args")).containsExactly("--spring.profiles.active=prod");
     }

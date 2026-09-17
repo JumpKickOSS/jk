@@ -32,7 +32,10 @@ packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 | `aot-jvm-args` | `[]` | flags for the processor's JVM — the `--add-opens` a library needs on JDK 17+, a heap size |
 | `aot-args` | `[]` | arguments handed to the application while it starts under processing |
 | `include-tools` | `true` | nest `spring-boot-jarmode-tools` so `java -Djarmode=tools -jar app.jar` works |
-| `build-info` | `false` | write `META-INF/build-info.properties` (group, artifact, name, version; no build time) |
+
+`META-INF/build-info.properties` (what `BuildProperties` and the `/actuator/info` endpoint read)
+and `git.properties` (`GitProperties`) come from the core [`[build-info]` table](packaging.md#build-info-gitproperties-and-boots-build-infoproperties),
+which writes both into the classes tree the Boot jar nests.
 
 The processor starts the application context in AOT mode and then generates code from it. When
 the step fails, its message says which of the two failed and names the root cause first: the

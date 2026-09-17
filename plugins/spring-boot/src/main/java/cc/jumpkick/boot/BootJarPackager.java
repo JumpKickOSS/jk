@@ -2,7 +2,6 @@
 package cc.jumpkick.boot;
 
 import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
 import java.io.File;
@@ -14,7 +13,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -55,8 +53,6 @@ public final class BootJarPackager {
     private static final String JAR_TYPE_ATTRIBUTE = "Spring-Boot-Jar-Type";
 
     /** Classpath locations Boot's own readers use ({@code BuildProperties}, the sbom actuator). */
-    static final String BUILD_INFO_ENTRY = CLASSES_PREFIX + "META-INF/build-info.properties";
-
     static final String SBOM_ENTRY = CLASSES_PREFIX + "META-INF/sbom/application.cdx.json";
 
     public Path packageBootJar(BootJarRequest request) throws IOException {
@@ -95,12 +91,8 @@ public final class BootJarPackager {
                 }
             }
 
-            // 3. Boot-read metadata under BOOT-INF/classes/META-INF (classpath-visible:
-            //    BuildProperties and the sbom actuator resolve these as resources).
-            if (!request.buildInfo().isEmpty()) {
-                zip.writeParentDirs(jos, BUILD_INFO_ENTRY, dirsWritten);
-                zip.writeEntry(jos, BUILD_INFO_ENTRY, buildInfoProperties(request.buildInfo()));
-            }
+            // 3. Boot-read metadata under BOOT-INF/classes/META-INF (classpath-visible: the sbom
+            //    actuator resolves it as a resource; build-info.properties arrives with the classes).
             if (request.sbom().length > 0) {
                 zip.writeParentDirs(jos, SBOM_ENTRY, dirsWritten);
                 zip.writeEntry(jos, SBOM_ENTRY, request.sbom());
@@ -141,18 +133,6 @@ public final class BootJarPackager {
             String type = manifest.getMainAttributes().getValue(JAR_TYPE_ATTRIBUTE);
             return type == null || !EXCLUDED_JAR_TYPES.contains(type);
         }
-    }
-
-    /**
-     * {@code build-info.properties} the way Boot's {@code BuildProperties} reads it: {@code build.}
-     * prefixed keys, rendered by {@link DeterministicProperties} so separators and controls survive
-     * {@code Properties.load}. {@code build.time} is deliberately absent unless the caller supplies
-     * one — a wall-clock stamp would churn an otherwise-identical jar.
-     */
-    private static byte[] buildInfoProperties(Map<String, String> info) {
-        Map<String, String> prefixed = new LinkedHashMap<>();
-        info.forEach((k, v) -> prefixed.put("build." + k, v));
-        return DeterministicProperties.render(prefixed).getBytes(StandardCharsets.UTF_8);
     }
 
     /** {@code classpath.idx}: one {@code - "BOOT-INF/lib/…jar"} line per nested jar, in order. */
@@ -263,8 +243,6 @@ public final class BootJarPackager {
     /**
      * Inputs for {@link #packageBootJar(BootJarRequest)}.
      *
-     * @param buildInfo {@code build-info.properties} keys (without the {@code build.} prefix);
-     *     empty map = no entry
      * @param sbom CycloneDX JSON bytes (see the engine's {@code CycloneDxSbom}); empty = no SBOM
      * @param aotDirs Spring AOT output roots (generated classes / hint resources) merged into
      *     {@code BOOT-INF/classes} after the app's own files
@@ -277,7 +255,6 @@ public final class BootJarPackager {
             String startClass,
             String bootVersion,
             Map<String, String> attributes,
-            Map<String, String> buildInfo,
             byte[] sbom,
             List<Path> aotDirs,
             long timestampEpochSeconds) {
@@ -290,7 +267,6 @@ public final class BootJarPackager {
             requireResolvedVersion(bootVersion);
             libs = libs == null ? List.of() : dedupeFileNames(libs);
             attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
-            buildInfo = buildInfo == null ? Map.of() : Map.copyOf(buildInfo);
             aotDirs = aotDirs == null ? List.of() : List.copyOf(aotDirs);
         }
 

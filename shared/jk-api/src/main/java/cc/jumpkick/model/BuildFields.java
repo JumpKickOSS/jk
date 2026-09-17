@@ -53,6 +53,8 @@ final class BuildFields {
     List<JkBuild.AuditIgnore> auditIgnores;
     EnvConfig env;
 
+    JkBuild.@Nullable BuildInfo buildInfo;
+
     private BuildFields(JkBuild.Build b) {
         orderAfter = b.orderAfter();
         testPluginJars = b.testPluginJars();
@@ -80,6 +82,7 @@ final class BuildFields {
         devReady = b.devReady();
         auditIgnores = b.auditIgnores();
         env = b.env();
+        buildInfo = b.buildInfo();
     }
 
     JkBuild.Build build() {
@@ -109,6 +112,7 @@ final class BuildFields {
                 devSidecars,
                 devReady,
                 auditIgnores,
-                env);
+                env,
+                buildInfo);
     }
 }

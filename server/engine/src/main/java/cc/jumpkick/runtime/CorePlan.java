@@ -282,6 +282,7 @@ final class CorePlan {
             Task compileKotlin,
             Task compileGroovy,
             Task copyResources,
+            @Nullable Task buildInfo,
             boolean hasFixtures,
             Task compileTestFixtures,
             boolean hasGuardSuite,
@@ -303,6 +304,8 @@ final class CorePlan {
         Task compileKotlin = PlannerCompile.compileKotlinStep(cx, pluginDecls);
         Task compileGroovy = PlannerCompile.compileGroovyStep(cx, pluginDecls);
         Task copyResources = PlannerResources.copyResourcesStep(cx);
+        Task buildInfo =
+                parsedBuild != null && parsedBuild.build().buildInfo() != null ? PlannerBuildInfo.step(cx) : null;
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
         Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), compactLayout);
@@ -312,6 +315,8 @@ final class CorePlan {
         // run-tests carries them in its requires — otherwise the target-closure prune drops
         // them and the edit→test loop re-runs the main compile every invocation.
         List<String> testStampRequires = new ArrayList<>();
+        // A test that reads git.properties off the classpath (Boot's /info) waits for its writer.
+        if (buildInfo != null) testStampRequires.add(TaskNames.BUILD_INFO);
         if (in.testOnly()) {
             if (useJava) testStampRequires.add(TaskNames.WRITE_STAMP);
             if (useKotlin) testStampRequires.add(TaskNames.WRITE_STAMP_KOTLIN);
@@ -346,6 +351,7 @@ final class CorePlan {
                 compileKotlin,
                 compileGroovy,
                 copyResources,
+                buildInfo,
                 hasFixtures,
                 compileTestFixtures,
                 hasGuardSuite,
@@ -492,6 +498,7 @@ final class CorePlan {
         // Build-logic AFTER_COMPILE before resources / AFTER_RESOURCES.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         b.addTask(s.copyResources());
+        if (s.buildInfo() != null) b.addTask(s.buildInfo());
         if (!skipJUnit) {
             if (s.hasFixtures()) b.addTask(s.compileTestFixtures());
             b.addTask(s.compileTest()).addTask(s.runTests());
@@ -509,7 +516,7 @@ final class CorePlan {
         // without them the plan fails validation before anything runs.
         if (!in.testOnly()) {
             for (Task p : s.pluginSteps()) b.addTask(p);
-            b.addTask(PlannerResources.buildLogicBeforePackageStep(cx));
+            b.addTask(PlannerResources.buildLogicBeforePackageStep(cx, s.buildInfo() != null));
             b.addTask(s.packageJar());
         } else if (pluginDecls != null) {
             addTestClasspathPlugins(b, s.pluginSteps(), pluginDecls);

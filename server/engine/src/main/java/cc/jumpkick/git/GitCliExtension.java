@@ -199,6 +199,34 @@ public final class GitCliExtension implements GitBackend {
         return new GitFetcher.RefInfo(sha, Instant.ofEpochSecond(epoch), describeNearestTag(bareDir, sha));
     }
 
+    @Override
+    public Optional<GitFetcher.Worktree> describeWorktree(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return Optional.empty();
+        ProcResult head =
+                exec(dir, null, List.of("rev-parse", "--verify", "--end-of-options", "HEAD"), localTimeoutSec);
+        if (head.exit != 0) return Optional.empty(); // outside a repository, or an unborn HEAD
+        String sha = head.output.strip();
+        // symbolic-ref answers only while HEAD points at a branch; detached, it exits non-zero.
+        ProcResult ref = exec(dir, null, List.of("symbolic-ref", "--short", "-q", "HEAD"), localTimeoutSec);
+        String branch = ref.exit == 0 ? ref.output.strip() : "";
+        if (branch.isEmpty()) branch = sha;
+        ProcResult time =
+                exec(dir, null, List.of("show", "-s", "--format=%ct", "--end-of-options", sha), localTimeoutSec);
+        if (time.exit != 0) throw new IOException("git show failed for " + sha + ": " + time.output.strip());
+        long epoch;
+        try {
+            epoch = Long.parseLong(time.output.strip());
+        } catch (NumberFormatException e) {
+            throw new IOException("unexpected commit-time output: " + time.output.strip(), e);
+        }
+        ProcResult status =
+                exec(dir, null, List.of("status", "--porcelain", "--untracked-files=normal"), localTimeoutSec);
+        if (status.exit != 0) throw new IOException("git status failed: " + status.output.strip());
+        boolean dirty = !status.output.strip().isEmpty();
+        return Optional.of(new GitFetcher.Worktree(
+                sha, branch, Instant.ofEpochSecond(epoch), dirty, describeNearestTag(dir, sha)));
+    }
+
     // --- cache primitives ----------------------------------------------------
 
     private Path ensureBareClone(GitSource source) throws IOException {

@@ -168,7 +168,8 @@ public final class PomImporter {
                 .pluginConfig(generators.protobuf())
                 .pluginConfig(generators.localizer())
                 .pluginConfig(generators.generate())
-                .build(buildBlock(em.model(), sourceTree, tests, report))
+                .build(buildBlock(em.model(), sourceTree, tests, report)
+                        .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null)))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
