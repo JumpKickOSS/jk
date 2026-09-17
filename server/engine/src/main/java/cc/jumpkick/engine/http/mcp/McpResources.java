@@ -7,6 +7,7 @@ import cc.jumpkick.guard.explain.GuardExplain;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -138,7 +139,9 @@ public final class McpResources {
         }
         try {
             return contents(
-                    "jk://runs/latest/results", "text/markdown", Files.readString(file, StandardCharsets.UTF_8));
+                    "jk://runs/latest/results",
+                    "text/markdown",
+                    MarkdownReports.strip(Files.readString(file, StandardCharsets.UTF_8)));
         } catch (IOException e) {
             String msg = e.getMessage() == null ? "read failed" : e.getMessage();
             return contents("jk://runs/latest/results", "application/json", MiniJson.write(Map.of("error", msg)));

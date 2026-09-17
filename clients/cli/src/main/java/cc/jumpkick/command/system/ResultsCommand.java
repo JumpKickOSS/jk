@@ -13,7 +13,9 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -62,7 +64,17 @@ public final class ResultsCommand implements CliCommand {
             CliOutput.err((details ? "Details: " : "Results: ") + file.get());
         }
         try {
-            Files.copy(file.get(), System.out);
+            if (details) {
+                // JSONL carries no mark, and a transcript is unbounded: stream it.
+                Files.copy(file.get(), System.out);
+            } else {
+                // The report on disk leads with a UTF-8 BOM so a Windows `cat` decodes it
+                // (MarkdownReports). A terminal is not that reader: the mark would print as ï»¿
+                // under PowerShell's ANSI codepage, and piping this into a parser would hand it a
+                // leading U+FEFF. The bytes after it are the report, byte for byte.
+                String md = MarkdownReports.strip(Files.readString(file.get(), StandardCharsets.UTF_8));
+                System.out.write(md.getBytes(StandardCharsets.UTF_8));
+            }
             System.out.flush();
             return Exit.SUCCESS;
         } catch (IOException e) {

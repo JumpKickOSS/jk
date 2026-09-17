@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.journal.JkResultsMarkdown;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -53,7 +54,7 @@ public final class McpResults {
             m.put("details", details.get().toString());
         }
         try {
-            m.put("markdown", Files.readString(file, StandardCharsets.UTF_8));
+            m.put("markdown", MarkdownReports.strip(Files.readString(file, StandardCharsets.UTF_8)));
         } catch (IOException e) {
             m.put("error", "reading " + file + ": " + e.getMessage());
         }
