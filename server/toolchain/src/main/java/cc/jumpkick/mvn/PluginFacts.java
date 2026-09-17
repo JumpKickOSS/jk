@@ -49,6 +49,8 @@ final class PluginFacts {
             "protobuf-maven-plugin",
             "localizer-maven-plugin",
             "wire-maven-plugin",
+            "graphqlcodegen-maven-plugin",
+            "graphql-codegen-maven-plugin",
             "maven-jar-plugin",
             "maven-source-plugin",
             "maven-javadoc-plugin",

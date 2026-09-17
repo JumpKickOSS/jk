@@ -256,6 +256,45 @@ class PomGeneratorImportTest {
         assertThat(reparsed).containsAllEntriesOf(wire);
     }
 
+    /** The GraphQL code generators are rows naming the recipe, not a table. */
+    @Test
+    void graphql_codegen_plugins_are_rows_naming_the_recipe(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>gql</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>io.github.deweyjose</groupId>
+                        <artifactId>graphqlcodegen-maven-plugin</artifactId>
+                        <version>3.10.1</version>
+                      </plugin>
+                      <plugin>
+                        <groupId>io.github.kobylynskyi</groupId>
+                        <artifactId>graphql-codegen-maven-plugin</artifactId>
+                        <version>5.10.0</version>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfigs()).isEmpty();
+        List<String> rows = messages(result);
+        assertThat(rows).anySatisfy(m -> assertThat(m)
+                .contains("`graphqlcodegen-maven-plugin`")
+                .contains("`[generate.<name>]` recipe")
+                .contains("graphql-dgs-codegen-core"));
+        assertThat(rows).anySatisfy(m -> assertThat(m)
+                .contains("`graphql-codegen-maven-plugin`")
+                .contains("no command line")
+                .contains("jk mvn"));
+        assertThat(rows).noneMatch(m -> m.contains("was not imported"));
+    }
+
     /** A wire plugin over protos in the tree, at generate-sources, with no wire-runtime dependency. */
     @Test
     void wire_plugin_over_tree_protos_is_a_recipe_over_the_latest_compiler(@TempDir Path tempDir) throws Exception {

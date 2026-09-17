@@ -34,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * put it on Maven's compile path is not written as an {@code extra-src} root.
  * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table,
  * {@code localizer-maven-plugin} {@link LocalizerPlugin}'s {@code [localizer]}, {@code wire-maven-plugin}
- * {@link WirePlugin}'s {@code [generate.wire]} entry.
+ * {@link WirePlugin}'s {@code [generate.wire]} entry; the GraphQL codegen plugins are a row naming
+ * the recipe.
  */
 final class GeneratorPlugins {
 
@@ -52,6 +53,9 @@ final class GeneratorPlugins {
             Map<String, String> outputRoots,
             /** Plugins another mapping consumed, which get no "not imported" row of their own. */
             Set<String> consumedPlugins) {}
+
+    private static final String DGS_CODEGEN = "graphqlcodegen-maven-plugin";
+    private static final String GRAPHQL_JAVA_CODEGEN = "graphql-codegen-maven-plugin";
 
     /** What an {@code add-source} root inside the OpenAPI output is, for the build-helper row. */
     private static final String OPENAPI_ADD_SOURCE_ROW = "the OpenAPI generator's output; `[openapi]` folds the"
@@ -96,6 +100,7 @@ final class GeneratorPlugins {
         PluginConfig generate = wire.entry() == null
                 ? null
                 : new PluginConfig("generator", Map.of(PluginConfig.ENTRIES, Map.of(WirePlugin.ENTRY, wire.entry())));
+        reportGraphQl(model, report);
         return new Generators(
                 openapi,
                 protobuf.table(),
@@ -103,6 +108,20 @@ final class GeneratorPlugins {
                 generate,
                 Collections.unmodifiableMap(outputRoots),
                 wire.consumed());
+    }
+
+    /** The GraphQL code generators: a row each naming where the step lands. */
+    private static void reportGraphQl(Model model, ImportReport.Builder report) {
+        if (PluginFacts.plugin(model, DGS_CODEGEN).isPresent()) {
+            report.warning("`" + DGS_CODEGEN + "` (DGS codegen) is a `[generate.<name>]` recipe over"
+                    + " `com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-core`'s command line — see the GraphQL"
+                    + " section of docs/user/generate.md for the entry; nothing was written.");
+        }
+        if (PluginFacts.plugin(model, GRAPHQL_JAVA_CODEGEN).isPresent()) {
+            report.warning("`" + GRAPHQL_JAVA_CODEGEN + "` (graphql-java-codegen) has no command line a"
+                    + " `[generate.<name>]` entry could run — its Maven and Gradle plugins are the only drivers — so"
+                    + " that step stays under `jk mvn`; see the GraphQL section of docs/user/generate.md.");
+        }
     }
 
     /**

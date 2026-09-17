@@ -111,6 +111,31 @@ The step is `generate-localizer`; a bundle edit re-runs it, and the classes join
 `jk import` writes the table from a POM's `localizer-maven-plugin`
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## GraphQL — a recipe, not a table
+
+Spring for GraphQL, the common JVM server, is schema-first with annotated controllers and needs no
+build step: the schema is a resource. Code generation is the long tail, and each generator is a
+`[generate.<name>]` entry.
+
+[DGS codegen](https://netflix.github.io/dgs/generating-code-from-schema/) ships a command line in
+its core jar:
+
+```toml
+[generate.dgs]
+tool   = "com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-core:8.6.0"
+main   = "com.netflix.graphql.dgs.codegen.CodeGenCli"
+inputs = ["src/main/resources/schema/**/*.graphqls"]
+args   = ["--output-dir", "${out}", "--package-name", "com.acme.graphql", "--generate-client", "${inputs}"]
+```
+
+The types land under `<package>.types`, the client under `<package>.client`; a schema edit
+re-runs the step and an unchanged schema is a cache hit.
+
+[graphql-java-codegen](https://github.com/kobylynskyi/graphql-java-codegen) ships no command
+line — its Maven and Gradle plugins are the only drivers of `GraphQLCodegen` — so it has no
+`[generate]` shape until a `main` exists; `jk import` says so and leaves the module on `jk mvn`
+for that step.
+
 ## Beside a framework table
 
 A module runs every plugin whose table it declares, each in its own worker, so `[generate]` or a
