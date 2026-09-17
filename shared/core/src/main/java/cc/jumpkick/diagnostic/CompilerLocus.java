@@ -1,25 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.diagnostic;
 
+import java.net.URI;
+import java.nio.file.Path;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
  * File / line / column parsed from a javac, kotlinc, or groovyc diagnostic block. The header is
- * {@code path:line[:col]:…}; when the header has no column, a following caret line supplies a
- * 1-based column. Used when journaling so agents do not scrape the blob.
+ * {@code path:line[:col]:…}, or kotlinc's {@code file:///path:line:col message} with a space
+ * after the column; when the header has no column, a following caret line supplies a 1-based
+ * column. A {@code file:} URI in the header is reported as its filesystem path. Used when
+ * journaling so agents do not scrape the blob.
  */
 public record CompilerLocus(String file, int line, int col) {
 
     /**
-     * {@code <path ending in a source ext>:<line>[:<col>]:<rest>}. The single definition — CLI
-     * rendering ({@code CompilerDiagnostic}) matches against it too. The optional space after the
-     * first colon is groovyc's shape ({@code /w/Foo.groovy: 5: unexpected token …}) — without it,
-     * groovyc blobs never parsed to units on either surface.
+     * {@code <path ending in a source ext>:<line>[:<col>]:<rest>}, or with a space in place of the
+     * colon after the column ({@code file:///w/Foo.kt:3:5 Unresolved reference 'x'.}, the shape
+     * kotlinc's Build Tools logger writes). The single definition — CLI rendering ({@code
+     * CompilerDiagnostic}) matches against it too. The optional space after the first colon is
+     * groovyc's shape ({@code /w/Foo.groovy: 5: unexpected token …}). The {@code file} group is
+     * the header's own text; {@link #fileName} turns a {@code file:} URI into a path.
      */
     public static final Pattern HEADER = Pattern.compile(
-            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\\d+)(?::(?<col>\\d+))?:(?<rest>.*)$");
+            "^(?<file>.+?\\.(?:java|kt|kts|groovy|gvy|gy)): ?(?<line>\\d+)(?::(?<col>\\d+))?[: ](?<rest>.*)$");
 
     /** groovyc's column trailer: {@code … @ line 5, column 1.} (header carries no inline col). */
     public static final Pattern GROOVY_TRAILER = Pattern.compile("@ line \\d+, column (?<col>\\d+)\\.?\\s*$");
@@ -46,7 +52,7 @@ public record CompilerLocus(String file, int line, int col) {
                     Matcher tr = GROOVY_TRAILER.matcher(m.group("rest"));
                     if (tr.find()) col = parsePositive(tr.group("col"));
                 }
-                header = new CompilerLocus(m.group("file"), lineNo, col);
+                header = new CompilerLocus(fileName(m.group("file")), lineNo, col);
                 continue;
             }
             if (CARET.matcher(line).matches()) {
@@ -60,6 +66,20 @@ public record CompilerLocus(String file, int line, int col) {
         if (header == null) return null;
         if (header.col > 0 || caretCol <= 0) return header;
         return new CompilerLocus(header.file, header.line, caretCol);
+    }
+
+    /**
+     * The filesystem path a header's {@code file} group names: a {@code file:} URI becomes its
+     * path ({@code file:///w/Foo.kt} is {@code /w/Foo.kt}); any other text is returned as written.
+     */
+    public static String fileName(String header) {
+        if (header == null || !header.startsWith("file:")) return header == null ? "" : header;
+        try {
+            return Path.of(URI.create(header)).toString();
+        } catch (RuntimeException e) {
+            String rest = header.substring("file:".length());
+            return rest.startsWith("//") ? rest.substring(2) : rest;
+        }
     }
 
     /** {@code raw} as a positive int; 0 for blank, negative, or unparseable input. */

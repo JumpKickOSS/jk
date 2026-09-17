@@ -69,7 +69,7 @@ public final class CompilerDiagnostic {
             out.append(lines[start]);
             return;
         }
-        String file = header.group("file");
+        String file = CompilerLocus.fileName(header.group("file"));
         int lineNo = CompilerLocus.parsePositive(header.group("line"));
         int col1 = CompilerLocus.parsePositive(header.group("col"));
         String rest = header.group("rest") == null ? "" : header.group("rest").strip();

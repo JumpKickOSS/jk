@@ -52,7 +52,10 @@ at the HTML (`target/reports/coverage/index.html`; per module under
 
 A step that failed without a diagnostic of its own is one row of `## Failed steps`; a step that
 explained itself is also a `## Failures` entry headed `<step> — <module>`, its message fenced, then
-its output. A compiler error whose repair is mechanical ends with a `→` line, the way a guard
+its output. A compiler diagnostic's `file`, `line` and `col` are read from its header — javac's
+`path:line: error:` with the caret line supplying the column, groovyc's `path: line:` with its
+`@ line N, column M` trailer, and kotlinc's `file:///path:line:col message` — and `file` is a
+filesystem path whatever the header wrote. A compiler error whose repair is mechanical ends with a `→` line, the way a guard
 violation carries `instead`: javac's cannot find symbol, package does not exist, incompatible types,
 unreported exception, missing return statement, variable might not have been initialized and
 non-static referenced from a static context; kotlinc's unresolved reference, type mismatch, unsafe

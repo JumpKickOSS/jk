@@ -76,6 +76,18 @@ class CompilerDiagnosticTest {
     }
 
     @Test
+    void k2_header_keeps_the_column_out_of_the_message(@TempDir Path tmp) throws Exception {
+        Path src = tmp.resolve("Baz.kt");
+        Files.writeString(src, "fun f() {\n    @Test\n}\n");
+        String raw = src.toUri() + ":2:5 Unresolved reference 'Test'.";
+        String p = plain(CompilerDiagnostic.render(raw));
+        assertThat(p).contains("error: Unresolved reference 'Test'.");
+        assertThat(p).doesNotContain("error: 5 ");
+        assertThat(p).contains("Baz.kt:2:");
+        assertThat(p).contains("@Test");
+    }
+
+    @Test
     void single_line_diagnostic_with_no_snippet_keeps_the_path() {
         String raw = "Bar.java:3: error: package org.junit.jupiter.api does not exist";
         String p = plain(CompilerDiagnostic.render(raw));

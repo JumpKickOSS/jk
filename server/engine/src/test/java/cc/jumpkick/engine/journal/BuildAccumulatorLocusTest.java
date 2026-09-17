@@ -34,6 +34,16 @@ class BuildAccumulatorLocusTest {
     }
 
     @Test
+    void k2_header_fills_file_line_and_column() {
+        var d = new BuildPlanResult.Diagnostic(
+                "compile-kotlin", "kotlinc", "file:///ws/app/src/Main.kt:14:21 Unresolved reference 'missingThing'.");
+        BuildRecord.Diag out = BuildAccumulator.diagFromPlan("error", "/ws/app", "/ws/app", d);
+        assertThat(out.file()).isEqualTo("/ws/app/src/Main.kt");
+        assertThat(out.line()).isEqualTo(14);
+        assertThat(out.col()).isEqualTo(21);
+    }
+
+    @Test
     void existing_file_and_line_are_not_overwritten() {
         var d = new BuildPlanResult.Diagnostic(
                 "run-tests",
