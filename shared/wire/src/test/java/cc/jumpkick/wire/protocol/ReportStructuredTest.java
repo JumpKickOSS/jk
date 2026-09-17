@@ -23,6 +23,7 @@ class ReportStructuredTest {
                 List.of("0", "1", "0"),
                 List.of("root>g:a@1.0", "root>g:b@2.0", "other>g:a@1.0"),
                 List.of("^1\t1.0", "\t[2.0,3.0)", "\t"),
+                List.of("g:app, g:lib", "", "g:lib"),
                 List.of("g:c\tjk.toml:a\tg:a@1.0"));
         Map<String, Object> m = r.toStructured();
         List<Map<String, Object>> matches = (List<Map<String, Object>>) requireNonNull(m.get("matches"));
@@ -36,6 +37,9 @@ class ReportStructuredTest {
         assertThat((List<List<String>>) matches.get(0).get("declared"))
                 .containsExactly(List.of("^1", "1.0"), List.of("", ""));
         assertThat((List<List<String>>) matches.get(1).get("declared")).containsExactly(List.of("", "[2.0,3.0)"));
+        // Per path, the workspace units that declared its root; "" for the project's own manifest.
+        assertThat((List<String>) matches.get(0).get("declaredBy")).containsExactly("g:app, g:lib", "g:lib");
+        assertThat((List<String>) matches.get(1).get("declaredBy")).containsExactly("");
         List<Map<String, Object>> pruned = (List<Map<String, Object>>) requireNonNull(m.get("exclusions"));
         assertThat(pruned).hasSize(1);
         assertThat(pruned.getFirst())

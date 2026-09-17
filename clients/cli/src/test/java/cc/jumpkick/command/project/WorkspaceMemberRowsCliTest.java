@@ -130,6 +130,20 @@ class WorkspaceMemberRowsCliTest {
                 .doesNotContain("leaf:2.0");
     }
 
+    /** The root step of a why path names the workspace units whose tables declare it, as the tree renders them. */
+    @Test
+    void why_names_the_units_that_declared_a_root(@TempDir Path root) throws Exception {
+        writeWorkspace(root);
+        assertThat(lock(root)).isEqualTo(0);
+
+        int[] exit = new int[1];
+        Capture.Streams out =
+                Capture.both(() -> exit[0] = run("why", "com.foo:middle", "-C", root.toString(), "--no-progress"));
+        assertThat(exit[0]).as(out.out() + out.err()).isEqualTo(0);
+        String why = out.out().replaceAll("\u001b\\[[\\d;]*m", "");
+        assertThat(why).contains("com.foo:middle:1.0 (declared 1.0 by com.acme:app, com.acme:lib)");
+    }
+
     @Test
     void the_intellij_export_gives_each_member_the_library_it_reads(@TempDir Path root) throws Exception {
         writeWorkspace(root);

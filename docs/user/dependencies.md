@@ -366,7 +366,10 @@ jk why com.foo:bar       # why a pin is on the graph, and what each step declare
 
 `jk why` prints one path per declared root, each step as `coordinate (declared <selector> by
 <parent>)`, so a surprising transitive version is traced to the declaration that produced it.
-The selector rides the lock's edge lines; see [Lockfile](lockfile.md#what-an-edge-records).
+The root step's `by` names what declared it: `jk.toml` in a single project; in a workspace the
+units whose tables list it — each member as its `group:name`, and the root itself for its own
+`[platform-dependencies]` / `[managed-dependencies]` — the same units `jk tree` renders the root
+under. The selector rides the lock's edge lines; see [Lockfile](lockfile.md#what-an-edge-records).
 
 `jk tree` prints a coordinate under each scope section at that section's version: a coordinate the
 lock holds at one version for main and another for test reads its main row under `[main]` and its

@@ -37,6 +37,8 @@ public record WhyReport(
         List<String> pathOwners,
         List<String> paths,
         List<String> pathSelectors,
+        /** Per path, the workspace units that declared its root ({@code group:name}, comma-joined); {@code ""} when the project's one manifest did. */
+        List<String> pathRoots,
         List<String> exclusions) {
 
     /** Joins the per-step selectors of one path; no selector grammar contains a tab. */
@@ -47,7 +49,8 @@ public record WhyReport(
 
     public static WhyReport error(String message) {
         return new WhyReport(
-                message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of());
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */
@@ -65,6 +68,7 @@ public record WhyReport(
                 .array("pathOwners", pathOwners)
                 .array("paths", paths)
                 .array("pathSelectors", pathSelectors)
+                .array("pathRoots", pathRoots)
                 .array("exclusions", exclusions)
                 .finish();
     }
@@ -82,6 +86,11 @@ public record WhyReport(
     }
 
     /** The per-step selectors of path {@code index}, {@code ""} where none is known; empty when the wire had none. */
+    /** The units that declared path {@code index}'s root, or {@code ""} for the project's own manifest. */
+    public String rootOf(int index) {
+        return index < pathRoots.size() ? pathRoots.get(index) : "";
+    }
+
     public List<String> selectorsOf(int index) {
         if (index >= pathSelectors.size()) return List.of();
         return List.of(pathSelectors.get(index).split(STEP_SELECTOR_SEPARATOR, -1));
@@ -108,14 +117,17 @@ public record WhyReport(
             if (pinnedBy != null) row.put("pinnedBy", pinnedBy);
             List<String> mine = new ArrayList<>();
             List<List<String>> declared = new ArrayList<>();
+            List<String> declaredBy = new ArrayList<>();
             String idx = Integer.toString(i);
             for (int p = 0; p < paths.size(); p++) {
                 if (!idx.equals(pathOwners.get(p))) continue;
                 mine.add(paths.get(p));
                 declared.add(selectorsOf(p));
+                declaredBy.add(rootOf(p));
             }
             row.put("paths", mine);
             row.put("declared", declared);
+            row.put("declaredBy", declaredBy);
             matches.add(row);
         }
         m.put("matches", matches);
@@ -142,6 +154,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "pathOwners"),
                 Jsonl.strArray(line, "paths"),
                 Jsonl.strArray(line, "pathSelectors"),
+                Jsonl.strArray(line, "pathRoots"),
                 Jsonl.strArray(line, "exclusions"));
     }
 }

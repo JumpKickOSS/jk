@@ -92,7 +92,7 @@ public final class WhyCommand implements CliCommand {
             for (int j = 0; j < report.paths().size(); j++) {
                 if (!report.pathOwners().get(j).equals(Integer.toString(i))) continue;
                 any = true;
-                CliOutput.out("  " + renderPath(report.paths().get(j), report.selectorsOf(j)));
+                CliOutput.out("  " + renderPath(report.paths().get(j), report.selectorsOf(j), report.rootOf(j)));
             }
             if (!any) {
                 CliOutput.out("  (not reachable from any declared dependency — orphan lockfile entry?)");
@@ -128,10 +128,12 @@ public final class WhyCommand implements CliCommand {
 
     /**
      * Format a wire path ({@code module@version>module@version}) with colored coordinates. Each
-     * step whose selector the lock knows says what was asked for and by whom — the manifest for
-     * the root, the step before it otherwise — beside the version that was picked.
+     * step whose selector the lock knows says what was asked for and by whom — for the root the
+     * workspace units whose tables declare it ({@code rootUnits}, the coordinates the tree renders
+     * them under) or the project's manifest, the step before it otherwise — beside the version
+     * that was picked.
      */
-    private static String renderPath(String path, List<String> selectors) {
+    private static String renderPath(String path, List<String> selectors, String rootUnits) {
         String[] steps = path.split(">");
         StringBuilder out = new StringBuilder();
         String arrow = Theme.colorize(" -> ", Theme.active().darkGray());
@@ -142,7 +144,7 @@ public final class WhyCommand implements CliCommand {
             out.append(at > 0 ? Coords.module(step.substring(0, at), step.substring(at + 1)) : step);
             String selector = i < selectors.size() ? selectors.get(i) : "";
             if (selector.isEmpty()) continue;
-            String by = i == 0 ? ManifestPaths.MANIFEST : moduleOf(steps[i - 1]);
+            String by = i > 0 ? moduleOf(steps[i - 1]) : rootUnits.isEmpty() ? ManifestPaths.MANIFEST : rootUnits;
             out.append(Theme.colorize(
                     " (declared " + selector + " by " + by + ")", Theme.active().darkGray()));
         }

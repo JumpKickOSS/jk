@@ -217,6 +217,47 @@ class ProvenanceTest {
         });
     }
 
+    /**
+     * A path's root names the workspace unit that declared it — every member whose table lists it,
+     * or the root for its own tables — so the provenance reads as the tree renders it.
+     */
+    @Test
+    void a_workspace_path_names_the_units_that_declared_its_root(@TempDir Path dir) throws Exception {
+        for (String name : List.of("mod-a", "mod-b")) {
+            Path modDir = Files.createDirectories(dir.resolve(name));
+            Files.writeString(modDir.resolve("jk.toml"), """
+                    group = "com.example"
+                    name = "%s"
+                    version = "0.1.0"
+
+                    [dependencies]
+                    root = { group = "com.foo", name = "root", version = "1.0" }
+                    """.formatted(name));
+        }
+        JkBuild workspaceRoot = JkBuild.builder(new Project("com.example", "workspace", "0.1.0", 0))
+                .workspace(new Workspace(List.of("mod-a", "mod-b")))
+                .dependencies(new JkBuild.Dependencies(
+                        Map.of(Scope.PLATFORM, List.of(new Dependency("com.foo:bom", VersionSelector.parse("=1.0"))))))
+                .build();
+        Lockfile lock = lockOf(
+                pkg("com.foo:root:jar:", "1.0", List.of("com.foo:leaf:jar:@1.0")),
+                pkg("com.foo:leaf:jar:", "1.0", List.of()),
+                pkg("com.foo:bom:pom:", "1.0", List.of()));
+
+        List<Provenance.Path> toLeaf = Provenance.pathsTo(workspaceRoot, lock, "com.foo:leaf:jar:", dir);
+        assertThat(toLeaf).singleElement().satisfies(p -> assertThat(p.rootUnit())
+                .isEqualTo("com.example:mod-a, com.example:mod-b"));
+
+        List<Provenance.Path> toBom = Provenance.pathsTo(workspaceRoot, lock, "com.foo:bom:pom:", dir);
+        assertThat(toBom).singleElement().satisfies(p -> assertThat(p.rootUnit())
+                .isEqualTo("com.example:workspace"));
+
+        List<Provenance.Path> standalone =
+                Provenance.pathsTo(projectWithMainDeps("com.foo:root"), lock, "com.foo:leaf:jar:");
+        assertThat(standalone).singleElement().satisfies(p -> assertThat(p.rootUnit())
+                .isNull());
+    }
+
     @Test
     void lock_top_path_when_no_declared_roots() {
         // Empty project deps: still reverse-walk to the lockfile top (not a blank stale message).
