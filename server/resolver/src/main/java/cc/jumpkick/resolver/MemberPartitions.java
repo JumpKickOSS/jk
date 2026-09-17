@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -93,8 +94,13 @@ final class MemberPartitions {
             MemberSolver solver,
             ResolveObserver observer)
             throws IOException, InterruptedException {
-        Set<String> unionRows = new HashSet<>();
-        for (Lockfile.Artifact row : merged.artifacts()) unionRows.add(row.packageKey() + "@" + row.version());
+        // name@version → the scope groups the merged rows at that version carry.
+        Map<String, Set<LockRoots.GraphGroup>> unionRows = new HashMap<>();
+        for (Lockfile.Artifact row : merged.artifacts()) {
+            unionRows
+                    .computeIfAbsent(row.packageKey() + "@" + row.version(), k -> new HashSet<>())
+                    .addAll(groupsOf(row));
+        }
 
         // name@version → the partition row and the members that read it.
         Map<String, Lockfile.Artifact> partitions = new LinkedHashMap<>();
@@ -110,7 +116,7 @@ final class MemberPartitions {
             Map<String, String> differing = new TreeMap<>();
             for (Lockfile.Artifact row : mine.artifacts()) {
                 String key = row.packageKey() + "@" + row.version();
-                if (unionRows.contains(key)) continue;
+                if (unionRows.getOrDefault(key, Set.of()).containsAll(groupsOf(row))) continue;
                 partitions.putIfAbsent(key, row);
                 partitionMembers
                         .computeIfAbsent(key, k -> new LinkedHashSet<>())
@@ -131,6 +137,17 @@ final class MemberPartitions {
             rows.add(row);
         }
         return merged.withArtifacts(rows);
+    }
+
+    /**
+     * The graphs a row's scopes belong to. A member row agrees with the workspace only where a merged
+     * row at that version carries each of them: a version the workspace holds as a test-only dual is
+     * not on a member's main classpath, so a member whose main graph wants it reads a row of its own.
+     */
+    private static Set<LockRoots.GraphGroup> groupsOf(Lockfile.Artifact row) {
+        Set<LockRoots.GraphGroup> groups = EnumSet.noneOf(LockRoots.GraphGroup.class);
+        for (Scope scope : row.scopes()) groups.add(LockRoots.graphGroup(scope));
+        return groups;
     }
 
     /**
