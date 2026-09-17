@@ -416,6 +416,53 @@ class DependencyTreeTest {
         assertThat(flat).doesNotContain("com.foo:mocks");
     }
 
+    /**
+     * A sibling's {@code optional = true} dependency is not part of what a consumer inherits, so
+     * neither the expanded sibling node nor the flattened closure names it, while the sibling's
+     * own tree does.
+     */
+    @Test
+    void a_siblings_optional_dependency_stays_out_of_the_consumers_tree(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "1.0"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        Files.writeString(root.resolve("jk-lock.toml"), EMPTY_LOCK);
+        Path a = Files.createDirectories(root.resolve("a"));
+        Files.writeString(a.resolve("jk.toml"), """
+                name = "a"
+
+                [dependencies]
+                api = { group = "com.foo", name = "api", version = "1.0" }
+                mysql = { group = "com.foo", name = "mysql", version = "1.0", optional = true }
+                """);
+        Path b = Files.createDirectories(root.resolve("b"));
+        Files.writeString(b.resolve("jk.toml"), """
+                name = "b"
+
+                [dependencies]
+                a = { workspace = true }
+                """);
+        Lockfile lock = lockOf(pkg("com.foo:api", "1.0", List.of()), pkg("com.foo:mysql", "1.0", List.of()));
+
+        JkBuild consumer = JkBuildParser.parse(b.resolve("jk.toml"));
+        String tree = DependencyTree.render(
+                consumer, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN));
+        assertThat(tree).contains("com.foo:api:1.0").doesNotContain("com.foo:mysql");
+        String flat = DependencyTree.render(
+                consumer, lock, b, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), true, List.of(Scope.MAIN));
+        assertThat(flat).contains("com.foo:api:1.0").doesNotContain("com.foo:mysql");
+
+        JkBuild own = JkBuildParser.parse(a.resolve("jk.toml"));
+        String ownTree = DependencyTree.render(
+                own, lock, a, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain(), false, List.of(Scope.MAIN));
+        assertThat(ownTree).contains("com.foo:mysql:1.0");
+    }
+
     @Test
     void sibling_runtime_module_edges_do_not_chain(@TempDir Path root) throws Exception {
         // b -> a, and a declares sibling c under [runtime-dependencies]. WorkspaceClasspath only

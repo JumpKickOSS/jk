@@ -89,7 +89,7 @@ public final class ModuleRuntimeClasspath {
         seedLanguageRuntimeRoots(moduleDir, project, roots);
         for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
             roots.addAll(
-                    ClasspathResolver.declaredExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
+                    ClasspathResolver.inheritedExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
         }
         depJars.addAll(resolver.classpathClosure(lock, roots, ClasspathResolver.RUNTIME));
         for (Path j : siblings.siblingClosureJars()) {

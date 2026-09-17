@@ -42,6 +42,40 @@ class WorkspaceClasspathTest {
         assertThat(names).anyMatch(n -> n.startsWith("lib-"));
     }
 
+    /**
+     * A sibling's {@code optional = true} edge onto another module is the sibling's own: it is on
+     * the sibling's classpath and never chains to the sibling's consumers.
+     */
+    @Test
+    void a_siblings_optional_module_edge_does_not_chain_to_its_consumer(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.ex"
+                name = "ws"
+                version = "0.1.0"
+                jdk = "25"
+
+                [workspace]
+                modules = ["lib", "app", "top"]
+                """);
+        module(root, "lib", "");
+        module(root, "app", """
+                [dependencies]
+                lib = { workspace = true, optional = true }
+                """);
+        module(root, "top", """
+                [dependencies]
+                app = { workspace = true }
+                """);
+        JkBuild app = JkBuildParser.parse(root.resolve("app/jk.toml"));
+        JkBuild top = JkBuildParser.parse(root.resolve("top/jk.toml"));
+
+        List<String> own = jarNames(WorkspaceClasspath.resolve(root.resolve("app"), app, Set.of(Scope.MAIN)));
+        List<String> consumer = jarNames(WorkspaceClasspath.resolve(root.resolve("top"), top, Set.of(Scope.MAIN)));
+
+        assertThat(own).anyMatch(n -> n.startsWith("lib-"));
+        assertThat(consumer).anyMatch(n -> n.startsWith("app-")).noneMatch(n -> n.startsWith("lib-"));
+    }
+
     /** lib ←(export)— app ←(main)— top */
     /**
      * A member listed in {@code [workspace] modules} with no {@code jk.toml} is fatal for a module

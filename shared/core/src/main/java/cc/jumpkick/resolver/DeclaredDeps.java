@@ -34,6 +34,16 @@ final class DeclaredDeps {
                 .toList();
     }
 
+    /** As {@link #modulesOf} without the optional dependencies: what a consumer of {@code sibling} inherits. */
+    static List<String> inheritedModulesOf(JkBuild sibling, Scope scope) {
+        return sibling.dependencies().of(scope).stream()
+                .filter(d -> !d.optional())
+                .map(Dependency::module)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     /** Concrete version literals from declared deps in {@code scopes} (Exact / caret-tilde anchors). */
     static Map<String, String> versions(JkBuild project, List<Scope> scopes) {
         Map<String, String> out = new LinkedHashMap<>();

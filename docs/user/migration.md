@@ -92,6 +92,10 @@ that cannot be reached during that check leaves a Tier-2 note, not a claim; a pi
 on this machine already fetched is not checked again. Read that report before trusting the
 generated `jk.toml`.
 
+**An optional dependency stays optional.** `<optional>true</optional>` is written as
+`optional = true`: the module's own dependency, which no consumer inherits — see
+[Dependencies](dependencies.md#optional-dependencies).
+
 **A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
 version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a
 workspace lock reads the root's), so the lock resolves a pinned module the way Maven's nearest-wins

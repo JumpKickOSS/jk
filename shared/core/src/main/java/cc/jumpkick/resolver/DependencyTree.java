@@ -419,6 +419,7 @@ public final class DependencyTree {
         Set<String> platformModules = DeclaredDeps.platformModules(project);
         List<String> mods = scopes.stream()
                 .flatMap(s -> project.dependencies().of(s).stream()
+                        .filter(d -> !siblingSurface || !d.optional())
                         .filter(d ->
                                 !siblingSurface || WorkspaceGraph.chainsModuleEdges(s) || !ws.isSiblingDep(d.module()))
                         .map(Dependency::module))

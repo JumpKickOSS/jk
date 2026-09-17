@@ -48,6 +48,28 @@ class LockRootsTest {
         assertThat(withDb.main().keySet()).containsExactly("com.foo:core:jar:", "com.foo:mysql:jar:");
     }
 
+    /**
+     * An optional dependency no feature names is the module's own, as a POM's {@code <optional>}
+     * dependency is under Maven: it roots the module's graph like any other and only its
+     * consumers leave it out.
+     */
+    @Test
+    void an_optional_dependency_no_feature_names_roots_the_modules_own_graph() throws Exception {
+        JkBuild project = JkBuildParser.parse("""
+                group = "com.example"
+                name = "starter"
+                version = "1.0.0"
+
+                [dependencies]
+                core = { group = "com.foo", name = "core", version = "1.0" }
+                mysql = { group = "com.foo", name = "mysql", version = "1.0", optional = true }
+                """);
+
+        LockRoots.Declared declared = LockRoots.partition(project, List.of(), true);
+
+        assertThat(declared.main().keySet()).containsExactly("com.foo:core:jar:", "com.foo:mysql:jar:");
+    }
+
     @Test
     void a_plugin_scoped_dependency_roots_no_solver_graph() throws Exception {
         // The plugin scope is written by the lock itself (a pinned plugin's SDK floor); a

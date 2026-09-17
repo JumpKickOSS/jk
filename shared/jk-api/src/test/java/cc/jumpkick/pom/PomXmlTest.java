@@ -3,7 +3,9 @@ package cc.jumpkick.pom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.VersionSelector;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +57,19 @@ class PomXmlTest {
         StringBuilder noScope = new StringBuilder();
         PomXml.appendDependency(noScope, "g&", "a", "1", null);
         assertThat(noScope.toString()).contains("<groupId>g&amp;</groupId>").doesNotContain("<scope>");
+    }
+
+    @Test
+    void appendDependency_marks_an_optional_dependency_as_maven_does() {
+        StringBuilder sb = new StringBuilder();
+        Dependency optional = Dependency.of("mysql", "com.foo:mysql", VersionSelector.parse("=1.0"))
+                .withOptional(true);
+        PomXml.appendDependency(sb, optional, "1.0", null);
+        assertThat(sb.toString()).contains("<optional>true</optional>");
+
+        StringBuilder plain = new StringBuilder();
+        PomXml.appendDependency(plain, optional.withOptional(false), "1.0", null);
+        assertThat(plain.toString()).doesNotContain("<optional>");
     }
 
     @Test

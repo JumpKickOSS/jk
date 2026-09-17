@@ -31,6 +31,24 @@ public record Features(Map<String, Feature> byName, List<String> defaults) {
         return byName.isEmpty();
     }
 
+    /**
+     * True when some feature names the dependency handle {@code library}: the dependency is off until
+     * that feature is active. An optional dependency no feature names is the module's own, like a
+     * POM's {@code <optional>} dependency under Maven.
+     */
+    public boolean names(String library) {
+        Objects.requireNonNull(library, "library");
+        for (Feature feature : byName.values()) {
+            if (feature.deps().contains(library)) return true;
+        }
+        return false;
+    }
+
+    /** The handles of the optional dependencies the default features activate, in activation order. */
+    public List<String> defaultDepNames() {
+        return requestedDepNames(activate(Set.of(), true));
+    }
+
     /** Transitive activation set; {@code withDefaults} includes the default list. */
     public Set<String> activate(Set<String> requested, boolean withDefaults) {
         Objects.requireNonNull(requested, "requested");
