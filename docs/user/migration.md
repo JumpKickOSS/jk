@@ -84,8 +84,9 @@ only a `<groupId>*</groupId>` exclusion, which jk cannot spell, is a Tier-2 row 
 dependency. A `<version>` that no repository the lock reads
 lists (`swing-layout 1.0.2`, which Central never published) is a Tier-3 row at import naming what the
 catalogs list instead, so the refusal arrives while the POM is still in front of you; a repository
-that cannot be reached during that check leaves a Tier-2 note, not a claim. Read that report before
-trusting the generated `jk.toml`.
+that cannot be reached during that check leaves a Tier-2 note, not a claim; a pin whose POM a lock
+on this machine already fetched is not checked again. Read that report before trusting the
+generated `jk.toml`.
 
 **A direct version is the version, as it is under Maven.** Import writes every `<dependency>`
 version as an exact pin and sets `[resolve] pins = "nearest"` on the root and on every member (a

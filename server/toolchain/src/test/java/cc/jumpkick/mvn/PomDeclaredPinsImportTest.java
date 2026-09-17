@@ -6,10 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ProjectImport;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.DeadEndpoint;
 import java.io.IOException;
@@ -66,6 +70,30 @@ class PomDeclaredPinsImportTest {
                 .contains("`jk lock` refuses it");
         assertThat(checked.issues()).noneMatch(i -> i.message().contains("junit:junit"));
         assertThat(checked.issues().size()).isEqualTo(result.report().issues().size() + 1);
+    }
+
+    @Test
+    void a_pin_whose_pom_the_store_already_mirrors_is_not_walked(@TempDir Path tmp) throws Exception {
+        Path repo = tmp.resolve("repo");
+        writeMeta(repo, "net.java.dev.swing-layout", "swing-layout", "1.0", "1.0.1");
+        writeMeta(repo, "junit", "junit", "4.13.2");
+        Path pom = writePom(tmp);
+        PomImporter importer = TestImporters.over(tmp, repo.toUri());
+        // A lock of this machine fetched swing-layout 1.0.2 from the fixture repository before: its
+        // POM sits in the repository's store, which is proof enough that the version exists.
+        Path mirrored = Files.writeString(tmp.resolve("swing-layout-1.0.2.pom"), "<project/>");
+        RepoArtifactStore.forRepository(importer.resolver.cas().root(), "fixture", repo.toUri())
+                .materialize(
+                        MavenLayout.pomPath(Coordinate.ofModule("net.java.dev.swing-layout:swing-layout", "1.0.2")),
+                        mirrored,
+                        Hashing.sha256Hex(mirrored));
+
+        PomImporter.WorkspaceImportResult result = importer.importWorkspace(pom);
+        ImportReport checked = DeclaredPins.check(result.root(), result.modules(), result.report(), importer);
+
+        assertThat(checked.issues())
+                .as("the catalog does not list 1.0.2, and it was never asked")
+                .noneMatch(i -> i.message().contains("swing-layout"));
     }
 
     @Test

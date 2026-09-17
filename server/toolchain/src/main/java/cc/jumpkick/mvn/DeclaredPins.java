@@ -32,7 +32,9 @@ import org.jspecify.annotations.Nullable;
  * at {@code jk lock}. One catalog walk per pinned {@code group:artifact:version}, over the same
  * {@code maven-metadata.xml} the lock reads and in the lock's repository order, stopping at the
  * first repository that lists the version; a repository that cannot be reached makes the pin a
- * note, because an absent answer is not an absent version.
+ * note, because an absent answer is not an absent version. A pin whose POM one of those
+ * repositories' stores already mirrors — a lock fetched it before — is not walked at all: the
+ * mirrored POM is the repository's own word that the version exists.
  */
 public final class DeclaredPins {
 
@@ -125,12 +127,20 @@ public final class DeclaredPins {
         return version;
     }
 
-    /** One walk per GAV, {@link #WALKS_IN_FLIGHT} at a time on the io pool, under the caller's session. */
+    /**
+     * One walk per GAV the stores do not already answer, {@link #WALKS_IN_FLIGHT} at a time on the
+     * io pool, under the caller's session.
+     */
     private static Map<String, Verdict> walkAll(Set<String> gavs, RepoGroup repos) {
         var session = SessionContext.current();
         Semaphore permits = new Semaphore(WALKS_IN_FLIGHT);
+        Map<String, Verdict> out = new LinkedHashMap<>();
         Map<String, Future<Verdict>> pending = new LinkedHashMap<>();
         for (String gav : gavs) {
+            if (mirrored(coordinate(gav), repos)) {
+                out.put(gav, Verdict.LISTED);
+                continue;
+            }
             pending.put(
                     gav,
                     JkThreads.io()
@@ -143,7 +153,6 @@ public final class DeclaredPins {
                                 }
                             })));
         }
-        Map<String, Verdict> out = new LinkedHashMap<>();
         for (Map.Entry<String, Future<Verdict>> e : pending.entrySet()) {
             try {
                 out.put(e.getKey(), e.getValue().get());
@@ -164,8 +173,7 @@ public final class DeclaredPins {
      * lists the pinned version. A repository that fails to answer is recorded, not skipped.
      */
     private static Verdict walk(String gav, RepoGroup repos) throws InterruptedException {
-        int cut = gav.lastIndexOf(':');
-        Coordinate coord = Coordinate.ofModule(gav.substring(0, cut), gav.substring(cut + 1));
+        Coordinate coord = coordinate(gav);
         List<String> asked = new ArrayList<>();
         Set<String> listed = new LinkedHashSet<>();
         List<String> unreachable = new ArrayList<>();
@@ -181,6 +189,19 @@ public final class DeclaredPins {
             }
         }
         return new Verdict(false, List.copyOf(asked), List.copyOf(listed), List.copyOf(unreachable));
+    }
+
+    /** Whether a release repository the lock asks for {@code coord} holds its POM in the local store, no network read. */
+    private static boolean mirrored(Coordinate coord, RepoGroup repos) {
+        for (MavenRepo repo : repos.repositoriesFor(coord)) {
+            if (repo.servesReleases() && repo.tryLocalPom(coord).isPresent()) return true;
+        }
+        return false;
+    }
+
+    private static Coordinate coordinate(String gav) {
+        int cut = gav.lastIndexOf(':');
+        return Coordinate.ofModule(gav.substring(0, cut), gav.substring(cut + 1));
     }
 
     /** The newest {@link #VERSIONS_NAMED} entries of a catalog, newest first, with the count elided. */
