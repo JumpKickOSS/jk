@@ -110,10 +110,11 @@ constraints do not force main classpath versions.
 the jars a fat jar or image embeds) list the module's own declarations first, in `jk.toml` order
 (`[dependencies]`, then `[provided-dependencies]`, then the test tables), then their transitives
 breadth-first through the lock graph, then — in a workspace — the remaining rows of the shared lock;
-workspace siblings' classes trees and jars come after the lock rows. This is Maven's order: when two
-jars carry the same package (a fork beside the library it forked), the jar the module declared is
-the one javac and the JVM see first. The order is a compile input, so moving a declaration recompiles
-the module.
+workspace siblings' classes trees and jars come after the lock rows, and a sibling's own lock (a
+`path` or git member's) joins after them in that sibling's order — its declarations first, then their
+transitives, then the rest of its lock. This is Maven's order: when two jars carry the same package
+(a fork beside the library it forked), the jar the module declared is the one javac and the JVM see
+first. The order is a compile input, so moving a declaration recompiles the module.
 
 A dependency that only transitive POMs name resolves to the **highest version any of those
 POMs declares** (Gradle's rule, not Maven nearest-wins), never to a newer release the

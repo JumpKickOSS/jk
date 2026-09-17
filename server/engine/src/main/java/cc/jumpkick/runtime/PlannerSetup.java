@@ -362,14 +362,11 @@ public final class PlannerSetup {
         // A sibling's own external deps (e.g. resolver's maven-artifact) must also reach the test
         // classpath, or tests exercising sibling code hit NoClassDefFoundError. Its rows are held to
         // the same bar as this module's: one not on disk fails here by name.
-        for (Path sibLock : testSiblings.siblingLockfiles()) {
-            Lockfile sl = LockfileReader.read(sibLock);
-            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, true)) {
-                if (!compileTestCp.contains(p)) compileTestCp.add(p);
-            }
-            for (Path p : resolver.classpathFor(sl, ClasspathResolver.RUNTIME, true)) {
-                if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
-            }
+        for (Path p : resolver.siblingClasspath(testSiblings.siblingLocks(), ClasspathResolver.COMPILE_MAIN, true)) {
+            if (!compileTestCp.contains(p)) compileTestCp.add(p);
+        }
+        for (Path p : resolver.siblingClasspath(testSiblings.siblingLocks(), ClasspathResolver.RUNTIME, true)) {
+            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
         }
         compileTestCp.addAll(contributedProvided);
         ctx.put(PROVIDED_CP, contributedProvided);

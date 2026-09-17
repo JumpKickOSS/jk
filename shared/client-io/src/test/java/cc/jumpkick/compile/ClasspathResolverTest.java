@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
@@ -193,6 +195,48 @@ class ClasspathResolverTest {
             assertThat(winner).isNotNull();
             assertThat(winner.toString()).contains("hessian-4.0.63.jar");
         }
+    }
+
+    /**
+     * A composite sibling's lock joins the classpath in the order the sibling's own classpath has:
+     * the sibling's declarations first, their transitives breadth-first, then the rest of its lock
+     * — not the lock's on-disk order, which sorts a transitive's fork ahead of the declaration.
+     */
+    @Test
+    void a_sibling_lock_joins_in_the_siblings_own_direct_first_order(@TempDir Path tempDir) throws Exception {
+        Path fork = putJar(tempDir, "com/alipay/sofa/hessian/3.5.5/hessian-3.5.5.jar", "fork");
+        Path direct = putJar(tempDir, "com/caucho/hessian/4.0.63/hessian-4.0.63.jar", "direct");
+        Path lib = putJar(tempDir, "org/example/lib/1.0/lib-1.0.jar", "lib");
+        Path sibling = Files.createDirectories(tempDir.resolve("sibling"));
+        Path lockFile = sibling.resolve("jk-lock.toml");
+        LockfileWriter.write(
+                lock(
+                        pkg("com.alipay.sofa:hessian:jar:", "3.5.5", Hashing.sha256Hex(fork)),
+                        pkg("com.caucho:hessian:jar:", "4.0.63", Hashing.sha256Hex(direct)),
+                        pkg(
+                                "org.example:lib:jar:",
+                                "1.0",
+                                Hashing.sha256Hex(lib),
+                                List.of("com.alipay.sofa:hessian:jar:@3.5.5"))),
+                lockFile);
+        JkBuild module = JkBuildParser.parse("""
+                name = "sibling"
+                [dependencies]
+                hessian = { group = "com.caucho", version = "4.0.63" }
+                lib = { group = "org.example", version = "1.0" }
+                """);
+
+        List<Path> cp = new ClasspathResolver(tempDir)
+                .siblingClasspath(
+                        List.of(new WorkspaceClasspath.SiblingLock(lockFile, sibling, module)),
+                        ClasspathResolver.COMPILE_MAIN,
+                        false);
+
+        assertThat(cp)
+                .containsExactly(
+                        direct.toAbsolutePath().normalize(),
+                        lib.toAbsolutePath().normalize(),
+                        fork.toAbsolutePath().normalize());
     }
 
     private static Path putJarWithEntry(Path store, String relative, String entry, String payload) throws Exception {

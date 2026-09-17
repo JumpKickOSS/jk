@@ -150,7 +150,7 @@ public final class WorkspaceClasspath {
         List<Path> closureClasses = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         List<String> missingClasses = new ArrayList<>();
-        List<Path> siblingLockfiles = new ArrayList<>();
+        List<SiblingLock> siblingLocks = new ArrayList<>();
         LinkedHashSet<Path> seenPaths = new LinkedHashSet<>();
         for (String module : visited) {
             Path siblingJar = siblingJarByModule.get(module);
@@ -213,17 +213,18 @@ public final class WorkspaceClasspath {
                 }
             }
 
-            // Collect the sibling's lockfile so the caller can include its
-            // external transitive deps on the compile classpath (e.g. tomlj
-            // declared in jk-core is needed by jk-io via the transitive chain).
+            // Collect the sibling's lock, with the manifest that orders it, so the caller can include
+            // its external transitive deps on the compile classpath (e.g. tomlj declared in jk-core is
+            // needed by jk-io via the transitive chain) in the order the sibling's own classpath has.
             Path sibDir = siblingDirByModule.get(module);
-            if (sibDir != null) {
+            JkBuild sibBuild = sib.manifestByCoord().get(module);
+            if (sibDir != null && sibBuild != null) {
                 Path lockFile = LockPaths.lockFile(sibDir);
-                if (Files.exists(lockFile)) siblingLockfiles.add(lockFile);
+                if (Files.exists(lockFile)) siblingLocks.add(new SiblingLock(lockFile, sibDir, sibBuild));
             }
         }
         return new Result(
-                jars, missing, siblingLockfiles, closureJars, List.copyOf(visited), closureClasses, missingClasses);
+                jars, missing, siblingLocks, closureJars, List.copyOf(visited), closureClasses, missingClasses);
     }
 
     /** Every other build unit in the workspace, by {@code group:name} coord, with its layout paths. */
@@ -363,11 +364,19 @@ public final class WorkspaceClasspath {
     }
 
     /**
+     * A sibling's lock with the module that reads it: the lock file, the sibling's directory (a
+     * workspace member reads its own rows of a shared lock) and its parsed manifest, whose
+     * declarations order the rows.
+     */
+    public record SiblingLock(Path lockFile, Path dir, JkBuild build) {}
+
+    /**
      * @param jars the runtime view as built so far: every sibling main jar, tests-kind test
      *     classes, test resources and fixtures directory that is on disk
      * @param missingSiblingJars the runtime-view entries that are not on disk, each named with its
      *     cause — a package, test or native step's concern
-     * @param siblingLockfiles the siblings' lockfiles, for their external transitive deps
+     * @param siblingLocks the siblings' locks, each with the module that reads it, for their
+     *     external transitive deps
      * @param siblingClosureJars the declared runtime view, built or not: main jars, then the test
      *     classes, test resources and fixtures of the direct edges that select them
      * @param siblingCoords full {@code group:name} coords of workspace siblings in this resolve
@@ -380,7 +389,7 @@ public final class WorkspaceClasspath {
     public record Result(
             List<Path> jars,
             List<String> missingSiblingJars,
-            List<Path> siblingLockfiles,
+            List<SiblingLock> siblingLocks,
             List<Path> siblingClosureJars,
             List<String> siblingCoords,
             List<Path> siblingClosureClasses,
@@ -388,7 +397,7 @@ public final class WorkspaceClasspath {
         public Result {
             jars = List.copyOf(jars);
             missingSiblingJars = List.copyOf(missingSiblingJars);
-            siblingLockfiles = List.copyOf(siblingLockfiles);
+            siblingLocks = List.copyOf(siblingLocks);
             siblingClosureJars = List.copyOf(siblingClosureJars);
             siblingCoords = List.copyOf(siblingCoords);
             siblingClosureClasses = List.copyOf(siblingClosureClasses);
@@ -399,8 +408,8 @@ public final class WorkspaceClasspath {
          * Callers that do not distinguish the declared closure from the built jars (build/run):
          * the closure, in both views, defaults to {@code jars}.
          */
-        public Result(List<Path> jars, List<String> missingSiblingJars, List<Path> siblingLockfiles) {
-            this(jars, missingSiblingJars, siblingLockfiles, jars, List.of(), jars, List.of());
+        public Result(List<Path> jars, List<String> missingSiblingJars, List<SiblingLock> siblingLocks) {
+            this(jars, missingSiblingJars, siblingLocks, jars, List.of(), jars, List.of());
         }
 
         /** No sibling lockfiles; the closure defaults to {@code jars} in both views. */
@@ -411,28 +420,21 @@ public final class WorkspaceClasspath {
         public Result(
                 List<Path> jars,
                 List<String> missingSiblingJars,
-                List<Path> siblingLockfiles,
+                List<SiblingLock> siblingLocks,
                 List<Path> siblingClosureJars) {
-            this(
-                    jars,
-                    missingSiblingJars,
-                    siblingLockfiles,
-                    siblingClosureJars,
-                    List.of(),
-                    siblingClosureJars,
-                    List.of());
+            this(jars, missingSiblingJars, siblingLocks, siblingClosureJars, List.of(), siblingClosureJars, List.of());
         }
 
         public Result(
                 List<Path> jars,
                 List<String> missingSiblingJars,
-                List<Path> siblingLockfiles,
+                List<SiblingLock> siblingLocks,
                 List<Path> siblingClosureJars,
                 List<String> siblingCoords) {
             this(
                     jars,
                     missingSiblingJars,
-                    siblingLockfiles,
+                    siblingLocks,
                     siblingClosureJars,
                     siblingCoords,
                     siblingClosureJars,

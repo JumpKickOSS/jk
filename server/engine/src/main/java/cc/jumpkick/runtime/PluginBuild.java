@@ -585,11 +585,8 @@ public final class PluginBuild {
         for (Path jar : siblings.jars()) {
             if (!classpath.contains(jar)) classpath.add(jar);
         }
-        for (Path sibLock : siblings.siblingLockfiles()) {
-            var sib = LockfileReader.read(sibLock);
-            for (Path pth : resolver.classpathFor(sib, scopes, true)) {
-                if (!classpath.contains(pth)) classpath.add(pth);
-            }
+        for (Path pth : resolver.siblingClasspath(siblings.siblingLocks(), scopes, true)) {
+            if (!classpath.contains(pth)) classpath.add(pth);
         }
         return classpath;
     }
