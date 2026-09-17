@@ -6,14 +6,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.PackageIndex;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.repo.RepoArtifactStore;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
@@ -69,6 +76,38 @@ class PackageProvidersTest {
     }
 
     @Test
+    void a_lock_row_the_store_lacks_is_not_a_candidate_and_is_not_logged(@TempDir Path tmp) throws Exception {
+        Path store = tmp.resolve("store");
+        Path src = jar(tmp.resolve("acme-util-src.jar"), "org/acme/util/S.class");
+        String sha = Hashing.sha256Hex(src);
+        RepoArtifactStore.forStoreId(store, "central")
+                .materialize("org/acme/acme-util/1.0/acme-util-1.0.jar", src, sha);
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk test",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(
+                        row("org.acme:acme-util", sha, Scope.MAIN),
+                        row("org.acme:acme-test", "ef".repeat(32), Scope.TEST)));
+        ByteArrayOutputStream log = new ByteArrayOutputStream();
+        Log.install(
+                new PrintStream(log, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
+        PackageProviders providers;
+        try {
+            providers = PackageProviders.of(
+                    new ClasspathResolver(store), lock, List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
+        } finally {
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
+        }
+
+        assertThat(log.toString(StandardCharsets.UTF_8))
+                .as("a row of a scope this build never synced is nobody's warning here")
+                .isEmpty();
+        assertThat(providers.provider("org.acme.util")).startsWith("org.acme:acme-util");
+        assertThat(providers.provider("org.acme.test")).isNull();
+    }
+
+    @Test
     void the_catalog_answers_by_group_prefix_when_the_lock_has_nothing(@TempDir Path tmp) {
         PackageProviders providers =
                 new PackageProviders(List.of(), List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
@@ -120,6 +159,17 @@ class PackageProvidersTest {
 
     private static CompileResult.Diagnostic error(String message, String key) {
         return new CompileResult.Diagnostic(CompileResult.Severity.ERROR, null, 0, 0, message, key);
+    }
+
+    private static Lockfile.Artifact row(String module, String sha, Scope scope) {
+        return new Lockfile.Artifact(
+                module,
+                "1.0",
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + sha,
+                null,
+                List.of(scope),
+                List.of());
     }
 
     private static ClasspathResolver.Entry entry(String ga, String sha, Path jar) {

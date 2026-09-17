@@ -186,7 +186,7 @@ public final class ClasspathResolver {
     /** As {@link #classpathFor(Lockfile, Set, boolean, JkBuild)}, each path paired with its lock row. */
     public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent, JkBuild module) {
         List<Lockfile.Artifact> rows = ordered(lock, selected(lock, scopes), declaredExternalRoots(module, scopes));
-        return resolveEntries(rows, requirePresent, effectiveLocator(lock));
+        return resolveEntries(rows, Missing.of(requirePresent), effectiveLocator(lock));
     }
 
     /**
@@ -285,7 +285,30 @@ public final class ClasspathResolver {
 
     /** As {@link #entriesFor(Lockfile, Set)} with optional post-sync presence enforcement. */
     public List<Entry> entriesFor(Lockfile lock, Set<Scope> scopes, boolean requirePresent) {
-        return resolveEntries(selected(lock, scopes), requirePresent, effectiveLocator(lock));
+        return resolveEntries(selected(lock, scopes), Missing.of(requirePresent), effectiveLocator(lock));
+    }
+
+    /**
+     * The rows in {@code scopes} whose jar the store holds, and nothing said about the rest. For a
+     * reader that only consults what is on disk — a diagnostic naming the jar that carries a
+     * package — a row of a scope this build never synced is not a shortfall worth a warning.
+     */
+    public List<Entry> entriesOnDisk(Lockfile lock, Set<Scope> scopes) {
+        return resolveEntries(selected(lock, scopes), Missing.SKIP, effectiveLocator(lock));
+    }
+
+    /** What a checksummed row the store lacks does to the resolve. */
+    private enum Missing {
+        /** Skipped with a warning naming the row: a forecast or explain on a cold store. */
+        WARN,
+        /** Fails the resolve naming every such row: a classpath built after {@code resolve-deps}. */
+        FAIL,
+        /** Left out silently: a reader of what is on disk. */
+        SKIP;
+
+        static Missing of(boolean requirePresent) {
+            return requirePresent ? FAIL : WARN;
+        }
     }
 
     /**
@@ -323,7 +346,7 @@ public final class ClasspathResolver {
             if (pkg.inAnyScope(scopes)) matched.add(pkg);
         }
         // Prefer main-scoped dual rows when the walk hit both; same collapse as the full-lock path.
-        return resolveEntries(selectPerModule(matched, scopes), false, effectiveLocator(lock));
+        return resolveEntries(selectPerModule(matched, scopes), Missing.WARN, effectiveLocator(lock));
     }
 
     /**
@@ -417,15 +440,14 @@ public final class ClasspathResolver {
         return at > 0 ? depRef.substring(0, at) : depRef;
     }
 
-    private List<Entry> resolveEntries(
-            List<Lockfile.Artifact> selected, boolean requirePresent, ArtifactLocator locator) {
+    private List<Entry> resolveEntries(List<Lockfile.Artifact> selected, Missing missing, ArtifactLocator locator) {
         List<Entry> result = new ArrayList<>(selected.size());
-        List<String> missing = new ArrayList<>();
+        List<String> absent = new ArrayList<>();
         for (Lockfile.Artifact pkg : selected) {
             String checksum = pkg.checksum();
             if (checksum == null) {
                 // POM-only aliases (KMP roots, packaging=pom) legitimately have none — they are
-                // not classpath jars. Soft-skip either way; requirePresent only enforces rows
+                // not classpath jars. Soft-skip either way; Missing.FAIL only enforces rows
                 // that claim a sha256 (a miss there is a sync/store bug).
                 Log.warn("jk: warning: lock row "
                         + pkg.name()
@@ -437,8 +459,9 @@ public final class ClasspathResolver {
             }
             Path jar = locate(locator, pkg);
             if (jar == null) {
-                if (requirePresent) {
-                    missing.add(pkg.displayCoord());
+                if (missing == Missing.SKIP) continue;
+                if (missing == Missing.FAIL) {
+                    absent.add(pkg.displayCoord());
                     continue;
                 }
                 Log.warn("jk: warning: lock row "
@@ -461,7 +484,7 @@ public final class ClasspathResolver {
             }
             result.add(new Entry(pkg, jar));
         }
-        if (!missing.isEmpty()) throw new IllegalStateException(notOnDisk(missing));
+        if (!absent.isEmpty()) throw new IllegalStateException(notOnDisk(absent));
         return result;
     }
 

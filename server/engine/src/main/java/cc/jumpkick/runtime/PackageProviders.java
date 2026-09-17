@@ -25,7 +25,9 @@ import org.jspecify.annotations.Nullable;
  * exist} diagnostic gains a {@code provided by:} line, indented the way javac indents {@code
  * symbol:}, naming a lock row whose jar holds the package and is not on this module's compile
  * classpath, or else the library catalog entry whose group prefixes the package. The lookup runs
- * only when such a diagnostic occurs, and lists each lock jar once per store.
+ * only when such a diagnostic occurs, and lists each lock jar once per store. It reads the lock
+ * rows the store holds; a row of a scope this build never synced is not a candidate and not a
+ * warning.
  */
 public final class PackageProviders {
 
@@ -64,9 +66,23 @@ public final class PackageProviders {
     public static @Nullable PackageProviders forContext(TaskContext ctx, List<Path> classpath) {
         Optional<Lockfile> lock = ctx.get(BuildPlanner.LOCKFILE);
         if (lock.isEmpty()) return null;
-        List<ClasspathResolver.Entry> entries =
-                new ClasspathResolver(JkStores.storeCas()).entriesFor(lock.get(), EnumSet.allOf(Scope.class));
-        return new PackageProviders(entries, classpath, JkStores.resolve(PackageIndex.DIR), LibraryCatalog.layered());
+        return of(
+                new ClasspathResolver(JkStores.storeCas()),
+                lock.get(),
+                classpath,
+                JkStores.resolve(PackageIndex.DIR),
+                LibraryCatalog.layered());
+    }
+
+    /**
+     * The providers over every scope of {@code lock} as {@code resolver}'s store holds it. A row the
+     * store lacks — a scope this build never synced — is simply not a candidate; nothing is logged
+     * about it, since the lookup answers a diagnostic and never materializes anything.
+     */
+    public static PackageProviders of(
+            ClasspathResolver resolver, Lockfile lock, List<Path> classpath, Path indexDir, LibraryCatalog catalog) {
+        return new PackageProviders(
+                resolver.entriesOnDisk(lock, EnumSet.allOf(Scope.class)), classpath, indexDir, catalog);
     }
 
     /** {@code diagnostics} with a {@code provided by:} line under each missing-package error that has a provider. */
