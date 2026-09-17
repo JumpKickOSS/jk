@@ -155,6 +155,56 @@ class LockDeclaredRepositoryTest {
         assertThat(everit.sourcesChecksum()).startsWith("sha256:");
     }
 
+    /**
+     * The repository the sources pass rebuilds from a row's {@code source} carries the policy the
+     * declaring POM wrote: a releases-only repository is not asked for a snapshot's sources, and is
+     * asked for a release's.
+     */
+    @Test
+    void sources_attach_rebuilds_a_declared_repository_with_the_policy_its_pom_wrote(@TempDir Path dir)
+            throws Exception {
+        new MavenStub(central)
+                .metadata("io.apicurio", "schema-util-json", "2.6.13", "2.6.14")
+                .pom("io.apicurio", "schema-util-json", "2.6.14", """
+                        <project>
+                          <groupId>io.apicurio</groupId>
+                          <artifactId>schema-util-json</artifactId>
+                          <version>2.6.14</version>
+                          <repositories>
+                            <repository>
+                              <id>jitpack.io</id>
+                              <url>%s</url>
+                              <snapshots><enabled>false</enabled></snapshots>
+                            </repository>
+                          </repositories>
+                          <dependencies>
+                            <dependency>
+                              <groupId>com.github.everit-org.json-schema</groupId>
+                              <artifactId>org.everit.json.schema</artifactId>
+                              <version>1.14.4</version>
+                            </dependency>
+                          </dependencies>
+                        </project>
+                        """.formatted(jitpack.baseUrl()));
+        LockOrchestrator orchestrator = new LockOrchestrator(repos(dir));
+        Lockfile lock = orchestrator.lock(
+                project("io.apicurio:schema-util-json", "=2.6.14"), "test", List.of(), true, observer());
+        String source = "jitpack.io+" + jitpack.baseUrl();
+        List<Lockfile.Artifact> rows = new ArrayList<>(lock.artifacts());
+        rows.add(new Lockfile.Artifact("com.foo:snap:jar:", "1.0-SNAPSHOT", source, "sha256:00", null, List.of()));
+        rows.add(new Lockfile.Artifact("com.foo:rel:jar:", "1.0", source, "sha256:00", null, List.of()));
+        jitpack.clearRequests();
+
+        orchestrator.attachSources(lock.withArtifacts(rows));
+
+        assertThat(jitpack.requestsFor("/com/foo/snap/1.0-SNAPSHOT/snap-1.0-SNAPSHOT-sources.jar"))
+                .as("a releases-only repository is not asked for a snapshot's sources")
+                .isZero();
+        assertThat(jitpack.requestsFor("/com/foo/rel/1.0/rel-1.0-sources.jar"))
+                .as("the same repository is asked for a release's sources")
+                .isEqualTo(1);
+    }
+
     private RepoGroup repos(Path dir) {
         return RepoGroup.of(new MavenRepo("central", central.base(), new Http(), new Cas(dir.resolve("cache"))));
     }

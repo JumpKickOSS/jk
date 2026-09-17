@@ -262,6 +262,11 @@ public final class MavenPackageSource implements PackageSource {
         return declared.notes(rows);
     }
 
+    /** Every repository a dependency POM declared during the solves, by URL, with its releases/snapshots policy. */
+    public Map<String, Pom.Repository> declaredRepositoriesByUrl() {
+        return declared.byUrl();
+    }
+
     public PlatformPolicy platformPolicy() {
         return platformPolicy;
     }
