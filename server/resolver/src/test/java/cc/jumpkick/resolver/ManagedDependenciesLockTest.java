@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
@@ -153,6 +154,99 @@ class ManagedDependenciesLockTest {
 
         assertThat(row(lock, LEAF).version()).isEqualTo("1.0");
         assertThat(row(lock, LEAF).pinnedBy()).isEqualTo("jk.toml:leaf");
+    }
+
+    /**
+     * Two members manage {@code leaf} at different versions; neither entry is the workspace's. The
+     * plain row is the 1.5 {@code middle} declares, and each member reads a row of its own at its
+     * entry's version, named on the row.
+     */
+    @Test
+    void members_whose_managed_entries_disagree_each_read_their_own_row(@TempDir Path tempDir) throws Exception {
+        JkBuild app = member(
+                "app",
+                Map.of(
+                        Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))),
+                        Scope.MANAGED, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0")))));
+        JkBuild lib = member(
+                "lib",
+                Map.of(
+                        Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))),
+                        Scope.MANAGED, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("2.0")))));
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(app, lib));
+
+        assertThat(rows(lock, LEAF))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
+                .containsExactlyInAnyOrder(
+                        tuple("1.5", null, List.of()),
+                        tuple("1.0", "jk.toml:leaf", List.of("app")),
+                        tuple("2.0", "jk.toml:leaf", List.of("lib")));
+        assertThat(row(lock.forMember("app"), LEAF).version()).isEqualTo("1.0");
+        assertThat(row(lock.forMember("lib"), LEAF).version()).isEqualTo("2.0");
+    }
+
+    /** An entry every member declares alike is the workspace's: one plain row at its version, no partition. */
+    @Test
+    void a_managed_entry_every_member_holds_constrains_the_workspaces_row(@TempDir Path tempDir) throws Exception {
+        Map<Scope, List<Dependency>> deps = Map.of(
+                Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))),
+                Scope.MANAGED, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0"))));
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(member("app", deps), member("lib", deps)));
+
+        assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
+        assertThat(rows(lock, LEAF))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("1.0", "jk.toml:leaf"));
+    }
+
+    /**
+     * One member's entry reaches its own graph only: the plain row is what {@code middle} declares,
+     * the holder reads its entry's version, the other member the plain row.
+     */
+    @Test
+    void a_managed_entry_one_member_holds_never_moves_the_plain_row(@TempDir Path tempDir) throws Exception {
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        JkBuild app = member(
+                "app",
+                Map.of(
+                        Scope.MAIN, List.of(middle),
+                        Scope.MANAGED, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0")))));
+        JkBuild lib = member("lib", Map.of(Scope.MAIN, List.of(middle)));
+
+        Lockfile lock = lockWorkspace(tempDir, List.of(app, lib));
+
+        assertThat(rows(lock, LEAF))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy, Lockfile.Artifact::members)
+                .containsExactlyInAnyOrder(tuple("1.5", null, List.of()), tuple("1.0", "jk.toml:leaf", List.of("app")));
+        assertThat(row(lock.forMember("lib"), LEAF).version()).isEqualTo("1.5");
+    }
+
+    /** The workspace locked as the pipeline locks it: the merged manifest, with every member behind it. */
+    private Lockfile lockWorkspace(Path tempDir, List<JkBuild> modules) throws Exception {
+        List<String> names = modules.stream().map(m -> m.project().name()).toList();
+        JkBuild root = JkBuild.builder(new Project("com.example", "root", "0.1.0", 25))
+                .workspace(new Workspace(names))
+                .build();
+        List<LockOrchestrator.Member> members = new ArrayList<>();
+        for (JkBuild module : modules) {
+            members.add(new LockOrchestrator.Member(
+                    module.project().name(), WorkspaceMerge.applyToModule(root, module, modules)));
+        }
+        return new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(members)
+                .lock(WorkspaceMerge.merge(root, modules), "test");
+    }
+
+    private static JkBuild member(String name, Map<Scope, List<Dependency>> byScope) {
+        EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
+        copy.putAll(byScope);
+        return new JkBuild(new Project("com.example", name, "0.1.0", 25), new JkBuild.Dependencies(copy));
+    }
+
+    private static List<Lockfile.Artifact> rows(Lockfile lock, String packageKey) {
+        return lock.artifacts().stream().filter(a -> a.packageKey().equals(packageKey)).toList();
     }
 
     /** leaf 1.0 brings deep; the managed entry on leaf excludes everything under it. */

@@ -322,33 +322,60 @@ public final class LockOrchestrator {
     /**
      * The manifest whose platform table the merged solve runs under: {@code project} with its
      * {@code [platform-dependencies]} cut to the BOMs every member's table holds — the root's, which
-     * each member folds first, and one every member declares or depends into. A BOM only some
-     * members hold constrains those members' own solves ({@link MemberPartitions}) and never the
-     * workspace's rows. A standalone project's table is its own.
+     * each member folds first, and one every member declares or depends into — and its
+     * {@code [managed-dependencies]} cut to the entries every member holds alike: the same module at
+     * the same version with the same {@code exclude} list. A BOM or entry only some members hold
+     * constrains those members' own solves ({@link MemberPartitions}) and never the workspace's
+     * rows. A standalone project's table is its own.
      */
     private JkBuild sharedPlatform(JkBuild project) {
-        List<Dependency> declared = project.dependencies().of(Scope.PLATFORM);
-        if (members.isEmpty() || declared.isEmpty()) return project;
-        Set<String> shared = heldBoms(members.getFirst());
-        for (Member member : members.subList(1, members.size())) shared.retainAll(heldBoms(member));
-        List<Dependency> kept = new ArrayList<>(declared.size());
-        for (Dependency bom : declared) if (shared.contains(bom.module())) kept.add(bom);
-        if (kept.size() == declared.size()) return project;
+        if (members.isEmpty()) return project;
+        List<Dependency> boms = project.dependencies().of(Scope.PLATFORM);
+        List<Dependency> managed = project.dependencies().of(Scope.MANAGED);
+        List<Dependency> sharedBoms = heldByEveryMember(boms, Scope.PLATFORM, Dependency::module);
+        List<Dependency> sharedManaged = heldByEveryMember(managed, Scope.MANAGED, LockOrchestrator::managedEntryKey);
+        if (sharedBoms.size() == boms.size() && sharedManaged.size() == managed.size()) return project;
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         byScope.putAll(project.dependencies().byScope());
-        if (kept.isEmpty()) {
-            byScope.remove(Scope.PLATFORM);
-        } else {
-            byScope.put(Scope.PLATFORM, kept);
-        }
+        replace(byScope, Scope.PLATFORM, sharedBoms);
+        replace(byScope, Scope.MANAGED, sharedManaged);
         return project.withDependencies(new JkBuild.Dependencies(byScope));
     }
 
-    /** The modules of the BOMs one member's table holds. */
-    private static Set<String> heldBoms(Member member) {
-        Set<String> held = new HashSet<>();
-        for (Dependency bom : member.manifest().dependencies().of(Scope.PLATFORM)) held.add(bom.module());
-        return held;
+    private static void replace(EnumMap<Scope, List<Dependency>> byScope, Scope scope, List<Dependency> entries) {
+        if (entries.isEmpty()) {
+            byScope.remove(scope);
+        } else {
+            byScope.put(scope, entries);
+        }
+    }
+
+    /** The entries of {@code declared} whose {@code key} every member's {@code scope} table carries. */
+    private List<Dependency> heldByEveryMember(
+            List<Dependency> declared, Scope scope, Function<Dependency, String> key) {
+        if (declared.isEmpty()) return declared;
+        Set<String> shared = null;
+        for (Member member : members) {
+            Set<String> held = new HashSet<>();
+            for (Dependency entry : member.manifest().dependencies().of(scope)) held.add(key.apply(entry));
+            if (shared == null) {
+                shared = held;
+            } else {
+                shared.retainAll(held);
+            }
+        }
+        List<Dependency> kept = new ArrayList<>(declared.size());
+        for (Dependency entry : declared) {
+            if (Objects.requireNonNull(shared).contains(key.apply(entry))) kept.add(entry);
+        }
+        return kept;
+    }
+
+    /** What one {@code [managed-dependencies]} entry says: its module, version selector and exclusions. */
+    private static String managedEntryKey(Dependency entry) {
+        List<String> exclusions = new ArrayList<>(entry.exclusions());
+        exclusions.sort(null);
+        return entry.module() + "@" + entry.version().raw() + " " + exclusions;
     }
 
     /**
