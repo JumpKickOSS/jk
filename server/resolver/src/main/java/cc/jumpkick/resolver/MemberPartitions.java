@@ -10,6 +10,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.VersionSet;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -25,16 +26,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The rows a workspace member reads instead of the merged solve's. The merged manifest is solved
  * once and its rows are the workspace's answer; a member is solved on its own only when that
  * answer cannot be its answer: it declares an exact version the merged row does not carry, or a
- * coordinate in its closure was pinned by a BOM the member does not hold while an edge of the
- * member's own graph declared something else. Where the member's solve disagrees with a merged
- * row, its row is added with {@code members = [path]}; where it agrees, nothing is added. See
- * {@code docs/user/workspaces.md}.
+ * coordinate in its closure was pinned by a BOM the member does not hold at a version an edge of
+ * the member's own graph cannot take — its own platform table manages the module at another
+ * version, or a dependency's POM declared one the pinned version is below or past the compatible
+ * line of. A floating selector and a compatible lift are floors the workspace's row satisfies.
+ * Where the member's solve disagrees with a merged row, its row is added with {@code members =
+ * [path]}; where it agrees, nothing is added. See {@code docs/user/workspaces.md}.
  */
 final class MemberPartitions {
 
@@ -131,8 +133,9 @@ final class MemberPartitions {
      * The {@code group:artifact}s on which the merged answer cannot be this member's: an exact pin of
      * the member the merged version does not equal, or a merged version a BOM the member does not
      * hold pinned while the member's own platform table manages the module at another version or an
-     * edge in the member's closure declared another version. Empty means the member reads the
-     * merged rows as they are.
+     * edge in the member's closure declared a version the pinned one cannot stand in for. A root the
+     * member asks for with a floating selector takes the merged row whatever it is. Empty means the
+     * member reads the merged rows as they are.
      */
     private Set<String> flagged(JkBuild manifest, PlatformConstraints own) {
         Set<String> flagged = new LinkedHashSet<>();
@@ -141,16 +144,12 @@ final class MemberPartitions {
         roots.addAll(declared.main().values());
         roots.addAll(declared.test().values());
         roots.addAll(declared.processor().values());
-        Map<String, String> declaredAt = new HashMap<>();
         for (Dependency root : roots) {
             Resolution.ResolvedModule merged = unionByKey.get(root.packageKey());
-            if (merged == null) continue;
-            String ga = PackageId.parse(root.packageKey()).ga();
-            if (root.version() instanceof VersionSelector.Exact exact && !root.isPlatformManaged()) {
-                if (!exact.version().equals(merged.version())) flagged.add(ga);
-                declaredAt.put(root.packageKey(), exact.version());
-            } else if (!root.isPlatformManaged()) {
-                declaredAt.put(root.packageKey(), root.version().raw());
+            if (merged == null || root.isPlatformManaged()) continue;
+            if (root.version() instanceof VersionSelector.Exact exact
+                    && !exact.version().equals(merged.version())) {
+                flagged.add(PackageId.parse(root.packageKey()).ga());
             }
         }
         Set<String> closure = closure(roots);
@@ -161,25 +160,43 @@ final class MemberPartitions {
             if (union.constraints().pinnedBy(ga, merged.version()) == null) continue;
             String ownManaged = own.versions().get(ga);
             if (merged.version().equals(ownManaged)) continue;
-            if (ownManaged != null || edgeDeclaresAnother(key, merged.version(), closure, declaredAt.get(key))) {
-                flagged.add(ga);
-            }
+            if (ownManaged != null || edgeDeclaresOutside(key, merged.version(), closure)) flagged.add(ga);
         }
         return flagged;
     }
 
-    /** True when the member's own root or any edge inside its closure asks for {@code key} at something other than {@code version}. */
-    private boolean edgeDeclaresAnother(
-            String key, String version, Set<String> closure, @Nullable String rootSelector) {
-        if (rootSelector != null && !rootSelector.equals(version) && !rootSelector.equals("=" + version)) return true;
+    /**
+     * True when an edge inside the member's closure declares {@code key} at something {@code version}
+     * cannot stand in for: a range it is outside, or a plain version it is below or past the
+     * compatible line of. A lift within the line is a floor the pinned version satisfies, as a
+     * sibling's higher edge is.
+     */
+    private boolean edgeDeclaresOutside(String key, String version, Set<String> closure) {
         String ref = key + "@" + version;
         for (String parentKey : closure) {
             Resolution.ResolvedModule parent = unionByKey.get(parentKey);
             if (parent == null || !parent.deps().contains(ref)) continue;
             String declared = parent.declared().get(ref);
-            if (declared != null && !declared.equals(version)) return true;
+            if (declared != null && !satisfies(declared, version)) return true;
         }
         return false;
+    }
+
+    /**
+     * Whether {@code version} satisfies a POM edge's {@code declared} version: a range as it reads,
+     * a plain version as the floor of its compatible line ({@code ^declared}). A declaration the
+     * grammar cannot read is satisfied by itself alone.
+     */
+    private static boolean satisfies(String declared, String version) {
+        if (declared.equals(version)) return true;
+        try {
+            VersionSet accepted = VersionSelectors.looksLikeMavenRange(declared)
+                    ? VersionSelectors.parseRange(declared)
+                    : VersionSelectors.caretRange(declared);
+            return accepted.contains(version);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     /** Every package key the member reaches through the merged solve's edges. */

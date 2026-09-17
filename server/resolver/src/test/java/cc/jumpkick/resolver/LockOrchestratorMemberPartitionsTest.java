@@ -85,6 +85,37 @@ class LockOrchestratorMemberPartitionsTest {
     }
 
     /**
+     * The BOM one member holds lifts a transitive within the line the other member's graph declared
+     * it on: {@code middle} declares leaf 1.0 and the BOM manages 1.1. The declaration is a floor 1.1
+     * satisfies, so both members read the workspace's row and no partition is written.
+     */
+    @Test
+    void a_compatible_lift_by_a_siblings_bom_is_a_floor_the_member_shares(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        upstream.metadata("com.foo", "leaf", "1.0", "1.1");
+        upstream.pom("com.foo", "leaf", "1.1", leafPom("leaf", "1.1"));
+        upstream.pom(
+                "org.example",
+                "the-bom",
+                "1.0",
+                MavenStub.bom("org.example", "the-bom", "1.0", List.of("com.foo:leaf:1.1")));
+        Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(middle)));
+        JkBuild merged = manifest("root", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(middle)));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(List.of(new LockOrchestrator.Member("app", app), new LockOrchestrator.Member("lib", lib)))
+                .lock(merged, "test");
+
+        assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("1.1", "org.example:the-bom:1.0"));
+    }
+
+    /**
      * The BOM a framework table implies ({@code [spring-boot] version} → {@code
      * spring-boot-dependencies}) is the declaring member's platform like one it wrote out: it
      * governs that member's rows and reaches no member that never depends on it.
@@ -204,6 +235,86 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(rows(lock.forMember("legacy"), "com.foo:widget:jar:"))
                 .extracting(Lockfile.Artifact::version)
                 .containsExactly("1.0");
+    }
+
+    /**
+     * One member holds a framework table whose BOM manages Jupiter and a widget below their latest
+     * releases; three plain members hold no platform table, one asks for the widget at {@code latest}
+     * and none declares a test dependency, so the runner injects Jupiter at {@code latest} for them. A
+     * floating selector is a floor the workspace's row satisfies, so every member reads the BOM's
+     * versions and the lock carries no {@code members} key.
+     */
+    @Test
+    void a_member_without_a_platform_table_reads_the_workspaces_rows(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("org.junit.jupiter", "junit-jupiter", "6.0.3", "6.1.0");
+        upstream.pom(
+                "org.junit.jupiter",
+                "junit-jupiter",
+                "6.0.3",
+                MavenStub.emptyPom("org.junit.jupiter", "junit-jupiter", "6.0.3"));
+        upstream.metadata("com.foo", "widget", "1.0", "2.0");
+        for (String v : List.of("1.0", "2.0")) upstream.pom("com.foo", "widget", v, leafPom("widget", v));
+        upstream.metadata("com.foo", "starter-test", "1.0");
+        upstream.pom("com.foo", "starter-test", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>starter-test</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>6.0.3</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.pom(
+                "org.example",
+                "boot-bom",
+                "1.0",
+                MavenStub.bom(
+                        "org.example",
+                        "boot-bom",
+                        "1.0",
+                        List.of(
+                                "org.junit.jupiter:junit-jupiter:6.0.3",
+                                "com.foo:widget:1.0",
+                                "com.foo:starter-test:1.0")));
+        Dependency implied =
+                new Dependency("org.example:boot-bom", VersionSelector.parse("=1.0")).withImpliedBy("spring-boot");
+        Dependency starterTest = Dependency.platformManaged("starter-test", "com.foo:starter-test");
+        Dependency widgetLatest = new Dependency("com.foo:widget", VersionSelector.parse("latest"));
+        JkBuild web = manifest("web", Map.of(Scope.PLATFORM, List.of(implied), Scope.TEST, List.of(starterTest)));
+        JkBuild domain = manifest("domain", Map.of());
+        JkBuild service = manifest("service", Map.of(Scope.MAIN, List.of(widgetLatest)));
+        JkBuild merged = manifest(
+                "root",
+                Map.of(
+                        Scope.PLATFORM,
+                        List.of(implied),
+                        Scope.MAIN,
+                        List.of(widgetLatest),
+                        Scope.TEST,
+                        List.of(starterTest)));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(List.of(
+                        new LockOrchestrator.Member("domain", domain),
+                        new LockOrchestrator.Member("service", service),
+                        new LockOrchestrator.Member("web", web)))
+                .lock(merged, "test");
+
+        assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
+        assertThat(rows(lock, "org.junit.jupiter:junit-jupiter:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("6.0.3", "org.example:boot-bom:1.0"));
+        assertThat(rows(lock, "com.foo:widget:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+        for (String member : List.of("domain", "service", "web")) {
+            assertThat(rows(lock.forMember(member), "org.junit.jupiter:junit-jupiter:jar:"))
+                    .extracting(Lockfile.Artifact::version)
+                    .containsExactly("6.0.3");
+        }
     }
 
     /** {@code the-bom} manages leaf at 2.0; {@code middle} declares leaf 1.0; both leaf releases exist. */
