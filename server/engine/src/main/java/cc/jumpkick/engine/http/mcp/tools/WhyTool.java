@@ -17,7 +17,7 @@ public final class WhyTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "jk_why",
-                "Why a dependency is on the graph. query is group, artifact, or substring.",
+                "Why a dependency is on the graph (matches with their paths, plus an exclusions array of the edges the manifest or a POM pruned); query is group, artifact, or substring.",
                 McpSchemas.object(
                         Map.of("query", McpSchemas.string("group, artifact, or substring"), "dir", McpSchemas.string()),
                         List.of("query")));
