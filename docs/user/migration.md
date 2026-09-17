@@ -188,12 +188,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 |
-| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 |
-| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 |
+| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -235,6 +235,13 @@ is now a named row, and its build count fell because floci's imported `[quarkus]
 augment, which fails on a jar the POM excludes and that lock did not yet honour. hadoop's import
 rows fell from 105 to 4 once reactor parents resolved from the checkout, and quarkus's 760-module
 import outgrew the default engine heap, both tickets.
+Run 9 (main 3095183a7) compiles ten: spring-cloud-alibaba, floci and zipkin build for the first
+time (their test compiles still fall, on a grpc protoc plugin the `[protobuf]` import has no key
+for and on a Zinc worker heap). quarkus imports for the first time, 727 Tier-3 rows down to 25, but
+its lock asks for the platform BOM the `[quarkus]` table implies at the reactor's own version, which
+no repository has; thingsboard's lock ends with the engine's heap in the materialize fan-out; hadoop's
+lock passes its parent-version wall and outruns the harness's fifteen-minute cap. The import count
+fell because nacos gained the same honest grpc row. Each is a ticket.
 
 Two of run 7's test walls are the repository's contract with Maven rather than something jk
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
