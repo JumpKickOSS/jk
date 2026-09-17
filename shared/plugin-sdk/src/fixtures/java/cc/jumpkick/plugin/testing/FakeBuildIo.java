@@ -54,6 +54,7 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     private final Map<String, String> secrets = new LinkedHashMap<>();
     private final Map<String, Path> extras = new LinkedHashMap<>();
     private final Map<String, Path> steps = new LinkedHashMap<>();
+    private final Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
     private final List<RuntimeEntry> entries = new ArrayList<>();
 
     /** Jars on the compile classpath only — the {@code provided} scope's view. */
@@ -173,6 +174,12 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     /** A chained step's output root at a path the test already built. */
     public FakeBuildIo step(String name, Path dir) {
         steps.put(name, dir);
+        return this;
+    }
+
+    /** A dependency sibling's directory under {@code configKey} — {@code In.siblingProjectFiles(key)}'s value. */
+    public FakeBuildIo siblingFiles(String configKey, Path dir) {
+        siblingFiles.computeIfAbsent(configKey, k -> new ArrayList<>()).add(dir);
         return this;
     }
 
@@ -317,6 +324,11 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     @Override
     public Optional<Path> stepOutput(String step) {
         return Optional.ofNullable(steps.get(step));
+    }
+
+    @Override
+    public List<Path> siblingFiles(String configKey) {
+        return List.copyOf(siblingFiles.getOrDefault(configKey, List.of()));
     }
 
     @Override

@@ -305,6 +305,7 @@ public final class BuildPluginHarness {
             List<PackageIo.RuntimeEntry> entries,
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
+            Map<String, List<Path>> siblingFiles,
             List<String> commandArgs,
             Map<String, String> secrets,
             boolean offline) {
@@ -332,6 +333,7 @@ public final class BuildPluginHarness {
             List<PackageIo.RuntimeEntry> entries = new ArrayList<>();
             Map<String, Path> stepOutputs = new LinkedHashMap<>();
             Map<String, Path> extras = new LinkedHashMap<>();
+            Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
             List<String> commandArgs = new ArrayList<>();
             Map<String, String> secrets = new LinkedHashMap<>();
             // Absent means offline: a worker launched without a stated policy must not reach out.
@@ -383,16 +385,7 @@ public final class BuildPluginHarness {
                     }
                     case "java-home" -> javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
                     case "artifact" -> artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
-                    case "cp" -> {
-                        // The role the engine wrote the entry under: runtime is the production
-                        // closure, everything else the compile classpath.
-                        Path entry = Path.of(required(Jsonl.str(line, "path"), "cp.path"));
-                        if (PluginProtocol.ROLE_RUNTIME.equals(Jsonl.str(line, PluginProtocol.ROLE))) {
-                            runtimeClasspath.add(entry);
-                        } else {
-                            compileClasspath.add(entry);
-                        }
-                    }
+                    case "cp" -> addClasspathEntry(line, runtimeClasspath, compileClasspath);
                     case "entry" -> entries.add(runtimeEntry(line));
                     case "step-output" ->
                         stepOutputs.put(
@@ -403,6 +396,7 @@ public final class BuildPluginHarness {
                         extras.put(
                                 required(Jsonl.str(line, "name"), "extra.name"),
                                 Path.of(required(Jsonl.str(line, "path"), "extra.path")));
+                    case PluginProtocol.SIBLING_FILES -> addSiblingFile(siblingFiles, line);
                     case "secret" ->
                         secrets.put(
                                 required(Jsonl.str(line, "key"), "secret.key"),
@@ -429,9 +423,30 @@ public final class BuildPluginHarness {
                     entries,
                     stepOutputs,
                     extras,
+                    siblingFiles,
                     commandArgs,
                     secrets,
                     offline);
+        }
+
+        /**
+         * A {@code cp} line under the role the engine wrote it: runtime is the production closure,
+         * everything else the compile classpath.
+         */
+        private static void addClasspathEntry(String line, List<Path> runtime, List<Path> compile) throws IOException {
+            Path entry = Path.of(required(Jsonl.str(line, "path"), "cp.path"));
+            if (PluginProtocol.ROLE_RUNTIME.equals(Jsonl.str(line, PluginProtocol.ROLE))) {
+                runtime.add(entry);
+            } else {
+                compile.add(entry);
+            }
+        }
+
+        /** A {@code sibling-files} line: one dependency sibling's directory under its config key. */
+        private static void addSiblingFile(Map<String, List<Path>> siblingFiles, String line) throws IOException {
+            siblingFiles
+                    .computeIfAbsent(required(Jsonl.str(line, "key"), "sibling-files.key"), k -> new ArrayList<>())
+                    .add(Path.of(required(Jsonl.str(line, "path"), "sibling-files.path")));
         }
 
         /** A {@code config} line's typed value. */
@@ -525,6 +540,11 @@ public final class BuildPluginHarness {
         @Override
         public Optional<Path> stepOutput(String step) {
             return Optional.ofNullable(spec.stepOutputs().get(step));
+        }
+
+        @Override
+        public List<Path> siblingFiles(String configKey) {
+            return List.copyOf(spec.siblingFiles().getOrDefault(configKey, List.of()));
         }
 
         @Override

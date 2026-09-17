@@ -45,15 +45,24 @@ public record In(Kind kind, @Nullable String step) {
          * {@code res}, {@code proto}, {@code AndroidManifest.xml}, …). The engine fingerprints
          * its content recursively; the body reads it via {@code exec.moduleDir()}.
          */
-        PROJECT_FILES
+        PROJECT_FILES,
+        /**
+         * The same module-relative path in every workspace sibling this module depends on that
+         * declares the plugin's table: the value under a config key of the sibling's own table (the
+         * schema default when its table omits the key). A codegen step whose sources import a
+         * sibling's ({@code queue.proto} importing {@code tbmsg.proto} from the module it depends
+         * on) reads them as include roots; the engine fingerprints each directory's content.
+         */
+        SIBLING_PROJECT_FILES
     }
 
     public In {
         Objects.requireNonNull(kind, "kind");
-        boolean carriesValue = kind == Kind.STEP_OUTPUT || kind == Kind.PROJECT_FILES;
+        boolean carriesValue =
+                kind == Kind.STEP_OUTPUT || kind == Kind.PROJECT_FILES || kind == Kind.SIBLING_PROJECT_FILES;
         if (carriesValue == (step == null)) {
             throw new IllegalArgumentException(
-                    "a value is required for STEP_OUTPUT/PROJECT_FILES and only for those kinds");
+                    "a value is required for STEP_OUTPUT/PROJECT_FILES/SIBLING_PROJECT_FILES and only for those kinds");
         }
     }
 
@@ -91,18 +100,28 @@ public record In(Kind kind, @Nullable String step) {
     }
 
     /**
+     * The directory each dependency sibling's table names under {@code configKey} — read in the
+     * body via {@code exec.siblingFiles(configKey)}.
+     */
+    public static In siblingProjectFiles(String configKey) {
+        return new In(Kind.SIBLING_PROJECT_FILES, configKey);
+    }
+
+    /**
      * The wire spelling: {@code classes}, {@code runtime-classpath}, …, {@code step:<name>},
-     * {@code project:<rel>}.
+     * {@code project:<rel>}, {@code sibling:<config key>}.
      */
     public String wireName() {
         if (kind == Kind.STEP_OUTPUT) return "step:" + step;
         if (kind == Kind.PROJECT_FILES) return "project:" + step;
+        if (kind == Kind.SIBLING_PROJECT_FILES) return "sibling:" + step;
         return kind.name().toLowerCase(Locale.ROOT).replace('_', '-');
     }
 
     public static In fromWire(String name) {
         if (name.startsWith("step:")) return stepOutput(name.substring("step:".length()));
         if (name.startsWith("project:")) return projectFiles(name.substring("project:".length()));
+        if (name.startsWith("sibling:")) return siblingProjectFiles(name.substring("sibling:".length()));
         return new In(Kind.valueOf(name.toUpperCase(Locale.ROOT).replace('-', '_')), null);
     }
 }

@@ -76,6 +76,26 @@ class WorkspaceClasspathTest {
         assertThat(consumer).anyMatch(n -> n.startsWith("app-")).noneMatch(n -> n.startsWith("lib-"));
     }
 
+    /**
+     * The closure a consumer reads siblings' sources through is the classpath closure, as
+     * directories and manifests: {@code top} depends on {@code app}, which exports {@code lib}, so
+     * both are its siblings in that order, and {@code lib} — depending on nothing — has none.
+     */
+    @Test
+    void closure_siblings_are_the_transitive_dependency_siblings_with_their_manifests(@TempDir Path root)
+            throws Exception {
+        scaffold(root);
+        JkBuild top = JkBuildParser.parse(root.resolve("top/jk.toml"));
+        JkBuild lib = JkBuildParser.parse(root.resolve("lib/jk.toml"));
+
+        var siblings = WorkspaceClasspath.closureSiblings(root.resolve("top"), top, Set.of(Scope.EXPORT, Scope.MAIN));
+
+        assertThat(siblings.keySet()).containsExactly(root.resolve("app"), root.resolve("lib"));
+        assertThat(siblings.values()).extracting(m -> m.project().name()).containsExactly("app", "lib");
+        assertThat(WorkspaceClasspath.closureSiblings(root.resolve("lib"), lib, Set.of(Scope.MAIN)))
+                .isEmpty();
+    }
+
     /** lib ←(export)— app ←(main)— top */
     /**
      * A member listed in {@code [workspace] modules} with no {@code jk.toml} is fatal for a module

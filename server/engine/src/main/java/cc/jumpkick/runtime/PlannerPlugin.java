@@ -203,7 +203,8 @@ public final class PlannerPlugin {
     /**
      * The step's spec file: the op and config, the project facts, the layout, the JDK, the runtime
      * closure and the compile classpath each under its role, every production entry, the tool
-     * artifacts by name and the scratch of every step this one chains from.
+     * artifacts by name, the scratch of every step this one chains from and the directories of
+     * every dependency sibling a {@code sibling:<key>} input names.
      */
     private static Path writeStepSpec(
             PluginBuild.TaskDecl step,
@@ -228,13 +229,28 @@ public final class PlannerPlugin {
         for (var tool : toolExtras.entrySet()) {
             specWriter.extra(tool.getKey(), tool.getValue());
         }
+        writeChainedInputs(specWriter, step, paths.layout(), src.siblingFiles());
+        return specWriter.writeTempSpec();
+    }
+
+    /**
+     * The spec lines for the inputs that point at other work: a chained step's output root per
+     * {@code step:<name>} input, and each dependency sibling's directory per {@code sibling:<key>}.
+     */
+    private static void writeChainedInputs(
+            SpecWriter specWriter,
+            PluginBuild.TaskDecl step,
+            BuildLayout layout,
+            Map<String, List<Path>> siblingFiles) {
         for (String input : step.inputs()) {
             if (input.startsWith("step:")) {
                 String other = input.substring("step:".length());
-                specWriter.stepOutput(other, PluginBuild.taskScratch(paths.layout(), other));
+                specWriter.stepOutput(other, PluginBuild.taskScratch(layout, other));
             }
         }
-        return specWriter.writeTempSpec();
+        for (Map.Entry<String, List<Path>> sibling : siblingFiles.entrySet()) {
+            for (Path dir : sibling.getValue()) specWriter.siblingFiles(sibling.getKey(), dir);
+        }
     }
 
     /**
@@ -248,7 +264,9 @@ public final class PlannerPlugin {
             List<PluginBuild.ProdEntry> runtimeEntries,
             PluginConfig config,
             BuildLayout layout,
-            Path moduleDir) {}
+            Path moduleDir,
+            /** The directories of each declared {@code sibling:<key>} input, by key ({@link SiblingFiles}). */
+            Map<String, List<Path>> siblingFiles) {}
 
     /**
      * The declared inputs as action-key tokens: the one renderer the step arm and the packager arm
@@ -308,6 +326,15 @@ public final class PlannerPlugin {
                 case PROJECT_FILES ->
                     tokens.add(input + ":"
                             + ClasspathFingerprint.entry(src.moduleDir().resolve(declared.step())));
+                case SIBLING_PROJECT_FILES -> {
+                    // Include order is part of the artifact (the first root to answer an import
+                    // wins), so the token is the ordered join, not a sorted set.
+                    List<String> dirs = new ArrayList<>();
+                    for (Path dir : src.siblingFiles().getOrDefault(declared.step(), List.of())) {
+                        dirs.add(ClasspathFingerprint.entry(dir));
+                    }
+                    tokens.add(input + ":" + (dirs.isEmpty() ? "none" : String.join(",", dirs)));
+                }
             }
         }
         return tokens;
@@ -408,6 +435,8 @@ public final class PlannerPlugin {
                     List<PluginContributions.StepDep> tools =
                             cx.tools().forConsumer(project, in.dir(), in.lockFile(), step.name());
                     Map<String, Path> toolExtras = cx.tools().fetch(tools, project, cx.cas(), sdkPins);
+                    Map<String, List<Path>> siblingFiles =
+                            SiblingFiles.forInputs(step.inputs(), in.dir(), project, active.manifest());
 
                     // Action key: exactly the declared inputs, plus the very facts the body sees —
                     // the same ProjectFacts instance rides the spec below, so no fact can reach the
@@ -422,7 +451,8 @@ public final class PlannerPlugin {
                                     prodEntries,
                                     active.config(),
                                     layout,
-                                    in.dir())));
+                                    in.dir(),
+                                    siblingFiles)));
                     tokens.addAll(toolTokens(tools, toolExtras, sdkPins));
                     tokens.add("facts:" + facts.token());
                     // The JDK is handed to the body as spec.javaHome and is what its forked tools
@@ -473,7 +503,8 @@ public final class PlannerPlugin {
                                     prodEntries,
                                     active.config(),
                                     layout,
-                                    in.dir()),
+                                    in.dir(),
+                                    siblingFiles),
                             toolExtras);
                     try {
                         PluginBuild.runWorker(

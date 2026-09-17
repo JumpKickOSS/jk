@@ -146,6 +146,11 @@ class QuarkusAugmentArgsTest {
         }
 
         @Override
+        public List<Path> siblingFiles(String configKey) {
+            return List.of();
+        }
+
+        @Override
         public List<PackageIo.RuntimeEntry> runtimeEntries() {
             return List.of();
         }

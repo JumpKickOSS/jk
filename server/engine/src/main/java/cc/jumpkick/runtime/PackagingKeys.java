@@ -399,7 +399,8 @@ public final class PackagingKeys {
                         entries,
                         active.config(),
                         p.layout(),
-                        p.moduleDir())));
+                        p.moduleDir(),
+                        SiblingFiles.forInputs(packager.inputs(), p.moduleDir(), p.project(), active.manifest()))));
         tokens.addAll(PlannerPlugin.toolTokens(tools, extras, sdkPins));
         if (!p.secrets().isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact); the

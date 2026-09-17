@@ -63,6 +63,14 @@ public interface TaskExec {
     /** A chained step's output root ({@link In#stepOutput} input); empty when it did not run. */
     Optional<Path> stepOutput(String step);
 
+    /**
+     * The directories of the workspace siblings this module depends on that declare the plugin's
+     * table, each the sibling's value under {@code configKey} (the schema default when its table
+     * omits the key) resolved against the sibling's own dir, in dependency order — {@link
+     * In#siblingProjectFiles}. Empty unless declared, and for a module outside a workspace.
+     */
+    List<Path> siblingFiles(String configKey);
+
     /** As {@link #stepOutput} but required — a declared {@code In.stepOutput} is never absent. */
     default Path requireStepOutput(String step) {
         return stepOutput(step)

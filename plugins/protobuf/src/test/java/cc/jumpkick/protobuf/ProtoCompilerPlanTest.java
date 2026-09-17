@@ -40,7 +40,7 @@ class ProtoCompilerPlanTest {
         assertThat(line).contains("\"name\":\"protoc\"");
         assertThat(arrayOf(line, "requires")).isEmpty();
         assertThat(arrayOf(line, "inputs"))
-                .containsExactly("project:proto", "config", "runtime-classpath", "compile-classpath");
+                .containsExactly("project:proto", "sibling:src", "config", "runtime-classpath", "compile-classpath");
         assertThat(arrayOf(line, "outputs")).containsExactly("gen");
         assertThat(arrayOf(line, "contributesSources")).containsExactly("gen");
         assertThat(arrayOf(line, "contributesClasses")).isEmpty();
@@ -57,7 +57,8 @@ class ProtoCompilerPlanTest {
     void a_configured_src_dir_is_the_declared_input(@TempDir Path dir) throws Exception {
         String line = protocTask(dir, "src/main/proto").orElseThrow(() -> new AssertionError("no protoc task line"));
         assertThat(arrayOf(line, "inputs"))
-                .containsExactly("project:src/main/proto", "config", "runtime-classpath", "compile-classpath");
+                .containsExactly(
+                        "project:src/main/proto", "sibling:src", "config", "runtime-classpath", "compile-classpath");
     }
 
     /** No packager and no commands: the plugin is a single codegen step. */

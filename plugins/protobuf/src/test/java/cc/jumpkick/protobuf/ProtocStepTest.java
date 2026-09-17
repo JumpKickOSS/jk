@@ -277,6 +277,55 @@ class ProtocStepTest {
         assertThat(contracts.resolve("com/acme/contracts/orders.proto")).isRegularFile();
     }
 
+    /**
+     * A proto that imports a workspace sibling's by bare name ({@code queue.proto} importing
+     * {@code tbmsg.proto}) resolves it from the sibling's own proto root: every dependency
+     * sibling's {@code src} follows the module's own include root and precedes the jar includes
+     * (runtime, then compile-only), so a sibling's source wins over a stale copy in a jar. A
+     * sibling whose root does not exist on disk adds no include.
+     */
+    @Test
+    void dependency_siblings_proto_roots_are_include_roots_between_the_modules_own_and_the_jars(@TempDir Path tmp)
+            throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf").config("src", "src/main/proto");
+        Path protoDir = tmp.resolve("src/main/proto");
+        Path queue = write(protoDir.resolve("queue.proto"), "syntax = \"proto3\";\nimport \"tbmsg.proto\";");
+        Path message = tmp.resolve("siblings/message/src/main/proto");
+        write(message.resolve("tbmsg.proto"), "syntax = \"proto3\";");
+        Path data = tmp.resolve("siblings/data/proto");
+        write(data.resolve("data.proto"), "syntax = \"proto3\";");
+        io.siblingFiles("src", message)
+                .siblingFiles("src", data)
+                .siblingFiles("src", tmp.resolve("siblings/none/proto"));
+        io.entry(
+                "protobuf-java-3.25.5.jar",
+                "com.google.protobuf",
+                "protobuf-java",
+                "3.25.5",
+                "google/protobuf/any.proto");
+        io.compileOnly("acme-contracts-1.2.jar", "com/acme/contracts/orders.proto");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0));
+
+        ProtocStep.run(io);
+
+        Path includes = tmp.resolve("scratch/includes").toAbsolutePath();
+        assertThat(Files.readAllLines(argv))
+                .containsExactly(
+                        "--java_out=" + tmp.resolve("scratch/gen").toAbsolutePath(),
+                        "-I",
+                        protoDir.toAbsolutePath().toString(),
+                        "-I",
+                        message.toAbsolutePath().toString(),
+                        "-I",
+                        data.toAbsolutePath().toString(),
+                        "-I",
+                        includes.resolve("protobuf-java-3.25.5").toString(),
+                        "-I",
+                        includes.resolve("acme-contracts-1.2").toString(),
+                        queue.toAbsolutePath().toString());
+    }
+
     /** The step-dependency the engine fetches must be there; its absence names the manifest table to fix. */
     @Test
     void a_missing_protoc_artifact_names_the_step_dependency(@TempDir Path tmp) throws Exception {

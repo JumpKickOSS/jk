@@ -21,7 +21,10 @@ import java.util.Map;
  * <p>Each {@code [protobuf.<id>]} entry is one protoc plugin: its fetched executable is named to
  * protoc as {@code protoc-gen-<id>} and its {@code --<id>_out} lands in the same {@code gen}, the
  * entry's {@code options} comma-joined ahead of the dir the way protoc reads a plugin parameter.
- * The protos the module's dependency jars carry are include roots ({@link DependencyProtos}).
+ * The include path is the module's own proto root, then the proto root of every workspace sibling
+ * the module depends on (a proto imports a sibling's by bare name, as under Maven where the
+ * sibling's jar carries its protos), then the protos the dependency jars carry ({@link
+ * DependencyProtos}).
  *
  * <p>protoc and its plugins publish to Maven as bare native binaries (no jar wrapper), so a fetched
  * file arrives without the executable bit — it is staged into scratch and chmod +x'd before the fork.
@@ -46,6 +49,10 @@ final class ProtocStep {
                 .arg("-I")
                 .arg(protoDir.toAbsolutePath().toString())
                 .cwd(exec.moduleDir());
+        for (Path sibling : exec.siblingFiles("src")) {
+            if (Files.isDirectory(sibling))
+                run.arg("-I").arg(sibling.toAbsolutePath().toString());
+        }
         for (Path include : DependencyProtos.includeRoots(exec)) {
             run.arg("-I").arg(include.toAbsolutePath().toString());
         }
