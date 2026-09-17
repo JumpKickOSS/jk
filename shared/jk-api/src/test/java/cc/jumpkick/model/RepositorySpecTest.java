@@ -34,11 +34,41 @@ class RepositorySpecTest {
     }
 
     @Test
-    void two_specs_are_the_same_origin_when_their_normalized_urls_agree() {
+    void two_specs_are_one_repository_when_their_normalized_urls_agree() {
         RepositorySpec a = new RepositorySpec("r", URI.create("https://repo.example/m2"));
         RepositorySpec b = new RepositorySpec("r", URI.create("https://REPO.example/m2/"));
-        assertThat(a.sameOrigin(b)).isTrue();
-        assertThat(a.sameOrigin(new RepositorySpec("r", URI.create("https://repo.example/m3/"))))
+        assertThat(a.sameRepository(b)).isTrue();
+        assertThat(a.sameRepository(new RepositorySpec("r", URI.create("https://repo.example/m3/"))))
+                .isFalse();
+    }
+
+    /** The origin a credential is scoped to: scheme, host and port as the join normalizes them; the path is the repository. */
+    @Test
+    void two_urls_are_one_origin_by_scheme_host_and_port_after_normalization() {
+        URI a = URI.create("https://Repo.example.com/x");
+        assertThat(RepositorySpec.sameOrigin(a, URI.create("https://repo.example.com:443/y/")))
+                .isTrue();
+        assertThat(RepositorySpec.sameOrigin(a, URI.create("HTTPS://repo.example.com/x")))
+                .isTrue();
+        assertThat(RepositorySpec.sameOrigin(a, URI.create("https://repo.example.com:8443/y")))
+                .isFalse();
+        assertThat(RepositorySpec.sameOrigin(a, URI.create("http://repo.example.com/x")))
+                .isFalse();
+        assertThat(RepositorySpec.sameOrigin(a, URI.create("https://cdn.example.com/x")))
+                .isFalse();
+    }
+
+    @Test
+    void a_hostless_url_is_one_origin_only_with_its_own_normalized_spelling() {
+        assertThat(RepositorySpec.sameOrigin(URI.create("s3:bucket/path"), URI.create("s3:bucket/path")))
+                .isTrue();
+        assertThat(RepositorySpec.sameOrigin(URI.create("s3:bucket/path"), URI.create("s3:other/path")))
+                .isFalse();
+        assertThat(RepositorySpec.sameOrigin(URI.create("file:///srv/repo"), URI.create("file:///srv/repo/")))
+                .isTrue();
+        assertThat(RepositorySpec.sameOrigin(URI.create("file:///srv/repo"), URI.create("file:///srv/other")))
+                .isFalse();
+        assertThat(RepositorySpec.sameOrigin(URI.create("file:///srv/repo"), URI.create("https://repo.example/")))
                 .isFalse();
     }
 }

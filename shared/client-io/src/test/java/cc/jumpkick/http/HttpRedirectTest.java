@@ -168,17 +168,6 @@ class HttpRedirectTest {
                 .isTrue();
     }
 
-    @Test
-    void same_origin_means_scheme_host_and_port() {
-        URI a = URI.create("https://Repo.example.com/x");
-        assertThat(Http.sameOrigin(a, URI.create("https://repo.example.com:443/y")))
-                .isTrue();
-        assertThat(Http.sameOrigin(a, URI.create("https://repo.example.com:8443/y")))
-                .isFalse();
-        assertThat(Http.sameOrigin(a, URI.create("http://repo.example.com/y"))).isFalse();
-        assertThat(Http.sameOrigin(a, URI.create("https://cdn.example.com/y"))).isFalse();
-    }
-
     /** Production's client, a short backoff. */
     private static Http http() {
         return new Http(Http.standardClient(), new Duration[] {Duration.ofMillis(1)});

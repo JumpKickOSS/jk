@@ -11,7 +11,6 @@ import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
 import cc.jumpkick.forge.ForgeKind;
 import cc.jumpkick.forge.ResolvedToken;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
@@ -195,7 +194,7 @@ public final class RepoCredentialResolver {
                 RepoCredentialStore.Entry entry = stored.get();
                 URI origin = entry.origin();
                 if (origin != null) {
-                    if (url != null && Http.sameOrigin(origin, url)) return entry.credential();
+                    if (url != null && RepositorySpec.sameOrigin(origin, url)) return entry.credential();
                     refuse(
                             repoId,
                             url,
@@ -308,7 +307,7 @@ public final class RepoCredentialResolver {
     public Optional<RepositorySpec> userDeclaration(@Nullable String repoId, @Nullable URI url) {
         if (repoId == null || repoId.isBlank() || url == null || url.getHost() == null) return Optional.empty();
         for (RepositorySpec spec : userRepositories.get()) {
-            if (spec.name().equals(repoId) && Http.sameOrigin(spec.url(), url)) return Optional.of(spec);
+            if (spec.name().equals(repoId) && RepositorySpec.sameOrigin(spec.url(), url)) return Optional.of(spec);
         }
         return Optional.empty();
     }
@@ -369,13 +368,13 @@ public final class RepoCredentialResolver {
         if (url == null || url.getHost() == null) return Binding.UNBOUND;
         for (RepositorySpec spec : userRepositories.get()) {
             if (!spec.name().equals(repoId)) continue;
-            if (Http.sameOrigin(spec.url(), url)) return Binding.BOUND;
+            if (RepositorySpec.sameOrigin(spec.url(), url)) return Binding.BOUND;
             return Binding.mismatch("~/.jk/config.toml declares `" + repoId + "` at " + originText(spec.url())
                     + ", not " + originText(url));
         }
         Optional<URI> fromSettings = settings.declaredUrl(repoId);
         if (fromSettings.isPresent()) {
-            if (Http.sameOrigin(fromSettings.get(), url)) return Binding.BOUND;
+            if (RepositorySpec.sameOrigin(fromSettings.get(), url)) return Binding.BOUND;
             return Binding.mismatch("~/.m2/settings.xml declares `" + repoId + "` at " + originText(fromSettings.get())
                     + ", not " + originText(url));
         }
@@ -395,7 +394,7 @@ public final class RepoCredentialResolver {
     static boolean hostMatches(String binding, URI url) {
         if (binding.contains("://")) {
             try {
-                return Http.sameOrigin(URI.create(binding), url);
+                return RepositorySpec.sameOrigin(URI.create(binding), url);
             } catch (IllegalArgumentException malformed) {
                 return false;
             }

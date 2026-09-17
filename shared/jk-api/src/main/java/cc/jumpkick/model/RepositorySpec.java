@@ -251,9 +251,26 @@ public record RepositorySpec(
         return normalized.equals(url.toString()) ? url : URI.create(normalized);
     }
 
-    /** True when this repository and {@code other} name one origin: their {@link #normalizedUrl} forms agree. */
-    public boolean sameOrigin(RepositorySpec other) {
+    /** True when this repository and {@code other} are one repository: their {@link #normalizedUrl} forms agree, origin and path. */
+    public boolean sameRepository(RepositorySpec other) {
         return normalizedUrl(url).equals(normalizedUrl(other.url()));
+    }
+
+    /**
+     * True when {@code a} and {@code b} name one origin — the scheme, host and port a credential is
+     * scoped to — compared as {@link #normalizedUrl} spells them: scheme and host case-folded, an
+     * explicit default port dropped. The path is the repository within the origin, not the origin,
+     * so two repositories on one server are one origin. A URL with no host (an opaque {@code
+     * s3:bucket/path}, a {@code file:} tree) names no server to be scoped to and is one origin only
+     * with its own normalized spelling.
+     */
+    public static boolean sameOrigin(URI a, URI b) {
+        URI na = normalizedUrl(a);
+        URI nb = normalizedUrl(b);
+        if (na.getHost() == null || nb.getHost() == null) return na.equals(nb);
+        return Objects.equals(na.getScheme(), nb.getScheme())
+                && na.getHost().equals(nb.getHost())
+                && na.getPort() == nb.getPort();
     }
 
     /**

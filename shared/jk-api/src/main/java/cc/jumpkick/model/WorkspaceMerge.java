@@ -302,7 +302,7 @@ public final class WorkspaceMerge {
                 RepositorySpec first = byId.putIfAbsent(spec.name(), spec);
                 if (first == null) {
                     declaredIn.put(spec.name(), coord);
-                } else if (!first.sameOrigin(spec)) {
+                } else if (!first.sameRepository(spec)) {
                     throw new IllegalStateException("[repositories] " + spec.name() + " is " + first.url() + " in "
                             + declaredIn.get(spec.name()) + " and " + spec.url() + " in " + coord
                             + "; a workspace resolves against one repository set — give the two repositories two ids,"
