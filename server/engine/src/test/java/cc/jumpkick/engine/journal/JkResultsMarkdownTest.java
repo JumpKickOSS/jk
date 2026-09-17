@@ -365,6 +365,28 @@ class JkResultsMarkdownTest {
                 "warning", "/proj", "/proj", new BuildPlanResult.Diagnostic("resolve-deps", code, message));
     }
 
+    /** A warning longer than the line cap is cut at the cap, on one line, with the cut marked. */
+    @Test
+    void a_long_warning_is_capped_on_one_line_with_a_visible_cut() {
+        StringBuilder folded = new StringBuilder(
+                "org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 9 modules" + " it manages first:");
+        for (int i = 0; i < 9; i++)
+            folded.append(" com.example.group:artifact-").append(i).append(" 1.0.0 over 2.0.0,");
+        folded.append(" and more — the first-declared BOM wins, as the first import does under Maven");
+        assertThat(folded.length()).isGreaterThan(JkResultsMarkdown.MAX_WARNING_LINE);
+        BuildRecord r = record(true, List.of(), List.of(planWarning("bom-override", folded.toString())), List.of());
+
+        String md = JkResultsMarkdown.render(r);
+        String line = md.lines()
+                .filter(l -> l.startsWith("- `resolve-deps`"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(line).endsWith("…");
+        assertThat(line).contains("com.example.group:artifact-0 1.0.0 over 2.0.0");
+        assertThat(line.length())
+                .isLessThanOrEqualTo(JkResultsMarkdown.MAX_WARNING_LINE + "- `resolve-deps` …".length());
+    }
+
     /** A javadoc warning carries its locus in the message; the Warnings section renders it as file:line. */
     @Test
     void a_javadoc_warning_renders_with_its_file_and_line() {

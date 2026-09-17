@@ -87,7 +87,7 @@ public final class PlatformConstraints {
      * counts them and lists them, the first {@value #LISTED_MODULES} in full.
      */
     static final class OverrideLines {
-        private static final int LISTED_MODULES = 8;
+        private static final int LISTED_MODULES = 3;
 
         private record Pair(String winner, boolean byManifest, String later) {}
 

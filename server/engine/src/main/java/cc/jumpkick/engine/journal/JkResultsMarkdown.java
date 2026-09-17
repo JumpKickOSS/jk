@@ -35,6 +35,10 @@ public final class JkResultsMarkdown {
 
     static final int MAX_ERRORS = 40;
     static final int MAX_WARNINGS = 20;
+
+    /** Characters of one Warnings line the message may take; the rest is cut and the cut is marked. */
+    static final int MAX_WARNING_LINE = 400;
+
     static final int MAX_STACK_LINES = 24;
     static final int MAX_SNIPPET_LINES = 16;
     static final int MAX_MESSAGE_CHARS = 2_000;
@@ -652,7 +656,7 @@ public final class JkResultsMarkdown {
                 sb.append(loc);
                 if (notBlank(d.message())) sb.append(" — ");
             }
-            if (notBlank(d.message())) sb.append(firstLine(clip(d.message(), 400)));
+            if (notBlank(d.message())) sb.append(clipOneLine(firstLine(d.message()), MAX_WARNING_LINE));
             sb.append('\n');
             shown++;
         }
