@@ -29,8 +29,9 @@ import org.junit.platform.launcher.LauncherDiscoveryRequest;
  * selector that failed to resolve, an engine that failed) and, once discovery has finished, loads
  * every class file the request admits through the same context loader the scan used — inside the
  * launcher call, so a framework's launcher interceptor still has its loader installed — and records
- * each one that throws. {@link #report} prints them in the runner's header shape, which the engine
- * reads back as a launcher failure naming the class and the cause.
+ * each one that throws and is a test class by its bytes ({@link TestClassShape}); a helper the
+ * loader cannot produce is not a test the run lost. {@link #report} prints them in the runner's
+ * header shape, which the engine reads back as a launcher failure naming the class and the cause.
  */
 final class DiscoveryFailures implements LauncherDiscoveryListener {
 
@@ -74,12 +75,14 @@ final class DiscoveryFailures implements LauncherDiscoveryListener {
     /**
      * Load every top-level class file under the root the class-name filter admits, with the loader
      * the Platform scanned with. A class the scan already loaded is a lookup; one it dropped throws
-     * here, and the throwable is the reason it was dropped.
+     * here, and the throwable is the reason it was dropped — recorded when the class file is one
+     * Jupiter would have admitted as a test class, and left alone when it is a helper.
      */
     @Override
     public void launcherDiscoveryFinished(LauncherDiscoveryRequest request) {
         ClassLoader loader = Thread.currentThread().getContextClassLoader();
         if (loader == null) loader = ClassLoader.getSystemClassLoader();
+        TestClassShape shape = new TestClassShape(root, loader);
         for (String name : topLevelClassNames(root)) {
             if (classNames != null && !classNames.matcher(name).matches()) continue;
             if (failures.stream().anyMatch(f -> f.subject().equals(name))) continue;
@@ -88,7 +91,7 @@ final class DiscoveryFailures implements LauncherDiscoveryListener {
             } catch (OutOfMemoryError | StackOverflowError fatal) {
                 throw fatal;
             } catch (Throwable t) {
-                failures.add(new Failure(name, t));
+                if (shape.isTestClass(name)) failures.add(new Failure(name, t));
             }
         }
     }

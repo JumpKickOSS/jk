@@ -2,10 +2,10 @@
 package cc.jumpkick.testrunner;
 
 /**
- * A top-level class whose static initializer throws, copied into a classpath root of its own by
- * {@code DiscoveryFailuresTest} and loaded through a context loader that initializes on load — the
- * shape of a framework loader that boots the application while loading a test class. Not a test
- * class, so the scan over this module's own root never initializes it.
+ * A helper whose static initializer throws, copied into a classpath root of its own by {@code
+ * DiscoveryFailuresTest} and loaded through a context loader that initializes on load. Not a test
+ * class: the probe over the classes discovery dropped leaves it alone, and the scan over this
+ * module's own root never initializes it.
  */
 final class StaticInitFixture {
 

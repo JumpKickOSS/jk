@@ -368,6 +368,16 @@ launcher pin on the wrong line (`junit-platform-launcher = "1.13.4"` beside `jun
 and a pin the solve itself cannot satisfy (`junit-jupiter-api = "=5.0.0"` under `junit-jupiter
 6.1.3`) never get this far: `jk lock` refuses them with the fix.
 
+A test class the Platform's scan could not load — a framework loader that boots the application
+while loading it and fails, a supertype missing from the test classpath — is dropped by discovery
+without a word, so the runner loads the root's classes once more through the same loader and fails
+the run as `test discovery failed: N classes could not be loaded during discovery: <names>`, with
+each class's cause chain under it. Only test classes count: the runner reads each dropped class's
+bytes and keeps the failure when the class declares a test method or a test annotation (Jupiter's,
+JUnit 4's, TestNG's, or one of your own composed of them), extends a class that does, or extends a
+specification base such as Spock's. A helper under the test root that cannot load — a fixture
+compiled against a dependency absent at test time — is left where discovery left it.
+
 ## Coverage (`--coverage`, `[test] coverage`)
 
 `jk test --coverage` starts every test JVM under the JaCoCo agent (fetched from the project's
