@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -67,7 +68,7 @@ public final class DependencyTree {
                 .append('\n');
 
         List<String> roots = collectRoots(project);
-        Set<String> platformMods = DeclaredDeps.platformModules(project);
+        Map<String, String> pinTags = DeclaredDeps.pinTags(project, Arrays.asList(Scope.values()));
         Map<String, String> declared = DeclaredDeps.versions(project, Arrays.asList(Scope.values()));
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < roots.size(); i++) {
@@ -83,7 +84,7 @@ public final class DependencyTree {
                     seen,
                     out,
                     declared.get(root),
-                    platformMods.contains(root));
+                    pinTags.get(root));
         }
         return out.toString();
     }
@@ -160,9 +161,9 @@ public final class DependencyTree {
         int bodyStart = out.length();
         if (project.isWorkspaceRoot()) {
             if (flatten) {
-                DependencyFlatten.renderWorkspaceScopes(project, projectDir, styling, order, stack, out);
+                DependencyFlatten.renderWorkspaceScopes(project, lock, projectDir, styling, order, stack, out);
             } else {
-                renderWorkspaceScopes(project, projectDir, maxDepth, styling, order, stack, seenModules, out);
+                renderWorkspaceScopes(project, lock, projectDir, maxDepth, styling, order, stack, seenModules, out);
             }
         } else if (flatten) {
             DependencyFlatten.renderScopes(
@@ -198,7 +199,8 @@ public final class DependencyTree {
         Set<Scope> selected = new HashSet<>(DependencyTreeStyle.sectionOrder(scopeOrder));
         List<Scope> elsewhere = new ArrayList<>();
         List<LoadedModule> modules = project.isWorkspaceRoot()
-                ? WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)
+                ? WorkspaceGraph.withRoot(
+                        project, null, WorkspaceGraph.loadModules(project.workspaceModules(), projectDir))
                 : List.of();
         for (Scope s : DependencyTreeStyle.allScopeOrder()) {
             if (selected.contains(s)) continue;
@@ -222,12 +224,14 @@ public final class DependencyTree {
 
     /**
      * Workspace-root view: scope sections (main/test/…) are the top-level nodes. Under each scope sit
-     * the workspace modules that declare at least one dependency in that scope, in declaration
-     * (build) order; each module node expands into its own deps for that scope, with sibling modules
-     * collapsed to a {@code [workspace]} reference.
+     * the workspace units that declare at least one dependency in that scope — the root itself
+     * first, when its own tables ({@code [platform-dependencies]}, {@code [managed-dependencies]},
+     * …) declare any — then the modules in declaration (build) order; each node expands into its
+     * own deps for that scope, with sibling modules collapsed to a {@code [workspace]} reference.
      */
     private static void renderWorkspaceScopes(
             JkBuild root,
+            @Nullable Lockfile lock,
             Path rootDir,
             int maxDepth,
             Styling styling,
@@ -238,7 +242,8 @@ public final class DependencyTree {
 
         List<String> moduleRels = root.workspaceModules();
         WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(moduleRels, rootDir));
-        List<LoadedModule> modules = WorkspaceGraph.loadModules(moduleRels, rootDir);
+        List<LoadedModule> modules =
+                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(moduleRels, rootDir));
 
         // Scope sections present anywhere in the workspace, in display order.
         List<Scope> sections = new ArrayList<>();
@@ -414,9 +419,9 @@ public final class DependencyTree {
             boolean siblingSurface) {
 
         LockGraph graph = LockGraph.forLock(lock, scopes);
-        // Declared versions (and which modules are PLATFORM-only pins / BOMs).
+        // Declared versions (and which modules are pin sources: BOMs and managed entries).
         Map<String, String> declaredVersions = DeclaredDeps.versions(project, scopes);
-        Set<String> platformModules = DeclaredDeps.platformModules(project);
+        Map<String, String> pinTags = DeclaredDeps.pinTags(project, scopes);
         List<String> mods = scopes.stream()
                 .flatMap(s -> project.dependencies().of(s).stream()
                         .filter(d -> !siblingSurface || !d.optional())
@@ -440,7 +445,7 @@ public final class DependencyTree {
                     seenModules,
                     out,
                     declaredVersions.get(mod),
-                    platformModules.contains(mod));
+                    pinTags.get(mod));
         }
     }
 
@@ -460,7 +465,7 @@ public final class DependencyTree {
             Set<String> seenModules,
             StringBuilder out,
             @Nullable String declaredVersion,
-            boolean platformPin) {
+            @Nullable String pinTag) {
 
         LoadedModule sibling = ws.sibling(module);
         if (sibling != null) {
@@ -476,18 +481,7 @@ public final class DependencyTree {
                     .append('\n');
             return;
         }
-        renderNode(
-                graph,
-                module,
-                depth,
-                maxDepth,
-                isLast,
-                prefix,
-                styling,
-                seenModules,
-                out,
-                declaredVersion,
-                platformPin);
+        renderNode(graph, module, depth, maxDepth, isLast, prefix, styling, seenModules, out, declaredVersion, pinTag);
     }
 
     /**
@@ -538,7 +532,8 @@ public final class DependencyTree {
 
     /**
      * @param declaredVersion version from jk.toml when known (platform BOMs)
-     * @param platformPin true when this module is a PLATFORM BOM / pin source — not a lock jar row
+     * @param pinTag the tag of a pin source — a PLATFORM BOM or a managed entry, not a lock jar row
+     *     — or {@code null} for a dependency
      */
     private static void renderNode(
             LockGraph graph,
@@ -551,7 +546,7 @@ public final class DependencyTree {
             Set<String> seen,
             StringBuilder out,
             @Nullable String declaredVersion,
-            boolean platformPin) {
+            @Nullable String pinTag) {
 
         Lockfile.Artifact pkg = graph.artifact(module);
         // module may be GA or full package key (g:a:type:classifier); display as GA.
@@ -559,10 +554,12 @@ public final class DependencyTree {
         String groupId = ga.group();
         String artifactId = ga.artifact();
 
-        // Platform BOMs are pin sources (pinned-by on managed jars), not lock [[artifact]] rows.
-        // Prefer declared version; never mark them "(missing)" solely because the lock has no BOM jar.
-        String displayVersion = pkg != null ? pkg.version() : (platformPin ? declaredVersion : null);
-        boolean missing = pkg == null && !platformPin;
+        // Pin sources (BOMs, managed entries) are not lock [[artifact]] rows. Prefer the declared
+        // version; never mark them "(missing)" solely because the lock has no row.
+        boolean pinSource = pinTag != null && pkg == null;
+        String displayVersion = pkg != null ? pkg.version() : (pinTag != null ? declaredVersion : null);
+        boolean missing = pkg == null && pinTag == null;
+        String tag = pinSource ? Objects.requireNonNull(pinTag) : "";
 
         // ╰─ for the last child (rounded arc); ├─ for the rest.
         // Standard "rounded tree" convention used by eza, tre, etc.
@@ -573,12 +570,11 @@ public final class DependencyTree {
             // so it reads as a back-reference, not a fresh expansion.
             String coord;
             if (displayVersion != null) {
-                coord = groupId + ":" + artifactId + ":" + displayVersion;
-                if (platformPin && pkg == null) coord = coord + " (platform)";
+                coord = groupId + ":" + artifactId + ":" + displayVersion + tag;
             } else if (missing) {
                 coord = groupId + ":" + artifactId + DependencyTreeStyle.MISSING_SUFFIX;
             } else {
-                coord = groupId + ":" + artifactId + " (platform)";
+                coord = groupId + ":" + artifactId + tag;
             }
             out.append(prefix)
                     .append(styling.reference().apply(connector + coord + " ⎋"))
@@ -588,10 +584,8 @@ public final class DependencyTree {
 
         String label;
         if (displayVersion != null) {
-            label = TreeCoords.formatCoord(groupId, artifactId, displayVersion, styling);
-            if (platformPin && pkg == null) {
-                label = label + styling.rail().apply(" (platform)");
-            }
+            label = TreeCoords.formatCoord(groupId, artifactId, displayVersion, styling)
+                    + styling.rail().apply(tag);
         } else if (missing) {
             // No version available — "group:artifact (missing)", marker unstyled.
             label = styling.group().apply(groupId)
@@ -599,16 +593,14 @@ public final class DependencyTree {
                     + styling.artifact().apply(artifactId)
                     + DependencyTreeStyle.MISSING_SUFFIX;
         } else {
-            label = styling.group().apply(groupId)
-                    + ":"
-                    + styling.artifact().apply(artifactId)
-                    + styling.rail().apply(" (platform)");
+            label = styling.group().apply(groupId) + ":" + styling.artifact().apply(artifactId)
+                    + styling.rail().apply(tag);
         }
 
         out.append(prefix).append(styling.rail().apply(connector)).append(label).append('\n');
 
-        // Platform pin sources are leaves in the tree (no jar deps to expand).
-        if (pkg == null || depth >= maxDepth || platformPin) return;
+        // Pin sources are leaves in the tree (no jar deps to expand).
+        if (pkg == null || depth >= maxDepth || pinTag != null) return;
 
         String childPrefix = prefix + styling.rail().apply(isLast ? "   " : "│  ");
         List<String> children = graph.forwardSorted(module);
@@ -624,7 +616,7 @@ public final class DependencyTree {
                     seen,
                     out,
                     null,
-                    false);
+                    null);
         }
     }
 

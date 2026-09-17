@@ -691,6 +691,91 @@ class DependencyTreeTest {
         }
     }
 
+    /**
+     * A {@code [managed-dependencies]} entry that pins nothing in the lock is tagged {@code
+     * (managed)} under the managed section; a BOM keeps {@code (platform)}.
+     */
+    @Test
+    void a_managed_entry_absent_from_the_lock_is_tagged_managed(@TempDir Path dir) {
+        var managed = List.of(new Dependency("com.foo:pinned", new VersionSelector.Exact("=3.0", "3.0")));
+        var platform = List.of(new Dependency("com.foo:bom", new VersionSelector.Exact("=1.0", "1.0")));
+        JkBuild project = new JkBuild(
+                new Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(Scope.MANAGED, managed, Scope.PLATFORM, platform)));
+
+        for (boolean flatten : new boolean[] {false, true}) {
+            String rendered = DependencyTree.render(
+                    project,
+                    lockOf(),
+                    dir,
+                    Integer.MAX_VALUE,
+                    DependencyTreeStyle.Styling.plain(),
+                    flatten,
+                    List.of(Scope.PLATFORM, Scope.MANAGED));
+            assertThat(rendered)
+                    .as("flatten=" + flatten)
+                    .contains("com.foo:bom:1.0 (platform)")
+                    .contains("com.foo:pinned:3.0 (managed)")
+                    .doesNotContain("pinned:3.0 (platform)");
+        }
+    }
+
+    /**
+     * A workspace root's own {@code [platform-dependencies]} and {@code [managed-dependencies]} are
+     * the workspace's facts: the root is a unit of the workspace-rooted tree, under its own node,
+     * each pin source tagged by its kind.
+     */
+    @Test
+    void the_workspace_roots_own_pin_tables_sit_under_the_roots_node(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "9.9.9"
+
+                [workspace]
+                modules = ["a"]
+
+                [platform-dependencies]
+                bom = { group = "com.foo", version = "1.0" }
+
+                [managed-dependencies]
+                pinned = { group = "com.foo", version = "3.0" }
+                """);
+        Path a = Files.createDirectories(root.resolve("a"));
+        Files.writeString(a.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "a"
+                version = "9.9.9"
+
+                [dependencies]
+                leaf = { group = "com.foo", version = "1.0" }
+                """);
+        Lockfile lock = lockOf(pkg("com.foo:leaf:jar:", "1.0", List.of()));
+        LockfileWriter.write(lock, root.resolve("jk-lock.toml"));
+        JkBuild rootProject = JkBuildParser.parse(root.resolve("jk.toml"));
+
+        for (boolean flatten : new boolean[] {false, true}) {
+            String rendered = DependencyTree.render(
+                    rootProject,
+                    lock,
+                    root,
+                    Integer.MAX_VALUE,
+                    DependencyTreeStyle.Styling.plain(),
+                    flatten,
+                    List.of(Scope.MAIN, Scope.PLATFORM, Scope.MANAGED));
+            assertThat(rendered)
+                    .as("flatten=" + flatten)
+                    .contains("com.foo:bom:1.0 (platform)")
+                    .contains("com.foo:pinned:3.0 (managed)")
+                    .contains("com.foo:leaf:1.0");
+            if (!flatten) {
+                assertThat(rendered.indexOf("com.acme:ws:9.9.9", rendered.indexOf("─platform")))
+                        .as("the root's node carries its tables")
+                        .isPositive();
+            }
+        }
+    }
+
     private static final String EMPTY_LOCK = """
             version = 1
             generated-by = "jk test"
