@@ -77,20 +77,20 @@ class PomRepeatedRowsImportTest {
                   </dependencies>
                 </dependencyManagement>
                 """;
-        String optional = """
+        String pomType = """
                 <dependencies>
                   <dependency>
                     <groupId>com.google.guava</groupId>
-                    <artifactId>guava</artifactId>
+                    <artifactId>guava-bom</artifactId>
                     <version>33.0.0-jre</version>
-                    <optional>true</optional>
+                    <type>pom</type>
                   </dependency>
                 </dependencies>
                 """;
         write(root, "m1/pom.xml", leaf("m1", bomImport));
         write(root, "m2/pom.xml", leaf("m2", bomImport));
         write(root, "m3/pom.xml", leaf("m3", ""));
-        write(root, "m4/pom.xml", leaf("m4", optional));
+        write(root, "m4/pom.xml", leaf("m4", pomType));
         write(root, "m5/pom.xml", leaf("m5", ""));
 
         PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
@@ -112,13 +112,11 @@ class PomRepeatedRowsImportTest {
                             .startsWith("[m1] `<dependencyManagement>` imports the reactor BOM `bom` (org.demo:bom)");
                     assertThat(m).endsWith(" (2 modules: m1, m2)");
                 });
-        assertThat(rows.stream().filter(m -> m.contains("<optional>true</optional>")))
+        assertThat(rows.stream().filter(m -> m.contains("<type>pom</type>")))
                 .as("a row one module says keeps its own row, with no count")
                 .singleElement()
                 .satisfies(m -> {
-                    assertThat(m)
-                            .startsWith(
-                                    "[m4] `<dependency><optional>true</optional></dependency>` on com.google.guava:guava");
+                    assertThat(m).startsWith("[m4] `<type>pom</type>` on com.google.guava:guava-bom");
                     assertThat(m).doesNotContain("modules:");
                 });
         assertThat(rows.stream().filter(m -> m.contains("(1 module"))).isEmpty();

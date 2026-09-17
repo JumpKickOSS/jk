@@ -327,9 +327,11 @@ public final class WorkspaceClasspath {
             // MAIN and EXPORT propagate transitively: a sibling's exported deps
             // (api semantics) ride along to anything that depends on it, and MAIN
             // deps stay visible down the workspace chain (io→core→model).
-            // Tests kind never propagates transitively.
+            // Tests kind never propagates transitively, and neither does an optional
+            // edge: it is the sibling's own, as a POM's optional dependency is.
             for (Scope scope : SIBLING_MODULE_SCOPES) {
                 for (Dependency dep : sibBuild.dependencies().of(scope)) {
+                    if (dep.optional()) continue;
                     String depModule = resolveWorkspaceRef(dep.module(), siblingCoordByName);
                     if (siblingJarByModule.containsKey(depModule) && visited.add(depModule)) {
                         queue.add(depModule);

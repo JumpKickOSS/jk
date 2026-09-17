@@ -80,6 +80,19 @@ public final class PomXml {
             @Nullable String mavenScope,
             @Nullable String type,
             @Nullable String classifier) {
+        appendDependency(sb, group, artifact, version, mavenScope, type, classifier, false);
+    }
+
+    /** As above; {@code optional} writes Maven's {@code <optional>true</optional>}. */
+    private static void appendDependency(
+            StringBuilder sb,
+            String group,
+            String artifact,
+            String version,
+            @Nullable String mavenScope,
+            @Nullable String type,
+            @Nullable String classifier,
+            boolean optional) {
         sb.append("    <dependency>\n");
         sb.append("      <groupId>").append(escape(group)).append("</groupId>\n");
         sb.append("      <artifactId>").append(escape(artifact)).append("</artifactId>\n");
@@ -93,15 +106,16 @@ public final class PomXml {
         if (mavenScope != null) {
             sb.append("      <scope>").append(mavenScope).append("</scope>\n");
         }
+        if (optional) sb.append("      <optional>true</optional>\n");
         sb.append("    </dependency>\n");
     }
 
-    /** Emit type/classifier for a tests-kind edge (Maven test-jar). */
+    /** Type and classifier for a tests-kind edge (Maven test-jar); {@code <optional>} for an optional one. */
     public static void appendDependency(StringBuilder sb, Dependency d, String version, @Nullable String mavenScope) {
         if (d.isTestsKind()) {
-            appendDependency(sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests");
+            appendDependency(sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests", d.optional());
         } else {
-            appendDependency(sb, d.group(), d.name(), version, mavenScope);
+            appendDependency(sb, d.group(), d.name(), version, mavenScope, null, null, d.optional());
         }
     }
 

@@ -144,7 +144,7 @@ These are **deliberately separate**:
 
 | Knob | Changes |
 |------|---------|
-| **Features** | *What* optional deps you have (`[features]`, `optional = true`) |
+| **Features** | *Which* optional deps are on (`[features]` naming `optional = true` entries; an optional dep no feature names is simply yours, never a consumer's — [Dependencies](dependencies.md#optional-dependencies)) |
 | **Profiles** | *How* you compile and test (`javac` flags, test-JVM args, tag filters). `--profile` / auto `ci` |
 | **Variants** | *Which product* you build (sources, deps, plugin config). `--variant` / `--release` |
 

@@ -4,7 +4,9 @@ package cc.jumpkick.mvn;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.JkBuild;
@@ -52,6 +54,38 @@ class PomImporterTest {
                 .hasMessageContaining("DOCTYPE")
                 .hasMessageNotContaining("TOP_SECRET_VALUE")
                 .isInstanceOf(PomParseException.class);
+    }
+
+    /** A POM's {@code <optional>true</optional>} dependency is written as {@code optional = true}. */
+    @Test
+    void an_optional_dependency_is_written_optional(@TempDir Path root) throws Exception {
+        Path pom = root.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>starter</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>core</artifactId><version>1.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>mysql</artifactId><version>1.0</version>
+                      <optional>true</optional>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(root).importFrom(pom);
+
+        assertThat(result.jkBuild().dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module, Dependency::optional)
+                .containsExactly(tuple("com.foo:core", false), tuple("com.foo:mysql", true));
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneMatch(m -> m.contains("<optional>"));
     }
 
     /**

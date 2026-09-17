@@ -59,12 +59,16 @@ final class DependencyMapping {
         VersionSelector selector = VersionSelector.parse(version);
         if (isTestJar(dep)) {
             return Dependency.of(dep.artifactId() + "-tests", dep.module(), selector)
-                    .withKind(DependencyKind.TESTS);
+                    .withKind(DependencyKind.TESTS)
+                    .withOptional(dep.optional());
         }
         String classifier = classifier(dep);
-        if (classifier == null) return Dependency.of(dep.artifactId(), dep.module(), selector);
+        if (classifier == null) {
+            return Dependency.of(dep.artifactId(), dep.module(), selector).withOptional(dep.optional());
+        }
         return Dependency.of(dep.artifactId() + "-" + classifier, dep.module(), selector)
-                .withClassifier(classifier);
+                .withClassifier(classifier)
+                .withOptional(dep.optional());
     }
 
     /**

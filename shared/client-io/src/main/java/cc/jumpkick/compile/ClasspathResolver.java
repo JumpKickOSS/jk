@@ -213,6 +213,23 @@ public final class ClasspathResolver {
     }
 
     /**
+     * The external modules a consumer inherits from {@code sibling} in {@code scopes}: {@link
+     * #declaredExternalRoots} without the sibling's optional dependencies, which are the sibling's
+     * own as a POM's optional edges are.
+     */
+    public static Set<String> inheritedExternalRoots(JkBuild sibling, Set<Scope> scopes) {
+        LinkedHashSet<String> roots = new LinkedHashSet<>();
+        for (Scope scope : scopes) {
+            for (Dependency dep : sibling.dependencies().of(scope)) {
+                if (dep.optional() || dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
+                String module = dep.module();
+                if (module != null && !module.isBlank()) roots.add(module);
+            }
+        }
+        return roots;
+    }
+
+    /**
      * A resolved classpath element with the lockfile artifact it came from. {@code container} is
      * the exploded archive dir for artifacts whose packaging is a container (an AAR: res/,
      * AndroidManifest.xml, R.txt live there; {@code jar} is its {@code classes.jar}) — null for

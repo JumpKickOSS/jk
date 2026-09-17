@@ -507,12 +507,6 @@ public final class PomImporter {
                     + " `classifier`.");
             return;
         }
-        if (dep.optional()) {
-            report.warning("`<dependency><optional>true</optional></dependency>` on "
-                    + dep.module()
-                    + " — jk has no `<optional>`; emitted as a normal dep."
-                    + " Use a feature flag if it should be opt-in.");
-        }
         DependencyMapping.warnUnresolvedVersion(dep, report);
         DependencyMapping.warnMetaversion(dep, report);
         Scope scope = DependencyMapping.scope(dep.scope());

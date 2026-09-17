@@ -3,6 +3,7 @@ package cc.jumpkick.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.net.URI;
 import java.util.EnumMap;
@@ -316,6 +317,59 @@ class WorkspaceMergeTest {
                 .hasMessageContaining("https://one.example/m2/")
                 .hasMessageContaining("cc.jumpkick:b")
                 .hasMessageContaining("https://two.example/m2/");
+    }
+
+    /**
+     * A sibling's {@code optional = true} dependency is the sibling's own, as a published POM's
+     * optional edge is: the consumer's lock manifest folds the sibling's other main dependencies
+     * and leaves that one out.
+     */
+    @Test
+    void a_siblings_optional_dependency_does_not_fold_into_its_consumer() {
+        JkBuild root = workspaceRoot("ws", List.of("lib", "app"));
+        JkBuild lib = newProject(
+                "lib",
+                Map.of(
+                        Scope.MAIN,
+                        List.of(
+                                dep("core", "com.foo:core", "1.0"),
+                                dep("mysql", "com.foo:mysql", "1.0").withOptional(true))));
+        JkBuild app = newProject("app", Map.of(Scope.MAIN, List.of(workspacePlaceholder("lib"))));
+
+        JkBuild scope = WorkspaceMerge.applyToModule(root, app, List.of(lib, app));
+
+        assertThat(scope.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module)
+                .containsExactly("com.foo:core");
+    }
+
+    /**
+     * The merged manifest carries a member's optional dependency the way the member reads it: one
+     * no feature of the member names is the member's own root; one a feature names rides only when
+     * the member's default features activate it, and arrives as a plain root either way.
+     */
+    @Test
+    void a_members_optional_dependency_joins_the_merge_as_the_member_reads_it() {
+        JkBuild root = workspaceRoot("ws", List.of("plain", "gated", "on"));
+        Dependency mysql = dep("mysql", "com.foo:mysql", "1.0").withOptional(true);
+        JkBuild plain = newProject("plain", Map.of(Scope.MAIN, List.of(mysql)));
+        Dependency pg = dep("pg", "com.foo:pg", "1.0").withOptional(true);
+        JkBuild gated = JkBuild.builder(new Project("cc.jumpkick", "gated", "0.1.0", 0))
+                .dependencies(new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(pg))))
+                .features(new Features(Map.of("db", new Feature("db", List.of("pg"), List.of())), List.of()))
+                .build();
+        Dependency redis = dep("redis", "com.foo:redis", "1.0").withOptional(true);
+        JkBuild on = JkBuild.builder(new Project("cc.jumpkick", "on", "0.1.0", 0))
+                .dependencies(new JkBuild.Dependencies(Map.of(Scope.MAIN, List.of(redis))))
+                .features(new Features(
+                        Map.of("cache", new Feature("cache", List.of("redis"), List.of())), List.of("cache")))
+                .build();
+
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(plain, gated, on));
+
+        assertThat(merged.dependencies().of(Scope.MAIN))
+                .extracting(Dependency::module, Dependency::optional)
+                .containsExactly(tuple("com.foo:mysql", false), tuple("com.foo:redis", false));
     }
 
     private static JkBuild newProject(String artifact, Map<Scope, List<Dependency>> depsByScope) {

@@ -186,7 +186,7 @@ final class DependencyFlatten {
             // deps to the consumer's classpath, so the tree must not draw them either.
             for (Scope s : WorkspaceGraph.siblingContributedScopes()) {
                 boolean moduleEdges = WorkspaceGraph.chainsModuleEdges(s);
-                for (String dep : DeclaredDeps.modulesOf(sibling.build(), s)) {
+                for (String dep : DeclaredDeps.inheritedModulesOf(sibling.build(), s)) {
                     if (!moduleEdges && ws.isSiblingDep(dep)) continue;
                     collect(dep, siblingGraph, ws, visited, out);
                 }

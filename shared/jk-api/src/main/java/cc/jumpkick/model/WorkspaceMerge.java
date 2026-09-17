@@ -84,6 +84,8 @@ public final class WorkspaceMerge {
             for (Dependency d : sibling.dependencies().of(Scope.MANAGED)) addPlatform(managed, d);
             for (Scope scope : List.of(Scope.MAIN, Scope.EXPORT)) {
                 for (Dependency d : sibling.dependencies().of(scope)) {
+                    // A sibling's optional dependency is its own, as a POM's optional edge is.
+                    if (d.optional()) continue;
                     Dependency r = resolve(d, siblingByArtifact, wsDeps);
                     if (internal.contains(r.module())) {
                         if (visited.add(r.module())) queue.add(r.module());
@@ -230,7 +232,7 @@ public final class WorkspaceMerge {
                 dedup.putIfAbsent(resolved.packageKey(), resolved);
             }
             for (JkBuild module : modules) {
-                for (Dependency d : module.dependencies().of(scope)) {
+                for (Dependency d : asMemberReads(module, module.dependencies().of(scope))) {
                     Dependency resolved = resolve(d, siblingByArtifact, wsDeps);
                     if (internal.contains(resolved.module())) continue;
                     dedup.putIfAbsent(resolved.packageKey(), resolved);
@@ -252,6 +254,30 @@ public final class WorkspaceMerge {
                 .nativeConfig(root.nativeConfigOpt().orElse(null))
                 .build(root.build())
                 .build();
+    }
+
+    /**
+     * A member's declarations as its own graph reads them, for a merge solved under the root's
+     * features: an optional dependency no feature of the member names is the member's own root, one
+     * a feature names rides only when the member's default features activate it, and both arrive as
+     * plain roots.
+     */
+    private static List<Dependency> asMemberReads(JkBuild member, List<Dependency> declared) {
+        List<Dependency> out = new ArrayList<>(declared.size());
+        Set<String> activated = null;
+        for (Dependency d : declared) {
+            if (!d.optional()) {
+                out.add(d);
+                continue;
+            }
+            if (member.features().names(d.library())) {
+                if (activated == null)
+                    activated = new HashSet<>(member.features().defaultDepNames());
+                if (!activated.contains(d.library())) continue;
+            }
+            out.add(d.withOptional(false));
+        }
+        return out;
     }
 
     /**

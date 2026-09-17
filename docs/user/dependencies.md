@@ -53,6 +53,17 @@ handles. It applies to a Maven coordinate only, and `kind = "tests"` already nam
 Version syntax: [Projects](projects.md#version-strings). Scopes:
 [Projects](projects.md#dependency-scopes).
 
+### Optional dependencies
+
+`optional = true` means what Maven's `<optional>true</optional>` means to whoever depends on you:
+the dependency is yours alone. A workspace sibling that depends on the module does not inherit it
+— not on its compile or runtime classpath, not in its `jk tree` closure, not in its fat jar — the
+way a published POM's optional edges stay out of a consumer's graph, and the POM `jk publish` writes
+marks it `<optional>`. What it means to the module itself depends on `[features]`: an optional
+dependency no feature names is the module's own root, on its classpaths like any other; one a
+feature names is off until that feature is active ([Projects](projects.md#features-profiles-variants)).
+A consumer that wants the library declares it, or activates the feature.
+
 ### Exclusions
 
 A dependency's inline table may prune coordinates from its own subtree — Maven's `<exclusions>`:

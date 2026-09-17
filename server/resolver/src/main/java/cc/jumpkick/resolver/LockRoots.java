@@ -107,8 +107,9 @@ final class LockRoots {
     }
 
     /**
-     * Partition {@code project}'s declared dependencies. Optional dependencies enter only when a
-     * requested feature names them; the JUnit Platform launcher always rides the test graph, JUnit
+     * Partition {@code project}'s declared dependencies. An optional dependency a feature names enters
+     * only when a requested feature activates it; one no feature names is the module's own root, as
+     * a POM's {@code <optional>} dependency is under Maven. The JUnit Platform launcher always rides the test graph, JUnit
      * Jupiter joins it only when the user declared no test dependencies at all, and a declared
      * framework's Platform engine joins it when the framework has none ({@link TestEngines}). Cross-package
      * features on {@code path=} libraries are expanded by the engine before the path dep is rewritten
@@ -126,7 +127,7 @@ final class LockRoots {
         for (Scope scope : SCOPES) {
             if (scope == Scope.PLATFORM) continue;
             for (Dependency dep : project.dependencies().of(scope)) {
-                if (dep.optional()) {
+                if (dep.optional() && project.features().names(dep.library())) {
                     optionalByLib.putIfAbsent(dep.library(), dep);
                     optionalScopeByLib.putIfAbsent(dep.library(), scope);
                 } else {

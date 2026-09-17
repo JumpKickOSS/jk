@@ -83,6 +83,12 @@ widget-core = { workspace = true, kind = "tests" }
 Default kind is `main`. The same key works on published Maven coordinates (type `test-jar`,
 classifier `tests`).
 
+A consumer inherits a sibling's `[dependencies]` and `[export-dependencies]` — its classes tree
+on the compile classpath, its jar and those libraries at runtime — and never a sibling's
+[`optional = true`](dependencies.md#optional-dependencies) entries, external or sibling: those are
+the sibling's own, as a POM's `<optional>` dependencies are under Maven. A starter's optional
+integrations stay out of every module that depends on the starter until that module declares them.
+
 Sibling **fixtures** (Gradle `testFixtures`) are a directory, not a second artifact. The
 producer declares `[test] fixtures = true` (default root `src/fixtures/java`); a consumer
 opts in:
