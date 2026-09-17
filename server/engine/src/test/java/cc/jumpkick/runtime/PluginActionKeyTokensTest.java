@@ -146,7 +146,8 @@ class PluginActionKeyTokensTest {
                 new PluginConfig("fake", Map.of()),
                 BuildLayout.of(tmp, project),
                 tmp,
-                Map.of());
+                Map.of(),
+                PluginRepositories.NONE);
         return PlannerPlugin.declaredInputTokens(List.of(In.runtimeEntries().wireName()), src);
     }
 
@@ -311,7 +312,8 @@ class PluginActionKeyTokensTest {
                 new PluginConfig("fake", Map.of("enabled", Boolean.TRUE)),
                 BuildLayout.of(tmp, project),
                 tmp,
-                Map.of("src", List.of(Files.createDirectories(tmp.resolve("sibling/proto")))));
+                Map.of("src", List.of(Files.createDirectories(tmp.resolve("sibling/proto")))),
+                PluginRepositories.NONE);
     }
 
     /**
@@ -349,7 +351,8 @@ class PluginActionKeyTokensTest {
                 new PluginConfig("protobuf", Map.of()),
                 BuildLayout.of(tmp, project),
                 tmp,
-                Map.of("src", List.of(siblingDirs)));
+                Map.of("src", List.of(siblingDirs)),
+                PluginRepositories.NONE);
     }
 
     private static String wire(In.Kind kind) {
@@ -359,6 +362,7 @@ class PluginActionKeyTokensTest {
             case STEP_OUTPUT -> In.stepOutput("aot").wireName();
             case PROJECT_FILES -> In.projectFiles("src/main/res").wireName();
             case SIBLING_PROJECT_FILES -> In.siblingProjectFiles("src").wireName();
+            case REPOSITORIES -> In.repositories().wireName();
         };
     }
 }

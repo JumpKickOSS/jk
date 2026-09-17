@@ -5,7 +5,9 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.build.RepositoryRoute;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +47,7 @@ public final class PluginSpec {
     private final Map<String, Path> stepOutputs = new LinkedHashMap<>();
     private final Map<String, Path> extras = new LinkedHashMap<>();
     private final Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
+    private final List<RepositoryRoute> repositories = new ArrayList<>();
     private final Map<Path, Path> classpathAnalyses = new LinkedHashMap<>();
     private final Map<String, String> secrets = new LinkedHashMap<>();
     private final List<String> commandArgs = new ArrayList<>();
@@ -150,6 +153,12 @@ public final class PluginSpec {
                     s.siblingFiles
                             .computeIfAbsent(requiredString(line, PluginProtocol.KEY), k -> new ArrayList<>())
                             .add(requiredPath(line, PluginProtocol.PATH));
+                case PluginProtocol.REPOSITORY ->
+                    s.repositories.add(new RepositoryRoute(
+                            requiredString(line, "id"),
+                            URI.create(requiredString(line, "url")),
+                            Jsonl.str(line, "username"),
+                            Jsonl.str(line, "secret")));
                 case PluginProtocol.SECRET ->
                     s.secrets.put(requiredString(line, PluginProtocol.KEY), requiredString(line, PluginProtocol.VALUE));
                 case PluginProtocol.COMMAND_ARGS -> s.commandArgs.addAll(Jsonl.strArray(line, PluginProtocol.VALUES));
@@ -299,6 +308,11 @@ public final class PluginSpec {
     /** The dependency siblings' directories under a declared {@code sibling:<key>} input, in dependency order. */
     public List<Path> siblingFiles(String key) {
         return List.copyOf(siblingFiles.getOrDefault(key, List.of()));
+    }
+
+    /** The routed remote repositories of a declared {@code repositories} input, in resolve order. */
+    public List<RepositoryRoute> repositories() {
+        return List.copyOf(repositories);
     }
 
     public Optional<String> secret(String key) {

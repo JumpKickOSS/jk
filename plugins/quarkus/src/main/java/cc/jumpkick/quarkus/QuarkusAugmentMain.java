@@ -31,7 +31,7 @@ import org.jspecify.annotations.Nullable;
  * Forked entry point for Quarkus production packaging.
  *
  * <p>Args: {@code projectRoot classesDir targetDir baseName group artifact version runtimeListFile
- * quarkusVersion platformPropsFile offline}
+ * quarkusVersion platformPropsFile repositoriesFile offline}
  *
  * <p>Pure bootstrap — no {@code mvn} CLI. Builds an {@code ApplicationModel} via Quarkus's
  * embedded Maven resolver (BootstrapAppModelResolver), injects platform properties/descriptor,
@@ -47,10 +47,10 @@ public final class QuarkusAugmentMain {
 
     public static void main(String[] args) throws Exception {
 
-        if (args.length != 11) {
+        if (args.length != 12) {
             System.err.println(
                     "usage: QuarkusAugmentMain projectRoot classesDir targetDir baseName group artifact version"
-                            + " runtimeListFile quarkusVersion platformPropsFile offline");
+                            + " runtimeListFile quarkusVersion platformPropsFile repositoriesFile offline");
             System.exit(Exit.USAGE);
         }
         Path appProjectRoot = Path.of(args[0]).toAbsolutePath().normalize();
@@ -65,11 +65,14 @@ public final class QuarkusAugmentMain {
         // A step-dependency the engine fetched through jk's repo stack — the augment never
         // resolves the platform-properties coordinate itself.
         Path platformProps = Path.of(args[9]).toAbsolutePath().normalize();
+        // The remotes jk routed for this module — the only ones the resolver below may ask.
+        RepositoryRoutes routes =
+                RepositoryRoutes.read(Path.of(args[10]).toAbsolutePath().normalize());
         // Offline is a per-invocation decision the engine owns. It arrives as an argument, from
         // TaskExec.offline() -> the plugin spec -> the engine's session. Reading JK_OFFLINE or a
         // system property here would read the *engine daemon's* startup environment instead, so
         // one `JK_OFFLINE=1 jk build` would silently pin every later build in that session.
-        boolean offline = EnvValues.parseBool(args[10]).orElse(false);
+        boolean offline = EnvValues.parseBool(args[11]).orElse(false);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
         System.err.println("jk-quarkus-augment: locked runtime closure="
@@ -81,8 +84,8 @@ public final class QuarkusAugmentMain {
         Path appJar = scratch.resolve("app.jar");
         AppJar.write(classesDir, appJar);
 
-        ApplicationModel model =
-                resolveModel(locked, localRepo, offline, group, artifact, version, appJar, classesDir, quarkusVersion);
+        ApplicationModel model = resolveModel(
+                locked, localRepo, offline, routes, group, artifact, version, appJar, classesDir, quarkusVersion);
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, platformProps, offline);
@@ -123,6 +126,11 @@ public final class QuarkusAugmentMain {
      * bootstrap local repo with its POM, so the same declaration resolves and the descriptor Quarkus
      * reads for the application is a local read, never a request a remote can refuse.
      *
+     * <p>The remote repositories are {@code routes} and nothing else — the module's set as jk
+     * routes it, Central's mirror in Central's place while the failover window is open — so the
+     * deployment closure, which the lock does not carry, comes through the same doors every other
+     * fetch of the build does and Maven's own defaults are never consulted.
+     *
      * <p>The resolver is built and dropped here: no method of this class takes or returns a
      * resolver type, so a miss can never fall back to resolving through the user's Maven settings
      * (QuarkusPlatformPropertiesTest reflects on the signatures to hold that).
@@ -131,6 +139,7 @@ public final class QuarkusAugmentMain {
             LockedClosure locked,
             Path localRepo,
             boolean offline,
+            RepositoryRoutes routes,
             String group,
             String artifact,
             String version,
@@ -142,6 +151,7 @@ public final class QuarkusAugmentMain {
         var cfg = BootstrapMavenContext.config()
                 .setLocalRepository(localRepo.toString())
                 .setLocalRepositoryTail(localRepositoryTails(locked).toArray(String[]::new))
+                .setRemoteRepositories(routes.remoteRepositories())
                 .setWorkspaceDiscovery(false);
         if (offline) {
             // Only ever forced ON — left unset, the user's Maven settings stay in charge. Offline
@@ -149,8 +159,10 @@ public final class QuarkusAugmentMain {
             // reaches Central behind an offline build's back.
             cfg.setOffline(true);
         }
-        BootstrapAppModelResolver modelResolver =
-                new BootstrapAppModelResolver(new MavenArtifactResolver(new BootstrapMavenContext(cfg)));
+        MavenArtifactResolver mvn = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
+        routes.attachBearerTokens(mvn.getSession());
+        System.err.println("jk-quarkus-augment: remote repositories: " + routes.describe());
+        BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);
         ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
         BootstrapRepo.Installer repo = (g, a, v, type, file) -> modelResolver.install(
                 "pom".equals(type) ? ArtifactCoords.pom(g, a, v) : ArtifactCoords.jar(g, a, v), file);

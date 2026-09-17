@@ -9,6 +9,7 @@ import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -306,6 +307,7 @@ public final class BuildPluginHarness {
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
             Map<String, List<Path>> siblingFiles,
+            List<RepositoryRoute> repositories,
             List<String> commandArgs,
             Map<String, String> secrets,
             boolean offline) {
@@ -334,6 +336,7 @@ public final class BuildPluginHarness {
             Map<String, Path> stepOutputs = new LinkedHashMap<>();
             Map<String, Path> extras = new LinkedHashMap<>();
             Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
+            List<RepositoryRoute> repositories = new ArrayList<>();
             List<String> commandArgs = new ArrayList<>();
             Map<String, String> secrets = new LinkedHashMap<>();
             // Absent means offline: a worker launched without a stated policy must not reach out.
@@ -397,6 +400,7 @@ public final class BuildPluginHarness {
                                 required(Jsonl.str(line, "name"), "extra.name"),
                                 Path.of(required(Jsonl.str(line, "path"), "extra.path")));
                     case PluginProtocol.SIBLING_FILES -> addSiblingFile(siblingFiles, line);
+                    case PluginProtocol.REPOSITORY -> repositories.add(repositoryRoute(line));
                     case "secret" ->
                         secrets.put(
                                 required(Jsonl.str(line, "key"), "secret.key"),
@@ -424,6 +428,7 @@ public final class BuildPluginHarness {
                     stepOutputs,
                     extras,
                     siblingFiles,
+                    repositories,
                     commandArgs,
                     secrets,
                     offline);
@@ -440,6 +445,15 @@ public final class BuildPluginHarness {
             } else {
                 compile.add(entry);
             }
+        }
+
+        /** A {@code repository} line: one routed remote, its credential riding as written. */
+        private static RepositoryRoute repositoryRoute(String line) throws IOException {
+            return new RepositoryRoute(
+                    required(Jsonl.str(line, "id"), "repository.id"),
+                    URI.create(required(Jsonl.str(line, "url"), "repository.url")),
+                    Jsonl.str(line, "username"),
+                    Jsonl.str(line, "secret"));
         }
 
         /** A {@code sibling-files} line: one dependency sibling's directory under its config key. */
@@ -545,6 +559,11 @@ public final class BuildPluginHarness {
         @Override
         public List<Path> siblingFiles(String configKey) {
             return List.copyOf(spec.siblingFiles().getOrDefault(configKey, List.of()));
+        }
+
+        @Override
+        public List<RepositoryRoute> repositories() {
+            return spec.repositories();
         }
 
         @Override

@@ -13,6 +13,7 @@ import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackageContext;
 import cc.jumpkick.plugin.build.PackageExtension;
 import cc.jumpkick.plugin.build.PackageIo;
+import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.plugin.build.TaskExec;
 import cc.jumpkick.plugin.build.TestContext;
 import cc.jumpkick.plugin.build.TestExtension;
@@ -77,7 +78,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         // running native-image: the runner jar, its lib/, and the argument list it computed.
         // Declared as an output so the engine can find it and the action cache covers it.
         ctx.named(AUGMENT_STEP)
-                .inputs(In.classes(), In.runtimeEntries(), In.config())
+                .inputs(In.classes(), In.runtimeEntries(), In.config(), In.repositories())
                 .outputs("quarkus-app", "native-sources")
                 .run(QuarkusPlugin::runAugment);
     }
@@ -85,7 +86,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     @Override
     public void test(TestContext ctx) {
         ctx.named(TEST_MODEL_STEP)
-                .inputs(In.classes(), In.testRuntimeEntries(), In.config())
+                .inputs(In.classes(), In.testRuntimeEntries(), In.config(), In.repositories())
                 .outputs(TEST_MODEL_DIR)
                 .contributesTestJvmArgs(TEST_JVM_ARGS)
                 .run(QuarkusPlugin::runTestModel);
@@ -114,17 +115,23 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         String quarkusVersion = quarkusVersion(exec);
         String packageType =
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
-        TaskExec.ToolRun.Result run = exec.java()
-                .classpath(cp)
-                .arg(PreferIpv4.JVM_FLAG)
-                .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
-                .arg("-Djk.quarkus.package.type=" + packageType)
-                .arg("-Djk.quarkus.native.sources=" + exec.project().nativeDeclared())
-                .arg("-Djk.quarkus.native.sources.out=" + nativeSourcesOut)
-                .mainClass(QuarkusAugmentMain.class.getName())
-                .args(augmentArgs(exec, classes, outRoot, baseName, listFile, quarkusVersion))
-                .cwd(exec.moduleDir())
-                .run();
+        Path routes = writeRepositoryRoutes(exec);
+        TaskExec.ToolRun.Result run;
+        try {
+            run = exec.java()
+                    .classpath(cp)
+                    .arg(PreferIpv4.JVM_FLAG)
+                    .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
+                    .arg("-Djk.quarkus.package.type=" + packageType)
+                    .arg("-Djk.quarkus.native.sources=" + exec.project().nativeDeclared())
+                    .arg("-Djk.quarkus.native.sources.out=" + nativeSourcesOut)
+                    .mainClass(QuarkusAugmentMain.class.getName())
+                    .args(augmentArgs(exec, classes, outRoot, baseName, listFile, quarkusVersion, routes))
+                    .cwd(exec.moduleDir())
+                    .run();
+        } finally {
+            Files.deleteIfExists(routes);
+        }
         if (run.exit() != 0) {
             // Fail loudly: a cached "success" with no quarkus-app would silently ship a
             // non-production artifact on every later build.
@@ -147,14 +154,20 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path outDir = exec.outputDir(TEST_MODEL_DIR);
         Path listFile = writeRuntimeList(exec, exec.scratch().resolve("test-runtime-jars.tsv"));
         exec.label("quarkus test model (" + exec.project().name() + ")");
-        TaskExec.ToolRun.Result run = exec.java()
-                .classpath(toolClasspath(exec))
-                .arg(PreferIpv4.JVM_FLAG)
-                .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
-                .mainClass(QuarkusTestModelMain.class.getName())
-                .args(testModelArgs(exec, classes, outDir, listFile, quarkusVersion(exec)))
-                .cwd(exec.moduleDir())
-                .run();
+        Path routes = writeRepositoryRoutes(exec);
+        TaskExec.ToolRun.Result run;
+        try {
+            run = exec.java()
+                    .classpath(toolClasspath(exec))
+                    .arg(PreferIpv4.JVM_FLAG)
+                    .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
+                    .mainClass(QuarkusTestModelMain.class.getName())
+                    .args(testModelArgs(exec, classes, outDir, listFile, quarkusVersion(exec), routes))
+                    .cwd(exec.moduleDir())
+                    .run();
+        } finally {
+            Files.deleteIfExists(routes);
+        }
         if (run.exit() != 0) {
             throw new IOException("quarkus-test-model failed (exit " + run.exit() + "):\n" + tail(run.output()));
         }
@@ -184,7 +197,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * QuarkusTestModelMain#main} parses. Same shape as {@link #augmentArgs} without the base name:
      * the model is serialized, not augmented.
      */
-    static List<String> testModelArgs(TaskExec exec, Path classes, Path outDir, Path listFile, String quarkusVersion) {
+    static List<String> testModelArgs(
+            TaskExec exec, Path classes, Path outDir, Path listFile, String quarkusVersion, Path routes) {
         return List.of(
                 exec.moduleDir().toString(),
                 classes.toString(),
@@ -195,7 +209,19 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 listFile.toString(),
                 quarkusVersion,
                 exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
+                routes.toString(),
                 Boolean.toString(exec.offline()));
+    }
+
+    /**
+     * The routed remote repositories the engine handed this step, written for the fork's resolver
+     * outside the step's scratch: the file carries credentials, and the scratch is what the action
+     * cache keeps. The caller deletes it once the fork has returned.
+     */
+    private static Path writeRepositoryRoutes(TaskExec exec) throws IOException {
+        Path routes = Files.createTempFile("jk-quarkus-repositories-", ".jsonl");
+        RepositoryRoutes.write(exec.repositories(), routes);
+        return routes;
     }
 
     /**
@@ -227,9 +253,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     private static List<Path> toolClasspath(TaskExec exec) throws IOException {
         List<Path> cp = new ArrayList<>();
         cp.add(codeSourceOf(QuarkusPlugin.class, "jk-quarkus worker"));
-        // The forked mains parse their offline flag with the engine's host helpers; the host jar
-        // is on the plugin's loader, never on a bare fork's classpath.
+        // The forked mains parse their offline flag with the engine's host helpers and read the
+        // repository routes with the SDK's; both jars are on the plugin's loader, never on a bare
+        // fork's classpath.
         cp.add(codeSourceOf(EnvValues.class, "engine host"));
+        cp.add(codeSourceOf(RepositoryRoute.class, "plugin sdk"));
         Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
         if (Files.isDirectory(tools)) {
             cp.addAll(jarsIn(tools));
@@ -259,9 +287,17 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      * engine's per-job decision has to arrive as data it cannot be launched without. The platform
      * properties path is positional for the same reason — it is a step-dependency the engine
      * fetched through jk's repo stack, and the augment must never resolve the coordinate itself.
+     * So is the repository-routes file: the remotes the augment's own resolver may ask are the
+     * ones jk routed for this module, and it must never fall back to Maven's defaults.
      */
     static List<String> augmentArgs(
-            TaskExec exec, Path classes, Path outRoot, String baseName, Path listFile, String quarkusVersion) {
+            TaskExec exec,
+            Path classes,
+            Path outRoot,
+            String baseName,
+            Path listFile,
+            String quarkusVersion,
+            Path routes) {
         return List.of(
                 exec.moduleDir().toString(),
                 classes.toString(),
@@ -273,6 +309,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 listFile.toString(),
                 quarkusVersion,
                 exec.requireExtra(PLATFORM_PROPS_EXTRA).toString(),
+                routes.toString(),
                 Boolean.toString(exec.offline()));
     }
 

@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.build.RepositoryRoute;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -277,6 +278,18 @@ public final class SpecWriter {
                 .string(PluginProtocol.T, PluginProtocol.SIBLING_FILES)
                 .string(PluginProtocol.KEY, key)
                 .string(PluginProtocol.PATH, dir.toAbsolutePath().toString())
+                .finish());
+        return this;
+    }
+
+    /** One routed remote repository, in resolve order — see {@link PluginProtocol#REPOSITORY}. */
+    public SpecWriter repository(RepositoryRoute route) {
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, PluginProtocol.REPOSITORY)
+                .string("id", route.id())
+                .string("url", route.url().toString())
+                .optionalString("username", route.username())
+                .optionalString("secret", route.secret())
                 .finish());
         return this;
     }
