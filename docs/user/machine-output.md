@@ -113,8 +113,10 @@ _vs #12 (failed, 8.4s) · this run 6.1s (−2.3s)_
   - fixed: `com.example.CalcTest#subtracts()`
 ```
 
-Files are compared by content hash between the two runs' `sources.tsv` snapshots (project tree
-minus build output, hidden and `node_modules` directories; absent when either side has none);
+Files are compared by content hash between the two runs' `sources.tsv` snapshots of the build's
+inputs — `jk.toml`, `jk-lock.toml`, `jk-guards.toml`, the `.jk/` scripts, and every module's
+manifest and source, test and resource roots; the rest of the checkout is not an input and is not
+walked (absent when either side has none);
 diagnostics by severity, step, site and message (a changed stack trace is the same diagnostic);
 tests by `Class#display` verdict from `test-outcomes.tsv` (absent when either run recorded no
 tests). Lists show at most eight rows and say `+N more`. `- Nothing changed: same files,
