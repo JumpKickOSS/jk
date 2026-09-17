@@ -37,6 +37,8 @@ class OutdatedCommandTest {
 
     private final PrintStream originalOut = System.out;
 
+    private final PrintStream originalErr = System.err;
+
     @BeforeEach
     void seedRepo() {
         DefaultTestDepsFixture.seed(maven.served()); // implicit junit-platform-launcher, for the lock-based tests
@@ -45,6 +47,7 @@ class OutdatedCommandTest {
     @AfterEach
     void reset() {
         System.setOut(originalOut);
+        System.setErr(originalErr);
         LockfileReader.clearCache();
     }
 
@@ -56,7 +59,7 @@ class OutdatedCommandTest {
         Path cache = tempDir.resolve("cache");
 
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
-        assertThat(lock(tempDir, cache)).isEqualTo(0);
+        lockOrExplain(tempDir, cache);
 
         String json = json(tempDir, cache);
         assertThat(json).contains("\"dependency\":\"com.foo.outdated:leaf\"");
@@ -80,7 +83,7 @@ class OutdatedCommandTest {
                 tempDir,
                 "upToDate = { group = \"com.foo.outdated\", name = \"upToDate\", version = \"=1.0\" }\n"
                         + "        behind = { group = \"com.foo.outdated\", name = \"behind\", version = \"=1.0\" }");
-        assertThat(lock(tempDir, cache)).isEqualTo(0);
+        lockOrExplain(tempDir, cache);
 
         String all = json(tempDir, cache);
         assertThat(all).contains("com.foo.outdated:upToDate").contains("com.foo.outdated:behind");
@@ -165,7 +168,7 @@ class OutdatedCommandTest {
         maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
-        assertThat(lock(tempDir, cache)).isEqualTo(0);
+        lockOrExplain(tempDir, cache);
 
         String out = table(tempDir, cache);
         assertThat(out).contains("Dependency", "Compatible", "Latest");
@@ -182,7 +185,7 @@ class OutdatedCommandTest {
         maven.registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
         writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
-        assertThat(lock(tempDir, cache)).isEqualTo(0);
+        lockOrExplain(tempDir, cache);
         assertThat(json(tempDir, cache)).contains("\"latest\":\"1.1\"");
 
         // Published after the lock: the catalog on disk is within its TTL and the engine holds the
@@ -236,9 +239,26 @@ class OutdatedCommandTest {
 
     // --- helpers -----------------------------------------------------------
 
-    private int lock(Path dir, Path cache) {
-        return run(
-                "lock", "-C", dir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString());
+    /** {@code jk lock} must exit 0; a red names the coordinate the CLI complained about, not just the code. */
+    private void lockOrExplain(Path dir, Path cache) {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        int exit;
+        try {
+            exit = run(
+                    "lock",
+                    "-C",
+                    dir.toString(),
+                    "--repo-url",
+                    maven.base().toString(),
+                    "--cache-dir",
+                    cache.toString());
+        } finally {
+            System.setErr(originalErr);
+        }
+        assertThat(exit)
+                .as("jk lock against %s; stderr:%n%s", maven.base(), err.toString(StandardCharsets.UTF_8))
+                .isEqualTo(0);
     }
 
     private String json(Path dir, Path cache) {
@@ -258,14 +278,19 @@ class OutdatedCommandTest {
             "outdated", "-C", dir.toString(), "--repo-url", maven.base().toString(), "--cache-dir", cache.toString()
         };
         ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
         System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
             exit = run(concat(base, extra));
         } finally {
             System.setOut(originalOut);
+            System.setErr(originalErr);
         }
-        assertThat(exit).isEqualTo(0);
+        assertThat(exit)
+                .as("jk outdated against %s; stderr:%n%s", maven.base(), err.toString(StandardCharsets.UTF_8))
+                .isEqualTo(0);
         return out.toString(StandardCharsets.UTF_8);
     }
 
