@@ -117,6 +117,12 @@ module is recorded on the lock edge (`<- 2.0.1.MR`) and reported as a warning, n
 `jk import` writes that line for a Maven POM so the imported project resolves as Maven resolved it;
 a transitive with no pin on it keeps the highest-declared rule either way.
 
+The test classpath is the main classpath plus the test rows, so an exact pin in a main scope is the
+version on it too, under both policies: a test dependency's edge onto the pinned module takes the
+pin, the edge records what it asked for, and the lock carries one row with both scopes rather than
+a test row above the pin. A test-scope pin of its own stays a test fact — it has no say on the main
+classpath.
+
 A dependency POM that asks for Maven's `LATEST` or `RELEASE` metaversion gets what Maven reads from
 the repository's metadata: `RELEASE` is the newest release, `LATEST` the newest version of any
 kind — a snapshot too, from a repository whose [snapshot policy](#snapshots) is on. Both float
