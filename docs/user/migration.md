@@ -302,7 +302,7 @@ relates to the Maven one.
 | versions-maven-plugin | 7 | `jk outdated` / `jk update` | exact |
 | docker-maven-plugin / jib-maven-plugin | 7 | row carrying the `[image]` lines to paste (`base`, `registry`, `name`, `tag` from `<from>` / `<to>`); nothing is written to `jk.toml` | manual |
 | frontend-maven-plugin | 7 | `[dev.sidecars]` + a resource module | manual |
-| quarkus-maven-plugin | 7 | `[quarkus]` | exact |
+| quarkus-maven-plugin | 7 | `[quarkus]` at the platform version; none when that version is one the reactor builds `quarkus-bom` at itself (Quarkus's own reactor at `999-SNAPSHOT`), since the BOM the table implies is published for releases only → one row naming those modules | exact |
 | flatten-maven-plugin | 6 | nothing (`jk export maven` writes a flat POM) | exact |
 | os-maven-plugin (a `<build><extensions>` entry or the `detect` goal) | 6 | nothing to write: `os.detected.name`, `os.detected.arch` and `os.detected.classifier` are valued from the host in the effective model, so a `${os.detected.classifier}` classifier is this machine's word | exact |
 | native-maven-plugin | 6 | `[native]`: `<imageName>` → `name`, `<buildArgs>` → `args`; `<mainClass>` → `[application] main`; declared bare with its executions only in an inactive profile → Tier-2 row naming the profile, no `[native]` (so Spring AOT stays off) | approximate |

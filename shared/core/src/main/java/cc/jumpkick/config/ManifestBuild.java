@@ -171,15 +171,15 @@ public final class ManifestBuild {
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> installedManifests) {
-        List<PluginContributions.PlatformDep> contributed =
+        List<PluginContributions.ImpliedPlatform> contributed =
                 PluginContributions.platformDependencies(project, nativeDeclared, pluginConfigs, installedManifests);
         if (contributed.isEmpty()) return deps;
         List<Dependency> platform = new ArrayList<>(deps.of(Scope.PLATFORM));
         boolean changed = false;
-        for (PluginContributions.PlatformDep dep : contributed) {
+        for (PluginContributions.ImpliedPlatform dep : contributed) {
             boolean declared = platform.stream().anyMatch(d -> dep.module().equals(d.module()));
             if (declared) continue;
-            platform.add(new Dependency(dep.module(), VersionSelector.parse(dep.version())));
+            platform.add(new Dependency(dep.module(), VersionSelector.parse(dep.version())).withImpliedBy(dep.table()));
             changed = true;
         }
         if (!changed) return deps;

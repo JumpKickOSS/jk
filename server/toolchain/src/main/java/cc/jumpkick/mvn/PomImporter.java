@@ -244,7 +244,9 @@ public final class PomImporter {
         JkBuild.Application rootApplication =
                 rootMainClass != null ? new JkBuild.Application(rootMainClass, false) : null;
 
-        SiblingNames.report(moduleBuilds, report);
+        Map<String, JkBuild> members =
+                SelfHostedFrameworks.strip(moduleBuilds, found.boms(), rootProject.version(), report);
+        SiblingNames.report(members, report);
         ShadedSiblings.report(leaves, shaded, report);
         // The workspace root is a coordination point — no deps of its own — but it owns the one
         // repository list the workspace lock resolves against, so every member's `<repositories>`
@@ -253,13 +255,13 @@ public final class PomImporter {
                 .workspace(new Workspace(
                         leaves.stream().map(ReactorModules.Leaf::path).toList()))
                 .repositories(hoistRepositories(
-                        mapRepositories(rootModel.model().getRepositories(), report), moduleBuilds.values()))
+                        mapRepositories(rootModel.model().getRepositories(), report), members.values()))
                 .application(rootApplication)
                 .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
-        Map<String, String> siblingByGa = SiblingEdges.siblingGaIndex(rootJkBuild, moduleBuilds.values());
-        Set<String> sharedNames = SiblingNames.shared(moduleBuilds);
+        Map<String, String> siblingByGa = SiblingEdges.siblingGaIndex(rootJkBuild, members.values());
+        Set<String> sharedNames = SiblingNames.shared(members);
         Map<String, String> bomByGa = bomGaIndex(found.boms());
         // A reactor parent's managed pin on a reactor POM is the workspace's to supply.
         hoistedManaged.removeIf(d -> SiblingEdges.namesReactorPom(d.module(), siblingByGa, found.unbuilt(), bomByGa));
@@ -276,7 +278,7 @@ public final class PomImporter {
         }
         Set<String> importedBoms = new HashSet<>();
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
-        for (var e : moduleBuilds.entrySet()) {
+        for (var e : members.entrySet()) {
             rewritten.put(
                     e.getKey(),
                     SiblingEdges.rewrite(

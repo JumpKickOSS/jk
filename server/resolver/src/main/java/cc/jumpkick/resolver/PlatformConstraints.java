@@ -9,6 +9,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
@@ -134,7 +135,7 @@ public final class PlatformConstraints {
             String bomVersion =
                     PlatformBomVersions.resolve(repos, platformDep.group(), platformDep.name(), platformDep.version());
             Coordinate bomCoord = Coordinate.of(platformDep.group(), platformDep.name(), bomVersion);
-            EffectivePom bomPom = pomBuilder.build(bomCoord);
+            EffectivePom bomPom = load(platformDep, bomCoord, pomBuilder);
             String bomLabel = bomCoord.toGav();
             for (Map.Entry<String, String> m : managedVersionsByModule(bomPom).entrySet()) {
                 String existing = versions.get(m.getKey());
@@ -150,6 +151,29 @@ public final class PlatformConstraints {
             // but keep the family in the platform map for preferredVersion / pinned-by when an
             // edge arrives without a fill.
             alignMavenResolverFamily(versions, provenance, bomPom, bomLabel);
+        }
+    }
+
+    /**
+     * The BOM's effective POM. A BOM the manifest declares that no repository has is the missing
+     * POM itself; one a plugin's table implied is refused naming the table, since the user wrote
+     * a version, not the coordinate the lock went looking for.
+     */
+    private static EffectivePom load(Dependency platformDep, Coordinate bomCoord, EffectivePomBuilder pomBuilder)
+            throws IOException, InterruptedException {
+        try {
+            return pomBuilder.build(bomCoord);
+        } catch (MavenRepo.ArtifactNotFoundException e) {
+            String table = platformDep.impliedBy();
+            if (table == null) throw e;
+            throw new IllegalStateException(
+                    "platform BOM " + bomCoord.toGav() + " is in no declared repository (" + e.getMessage() + ")."
+                            + " The `[" + table + "]` table implies it: `version = \""
+                            + platformDep.version().raw()
+                            + "\"` names the release of the plugin's platform BOM, and repositories publish"
+                            + " that BOM for releases only. Point `[" + table + "] version` at a published"
+                            + " release, or drop the table from a module of the framework's own build.",
+                    e);
         }
     }
 

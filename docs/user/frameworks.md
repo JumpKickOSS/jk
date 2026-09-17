@@ -71,6 +71,12 @@ jk new -t quarkus/hello my-api
   `-XX:MaxMetaspaceSize=1g`, since the bootstrap keeps one augmented application per profile
   resident; `[test] jvm-args` overrides it. The `[quarkus]` table is what turns this on — `jk
   import` writes it from `quarkus-maven-plugin` at the platform version.
+- **Quarkus's own reactor:** `[quarkus] version` implies `io.quarkus.platform:quarkus-bom` at that
+  version, a BOM repositories publish for releases only. Importing a reactor that builds
+  `quarkus-bom` itself writes no `[quarkus]` table on a member whose plugin runs at the reactor's
+  own version (`999-SNAPSHOT`); one report row names those members, which build as plain jars —
+  `jk mvn package` keeps the augment. A `[quarkus]` table at a version no repository has fails the
+  lock with an error naming the table and the BOM it implies, never as a bare missing coordinate.
 - **Multi-module:** workspace path deps are packaged into `lib/main` for the Quarkus app
   module. Prefer a small `@ApplicationScoped` holder in the app module over CDI producers
   whose return types live only in sibling jars (Jandex). JumpKick owns resolve via
