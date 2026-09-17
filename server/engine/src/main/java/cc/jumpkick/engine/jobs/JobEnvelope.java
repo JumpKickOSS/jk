@@ -226,7 +226,13 @@ public final class JobEnvelope {
             Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
             return eventRequestId;
         }
-        finish.run();
+        try {
+            finish.run();
+        } finally {
+            // The client blocks on job-finish; it has landed — however the tail ended — before
+            // the connection loop gets the socket back and may close it.
+            if (writer != null) WireWriter.awaitLanded(writer);
+        }
         return eventRequestId;
     }
 

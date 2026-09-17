@@ -146,16 +146,16 @@ public final class LiveJobRegistry {
     public boolean cancelJob(long jid) {
         LiveJob job = liveJobs.get(jid);
         if (job == null) return false;
+        // The cancelled terminal is queued before the runner hears of the cancel, so it is the
+        // first terminal the client reads — ahead of whatever the unwinding runner emits — and
+        // queueing never waits on the client's socket, so the ack is not held behind it either.
+        pushCancelledTerminal(job);
         // Remote `jk cancel` / POST /api/cancel — an explicit signal.
         beginUserCancel(jid, job.token(), job.runnerRef(), cancelGraceMs, true);
-        // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
-        // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
-        // without waiting behind that monitor. Order inside the task still matters: terminal
-        // first, then the wake — a half-close where the transport allows it, so the write side
-        // stays open for the job-finish the client blocks on.
-        // Settles the cancelled terminal off the request thread; reads no session.
+        // The reader wake happens off-thread — a half-close where the transport allows it, so the
+        // write side stays open for the job-finish the client blocks on.
+        // Wakes the job's connection thread off its read; reads no session.
         Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
-            pushCancelledTerminal(job);
             if (job.connectionThread() != null)
                 ConnectionWatch.wakeOffClientRead(job.channel(), job.connectionThread());
         });

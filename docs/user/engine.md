@@ -239,6 +239,14 @@ a request is held to the same `JK_STREAM_IDLE_MS` bound the client applies to th
 while a build owns the connection). `jk engine status` prints the count as a `Dropped` row;
 `--output json` and `GET /api/status` carry it as `idleDropped`.
 
+A client that stops reading — a terminal suspended mid-build, a pipe nobody drains — costs the
+other clients nothing. Each connection is served on its own thread and its lines are written by
+its own writer, so a build's progress goes into that client's queue and the build goes on; `jk
+engine status` and a new client's handshake are answered as usual. Once 8 MiB of lines wait for
+such a client, or its oldest unread line is older than `JK_STREAM_IDLE_MS`, the engine drops it:
+its connection is closed, its job ends the way it does when a client disconnects, and the engine
+log says `dropped a client that stopped reading its stream`.
+
 ### Process environment
 
 These are not `[engine]` keys. They configure how the engine process is spawned or how

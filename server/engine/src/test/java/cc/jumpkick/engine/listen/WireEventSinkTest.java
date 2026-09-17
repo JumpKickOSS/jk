@@ -4,6 +4,7 @@ package cc.jumpkick.engine.listen;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import java.io.BufferedWriter;
 import java.io.StringWriter;
@@ -87,6 +88,7 @@ class WireEventSinkTest {
             }
             start.countDown();
             assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+            WireWriter.awaitLanded(bw);
         }
         bw.flush();
         assertThat(failures).isEmpty();
