@@ -1,0 +1,4 @@
+# House rules, from the starter pack this template ships with; `jk lock` pins it, `jk guard explain`
+# lists its rules. Add your own [guards.<id>] tables below; exempt a site with `allow` and a reason.
+[guards]
+extends = ["cc.jumpkick.guards:library:$jk_version$"]

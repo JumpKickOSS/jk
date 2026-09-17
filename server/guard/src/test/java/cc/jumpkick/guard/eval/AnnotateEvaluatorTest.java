@@ -156,6 +156,22 @@ class AnnotateEvaluatorTest {
     }
 
     @Test
+    void a_require_whose_predicate_selects_nothing_passes_without_resolving_the_annotation(@TempDir Path dir)
+            throws Exception {
+        FactsIndex idx = facts(Sample.class, Tier.class);
+        // The annotation is on no classpath here; with nothing in scope there is nothing to judge.
+        Evaluation e = run(
+                dir,
+                "require = \"com.acme.Absent\"\non = \"package\"\nmatching = { reside-in = \"no.such.pkg..\" }\n",
+                idx);
+        assertThat(e.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(e.population()).containsEntry("elements", 0L);
+
+        Evaluation inScope = run(dir, "require = \"com.acme.Absent\"\non = \"package\"\n", idx);
+        assertThat(inScope.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
+    }
+
+    @Test
     void matching_with_value_and_allow(@TempDir Path dir) throws Exception {
         FactsIndex idx = facts(Sample.class, Sample.Inner.class, Tier.class);
         String tagged = "require = \"" + FIXTURE + ".Sample$Tagged\"\non = \"class\"\n";

@@ -1,0 +1,5 @@
+language = "kotlin"
+framework = "none"
+name = "library"
+description = "Published Kotlin library: sources and Dokka javadoc jars, the library rule pack, a unit test"
+layouts = ["traditional"]
