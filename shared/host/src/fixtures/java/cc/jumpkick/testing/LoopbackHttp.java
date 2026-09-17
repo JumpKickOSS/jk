@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
+import cc.jumpkick.host.time.Clock;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -18,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -58,6 +60,18 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  *
  * <p>Nothing here reaches the public internet and nothing binds a fixed port, so a suite using it
  * belongs in the fast tier.
+ *
+ * <p><strong>The base names this start, not the port.</strong> {@link #base()} is {@code
+ * http://<host>:<port>/<token>} with a token no other start has had, and a request under the token
+ * is served as if the token were not there. Everything jk remembers about a repository — the
+ * in-process version-list and fetch memos, the {@code maven-metadata.xml} bodies it trusts for a
+ * TTL, the {@code repos/<id>} directory of the store — is keyed by the URL, and a store and its
+ * memos outlive one test: the module's sandbox is shared by every suite in the module and kept
+ * between gates. An ephemeral port is reused by the kernel, so a server that spelled itself by port
+ * alone would inherit the version lists and sidecars of whichever earlier server held that port,
+ * and a resolve would then ask for a version this server never published. The token is what makes a
+ * fresh server a fresh repository. Paths handed to {@link #served()} stay bare ({@code /g/a/...}),
+ * and {@link #requested()} records them bare; only the URL a client is given carries the token.
  */
 public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
 
@@ -86,6 +100,11 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
     private @Nullable HttpServer server;
     private @Nullable ExecutorService pool;
     private @Nullable URI base;
+
+    /** The leading path segment of this start's {@link #base()}, {@code "/<token>"}. */
+    private String token = "";
+
+    private static final AtomicLong STARTS = new AtomicLong();
 
     /**
      * Serve handlers on a thread pool instead of the single dispatch thread.
@@ -152,8 +171,13 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
             pool = Executors.newCachedThreadPool();
             bound.setExecutor(pool);
         }
+        // Unique across the processes that share a store: this pid, a per-process count, the clock.
+        token = "/" + Long.toString(ProcessHandle.current().pid(), 36)
+                + Long.toString(STARTS.incrementAndGet(), 36)
+                + Long.toString(Clock.SYSTEM.nanos() & 0xFFFFFFFFL, 36);
+        String prefix = token;
         bound.createContext("/", exchange -> {
-            String path = exchange.getRequestURI().getPath();
+            String path = bare(exchange.getRequestURI().getPath(), prefix);
             requested.add(path);
             requestHeaders.put(path, Map.copyOf(exchange.getRequestHeaders()));
             URI target = redirects.get(path);
@@ -179,7 +203,13 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         });
         bound.start();
         server = bound;
-        base = URI.create("http://" + host + ":" + bound.getAddress().getPort());
+        base = URI.create("http://" + host + ":" + bound.getAddress().getPort() + token);
+    }
+
+    /** {@code path} without this start's token, when it carries one; a bare path is itself. */
+    static String bare(String path, String token) {
+        if (path.equals(token)) return "/";
+        return path.startsWith(token + "/") ? path.substring(token.length()) : path;
     }
 
     /**
@@ -207,7 +237,10 @@ public class LoopbackHttp implements BeforeEachCallback, AfterEachCallback {
         }
     }
 
-    /** {@code http://<host>:<port>} ({@code 127.0.0.1} unless {@link #host} said otherwise), no trailing slash. */
+    /**
+     * {@code http://<host>:<port>/<token>} ({@code 127.0.0.1} unless {@link #host} said otherwise), no
+     * trailing slash; the token is this start's alone, see the class note.
+     */
     public URI base() {
         return Objects.requireNonNull(base, "LoopbackHttp.base() before start()");
     }

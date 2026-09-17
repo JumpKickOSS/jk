@@ -200,6 +200,11 @@ started with `JK_STATE_DIR` or `JK_STORE_DIR` in its shell would otherwise hand 
 real build history — and a nested `jk self nuke` its real store. With `W > 1` each runner gets a
 child state dir and a jqwik database of its own under its temp root.
 
+The sandbox is shared by every suite of the module and kept between runs, so a loopback stub's
+identity must not be its port: `LoopbackHttp` (and `MockMavenServer` on it) spells its base
+`http://127.0.0.1:<port>/<token>` with a token no other start has had, because version lists,
+fetch memos and the store's `repos/<id>` are all keyed by URL and a kernel reuses ephemeral ports.
+
 **The overlay rule.** Layout settings come in two layers: the `jk.env.<NAME>` system properties
 (the in-process seam a test sets per class or method, forwarded by the engine spawner to the
 engine it starts) over the real environment. A root override binds to the home it was set beside,

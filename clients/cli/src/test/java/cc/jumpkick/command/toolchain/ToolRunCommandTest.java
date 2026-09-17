@@ -85,7 +85,7 @@ class ToolRunCommandTest {
 
         Path state = tempDir.resolve("home");
         run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
-        String host = maven.base().getHost() + ":" + maven.base().getPort();
+        String host = maven.base().getAuthority() + maven.base().getPath();
         int exit = run(
                 "tool",
                 "run",
@@ -129,7 +129,7 @@ class ToolRunCommandTest {
 
         Path state = tempDir.resolve("home");
         run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
-        String host = maven.base().getHost() + ":" + maven.base().getPort();
+        String host = maven.base().getAuthority() + maven.base().getPath();
         int exit = run(
                 "tool",
                 "run",
@@ -148,7 +148,7 @@ class ToolRunCommandTest {
         maven.served().put("/cat/jbang-catalog.json", "{ \"aliases\": {} }".getBytes(StandardCharsets.UTF_8));
         Path state = tempDir.resolve("home");
         run("trust", "add", "--state-dir", state.toString(), maven.base().toString() + "/");
-        String host = maven.base().getHost() + ":" + maven.base().getPort();
+        String host = maven.base().getAuthority() + maven.base().getPath();
         int exit = run("tool", "run", "--state-dir", state.toString(), "nope@" + host + "/cat");
         assertThat(exit).isEqualTo(70); // rendered IOException: catalog has no such alias
     }
