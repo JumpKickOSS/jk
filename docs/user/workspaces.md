@@ -164,7 +164,9 @@ answer cannot be its answer:
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
-member agrees on stays a plain row. Agreement is per scope: a version the workspace carries only as
+member agrees on stays a plain row; where the member's own BOM manages such a row at the
+workspace's version, the plain row carries that BOM as `pinned-by`, as the member's own row would,
+and `jk why` names it for every member that reads the row. Agreement is per scope: a version the workspace carries only as
 a test row is not on any member's main classpath, so a member whose main graph wants that version
 gets a main-scoped row of its own rather than reading the workspace's main row. A workspace whose members all agree has no `members` key
 anywhere, and nothing about it changes.

@@ -39,7 +39,10 @@ import java.util.TreeMap;
  * version is below or past the compatible line of. A floating selector and a compatible lift are
  * floors the workspace's row satisfies.
  * Where the member's solve disagrees with a merged row, its row is added with {@code members =
- * [path]}; where it agrees, nothing is added. See {@code docs/user/workspaces.md}.
+ * [path]}; where it agrees, nothing is added. A merged row a member's own table manages at the
+ * merged version, through a BOM or entry the workspace's table never folded, carries that
+ * provenance as {@code pinned-by}: the version is what the holder's BOM says, and the lock says so
+ * for every member that reads the row. See {@code docs/user/workspaces.md}.
  */
 final class MemberPartitions {
 
@@ -112,10 +115,14 @@ final class MemberPartitions {
         Map<String, Lockfile.Artifact> partitions = new LinkedHashMap<>();
         Map<String, LinkedHashSet<String>> partitionMembers = new LinkedHashMap<>();
         Map<String, EnumMap<Scope, Boolean>> partitionScopes = new LinkedHashMap<>();
+        // name@version → the provenance a holder's table lends a merged row it agrees with.
+        Map<String, String> carried = new LinkedHashMap<>();
         for (LockOrchestrator.Member member : members) {
             JkBuild manifest = solvable(member.manifest());
             PlatformConstraints own = PlatformConstraints.collect(manifest, repos, pomBuilder, bomTables, pinPolicy);
-            Set<String> flagged = flagged(manifest, own);
+            Reach reach = reach(manifest);
+            carryProvenance(reach, own, merged, carried);
+            Set<String> flagged = flagged(reach, own);
             if (flagged.isEmpty()) continue;
             Map<String, String> prefs = prefsFor(flagged, memberPrefs.getOrDefault(member.path(), Map.of()));
             // The table read to flag the member is the table its solve runs under.
@@ -134,8 +141,12 @@ final class MemberPartitions {
             }
             if (!differing.isEmpty()) observer.onNote(note(member.path(), differing, merged));
         }
-        if (partitions.isEmpty()) return merged;
-        List<Lockfile.Artifact> rows = new ArrayList<>(merged.artifacts());
+        if (partitions.isEmpty() && carried.isEmpty()) return merged;
+        List<Lockfile.Artifact> rows = new ArrayList<>(merged.artifacts().size() + partitions.size());
+        for (Lockfile.Artifact row : merged.artifacts()) {
+            String by = carried.get(row.packageKey() + "@" + row.version());
+            rows.add(by == null ? row : row.withPinnedBy(by));
+        }
         for (Map.Entry<String, Lockfile.Artifact> e : partitions.entrySet()) {
             Lockfile.Artifact row = e.getValue()
                     .withScopes(new ArrayList<>(Objects.requireNonNull(partitionScopes.get(e.getKey()))
@@ -144,6 +155,46 @@ final class MemberPartitions {
             rows.add(row);
         }
         return merged.withArtifacts(rows);
+    }
+
+    /**
+     * What one member's graph is in the merged solve: its declared roots per graph, every root, and
+     * every package key the merged solve's edges reach from them.
+     */
+    private record Reach(LockRoots.Declared declared, List<Dependency> roots, Set<String> closure) {}
+
+    private Reach reach(JkBuild manifest) {
+        LockRoots.Declared declared = LockRoots.partition(manifest, featuresFor(manifest), withDefaults);
+        List<Dependency> roots = new ArrayList<>();
+        roots.addAll(declared.main().values());
+        roots.addAll(declared.test().values());
+        roots.addAll(declared.processor().values());
+        return new Reach(declared, roots, closure(roots));
+    }
+
+    /**
+     * Lend a merged row in the member's reach the provenance of the member's own table where that
+     * table manages the row's module at the row's version and the row carries none: the workspace's
+     * solve ran without the member's BOM, yet the version is what the BOM says. The first member in
+     * workspace order to say so is the one the row names. A module the member pins exactly is the
+     * pin's, as it is in the member's own solve, and lends nothing.
+     */
+    private static void carryProvenance(
+            Reach reach, PlatformConstraints own, Lockfile merged, Map<String, String> carried) {
+        Set<String> pinnedExactly = new HashSet<>();
+        for (Dependency root : reach.roots()) {
+            if (!root.isPlatformManaged() && root.version() instanceof VersionSelector.Exact) {
+                pinnedExactly.add(PackageId.parse(root.packageKey()).ga());
+            }
+        }
+        for (Lockfile.Artifact row : merged.artifacts()) {
+            if (row.isPartition() || !reach.closure().contains(row.packageKey())) continue;
+            if (row.pinnedBy() != null && !row.pinnedBy().startsWith("features:")) continue;
+            String ga = PackageId.parse(row.packageKey()).ga();
+            if (pinnedExactly.contains(ga)) continue;
+            String by = own.pinnedBy(ga, row.version());
+            if (by != null) carried.putIfAbsent(row.packageKey() + "@" + row.version(), by);
+        }
     }
 
     /**
@@ -169,15 +220,11 @@ final class MemberPartitions {
      * on its test classpath, and a solve of its own would say the same. Empty means the member
      * reads the merged rows as they are.
      */
-    private Set<String> flagged(JkBuild manifest, PlatformConstraints own) {
+    private Set<String> flagged(Reach reach, PlatformConstraints own) {
         Set<String> flagged = new LinkedHashSet<>();
-        LockRoots.Declared declared = LockRoots.partition(manifest, featuresFor(manifest), withDefaults);
+        LockRoots.Declared declared = reach.declared();
         Set<String> mainClosure = closure(new ArrayList<>(declared.main().values()));
-        List<Dependency> roots = new ArrayList<>();
-        roots.addAll(declared.main().values());
-        roots.addAll(declared.test().values());
-        roots.addAll(declared.processor().values());
-        for (Dependency root : roots) {
+        for (Dependency root : reach.roots()) {
             Resolution.ResolvedModule merged = unionByKey.get(root.packageKey());
             if (merged == null || root.isPlatformManaged()) continue;
             if (declared.test().containsKey(root.packageKey())
@@ -190,7 +237,7 @@ final class MemberPartitions {
                 flagged.add(PackageId.parse(root.packageKey()).ga());
             }
         }
-        Set<String> closure = closure(roots);
+        Set<String> closure = reach.closure();
         for (String key : closure) {
             Resolution.ResolvedModule merged = unionByKey.get(key);
             if (merged == null) continue;

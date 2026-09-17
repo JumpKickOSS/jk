@@ -267,7 +267,12 @@ Maven's `LATEST` or `RELEASE` records that word (`<- LATEST`) beside the number 
 
 A row whose version a pin source decided carries `pinned-by`: the BOM as `group:artifact:version`
 for a `[platform-dependencies]` entry, or `jk.toml:<handle>` for a
-[`[managed-dependencies]`](dependencies.md#managed-versions) entry.
+[`[managed-dependencies]`](dependencies.md#managed-versions) entry. A workspace's plain rows are
+solved under the BOMs and entries every member holds
+([Workspaces](workspaces.md#members-that-disagree)); where a BOM or entry only some members hold
+manages a row's module at the version the workspace's row took anyway, the row carries it — the
+first member's in `[workspace] modules` order whose graph reaches the row — so the lock says who
+pinned the version for every member that reads it, and `jk why` says it again.
 
 Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
 sit below the declared one: `jakarta.inject-api:jar:@2.0.1 <- 2.0.1.MR` says the project pinned
