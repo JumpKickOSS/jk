@@ -33,18 +33,44 @@ final class DependencyExclusions {
             throw new JkBuildParseException(
                     displayPath + " applies to a Maven coordinate (got a git/path/file source)");
         }
-        List<String> exclusions = new ArrayList<>(array.size());
+        // The edge's own list joins what the dependency already carries (a shared entry's).
+        List<String> exclusions = new ArrayList<>(dep.exclusions());
         for (int i = 0; i < array.size(); i++) {
             Object raw = array.get(i);
             if (!(raw instanceof String spelling) || spelling.isBlank()) {
                 throw new JkBuildParseException(displayPath + " entries must be non-blank \"group:artifact\" strings");
             }
             try {
-                exclusions.add(Dependency.exclusion(spelling.trim()));
+                String exclusion = Dependency.exclusion(spelling.trim());
+                if (!exclusions.contains(exclusion)) exclusions.add(exclusion);
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException(displayPath + ": " + e.getMessage());
             }
         }
         return dep.withExclusions(exclusions);
+    }
+
+    /** A shared {@code [workspace.dependencies]} entry's own {@code exclude} list, validated the same way. */
+    static List<String> parseList(TomlTable entry, String displayPath) {
+        if (!entry.contains(KEY)) return List.of();
+        TomlArray array = entry.isArray(KEY) ? entry.getArray(KEY) : null;
+        if (array == null) {
+            throw new JkBuildParseException(
+                    displayPath + "." + KEY + " must be an array of \"group:artifact\" strings");
+        }
+        List<String> exclusions = new ArrayList<>(array.size());
+        for (int i = 0; i < array.size(); i++) {
+            Object raw = array.get(i);
+            if (!(raw instanceof String spelling) || spelling.isBlank()) {
+                throw new JkBuildParseException(
+                        displayPath + "." + KEY + " entries must be non-blank \"group:artifact\" strings");
+            }
+            try {
+                exclusions.add(Dependency.exclusion(spelling.trim()));
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException(displayPath + "." + KEY + ": " + e.getMessage());
+            }
+        }
+        return exclusions;
     }
 }

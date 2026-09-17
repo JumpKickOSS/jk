@@ -157,6 +157,34 @@ class JkBuildParserWorkspaceTest {
         assertThat(jj.version()).isInstanceOf(VersionSelector.Exact.class);
     }
 
+    /** A shared entry's own {@code exclude} list, which every member edge to it carries. */
+    @Test
+    void a_shared_entry_takes_an_exclude_list() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [workspace]
+                modules = ["a"]
+
+                [workspace.dependencies]
+                guava = { group = "com.google.guava", version = "33.4.8-jre", exclude = ["com.google.guava:listenablefuture", "com.google.errorprone:*"] }
+                """);
+        var guava = Objects.requireNonNull(workspaceOf(parsed).dependencies().get("guava"));
+        assertThat(guava.exclusions()).containsExactly("com.google.guava:listenablefuture", "com.google.errorprone:*");
+    }
+
+    @Test
+    void a_shared_git_entry_refuses_exclude() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [workspace]
+                        modules = ["a"]
+
+                        [workspace.dependencies]
+                        lib = { group = "com.acme", git = "https://example.com/lib.git", exclude = ["com.acme:noise"] }
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace.dependencies.lib.exclude")
+                .hasMessageContaining("Maven coordinate");
+    }
+
     @Test
     void workspace_dependencies_gav_string_is_a_maven_coordinate() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """

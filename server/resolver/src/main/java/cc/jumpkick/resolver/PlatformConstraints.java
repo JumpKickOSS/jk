@@ -48,6 +48,9 @@ public final class PlatformConstraints {
     /** Per module, the later BOMs whose say the first-declared BOM's version kept. */
     private final Map<String, ManagementOverride> overrides = new LinkedHashMap<>();
 
+    /** Module → the exclusions the first BOM managing it writes; see {@link #bomExclusionsByModule}. */
+    private final Map<String, List<String>> bomExclusions = new LinkedHashMap<>();
+
     /** The modules a {@code [managed-dependencies]} entry pins; their provenance is {@code jk.toml:<handle>}. */
     private final Set<String> managedByManifest = new HashSet<>();
 
@@ -133,9 +136,9 @@ public final class PlatformConstraints {
         stripBomForExactRoots(roots.processor(), versions, provenance, injectedRuntimes);
         overrides.keySet().retainAll(versions.keySet());
         return new LockRoots.Roots(
-                materializePlatformManaged(roots.main(), versions),
-                materializePlatformManaged(roots.test(), versions),
-                materializePlatformManaged(roots.processor(), versions),
+                materializePlatformManaged(roots.main()),
+                materializePlatformManaged(roots.test()),
+                materializePlatformManaged(roots.processor()),
                 roots.fileDeps());
     }
 
@@ -159,6 +162,7 @@ public final class PlatformConstraints {
                     laterBomDisagrees(m.getKey(), existing, bomLabel, m.getValue());
                 }
             }
+            bomExclusionsByModule(bomPom).forEach(bomExclusions::putIfAbsent);
             // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
             // often omit named-locks. Bare edges are exact under a platform (EffectivePom fill),
             // but keep the family in the platform map for preferredVersion / pinned-by when an
@@ -249,6 +253,22 @@ public final class PlatformConstraints {
      * carries at another version; the platform map is per module, so the plain entry is the
      * module's version and a classified entry only speaks for a module that has no plain one.
      */
+    /**
+     * The {@code <exclusions>} a BOM's {@code dependencyManagement} writes on a module, as
+     * {@code group:artifact} patterns ({@code *} where the BOM wrote one). Maven applies them to a
+     * dependency the BOM manages that declares no exclusions of its own; so does the lock.
+     */
+    private static Map<String, List<String>> bomExclusionsByModule(EffectivePom bomPom) {
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Pom.Dep m : bomPom.managedDependencies()) {
+            if (m.exclusions().isEmpty()) continue;
+            List<String> patterns = new ArrayList<>(m.exclusions().size());
+            for (Pom.Dep.Exclusion x : m.exclusions()) patterns.add(x.groupId() + ":" + x.artifactId());
+            out.putIfAbsent(m.module(), List.copyOf(patterns));
+        }
+        return out;
+    }
+
     private static Map<String, String> managedVersionsByModule(EffectivePom bomPom) {
         Map<String, String> plain = new LinkedHashMap<>();
         Map<String, String> classifiedOnly = new LinkedHashMap<>();
@@ -329,25 +349,34 @@ public final class PlatformConstraints {
         }
     }
 
-    private static List<Dependency> materializePlatformManaged(
-            List<Dependency> declared, Map<String, String> bomConstraints) {
+    /**
+     * Every {@code platform-managed} root at its managed version, and every root a BOM manages
+     * without exclusions of its own under the BOM's managed exclusions — a root's own {@code exclude}
+     * list always wins outright, as under Maven.
+     */
+    private List<Dependency> materializePlatformManaged(List<Dependency> declared) {
         List<Dependency> roots = new ArrayList<>(declared.size());
         for (Dependency d : declared) {
+            Dependency root = d;
             if (d.isPlatformManaged()) {
-                String managed = bomConstraints.get(d.module());
+                String managed = versions.get(d.module());
                 if (managed == null) {
                     throw new IllegalStateException("`" + d.module()
                             + "` is declared without a version, but no [platform-dependencies] BOM manages it"
                             + " — add a `version`, or import the BOM that pins it.");
                 }
-                roots.add(Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
+                root = Dependency.of(d.library(), d.module(), VersionSelector.parse("=" + managed))
                         .withOptional(d.optional())
                         .withKind(d.kind())
                         .withClassifier(d.classifier())
-                        .withFeatures(d.requestedFeatures(), d.defaultFeatures()));
-            } else {
-                roots.add(d);
+                        .withFeatures(d.requestedFeatures(), d.defaultFeatures())
+                        .withExclusions(d.exclusions());
             }
+            List<String> managed = bomExclusions.get(d.module());
+            if (managed != null && root.exclusions().isEmpty() && !root.isWorkspace() && !root.isGit()) {
+                root = root.withExclusions(managed);
+            }
+            roots.add(root);
         }
         return roots;
     }

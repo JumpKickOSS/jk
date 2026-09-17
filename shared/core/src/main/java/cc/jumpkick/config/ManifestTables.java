@@ -488,6 +488,10 @@ public final class ManifestTables {
             if (gitArtifact.isBlank()) {
                 throw new JkBuildParseException(displayPath + ".name must not be blank");
             }
+            if (entry.contains(DependencyExclusions.KEY)) {
+                throw new JkBuildParseException(displayPath + "." + DependencyExclusions.KEY
+                        + " applies to a Maven coordinate (a git source has no POM subtree to prune)");
+            }
             GitSource source = ManifestDeps.parseGitSource(entry, displayPath);
             return new WorkspaceDependency(gitGroup, gitArtifact, null, source);
         }
@@ -510,7 +514,12 @@ public final class ManifestTables {
         if (versionRaw == null || versionRaw.isBlank()) {
             throw new JkBuildParseException(displayPath + ".version must not be blank");
         }
-        return new WorkspaceDependency(group, artifact, VersionSelector.parse(versionRaw), null);
+        return new WorkspaceDependency(
+                group,
+                artifact,
+                VersionSelector.parse(versionRaw),
+                null,
+                DependencyExclusions.parseList(entry, displayPath));
     }
 
     /**
