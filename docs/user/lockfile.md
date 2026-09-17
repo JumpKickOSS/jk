@@ -63,6 +63,13 @@ jk update --platform=floor     # relock with BOM pins as lower bounds — Platfo
 | `"^2.18"` / `"~2.18"` / range / `"latest"` | the lock takes the newest match inside that selector; the text stays | same, unless the selector itself excludes the new major |
 | `"g:a"` (versionless) | untouched — the BOM decides | untouched |
 
+The tool tables move under the same rule and flags: an exact `[dokka] version`, `[protobuf] version`
+(protoc), a `[protobuf.<id>] plugin`, and a `[generate.<name>] tool` or `unpack` coordinate are
+rewritten to the newest stable on their major; `jk update dokka`, `jk update grpc-java` or the tool's
+`group:artifact` selects one, and the rewrite line names the key (`grpc-java  1.70.0 → 1.81.0
+(protobuf.grpc-java.plugin)`). A floating selector in a tool table keeps its text as a dependency's
+does.
+
 The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` → 33.x). Pre-releases
 are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
 manifest keeps its spelling — a catalog one-liner stays a one-liner, a GAV string stays a GAV

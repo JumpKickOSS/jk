@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -154,6 +155,77 @@ class ManifestUpdatesTest {
         assertThat(none.contents()).isEmpty();
     }
 
+    /**
+     * The tool tables move with the dependency tables: an exact {@code [dokka] version}, {@code
+     * [protobuf] version}, a {@code [protobuf.<id>] plugin} and a {@code [generate.<name>] tool} or
+     * {@code unpack} coordinate each go to the newest stable on their major, under the same
+     * selection and major gate, and a floating selector keeps its text.
+     */
+    @Test
+    void tool_table_pins_move_like_dependency_pins(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "tools"
+                version = "1.0.0"
+                java = 25
+
+                [dokka]
+                version = "2.0.0"
+
+                [protobuf]
+                version = "4.30.0" # protoc
+
+                [protobuf.grpc-java]
+                plugin = "io.grpc:protoc-gen-grpc-java:1.70.0"
+
+                [protobuf.floating]
+                plugin = "io.acme:protoc-gen-floating:^1.0"
+
+                [generate.api]
+                tool   = "org.openapitools:openapi-generator-cli:7.10.0"
+                unpack = "io.zipkin.proto3:zipkin-proto3:1.0.0"
+                inputs = ["api/openapi.yaml"]
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "org.jetbrains.dokka", "dokka-cli", "2.0.0", "2.1.0", "3.0.0");
+        published(upstream, "com.google.protobuf", "protoc", "4.30.0", "4.33.1");
+        published(upstream, "io.grpc", "protoc-gen-grpc-java", "1.70.0", "1.81.0");
+        published(upstream, "io.acme", "protoc-gen-floating", "1.0", "1.5");
+        published(upstream, "org.openapitools", "openapi-generator-cli", "7.10.0", "7.11.0");
+        published(upstream, "io.zipkin.proto3", "zipkin-proto3", "1.0.0", "1.0.1");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL);
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.handle(), r -> r.module(), r -> r.from(), r -> r.to())
+                .containsExactlyInAnyOrder(
+                        tuple("dokka.version", "dokka", "org.jetbrains.dokka:dokka-cli", "2.0.0", "2.1.0"),
+                        tuple("protobuf.version", "protobuf", "com.google.protobuf:protoc", "4.30.0", "4.33.1"),
+                        tuple(
+                                "protobuf.grpc-java.plugin",
+                                "grpc-java",
+                                "io.grpc:protoc-gen-grpc-java",
+                                "1.70.0",
+                                "1.81.0"),
+                        tuple("generate.api.tool", "api", "org.openapitools:openapi-generator-cli", "7.10.0", "7.11.0"),
+                        tuple("generate.api.unpack", "api", "io.zipkin.proto3:zipkin-proto3", "1.0.0", "1.0.1"));
+        String text = Objects.requireNonNull(plan.contents().get(project.resolve("jk.toml")));
+        assertThat(text)
+                .contains("[dokka]\nversion = \"2.1.0\"")
+                .contains("version = \"4.33.1\" # protoc")
+                .contains("plugin = \"io.grpc:protoc-gen-grpc-java:1.81.0\"")
+                .contains("plugin = \"io.acme:protoc-gen-floating:^1.0\"")
+                .contains("tool   = \"org.openapitools:openapi-generator-cli:7.11.0\"")
+                .contains("unpack = \"io.zipkin.proto3:zipkin-proto3:1.0.1\"");
+        JkBuildParser.parse(text);
+
+        ManifestUpdates.Plan major = ManifestUpdates.plan(
+                project, http.base(), new ManifestUpdates.Selection(List.of("dokka", "grpc-java"), true));
+        assertThat(major.rewrites())
+                .extracting(r -> r.handle(), r -> r.to())
+                .containsExactlyInAnyOrder(tuple("dokka", "3.0.0"), tuple("grpc-java", "1.81.0"));
+    }
+
     // ---- fixture ---------------------------------------------------------------
 
     private void publish() {
@@ -167,10 +239,14 @@ class ManifestUpdatesTest {
     }
 
     private static void versions(MavenStub upstream, String artifact, String... versions) {
+        published(upstream, "com.acme", artifact, versions);
+    }
+
+    private static void published(MavenStub upstream, String group, String artifact, String... versions) {
         for (String v : versions) {
-            upstream.pom("com.acme", artifact, v, MavenStub.emptyPom("com.acme", artifact, v));
+            upstream.pom(group, artifact, v, MavenStub.emptyPom(group, artifact, v));
         }
-        upstream.metadata("com.acme", artifact, versions);
+        upstream.metadata(group, artifact, versions);
     }
 
     private static void workspace(Path ws) throws IOException {
