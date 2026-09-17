@@ -199,7 +199,13 @@ public final class JUnitLauncher {
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
         // The Java half of the TMPDIR TestEnv sandboxes: @TempDir reads the property, not the
         // environment. Passed in, not read off testEnv — with W>1 it is the worker's own subdir.
-        if (tmpDir != null) flags.add("-Djava.io.tmpdir=" + tmpDir);
+        if (tmpDir != null) {
+            flags.add("-Djava.io.tmpdir=" + tmpDir);
+            // jqwik's failure-replay database, otherwise `.jqwik-database` in the working directory:
+            // with W>1 every worker of the module would write one file at once, and a torn copy ends
+            // discovery with an EOFException. The temp root is already the worker's own.
+            flags.add("-Djqwik.database=" + tmpDir.resolve(".jqwik-database"));
+        }
         // Suite JVMs: no AOT train-on-miss (nested engines / compiler workers); still map caches.
         flags.add("-Djk.aot.train=off");
         // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
