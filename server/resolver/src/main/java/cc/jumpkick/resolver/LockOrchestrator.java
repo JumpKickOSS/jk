@@ -13,6 +13,7 @@ import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -274,7 +275,13 @@ public final class LockOrchestrator {
             };
             MemberPartitions partitions =
                     new MemberPartitions(union, repos, pomBuilder, pinPolicy, featuresRequested, withDefaults);
-            lockfile = partitions.apply(lockfile, members, memberPrefs, solver, observer);
+            ResolveProfile.Phases pass = ResolveProfile.phases();
+            pass.begin(ResolveProfile::phasePartition);
+            try {
+                lockfile = partitions.apply(lockfile, members, memberPrefs, solver, observer);
+            } finally {
+                pass.end();
+            }
         }
         // Said after every leg has run: a refusal Central gives during materialize opens the window
         // as much as one during the solve, and the results name it either way.
