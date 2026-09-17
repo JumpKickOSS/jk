@@ -76,6 +76,49 @@ class TomlScanReadBudgetTest {
                 .isEqualTo("8");
     }
 
+    /**
+     * A lock's head scalars sit in its first lines by construction, and the artifact rows behind
+     * them run to megabytes: a head scan reads to the first {@code [[artifact]]} and remembers
+     * that much, not the whole file.
+     */
+    @Test
+    void a_head_scalar_of_a_long_lock_reads_and_keeps_only_the_head(@TempDir Path dir) throws IOException {
+        StringBuilder lock =
+                new StringBuilder("version = 1\nproject-id = \"abc\"\n\n[jdk]\nsuggested-vendor = \"temurin\"\n\n");
+        for (int i = 0; i < 20_000; i++) {
+            lock.append("[[artifact]]\ncoord = \"g:a:").append(i).append("\"\n\n");
+        }
+        Path file = aged(dir.resolve("jk-lock.toml"), lock.toString());
+
+        assertThat(TomlScan.scanScalarHead(file, "project-id").get("project-id"))
+                .isEqualTo("abc");
+        assertThat(TomlScan.linesRead())
+                .as("a head scalar costs the head, not sixty thousand artifact lines")
+                .isLessThan(20);
+        assertThat(TomlScan.scanScalarHead(file, "jdk.suggested-vendor").get("jdk.suggested-vendor"))
+                .isEqualTo("temurin");
+        assertThat(TomlScan.reads())
+                .as("the head is remembered like a whole file is")
+                .isEqualTo(1);
+
+        assertThat(TomlScan.scan(file, "project-id").get("project-id"))
+                .as("the whole-file scan of the same file still reads it all")
+                .isEqualTo("abc");
+        assertThat(TomlScan.linesRead()).isGreaterThan(20_000);
+    }
+
+    @Test
+    void an_edit_to_the_head_is_still_seen_by_a_head_scan(@TempDir Path dir) throws IOException {
+        Path file = aged(dir.resolve("jk-lock.toml"), "project-id = \"abc\"\n\n[[artifact]]\ncoord = \"g:a:1\"\n");
+        assertThat(TomlScan.scanScalarHead(file, "project-id").get("project-id"))
+                .isEqualTo("abc");
+
+        aged(file, "project-id = \"def\"\n\n[[artifact]]\ncoord = \"g:a:1\"\n");
+
+        assertThat(TomlScan.scanScalarHead(file, "project-id").get("project-id"))
+                .isEqualTo("def");
+    }
+
     @Test
     void an_absent_file_costs_no_read(@TempDir Path dir) {
         assertThat(TomlScan.scan(dir.resolve("nope.toml"), "engine.jobs").hasKey("engine.jobs"))
