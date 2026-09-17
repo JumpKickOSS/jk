@@ -21,21 +21,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A class the Platform's scan could not load is dropped without a word; the runner loads the
- * root's classes once more through the same loader and fails discovery naming each one and why.
- * The loaders here stand in for a framework's: one initializes the class while loading it and its
- * static initializer throws, one hides a supertype so the class fails to link.
+ * A test class the Platform's scan could not load is dropped without a word; the runner loads the
+ * root's classes once more through the same loader and fails discovery naming each test class
+ * that throws and why, while a helper that throws is left where discovery left it. The loaders
+ * here stand in for a framework's: one initializes the class while loading it and its static
+ * initializer throws, one hides a supertype so the class fails to link.
  */
 class DiscoveryFailuresTest {
 
-    private static final String STATIC_INIT = StaticInitFixture.class.getName();
+    private static final String STATIC_INIT = StaticInitTestFixture.class.getName();
+    private static final String STATIC_INIT_HELPER = StaticInitFixture.class.getName();
     private static final String CHILD = MissingBaseFixture.class.getName();
     private static final String BASE = MissingBaseFixtureBase.class.getName();
+    private static final String HELPER = MissingBaseHelperFixture.class.getName();
+    private static final String HELPER_BASE = MissingBaseHelperFixtureBase.class.getName();
 
     @Test
-    void a_class_whose_static_initializer_throws_on_load_fails_discovery_naming_it_and_the_cause(@TempDir Path tmp)
+    void a_test_class_whose_static_initializer_throws_on_load_fails_discovery_naming_it_and_the_cause(@TempDir Path tmp)
             throws Exception {
-        Path root = classpathRootOf(tmp, StaticInitFixture.class);
+        Path root = classpathRootOf(tmp, StaticInitTestFixture.class);
         var events = new Recorder();
         Run run = listWith(new InitializingLoader(getClass().getClassLoader(), STATIC_INIT), root, null, events);
 
@@ -55,7 +59,32 @@ class DiscoveryFailuresTest {
     }
 
     @Test
-    void a_class_whose_supertype_is_missing_fails_discovery_with_the_linkage_error(@TempDir Path tmp) throws Exception {
+    void a_helper_whose_static_initializer_throws_on_load_is_not_a_failed_run(@TempDir Path tmp) throws Exception {
+        Path root = classpathRootOf(tmp, StaticInitFixture.class, TagEmptiedFixture.class);
+        var events = new Recorder();
+        Run run = listWith(new InitializingLoader(getClass().getClassLoader(), STATIC_INIT_HELPER), root, null, events);
+
+        assertThat(run.exit()).isZero();
+        assertThat(run.err()).isEmpty();
+        assertThat(events.discovered()).containsExactly(TagEmptiedFixture.class.getName());
+    }
+
+    @Test
+    void a_helper_whose_supertype_is_missing_is_not_a_failed_run(@TempDir Path tmp) throws Exception {
+        Path root = classpathRootOf(tmp, MissingBaseHelperFixture.class, TagEmptiedFixture.class);
+        var events = new Recorder();
+        Run run =
+                listWith(new HidingLoader(getClass().getClassLoader(), root, HELPER, HELPER_BASE), root, null, events);
+
+        assertThat(run.exit()).isZero();
+        assertThat(run.err()).isEmpty();
+        assertThat(events.discovered()).containsExactly(TagEmptiedFixture.class.getName());
+    }
+
+    /** The child declares no test of its own; the tests it inherits make it a test class. */
+    @Test
+    void a_test_class_whose_supertype_is_missing_fails_discovery_with_the_linkage_error(@TempDir Path tmp)
+            throws Exception {
         Path root = classpathRootOf(tmp, MissingBaseFixture.class);
         var events = new Recorder();
         Run run = listWith(new HidingLoader(getClass().getClassLoader(), root, CHILD, BASE), root, null, events);
