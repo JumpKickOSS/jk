@@ -89,6 +89,38 @@ class PomImporterTest {
     }
 
     /**
+     * Two dependencies sharing an artifactId in one scope take the handle and its numbered twin;
+     * the renamed edge is the same edge, {@code optional} and all.
+     */
+    @Test
+    void a_renamed_colliding_handle_keeps_optional(@TempDir Path root) throws Exception {
+        Path pom = root.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>starter</artifactId>
+                  <version>1.0.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>driver</artifactId><version>1.0</version>
+                    </dependency>
+                    <dependency>
+                      <groupId>com.bar</groupId><artifactId>driver</artifactId><version>2.0</version>
+                      <optional>true</optional>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(root).importFrom(pom);
+
+        assertThat(result.jkBuild().dependencies().of(Scope.MAIN))
+                .extracting(Dependency::library, Dependency::module, Dependency::optional)
+                .containsExactly(tuple("driver", "com.foo:driver", false), tuple("driver-2", "com.bar:driver", true));
+    }
+
+    /**
      * A POM's direct version is the version Maven built with, whatever a transitive asked for; the
      * imported manifest says so, and so does the workspace root that owns the lock.
      */

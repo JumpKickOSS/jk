@@ -588,13 +588,7 @@ public final class PomImporter {
             for (Dependency d : e.getValue()) {
                 String handle = d.library();
                 for (int n = 2; !seen.add(handle); n++) handle = d.library() + "-" + n;
-                deps.add(
-                        handle.equals(d.library())
-                                ? d
-                                : Dependency.of(handle, d.module(), d.version())
-                                        .withKind(d.kind())
-                                        .withClassifier(d.classifier())
-                                        .withOptional(true));
+                deps.add(d.withLibrary(handle).withOptional(true));
             }
         }
     }
@@ -684,6 +678,7 @@ public final class PomImporter {
      * The manifest key (dep {@code library} handle) must be unique per scope section — the renderer
      * keys each section on it, so a collision silently drops an edge. Maven allows same-artifactId
      * deps in one scope (different groups); disambiguate deterministically in declaration order.
+     * The renamed edge keeps every other field — {@code optional}, kind, classifier, exclusions.
      */
     static void uniquifyHandles(Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Map.Entry<Scope, List<Dependency>> e : byScope.entrySet()) {
@@ -706,11 +701,7 @@ public final class PomImporter {
                         + " was written as `"
                         + candidate
                         + "`.");
-                deps.set(
-                        i,
-                        Dependency.of(candidate, d.module(), d.version())
-                                .withKind(d.kind())
-                                .withClassifier(d.classifier()));
+                deps.set(i, d.withLibrary(candidate));
             }
         }
     }

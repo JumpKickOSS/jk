@@ -59,13 +59,25 @@ class AddRemoveParseTest {
     }
 
     @Test
+    void parsedDep_classifier_defaults_the_handle_to_name_classifier() {
+        var p = AddCommand.ParsedDep.parse("org.lwjgl:lwjgl:3.3.6", null, null, null, null, "natives-linux");
+        assertThat(p.library()).isEqualTo("lwjgl-natives-linux");
+        assertThat(p.name()).isEqualTo("lwjgl");
+        assertThat(p.classifier()).isEqualTo("natives-linux");
+
+        var named = AddCommand.ParsedDep.parse("org.lwjgl:lwjgl:3.3.6", "gl-linux", null, null, null, "natives-linux");
+        assertThat(named.library()).isEqualTo("gl-linux");
+        assertThat(named.classifier()).isEqualTo("natives-linux");
+    }
+
+    @Test
     void parsedDep_at_version_preserves_selectors() {
-        var p = AddCommand.ParsedDep.parse("jackson3-core@=3.1.0", null, null, null, null);
+        var p = AddCommand.ParsedDep.parse("jackson3-core@=3.1.0", null, null, null, null, null);
         assertThat(p.library()).isEqualTo("jackson3-core");
         assertThat(p.versionLiteral()).isEqualTo("=3.1.0");
         assertThat(p.group()).isNotBlank();
 
-        var caret = AddCommand.ParsedDep.parse("jackson3-core@^3.1", null, null, null, null);
+        var caret = AddCommand.ParsedDep.parse("jackson3-core@^3.1", null, null, null, null, null);
         assertThat(caret.versionLiteral()).isEqualTo("^3.1");
     }
 
@@ -73,32 +85,32 @@ class AddRemoveParseTest {
     void parsedDep_group_artifact_forms() {
         // No version means "pin the newest stable at write time": the literal is null, and
         // nothing downstream writes `latest`.
-        var unversioned = AddCommand.ParsedDep.parse("com.foo:bar", null, null, null, null);
+        var unversioned = AddCommand.ParsedDep.parse("com.foo:bar", null, null, null, null, null);
         assertThat(unversioned.group()).isEqualTo("com.foo");
         assertThat(unversioned.name()).isEqualTo("bar");
         assertThat(unversioned.versionLiteral()).isNull();
 
-        var emptyVer = AddCommand.ParsedDep.parse("com.foo:bar:", null, null, null, null);
+        var emptyVer = AddCommand.ParsedDep.parse("com.foo:bar:", null, null, null, null, null);
         assertThat(emptyVer.versionLiteral()).isNull();
 
-        var atLatest = AddCommand.ParsedDep.parse("com.foo:bar@latest", null, null, null, null);
+        var atLatest = AddCommand.ParsedDep.parse("com.foo:bar@latest", null, null, null, null, null);
         assertThat(atLatest.versionLiteral()).isNull();
 
-        var pinned = AddCommand.ParsedDep.parse("com.foo:bar:1.2.3", null, null, null, null);
+        var pinned = AddCommand.ParsedDep.parse("com.foo:bar:1.2.3", null, null, null, null, null);
         assertThat(pinned.versionLiteral()).isEqualTo("1.2.3");
 
-        var floated = AddCommand.ParsedDep.parse("com.foo:bar@^1.2", null, null, null, null);
+        var floated = AddCommand.ParsedDep.parse("com.foo:bar@^1.2", null, null, null, null, null);
         assertThat(floated.versionLiteral()).isEqualTo("^1.2");
     }
 
     @Test
     void parsedDep_catalog_name_without_version_pins_at_write_time() {
-        var bare = AddCommand.ParsedDep.parse("jackson3-core", null, null, null, null);
+        var bare = AddCommand.ParsedDep.parse("jackson3-core", null, null, null, null, null);
         assertThat(bare.group()).isEqualTo("tools.jackson.core");
         assertThat(bare.versionLiteral()).isNull();
-        var atLatest = AddCommand.ParsedDep.parse("jackson3-core@latest", null, null, null, null);
+        var atLatest = AddCommand.ParsedDep.parse("jackson3-core@latest", null, null, null, null, null);
         assertThat(atLatest.versionLiteral()).isNull();
-        var ver = AddCommand.ParsedDep.parse("jackson3-core", null, null, null, "3.1.0");
+        var ver = AddCommand.ParsedDep.parse("jackson3-core", null, null, null, "3.1.0", null);
         assertThat(ver.versionLiteral()).isEqualTo("3.1.0");
     }
 

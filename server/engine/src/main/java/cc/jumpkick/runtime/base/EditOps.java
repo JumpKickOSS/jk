@@ -20,7 +20,8 @@ import org.jspecify.annotations.Nullable;
  * Engine-hosted {@code jk.toml} edits via {@link JkBuildEditor} (client never parses TOML). Ops:
  * add/remove dependency, add-file-dependency, add/register/remove workspace module.
  *
- * <p>{@code add-dependency} writes the selector it is handed and reports it in
+ * <p>{@code add-dependency} takes scope, library, group, artifact, version and an optional sixth
+ * classifier (blank for the plain jar); it writes the selector it is handed and reports it in
  * {@link Result#detail}; the verb resolves {@code latest} to a number before calling here.
  */
 public final class EditOps {
@@ -56,6 +57,7 @@ public final class EditOps {
                         args.get(2),
                         args.get(3),
                         version,
+                        args.size() > 5 && !args.get(5).isBlank() ? args.get(5) : null,
                         LibraryCatalog.forProject(
                                 Objects.requireNonNull(file.toAbsolutePath().getParent(), "manifest directory")));
                 detail = version;

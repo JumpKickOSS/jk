@@ -124,6 +124,29 @@ class JkBuildEditorTest {
     }
 
     @Test
+    void add_with_classifier_writes_an_inline_table_under_the_classified_handle() {
+        String result = JkBuildEditor.addDependency(
+                BASE,
+                Scope.MAIN,
+                "lwjgl-natives-linux",
+                "org.lwjgl",
+                "lwjgl",
+                "3.3.6",
+                "natives-linux",
+                LibraryCatalog.bundled());
+
+        assertThat(result)
+                .contains("lwjgl-natives-linux = { group = \"org.lwjgl\", name = \"lwjgl\", version = \"3.3.6\","
+                        + " classifier = \"natives-linux\" }");
+
+        Dependency d = JkBuildParser.parse(result).dependencies().of(Scope.MAIN).getFirst();
+        assertThat(d.library()).isEqualTo("lwjgl-natives-linux");
+        assertThat(d.module()).isEqualTo("org.lwjgl:lwjgl");
+        assertThat(d.classifier()).isEqualTo("natives-linux");
+        assertThat(d.packageKey()).isEqualTo("org.lwjgl:lwjgl:jar:natives-linux");
+    }
+
+    @Test
     void add_to_existing_scope_appends_under_header() {
         String start = BASE + """
 

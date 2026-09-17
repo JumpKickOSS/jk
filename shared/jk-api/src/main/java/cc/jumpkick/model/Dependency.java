@@ -304,6 +304,26 @@ public record Dependency(
                 impliedBy);
     }
 
+    /** The same edge under another manifest handle — what a collision rename keeps everything else of. */
+    public Dependency withLibrary(String library) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions,
+                impliedBy);
+    }
+
     public Dependency withOptional(boolean optional) {
         return new Dependency(
                 library,
