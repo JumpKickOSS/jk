@@ -271,6 +271,16 @@ public final class SpecWriter {
         return this;
     }
 
+    /** One dependency sibling's directory under a declared {@code sibling:<key>} input. */
+    public SpecWriter siblingFiles(String key, Path dir) {
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, PluginProtocol.SIBLING_FILES)
+                .string(PluginProtocol.KEY, key)
+                .string(PluginProtocol.PATH, dir.toAbsolutePath().toString())
+                .finish());
+        return this;
+    }
+
     /** A resolved secret — package/publish specs only; never echoed by plugins. */
     public SpecWriter secret(String key, String value) {
         lines.add("{\"t\":\"secret\",\"key\":" + Jsonl.quote(key) + ",\"value\":" + Jsonl.quote(value) + "}");

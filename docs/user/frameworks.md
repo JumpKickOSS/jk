@@ -161,11 +161,13 @@ each entry's `--<id>_out` into one generated directory that joins the module's s
 `service` compiles against its gRPC stubs with no source root to declare. protoc and every
 plugin executable are fetched from the repositories for the host's OS and architecture and pinned
 in `jk-lock.toml`; an entry's `plugin` is a `group:artifact:version` and fewer segments fail the
-parse naming the entry. A `.proto` a dependency jar carries — `google/protobuf/*.proto` in
+parse naming the entry. protoc's include path is the module's `src`, then the `src` of every
+workspace sibling the module depends on that has a `[protobuf]` table — a proto imports a sibling's
+by bare name, as it does under Maven where the sibling's jar carries its protos — then the protos
+the runtime-closure jars carry, then those of the compile-only jars: `google/protobuf/*.proto` in
 protobuf-java, `google/rpc/status.proto` in proto-google-common-protos, a `provided` contract
-library's own — is importable, as it is under Maven: the jars of the runtime closure and of the
-compile classpath are both searched. The step re-runs when a proto, the table, a tool or either
-classpath changes.
+library's own are importable, as they are under Maven. The step re-runs when a proto of the module
+or of one of those siblings, the table, a tool or either classpath changes.
 `jk import` writes the table and its entries from a POM's `protobuf-maven-plugin`
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 

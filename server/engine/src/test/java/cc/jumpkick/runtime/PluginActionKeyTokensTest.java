@@ -145,7 +145,8 @@ class PluginActionKeyTokensTest {
                 entries,
                 new PluginConfig("fake", Map.of()),
                 BuildLayout.of(tmp, project),
-                tmp);
+                tmp,
+                Map.of());
         return PlannerPlugin.declaredInputTokens(List.of(In.runtimeEntries().wireName()), src);
     }
 
@@ -309,7 +310,46 @@ class PluginActionKeyTokensTest {
                 List.of(entry),
                 new PluginConfig("fake", Map.of("enabled", Boolean.TRUE)),
                 BuildLayout.of(tmp, project),
-                tmp);
+                tmp,
+                Map.of("src", List.of(Files.createDirectories(tmp.resolve("sibling/proto")))));
+    }
+
+    /**
+     * A sibling's sources reach a codegen body as include roots, so their content and their order
+     * are in the key: a changed {@code tbmsg.proto} in the sibling re-runs the consumer's protoc.
+     */
+    @Test
+    void a_sibling_files_token_moves_with_the_siblings_content_and_order(@TempDir Path tmp) throws Exception {
+        JkBuild project = JkBuildParser.parse(TOML);
+        Path message = Files.createDirectories(tmp.resolve("message/proto"));
+        Path data = Files.createDirectories(tmp.resolve("data/proto"));
+        Files.writeString(message.resolve("tbmsg.proto"), "syntax = \"proto3\";");
+        String input = In.siblingProjectFiles("src").wireName();
+
+        List<String> before = PlannerPlugin.declaredInputTokens(List.of(input), sources(tmp, project, message, data));
+        Files.writeString(message.resolve("tbmsg.proto"), "syntax = \"proto3\"; message TbMsg {}");
+        List<String> changed = PlannerPlugin.declaredInputTokens(List.of(input), sources(tmp, project, message, data));
+        List<String> reordered =
+                PlannerPlugin.declaredInputTokens(List.of(input), sources(tmp, project, data, message));
+
+        assertThat(before).singleElement().asString().startsWith("sibling:src:");
+        assertThat(changed).isNotEqualTo(before);
+        assertThat(reordered).isNotEqualTo(changed);
+        assertThat(PlannerPlugin.declaredInputTokens(List.of(input), sources(tmp, project)))
+                .as("no sibling declares the table")
+                .containsExactly("sibling:src:none");
+    }
+
+    private static PlannerPlugin.InputSources sources(Path tmp, JkBuild project, Path... siblingDirs) throws Exception {
+        return new PlannerPlugin.InputSources(
+                Files.createDirectories(tmp.resolve("classes")),
+                List.of(),
+                List.of(),
+                List.of(),
+                new PluginConfig("protobuf", Map.of()),
+                BuildLayout.of(tmp, project),
+                tmp,
+                Map.of("src", List.of(siblingDirs)));
     }
 
     private static String wire(In.Kind kind) {
@@ -318,6 +358,7 @@ class PluginActionKeyTokensTest {
                 new In(kind, null).wireName();
             case STEP_OUTPUT -> In.stepOutput("aot").wireName();
             case PROJECT_FILES -> In.projectFiles("src/main/res").wireName();
+            case SIBLING_PROJECT_FILES -> In.siblingProjectFiles("src").wireName();
         };
     }
 }

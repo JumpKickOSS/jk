@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves workspace-sibling dependencies (and tests kinds / fixtures) for one module's build.
@@ -114,26 +115,13 @@ public final class WorkspaceClasspath {
      *     {@code MAIN}+{@code TEST} for tests)
      */
     public static Result resolve(Path projectDir, JkBuild project, Set<Scope> scopes) throws IOException {
-        // Locate the workspace root — this project is either the root itself or a member.
-        Path root;
-        JkBuild rootManifest;
-        if (project.isWorkspaceRoot()) {
-            root = projectDir;
-            rootManifest = project;
-        } else {
-            var rootOpt = WorkspaceLocator.findRoot(projectDir);
-            if (rootOpt.isEmpty()) {
-                return new Result(List.of(), List.of());
-            }
-            root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(root));
-            if (!rootManifest.isWorkspaceRoot()) {
-                return new Result(List.of(), List.of());
-            }
-        }
+        Root workspace = locateRoot(projectDir, project);
+        if (workspace == null) return new Result(List.of(), List.of());
 
-        Siblings sib =
-                indexSiblings(root, rootManifest, projectDir.toAbsolutePath().normalize());
+        Siblings sib = indexSiblings(
+                workspace.dir(),
+                workspace.manifest(),
+                projectDir.toAbsolutePath().normalize());
         Map<String, Path> siblingDirByModule = sib.dirByModule();
         Map<String, Path> siblingJarByModule = sib.jarByModule();
         Map<String, Path> siblingClassesByModule = sib.classesByModule();
@@ -225,6 +213,42 @@ public final class WorkspaceClasspath {
         }
         return new Result(
                 jars, missing, siblingLocks, closureJars, List.copyOf(visited), closureClasses, missingClasses);
+    }
+
+    /**
+     * The workspace siblings {@code projectDir} depends on through {@code scopes}, transitively
+     * over {@link #SIBLING_MODULE_SCOPES}, each as its directory and manifest in discovery order —
+     * the same closure {@link #resolve} puts on the classpath, for a caller that reads the
+     * siblings' sources or tables rather than their outputs. Empty for a module outside a
+     * workspace.
+     */
+    public static Map<Path, JkBuild> closureSiblings(Path projectDir, JkBuild project, Set<Scope> scopes)
+            throws IOException {
+        Root workspace = locateRoot(projectDir, project);
+        if (workspace == null) return Map.of();
+        Siblings sib = indexSiblings(
+                workspace.dir(),
+                workspace.manifest(),
+                projectDir.toAbsolutePath().normalize());
+        Map<Path, JkBuild> out = new LinkedHashMap<>();
+        for (String coord : workspaceClosure(project, scopes, sib).visited()) {
+            Path dir = sib.dirByModule().get(coord);
+            JkBuild manifest = sib.manifestByCoord().get(coord);
+            if (dir != null && manifest != null) out.put(dir, manifest);
+        }
+        return out;
+    }
+
+    /** The workspace root and its manifest. */
+    private record Root(Path dir, JkBuild manifest) {}
+
+    /** The workspace {@code projectDir} belongs to — itself when it is the root — or null outside one. */
+    private static @Nullable Root locateRoot(Path projectDir, JkBuild project) throws IOException {
+        if (project.isWorkspaceRoot()) return new Root(projectDir, project);
+        var rootOpt = WorkspaceLocator.findRoot(projectDir);
+        if (rootOpt.isEmpty()) return null;
+        JkBuild rootManifest = JkBuildParser.parse(ManifestPaths.manifestIn(rootOpt.get()));
+        return rootManifest.isWorkspaceRoot() ? new Root(rootOpt.get(), rootManifest) : null;
     }
 
     /** Every other build unit in the workspace, by {@code group:name} coord, with its layout paths. */

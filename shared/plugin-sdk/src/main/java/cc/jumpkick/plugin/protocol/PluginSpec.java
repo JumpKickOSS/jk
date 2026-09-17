@@ -44,6 +44,7 @@ public final class PluginSpec {
     private final List<CompilerPlugin> compilerPlugins = new ArrayList<>();
     private final Map<String, Path> stepOutputs = new LinkedHashMap<>();
     private final Map<String, Path> extras = new LinkedHashMap<>();
+    private final Map<String, List<Path>> siblingFiles = new LinkedHashMap<>();
     private final Map<Path, Path> classpathAnalyses = new LinkedHashMap<>();
     private final Map<String, String> secrets = new LinkedHashMap<>();
     private final List<String> commandArgs = new ArrayList<>();
@@ -145,6 +146,10 @@ public final class PluginSpec {
                             requiredString(line, PluginProtocol.NAME), requiredPath(line, PluginProtocol.DIR));
                 case PluginProtocol.EXTRA ->
                     s.extras.put(requiredString(line, PluginProtocol.NAME), requiredPath(line, PluginProtocol.PATH));
+                case PluginProtocol.SIBLING_FILES ->
+                    s.siblingFiles
+                            .computeIfAbsent(requiredString(line, PluginProtocol.KEY), k -> new ArrayList<>())
+                            .add(requiredPath(line, PluginProtocol.PATH));
                 case PluginProtocol.SECRET ->
                     s.secrets.put(requiredString(line, PluginProtocol.KEY), requiredString(line, PluginProtocol.VALUE));
                 case PluginProtocol.COMMAND_ARGS -> s.commandArgs.addAll(Jsonl.strArray(line, PluginProtocol.VALUES));
@@ -289,6 +294,11 @@ public final class PluginSpec {
 
     public Optional<Path> extra(String name) {
         return Optional.ofNullable(extras.get(name));
+    }
+
+    /** The dependency siblings' directories under a declared {@code sibling:<key>} input, in dependency order. */
+    public List<Path> siblingFiles(String key) {
+        return List.copyOf(siblingFiles.getOrDefault(key, List.of()));
     }
 
     public Optional<String> secret(String key) {

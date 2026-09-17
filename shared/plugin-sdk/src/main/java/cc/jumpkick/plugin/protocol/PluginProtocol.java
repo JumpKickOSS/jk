@@ -64,6 +64,8 @@ public final class PluginProtocol {
     public static final String SOURCE = "source"; // a source file (compile)
     public static final String STEP_OUTPUT = "step-output";
     public static final String EXTRA = "extra";
+    public static final String SIBLING_FILES =
+            "sibling-files"; // {key, path}: one dependency sibling's dir under a config key
     public static final String SECRET = "secret";
     public static final String COMMAND_ARGS = "command-args";
     public static final String ARG = "arg"; // raw compiler-arg passthrough
