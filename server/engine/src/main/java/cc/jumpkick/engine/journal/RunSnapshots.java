@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -14,7 +13,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -178,7 +176,7 @@ public final class RunSnapshots {
         for (String name : ROOT_FILES) files.add(root.resolve(name));
         Path scripts = root.resolve(SCRIPTS_DIR);
         if (Files.isDirectory(scripts)) dirs.add(scripts);
-        List<Path> members = memberDirs(root);
+        List<Path> members = WorkspaceModules.memberDirs(root);
         addExisting(dirs, ModuleLayout.fingerprintDirs(root, !members.isEmpty()));
         for (Path member : members) {
             files.add(ManifestPaths.manifestIn(member));
@@ -190,34 +188,6 @@ public final class RunSnapshots {
     private static void addExisting(LinkedHashSet<Path> dirs, List<Path> candidates) {
         for (Path dir : candidates) {
             if (Files.isDirectory(dir)) dirs.add(dir);
-        }
-    }
-
-    /**
-     * The member directories the root manifest declares under {@code [workspace] modules}, globs
-     * expanded; empty for a standalone project. A key scan of the manifest, not the full parser:
-     * the list is literal text, the scan costs milliseconds where the parser's first read of a
-     * workspace costs hundreds, and a manifest the parser would reject still names its members.
-     */
-    static List<Path> memberDirs(Path root) {
-        Path manifest = ManifestPaths.manifestIn(root);
-        if (!Files.isRegularFile(manifest)) return List.of();
-        List<String> rels = TomlScan.scan(manifest, "workspace.modules").stringArray("workspace.modules");
-        List<Path> out = new ArrayList<>();
-        for (String rel : expandQuietly(root, rels)) {
-            if (rel != null && !rel.isBlank()) out.add(root.resolve(rel).normalize());
-        }
-        return out;
-    }
-
-    /** Globs expanded; a pattern that matches nothing scopes no member rather than failing the snapshot. */
-    private static List<String> expandQuietly(Path root, List<String> rels) {
-        try {
-            return WorkspaceModules.expand(root, rels);
-        } catch (RuntimeException e) {
-            return rels.stream()
-                    .filter(r -> r != null && !WorkspaceModules.isGlob(r))
-                    .toList();
         }
     }
 

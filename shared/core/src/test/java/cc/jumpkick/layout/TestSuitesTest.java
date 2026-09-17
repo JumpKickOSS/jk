@@ -21,6 +21,21 @@ class TestSuitesTest {
         assertThat(TestSuites.discover(tmp, true)).containsExactly("test", "integration");
     }
 
+    /** A directory the root's {@code [workspace] modules} lists is a member, never a suite of the root. */
+    @Test
+    void a_workspace_member_with_sources_is_not_a_suite_of_the_root(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), "[workspace]\nmodules = [\"engine\"]\n");
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/FooTest.java"), "class FooTest {}");
+        Files.createDirectories(tmp.resolve("engine/src"));
+        Files.writeString(tmp.resolve("engine/jk.toml"), "name = \"engine\"\n");
+        Files.writeString(tmp.resolve("engine/src/E.java"), "class E {}");
+        Files.createDirectories(tmp.resolve("integration/src"));
+        Files.writeString(tmp.resolve("integration/src/SlowIT.java"), "class SlowIT {}");
+
+        assertThat(TestSuites.discover(tmp, true)).containsExactly("test", "integration");
+    }
+
     @Test
     void collect_only_selected_suite(@TempDir Path tmp) throws Exception {
         Files.createDirectories(tmp.resolve("test/src"));
