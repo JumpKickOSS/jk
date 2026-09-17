@@ -8,12 +8,15 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -307,5 +310,140 @@ class CentralMirrorTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    // ---- a Cloudflare block: Central's other way of refusing a host ---------------
+
+    /**
+     * Central fronts its edge with Cloudflare, and a host it judges abusive is answered 403 with
+     * {@code Server: cloudflare} on every request while curl from the next machine gets 200. A 403
+     * without those headers is a plain permission answer and is handed back as one.
+     */
+    @Test
+    void a_central_403_from_cloudflare_is_reissued_against_the_mirror_and_the_note_names_the_block(@TempDir Path dir)
+            throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/maven2/", ex -> {
+            hits.add("central");
+            byte[] b = "This IP has been blocked".getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().set("Server", "cloudflare");
+            ex.getResponseHeaders().set("cf-ray", "a3c709d5db0ea68c-MIA");
+            ex.sendResponseHeaders(403, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        server.createContext("/mirror/", ex -> {
+            hits.add("mirror");
+            byte[] b = "<metadata/>".getBytes(StandardCharsets.UTF_8);
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1)},
+                    m);
+
+            var response = http.get(
+                    URI.create("http://127.0.0.1:" + port
+                            + "/maven2/org/junit/platform/junit-platform-launcher/maven-metadata.xml"),
+                    Map.of());
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(hits).containsExactly("central", "mirror");
+            assertThat(m.active()).isTrue();
+            assertThat(m.note()).contains("Maven Central is blocking this host (Cloudflare); using the mirror for 4 h");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void a_403_without_cloudflares_headers_is_a_plain_answer_and_opens_no_window(@TempDir Path dir) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/maven2/", ex -> {
+            ex.sendResponseHeaders(403, -1);
+            ex.close();
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1)},
+                    m);
+
+            assertThat(http.get(URI.create("http://127.0.0.1:" + port + "/maven2/a/b/maven-metadata.xml"), Map.of())
+                            .statusCode())
+                    .isEqualTo(403);
+            assertThat(m.active()).isFalse();
+            assertThat(m.note()).isEmpty();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void the_block_is_recognised_by_either_cloudflare_header() {
+        assertThat(CentralMirror.isCloudflareBlock(403, headers("Server", "cloudflare")))
+                .isTrue();
+        assertThat(CentralMirror.isCloudflareBlock(403, headers("server", "Cloudflare")))
+                .isTrue();
+        assertThat(CentralMirror.isCloudflareBlock(403, headers("cf-mitigated", "challenge")))
+                .isTrue();
+        assertThat(CentralMirror.isCloudflareBlock(403, headers("Server", "nginx")))
+                .isFalse();
+        assertThat(CentralMirror.isCloudflareBlock(403, headers())).isFalse();
+        // Cloudflare in front of a healthy origin passes its header through on every answer.
+        assertThat(CentralMirror.isCloudflareBlock(200, headers("Server", "cloudflare")))
+                .isFalse();
+        assertThat(CentralMirror.isCloudflareBlock(429, headers("Server", "cloudflare")))
+                .isFalse();
+    }
+
+    @Test
+    void the_note_names_the_cause_that_opened_the_window(@TempDir Path dir) throws Exception {
+        CentralMirror m = mirror(dir);
+        assertThat(m.note()).isEmpty();
+
+        m.noteRateLimited();
+        assertThat(m.note()).contains("Maven Central is rate-limiting this host (HTTP 429); using the mirror for 4 h");
+
+        m.noteBlocked();
+        assertThat(m.note()).contains("Maven Central is blocking this host (Cloudflare); using the mirror for 4 h");
+
+        // The window is armed by hand with an empty file: the rate-limit wording is the default.
+        Files.writeString(m.stampFile(), "");
+        assertThat(m.note()).hasValueSatisfying(n -> assertThat(n).contains("rate-limiting this host (HTTP 429)"));
+    }
+
+    @Test
+    void a_block_extends_a_window_a_rate_limit_opened(@TempDir Path dir) throws Exception {
+        CentralMirror m = mirror(dir);
+        m.noteRateLimited();
+        Files.setLastModifiedTime(m.stampFile(), FileTime.from(Instant.now().minus(Duration.ofHours(3))));
+        Instant before = m.activeUntil();
+
+        m.noteBlocked();
+
+        assertThat(m.activeUntil()).isAfter(before);
+    }
+
+    private static HttpHeaders headers(String... nameValue) {
+        var map = new LinkedHashMap<String, List<String>>();
+        for (int i = 0; i < nameValue.length; i += 2) map.put(nameValue[i], List.of(nameValue[i + 1]));
+        return HttpHeaders.of(map, (a, b) -> true);
     }
 }

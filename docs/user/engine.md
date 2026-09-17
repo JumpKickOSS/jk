@@ -137,7 +137,9 @@ repository asked for one POM, catalog or artifact, during the solver's warm-up a
 during materialize — takes a leg slot of its host before it is handed to the io pool: four
 per request permit of that host, so a repository that answers slowly queues at most that
 many legs and holds back only the legs bound for it. Per host, six requests run at once
-(twenty on the Central mirror).
+(twenty on the Central mirror, which also takes every Central-bound request for four hours after
+Central answers a 429 or a Cloudflare 403 — see
+[Repositories](repositories.md#when-central-refuses-this-host)).
 
 ### Log
 

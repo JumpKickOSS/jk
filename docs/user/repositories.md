@@ -57,6 +57,32 @@ between public repositories, not a confinement: Google answers alone when it has
 coordinate, and a miss there is asked of the other remotes. Declared `groups` on Google are
 **exclusive** bindings on top of the routed defaults.
 
+### When Central refuses this host
+
+Maven Central refuses a host two ways, and both are sticky for hours: Sonatype's per-IP quota
+answers HTTP 429, and Cloudflare, which fronts Central's edge, blocks a host it judges abusive
+with HTTP 403 carrying `Server: cloudflare` (curl from the next machine still gets 200). Either
+answer on a Central request opens a four-hour **mirror window**: the refused request is reissued
+against Google's Central mirror (`maven-central.storage-download.googleapis.com/maven2`) in the
+same call, and every Central-bound request for the rest of the window — POMs, `maven-metadata.xml`,
+plugin workers' closures — goes there without asking Central first. Artifact bytes prefer the
+mirror at all times, refused or not: a locked artifact is pinned by its sha256, so where the
+bytes came from does not matter, and the mirror tolerates far more concurrency than Sonatype.
+
+The window is a transport fact, not a repository: the lock records `central` at Central's own URL
+and is byte-identical to one written directly. The results say what happened, once per lock,
+under **Lock notes**:
+
+```
+Maven Central is blocking this host (Cloudflare); using the mirror for 4 h
+Maven Central is rate-limiting this host (HTTP 429); using the mirror for 4 h
+```
+
+The window lives in `~/.jk/cache/central-rate-limited.stamp`, whose age is the clock, so it
+survives `jk engine stop`. Delete the file to ask Central again now; `touch` it to open the
+window by hand. `JK_CENTRAL_MIRROR=off` keeps asking Central whatever it answers. A 403 without
+Cloudflare's headers is a permission answer and is reported as one.
+
 ## Exclusive groups (your internals)
 
 When you declare an **internal** repository next to a public one, bind *your* Maven

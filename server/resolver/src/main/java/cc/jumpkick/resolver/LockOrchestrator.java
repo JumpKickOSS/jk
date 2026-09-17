@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.LockTimings;
+import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -275,6 +276,9 @@ public final class LockOrchestrator {
                     new MemberPartitions(union, repos, pomBuilder, pinPolicy, featuresRequested, withDefaults);
             lockfile = partitions.apply(lockfile, members, memberPrefs, solver, observer);
         }
+        // Said after every leg has run: a refusal Central gives during materialize opens the window
+        // as much as one during the solve, and the results name it either way.
+        CentralMirror.standard().note().ifPresent(observer::onNote);
         progress.finished(lockfile.artifacts().size());
         return lockfile;
     }
