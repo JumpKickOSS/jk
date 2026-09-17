@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -366,5 +368,53 @@ class GlobalConfigTest {
         assertThat(GlobalConfig.network(write(dir, "[network]\nproxy = 3128\n")))
                 .as("a wrong type is unset, never a failed build")
                 .isEqualTo(NetworkConfig.EMPTY);
+    }
+
+    @Test
+    void the_network_table_is_read_once_per_version_of_the_file(@TempDir Path dir) throws IOException {
+        Path file = write(dir, "[network]\nproxy = \"http://proxy.corp:3128\"\n");
+
+        NetworkConfig first = GlobalConfig.network(file);
+        assertThat(GlobalConfig.network(file))
+                .as("an unchanged file is answered from the memo, not parsed again")
+                .isSameAs(first);
+
+        Files.writeString(file, "[network]\nproxy = \"http://other-proxy.corp:3128\"\n");
+        assertThat(GlobalConfig.network(file).proxy())
+                .as("off a request, an edit is seen by the next ask")
+                .isEqualTo("http://other-proxy.corp:3128");
+    }
+
+    @Test
+    void within_one_request_the_network_table_is_what_it_was_when_the_request_began(@TempDir Path dir)
+            throws IOException {
+        Path file = write(dir, "[network]\nproxy = \"http://proxy.corp:3128\"\n");
+
+        inRequest(() -> {
+            assertThat(GlobalConfig.network(file).proxy()).isEqualTo("http://proxy.corp:3128");
+            try {
+                Files.writeString(file, "[network]\nproxy = \"http://other-proxy.corp:3128\"\n");
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            assertThat(GlobalConfig.network(file).proxy())
+                    .as("the proxy selector asks per HTTP request; one request reads the file once")
+                    .isEqualTo("http://proxy.corp:3128");
+        });
+        assertThat(GlobalConfig.network(file).proxy())
+                .as("the next request sees the edit")
+                .isEqualTo("http://other-proxy.corp:3128");
+    }
+
+    /** Run {@code body} the way a real request runs: with an {@link IoLedger} opened around it. */
+    private static void inRequest(Runnable body) {
+        IoLedger ledger = new IoLedger();
+        IoLedger.open(ledger);
+        try {
+            SessionContext.runWhere(Session.defaults().withIo(ledger), body);
+        } finally {
+            IoLedger.close();
+            RequestScope.release();
+        }
     }
 }

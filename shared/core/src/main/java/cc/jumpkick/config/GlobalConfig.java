@@ -199,6 +199,7 @@ public final class GlobalConfig {
     static void clearCache() {
         CONFIG_CACHE.clear();
         SCAN_CACHE.clear();
+        NETWORK_CACHE.clear();
         resolvedNerdFont = null;
     }
 
@@ -227,6 +228,12 @@ public final class GlobalConfig {
      * The {@code [network]} table of {@code ~/.jk/config.toml} — the proxy jk's HTTP goes through.
      * {@link NetworkConfig#EMPTY} when the file, the table or a usable value is absent: like every
      * other read of this file, a malformed preference never fails a build.
+     *
+     * <p>Answered once per request, and off a request once per version of the file. The proxy
+     * selector asks on every HTTP request the engine makes, and a lock of a large reactor makes tens
+     * of thousands, so a stat and a table read per ask would be a measurable share of the io threads'
+     * time. Within one request the file is what it was when the request began; the next request
+     * sees an edit.
      */
     public static NetworkConfig network() {
         return network(JkDirs.userConfigFile());
@@ -234,6 +241,22 @@ public final class GlobalConfig {
 
     /** As {@link #network()} but against an explicit config file — for tests. */
     static NetworkConfig network(Path configFile) {
+        return RequestScope.current().get(new NetworkKey(configFile), key -> networkOfFile(key.file()));
+    }
+
+    /** The request-scope key of one config file's {@code [network]} table. */
+    private record NetworkKey(Path file) {}
+
+    /** One entry per path, replaced when the file's size or mtime moves. */
+    private static final StampedMemo<String, StampedMemo.FileStamp, NetworkConfig> NETWORK_CACHE = StampedMemo.create();
+
+    private static NetworkConfig networkOfFile(Path configFile) {
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(configFile);
+        if (stamp == null) return parseNetwork(configFile); // absent, or a stat failure worth an uncached read
+        return NETWORK_CACHE.get(configFile.toAbsolutePath().toString(), stamp, () -> parseNetwork(configFile));
+    }
+
+    private static NetworkConfig parseNetwork(Path configFile) {
         try {
             return parseConfig(configFile)
                     .map(toml -> NetworkConfig.parse(toml.getTable("network")))

@@ -299,7 +299,10 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   scope into a Maven BOM POM for consumers.
 - **Remotes:** built-in order JumpKick → Central → Google; exclusive specialist groups
   `cc.jumpkick.*` / `build.jumpkick.*` never resolve from Central (see [maven-repo.md](maven-repo.md)).
-  Path/git remotes preserve exclusive bindings when prepended.
+  Path/git remotes preserve exclusive bindings when prepended. The proxy a
+  request goes through (`ProxyEnvironment`) reads the user config's `[network]` table once per
+  request and, off a request, once per version of the file (`GlobalConfig.network`): the selector
+  asks on every HTTP request, and a lock makes tens of thousands.
 - **Scopes:** **main**, **test**, and **processor** graphs are solved separately so processor
   constraints do not force main versions. Dual lock rows are allowed when versions diverge;
   classpaths select by scope.
