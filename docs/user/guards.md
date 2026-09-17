@@ -255,6 +255,13 @@ out to a tool this machine does not have throws `Skipped` with the reason: the e
 `skipped` — a notice, not red — and stores no verdict for the lane, so the guard is judged as soon
 as the tool is installed.
 
+The suite runs in a forked JVM, and each guard appends its line to the module's report
+(`target/<module>/guard/report.jsonl`) as it finishes. The lane judges the run from that report —
+the fork's own word on which guards ran — not from the launcher's count of the fork's test events,
+which a loaded host can leave short; what the fork printed, with both counts, sits beside the report
+in `junit.log`. A report holding no guard at all, a test the launcher saw fail outside any `@Guard`,
+or a guard the launcher counted that left no line is what fails the run.
+
 ## Fixtures
 
 A ban proves it bites. `fixture = "<dir>"` on a rule (or `@Fixture` on a guard test) names a
