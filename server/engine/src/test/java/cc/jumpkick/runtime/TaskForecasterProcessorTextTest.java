@@ -35,7 +35,7 @@ class TaskForecasterProcessorTextTest {
         Path mapstruct = jar(tmp.resolve("mapstruct-processor-1.6.3.jar"), "org.mapstruct.ap.MappingProcessor");
         Path plain = jar(tmp.resolve("guava.jar"));
 
-        TaskForecast.Task step = TaskForecaster.compileStep(
+        TaskForecast.Task step = ForecastSteps.compileStep(
                 "compile-main", FULL, false, request(List.of(lombok, plain, mapstruct), List.of()));
 
         assertThat(step.text())
@@ -48,14 +48,14 @@ class TaskForecasterProcessorTextTest {
     void plugins_come_before_processors_and_an_empty_path_leaves_the_text_alone(@TempDir Path tmp) throws IOException {
         Path gen = jar(tmp.resolve("gen.jar"), "com.example.Gen");
 
-        TaskForecast.Task both = TaskForecaster.compileStep(
+        TaskForecast.Task both = ForecastSteps.compileStep(
                 "compile-main", FULL, false, request(List.of(gen), List.of("-Xplugin:ErrorProne -Xep:X:ERROR")));
         assertThat(both.text()).endsWith(" · -Xplugin:ErrorProne · processors: com.example.Gen (gen.jar)");
 
-        TaskForecast.Task none = TaskForecaster.compileStep(
+        TaskForecast.Task none = ForecastSteps.compileStep(
                 "compile-main", FULL, false, request(List.of(jar(tmp.resolve("plain.jar"))), List.of()));
         assertThat(none.text()).isEqualTo("full compile · 3 sources · first compile");
-        assertThat(TaskForecaster.processorsText(List.of())).isEmpty();
+        assertThat(ForecastSteps.processorsText(List.of())).isEmpty();
     }
 
     private static CompileRequest request(List<Path> processorPath, List<String> options) {

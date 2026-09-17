@@ -226,7 +226,7 @@ class ThirdPartyPackagerForecastTest {
         // Warm: the forecast reproduces that key and prices the step against it.
         TaskForecast.Task warm = packageStep(TaskForecaster.of(graph, cas, actionCache, cache, true));
         assertThat(warm.cached()).isTrue();
-        assertThat(warm.key()).isEqualTo(TaskForecaster.key8(keyed.key()));
+        assertThat(warm.key()).isEqualTo(ForecastSteps.key8(keyed.key()));
     }
 
     private static TaskForecast.Task packageStep(List<TaskForecast.Module> plan) {

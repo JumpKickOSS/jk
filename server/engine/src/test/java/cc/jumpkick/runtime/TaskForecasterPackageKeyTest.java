@@ -68,10 +68,10 @@ class TaskForecasterPackageKeyTest {
         Path blob = ac.cas().put(bytes, sha);
         ac.storeWithOutputs("task@x", "key-1", Map.of(), Map.of("lib.jar", sha), Map.of());
 
-        assertThat(TaskForecaster.present(ac, "key-1")).isTrue();
+        assertThat(ForecastSteps.present(ac, "key-1")).isTrue();
         Files.delete(blob); // the payload is gone; the record is not
-        assertThat(TaskForecaster.present(ac, "key-1")).isFalse();
-        assertThat(TaskForecaster.present(ac, "no-such-key")).isFalse();
+        assertThat(ForecastSteps.present(ac, "key-1")).isFalse();
+        assertThat(ForecastSteps.present(ac, "no-such-key")).isFalse();
     }
 
     @Test

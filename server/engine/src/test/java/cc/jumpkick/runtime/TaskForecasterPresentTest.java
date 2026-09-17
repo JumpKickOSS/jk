@@ -33,7 +33,7 @@ class TaskForecasterPresentTest {
                         "tests.total", "0",
                         "tests.succeeded", "0",
                         "tests.skipped", "0"));
-        assertThat(TaskForecaster.present(ac, key)).isTrue();
+        assertThat(ForecastSteps.present(ac, key)).isTrue();
     }
 
     /** A red run stores the same marker shape with a failed count: present, but not green. */
@@ -44,11 +44,11 @@ class TaskForecasterPresentTest {
         ActionCache ac = new ActionCache(new Cas(cache.resolve("cas")), cache.resolve("actions"));
         String key = "test-stamp-key-" + "c".repeat(49);
         ac.storeWithOutputs("run-tests@deadbeef", key, Map.of(), TestStamp.outcome(12, 11, 0, 1));
-        var record = TaskForecaster.presentRecord(ac, key);
+        var record = ForecastSteps.presentRecord(ac, key);
         assertThat(record).isPresent();
         assertThat(TestStamp.green(record.get())).isFalse();
         ac.storeWithOutputs("run-tests@deadbeef", key, Map.of(), TestStamp.outcome(12, 12, 0, 0));
-        assertThat(TestStamp.green(TaskForecaster.presentRecord(ac, key).orElseThrow()))
+        assertThat(TestStamp.green(ForecastSteps.presentRecord(ac, key).orElseThrow()))
                 .isTrue();
     }
 
@@ -67,9 +67,9 @@ class TaskForecasterPresentTest {
         String sha = Hashing.sha256Hex(Files.readAllBytes(jar));
         cas.put(Files.readAllBytes(jar), sha);
         ac.storeWithOutputs("package-jar@x", key, Map.of(), Map.of("app.jar", sha));
-        assertThat(TaskForecaster.present(ac, key)).isTrue();
+        assertThat(ForecastSteps.present(ac, key)).isTrue();
         Files.delete(cas.pathFor(sha));
-        assertThat(TaskForecaster.present(ac, key)).isFalse();
+        assertThat(ForecastSteps.present(ac, key)).isFalse();
     }
 
     @Test
@@ -77,14 +77,14 @@ class TaskForecasterPresentTest {
         Path cache = tmp.resolve("cache");
         Files.createDirectories(cache);
         ActionCache ac = new ActionCache(new Cas(cache.resolve("cas")), cache.resolve("actions"));
-        assertThat(TaskForecaster.present(ac, "no-such-key")).isFalse();
+        assertThat(ForecastSteps.present(ac, "no-such-key")).isFalse();
     }
 
     @Test
     void isSha256Hex_shape() {
-        assertThat(TaskForecaster.isSha256Hex("0")).isFalse();
-        assertThat(TaskForecaster.isSha256Hex("a".repeat(64))).isTrue();
-        assertThat(TaskForecaster.isSha256Hex("A".repeat(64))).isTrue();
-        assertThat(TaskForecaster.isSha256Hex("g".repeat(64))).isFalse();
+        assertThat(ForecastSteps.isSha256Hex("0")).isFalse();
+        assertThat(ForecastSteps.isSha256Hex("a".repeat(64))).isTrue();
+        assertThat(ForecastSteps.isSha256Hex("A".repeat(64))).isTrue();
+        assertThat(ForecastSteps.isSha256Hex("g".repeat(64))).isFalse();
     }
 }

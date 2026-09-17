@@ -157,7 +157,7 @@ public final class PackagingKeys {
                 classesTok,
                 PlannerSupport.contributionsToken(PlannerSupport.existingContributedDirs(pkgDecls, layout)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas));
-        boolean hit = TaskForecaster.present(actionCache, keyed.key());
+        boolean hit = ForecastSteps.present(actionCache, keyed.key());
         if (Perf.enabled() && !hit) {
             // The tokens beside the record's own INPUT line are what tell a wiped jar nobody
             // pinned from a token whose recipe drifted; the per-jar parts name the entry.
@@ -281,8 +281,7 @@ public final class PackagingKeys {
                 "graal:" + stored.get("graal:"),
                 "framework:",
                 "train:" + (trainReach == null ? "" : ClasspathFingerprint.entry(trainReach)));
-        return TaskForecaster.present(
-                actionCache, ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
+        return ForecastSteps.present(actionCache, ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
     }
 
     /**
@@ -570,9 +569,9 @@ public final class PackagingKeys {
                             owner.decls(),
                             Map.of())) // secrets: absent — see the javadoc
                     .keyed();
-            if (TaskForecaster.present(actionCache, keyed.key())) {
+            if (ForecastSteps.present(actionCache, keyed.key())) {
                 return new TaskForecast.Task(
-                        TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", TaskForecaster.key8(keyed.key()));
+                        TaskNames.PACKAGE_JAR, TaskForecast.Status.CACHED, "", ForecastSteps.key8(keyed.key()));
             }
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
