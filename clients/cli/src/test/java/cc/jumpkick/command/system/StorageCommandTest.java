@@ -36,15 +36,19 @@ class StorageCommandTest {
 
     private String prevHome;
     private String prevState;
+    private String prevStore;
 
     @BeforeEach
     void isolateHome() throws IOException {
         prevHome = System.getProperty("jk.env.JK_HOME");
         prevState = System.getProperty("jk.env.JK_STATE_DIR");
+        prevStore = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
         System.setProperty(
                 "jk.env.JK_STATE_DIR",
                 Files.createDirectories(isolatedHome.resolve("state")).toString());
+        // The store the tests wipe is the isolated home's, whatever JK_STORE_DIR the shell exports.
+        System.setProperty("jk.env.JK_STORE_DIR", isolatedHome.resolve("store").toString());
     }
 
     @AfterEach
@@ -53,6 +57,8 @@ class StorageCommandTest {
         else System.setProperty("jk.env.JK_HOME", prevHome);
         if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", prevState);
+        if (prevStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
+        else System.setProperty("jk.env.JK_STORE_DIR", prevStore);
     }
 
     /**

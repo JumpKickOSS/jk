@@ -56,15 +56,19 @@ class SelfNukeCommandTest {
 
     private String prevHome;
     private String prevState;
+    private String prevStore;
 
     @org.junit.jupiter.api.BeforeEach
     void isolateHome() throws IOException {
         prevHome = System.getProperty("jk.env.JK_HOME");
         prevState = System.getProperty("jk.env.JK_STATE_DIR");
+        prevStore = System.getProperty("jk.env.JK_STORE_DIR");
         System.setProperty("jk.env.JK_HOME", isolatedHome.toString());
         System.setProperty(
                 "jk.env.JK_STATE_DIR",
                 Files.createDirectories(isolatedHome.resolve("state")).toString());
+        // The store the tests wipe is the isolated home's, whatever JK_STORE_DIR the shell exports.
+        System.setProperty("jk.env.JK_STORE_DIR", isolatedHome.resolve("store").toString());
         // self nuke is engine-hosted: give the isolated home a REAL launchable engine by
         // copying the suite home's materialized install (EngineTestExtension ran beforeAll,
         // before this overlay). A stub jar here just reproduces "no build engine" (exit 1).
@@ -112,6 +116,8 @@ class SelfNukeCommandTest {
         else System.setProperty("jk.env.JK_HOME", prevHome);
         if (prevState == null) System.clearProperty("jk.env.JK_STATE_DIR");
         else System.setProperty("jk.env.JK_STATE_DIR", prevState);
+        if (prevStore == null) System.clearProperty("jk.env.JK_STORE_DIR");
+        else System.setProperty("jk.env.JK_STORE_DIR", prevStore);
     }
 
     /** A store/cache nuke that fails the way an unstartable engine fails, and counts being asked. */
