@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -23,30 +24,31 @@ class RepoGroupVersionsCacheTest {
         RepoGroup.clearProcessFetchCache();
     }
 
+    /**
+     * The version list a remote answered is held for the process: the second ask is served without
+     * a request even when the remote has since lost the catalog. Anchored on a remote-looking
+     * transport because a {@code file://} directory's answers, like a loopback stub's, are never
+     * memoized.
+     */
     @Test
     void availableVersions_process_memo_hits_second_call(@TempDir Path tmp) throws Exception {
-        Path repoDir = tmp.resolve("repo");
-        writeMeta(repoDir, "com.example", "lib", "1.0", "2.0");
-        Cas cas = new Cas(tmp.resolve("cas"));
-        MavenRepo repo = new MavenRepo("local", repoDir.toUri(), new Http(), cas);
-        RepoGroup group = new RepoGroup(List.of(repo));
+        RemoteStub remote = new RemoteStub("versions.example.test");
+        new MavenStub(remote.served).metadata("com.example", "lib", "1.0", "2.0");
+        RepoGroup group = new RepoGroup(List.of(remote.repo(tmp, "remote")));
+        Coordinate coord = Coordinate.of("com.example", "lib", "0");
 
-        List<String> first = group.availableVersions(Coordinate.of("com.example", "lib", "0"));
+        List<String> first = group.availableVersions(coord);
         assertThat(first).containsExactlyInAnyOrder("1.0", "2.0");
 
-        // Delete on-disk metadata — process memo must still answer.
-        Files.walk(repoDir).sorted((a, b) -> b.compareTo(a)).forEach(p -> {
-            try {
-                Files.deleteIfExists(p);
-            } catch (Exception ignored) {
-            }
-        });
-        List<String> second = group.availableVersions(Coordinate.of("com.example", "lib", "0"));
-        assertThat(second).isEqualTo(first);
+        // The remote loses its catalog — the process memo still answers, without a request.
+        remote.served.clear();
+        int asked = remote.requestsFor(MavenStub.metadataPath("com.example", "lib"));
+        assertThat(group.availableVersions(coord)).isEqualTo(first);
+        assertThat(remote.requestsFor(MavenStub.metadataPath("com.example", "lib")))
+                .isEqualTo(asked);
 
         RepoGroup.clearProcessVersionsCache();
-        assertThat(group.availableVersions(Coordinate.of("com.example", "lib", "0")))
-                .isEmpty();
+        assertThat(group.availableVersions(coord)).isEmpty();
     }
 
     @Test

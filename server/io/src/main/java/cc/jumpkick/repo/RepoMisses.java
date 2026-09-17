@@ -30,7 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>A loopback repository is never memoized: its URL names whatever process holds the port right
  * now — a stub, a proxy under development — and the memo exists to save remote round trips, which
- * a loopback request is not. See {@link #memoizes}.
+ * a loopback request is not. Nor is a {@code file://} repository: it is a directory on this disk —
+ * a workspace path, a git materialization — that gains an artifact without a session boundary,
+ * and a read of it costs no round trip to save. See {@link #memoizes}.
  */
 final class RepoMisses {
 
@@ -57,14 +59,15 @@ final class RepoMisses {
     }
 
     /**
-     * True when misses from {@code uri}'s host are remembered: every host but a loopback one, whose
-     * port can belong to a different process the next time it is asked.
+     * True when answers from {@code uri} are remembered: every remote but a loopback one, whose
+     * port can belong to a different process the next time it is asked; never a {@code file://}
+     * directory, whose contents are whatever is on the disk right now.
      */
     static boolean memoizes(URI uri) {
-        return !RepositorySpec.loopback(uri.getHost());
+        return !"file".equalsIgnoreCase(uri.getScheme()) && !RepositorySpec.loopback(uri.getHost());
     }
 
-    /** Remember that {@code uri} answered not-found; a loopback repository's miss is not kept. */
+    /** Remember that {@code uri} answered not-found; a loopback or file repository's miss is not kept. */
     static void record(URI uri) {
         if (!memoizes(uri)) return;
         String key = uri.toString();
