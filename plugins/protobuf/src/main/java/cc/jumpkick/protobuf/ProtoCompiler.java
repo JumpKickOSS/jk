@@ -15,8 +15,8 @@ import java.util.List;
  * (before COMPILE) that runs the provisioned protoc binary, and every protoc plugin a
  * {@code [protobuf.<id>]} entry names, over the module's proto sources and contributes the
  * generated Java to the compiler's source set. The engine fingerprints the declared inputs (the
- * proto dir, config, the runtime classpath whose jars may carry importable protos, the fetched
- * binaries) and skips the body on a cache hit — no plugin-side staleness logic.
+ * proto dir, config, the runtime and compile classpaths whose jars may carry importable protos,
+ * the fetched binaries) and skips the body on a cache hit — no plugin-side staleness logic.
  */
 public final class ProtoCompiler implements Plugin, BuildExtension {
 
@@ -34,7 +34,7 @@ public final class ProtoCompiler implements Plugin, BuildExtension {
     public void build(BuildContext ctx) {
         String src = ctx.config().stringOpt("src").orElse("proto");
         ctx.named("protoc")
-                .inputs(In.projectFiles(src), In.config(), In.runtimeClasspath())
+                .inputs(In.projectFiles(src), In.config(), In.runtimeClasspath(), In.compileClasspath())
                 .outputs("gen")
                 .contributesSources("gen")
                 .run(ProtocStep::run);

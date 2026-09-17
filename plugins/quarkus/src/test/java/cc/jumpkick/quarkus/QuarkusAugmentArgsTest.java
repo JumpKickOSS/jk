@@ -141,6 +141,11 @@ class QuarkusAugmentArgsTest {
         }
 
         @Override
+        public List<Path> compileClasspath() {
+            return List.of();
+        }
+
+        @Override
         public List<PackageIo.RuntimeEntry> runtimeEntries() {
             return List.of();
         }

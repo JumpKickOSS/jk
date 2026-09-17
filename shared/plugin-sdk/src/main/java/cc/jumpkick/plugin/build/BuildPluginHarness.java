@@ -300,7 +300,8 @@ public final class BuildPluginHarness {
             @Nullable Path scratch,
             @Nullable Path javaHome,
             @Nullable Path artifactPath,
-            List<Path> classpath,
+            List<Path> runtimeClasspath,
+            List<Path> compileClasspath,
             List<PackageIo.RuntimeEntry> entries,
             Map<String, Path> stepOutputs,
             Map<String, Path> extras,
@@ -326,7 +327,8 @@ public final class BuildPluginHarness {
             @Nullable Path scratch = null;
             @Nullable Path javaHome = null;
             @Nullable Path artifactPath = null;
-            List<Path> classpath = new ArrayList<>();
+            List<Path> runtimeClasspath = new ArrayList<>();
+            List<Path> compileClasspath = new ArrayList<>();
             List<PackageIo.RuntimeEntry> entries = new ArrayList<>();
             Map<String, Path> stepOutputs = new LinkedHashMap<>();
             Map<String, Path> extras = new LinkedHashMap<>();
@@ -381,7 +383,16 @@ public final class BuildPluginHarness {
                     }
                     case "java-home" -> javaHome = Path.of(required(Jsonl.str(line, "path"), "java-home.path"));
                     case "artifact" -> artifactPath = Path.of(required(Jsonl.str(line, "path"), "artifact.path"));
-                    case "cp" -> classpath.add(Path.of(required(Jsonl.str(line, "path"), "cp.path")));
+                    case "cp" -> {
+                        // The role the engine wrote the entry under: runtime is the production
+                        // closure, everything else the compile classpath.
+                        Path entry = Path.of(required(Jsonl.str(line, "path"), "cp.path"));
+                        if (PluginProtocol.ROLE_RUNTIME.equals(Jsonl.str(line, PluginProtocol.ROLE))) {
+                            runtimeClasspath.add(entry);
+                        } else {
+                            compileClasspath.add(entry);
+                        }
+                    }
                     case "entry" -> entries.add(runtimeEntry(line));
                     case "step-output" ->
                         stepOutputs.put(
@@ -413,7 +424,8 @@ public final class BuildPluginHarness {
                     scratch,
                     javaHome,
                     artifactPath,
-                    classpath,
+                    runtimeClasspath,
+                    compileClasspath,
                     entries,
                     stepOutputs,
                     extras,
@@ -462,7 +474,12 @@ public final class BuildPluginHarness {
 
         @Override
         public List<Path> runtimeClasspath() {
-            return spec.classpath();
+            return spec.runtimeClasspath();
+        }
+
+        @Override
+        public List<Path> compileClasspath() {
+            return spec.compileClasspath();
         }
 
         @Override

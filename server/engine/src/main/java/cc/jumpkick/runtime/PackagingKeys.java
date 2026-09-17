@@ -13,6 +13,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.SourcesMode;
+import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
@@ -384,10 +385,21 @@ public final class PackagingKeys {
         ProjectFacts facts =
                 PluginBuild.facts(p.project(), PlannerPlugin.resolvedMain(p.project(), p.moduleDir(), p.classes()));
         PluginBuild.Active active = Objects.requireNonNull(p.active(), "active");
+        // A packager keys on the runtime view; the compile view is resolved only when one declares it.
+        List<Path> compileClasspath =
+                packager.inputs().contains(In.compileClasspath().wireName())
+                        ? PluginBuild.compileClasspath(p.moduleDir(), p.cas(), p.lockFile(), p.project())
+                        : entryJars;
         List<String> tokens = new ArrayList<>(PlannerPlugin.declaredInputTokens(
                 packager.inputs(),
                 new PlannerPlugin.InputSources(
-                        p.classes(), entryJars, entries, active.config(), p.layout(), p.moduleDir())));
+                        p.classes(),
+                        entryJars,
+                        compileClasspath,
+                        entries,
+                        active.config(),
+                        p.layout(),
+                        p.moduleDir())));
         tokens.addAll(PlannerPlugin.toolTokens(tools, extras, sdkPins));
         if (!p.secrets().isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact); the

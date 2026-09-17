@@ -56,6 +56,9 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
     private final Map<String, Path> steps = new LinkedHashMap<>();
     private final List<RuntimeEntry> entries = new ArrayList<>();
 
+    /** Jars on the compile classpath only — the {@code provided} scope's view. */
+    private final List<Path> compileOnly = new ArrayList<>();
+
     /** Every {@link #label} the body emitted, in order — progress is part of the contract. */
     private final List<String> labels = new ArrayList<>();
 
@@ -275,6 +278,24 @@ public final class FakeBuildIo implements PackageIo, TaskExec {
             @Nullable Path jar = entry.jar();
             if (jar != null) paths.add(jar);
         }
+        return List.copyOf(paths);
+    }
+
+    /**
+     * Append a jar that is on the compile classpath and not the runtime closure — a {@code
+     * provided} dependency — carrying one entry, and return its path.
+     */
+    public Path compileOnly(String fileName, String entry) throws IOException {
+        Path jar = jar(fileName, entry);
+        compileOnly.add(jar);
+        return jar;
+    }
+
+    /** The runtime entries' jars followed by the compile-only ones: what {@code javac} sees. */
+    @Override
+    public List<Path> compileClasspath() {
+        List<Path> paths = new ArrayList<>(runtimeClasspath());
+        paths.addAll(compileOnly);
         return List.copyOf(paths);
     }
 

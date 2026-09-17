@@ -31,6 +31,9 @@ public interface TaskExec {
     /** The resolved production RUNTIME classpath — {@link In#runtimeClasspath()}. */
     List<Path> runtimeClasspath();
 
+    /** The module's COMPILE classpath, {@code provided} artifacts included — {@link In#compileClasspath()}. */
+    List<Path> compileClasspath();
+
     /**
      * Lock-ordered entries with real file names, coordinates and container dirs: the production
      * RUNTIME closure under {@link In#runtimeEntries()}, the test runtime closure under {@link

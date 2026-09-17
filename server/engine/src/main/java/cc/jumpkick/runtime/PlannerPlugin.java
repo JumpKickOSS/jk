@@ -197,6 +197,46 @@ public final class PlannerPlugin {
         return requires;
     }
 
+    /** Where a step's spec points: the classes it reads, the module, its scratch, the JDK and the layout. */
+    private record StepSpecPaths(Path classes, Path moduleDir, Path scratch, Path javaHome, BuildLayout layout) {}
+
+    /**
+     * The step's spec file: the op and config, the project facts, the layout, the JDK, the runtime
+     * closure and the compile classpath each under its role, every production entry, the tool
+     * artifacts by name and the scratch of every step this one chains from.
+     */
+    private static Path writeStepSpec(
+            PluginBuild.TaskDecl step,
+            PluginBuild.Active active,
+            ProjectFacts facts,
+            StepSpecPaths paths,
+            InputSources src,
+            Map<String, Path> toolExtras)
+            throws IOException {
+        SpecWriter specWriter = new SpecWriter()
+                .op(PluginProtocol.OP_RUN_STEP, step.name(), active.manifest().id())
+                .configValues(active.config().values())
+                .project(facts)
+                .layout(paths.classes(), paths.moduleDir(), paths.scratch())
+                .javaHome(paths.javaHome())
+                .classpath(src.runtimeClasspath(), PluginProtocol.ROLE_RUNTIME)
+                .classpath(src.compileClasspath(), PluginProtocol.ROLE_COMPILE);
+        for (var pe : src.runtimeEntries()) {
+            specWriter.entry(
+                    pe.fileName(), pe.jar(), pe.snapshot(), pe.container(), pe.group(), pe.artifact(), pe.version());
+        }
+        for (var tool : toolExtras.entrySet()) {
+            specWriter.extra(tool.getKey(), tool.getValue());
+        }
+        for (String input : step.inputs()) {
+            if (input.startsWith("step:")) {
+                String other = input.substring("step:".length());
+                specWriter.stepOutput(other, PluginBuild.taskScratch(paths.layout(), other));
+            }
+        }
+        return specWriter.writeTempSpec();
+    }
+
     /**
      * Everything the declared-input vocabulary is fingerprinted from. Each arm fills it with what
      * its own body receives; {@link #declaredInputTokens} alone decides the spelling.
@@ -204,6 +244,7 @@ public final class PlannerPlugin {
     record InputSources(
             Path classes,
             List<Path> runtimeClasspath,
+            List<Path> compileClasspath,
             List<PluginBuild.ProdEntry> runtimeEntries,
             PluginConfig config,
             BuildLayout layout,
@@ -224,6 +265,7 @@ public final class PlannerPlugin {
             switch (declared.kind()) {
                 case CLASSES -> tokens.add("classes:" + ClasspathFingerprint.entry(src.classes()));
                 case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
+                case COMPILE_CLASSPATH -> tokens.add("ccp:" + ClasspathFingerprint.of(src.compileClasspath()));
                 case RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES -> {
                     // The test closure is keyed by the entries themselves below; the production
                     // classpath token rides both arms so a runtime jar swap moves either key.
@@ -351,6 +393,8 @@ public final class PlannerPlugin {
                     // packages or tests with it and waits for the siblings to have written it.
                     if (!beforeCompile(step)) PlannerSetup.awaitSiblingArtifacts(ctx, in);
                     List<Path> classpath = PluginBuild.productionClasspath(in.dir(), cx.cas(), in.lockFile(), project);
+                    List<Path> compileClasspath =
+                            PluginBuild.compileClasspath(in.dir(), cx.cas(), in.lockFile(), project);
                     List<PluginBuild.ProdEntry> prodEntries = step.inputs().contains("runtime-entries")
                             ? PluginBuild.productionEntries(in.dir(), cx.cas(), in.lockFile(), project)
                             : step.inputs().contains("test-runtime-entries")
@@ -371,7 +415,14 @@ public final class PlannerPlugin {
                     ProjectFacts facts = PluginBuild.facts(project, startClass);
                     List<String> tokens = new ArrayList<>(declaredInputTokens(
                             step.inputs(),
-                            new InputSources(classes, classpath, prodEntries, active.config(), layout, in.dir())));
+                            new InputSources(
+                                    classes,
+                                    classpath,
+                                    compileClasspath,
+                                    prodEntries,
+                                    active.config(),
+                                    layout,
+                                    in.dir())));
                     tokens.addAll(toolTokens(tools, toolExtras, sdkPins));
                     tokens.add("facts:" + facts.token());
                     // The JDK is handed to the body as spec.javaHome and is what its forked tools
@@ -410,36 +461,20 @@ public final class PlannerPlugin {
                     PathUtil.deleteRecursively(scratch); // stale outputs never survive
                     Files.createDirectories(scratch);
                     ctx.label(step.name());
-                    SpecWriter specWriter = new SpecWriter()
-                            .op(
-                                    PluginProtocol.OP_RUN_STEP,
-                                    step.name(),
-                                    active.manifest().id())
-                            .configValues(active.config().values())
-                            .project(facts)
-                            .layout(classes, in.dir(), scratch)
-                            .javaHome(javaHome)
-                            .classpath(classpath, PluginProtocol.ROLE_COMPILE);
-                    for (var pe : prodEntries) {
-                        specWriter.entry(
-                                pe.fileName(),
-                                pe.jar(),
-                                pe.snapshot(),
-                                pe.container(),
-                                pe.group(),
-                                pe.artifact(),
-                                pe.version());
-                    }
-                    for (var tool : toolExtras.entrySet()) {
-                        specWriter.extra(tool.getKey(), tool.getValue());
-                    }
-                    for (String input : step.inputs()) {
-                        if (input.startsWith("step:")) {
-                            String other = input.substring("step:".length());
-                            specWriter.stepOutput(other, PluginBuild.taskScratch(layout, other));
-                        }
-                    }
-                    Path spec = specWriter.writeTempSpec();
+                    Path spec = writeStepSpec(
+                            step,
+                            active,
+                            facts,
+                            new StepSpecPaths(classes, in.dir(), scratch, javaHome, layout),
+                            new InputSources(
+                                    classes,
+                                    classpath,
+                                    compileClasspath,
+                                    prodEntries,
+                                    active.config(),
+                                    layout,
+                                    in.dir()),
+                            toolExtras);
                     try {
                         PluginBuild.runWorker(
                                 active,

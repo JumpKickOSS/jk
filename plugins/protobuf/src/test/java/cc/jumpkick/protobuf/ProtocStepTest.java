@@ -239,6 +239,44 @@ class ProtocStepTest {
         assertThat(includes.resolve("guava-33")).doesNotExist();
     }
 
+    /**
+     * A jar on the compile classpath only — a {@code provided} contract library whose protos a
+     * service imports but whose classes the runtime does not carry — is searched too, so protoc
+     * resolves the import; the compile roots follow the runtime ones, and a jar on both is one root.
+     */
+    @Test
+    void protos_inside_compile_only_jars_are_include_roots_too(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf");
+        Path protoDir = tmp.resolve("proto");
+        Path only = write(protoDir.resolve("svc.proto"), "syntax = \"proto3\";");
+        io.entry(
+                "protobuf-java-3.25.5.jar",
+                "com.google.protobuf",
+                "protobuf-java",
+                "3.25.5",
+                "google/protobuf/any.proto");
+        io.compileOnly("acme-contracts-1.2.jar", "com/acme/contracts/orders.proto");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0));
+
+        ProtocStep.run(io);
+
+        Path includes = tmp.resolve("scratch/includes").toAbsolutePath();
+        Path wellKnown = includes.resolve("protobuf-java-3.25.5");
+        Path contracts = includes.resolve("acme-contracts-1.2");
+        assertThat(Files.readAllLines(argv))
+                .containsExactly(
+                        "--java_out=" + tmp.resolve("scratch/gen").toAbsolutePath(),
+                        "-I",
+                        protoDir.toAbsolutePath().toString(),
+                        "-I",
+                        wellKnown.toString(),
+                        "-I",
+                        contracts.toString(),
+                        only.toAbsolutePath().toString());
+        assertThat(contracts.resolve("com/acme/contracts/orders.proto")).isRegularFile();
+    }
+
     /** The step-dependency the engine fetches must be there; its absence names the manifest table to fix. */
     @Test
     void a_missing_protoc_artifact_names_the_step_dependency(@TempDir Path tmp) throws Exception {
