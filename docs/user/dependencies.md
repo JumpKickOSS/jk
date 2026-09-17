@@ -91,10 +91,12 @@ nearest edge under Maven.
 
 With `[platform-dependencies]`: a versionless entry the BOM manages carries `exclude` like any
 other — the BOM supplies the version, the table the exclusions. The `<exclusions>` a BOM's own
-`<dependencyManagement>` writes do not travel to the entry it manages; write them on the entry.
-(`jk import` reads the effective POM, so managed exclusions the project's own POM inherits are
-written into `exclude` at import.) A `git` or `path` source has no POM subtree and refuses the key;
-a `workspace = true` edge carries its `exclude` to the coordinate the workspace resolves it to.
+`<dependencyManagement>` writes on a module apply to an entry the BOM manages that writes no
+`exclude` of its own, whether its version comes from the BOM or is written, as they do under Maven;
+an entry with its own list keeps that list alone. A `git` or `path` source has no POM subtree and
+refuses the key; a `workspace = true` edge carries its `exclude` to the coordinate the workspace
+resolves it to, joined with the `exclude` the shared `[workspace.dependencies]` entry declares
+([Workspaces](workspaces.md#workspace-dependencies)).
 
 The lock row whose POM edge was pruned records it under `excluded-by`
 ([Lockfile](lockfile.md#what-an-exclusion-records)), and `jk why <coordinate>` prints

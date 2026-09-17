@@ -250,6 +250,16 @@ class McpToolRegistryTest {
         assertThat(mentioned).allSatisfy(name -> assertThat(tools.names()).contains(name));
     }
 
+    /** The structured payload's {@code exclusions} array is named where a caller decides to call the tool. */
+    @Test
+    void the_why_card_names_the_exclusions_array_its_payload_carries() {
+        Map<String, Object> why = objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools").stream()
+                .filter(row -> "jk_why".equals(row.get("name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(String.valueOf(why.get("description"))).contains("exclusions");
+    }
+
     private static List<String> names(Map<String, Object> listing) {
         return objects(listing, "tools").stream()
                 .map(r -> String.valueOf(r.get("name")))
