@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.host.Log;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.DirectoryNotEmptyException;
@@ -22,7 +23,8 @@ import java.util.function.Consumer;
  *
  * <p>The pointer and the install it aims at are two different things on disk, and this type never
  * confuses them: it will create, re-aim and retire the <em>pointer</em>, and it will not delete an
- * install to do so. Removing a JDK belongs to an explicit {@code jk jdk} verb.
+ * install to do so. Removing a JDK belongs to an explicit {@code jk jdk} verb. Where an install is
+ * sitting on the pointer name it is moved aside, never removed — see {@link #ensure}.
  */
 public final class StableJdkPointer {
 
@@ -56,8 +58,12 @@ public final class StableJdkPointer {
     /**
      * Ensure {@code <jdksRoot>/<pointerName>} resolves to {@code installDir}. Idempotent: a no-op
      * when the link already resolves there, or when the pointer name already <em>is</em> the install
-     * dir (degenerate case where a vendor's version equals its major, e.g. a bare {@code
-     * graalvm-25}). A no-op when {@code installDir} doesn't exist.
+     * dir (a vendor whose version is its bare major, e.g. {@code graalvm-25}). A no-op when {@code
+     * installDir} doesn't exist.
+     *
+     * <p>When some OTHER install holds the name — the bare-major case again, one release later —
+     * that install is moved aside to a name of its own so the pointer can aim at {@code installDir}.
+     * jk moves only a tree it installed; anything else still refuses, loudly.
      */
     public void ensure(String pointerName, Path installDir) throws IOException {
         Objects.requireNonNull(pointerName, "pointerName");
@@ -75,7 +81,7 @@ public final class StableJdkPointer {
             } catch (IOException dangling) {
                 // fall through and recreate
             }
-            retire(pointer);
+            freeTheName(pointer);
         }
 
         Files.createDirectories(jdksRoot);
@@ -168,6 +174,86 @@ public final class StableJdkPointer {
     }
 
     /**
+     * Free the pointer name for a re-aim: drop a link or an empty directory as {@link #retire}
+     * does, and move an install that is sitting on the name out to a name of its own.
+     *
+     * <p>An install can hold the stable name because a feed reports some releases with no point
+     * version at all — {@code jdk_version} is {@code "25"} for Oracle GraalVM 25, and {@code "27"}
+     * for six other JDKs — so {@code <vendor>-<version>} and {@code <vendor>-<major>} come out the
+     * same string and the first install of a major lands on its own pointer. Nothing was wrong
+     * until the second one arrived: the pointer could then never be re-aimed, and because
+     * {@code JdkInstaller} treats a pointer as a convenience it failed silently, leaving the stable
+     * name — the one an IDE is configured with — on the older install.
+     */
+    private void freeTheName(Path pointer) throws IOException {
+        try {
+            Files.delete(pointer);
+        } catch (NoSuchFileException alreadyGone) {
+            // nothing to free
+        } catch (DirectoryNotEmptyException install) {
+            displace(pointer);
+        }
+    }
+
+    /**
+     * Move the install sitting on the pointer name out to a free name of its own.
+     *
+     * <p>Only a tree jk installed is moved, and it is moved, never deleted — an install costs
+     * minutes to re-download, and an alien one in a shared root is refused exactly as before.
+     *
+     * <p>The new name is the old one with a counter: {@code graalvm-25} becomes {@code
+     * graalvm-25-1}. Deliberately NOT a version. This release calls itself {@code 25} in the feed
+     * and {@code JAVA_VERSION="25"} in its own {@code release} file, so writing {@code 25.0.0} on
+     * disk would state a version nothing else claims — {@code GRAALVM_VERSION} says {@code 25.0.0},
+     * the runtime build says {@code 25+37}, and a reader would have to guess which is real. A
+     * counter claims nothing except the order the trees arrived in. It also stays legible to the
+     * rest of jk: {@link JdkSelector#parseFlexible} reads {@code graalvm-25-1} as graalvm major 25,
+     * so the displaced install is still found by spec and still maps back to this pointer through
+     * {@link #pointerNameFor}.
+     */
+    private void displace(Path install) throws IOException {
+        if (!JdkOwnership.isJkOwned(install)) throw populatedInstall(install);
+        Path aside = freeNameBeside(install);
+        String oldId = install.getFileName().toString();
+        Files.move(install, aside);
+        try {
+            JdkInventory.of(jdksRoot).rename(oldId, aside.getFileName().toString(), IntellijJdkDir.javaHome(aside));
+        } catch (IOException bookkeeping) {
+            // The tree moved and the row did not. `jk jdk repair` reconciles the two, and the
+            // install itself is intact either way — this must not undo a move that succeeded.
+            Log.warn("moved " + oldId + " to " + aside.getFileName() + " but could not rename its inventory row",
+                    bookkeeping);
+        }
+    }
+
+    /** {@code <name>-1}, {@code <name>-2}, … — the first that nothing is using. */
+    private static Path freeNameBeside(Path install) throws IOException {
+        Path parent = install.getParent();
+        if (parent == null) throw new IOException("cannot move " + install + ": it has no parent directory");
+        String base = install.getFileName().toString();
+        for (int n = 1; n <= MAX_DISPLACED; n++) {
+            Path candidate = parent.resolve(base + "-" + n);
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) return candidate;
+        }
+        throw new IOException("cannot free the stable pointer name " + base + ": " + MAX_DISPLACED
+                + " displaced installs already sit beside it");
+    }
+
+    /**
+     * A ceiling on the counter so a loop cannot run away. Reaching it means dozens of installs of
+     * one major are stacked up in the root, which is a housekeeping problem to report, not to
+     * silently work around.
+     */
+    private static final int MAX_DISPLACED = 64;
+
+    private static IOException populatedInstall(Path pointer) {
+        return new IOException("refusing to remove " + pointer
+                + " to free the stable pointer name: it is a populated JDK install that jk did not"
+                + " install, and jk never deletes a JDK on its own. Remove it with `jk jdk uninstall`"
+                + " if you meant to.");
+    }
+
+    /**
      * Drop the pointer itself, never an install.
      *
      * <p>{@link Files#delete} takes a symlink, a junction or an empty directory in one shot without
@@ -176,6 +262,10 @@ public final class StableJdkPointer {
      * something any automatic path may do: it costs minutes to re-download and an IDE, a
      * shell, or another project's lockfile may be pinned to it. So it is left, and the caller's
      * attempt to claim the name fails loudly instead of silently costing a JDK.
+     *
+     * <p>This is the retirement path — {@code healAfterRemoval} with no survivor left to aim at.
+     * {@link #ensure} goes through {@link #freeTheName} instead, which has somewhere to put an
+     * install that is in the way; here there is nowhere to put it and nothing to gain by moving it.
      */
     private static void retire(Path pointer) throws IOException {
         try {
@@ -183,9 +273,7 @@ public final class StableJdkPointer {
         } catch (NoSuchFileException alreadyGone) {
             // nothing to retire
         } catch (DirectoryNotEmptyException install) {
-            throw new IOException("refusing to remove " + pointer
-                    + " to free the stable pointer name: it is a populated JDK install, and jk never"
-                    + " deletes a JDK on its own. Remove it with `jk jdk uninstall` if you meant to.");
+            throw populatedInstall(pointer);
         }
     }
 }
