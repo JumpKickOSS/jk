@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.GradleModuleMetadata;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
@@ -195,12 +196,18 @@ public final class KmpRedirects {
             if (pomHit.isEmpty()) return ModuleFacts.NONE;
             if (!pomHasGradleMetadataMarker(pomHit.get().fetched().cachePath())) return ModuleFacts.NONE;
 
+            // Gradle publishes the .module beside the POM, so the repository that served the POM is
+            // the one asked for it — a walk over every repository would 404 on each that publishes
+            // no module metadata at all, under that host's permits.
             Coordinate moduleCoord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "module");
-            var moduleHit = repos.tryFetchArtifact(moduleCoord);
-            if (moduleHit.isEmpty()) return ModuleFacts.NONE;
+            MavenRepo.Fetched moduleFile;
+            try {
+                moduleFile = pomHit.get().repo().fetchArtifact(moduleCoord);
+            } catch (MavenRepo.ArtifactNotFoundException absent) {
+                return ModuleFacts.NONE;
+            }
 
-            GradleModuleMetadata gmm =
-                    GradleModuleMetadata.parse(moduleHit.get().fetched().cachePath());
+            GradleModuleMetadata gmm = GradleModuleMetadata.parse(moduleFile.cachePath());
             Optional<Selection> redirect = gmm.runtimeRedirect(jvmEnvironment)
                     .map(target -> new Selection(target, gmm.redirectTargetModules()));
             return new ModuleFacts(redirect, gmm.dependencyConstraints(jvmEnvironment));
