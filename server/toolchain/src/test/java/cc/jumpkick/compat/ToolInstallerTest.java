@@ -9,6 +9,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -340,7 +341,7 @@ class ToolInstallerTest {
             throws Exception {
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
-        Files.createSymbolicLink(dest.resolve("apache-maven-3.9.9"), outside);
+        Symlinks.create(dest.resolve("apache-maven-3.9.9"), outside);
         Path zip = Files.write(
                 tempDir.resolve("maven.zip"), buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n")));
 

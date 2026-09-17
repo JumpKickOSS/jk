@@ -2,10 +2,9 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Os;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,13 +32,12 @@ class JdkFingerprintTest {
 
     @Test
     void does_not_follow_a_symlink_sibling(@TempDir Path tmp) throws IOException {
-        assumeFalse(Os.isWindows());
         Path install = Files.createDirectories(tmp.resolve("temurin-25.0.4"));
         Files.writeString(install.resolve("a"), "a\n");
         JdkOwnership.mark(install);
         Path other = Files.createDirectories(tmp.resolve("other"));
         Files.writeString(other.resolve("secret"), "nope\n");
-        Files.createSymbolicLink(install.resolve("link-out"), other);
+        Symlinks.create(install.resolve("link-out"), other);
 
         String digest = JdkFingerprint.compute(install);
         Files.writeString(other.resolve("secret"), "changed\n");
@@ -48,10 +46,9 @@ class JdkFingerprintTest {
 
     @Test
     void alias_dir_is_a_symlink_to_a_differently_named_install(@TempDir Path tmp) throws IOException {
-        assumeFalse(Os.isWindows());
         Path real = Files.createDirectories(tmp.resolve("graalvm-25.0.4"));
         Path alias = tmp.resolve("graalvm-25");
-        Files.createSymbolicLink(alias, real);
+        Symlinks.create(alias, real);
         assertThat(JdkFingerprint.isAliasDir(alias)).isTrue();
         assertThat(JdkFingerprint.isAliasDir(real)).isFalse();
     }
@@ -63,13 +60,12 @@ class JdkFingerprintTest {
      */
     @Test
     void a_symlinked_root_fingerprints_the_tree_it_points_at(@TempDir Path tmp) throws IOException {
-        assumeFalse(Os.isWindows());
         Path real = Files.createDirectories(tmp.resolve("temurin-25.0.4"));
         Files.createDirectories(real.resolve("bin"));
         Files.writeString(JdkFingerprint.java(real), "#!/java\n");
         Files.writeString(real.resolve("release"), "JAVA_VERSION=\"25.0.4\"\n");
         Path link = tmp.resolve("linked");
-        Files.createSymbolicLink(link, real);
+        Symlinks.create(link, real);
 
         String viaLink = JdkFingerprint.compute(link);
         assertThat(viaLink).isEqualTo(JdkFingerprint.compute(real)).isNotEqualTo(JdkFingerprint.EMPTY_TREE);

@@ -3,11 +3,15 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.ShortTempDirs;
+import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class JkResultsCoverageSectionTest {
+
+    private static final Path WS = ShortTempDirs.path().resolve("ws");
 
     private static BuildRecord record(long buildNumber, List<BuildRecord.Coverage> coverage) {
         return new BuildRecord(
@@ -15,7 +19,7 @@ class JkResultsCoverageSectionTest {
                         buildNumber,
                         BuildRecord.SCHEMA,
                         "test",
-                        "/ws",
+                        WS.toString(),
                         "g:ws",
                         "pid",
                         1_000,
@@ -41,7 +45,18 @@ class JkResultsCoverageSectionTest {
 
     private static BuildRecord.Coverage module(String name, long lc, long lm, long bc, long bm) {
         return new BuildRecord.Coverage(
-                "/ws/" + name, "g:" + name, lc, lm, bc, bm, "/ws/target/" + name + "/reports/coverage/index.html");
+                WS.resolve(name).toString(),
+                "g:" + name,
+                lc,
+                lm,
+                bc,
+                bm,
+                WS.resolve("target/" + name + "/reports/coverage/index.html").toString());
+    }
+
+    /** The pointer is relative to the record's root, in this platform's spelling. */
+    private static String pointer(String relative) {
+        return "- Coverage HTML: `" + Path.of(relative) + "`";
     }
 
     private static String render(BuildRecord r, @Nullable BuildRecord previous) {
@@ -60,7 +75,7 @@ class JkResultsCoverageSectionTest {
 
         assertThat(md)
                 .contains("Coverage: **60.0%** lines · 50.0% branches · 2 modules\n")
-                .contains("- Coverage HTML: `target/reports/coverage/index.html`")
+                .contains(pointer("target/reports/coverage/index.html"))
                 .contains("## Coverage\n\n| Module | Lines | Branches |\n|---|---|---|\n")
                 .contains("| g:lib | 80.0% (120/150) | 50.0% (20/40) |\n")
                 .contains("| g:app | 0.0% (0/50) | 100.0% (0/0) |\n")
@@ -87,7 +102,7 @@ class JkResultsCoverageSectionTest {
     @Test
     void a_single_module_points_at_its_own_page_relative_to_the_root() {
         String md = render(record(3, List.of(module("lib", 1, 0, 0, 0))), null);
-        assertThat(md).contains("- Coverage HTML: `target/lib/reports/coverage/index.html`");
+        assertThat(md).contains(pointer("target/lib/reports/coverage/index.html"));
         assertThat(md).contains("Coverage: **100.0%** lines · 100.0% branches\n");
     }
 

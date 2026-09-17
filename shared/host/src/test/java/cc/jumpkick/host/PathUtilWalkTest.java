@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -94,11 +95,7 @@ class PathUtilWalkTest {
         Files.writeString(root.resolve("real.txt"), "real");
         Path outside = Files.createDirectories(tmp.resolve("outside"));
         Files.writeString(outside.resolve("secret.txt"), "secret");
-        try {
-            Files.createSymbolicLink(root.resolve("link"), outside);
-        } catch (UnsupportedOperationException | IOException noSymlinks) {
-            return;
-        }
+        Symlinks.create(root.resolve("link"), outside);
 
         List<String> seen = new ArrayList<>();
         PathUtil.forEachRegularFile(

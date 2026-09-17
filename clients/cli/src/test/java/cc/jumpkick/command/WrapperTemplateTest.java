@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.command.toolchain.WrapperCommand;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.repo.ReleaseVerifier;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -171,7 +172,7 @@ class WrapperTemplateTest {
         if (Os.isWindows()) return;
         Path repo = materialize(tmp.resolve("repo"));
         Path linkDir = Files.createDirectories(tmp.resolve("pathlink"));
-        Files.createSymbolicLink(linkDir.resolve("jk"), repo.resolve("jk"));
+        Symlinks.create(linkDir.resolve("jk"), repo.resolve("jk"));
         Path copyDir = Files.createDirectories(tmp.resolve("pathcopy"));
         Files.copy(repo.resolve("jk"), copyDir.resolve("jk"));
         Files.setPosixFilePermissions(copyDir.resolve("jk"), Files.getPosixFilePermissions(repo.resolve("jk")));

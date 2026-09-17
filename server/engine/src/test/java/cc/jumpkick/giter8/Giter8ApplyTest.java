@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.repo.MavenMetadata;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,8 +13,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class Giter8ApplyTest {
@@ -106,14 +105,13 @@ class Giter8ApplyTest {
     }
 
     @Test
-    @EnabledOnOs({OS.LINUX, OS.MAC}) // Windows: createSymbolicLink needs Developer Mode or elevation
     void symlinked_template_entries_are_skipped_not_dereferenced(@TempDir Path tmp) throws Exception {
         Path secret = tmp.resolve("id_ed25519");
         Files.writeString(secret, "PRIVATE KEY MATERIAL\n");
         Path template = g8(tmp, "name=demo\n");
         Path g8 = template.resolve("src/main/g8");
         Files.writeString(g8.resolve("jk.toml"), "name = \"$name$\"\n");
-        Files.createSymbolicLink(g8.resolve("secrets.txt"), secret);
+        Symlinks.create(g8.resolve("secrets.txt"), secret);
 
         Path dest = tmp.resolve("out");
         Giter8Apply.apply(template, dest, Map.of());

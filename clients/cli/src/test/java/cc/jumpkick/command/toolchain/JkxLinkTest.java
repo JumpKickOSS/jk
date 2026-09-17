@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -70,7 +71,7 @@ class JkxLinkTest {
     void repairs_a_broken_symlink() throws IOException {
         Path jk = fakeJk();
         Path jkx = bin().resolve("jkx");
-        Files.createSymbolicLink(jkx, tmp.resolve("gone"));
+        Symlinks.create(jkx, tmp.resolve("gone"));
         JkxLink.Result r = JkxLink.ensure(bin(), jk);
         assertThat(r.status()).isEqualTo(JkxLink.Status.CREATED);
         assertThat(Files.isSameFile(jkx, jk)).isTrue();

@@ -1282,3 +1282,19 @@ reason = "recognises jk's own checkout, which carries a written jk.toml by defin
 [[guards.manifest-reader-owner.allow]]
 in     = "shared/core/src/main/java/cc/jumpkick/scaffold/NewScaffolder.java"
 reason = "names the jk.toml the scaffold writes"
+
+# G109. A test that creates a symbolic link is red on every Windows host without
+# SeCreateSymbolicLinkPrivilege — Developer Mode or an elevated shell — which most Windows
+# contributors do not hold. A symlink is a POSIX-only shape in jk anyway: a directory pointer is a
+# junction on Windows and a file is materialised with a hard link everywhere, so such a test has
+# nothing to assert there. Symlinks.create skips it, where a catch-and-return left a green test that
+# asserted nothing.
+[guards.tests-skip-symlinks-on-windows]
+kind     = "text"
+files    = ["**/src/test/java/**/*.java", "**/src/fixtures/java/**/*.java"]
+pattern  = 'Files\.createSymbolicLink\('
+owner    = "shared/host/src/fixtures/java/cc/jumpkick/testing/Symlinks.java"
+hit      = 'Files.createSymbolicLink(tmp.resolve("link"), real);'
+miss     = 'Symlinks.create(tmp.resolve("link"), real);'
+instead  = "cc.jumpkick.testing.Symlinks.create(link, target), which aborts the test on Windows"
+why      = "a test that creates a symlink is red for every Windows contributor without Developer Mode"

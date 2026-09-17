@@ -4,7 +4,7 @@ package cc.jumpkick.engine.http;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
+import cc.jumpkick.testing.Symlinks;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -34,11 +34,7 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
         // may write there) must not become an unauthenticated read of anything outside it.
         Path secret = stateDir.resolve("outside-secret.txt");
         Files.writeString(secret, "TOP SECRET");
-        try {
-            Files.createSymbolicLink(webRoot.resolve("leak.txt"), secret);
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return; // filesystem without symlink support — nothing to prove here
-        }
+        Symlinks.create(webRoot.resolve("leak.txt"), secret);
         HttpResponse<String> resp = get("/leak.txt");
         assertThat(resp.statusCode()).isNotEqualTo(200);
         assertThat(resp.body()).doesNotContain("TOP SECRET");

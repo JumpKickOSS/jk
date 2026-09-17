@@ -8,6 +8,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.testing.Symlinks;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -411,13 +412,12 @@ class JdkInstallerTest {
     }
 
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void a_zip_directory_entry_routed_through_a_planted_link_is_refused_before_anything_is_created(
             @TempDir Path tempDir) throws Exception {
         // A zip carries no links of its own; the link is already in the tree it is unpacked into.
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
-        Files.createSymbolicLink(dest.resolve("lib"), outside);
+        Symlinks.create(dest.resolve("lib"), outside);
         Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
             {"lib/pwn/", null},
             {"lib/pwn/owned", "outside"},
@@ -431,12 +431,11 @@ class JdkInstallerTest {
     }
 
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void a_zip_file_entry_routed_through_a_planted_link_is_refused_before_anything_is_written(@TempDir Path tempDir)
             throws Exception {
         Path dest = Files.createDirectories(tempDir.resolve("stage"));
         Path outside = Files.createDirectories(tempDir.resolve("outside"));
-        Files.createSymbolicLink(dest.resolve("lib"), outside);
+        Symlinks.create(dest.resolve("lib"), outside);
         Path zip = Files.write(tempDir.resolve("jdk.zip"), buildZip(new String[][] {
             {"bin/java", "#!/fake"},
             {"lib/owned", "outside"},

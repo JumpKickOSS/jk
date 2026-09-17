@@ -3,6 +3,7 @@ package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -103,11 +104,7 @@ class PathUtilCopyTreeTest {
         Files.writeString(from.resolve("real.txt"), "real");
         Path outside = Files.createDirectories(tmp.resolve("outside"));
         Files.writeString(outside.resolve("secret.txt"), "secret");
-        try {
-            Files.createSymbolicLink(from.resolve("link"), outside);
-        } catch (UnsupportedOperationException | IOException noSymlinks) {
-            return; // Windows without developer mode
-        }
+        Symlinks.create(from.resolve("link"), outside);
         Path to = tmp.resolve("to");
 
         PathUtil.copyTree(from, to);
