@@ -13,9 +13,10 @@ import java.util.jar.Manifest;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The generate step's body: expand the entry's inputs, fork {@code java -cp <tool> <main> <args>}
- * on the build's JDK with the output dir as the working directory, report every located line the
- * tool printed as a diagnostic, fail on a non-zero exit with the output's tail.
+ * The generate step's body: expand the entry's inputs, extract the jar it unpacks, fork
+ * {@code java -cp <tool> <main> <args>} on the build's JDK with the output dir as the working
+ * directory, report every located line the tool printed as a diagnostic, fail on a non-zero exit
+ * with the output's tail.
  */
 final class GeneratorStep {
 
@@ -26,15 +27,22 @@ final class GeneratorStep {
 
     static void run(TaskExec exec, GeneratorEntry entry) throws Exception {
         List<Path> inputs = Inputs.expand(exec.moduleDir(), entry.inputs());
-        if (inputs.isEmpty()) {
+        if (inputs.isEmpty() && !entry.inputs().isEmpty()) {
             throw new IllegalStateException("[generate." + entry.name() + "] inputs " + entry.inputs()
                     + " match no file under " + exec.moduleDir());
         }
+        Path unpacked = entry.unpack() == null
+                ? null
+                : Unpack.extract(
+                        exec.requireExtra(entry.unpackArtifact()),
+                        exec.scratch().resolve("unpacked"));
         Path out = exec.outputDir(entry.out());
-        List<Path> classpath = toolClasspath(exec.requireExtra(entry.toolArtifact()));
+        List<Path> classpath = new ArrayList<>(entry.classpath());
+        classpath.addAll(toolClasspath(exec.requireExtra(entry.toolArtifact())));
         String main = entry.main() != null ? entry.main() : mainClass(classpath, entry);
-        List<String> args = Arguments.expand(entry.args(), new Arguments.Scope(inputs, out, exec.moduleDir()));
-        exec.label(entry.name() + " (" + inputs.size() + (inputs.size() == 1 ? " input)" : " inputs)"));
+        List<String> args =
+                Arguments.expand(entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir()));
+        exec.label(entry.name() + " (" + describe(inputs, entry) + ")");
 
         List<String> output = new ArrayList<>();
         int exit = exec.java().classpath(classpath).mainClass(main).args(args).cwd(out).stream(output::add);
@@ -52,6 +60,12 @@ final class GeneratorStep {
             throw new IllegalStateException(
                     main + " failed (exit " + exit + ")" + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
         }
+    }
+
+    /** The step label's parenthetical: the input count, or the unpacked coordinate when there are none. */
+    private static String describe(List<Path> inputs, GeneratorEntry entry) {
+        if (inputs.isEmpty()) return "unpacked " + entry.unpack();
+        return inputs.size() + (inputs.size() == 1 ? " input" : " inputs");
     }
 
     /** The fetched tool as a classpath: the jar itself, or every jar of a materialized closure dir. */

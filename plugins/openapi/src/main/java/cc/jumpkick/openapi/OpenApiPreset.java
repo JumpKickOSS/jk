@@ -110,8 +110,10 @@ public final class OpenApiPreset implements Plugin, BuildExtension {
                 TOOL_COORDINATE,
                 null,
                 List.of(config.stringOpt("spec").orElse("api/*.yaml")),
+                null,
                 args,
                 GeneratorEntry.Contribution.SOURCES,
-                "generated/openapi");
+                "generated/openapi",
+                List.of());
     }
 }

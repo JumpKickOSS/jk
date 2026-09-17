@@ -96,6 +96,57 @@ class GeneratorStepTest {
                 .hasMessageContaining("set main");
     }
 
+    @Test
+    void an_unpacked_jar_is_a_directory_the_tool_reads(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+        io.extra("api-unpack", io.jar("protos-1.0.jar", "zipkin.proto"));
+
+        GeneratorEntry entry = new GeneratorEntry(
+                "api",
+                "api",
+                "com.example:stub-gen:1.0",
+                null,
+                List.of(),
+                "io.zipkin.proto3:zipkin-proto3:1.0.0",
+                List.of("--proto_path=${unpacked}", "-o", "${out}"),
+                GeneratorEntry.Contribution.TEST_SOURCES,
+                "generated/api",
+                List.of());
+        GeneratorStep.run(io, entry);
+
+        Path unpacked = tmp.resolve("scratch/unpacked");
+        assertThat(unpacked.resolve("zipkin.proto")).isRegularFile();
+        assertThat(Files.readAllLines(tmp.resolve("scratch/generated/api/argv.txt")))
+                .containsExactly(
+                        "--proto_path=" + unpacked.toAbsolutePath(),
+                        "-o",
+                        tmp.resolve("scratch/generated/api").toAbsolutePath().toString());
+        assertThat(io.labels()).containsExactly("api (unpacked io.zipkin.proto3:zipkin-proto3:1.0.0)");
+    }
+
+    @Test
+    void an_entrys_own_classpath_goes_ahead_of_the_tool(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");
+        io.extra("api", io.jar("lib-1.0.jar", "not/a/Main.class"));
+
+        GeneratorEntry entry = new GeneratorEntry(
+                "api",
+                "api",
+                "com.example:lib:1.0",
+                StubTool.class.getName(),
+                List.of("api/a.yaml"),
+                null,
+                List.of("-o", "${out}"),
+                GeneratorEntry.Contribution.SOURCES,
+                "generated/api",
+                List.of(stubJar(tmp.resolve("shim/shim.jar"), null)));
+        GeneratorStep.run(io, entry);
+
+        assertThat(tmp.resolve("scratch/generated/api/Hello.java")).isRegularFile();
+    }
+
     private static GeneratorEntry entry(@Nullable String main, List<String> inputs, List<String> args) {
         return new GeneratorEntry(
                 "api",
@@ -103,9 +154,11 @@ class GeneratorStepTest {
                 "com.example:stub-gen:1.0",
                 main,
                 inputs,
+                null,
                 args,
                 GeneratorEntry.Contribution.SOURCES,
-                "generated/api");
+                "generated/api",
+                List.of());
     }
 
     /** {@link StubTool}'s class file in a jar, with the given {@code Main-Class} (none when null). */

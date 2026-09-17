@@ -2,6 +2,7 @@
 package cc.jumpkick.generate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Classpaths;
 import java.nio.file.Path;
@@ -15,7 +16,8 @@ class ArgumentsTest {
     private static final Path OUT = Path.of("/scratch/generated/api").toAbsolutePath();
     private static final Path A = MODULE.resolve("api/a.yaml");
     private static final Path B = MODULE.resolve("api/b.yaml");
-    private static final Arguments.Scope SCOPE = new Arguments.Scope(List.of(A, B), OUT, MODULE);
+    private static final Path UNPACKED = Path.of("/scratch/unpacked").toAbsolutePath();
+    private static final Arguments.Scope SCOPE = new Arguments.Scope(List.of(A, B), null, OUT, MODULE);
 
     @Test
     void in_is_the_first_input_and_out_and_module_dir_are_absolute() {
@@ -33,6 +35,18 @@ class ArgumentsTest {
     void inputs_embedded_joins_with_the_path_separator() {
         assertThat(Arguments.expand(List.of("--files=${inputs}"), SCOPE))
                 .containsExactly("--files=" + Classpaths.join(List.of(A, B)));
+    }
+
+    @Test
+    void unpacked_is_the_extracted_jar_and_in_needs_an_input() {
+        Arguments.Scope unpacked = new Arguments.Scope(List.of(), UNPACKED, OUT, MODULE);
+        assertThat(Arguments.expand(List.of("--proto_path=${unpacked}", "--java_out=${out}"), unpacked))
+                .containsExactly("--proto_path=" + UNPACKED, "--java_out=" + OUT);
+        assertThatThrownBy(() -> Arguments.expand(List.of("${in}"), unpacked))
+                .hasMessageContaining("${in} names the first input")
+                .hasMessageContaining("declares none");
+        assertThatThrownBy(() -> Arguments.expand(List.of("${unpacked}"), SCOPE))
+                .hasMessageContaining("this entry has no unpack");
     }
 
     @Test

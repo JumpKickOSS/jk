@@ -57,12 +57,35 @@ class GeneratorsPlanTest {
                 .isEqualTo(2);
     }
 
+    /** zipkin-server's shape: protos unpacked from a jar, generated for the test compile. */
     @Test
-    void test_sources_are_refused_with_the_reason() {
+    void an_unpack_entry_needs_no_inputs_and_test_sources_reach_the_test_compile(@TempDir Path dir) throws Exception {
+        List<String> lines = describe(
+                dir,
+                List.of(
+                        entry("wire", "tool", "string", "\"com.squareup.wire:wire-compiler:5.5.1\""),
+                        entry("wire", "unpack", "string", "\"io.zipkin.proto3:zipkin-proto3:1.0.0\""),
+                        entry("wire", "contributes", "string", "\"test-sources\"")));
+
+        String wire = task(lines, "generate-wire");
+        assertThat(arrayOf(wire, "inputs")).containsExactly("config");
+        assertThat(arrayOf(wire, "contributesTestSources")).containsExactly("generated/wire");
+        assertThat(arrayOf(wire, "contributesSources")).isEmpty();
+        assertThat(wire).contains("\"stage\":\"generate\"");
+    }
+
+    @Test
+    void an_entry_with_neither_inputs_nor_unpack_is_refused() {
+        assertThatThrownBy(() -> GeneratorEntry.fromConfig("api", Map.of("tool", "g:a:1")))
+                .hasMessageContaining("[generate.api] declares no inputs")
+                .hasMessageContaining("unpack");
+    }
+
+    @Test
+    void an_unknown_contribution_is_refused_naming_the_three() {
         assertThatThrownBy(() -> GeneratorEntry.fromConfig(
-                        "api", Map.of("tool", "g:a:1", "inputs", List.of("x"), "contributes", "test-sources")))
-                .hasMessageContaining("test-sources")
-                .hasMessageContaining("not available yet");
+                        "api", Map.of("tool", "g:a:1", "inputs", List.of("x"), "contributes", "classes")))
+                .hasMessageContaining("sources, test-sources or resources");
     }
 
     private static String entry(String name, String field, String kind, String json) {

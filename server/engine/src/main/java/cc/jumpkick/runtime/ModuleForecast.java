@@ -569,7 +569,9 @@ final class ModuleForecast {
                     dir,
                     compact,
                     TestSupport.selectedSuites(
-                            dir, compact, SessionContext.current().testSelection()));
+                            dir, compact, SessionContext.current().testSelection()),
+                    layout,
+                    prepared.pkgDecls());
         } catch (IOException ignored) {
             // forecast degrades
         }
@@ -769,7 +771,8 @@ final class ModuleForecast {
                     testRt,
                     new TestStamp.CompileTestKeys(compileTestKey, compileTestKotlinKey, compileTestGroovyKey),
                     restored.identity(),
-                    profileName);
+                    profileName,
+                    prepared.pkgDecls());
             Perf.end("  test-stamp-key", ts);
             Optional<ActionCache.ActionRecord> marker =
                     stampKey == null ? Optional.empty() : TaskForecaster.presentRecord(actionCache, stampKey);

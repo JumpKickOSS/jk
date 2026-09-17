@@ -21,21 +21,42 @@ contributes = "sources"                                      # sources | resourc
 |---|---|
 | `tool` | The generator's coordinate. A bare version is an exact pin; `^`/`~` float within the line; `latest` is the newest stable. The tool's runtime closure is fetched with it, so a tool that is not a fat jar still runs. |
 | `main` | The class to run. Omitted, jk reads `Main-Class` from the tool's own jar. |
-| `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`). Required; a pattern matching nothing fails the step. |
-| `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
-| `contributes` | `sources` (default) folds the output into the compiler's source set; `resources` into the packaged resources. `test-sources` is not available yet. |
+| `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`). A pattern matching nothing fails the step. An entry with an `unpack` may leave them out. |
+| `unpack` | A jar coordinate whose contents the tool reads — a schema published as an artifact (`io.zipkin.proto3:zipkin-proto3:1.0.0`). The jar is fetched like the tool, extracted before the run, and `${unpacked}` names the directory. |
+| `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${unpacked}` the extracted jar, `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
+| `contributes` | `sources` (default) folds the output into the compiler's source set; `test-sources` into the test compiler's, beside the suites' own sources; `resources` into the packaged resources. |
 | `out` | The output directory's name under the step's output root; default `generated/<name>`. |
 
 Each entry is one step named `generate-<name>`. Its **action key** is the input files' content
-(a glob's whole base directory), the entry's config, the tool's jar hashes, the build JDK and the
-worker itself — so a changed spec, argument, tool version or JDK re-runs the generator, and
-nothing else does. An unchanged entry is restored from the cache.
+(a glob's whole base directory), the entry's config, the tool's jar hashes, the unpacked jar's
+hash, the build JDK and the worker itself — so a changed spec, argument, tool version or JDK
+re-runs the generator, and nothing else does. An unchanged entry is restored from the cache.
 
 The tool runs in a **forked JVM** on the build's JDK, never in the engine, with `${out}` as its
 working directory: what it writes by relative path lands in the output; what it reads, jk hands it
 by absolute path. Its output is captured; lines of the form `path:line[:col]: message` become the
 step's diagnostics with a location, an error when the tool failed or said `error`, a warning
 otherwise. A non-zero exit fails the step with the tool's last lines.
+
+## Wire — protos from a published jar
+
+Wire's compiler has no `Main-Class`, so the entry names the class. zipkin-server's shape: the
+`.proto` files live in `io.zipkin.proto3:zipkin-proto3`, not in the tree, and the generated
+classes are read by the tests alone.
+
+```toml
+[generate.wire]
+tool   = "com.squareup.wire:wire-compiler:5.5.1"          # the wire-runtime version the module depends on
+main   = "com.squareup.wire.WireCompiler"
+unpack = "io.zipkin.proto3:zipkin-proto3:1.0.0"           # the jar holding the .proto files
+args   = ["--proto_path=${unpacked}", "--java_out=${out}", "--includes=zipkin.proto3.*"]
+contributes = "test-sources"
+```
+
+Protos in the tree are `inputs` instead — `inputs = ["src/main/proto/**/*.proto"]` with
+`--proto_path=${module.dir}/src/main/proto` — and `contributes` is left at `sources`. `jk import`
+writes this entry from a POM's `wire-maven-plugin`, folding a `maven-dependency-plugin` unpack of
+the protos into `unpack` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## `[openapi]` — the OpenAPI Generator preset
 

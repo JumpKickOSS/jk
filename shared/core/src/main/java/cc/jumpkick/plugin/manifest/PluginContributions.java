@@ -316,15 +316,12 @@ public final class PluginContributions {
                     out.add(toolDependency(sd, config, build.project(), manifest.id(), kind, null));
                     continue;
                 }
-                // per-entry: the one declaration, once per [<table>.<name>] entry in its scope.
+                // per-entry: the one declaration, once per [<table>.<name>] entry in its scope; an
+                // entry that leaves a key the coordinate names unset declares no such tool.
                 for (var entry : config.entries().entrySet()) {
-                    out.add(toolDependency(
-                            sd,
-                            config,
-                            build.project(),
-                            manifest.id(),
-                            kind,
-                            new Interpolation.Entry(entry.getKey(), entry.getValue())));
+                    Interpolation.Entry scope = new Interpolation.Entry(entry.getKey(), entry.getValue());
+                    if (!Interpolation.entryProvides(sd.coordinate(), scope)) continue;
+                    out.add(toolDependency(sd, config, build.project(), manifest.id(), kind, scope));
                 }
             }
         }

@@ -256,6 +256,7 @@ class BuildPlannerStagedClassesTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 null,
                 null);
         var decls = new PluginBuild.Declarations(List.of(step), null, List.of());

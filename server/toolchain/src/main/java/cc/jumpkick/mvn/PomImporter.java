@@ -137,8 +137,8 @@ public final class PomImporter {
         ImportReport.Builder report = ImportReport.builder();
         reportInheritanceFailure(em, report);
         GeneratorPlugins.Generators generators = GeneratorPlugins.map(em.model(), remote, report);
-        SourceTreePlugins.SourceTree sourceTree =
-                SourceTreePlugins.map(em, generators.outputRoots(), report, inherited, false);
+        SourceTreePlugins.SourceTree sourceTree = SourceTreePlugins.map(
+                em, generators.outputRoots(), generators.consumedPlugins(), report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
         List<Pom.Dep> processorPaths = PluginFacts.annotationProcessorPaths(em.model());
         Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths, hoisted);
@@ -166,6 +166,7 @@ public final class PomImporter {
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(generators.openapi())
                 .pluginConfig(generators.protobuf())
+                .pluginConfig(generators.generate())
                 .build(buildBlock(em.model(), sourceTree, tests, report))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
@@ -271,7 +272,7 @@ public final class PomImporter {
         reportInheritanceFailure(rootModel, report);
         if (leaves.isEmpty() && found.boms().isEmpty()) reportInactiveModules(rootModel, report);
         SourceTreePlugins.SourceTree rootSourceTree =
-                SourceTreePlugins.map(rootModel, Map.of(), report, inherited, true);
+                SourceTreePlugins.map(rootModel, Map.of(), Set.of(), report, inherited, true);
         Project rootProject = mapProject(rootModel, report, rootSourceTree);
         warnUnsupportedSections(rootModel, report, /* isWorkspaceRoot= */ true, inherited);
         inherited.flush(report);

@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
@@ -48,6 +49,7 @@ final class SourceTreePlugins {
     static SourceTree map(
             EffectiveModel em,
             Map<String, String> generatorOutputs,
+            Set<String> consumedPlugins,
             ImportReport.Builder report,
             @Nullable InheritedRows inherited,
             boolean isRoot) {
@@ -67,7 +69,7 @@ final class SourceTreePlugins {
                 .filter(SourceTreePlugins::failsOnDoclint)
                 .map(p -> JavadocMode.STRICT)
                 .orElse(JavadocMode.LENIENT);
-        reportUnmappedPlugins(em, report, inherited, isRoot);
+        reportUnmappedPlugins(em, consumedPlugins, report, inherited, isRoot);
         return new SourceTree(extraSrc, testExtraSrc, sources, javadoc);
     }
 
@@ -215,12 +217,21 @@ final class SourceTreePlugins {
         }
     }
 
-    /** Every declared plugin the import has no mapping for; the migration page says where each lands. */
+    /**
+     * Every declared plugin the import has no mapping for and no other mapping consumed; the
+     * migration page says where each lands.
+     */
     private static void reportUnmappedPlugins(
-            EffectiveModel em, ImportReport.Builder report, @Nullable InheritedRows inherited, boolean isRoot) {
+            EffectiveModel em,
+            Set<String> consumedPlugins,
+            ImportReport.Builder report,
+            @Nullable InheritedRows inherited,
+            boolean isRoot) {
         for (Plugin plugin : PluginFacts.plugins(em.model())) {
             String artifactId = plugin.getArtifactId();
-            if (artifactId == null || PluginFacts.MAPPED_PLUGINS.contains(artifactId)) continue;
+            if (artifactId == null
+                    || PluginFacts.MAPPED_PLUGINS.contains(artifactId)
+                    || consumedPlugins.contains(artifactId)) continue;
             String message = "`<plugin>" + artifactId
                     + "</plugin>` was not imported; docs/user/migration.md lists where it lands in jk.";
             boolean own = InheritedRows.declaresPlugin(em.raw(), artifactId, em.activeProfiles());

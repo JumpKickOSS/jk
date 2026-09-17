@@ -32,7 +32,8 @@ import org.jspecify.annotations.Nullable;
  * files whose content is the step's cache key. What the preset has no key for is a row naming
  * the option. The generator's output directory is reported back so the {@code add-source} that
  * put it on Maven's compile path is not written as an {@code extra-src} root.
- * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table.
+ * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table, {@code wire-maven-plugin}
+ * {@link WirePlugin}'s {@code [generate.wire]} entry.
  */
 final class GeneratorPlugins {
 
@@ -43,7 +44,12 @@ final class GeneratorPlugins {
      * generators fill, each with what an {@code add-source} root inside it is (the build-helper row).
      */
     record Generators(
-            @Nullable PluginConfig openapi, @Nullable PluginConfig protobuf, Map<String, String> outputRoots) {}
+            @Nullable PluginConfig openapi,
+            @Nullable PluginConfig protobuf,
+            @Nullable PluginConfig generate,
+            Map<String, String> outputRoots,
+            /** Plugins another mapping consumed, which get no "not imported" row of their own. */
+            Set<String> consumedPlugins) {}
 
     /** What an {@code add-source} root inside the OpenAPI output is, for the build-helper row. */
     private static final String OPENAPI_ADD_SOURCE_ROW = "the OpenAPI generator's output; `[openapi]` folds the"
@@ -83,7 +89,13 @@ final class GeneratorPlugins {
                 .ifPresent(root -> outputRoots.put(root, LocalizerPlugin.ADD_SOURCE_ROW));
         ProtobufPlugin.Mapped protobuf = ProtobufPlugin.map(model, report);
         outputRoots.putAll(protobuf.outputRoots());
-        return new Generators(openapi, protobuf.table(), Collections.unmodifiableMap(outputRoots));
+        WirePlugin.Mapped wire = WirePlugin.map(model, report);
+        outputRoots.putAll(wire.outputRoots());
+        PluginConfig generate = wire.entry() == null
+                ? null
+                : new PluginConfig("generator", Map.of(PluginConfig.ENTRIES, Map.of(WirePlugin.ENTRY, wire.entry())));
+        return new Generators(
+                openapi, protobuf.table(), generate, Collections.unmodifiableMap(outputRoots), wire.consumed());
     }
 
     /**

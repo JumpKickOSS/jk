@@ -188,7 +188,8 @@ declaration expanded once per `[entries]` sub-table: `artifact`, `coordinate`, `
 `coordinate = "${entry.tool}"`, `for-step = "generate-${entry.name}"`, so each entry's tool is
 fetched by and keyed into that entry's step alone. A table may carry `[schema]` keys and
 `[entries]` at once: protobuf's `[protobuf.<id>]` entries are protoc plugins, each fetched as
-`protoc-gen-${entry.name}` beside the table's own protoc.
+`protoc-gen-${entry.name}` beside the table's own protoc. A per-entry declaration whose `coordinate`
+names an optional entry key is expanded only for the entries that set it.
 
 **Interpolation (closed set):** `${config.<key>}`, `${entry.name}` / `${entry.<key>}` (per-entry
 tools only), `${kotlin.version}`, `${project.group|name|version}`, `${host.os}`,
@@ -395,8 +396,17 @@ contributes = "sources"                                      # sources | resourc
 - **Diagnostics**: the tool's output is captured; lines matching `path:line[:col]: message` go
   through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the
   rest is the failure message's tail.
-- **Not yet**: `contributes = "test-sources"` — the engine has no test-source contribution lane;
-  the entry is refused with that reason.
+- **Test sources**: `contributes = "test-sources"` declares `TaskSpec.contributesTestSources`; the
+  step still runs in the generate stage, compile-test requires it and folds the output into the
+  selected suites' sources (`PlannerTest.TestSources.collect`), and compile-main never sees it.
+- **Unpack**: `unpack = "g:a:v"` is a second per-entry `[[contribute.step-dependency]]`
+  (`${entry.name}-unpack`, the jar alone) the body extracts under the step's scratch before the
+  fork; `${unpacked}` names the directory. An entry without the key declares no such tool: a
+  per-entry declaration whose `coordinate` names an optional entry key the entry leaves unset is
+  skipped for that entry (`Interpolation.entryProvides`).
+- **A preset's own main**: `GeneratorEntry.classpath` puts jars ahead of the tool's closure on the
+  forked classpath, so a preset can run a `main` it ships over a library that has none
+  (`[localizer]`).
 - **Beside a framework**: a module's active code plugins are a list (`ActivePlugins.of`), so a
   generator table sits beside `[spring-boot]` or `[quarkus]` in one module; see
   [Active plugins per module](#active-plugins-per-module).

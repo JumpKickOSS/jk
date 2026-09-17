@@ -16,6 +16,7 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
@@ -59,40 +60,34 @@ public final class PlannerTest {
     /** Where compile-test records the suite selection that produced {@code classes/test}. */
     private static final String SUITE_MARKER = ".jk-suites";
 
-    static Task compileTestStep(BuildPlanner.Ctx cx, boolean hasFixtures) {
+    static Task compileTestStep(
+            BuildPlanner.Ctx cx, boolean hasFixtures, PluginBuild.@Nullable Declarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
         Supplier<EffortWeights.Plan> plan = cx.plan();
         boolean compact = cx.compact();
+        // AFTER_COMPILE scripts may generate types tests import. copy-resources is a real
+        // input, not just ordering: the test classpath (and its action-key fingerprint)
+        // includes classes/main, which copy-resources writes — racing it fingerprints a
+        // half-copied dir and intermittently crashes on vanishing files under -r.
+        List<String> requires = new ArrayList<>(
+                List.of(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES));
+        if (hasFixtures) requires.add(TaskNames.COMPILE_TEST_FIXTURES);
+        requires.addAll(testSourceGenSteps(pluginDecls));
         return Task.builder(TaskNames.COMPILE_TEST)
                 .stage(BuildStage.TEST)
                 .label("Test Compile")
                 .kind(TaskKind.CPU)
-                // AFTER_COMPILE scripts may generate types tests import. copy-resources is a real
-                // input, not just ordering: the test classpath (and its action-key fingerprint)
-                // includes classes/main, which copy-resources writes — racing it fingerprints a
-                // half-copied dir and intermittently crashes on vanishing files under -r.
-                .requires(
-                        hasFixtures
-                                ? new String[] {
-                                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                                    TaskNames.RESOLVE_DEPS,
-                                    TaskNames.COPY_RESOURCES,
-                                    TaskNames.COMPILE_TEST_FIXTURES
-                                }
-                                : new String[] {
-                                    TaskNames.BUILD_LOGIC_AFTER_COMPILE,
-                                    TaskNames.RESOLVE_DEPS,
-                                    TaskNames.COPY_RESOURCES
-                                })
+                .requires(requires.toArray(new String[0]))
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
                 .execute(ctx -> {
                     List<String> suiteNames = selectedSuites(ctx, in, compact);
                     if (suiteNames == null) return;
-                    TestSources src = TestSources.collect(ctx.require(PROJECT), in.dir(), compact, suiteNames);
+                    TestSources src = TestSources.collect(
+                            ctx.require(PROJECT), in.dir(), compact, suiteNames, ctx.require(LAYOUT), pluginDecls);
                     if (src.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
@@ -177,15 +172,26 @@ public final class PlannerTest {
      */
     record TestSources(Path javaTestSrc, List<Path> javaTest, List<Path> ktTest, List<Path> gvTest, List<Path> scTest) {
 
-        static TestSources collect(JkBuild project, Path dir, boolean compact, List<String> suiteNames)
+        static TestSources collect(
+                JkBuild project,
+                Path dir,
+                boolean compact,
+                List<String> suiteNames,
+                BuildLayout layout,
+                PluginBuild.@Nullable Declarations decls)
                 throws IOException {
             LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
             javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
+            javaTest.addAll(PlannerKsp.pluginContributedTestSources(layout, decls, ".java"));
             return new TestSources(
                     TestSuites.primaryJavaRoot(dir, compact, suiteNames),
                     List.copyOf(javaTest),
-                    TestSuites.collectKotlinSources(dir, compact, suiteNames),
-                    TestSuites.collectGroovySources(dir, compact, suiteNames),
+                    CompileSupport.concatDistinct(
+                            TestSuites.collectKotlinSources(dir, compact, suiteNames),
+                            PlannerKsp.pluginContributedTestSources(layout, decls, ".kt")),
+                    CompileSupport.concatDistinct(
+                            TestSuites.collectGroovySources(dir, compact, suiteNames),
+                            PlannerKsp.pluginContributedTestSources(layout, decls, ".groovy")),
                     TestSuites.collectScalaSources(dir, compact, suiteNames));
         }
 
@@ -210,6 +216,16 @@ public final class PlannerTest {
             allTestSources.addAll(scTest);
             return allTestSources;
         }
+    }
+
+    /** The plugin steps whose output compile-test reads: every test-source generator. */
+    static List<String> testSourceGenSteps(PluginBuild.@Nullable Declarations decls) {
+        List<String> out = new ArrayList<>();
+        if (decls == null) return out;
+        for (PluginBuild.TaskDecl step : decls.steps()) {
+            if (step.testSourceGenerating()) out.add("plugin-" + step.name());
+        }
+        return out;
     }
 
     /** classes/main, own fixtures, the resolved test compile classpath, and the Groovy jar when needed. */

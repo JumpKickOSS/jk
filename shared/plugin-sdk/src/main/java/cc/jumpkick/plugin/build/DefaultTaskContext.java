@@ -18,6 +18,7 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     private final List<In> inputs = new ArrayList<>();
     private final List<String> outputs = new ArrayList<>();
     private final List<String> contributesSources = new ArrayList<>();
+    private final List<String> contributesTestSources = new ArrayList<>();
     private final List<String> contributesClasses = new ArrayList<>();
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
@@ -80,6 +81,12 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
     }
 
     @Override
+    public TaskContribution contributesTestSources(String relDir) {
+        contributesTestSources.add(relDir);
+        return this;
+    }
+
+    @Override
     public TaskContribution contributesClasses(String relDir) {
         contributesClasses.add(relDir);
         return this;
@@ -121,6 +128,7 @@ final class DefaultTaskContext implements BuildContext, ResolveContext, TestCont
         spec.inputs(inputs.toArray(new In[0]));
         spec.outputs(outputs.toArray(new String[0]));
         for (String d : contributesSources) spec.contributesSources(d);
+        for (String d : contributesTestSources) spec.contributesTestSources(d);
         for (String d : contributesClasses) spec.contributesClasses(d);
         for (String d : contributesResources) spec.contributesResources(d);
         for (String d : contributesTestClasspath) spec.contributesTestClasspath(d);

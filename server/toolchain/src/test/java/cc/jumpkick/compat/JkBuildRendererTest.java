@@ -375,6 +375,33 @@ class JkBuildRendererTest {
         assertThat(out).contains("[nonesuch]").contains("spec = \"api/x.yaml\"").contains("options = { a = \"1\" }");
     }
 
+    /** A table of entries renders one {@code [<table>.<name>]} sub-table per entry and round-trips. */
+    @Test
+    void a_plugin_tables_entries_render_as_sub_tables() {
+        Map<String, Object> wire = new LinkedHashMap<>();
+        wire.put("tool", "com.squareup.wire:wire-compiler:5.5.1");
+        wire.put("main", "com.squareup.wire.WireCompiler");
+        wire.put("unpack", "io.zipkin.proto3:zipkin-proto3:1.0.0");
+        wire.put("args", List.of("--proto_path=${unpacked}", "--java_out=${out}"));
+        wire.put("contributes", "test-sources");
+        JkBuild model = JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
+                .pluginConfig(new PluginConfig("generator", Map.of(PluginConfig.ENTRIES, Map.of("wire", wire))))
+                .build();
+        String out = JkBuildRenderer.render(model);
+        assertThat(out)
+                .contains("\n[generate.wire]\n")
+                .contains("tool = \"com.squareup.wire:wire-compiler:5.5.1\"")
+                .contains("args = [\"--proto_path=${unpacked}\", \"--java_out=${out}\"]")
+                .doesNotContain("\n[generate]\n")
+                .doesNotContain("*");
+        assertThat(JkBuildParser.parse(out)
+                        .pluginConfig("generator")
+                        .orElseThrow()
+                        .entries()
+                        .get("wire"))
+                .containsAllEntriesOf(wire);
+    }
+
     @Test
     void group_qualified_workspace_edge_renders_its_group_and_round_trips() {
         var byScope = new EnumMap<Scope, List<Dependency>>(Scope.class);

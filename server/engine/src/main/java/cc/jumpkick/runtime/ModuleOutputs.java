@@ -80,7 +80,10 @@ public final class ModuleOutputs {
                 && !classesDirHasContent(layout.testFixturesClassesDir());
     }
 
-    /** Whether the module has test sources under the session's suite selection; an unreadable tree reads as none. */
+    /**
+     * Whether the module has test sources of its own under the session's suite selection; an
+     * unreadable tree reads as none, and a plugin's generated test sources are not counted.
+     */
     public static boolean hasSelectedTestSources(JkBuild build, Path moduleDir) {
         boolean compact = CompileSupport.isSimpleLayout(build.project(), moduleDir);
         try {
@@ -89,7 +92,9 @@ public final class ModuleOutputs {
                             moduleDir,
                             compact,
                             TestSupport.selectedSuites(
-                                    moduleDir, compact, SessionContext.current().testSelection()))
+                                    moduleDir, compact, SessionContext.current().testSelection()),
+                            BuildLayout.of(moduleDir, build),
+                            null)
                     .isEmpty();
         } catch (IOException e) {
             return false;

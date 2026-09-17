@@ -48,6 +48,7 @@ final class PluginFacts {
             "openapi-generator-maven-plugin",
             "protobuf-maven-plugin",
             "localizer-maven-plugin",
+            "wire-maven-plugin",
             "maven-jar-plugin",
             "maven-source-plugin",
             "maven-javadoc-plugin",

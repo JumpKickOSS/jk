@@ -172,6 +172,26 @@ class InterpolationTest {
                         """)).doesNotThrowAnyException();
     }
 
+    /** A generator's {@code ${in}} / {@code ${out}} vocabulary is the worker's, not the environment's. */
+    @Test
+    void a_generate_entrys_args_carry_the_generators_vocabulary() {
+        parse(PROJECT + """
+                [generate.wire]
+                tool = "com.squareup.wire:wire-compiler:5.5.1"
+                main = "com.squareup.wire.WireCompiler"
+                unpack = "io.zipkin.proto3:zipkin-proto3:1.0.0"
+                args = ["--proto_path=${unpacked}", "--java_out=${out}", "${in}", "${module.dir}/x"]
+                """);
+        assertThat(Interpolation.allowed("generate.wire.args[0]")).isTrue();
+        assertThat(Interpolation.allowed("generate.wire.tool")).isFalse();
+        assertThat(Interpolation.allowed("generate.wire.inputs[0]")).isFalse();
+        assertThatThrownBy(() -> parse(PROJECT + """
+                        [generate.wire]
+                        tool = "com.squareup.wire:wire-compiler:${WIRE}"
+                        inputs = ["x.proto"]
+                        """)).hasMessageContaining("generate.wire.tool (${WIRE})");
+    }
+
     @Test
     void whitelist_matching_is_exact_about_depth_and_names() {
         assertThat(Interpolation.allowed("repositories.r.username")).isTrue();
