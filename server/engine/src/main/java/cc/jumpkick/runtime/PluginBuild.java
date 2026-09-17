@@ -560,11 +560,26 @@ public final class PluginBuild {
      */
     public static List<Path> productionClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
+        return closure(projectDir, cas, lockFile, project, ClasspathResolver.RUNTIME);
+    }
+
+    /**
+     * The module's compile classpath as a step body sees it: the lock's COMPILE_MAIN closure
+     * ({@code provided} included, runtime-only absent) followed by the workspace siblings' jars and
+     * their compile closures — {@link #productionClasspath} over the other scope set.
+     */
+    public static List<Path> compileClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
+            throws IOException {
+        return closure(projectDir, cas, lockFile, project, ClasspathResolver.COMPILE_MAIN);
+    }
+
+    /** The lock's closure under {@code scopes}, then the siblings' jars and their closures, deduplicated in order. */
+    private static List<Path> closure(Path projectDir, Cas cas, Path lockFile, JkBuild project, Set<Scope> scopes)
+            throws IOException {
         List<Path> classpath = new ArrayList<>();
         var resolver = new ClasspathResolver(cas);
         if (Files.exists(lockFile)) {
-            classpath.addAll(
-                    resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME, true, project));
+            classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), scopes, true, project));
         }
         WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project);
         for (Path jar : siblings.jars()) {
@@ -572,7 +587,7 @@ public final class PluginBuild {
         }
         for (Path sibLock : siblings.siblingLockfiles()) {
             var sib = LockfileReader.read(sibLock);
-            for (Path pth : resolver.classpathFor(sib, ClasspathResolver.RUNTIME, true)) {
+            for (Path pth : resolver.classpathFor(sib, scopes, true)) {
                 if (!classpath.contains(pth)) classpath.add(pth);
             }
         }

@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -19,7 +20,9 @@ import java.util.zip.ZipFile;
  * them: {@code google/protobuf/*.proto} ride in protobuf-java, {@code google/rpc/status.proto}
  * and {@code google/api/*.proto} in proto-google-common-protos, and a library's own contract
  * often ships beside its classes. Each jar holding one becomes an include root under the step's
- * scratch, in classpath order after the module's own proto root; a jar without protos adds none.
+ * scratch, in classpath order after the module's own proto root — the runtime closure first, then
+ * the jars only the compile classpath carries ({@code provided} contracts) — and a jar without
+ * protos adds none.
  */
 final class DependencyProtos {
 
@@ -30,7 +33,9 @@ final class DependencyProtos {
         Path includes = exec.scratch().resolve("includes");
         PathUtil.deleteRecursivelyOrThrow(includes);
         List<Path> roots = new ArrayList<>();
-        for (Path jar : exec.runtimeClasspath()) {
+        LinkedHashSet<Path> jars = new LinkedHashSet<>(exec.runtimeClasspath());
+        jars.addAll(exec.compileClasspath());
+        for (Path jar : jars) {
             String name = jar.getFileName().toString();
             if (!name.endsWith(".jar") || !Files.isRegularFile(jar)) continue;
             Path root = includes.resolve(name.substring(0, name.length() - ".jar".length()));

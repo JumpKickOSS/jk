@@ -21,6 +21,12 @@ public record In(Kind kind, @Nullable String step) {
         CLASSES,
         /** The resolved production RUNTIME classpath — jar paths, lock-ordered. */
         RUNTIME_CLASSPATH,
+        /**
+         * The module's COMPILE classpath — jar paths, lock-ordered: what {@code javac} sees,
+         * {@code provided} artifacts included and runtime-only ones absent. For a step that reads
+         * contracts out of jars ({@code .proto} files) which a compile-only dependency may carry.
+         */
+        COMPILE_CLASSPATH,
         /** As {@link #RUNTIME_CLASSPATH}, plus real artifact names + snapshot flags per entry. */
         RUNTIME_ENTRIES,
         /**
@@ -57,6 +63,10 @@ public record In(Kind kind, @Nullable String step) {
 
     public static In runtimeClasspath() {
         return new In(Kind.RUNTIME_CLASSPATH, null);
+    }
+
+    public static In compileClasspath() {
+        return new In(Kind.COMPILE_CLASSPATH, null);
     }
 
     public static In runtimeEntries() {

@@ -66,6 +66,26 @@ class PluginActionKeyTokensTest {
                 .anySatisfy(token -> assertThat(token).startsWith("container:dep-1.0.aar:"));
     }
 
+    /** The compile view has its own prefix and moves when a compile-only jar changes, while the runtime token stands. */
+    @Test
+    void the_compile_view_is_keyed_apart_from_the_runtime_view(@TempDir Path tmp) throws Exception {
+        PlannerPlugin.InputSources src = sources(tmp);
+
+        List<String> compile =
+                PlannerPlugin.declaredInputTokens(List.of(In.compileClasspath().wireName()), src);
+        assertThat(compile).hasSize(1);
+        assertThat(compile.get(0)).startsWith("ccp:");
+
+        Files.writeString(tmp.resolve("provided-1.0.jar"), "provided, edited");
+        assertThat(PlannerPlugin.declaredInputTokens(
+                        List.of(In.compileClasspath().wireName()), src))
+                .isNotEqualTo(compile);
+        assertThat(PlannerPlugin.declaredInputTokens(
+                        List.of(In.runtimeClasspath().wireName()), src))
+                .isEqualTo(PlannerPlugin.declaredInputTokens(
+                        List.of(In.runtimeClasspath().wireName()), sources(tmp)));
+    }
+
     /**
      * A packager writes its entry list out verbatim — a boot jar's {@code classpath.idx} IS the
      * launcher's classpath order — but {@code cp:} is a content hash whose parts are sorted. So
@@ -120,6 +140,7 @@ class PluginActionKeyTokensTest {
         List<Path> jars = entries.stream().map(PluginBuild.ProdEntry::jar).toList();
         PlannerPlugin.InputSources src = new PlannerPlugin.InputSources(
                 Files.createDirectories(tmp.resolve("classes")),
+                jars,
                 jars,
                 entries,
                 new PluginConfig("fake", Map.of()),
@@ -284,6 +305,7 @@ class PluginActionKeyTokensTest {
         return new PlannerPlugin.InputSources(
                 classes,
                 List.of(jar),
+                List.of(jar, Files.writeString(tmp.resolve("provided-1.0.jar"), "provided")),
                 List.of(entry),
                 new PluginConfig("fake", Map.of("enabled", Boolean.TRUE)),
                 BuildLayout.of(tmp, project),
@@ -292,7 +314,7 @@ class PluginActionKeyTokensTest {
 
     private static String wire(In.Kind kind) {
         return switch (kind) {
-            case CLASSES, RUNTIME_CLASSPATH, RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES, CONFIG ->
+            case CLASSES, RUNTIME_CLASSPATH, COMPILE_CLASSPATH, RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES, CONFIG ->
                 new In(kind, null).wireName();
             case STEP_OUTPUT -> In.stepOutput("aot").wireName();
             case PROJECT_FILES -> In.projectFiles("src/main/res").wireName();
