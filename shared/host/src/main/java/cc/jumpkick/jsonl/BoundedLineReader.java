@@ -12,14 +12,18 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@link BufferedReader} with a max line length ({@link #DEFAULT_MAX_LINE}) and optional idle
- * timeout that closes the socket on stall. The timeout can be changed between reads, so one
- * connection may start strict and relax once its peer has spoken.
+ * {@link BufferedReader} with a max line length ({@link #DEFAULT_MAX_LINE}, or one sized to the
+ * heap — {@link #maxLineForHeap}) and optional idle timeout that closes the socket on stall. The
+ * timeout can be changed between reads, so one connection may start strict and relax once its
+ * peer has spoken.
  */
 public final class BoundedLineReader extends BufferedReader {
 
     /** Generous for real traffic (large dep graphs, long diagnostics); fatal for runaway peers. */
     public static final int DEFAULT_MAX_LINE = 64 * 1024 * 1024;
+
+    /** The least a heap-sized line bound comes to; a protocol line is never this long. */
+    static final int MIN_HEAP_MAX_LINE = 4 * 1024 * 1024;
 
     /** Default gap between protocol lines before a stream is declared dead: 60 minutes. */
     public static final long DEFAULT_STREAM_IDLE_MS = 60L * 60_000L;
@@ -62,10 +66,33 @@ public final class BoundedLineReader extends BufferedReader {
      * for {@code idleTimeoutMillis}; {@code 0} (or a null {@code onTimeout}) disables the timer.
      */
     public BoundedLineReader(Reader in, @Nullable Closeable onTimeout, long idleTimeoutMillis) {
+        this(in, onTimeout, idleTimeoutMillis, DEFAULT_MAX_LINE);
+    }
+
+    /** As above, with the line bound {@code maxLine} chars instead of {@link #DEFAULT_MAX_LINE}. */
+    public BoundedLineReader(Reader in, @Nullable Closeable onTimeout, long idleTimeoutMillis, int maxLine) {
         super(in);
-        this.maxLine = DEFAULT_MAX_LINE;
+        this.maxLine = maxLine;
         this.onTimeout = onTimeout;
         this.idleTimeoutMillis = idleTimeoutMillis;
+    }
+
+    /**
+     * A line bound a process with {@code maxHeapBytes} of heap can hold: an eighth of the heap, at
+     * least {@value #MIN_HEAP_MAX_LINE} chars and at most {@link #DEFAULT_MAX_LINE}. The buffer for
+     * a line that long peaks near three times its length while it grows, so a bound at the default
+     * on a heap of 128 MiB — the native client's — would exhaust the heap before it fired; this one
+     * fires first and names the peer.
+     */
+    public static int maxLineForHeap(long maxHeapBytes) {
+        if (maxHeapBytes <= 0 || maxHeapBytes == Long.MAX_VALUE) return DEFAULT_MAX_LINE;
+        long eighth = maxHeapBytes / 8;
+        return (int) Math.max(MIN_HEAP_MAX_LINE, Math.min(DEFAULT_MAX_LINE, eighth));
+    }
+
+    /** The longest line this reader buffers before it fails the read, in chars. */
+    public int maxLine() {
+        return maxLine;
     }
 
     /** Change the idle bound for the reads that follow; {@code 0} disables it. */

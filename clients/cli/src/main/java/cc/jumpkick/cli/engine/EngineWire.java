@@ -140,15 +140,17 @@ public final class EngineWire {
     }
 
     /**
-     * The client-side protocol reader: line-capped, and idle-timed so a dead engine surfaces as
-     * an error instead of a forever-blocked {@code readLine}. The bound is {@link
+     * The client-side protocol reader: line-capped to what this process's heap can hold ({@link
+     * BoundedLineReader#maxLineForHeap}), and idle-timed so a dead engine surfaces as an error
+     * instead of a forever-blocked {@code readLine}. The idle bound is {@link
      * BoundedLineReader#streamIdleMillis} — the same one the engine holds its clients to.
      */
-    static BufferedReader protocolReader(SocketChannel ch) {
+    static BoundedLineReader protocolReader(SocketChannel ch) {
         return new BoundedLineReader(
                 new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8),
                 ch,
-                BoundedLineReader.streamIdleMillis(System::getenv));
+                BoundedLineReader.streamIdleMillis(System::getenv),
+                BoundedLineReader.maxLineForHeap(Runtime.getRuntime().maxMemory()));
     }
 
     /**

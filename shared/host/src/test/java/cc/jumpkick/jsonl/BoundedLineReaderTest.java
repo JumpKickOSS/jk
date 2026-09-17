@@ -81,4 +81,27 @@ class BoundedLineReaderTest {
                 .as("the queue stays flat across reads; a stalled read elsewhere may hold one")
                 .isLessThanOrEqualTo(before + 1);
     }
+
+    /**
+     * A native client runs on 128 MiB of heap; a line bound of 64 Mi chars would blow that heap
+     * before it fired, since the buffer that holds a growing line peaks near three times its
+     * length. Sized to the heap, the bound fails the read first and names the peer.
+     */
+    @Test
+    void the_line_bound_is_sized_to_the_heap_and_fires_before_the_heap_does() {
+        assertThat(BoundedLineReader.maxLineForHeap(128L << 20)).isEqualTo(16 << 20);
+        assertThat(BoundedLineReader.maxLineForHeap(8L << 20))
+                .as("never below the floor")
+                .isEqualTo(BoundedLineReader.MIN_HEAP_MAX_LINE);
+        assertThat(BoundedLineReader.maxLineForHeap(4L << 30))
+                .as("never above the default")
+                .isEqualTo(BoundedLineReader.DEFAULT_MAX_LINE);
+        assertThat(BoundedLineReader.maxLineForHeap(Long.MAX_VALUE))
+                .as("an unbounded heap reads as the default")
+                .isEqualTo(BoundedLineReader.DEFAULT_MAX_LINE);
+
+        BoundedLineReader reader = new BoundedLineReader(new StringReader("x".repeat(5_000)), null, 0, 4_096);
+        assertThat(reader.maxLine()).isEqualTo(4_096);
+        assertThatThrownBy(reader::readLine).isInstanceOf(IOException.class).hasMessageContaining("exceeds 4096 chars");
+    }
 }
