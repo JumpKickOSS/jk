@@ -118,8 +118,10 @@ public final class QuarkusAugmentMain {
      * jk already solved the graph, so the augment declares the WHOLE locked closure as direct
      * dependencies instead of the handful of jars that looked like extensions. At depth 1 every
      * locked coordinate is the nearest one, so neither the platform BOM's managed versions nor a
-     * deeper transitive can displace it. Workspace / path jars have no Maven layout GAV — install
-     * them into the bootstrap local repo so the same declaration resolves.
+     * deeper transitive can displace it. The application and the workspace / path jars have no
+     * Maven layout GAV a repository could answer for — {@link BootstrapRepo} installs each into the
+     * bootstrap local repo with its POM, so the same declaration resolves and the descriptor Quarkus
+     * reads for the application is a local read, never a request a remote can refuse.
      *
      * <p>The resolver is built and dropped here: no method of this class takes or returns a
      * resolver type, so a miss can never fall back to resolving through the user's Maven settings
@@ -150,7 +152,10 @@ public final class QuarkusAugmentMain {
         BootstrapAppModelResolver modelResolver =
                 new BootstrapAppModelResolver(new MavenArtifactResolver(new BootstrapMavenContext(cfg)));
         ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
-        modelResolver.install(appCoords, appJar);
+        BootstrapRepo.Installer repo = (g, a, v, type, file) -> modelResolver.install(
+                "pom".equals(type) ? ArtifactCoords.pom(g, a, v) : ArtifactCoords.jar(g, a, v), file);
+        Path poms = localRepo.resolveSibling("poms");
+        BootstrapRepo.install(repo, group, artifact, version, appJar, poms);
         // Point the app artifact at compiled classes for augmentation root content.
         modelResolver.relink(appCoords, classesDir);
 
@@ -158,7 +163,7 @@ public final class QuarkusAugmentMain {
         int workspaceDeps = 0;
         for (LockedClosure.Artifact a : locked.artifacts()) {
             if (a.workspace()) {
-                modelResolver.install(ArtifactCoords.jar(a.group(), a.artifact(), a.version()), a.jar());
+                BootstrapRepo.install(repo, a.group(), a.artifact(), a.version(), a.jar(), poms);
                 workspaceDeps++;
             }
             direct.add(new ArtifactDependency(a.group(), a.artifact(), "", "jar", a.version(), "compile", false));

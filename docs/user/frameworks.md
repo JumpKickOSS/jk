@@ -57,7 +57,9 @@ jk new -t quarkus/hello my-api
   `quarkus-rest-jackson`).
 - Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
   `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
-  `mvn` CLI).
+  `mvn` CLI). The application's own coordinate and its workspace siblings live in the
+  augment's private repository, jar and POM together, so no repository is ever asked for
+  them: Central refusing the request cannot fail the package step.
 - **Native:** `[native] enabled = "always"` (or a bare `[native]` / `enabled = true` for
   `jk native` only) builds through **Quarkus’s own** native-image command. JumpKick
   supplies the GraalVM toolchain. Nothing jk composes is added on top; `[native] args`
