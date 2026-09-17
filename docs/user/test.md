@@ -184,6 +184,15 @@ A module whose tests all carry tags the active profile drops reports
 `0 tests (all excluded by profile <name>)` as a plain results line: that tier has no tests in the
 module, which is the expected outcome and not a warning.
 
+**The default tier cannot reach Maven Central.** A run that includes no tag and excludes at
+least one — the bare `jk test`, and the test step of `jk build` — hands every test JVM
+`JK_HTTP_DENY_HOSTS=repo.maven.apache.org,maven-central.storage-download.googleapis.com`, so a
+unit test that reaches Central (directly, or through an engine it starts) fails at once with the
+host named instead of spending the machine's quota. A profile that includes a tag is a tier that
+may fetch; put such a test there. A module that sets `JK_HTTP_DENY_HOSTS` in `[test] env` keeps
+its own value (`""` lifts the wall), and any process honours the variable as a comma-separated
+host list.
+
 `--exclude-tags ""` is the CLI form of a clear. A profile's `jvm-args` (`[profiles.<name>]
 jvm-args = ["-Dprobe=1"]`) are appended to every forked test JVM after jk's own tuning and after
 [`[test] jvm-args`](#the-test-jvms-flags-test-jvm-args-test-system-properties), and the step

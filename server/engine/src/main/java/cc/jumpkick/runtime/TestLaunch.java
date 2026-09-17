@@ -14,6 +14,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.guard.eval.OutputArtifacts;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.model.JkBuild;
@@ -174,6 +175,19 @@ final class TestLaunch {
         }
         PlannerSupport.stageSiblingRulePacks(in.dir(), projectUnderTest, testEnv.extras());
         return testEnv;
+    }
+
+    /**
+     * The default tier's wall against Maven Central. A launch that includes no tag and excludes at
+     * least one is the module's plain {@code jk test} tier, the one {@code jk build} runs, and its
+     * JVMs — and any engine they nest — find {@code repo.maven.apache.org} and its failover mirror
+     * refused by {@link Http} with the host named. A profile that includes a tag names a tier that may
+     * fetch, and a module that sets {@link Http#DENY_HOSTS_ENV} in {@code [test] env} keeps its value.
+     */
+    static WorkerEnv withHostWall(WorkerEnv testEnv, TestSelection sel) {
+        if (!sel.includeTags().isEmpty() || sel.excludeTags().isEmpty()) return testEnv;
+        if (testEnv.extras().containsKey(Http.DENY_HOSTS_ENV)) return testEnv;
+        return testEnv.with(Map.of(Http.DENY_HOSTS_ENV, Http.centralHosts()));
     }
 
     /**

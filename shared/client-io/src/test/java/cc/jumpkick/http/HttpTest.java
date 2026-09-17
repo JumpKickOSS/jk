@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
@@ -370,6 +371,61 @@ class HttpTest {
             gz.write(raw);
         }
         return buf.toByteArray();
+    }
+
+    @Test
+    void a_denied_host_is_refused_before_any_request_leaves() throws Exception {
+        AtomicInteger hits = new AtomicInteger();
+        server.createContext("/walled", exchange -> {
+            hits.incrementAndGet();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        HttpClient client =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+        Http http = new Http(client, new Duration[] {Duration.ofMillis(1)}, Set.of("127.0.0.1"));
+
+        assertThatThrownBy(() -> http.get(base.resolve("/walled")))
+                .isInstanceOf(DeniedHostException.class)
+                .hasMessageContaining("127.0.0.1")
+                .hasMessageContaining(Http.DENY_HOSTS_ENV);
+        assertThat(hits)
+                .as("the refusal is a policy answer: nothing reaches the host, nothing is retried")
+                .hasValue(0);
+    }
+
+    @Test
+    void a_redirect_onto_a_denied_host_is_refused_at_the_hop() throws Exception {
+        AtomicInteger landed = new AtomicInteger();
+        server.createContext("/hop", exchange -> {
+            exchange.getResponseHeaders()
+                    .add("Location", "http://localhost:" + server.getAddress().getPort() + "/landed");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        server.createContext("/landed", exchange -> {
+            landed.incrementAndGet();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        HttpClient client =
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
+        Http http = new Http(client, new Duration[] {Duration.ofMillis(1)}, Http.deniedHosts("LocalHost"));
+
+        assertThatThrownBy(() -> http.get(base.resolve("/hop")))
+                .isInstanceOf(DeniedHostException.class)
+                .hasMessageContaining("localhost");
+        assertThat(landed).hasValue(0);
+    }
+
+    @Test
+    void the_deny_list_is_comma_separated_trimmed_and_case_insensitive() {
+        assertThat(Http.deniedHosts(" Repo.Maven.Apache.org, ,mirror.example ,"))
+                .containsExactlyInAnyOrder("repo.maven.apache.org", "mirror.example");
+        assertThat(Http.deniedHosts(null)).isEmpty();
+        assertThat(Http.deniedHosts("  ")).isEmpty();
+        assertThat(Http.centralHosts())
+                .isEqualTo("repo.maven.apache.org,maven-central.storage-download.googleapis.com");
     }
 
     private static Http http() {

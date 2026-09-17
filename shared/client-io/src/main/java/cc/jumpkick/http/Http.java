@@ -18,6 +18,7 @@ import java.net.http.HttpResponse.BodySubscribers;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +81,19 @@ public final class Http {
 
     /** Wall clock a {@code Retry-After} is measured against; a test moves it instead of sleeping. */
     private final Clock clock;
+
+    /** Hosts every request is refused for ({@link #DENY_HOSTS_ENV}); lower-cased. */
+    private final Set<String> deniedHosts;
+
+    /**
+     * A comma-separated list of hosts this process must not reach; a request to one fails at once
+     * with {@link DeniedHostException}, redirects and the Central failover included. The test
+     * launcher sets it to {@link #centralHosts()} for a module's default test tier, so a unit test
+     * that reaches Maven Central fails naming the host instead of spending the machine's quota.
+     */
+    public static final String DENY_HOSTS_ENV = "JK_HTTP_DENY_HOSTS";
+
+    private static final Set<String> DENIED_BY_ENV = deniedHosts(System.getenv(DENY_HOSTS_ENV));
 
     public Http() {
         this(ProxyEnvironment.ambient(), BACKOFFS);
@@ -175,12 +189,53 @@ public final class Http {
             HostCooldown cooldown,
             Clock clock,
             ProxyEnvironment proxies) {
+        this(client, backoffs, centralMirror, cooldown, clock, proxies, DENIED_BY_ENV);
+    }
+
+    /** Visible for tests — the deny list given instead of read from the environment. */
+    Http(HttpClient client, Duration[] backoffs, Set<String> deniedHosts) {
+        this(
+                client,
+                backoffs,
+                CentralMirror.standard(),
+                HostCooldown.standard(),
+                Clock.SYSTEM,
+                ProxyEnvironment.ambient(),
+                deniedHosts);
+    }
+
+    private Http(
+            HttpClient client,
+            Duration[] backoffs,
+            CentralMirror centralMirror,
+            HostCooldown cooldown,
+            Clock clock,
+            ProxyEnvironment proxies,
+            Set<String> deniedHosts) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
         this.cooldown = cooldown;
         this.clock = clock;
         this.proxies = proxies;
+        this.deniedHosts = deniedHosts;
+    }
+
+    /** Maven Central and its failover mirror, as a {@link #DENY_HOSTS_ENV} value. */
+    public static String centralHosts() {
+        return CentralMirror.CENTRAL_HOST + ","
+                + URI.create(CentralMirror.MIRROR_BASE).getHost();
+    }
+
+    /** The hosts a {@link #DENY_HOSTS_ENV} value names: split on commas, trimmed, lower-cased, blanks dropped. */
+    static Set<String> deniedHosts(@Nullable String raw) {
+        if (raw == null || raw.isBlank()) return Set.of();
+        Set<String> out = new LinkedHashSet<>();
+        for (String host : raw.split(",")) {
+            String h = host.strip().toLowerCase(Locale.ROOT);
+            if (!h.isEmpty()) out.add(h);
+        }
+        return Set.copyOf(out);
     }
 
     /** {@code builder} with the proxy credential the request for {@code uri} needs, if any. */
@@ -410,7 +465,7 @@ public final class Http {
                     drain.handle(response);
                 }
                 lastStatus = status;
-            } catch (RedirectRefusedException | CentralMirror.BlockedException e) {
+            } catch (RedirectRefusedException | CentralMirror.BlockedException | DeniedHostException e) {
                 throw e; // a policy answer, not a network fault: the same answer would come back
             } catch (IOException e) {
                 lastIo = e;
@@ -438,6 +493,7 @@ public final class Http {
     private <T> HttpResponse<T> send(
             HttpRequest request, HttpResponse.BodyHandler<T> handler, @Nullable BodyDrain<T> drain)
             throws IOException, InterruptedException {
+        checkDenied(request.uri());
         HttpResponse<T> response = client.send(request, handler);
         for (int hops = 0; isRedirect(response.statusCode()); hops++) {
             URI target = redirectTarget(request.uri(), response);
@@ -458,6 +514,7 @@ public final class Http {
             }
             if (drain != null) drain.handle(response);
             request = redirected(request, response.statusCode(), target);
+            checkDenied(request.uri());
             response = client.send(request, handler);
         }
         int status = response.statusCode();
@@ -615,6 +672,14 @@ public final class Http {
     private static void checkOffline(URI uri) throws OfflineException {
         if (SessionContext.current().config().offlineOr(false)) {
             throw new OfflineException(uri);
+        }
+    }
+
+    /** Refuse a request to a host on the deny list; the failure names the host and the list. */
+    private void checkDenied(URI uri) throws DeniedHostException {
+        String host = uri.getHost();
+        if (host != null && deniedHosts.contains(host.toLowerCase(Locale.ROOT))) {
+            throw new DeniedHostException(uri, host);
         }
     }
 }
