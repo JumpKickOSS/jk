@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
@@ -20,6 +21,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -223,11 +225,11 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * One sentence per repository a dependency POM declared and this solve consulted, naming the
-     * repository, its URL and the POM that introduced it, and one per repository refused.
+     * One sentence per repository a dependency POM declared that served a row of {@code rows},
+     * naming the repository, its URL and the POM that introduced it, and one per repository refused.
      */
-    public List<String> declaredRepositoryNotes() {
-        return declared.notes();
+    public List<String> declaredRepositoryNotes(Collection<Lockfile.Artifact> rows) {
+        return declared.notes(rows);
     }
 
     public PlatformPolicy platformPolicy() {

@@ -152,7 +152,10 @@ with one rule:
   the lock naming the repository.
 - Its `<releases>` and `<snapshots>` policies are read as Maven reads them: a repository declared
   with `<releases><enabled>false</enabled></releases>` is asked for `-SNAPSHOT` versions only, and
-  one with snapshots disabled is never asked for a snapshot. The lock note says which.
+  one with snapshots disabled is never asked for a snapshot.
+- `jk lock` notes a declared repository once a row of the lock came from it, naming the POM that
+  introduced it and the policy it is asked under; a repository a POM declares that served nothing
+  earns no note. A repository refused is always noted.
 - `jk lock` says so: one note per repository names it, its URL and the POM that introduced it.
   Declaring the same URL under `[repositories]` makes it a project repository with the project's
   order and opt-ins.
