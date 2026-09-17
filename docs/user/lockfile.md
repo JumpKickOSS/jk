@@ -367,6 +367,29 @@ literal `'string'`, an inline table) is read through a full TOML parser instead,
 diagnostics; the meaning is the same either way. The `project-id` is scanned from the head of the
 file, so history and dashboard routes for a project resolve without reading its rows.
 
+## Who wrote the lock
+
+`generated-by` names the jk version that wrote the lock. Beside it, `generated-by-build` and
+`generated-by-build-time` name the build — the twelve-hex identity of the jk code archive that
+wrote it and that archive's timestamp — so two builds of one version can be told apart and
+ordered; a jk running from a classes directory writes neither. The stamps are provenance, not
+pins: they choose no artifact and never make a lock stale.
+
+A jk **older than the writer never relocks**. When the manifests move and the build, `jk sync`
+or `jk lock` would rewrite a lock a newer jk wrote — a newer version, or a later build of the same
+version — the command fails naming both:
+
+```
+jk-lock.toml was written by jk 0.13.7 (build 1a2b3c4d5e6f of 2026-09-17T15:57:16Z) and this
+engine is jk 0.13.7 (build 4ee07400a592 of 2026-09-16T13:12:00Z), an older build of the same
+version — a relock with it would restate the lock in the older jk's format …
+```
+
+Install the jk that wrote the lock (`jk self update`, or `jk install --skip-tests` from its
+checkout) and run `jk engine stop` so the next command starts it; `jk lock --force` rewrites the
+lock with the running jk anyway. A newer jk always may relock, and a lock the same build wrote is
+never in question.
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

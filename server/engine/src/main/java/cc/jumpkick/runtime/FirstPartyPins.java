@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
@@ -71,6 +72,8 @@ public final class FirstPartyPins {
             Lockfile lock = LockfileReader.read(lockFile);
             String manifestsSha = lock.manifestsSha256();
             if (manifestsSha == null) return List.of();
+            // A lock a newer jk wrote is not this jk's to rewrite: its rows follow the newest jk.
+            if (LockRewriteGuard.refusal(lock) != null) return List.of();
             Cas cas = JkStores.storeCas();
             List<Repin> moved = new ArrayList<>();
             List<Lockfile.PluginEntry> rows = new ArrayList<>();

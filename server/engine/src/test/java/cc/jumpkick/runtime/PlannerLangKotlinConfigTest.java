@@ -67,6 +67,7 @@ class PlannerLangKotlinConfigTest {
                         null,
                         null,
                         null,
+                        null,
                         null),
                 module.resolve("jk-lock.toml"));
         Files.writeString(module.resolve("jk.toml"), """
@@ -121,6 +122,7 @@ class PlannerLangKotlinConfigTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null,
                 null,
                 null,

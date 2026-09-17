@@ -6,11 +6,13 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -138,16 +140,22 @@ public final class SyncPlans {
                     } else if (AutoLock.isStale(dir, lockFile)) {
                         ctx.label("jk.toml changed — updating lock");
                         Lockfile existing = LockfileReader.read(lockFile);
-                        Lockfile updated = AutoLock.maybeReLock(
-                                dir,
-                                existing,
-                                lockFile,
-                                cache,
-                                repoUrl,
-                                List.of(),
-                                true,
-                                ResolveObserver.NOOP,
-                                ctx::output);
+                        Lockfile updated;
+                        try {
+                            updated = AutoLock.maybeReLock(
+                                    dir,
+                                    existing,
+                                    lockFile,
+                                    cache,
+                                    repoUrl,
+                                    List.of(),
+                                    true,
+                                    ResolveObserver.NOOP,
+                                    ctx::output);
+                        } catch (LockRewriteGuard.LockRewriteRefused e) {
+                            ctx.error("verbatim", Errors.text(e));
+                            throw new RuntimeException("lock refused");
+                        }
                         ctx.put(LOCKFILE, updated != null ? updated : existing);
                         var build = parseBuildIfPresent(dir);
                         if (build != null) ctx.put(BUILD, build);

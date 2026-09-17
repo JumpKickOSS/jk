@@ -37,7 +37,9 @@ public record Lockfile(
         /** Durable auto project identity; null until minted. */
         @Nullable String projectId,
         /** Resolved {@code [native] metadata-repository} pin; null when no module declares one. */
-        @Nullable NativeMetadata nativeMetadata) {
+        @Nullable NativeMetadata nativeMetadata,
+        /** The code archive that wrote this lock; null when the writer ran from none, or the lock predates the stamp. */
+        @Nullable WriterBuild writerBuild) {
 
     /**
      * The GraalVM reachability-metadata repository release a native build reads, resolved from
@@ -109,6 +111,7 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
+                null,
                 null);
     }
 
@@ -137,59 +140,6 @@ public record Lockfile(
                 null);
     }
 
-    /** Constructor with the jk floor but no module pins. */
-    public Lockfile(
-            int version,
-            String generatedBy,
-            String resolutionAlgorithm,
-            @Nullable JdkPin jdk,
-            @Nullable String kotlin,
-            List<Artifact> artifacts,
-            List<PluginEntry> plugins,
-            List<SdkEntry> sdk,
-            @Nullable String jkMin) {
-        this(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                kotlin,
-                artifacts,
-                plugins,
-                sdk,
-                List.of(),
-                jkMin,
-                null,
-                null);
-    }
-
-    /** Constructor with modules + the jk floor, no manifests digest. */
-    public Lockfile(
-            int version,
-            String generatedBy,
-            String resolutionAlgorithm,
-            @Nullable JdkPin jdk,
-            @Nullable String kotlin,
-            List<Artifact> artifacts,
-            List<PluginEntry> plugins,
-            List<SdkEntry> sdk,
-            List<ModuleEntry> modules,
-            @Nullable String jkMin) {
-        this(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                kotlin,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jkMin,
-                null,
-                null);
-    }
-
     /** This lock with the jk floor set. */
     public Lockfile withJkMin(@Nullable String floor) {
         return new Lockfile(
@@ -207,7 +157,8 @@ public record Lockfile(
                 floor,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** This lock as written by another jk: {@code generated-by} names the writer, nothing else moves. */
@@ -227,7 +178,29 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
+    }
+
+    /** This lock as written by the build {@code build} names; null when the writer ran from no archive. */
+    public Lockfile withWriterBuild(@Nullable WriterBuild build) {
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                graal,
+                kotlin,
+                scala,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkMin,
+                manifestsSha256,
+                projectId,
+                nativeMetadata,
+                build);
     }
 
     /** This lock with a content digest of the manifests used to produce it. */
@@ -247,7 +220,8 @@ public record Lockfile(
                 jkMin,
                 digest,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** This lock with a durable project identity. */
@@ -267,7 +241,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 id,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /**
@@ -291,7 +266,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** This lock with the resolved reachability-metadata repository pin. */
@@ -311,7 +287,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                pin);
+                pin,
+                writerBuild);
     }
 
     /** This lock with a resolved JDK pin. */
@@ -331,7 +308,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** This lock with a resolved GraalVM pin (null clears it). */
@@ -351,7 +329,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** Constructor without SDK entries. */
@@ -409,7 +388,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** Return a copy with the resolved Scala 3 compiler version stamped in. */
@@ -429,7 +409,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
@@ -449,7 +430,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
@@ -469,7 +451,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /**
@@ -499,7 +482,8 @@ public record Lockfile(
                 jkMin,
                 manifestsSha256,
                 projectId,
-                nativeMetadata);
+                nativeMetadata,
+                writerBuild);
     }
 
     /**
@@ -538,6 +522,7 @@ public record Lockfile(
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null,
                 null,
                 null,

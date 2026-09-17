@@ -12,6 +12,7 @@ import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -46,7 +47,9 @@ public final class LockfileWriter {
      * reads as stale, instead of stamping itself fresh from the live files.
      */
     public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
-        Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
+        // The writer is whoever writes the file: the running build, or none from a classes directory.
+        Lockfile stamped =
+                lockfile.withManifestsSha256(manifestsSha256).withWriterBuild(LockRewriteGuard.runningBuild());
         // Preserve / mint durable project-id: never drop on rewrite. The id an earlier lock recorded
         // is scanned from its head — a torn or unreadable lock with an intact head keeps its id.
         Path owner = ownerOf(file);
@@ -106,6 +109,16 @@ public final class LockfileWriter {
     private static void writeHeader(StringBuilder out, Lockfile lockfile) {
         out.append("version = ").append(lockfile.version()).append('\n');
         out.append("generated-by = ").append(quote(lockfile.generatedBy())).append('\n');
+        WriterBuild writer = lockfile.writerBuild();
+        if (writer != null) {
+            out.append("generated-by-build = ").append(quote(writer.id())).append('\n');
+            if (writer.time() != null) {
+                out.append("generated-by-build-time = ")
+                        .append(quote(
+                                writer.time().truncatedTo(ChronoUnit.SECONDS).toString()))
+                        .append('\n');
+            }
+        }
         out.append("resolution-algorithm = ")
                 .append(quote(lockfile.resolutionAlgorithm()))
                 .append('\n');

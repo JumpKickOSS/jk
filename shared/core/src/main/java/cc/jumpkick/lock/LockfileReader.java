@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +39,8 @@ public final class LockfileReader {
     private static final Set<String> TOP_LEVEL_KEYS = Set.of(
             "artifact",
             "generated-by",
+            "generated-by-build",
+            "generated-by-build-time",
             "graal",
             "jdk",
             "jk-min",
@@ -247,7 +251,28 @@ public final class LockfileReader {
                 jkMin,
                 manifestsSha,
                 projectId,
-                toNativeMetadata(tableOrFail(result, "native", origin)));
+                toNativeMetadata(tableOrFail(result, "native", origin)),
+                toWriterBuild(result));
+    }
+
+    /**
+     * The writer's build from {@code generated-by-build} and {@code generated-by-build-time}, or
+     * null when the lock carries none. A time that does not parse is dropped, not fatal: the id
+     * still says which build wrote the lock, only the order between builds is lost.
+     */
+    static @Nullable WriterBuild toWriterBuild(LockToml result) {
+        String id = result.getString("generated-by-build");
+        if (id == null || id.isBlank()) return null;
+        String time = result.getString("generated-by-build-time");
+        Instant at = null;
+        if (time != null && !time.isBlank()) {
+            try {
+                at = Instant.parse(time.trim());
+            } catch (DateTimeParseException notAnInstant) {
+                at = null;
+            }
+        }
+        return new WriterBuild(id.trim(), at);
     }
 
     /**

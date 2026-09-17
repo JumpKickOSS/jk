@@ -32,6 +32,7 @@ class PlannerKspStampDigestTest {
             null,
             null,
             null,
+            null,
             null);
 
     private static final String PLAIN = """
