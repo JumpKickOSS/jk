@@ -123,6 +123,37 @@ kind — a snapshot too, from a repository whose [snapshot policy](#snapshots) i
 within the solve only; the lock pins the number and the edge records `<- LATEST`, so `jk why`
 explains it. `jk import` writes a direct `LATEST` or `RELEASE` as the `latest` selector with a row.
 
+### Managed versions
+
+`[managed-dependencies]` pins the version a module resolves to when only other libraries' POMs
+bring it in — Maven's inline `<dependencyManagement>`, Gradle's `constraints`. An entry uses the
+dependency grammar and must carry a version; it puts nothing on the classpath of its own.
+
+```toml
+[dependencies]
+web = "org.springframework.boot:spring-boot-starter-web"
+
+[managed-dependencies]
+commons-io = "commons-io:commons-io:2.16.1"      # a CVE fix nothing here declares directly
+snakeyaml  = { group = "org.yaml", name = "snakeyaml", version = "2.3" }
+```
+
+Every transitive edge onto a managed module takes the entry's version, the way a one-module BOM's
+would, under both pin policies. The order on one module is Maven's: an exact version you declare
+under `[dependencies]` beats the managed entry; the managed entry beats every
+`[platform-dependencies]` BOM (as a POM's own `dependencyManagement` beats the BOMs it imports —
+`jk lock` says which BOM gave way); the BOMs decide among themselves in declaration order
+([Platforms](platforms.md#two-boms-that-manage-one-module)); a module none of them manage takes the
+highest version the POMs that name it declare. The lock row records the entry as
+`pinned-by = "jk.toml:<handle>"`, so `jk why` names it. In a workspace the root's table applies to
+every member, then each member's own; a member's entry on a module another member pins exactly is
+that member's [own row](workspaces.md#members-that-disagree).
+
+`jk import` writes a POM's inline pins that no declared dependency uses into this table, and a
+reactor's parent pins once on the workspace root, so the imported project resolves a transitive the
+parent forced to the version Maven built with; the report names the modules it wrote. A
+coexistence build of an unmodified `pom.xml` reads the same table from its shadow manifest.
+
 **Maven relocations are followed** (`distributionManagement/relocation`). The stub's one edge
 carries the target's version as a floor, like any POM dependency, so a module whose line ended in
 a relocation (`bcprov-ext-jdk18on` → `bcprov-jdk18on`) does not hold the target below what another

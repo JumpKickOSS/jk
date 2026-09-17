@@ -71,6 +71,12 @@ final class SiblingEdges {
             if (in.isEmpty()) continue;
             List<Dependency> out = new ArrayList<>(in.size());
             for (Dependency d : in) {
+                // A managed version for a reactor module is the workspace's to supply; the row has
+                // nothing to pin, whether the module is a member, an aggregator or a reactor BOM.
+                if (scope == Scope.MANAGED && namesReactorPom(d.module(), siblingByGa, unbuilt, bomByGa)) {
+                    changed = true;
+                    continue;
+                }
                 String bomPath = scope == Scope.PLATFORM ? bomByGa.get(d.module()) : null;
                 if (bomPath != null) {
                     changed = true;
@@ -158,6 +164,15 @@ final class SiblingEdges {
             out.pluginConfig(config);
         }
         return out.build();
+    }
+
+    /** True when {@code module} is a POM of the reactor: a member, an aggregator or a reactor BOM. */
+    static boolean namesReactorPom(
+            String module,
+            Map<String, String> siblingByGa,
+            Map<String, ReactorModules.Unbuilt> unbuilt,
+            Map<String, String> bomByGa) {
+        return siblingByGa.containsKey(module) || unbuilt.containsKey(module) || bomByGa.containsKey(module);
     }
 
     /** Every {@code group:artifact} the module declares in any scope, so a carried dependency is not written twice. */

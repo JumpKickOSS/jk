@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
@@ -10,6 +11,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.pom.PomXml;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -52,7 +54,12 @@ public final class PomExporter {
         appendProperties(sb, p);
         appendModules(sb, jkBuild);
         appendRepositories(sb, jkBuild.repositories());
-        appendDependencyManagement(sb, jkBuild.dependencies().of(Scope.PLATFORM), locked, report);
+        appendDependencyManagement(
+                sb,
+                jkBuild.dependencies().of(Scope.PLATFORM),
+                jkBuild.dependencies().of(Scope.MANAGED),
+                locked,
+                report);
         appendDependencies(sb, jkBuild.dependencies(), locked, report);
         appendBuild(sb, jkBuild, layout, locked, report);
         warnAboutDroppedConcerns(jkBuild, report);
@@ -102,11 +109,21 @@ public final class PomExporter {
         sb.append("  </repositories>\n");
     }
 
+    /** BOM imports, then one plain managed {@code <dependency>} per {@code [managed-dependencies]} entry. */
     private static void appendDependencyManagement(
-            StringBuilder sb, List<Dependency> platforms, Map<String, String> locked, ImportReport.Builder report) {
-        if (platforms.isEmpty()) return;
+            StringBuilder sb,
+            List<Dependency> platforms,
+            List<Dependency> managed,
+            Map<String, String> locked,
+            ImportReport.Builder report) {
+        if (platforms.isEmpty() && managed.isEmpty()) return;
         sb.append('\n'); // export POM separates sections with a blank line (publish POM does not)
-        PomXml.appendDependencyManagement(sb, platforms, d -> resolveVersion(d, locked, report));
+        List<Coordinate> pins = new ArrayList<>(managed.size());
+        for (Dependency d : managed) {
+            if (warnIfUnmappable(d, report)) continue;
+            pins.add(Coordinate.of(d.group(), d.name(), resolveVersion(d, locked, report)));
+        }
+        PomXml.appendDependencyManagement(sb, platforms, d -> resolveVersion(d, locked, report), pins);
     }
 
     private static void appendDependencies(

@@ -53,6 +53,7 @@ public final class DependencyGraphModel {
             Scope.PROVIDED,
             Scope.PROCESSOR,
             Scope.PLATFORM,
+            Scope.MANAGED,
             Scope.TEST,
             Scope.DEV,
             Scope.TEST_DEV);

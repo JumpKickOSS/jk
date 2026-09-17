@@ -66,7 +66,10 @@ different versions, what happens is decided by `[resolve] pins`:
 The rule is Maven's for `<dependencyManagement>` imports — the first `import` that manages a
 coordinate wins, in declaration order — and `jk import` writes the BOMs in the order the POM
 declares them, so an imported project resolves to the versions Maven built with. Your own exact
-pin on the module beats every BOM under both policies. In a workspace the table is the root's
+pin on the module beats every BOM under both policies, and so does a
+[`[managed-dependencies]`](dependencies.md#managed-versions) entry — the POM's own
+`dependencyManagement` line, which under Maven beats every import; `jk lock` prints the BOM it
+overrode. In a workspace the table is the root's
 entries followed by each member's in `[workspace] modules` order, each in its own declaration
 order, so a BOM the root declares wins over one a member declares. A member's BOM constrains its
 own graph and the graphs of members that depend on it, not an unrelated member's — a member the

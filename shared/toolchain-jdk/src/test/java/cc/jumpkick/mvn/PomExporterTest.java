@@ -38,6 +38,30 @@ class PomExporterTest {
     }
 
     @Test
+    void managed_dependencies_export_as_plain_dependency_management_entries() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [managed-dependencies]
+                commons-io = "commons-io:commons-io:2.16.1"
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        assertThat(xml)
+                .contains("<dependencyManagement>")
+                .contains("<artifactId>commons-io</artifactId>")
+                .contains("<version>2.16.1</version>")
+                .doesNotContain("<scope>import</scope>");
+        assertThat(xml.substring(xml.indexOf("</dependencyManagement>")))
+                .as("a managed entry is a constraint, not a dependency")
+                .doesNotContain("commons-io");
+    }
+
+    @Test
     void fixtures_are_not_a_published_artifact() {
         JkBuild producer = parse("""
                 group = "com.example"

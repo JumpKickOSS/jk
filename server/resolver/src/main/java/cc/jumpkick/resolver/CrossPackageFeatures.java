@@ -97,7 +97,7 @@ public final class CrossPackageFeatures {
 
     private static @Nullable Dependency findOptional(JkBuild lib, String libraryHandle) {
         for (Scope scope : Scope.values()) {
-            if (scope == Scope.PLATFORM) continue;
+            if (scope == Scope.PLATFORM || scope == Scope.MANAGED) continue;
             for (Dependency dep : lib.dependencies().of(scope)) {
                 if (dep.optional() && dep.library().equals(libraryHandle)) return dep;
             }

@@ -63,11 +63,31 @@ public final class ManifestDeps {
         addScopeDeps(byScope, root, Scope.RUNTIME, workspace, catalog);
         // [platform-dependencies] — BOM imports (version constraints, not classpath entries).
         addScopeDeps(byScope, root, Scope.PLATFORM, workspace, catalog);
+        // [managed-dependencies] — one-module version constraints, never classpath entries.
+        addScopeDeps(byScope, root, Scope.MANAGED, workspace, catalog);
+        requireManagedVersions(byScope.get(Scope.MANAGED));
         // DEV / TEST_DEV: run-time only / run+test, never packaged.
         addScopeDeps(byScope, root, Scope.DEV, workspace, catalog);
         addScopeDeps(byScope, root, Scope.TEST_DEV, workspace, catalog);
 
         return new JkBuild.Dependencies(byScope);
+    }
+
+    /**
+     * A {@code [managed-dependencies]} entry pins the version a transitive edge onto its module
+     * resolves to, so it must carry one: a versionless coordinate, a git, path or workspace source
+     * has nothing to pin.
+     */
+    private static void requireManagedVersions(@Nullable List<Dependency> managed) {
+        if (managed == null) return;
+        for (Dependency d : managed) {
+            if (d.isPlatformManaged() || d.isGit() || d.isPath() || d.isWorkspace() || d.isFile()) {
+                throw new JkBuildParseException(Scope.MANAGED.tomlSection() + "." + d.library()
+                        + " must name a version: the table pins the version a transitive dependency on"
+                        + " the module resolves to, the way a BOM's entry does, so `group:artifact` alone,"
+                        + " a git, path or workspace source has nothing to pin");
+            }
+        }
     }
 
     static void addScopeDeps(

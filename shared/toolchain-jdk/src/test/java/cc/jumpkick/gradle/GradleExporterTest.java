@@ -44,6 +44,25 @@ class GradleExporterTest {
     }
 
     @Test
+    void managed_dependencies_export_as_constraints() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.2.3"
+                java = 25
+
+                [managed-dependencies]
+                commons-io = "commons-io:commons-io:2.16.1"
+                """);
+
+        String kts = GradleExporter.export(b, Map.of()).buildFiles().get("");
+
+        assertThat(kts)
+                .contains("    constraints {\n        implementation(\"commons-io:commons-io:2.16.1\")\n    }\n");
+        assertThat(kts).doesNotContain("\n    implementation(\"commons-io");
+    }
+
+    @Test
     void locked_version_overrides_declared_selector() {
         JkBuild b = parse("""
                 group = "com.example"

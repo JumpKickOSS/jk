@@ -375,8 +375,13 @@ class PomInheritanceImportTest {
         assertThat(result.report().issues())
                 .extracting(ImportReport.Issue::message)
                 .contains("[app] versions for com.google.guava:guava managed by workspace parent com.ex:parent:1.0.0.")
-                .anyMatch(m -> m.startsWith(
-                        "[app] `<dependencyManagement>` in workspace parent com.ex:parent:1.0.0 pins 1 version"));
+                .anyMatch(m -> m.startsWith("`<dependencyManagement>` of the reactor's parent POMs pins 1 version"
+                        + " no module declares (org.slf4j:slf4j-api); written once to the root's"
+                        + " [managed-dependencies]"));
+        assertThat(result.root().dependencies().of(Scope.MANAGED))
+                .as("the sibling parent's pin governs every member's transitives from the root")
+                .extracting(d -> d.module() + "=" + d.version().raw())
+                .containsExactly("org.slf4j:slf4j-api=2.0.16");
     }
 
     private void serveChain() throws Exception {

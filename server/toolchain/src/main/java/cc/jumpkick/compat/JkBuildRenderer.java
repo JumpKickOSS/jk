@@ -365,6 +365,7 @@ public final class JkBuildRenderer {
         if (byScope.isEmpty()) return;
         for (Scope scope : new Scope[] {
             Scope.PLATFORM,
+            Scope.MANAGED,
             Scope.MAIN,
             Scope.RUNTIME,
             Scope.DEV,

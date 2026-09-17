@@ -10,12 +10,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
  * What a {@code jk.toml} <em>declares</em>, as the tree needs it: the direct modules of a scope, the
- * version literal a selector pins, and which modules are PLATFORM BOMs.
+ * version literal a selector pins, and which modules are pin sources (BOMs and managed entries).
  *
  * <p>Its own owner because both renders ask the same three questions — the nested walk in
  * {@link DependencyTree} and the closure accumulation in {@link DependencyFlatten} — and a platform
@@ -47,11 +46,16 @@ final class DeclaredDeps {
         return out;
     }
 
-    /** The modules declared under {@code [platform]} — pin sources, not lock jar rows. */
+    /**
+     * The pin sources a manifest declares: the BOMs of {@code [platform-dependencies]} and the
+     * modules of {@code [managed-dependencies]}. Neither is a lock jar row in its own right.
+     */
     static Set<String> platformModules(JkBuild project) {
-        return project.dependencies().of(Scope.PLATFORM).stream()
-                .map(Dependency::module)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> out = new LinkedHashSet<>();
+        for (Scope scope : List.of(Scope.PLATFORM, Scope.MANAGED)) {
+            for (Dependency d : project.dependencies().of(scope)) out.add(d.module());
+        }
+        return out;
     }
 
     /**

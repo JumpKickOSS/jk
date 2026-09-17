@@ -77,7 +77,7 @@ final class DependencyFlatten {
                         visited,
                         collected,
                         declared.get(m),
-                        s == Scope.PLATFORM || platformMods.contains(m));
+                        s == Scope.PLATFORM || s == Scope.MANAGED || platformMods.contains(m));
             }
             renderSection(
                     styling.scopeBadge().apply(DependencyTreeStyle.scopeLabel(s)),

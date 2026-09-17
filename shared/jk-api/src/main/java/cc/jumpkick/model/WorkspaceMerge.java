@@ -69,6 +69,10 @@ public final class WorkspaceMerge {
         List<Dependency> platform = new ArrayList<>();
         for (Dependency d : root.dependencies().of(Scope.PLATFORM)) addPlatform(platform, d);
         for (Dependency d : resolvedByScope.getOrDefault(Scope.PLATFORM, List.of())) addPlatform(platform, d);
+        // The managed table folds the same way: the root's entries first, then the member's own.
+        List<Dependency> managed = new ArrayList<>();
+        for (Dependency d : root.dependencies().of(Scope.MANAGED)) addPlatform(managed, d);
+        for (Dependency d : resolvedByScope.getOrDefault(Scope.MANAGED, List.of())) addPlatform(managed, d);
 
         // Transitive MAIN+EXPORT externals from reachable siblings into this module's main scope.
         Set<String> visited = new LinkedHashSet<>(dependedSiblings);
@@ -77,6 +81,7 @@ public final class WorkspaceMerge {
             JkBuild sibling = siblingByArtifact.get(queue.poll());
             if (sibling == null) continue;
             for (Dependency d : sibling.dependencies().of(Scope.PLATFORM)) addPlatform(platform, d);
+            for (Dependency d : sibling.dependencies().of(Scope.MANAGED)) addPlatform(managed, d);
             for (Scope scope : List.of(Scope.MAIN, Scope.EXPORT)) {
                 for (Dependency d : sibling.dependencies().of(scope)) {
                     Dependency r = resolve(d, siblingByArtifact, wsDeps);
@@ -95,6 +100,11 @@ public final class WorkspaceMerge {
             resolvedByScope.remove(Scope.PLATFORM);
         } else {
             resolvedByScope.put(Scope.PLATFORM, platform);
+        }
+        if (managed.isEmpty()) {
+            resolvedByScope.remove(Scope.MANAGED);
+        } else {
+            resolvedByScope.put(Scope.MANAGED, managed);
         }
 
         JkBuild.Builder out = JkBuild.builder(module.project())
@@ -117,7 +127,7 @@ public final class WorkspaceMerge {
         return out.build();
     }
 
-    /** Add a BOM to a member's platform table unless an earlier entry already manages that module. */
+    /** Add a BOM or managed entry to a member's table unless an earlier entry already manages that module. */
     private static void addPlatform(List<Dependency> platform, Dependency bom) {
         if (platform.stream().noneMatch(e -> e.module().equals(bom.module()))) platform.add(bom);
     }

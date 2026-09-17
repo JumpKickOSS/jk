@@ -627,8 +627,10 @@ public final class DependencyTree {
         }
     }
 
+    /** Every declared module but the {@code [managed-dependencies]} entries, which pin versions and root nothing. */
     static List<String> collectRoots(JkBuild project) {
         return Stream.of(Scope.values())
+                .filter(s -> s != Scope.MANAGED)
                 .flatMap(s -> project.dependencies().of(s).stream())
                 .map(Dependency::module)
                 .sorted()
@@ -674,6 +676,7 @@ public final class DependencyTree {
 
     private static void putRootSelectors(JkBuild build, Map<String, String> out) {
         for (Scope s : Scope.values()) {
+            if (s == Scope.MANAGED) continue;
             for (Dependency d : build.dependencies().of(s)) {
                 if (d.isWorkspace() || d.isGit() || d.isPath() || d.isFile()) continue;
                 out.putIfAbsent(LockGraph.ga(d.module()), d.version().raw().trim());

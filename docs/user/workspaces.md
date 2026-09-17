@@ -107,7 +107,8 @@ takes `2.0` for both, as it would in one project.
 
 A member's platform BOMs — the root's `[platform-dependencies]`, its own, the BOM a framework
 table such as `[spring-boot]` injects, and those of the siblings it depends on — constrain that
-member's graph. They do not reach a member that never depends on it: `zipkin-server`'s
+member's graph, and so do the [`[managed-dependencies]`](dependencies.md#managed-versions) entries
+of the same manifests, folded in the same order. They do not reach a member that never depends on it: `zipkin-server`'s
 `spring-boot-dependencies` lifts `jakarta.jms-api` to 3.1.0 for `zipkin-server`, and the collector
 that only depends on `activemq-client` compiles against the 2.0.3 that library declares, as it
 does under Maven.
