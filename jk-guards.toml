@@ -1131,6 +1131,10 @@ in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingBuildPlan
 reason = "shared progress timer and its flushers only hand coalesced events to the delegate"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/engine/api/WireWriter.java"
+reason = "one writer thread per client stream; a queued line carries no session"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "server/engine/src/main/java/cc/jumpkick/engine/api/CoalescingLockPackages.java"
 reason = "shared lock-progress timer"
 

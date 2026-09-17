@@ -136,6 +136,7 @@ class WorkspaceBuildFinishTest {
         RecordingHost host = new RecordingHost();
 
         WorkspaceTerminal.finish(host, writer, "/w", result(true, 0, List.of()), false);
+        WireWriter.awaitLanded(writer);
 
         String line = wire.toString().strip();
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.WORKSPACE_FINISH);

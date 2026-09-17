@@ -41,6 +41,11 @@ import org.jspecify.annotations.Nullable;
  * request is held to the same stream-idle bound the client applies to the engine. While a job owns
  * the connection the timer is off — a quiet client mid-build is the normal case, and the job's own
  * watchdogs bound its life. Every such close is counted for {@code /api/status}.
+ *
+ * <p>The connection is served on a platform thread of its own and its replies go out through
+ * {@link WireWriter}'s writer thread for this stream, so hello, ping and status are answered
+ * whatever the CPU pool and the virtual-thread scheduler are busy with. The stream's idle bound
+ * is the same one the reader applies: a client that stops reading is dropped after it.
  */
 final class EngineConnection {
 
@@ -92,13 +97,20 @@ final class EngineConnection {
                 reader;
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
-            String expected = ctx.expectedToken();
-            if (expected != null && !authenticate(reader, expected)) {
-                // Typed refusal (then close): a silent close is indistinguishable from a crash.
-                WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
-                return;
+            WireWriter.bind(writer, streamIdleMillis);
+            try {
+                String expected = ctx.expectedToken();
+                if (expected != null && !authenticate(reader, expected)) {
+                    // Typed refusal (then close): a silent close is indistinguishable from a crash.
+                    WireWriter.sendQuiet(
+                            writer, ProtoLifecycle.error(EngineProtocol.ERR_AUTH, "engine token rejected"));
+                    return;
+                }
+                serveConnection(reader, writer, ch);
+            } finally {
+                // Every queued line lands before the writer closes under it.
+                WireWriter.release(writer);
             }
-            serveConnection(reader, writer, ch);
         } catch (IOException ignored) {
             // client disconnected / socket error mid-exchange — nothing to do
         }

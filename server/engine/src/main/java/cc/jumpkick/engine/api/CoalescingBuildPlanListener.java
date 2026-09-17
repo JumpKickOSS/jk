@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.api;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
@@ -9,6 +10,8 @@ import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,12 +20,13 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Human-paced wire events: coalesces high-frequency {@link #progress}, {@link #tickUpdate},
  * {@link #label}, and {@link #output} to at most one emit per cadence (default
- * {@value #DEFAULT_CADENCE_MS} ms). Shared with aggregate {@code workspace-progress} on the engine
+ * {@value #DEFAULT_CADENCE_MS} ms). Shared with aggregate {@code workspace-progress} on the engine
  * socket and dashboard SSE so CLI and web see the same sample rate.
  *
  * <p>Structural events ({@code planStart/Finish}, {@code stepStart/Finish}, {@code warn},
@@ -34,6 +38,12 @@ import org.jspecify.annotations.Nullable;
  * burst must arrive complete. The queue is bounded ({@value #MAX_PENDING_OUTPUT_LINES}
  * lines); a pathological storm drops the oldest lines and announces the gap with a marker line.
  *
+ * <p>Two locks, so a producer never waits on the delegate. {@link #state} guards the pending
+ * samples and is held only to record or take them; {@link #emitting} serializes calls into the
+ * delegate, so a timer flush cannot slip a stale progress sample past a structural event, and is
+ * never held while a producer records. A worker thread reporting progress therefore contends only
+ * with other recorders, never with a thread that is handing a batch to the wire.
+ *
  * <p>Applies to <em>all</em> engine-hosted plans (lock, build, test, plugins), not only resolve:
  * anything that hammers {@code ctx.progress(1)} or dumps stdout benefits. Cadence is for eyeballs;
  * sending faster than a human can read is pure wire cost.
@@ -43,12 +53,18 @@ import org.jspecify.annotations.Nullable;
  */
 public final class CoalescingBuildPlanListener implements BuildPlanListener, AutoCloseable {
 
-    /** Default human cadence — half a second is plenty for eyes; 1 s feels sluggish. */
+    /** Default human cadence — half a second is plenty for eyes; 1 s feels sluggish. */
     public static final long DEFAULT_CADENCE_MS = 500L;
 
     private final BuildPlanListener delegate;
     private final long cadenceMs;
-    private final Object lock = new Object();
+    private final Clock clock;
+
+    /** Guards the pending samples below and the timer handle; never held across a delegate call. */
+    private final Object state = new Object();
+
+    /** Serializes delegate calls: a flush's batch and a structural event pass through in order. */
+    private final ReentrantLock emitting = new ReentrantLock();
 
     private @Nullable String progressStep;
     private int progressDelta;
@@ -75,17 +91,27 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     private record PendingOutput(String step, String line) {}
 
+    /** One flush's worth of samples, taken under {@link #state} and emitted outside it. */
+    private record Batch(
+            @Nullable String progressStep,
+            int progressDelta,
+            @Nullable BuildPlanView progressView,
+            @Nullable String tickStep,
+            int tickDelta,
+            @Nullable BuildPlanView tickView,
+            @Nullable String labelStep,
+            @Nullable String labelText,
+            long droppedOutputLines,
+            List<PendingOutput> output) {}
+
     private long lastFlushNanos;
     private @Nullable ScheduledFuture<?> scheduled;
     private final AtomicBoolean closed = new AtomicBoolean();
 
     /**
-     * Timer only — every plan in the engine shares this one thread, so it must never perform a
-     * wire write. {@link #emitPendingLocked} calls the delegate, which is a socket send under the
-     * connection's write monitor: a client that stops draining its socket (SIGSTOP'd, wedged
-     * terminal) would park this thread and every other build's coalesced progress would go silent
-     * until it emitted a structural event. The scheduled task therefore only hands the flush to
-     * {@link #FLUSHERS}.
+     * Timer only — every plan in the engine shares this one thread, so it never calls a delegate:
+     * a delegate that stalls would silence every other plan's coalesced progress. The scheduled
+     * task hands the flush to {@link #FLUSHERS}.
      */
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         // Shared timer across every plan; reads no session.
@@ -95,21 +121,27 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     });
 
     /**
-     * Where a timed flush actually runs: one virtual thread per flush, so blocking in a wire write
-     * costs no platform thread and isolates plans from each other. Per-listener ordering is
-     * still guaranteed by {@link #lock}.
+     * Where a timed flush runs: platform threads, kept while flushes keep coming, so a flush is
+     * paced by nothing but the delegate — never by a virtual-thread scheduler whose carriers a
+     * build's file walks are holding. Per-listener ordering is still {@link #emitting}'s.
      */
     // Flushers only hand a coalesced event to the delegate; reads no session.
-    private static final ExecutorService FLUSHERS = Executors.newThreadPerTaskExecutor(
-            Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
+    private static final ExecutorService FLUSHERS = Executors.newCachedThreadPool(
+            Thread.ofPlatform().daemon().name("jk-wire-flush-", 0).factory());
 
     public CoalescingBuildPlanListener(BuildPlanListener delegate) {
         this(delegate, cadenceFromEnv());
     }
 
     public CoalescingBuildPlanListener(BuildPlanListener delegate, long cadenceMs) {
+        this(delegate, cadenceMs, Clock.SYSTEM);
+    }
+
+    /** With the clock the cadence window is measured on. */
+    public CoalescingBuildPlanListener(BuildPlanListener delegate, long cadenceMs, Clock clock) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.cadenceMs = Math.max(0L, cadenceMs);
+        this.clock = clock;
         this.lastFlushNanos = 0L;
     }
 
@@ -126,14 +158,12 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
 
     @Override
     public void planStart(BuildPlanView view) {
-        flush();
-        delegate.planStart(view);
+        structural(() -> delegate.planStart(view));
     }
 
     @Override
     public void stepStart(String step, @Nullable String group, int ticks) {
-        flush();
-        delegate.stepStart(step, group, ticks);
+        structural(() -> delegate.stepStart(step, group, ticks));
     }
 
     @Override
@@ -142,12 +172,14 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
             delegate.progress(step, delta, view);
             return;
         }
-        synchronized (lock) {
+        boolean due;
+        synchronized (state) {
             progressStep = step;
             progressDelta += delta;
             progressView = view;
-            scheduleLocked();
+            due = scheduleLocked();
         }
+        if (due) flushIfFree();
     }
 
     @Override
@@ -156,12 +188,14 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
             delegate.tickUpdate(step, delta, view);
             return;
         }
-        synchronized (lock) {
+        boolean due;
+        synchronized (state) {
             tickStep = step;
             tickDelta += delta;
             tickView = view;
-            scheduleLocked();
+            due = scheduleLocked();
         }
+        if (due) flushIfFree();
     }
 
     @Override
@@ -170,11 +204,13 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
             delegate.label(step, label);
             return;
         }
-        synchronized (lock) {
+        boolean due;
+        synchronized (state) {
             labelStep = step;
             labelText = label;
-            scheduleLocked();
+            due = scheduleLocked();
         }
+        if (due) flushIfFree();
     }
 
     @Override
@@ -186,134 +222,175 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         // Queue, don't sample: cadence bounds frame *rate* (lines batch into one window), but
         // every line must arrive — a test-failure stack emitted as one synchronous burst would
         // otherwise collapse to its final line.
-        synchronized (lock) {
+        boolean due;
+        synchronized (state) {
             if (outputQueue.size() >= MAX_PENDING_OUTPUT_LINES) {
                 outputQueue.pollFirst();
                 droppedOutputLines++;
             }
             outputQueue.addLast(new PendingOutput(step, line));
-            scheduleLocked();
+            due = scheduleLocked();
         }
+        if (due) flushIfFree();
     }
 
     @Override
     public void warn(String step, String code, String message) {
-        flush();
-        delegate.warn(step, code, message);
+        structural(() -> delegate.warn(step, code, message));
     }
 
     @Override
     public void error(String step, String code, String message) {
-        flush();
-        delegate.error(step, code, message);
+        structural(() -> delegate.error(step, code, message));
     }
 
     @Override
     public void error(String step, String code, String message, String test, String exceptionClass) {
-        flush();
-        delegate.error(step, code, message, test, exceptionClass);
+        structural(() -> delegate.error(step, code, message, test, exceptionClass));
     }
 
     @Override
     public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
-        flush();
-        delegate.error(step, code, message, failure);
+        structural(() -> delegate.error(step, code, message, failure));
     }
 
     @Override
     public void stepFinish(String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
-        flush();
-        delegate.stepFinish(step, group, status, duration, waited);
+        structural(() -> delegate.stepFinish(step, group, status, duration, waited));
     }
 
     @Override
     public void planFinish(BuildPlanResult result) {
-        flush();
-        delegate.planFinish(result);
+        structural(() -> delegate.planFinish(result));
         close();
     }
 
-    /**
-     * Emit any pending hot samples now (also called before structural events). Take + emit are
-     * under the same lock so a timer flush cannot reorder past a structural event.
-     */
-    public void flush() {
-        if (closed.get()) return;
-        synchronized (lock) {
-            cancelScheduledLocked();
-            emitPendingLocked();
-            lastFlushNanos = System.nanoTime();
+    /** Flush the pending samples, then pass {@code event} through, with nothing emitted between. */
+    private void structural(Runnable event) {
+        emitting.lock();
+        try {
+            flushEmitting();
+            event.run();
+        } finally {
+            emitting.unlock();
         }
     }
 
-    /** Caller holds {@link #lock}. */
-    private void emitPendingLocked() {
-        String pStep = progressStep;
-        int pDelta = progressDelta;
-        BuildPlanView pView = progressView;
+    /** Emit any pending hot samples now (also called before structural events). */
+    public void flush() {
+        if (closed.get()) return;
+        emitting.lock();
+        try {
+            flushEmitting();
+        } finally {
+            emitting.unlock();
+        }
+    }
+
+    /**
+     * A producer's own flush once the window has elapsed. Takes the emit lock only if it is free:
+     * a producer never waits behind a thread that is handing a batch to the wire, and the batch
+     * it could not emit goes out on the timer instead.
+     */
+    private void flushIfFree() {
+        if (closed.get()) return;
+        if (!emitting.tryLock()) {
+            synchronized (state) {
+                armTimerLocked(cadenceMs);
+            }
+            return;
+        }
+        try {
+            flushEmitting();
+        } finally {
+            emitting.unlock();
+        }
+    }
+
+    /** Caller holds {@link #emitting}. Take the batch under {@link #state}, then emit it outside. */
+    private void flushEmitting() {
+        if (closed.get()) return;
+        Batch batch;
+        synchronized (state) {
+            cancelScheduledLocked();
+            batch = takeLocked();
+            lastFlushNanos = clock.nanos();
+        }
+        emit(batch);
+    }
+
+    /** Caller holds {@link #state}. */
+    private Batch takeLocked() {
+        Batch batch = new Batch(
+                progressStep,
+                progressDelta,
+                progressView,
+                tickStep,
+                tickDelta,
+                tickView,
+                labelStep,
+                labelText,
+                droppedOutputLines,
+                outputQueue.isEmpty() ? List.of() : new ArrayList<>(outputQueue));
         progressStep = null;
         progressDelta = 0;
         progressView = null;
-
-        String tStep = tickStep;
-        int tDelta = tickDelta;
-        BuildPlanView tView = tickView;
         tickStep = null;
         tickDelta = 0;
         tickView = null;
-
-        String lStep = labelStep;
-        String lText = labelText;
         labelStep = null;
         labelText = null;
-
-        long oDropped = droppedOutputLines;
         droppedOutputLines = 0;
+        outputQueue.clear();
+        return batch;
+    }
 
-        // Emit under lock so structural passthrough cannot race ahead of a concurrent timer flush.
-        // Delegate is wire send only — must not re-enter this coalescer on the same instance.
-        if (pStep != null && pView != null && pDelta != 0) {
-            delegate.progress(pStep, pDelta, pView);
+    /** Caller holds {@link #emitting}. Delegate is wire send only — must not re-enter this coalescer. */
+    private void emit(Batch b) {
+        if (b.progressStep() != null && b.progressView() != null && b.progressDelta() != 0) {
+            delegate.progress(b.progressStep(), b.progressDelta(), b.progressView());
         }
-        if (tStep != null && tView != null && tDelta != 0) {
-            delegate.tickUpdate(tStep, tDelta, tView);
+        if (b.tickStep() != null && b.tickView() != null && b.tickDelta() != 0) {
+            delegate.tickUpdate(b.tickStep(), b.tickDelta(), b.tickView());
         }
-        if (lStep != null && lText != null) {
-            delegate.label(lStep, lText);
+        if (b.labelStep() != null && b.labelText() != null) {
+            delegate.label(b.labelStep(), b.labelText());
         }
-        if (oDropped > 0 && !outputQueue.isEmpty()) {
+        if (b.droppedOutputLines() > 0 && !b.output().isEmpty()) {
+            long dropped = b.droppedOutputLines();
             delegate.output(
-                    outputQueue.peekFirst().step(),
-                    "[jk: " + oDropped + " earlier output line" + (oDropped == 1 ? "" : "s") + " dropped]");
+                    b.output().getFirst().step(),
+                    "[jk: " + dropped + " earlier output line" + (dropped == 1 ? "" : "s") + " dropped]");
         }
-        for (PendingOutput o; (o = outputQueue.pollFirst()) != null; ) {
+        for (PendingOutput o : b.output()) {
             delegate.output(o.step(), o.line());
         }
     }
 
     /**
-     * Caller holds {@link #lock}. Opens a cadence window on the first pending event (no immediate
-     * emit) so storms coalesce; after the window elapses, emit on the next event or the timer.
+     * Caller holds {@link #state}. Opens a cadence window on the first pending event (no immediate
+     * emit) so storms coalesce; after the window elapses, the caller flushes ({@code true}) or the
+     * timer does.
      */
-    private void scheduleLocked() {
-        if (closed.get()) return;
-        long now = System.nanoTime();
+    private boolean scheduleLocked() {
+        if (closed.get()) return false;
+        long now = clock.nanos();
         if (lastFlushNanos == 0L) {
             // Start the human window; first sample lands at cadence (or on structural flush).
             lastFlushNanos = now;
-            if (scheduled == null || scheduled.isDone()) {
-                scheduled = SCHEDULER.schedule(this::dispatchFlush, cadenceMs, TimeUnit.MILLISECONDS);
-            }
-            return;
+            armTimerLocked(cadenceMs);
+            return false;
         }
         long elapsedMs = (now - lastFlushNanos) / 1_000_000L;
-        if (elapsedMs >= cadenceMs) {
-            emitPendingLocked();
-            lastFlushNanos = now;
-            return;
-        }
+        if (elapsedMs >= cadenceMs) return true;
+        armTimerLocked(cadenceMs - elapsedMs);
+        return false;
+    }
+
+    /** Caller holds {@link #state}. One timer at a time; an armed one is left alone. */
+    private void armTimerLocked(long delayMs) {
         if (scheduled != null && !scheduled.isDone()) return;
-        scheduled = SCHEDULER.schedule(this::dispatchFlush, cadenceMs - elapsedMs, TimeUnit.MILLISECONDS);
+        scheduled = SCHEDULER.schedule(this::dispatchFlush, Math.max(0L, delayMs), TimeUnit.MILLISECONDS);
     }
 
     private void cancelScheduledLocked() {
@@ -347,7 +424,7 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
         // Flush BEFORE marking closed — flush no-ops once closed.
         flush();
         if (!closed.compareAndSet(false, true)) return;
-        synchronized (lock) {
+        synchronized (state) {
             cancelScheduledLocked();
         }
     }

@@ -11,6 +11,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -136,5 +138,44 @@ class CoalescingBuildPlanListenerTest {
         assertThat(events.get(0)).isEqualTo("[jk: 2 earlier output lines dropped]");
         assertThat(events.get(1)).isEqualTo("line-2");
         assertThat(events.get(events.size() - 1)).isEqualTo("line-" + (cap + 1));
+    }
+
+    /**
+     * A flush that is stuck in the delegate — a wire whose client reads slowly — holds nothing a
+     * producer needs: a worker reporting progress records its sample and returns.
+     */
+    @Test
+    void a_producer_never_waits_on_a_delegate_that_is_emitting() throws Exception {
+        CountDownLatch emitting = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        BuildPlanListener stuck = new BuildPlanListener() {
+            @Override
+            public void label(String step, String label) {
+                emitting.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        };
+        try (CoalescingBuildPlanListener c = new CoalescingBuildPlanListener(stuck, 60_000L)) {
+            c.label("s", "first");
+            Thread flusher = Thread.ofPlatform().start(c::flush);
+            assertThat(emitting.await(5, TimeUnit.SECONDS))
+                    .as("the flush reached the delegate")
+                    .isTrue();
+            try {
+                Thread producer =
+                        Thread.ofPlatform().start(() -> c.progress("s", 1, new BuildPlanView("p", 1, 10, 1, 0, false)));
+                producer.join(Duration.ofSeconds(5).toMillis());
+                assertThat(producer.isAlive())
+                        .as("progress returned while the delegate still held the flush")
+                        .isFalse();
+            } finally {
+                release.countDown();
+                flusher.join(Duration.ofSeconds(5).toMillis());
+            }
+        }
     }
 }

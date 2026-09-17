@@ -472,9 +472,11 @@ public final class EngineServer implements AutoCloseable {
                 this::handleShutdown,
                 this::noteIdleDropped));
 
-        // One thread per connection; each verb binds the request's session itself (SessionContext.where).
+        // One platform thread per connection; each verb binds the request's session itself
+        // (SessionContext.where). A platform thread, so hello and status are answered while a
+        // build's file walks hold every carrier of the virtual-thread scheduler.
         connectionExecutor = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
+                Thread.ofPlatform().daemon().name("jk-engine-conn-", 0).factory());
         EngineStartup.Started started =
                 new EngineStartup(version, pid, election, aot, http, journal, idle, log).run(won);
         storeFeedRefresh = started.feeds();

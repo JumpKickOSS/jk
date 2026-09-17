@@ -2,6 +2,9 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -108,9 +111,11 @@ public final class PathUtil {
             throws IOException {
         if (!Files.isDirectory(root)) return;
         WALKS.incrementAndGet();
+        CarrierShare share = new CarrierShare();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                share.visited();
                 return !dir.equals(root) && skipDirectory.test(dir)
                         ? FileVisitResult.SKIP_SUBTREE
                         : FileVisitResult.CONTINUE;
@@ -118,6 +123,7 @@ public final class PathUtil {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                share.visited();
                 if (attrs.isRegularFile()) visit.accept(file, attrs);
                 return FileVisitResult.CONTINUE;
             }
@@ -127,6 +133,61 @@ public final class PathUtil {
                 return unopenedDirectory(file, failure);
             }
         });
+    }
+
+    /**
+     * A walk on a virtual thread gives its carrier up every {@value #SHARE_EVERY} entries.
+     *
+     * <p>Directory reads are native calls the virtual-thread scheduler does not compensate for: a
+     * walk holds its carrier for as long as it runs, and as many concurrent walks as there are
+     * carriers leave every other virtual thread in the process unscheduled — the io pool's
+     * repository legs, the timed flushes — for the length of the walks. A yield on a virtual thread
+     * unmounts it and lets a queued one run; every few hundred entries costs a large walk
+     * milliseconds and lets nothing starve behind it. A platform thread never yields here.
+     */
+    private static final class CarrierShare {
+        private final boolean virtual = onVirtualThread();
+        private int visited;
+
+        void visited() {
+            if (virtual && (++visited & (SHARE_EVERY - 1)) == 0) {
+                CARRIER_YIELDS.incrementAndGet();
+                Thread.yield();
+            }
+        }
+    }
+
+    /** Entries between two yields of a walk on a virtual thread; a power of two. */
+    public static final int SHARE_EVERY = 256;
+
+    private static final AtomicLong CARRIER_YIELDS = new AtomicLong();
+
+    /** {@code Thread.isVirtual()}, which release 17 cannot name; absent on a JDK before 21. */
+    private static final @Nullable MethodHandle IS_VIRTUAL = isVirtualHandle();
+
+    private static @Nullable MethodHandle isVirtualHandle() {
+        try {
+            return MethodHandles.publicLookup()
+                    .findVirtual(Thread.class, "isVirtual", MethodType.methodType(boolean.class));
+        } catch (NoSuchMethodException | IllegalAccessException absent) {
+            return null;
+        }
+    }
+
+    /** Whether the calling thread is a virtual thread; {@code false} where the JDK has none. */
+    public static boolean onVirtualThread() {
+        if (IS_VIRTUAL == null) return false;
+        try {
+            return (boolean) IS_VIRTUAL.invoke(Thread.currentThread());
+        } catch (Throwable t) {
+            Log.debug("onVirtualThread: Thread.isVirtual failed", t);
+            return false;
+        }
+    }
+
+    /** Times a walk on a virtual thread has given its carrier up; a test seam beside {@link #walks()}. */
+    public static long carrierYields() {
+        return CARRIER_YIELDS.get();
     }
 
     /**
@@ -157,15 +218,18 @@ public final class PathUtil {
     public static void forEachEntry(Path root, Predicate<Path> skipDirectory, EntryVisit visit) throws IOException {
         if (!Files.isDirectory(root)) return;
         WALKS.incrementAndGet();
+        CarrierShare share = new CarrierShare();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                share.visited();
                 if (!dir.equals(root) && skipDirectory.test(dir)) return FileVisitResult.SKIP_SUBTREE;
                 return visit.accept(dir, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
             }
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                share.visited();
                 return visit.accept(file, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
             }
 
@@ -207,9 +271,11 @@ public final class PathUtil {
         if (!Files.isDirectory(root)) return false;
         WALKS.incrementAndGet();
         boolean[] hit = {false};
+        CarrierShare share = new CarrierShare();
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                share.visited();
                 return !dir.equals(root) && skipDirectory.test(dir)
                         ? FileVisitResult.SKIP_SUBTREE
                         : FileVisitResult.CONTINUE;
@@ -217,6 +283,7 @@ public final class PathUtil {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                share.visited();
                 if (attrs.isRegularFile() && filePred.test(file)) {
                     hit[0] = true;
                     return FileVisitResult.TERMINATE;
