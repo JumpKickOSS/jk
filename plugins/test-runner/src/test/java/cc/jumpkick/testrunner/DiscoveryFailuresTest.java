@@ -35,6 +35,8 @@ class DiscoveryFailuresTest {
     private static final String BASE = MissingBaseFixtureBase.class.getName();
     private static final String HELPER = MissingBaseHelperFixture.class.getName();
     private static final String HELPER_BASE = MissingBaseHelperFixtureBase.class.getName();
+    private static final String SIGNATURE = MissingSignatureFixture.class.getName();
+    private static final String SIGNATURE_TYPE = MissingSignatureFixtureType.class.getName();
 
     @Test
     void a_test_class_whose_static_initializer_throws_on_load_fails_discovery_naming_it_and_the_cause(@TempDir Path tmp)
@@ -94,6 +96,27 @@ class DiscoveryFailuresTest {
                 .contains("1 class could not be loaded during discovery: " + CHILD)
                 .contains("  class: " + CHILD)
                 .contains("  caused by: java.lang.NoClassDefFoundError: " + BASE.replace('.', '/'));
+    }
+
+    /**
+     * The class loads — a parameter type is not resolved by loading — and the Platform drops it when
+     * its filter reads the declared methods, so the probe reads them too and reports the type the
+     * test classpath lacks.
+     */
+    @Test
+    void a_test_class_whose_method_signature_names_a_missing_type_fails_discovery_with_the_linkage_error(
+            @TempDir Path tmp) throws Exception {
+        Path root = classpathRootOf(tmp, MissingSignatureFixture.class);
+        var events = new Recorder();
+        Run run = listWith(
+                new HidingLoader(getClass().getClassLoader(), root, SIGNATURE, SIGNATURE_TYPE), root, null, events);
+
+        assertThat(run.exit()).isEqualTo(Exit.SOFTWARE);
+        assertThat(run.err())
+                .contains("1 class could not be loaded during discovery: " + SIGNATURE)
+                .contains("  class: " + SIGNATURE)
+                .contains("  caused by: java.lang.NoClassDefFoundError: " + SIGNATURE_TYPE.replace('.', '/'));
+        assertThat(events.discovered()).isEmpty();
     }
 
     @Test
