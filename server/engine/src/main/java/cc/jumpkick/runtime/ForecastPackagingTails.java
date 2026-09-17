@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JavadocTool;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.ModuleForecast.Prepared;
+import cc.jumpkick.runtime.base.DokkaResolver;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.wire.runtime.TaskForecast;
@@ -70,8 +72,9 @@ final class ForecastPackagingTails {
             List<Path> mainCp,
             ActionKey.EntryToken abiToken,
             ActionCache actionCache,
+            Cas cas,
             boolean compileDirty)
-            throws IOException {
+            throws IOException, InterruptedException {
         if (!PackagingKeys.libraryArtifacts(project, dir)
                 || !project.project().javadocMode().enabled()) return null;
         if (compileDirty) {
@@ -86,8 +89,20 @@ final class ForecastPackagingTails {
         List<Path> classpath = new ArrayList<>(mainCp);
         classpath.add(layout.classesDir());
         List<String> options = JavadocTool.options(project.project().javadocMode(), prepared.release());
+        // Kotlin sources make it a Dokka run; an exact [dokka] version (the default) needs no catalog.
+        String dokkaVersion = prepared.ktSrc().isEmpty()
+                ? null
+                : DokkaResolver.version(project, RepoGroupBuilder.buildFor(project, null, cas));
         String jdKey = PackagingKeys.javadoc(
-                        layout.javadocJar(), dir, javaSources, classpath, abiToken, options, prepared.javaHome())
+                        layout.javadocJar(),
+                        dir,
+                        javaSources,
+                        prepared.ktSrc(),
+                        classpath,
+                        abiToken,
+                        options,
+                        prepared.javaHome(),
+                        PlannerJavadoc.dokkaToken(project, dokkaVersion))
                 .key();
         return TaskForecaster.present(actionCache, jdKey)
                 ? new TaskForecast.Task(

@@ -23,7 +23,7 @@ register.
 | groovy-compiler | `[groovy]`, joint compilation | core | Grails and Spock paths |
 | test-runner | JUnit Platform suites (Jupiter; JUnit 4 via Vintage), tags, profiles (tag filters, test-JVM args), `-ea` test JVMs, coverage (`--coverage` / `[test] coverage`: JaCoCo XML + HTML per module, Coverage block in `jk-results.md`), launcher failures as failed steps | core | every `jk test` |
 | formatter | `jk format` | core | closes the agent edit loop |
-| publisher | `jk publish`: Maven layout, GPG, Sigstore, SLSA, CycloneDX/SPDX | core | the ship path for libraries |
+| publisher | `jk publish`: Maven layout, GPG, Sigstore, SLSA, CycloneDX/SPDX; the sources and javadoc jars beside the jar — javadoc for Java, Dokka (`[dokka]`) for Kotlin | core | the ship path for libraries |
 | image-builder | `jk image`: OCI images, JRE base, AOT cache | core | the ship path for services |
 | auditor | `jk audit` (OSV), `jk deny` | core | supply-chain defaults |
 | minified | `[minified]`: R8 classfile-mode slim jar | core | `jk native` and image size |

@@ -8,6 +8,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -759,6 +760,51 @@ public record JkBuild(
     }
 
     /**
+     * {@code [dokka]}: how a Kotlin or mixed module's javadoc jar is documented. Dokka runs at
+     * {@code version} — the manifest's selector, a pin by default — and writes {@code format}:
+     * javadoc-shaped HTML, which is what Maven Central's javadoc jar convention expects, or Dokka's
+     * own HTML. A pure Java module never reads this table.
+     */
+    public record Dokka(VersionSelector version, Format format) {
+
+        /** The output Dokka writes into the javadoc jar. */
+        public enum Format {
+            JAVADOC,
+            HTML;
+
+            public String wireName() {
+                return name().toLowerCase(Locale.ROOT);
+            }
+
+            /** Parse {@code javadoc} / {@code html} (case-insensitive). */
+            public static Format parse(String raw) {
+                return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+                    case "javadoc" -> JAVADOC;
+                    case "html" -> HTML;
+                    default ->
+                        throw new IllegalArgumentException("unknown dokka format `" + raw + "` (want javadoc or html)");
+                };
+            }
+        }
+
+        /** The Dokka release a module gets when the table names none. */
+        public static final String DEFAULT_VERSION = "2.2.0";
+
+        /** The table at its defaults: {@link #DEFAULT_VERSION}, javadoc format. */
+        public static final Dokka DEFAULT =
+                new Dokka(new VersionSelector.Exact(DEFAULT_VERSION, DEFAULT_VERSION), Format.JAVADOC);
+
+        public Dokka {
+            Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(format, "format");
+        }
+
+        public boolean isDefault() {
+            return equals(DEFAULT);
+        }
+    }
+
+    /**
      * {@code [build-info]}: the module's jar carries {@code git.properties} — the keys Spring Boot's
      * {@code GitProperties} and the git-commit-id plugins' consumers read — and, when the module is
      * a Spring Boot application, {@code META-INF/build-info.properties} with Boot's {@code build.*}
@@ -905,7 +951,9 @@ public record JkBuild(
              * {@code [build-info]} — the git build-info resources the module's jar carries. {@code
              * null} when the table is absent: nothing is written.
              */
-            @Nullable BuildInfo buildInfo) {
+            @Nullable BuildInfo buildInfo,
+            /** {@code [dokka]} — Dokka's version and output format for a Kotlin or mixed module's javadoc jar. */
+            Dokka dokka) {
 
         /** Default {@code [test] fixtures = true} root — {@code src/fixtures/java}. */
         public static final String DEFAULT_FIXTURES = "src/fixtures/java";
@@ -937,7 +985,8 @@ public record JkBuild(
                 null,
                 List.of(),
                 EnvConfig.EMPTY,
-                null);
+                null,
+                Dokka.DEFAULT);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -962,6 +1011,7 @@ public record JkBuild(
             devSidecars = devSidecars == null ? List.of() : List.copyOf(devSidecars);
             auditIgnores = auditIgnores == null ? List.of() : List.copyOf(auditIgnores);
             env = env == null ? EnvConfig.EMPTY : env;
+            dokka = dokka == null ? Dokka.DEFAULT : dokka;
         }
 
         /**
@@ -1061,6 +1111,11 @@ public record JkBuild(
         /** The same block with the {@code [build-info]} table set. */
         public Build withBuildInfo(@Nullable BuildInfo info) {
             return with(f -> f.buildInfo = info);
+        }
+
+        /** The same block with the {@code [dokka]} table set. */
+        public Build withDokka(Dokka dokka) {
+            return with(f -> f.dokka = dokka);
         }
 
         /** One component changed, the rest copied — the one spelling of the copy every {@code with*} shares. */

@@ -948,7 +948,7 @@ final class ModuleForecast {
                 compileDirty);
         if (assembly != null) steps.add(assembly);
         TaskForecast.Task javadoc = ForecastPackagingTails.javadoc(
-                project, dir, prepared, mainCp, restored.abiToken(), actionCache, compileDirty);
+                project, dir, prepared, mainCp, restored.abiToken(), actionCache, cas, compileDirty);
         if (javadoc != null) steps.add(javadoc);
     }
 

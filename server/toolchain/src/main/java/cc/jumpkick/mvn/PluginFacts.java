@@ -63,6 +63,7 @@ final class PluginFacts {
             "spring-boot-maven-plugin",
             "git-commit-id-maven-plugin",
             "git-commit-id-plugin",
+            "dokka-maven-plugin",
             "quarkus-maven-plugin",
             "native-maven-plugin",
             "jib-maven-plugin",

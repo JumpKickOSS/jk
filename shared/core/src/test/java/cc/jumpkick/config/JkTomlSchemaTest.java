@@ -108,6 +108,16 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void dokka_properties_are_exactly_the_parser_s_dokka_keys() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String dokka = table(table(schema, "properties"), "dokka");
+        assertThat(keysOf(table(dokka, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestTables.DOKKA_KEYS);
+        assertThat(Jsonl.bool(dokka, "additionalProperties", true))
+                .as("an unknown key under [dokka] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void build_info_properties_are_exactly_the_parser_s_build_info_keys() throws Exception {
         String schema = Files.readString(SCHEMA);
         String buildInfo = table(table(schema, "properties"), "build-info");

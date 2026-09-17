@@ -54,6 +54,7 @@ final class BuildFields {
     EnvConfig env;
 
     JkBuild.@Nullable BuildInfo buildInfo;
+    JkBuild.Dokka dokka;
 
     private BuildFields(JkBuild.Build b) {
         orderAfter = b.orderAfter();
@@ -83,6 +84,7 @@ final class BuildFields {
         auditIgnores = b.auditIgnores();
         env = b.env();
         buildInfo = b.buildInfo();
+        dokka = b.dokka();
     }
 
     JkBuild.Build build() {
@@ -113,6 +115,7 @@ final class BuildFields {
                 devReady,
                 auditIgnores,
                 env,
-                buildInfo);
+                buildInfo,
+                dokka);
     }
 }

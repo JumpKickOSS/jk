@@ -32,7 +32,7 @@ class PlannerJavadocTest {
                 .isEqualTo(PlannerJavadoc.Verdict.LENIENT_TREE);
         assertThat(PlannerJavadoc.verdict(JavadocMode.LENIENT, MALFORMED_HTML, false))
                 .isEqualTo(PlannerJavadoc.Verdict.LENIENT_README);
-        assertThat(PlannerJavadoc.errorLines(MALFORMED_HTML)).containsExactly(MALFORMED);
+        assertThat(PlannerJavadoc.errorLines("javadoc", MALFORMED_HTML)).containsExactly(MALFORMED);
     }
 
     @Test
@@ -63,7 +63,7 @@ class PlannerJavadocTest {
     void an_unlocated_failure_reports_the_exit_and_the_output() {
         JavadocTool.Result crashed = new JavadocTool.Result(2, List.of(), List.of(), "javadoc: error - cannot read");
 
-        assertThat(PlannerJavadoc.errorLines(crashed))
+        assertThat(PlannerJavadoc.errorLines("javadoc", crashed))
                 .containsExactly("javadoc exited 2\njavadoc: error - cannot read");
     }
 

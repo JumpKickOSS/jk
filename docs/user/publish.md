@@ -19,7 +19,8 @@ Export a lock scope as a Maven BOM: `jk export bom` — [Platforms](platforms.md
 
 A library's release set — jar, POM, `-sources.jar`, `-javadoc.jar` — is what `jk build` already
 wrote, and `jk publish` uploads the two classifier jars whenever they are on disk; Maven Central
-refuses a release missing either.
+refuses a release missing either. A Kotlin library's javadoc jar is Dokka's output, so the bundle
+carries real API docs rather than an empty jar.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
 
 ## POM metadata: `[publish]`
