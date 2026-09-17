@@ -112,19 +112,100 @@ final class PluginFacts {
     }
 
     /**
-     * The compiler plugin's {@code <compilerArgs>}, in order, minus the level options {@code java =}
-     * states ({@code --release N}, {@code -source}, {@code -target}) — everything else, {@code -A}
-     * processor options included, is a verbatim {@code [javac] args} entry.
+     * The compiler arguments each compile step gets: {@code main} is {@code [javac] args} and
+     * {@code test} is {@code [javac.test] args}; {@code scoped} names each execution whose
+     * configuration reached one step alone, as {@code `<id>` (goal `compile`)}.
      */
-    static List<String> compilerArgs(Model model) {
-        List<String> args = new ArrayList<>();
-        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
-        if (compiler.isEmpty()) return args;
-        for (Xpp3Dom config : configurations(compiler.get())) {
-            collectCompilerArgs(config, args);
-            collectCompilerSwitches(config, args);
+    record CompilerArgs(List<String> main, List<String> test, List<String> scoped) {
+        /** Whether compile-test gets other arguments than compile-main, so the manifest needs both tables. */
+        boolean split() {
+            return !main.equals(test);
         }
-        return args;
+    }
+
+    /** Which compile step a compiler-plugin execution binds. */
+    private enum CompileStep {
+        MAIN,
+        TEST,
+        BOTH
+    }
+
+    /**
+     * The compiler plugin's {@code <compilerArgs>} and switches, in order, minus the level options
+     * {@code java =} states ({@code --release N}, {@code -source}, {@code -target}) — everything
+     * else, {@code -A} processor options included, is a verbatim args entry. The plugin's own
+     * {@code <configuration>} reaches both compile steps; an execution's reaches the step its goal
+     * binds: {@code compile} (or the {@code default-compile} id) compile-main alone, {@code
+     * testCompile} (or {@code default-testCompile}) compile-test alone, as Maven runs them.
+     */
+    static CompilerArgs compilerArgs(Model model) {
+        List<String> main = new ArrayList<>();
+        List<String> test = new ArrayList<>();
+        List<String> scoped = new ArrayList<>();
+        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        if (compiler.isEmpty()) return new CompilerArgs(main, test, scoped);
+        if (compiler.get().getConfiguration() instanceof Xpp3Dom config) {
+            collectCompilerArgs(config, main);
+            collectCompilerSwitches(config, main);
+            collectCompilerArgs(config, test);
+            collectCompilerSwitches(config, test);
+        }
+        for (PluginExecution execution : compiler.get().getExecutions()) {
+            if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
+            CompileStep step = compileStep(execution);
+            if (step != CompileStep.TEST) {
+                collectCompilerArgs(config, main);
+                collectCompilerSwitches(config, main);
+            }
+            if (step != CompileStep.MAIN) {
+                collectCompilerArgs(config, test);
+                collectCompilerSwitches(config, test);
+            }
+            if (step != CompileStep.BOTH && config.getChild("compilerArgs") != null) scoped.add(label(execution, step));
+        }
+        return new CompilerArgs(main, test, scoped);
+    }
+
+    /** {@code `<id>` (goal `compile`)} for a compiler-plugin execution bound to one step. */
+    private static String label(PluginExecution execution, CompileStep step) {
+        return "`" + execution.getId() + "` (goal `" + (step == CompileStep.MAIN ? "compile" : "testCompile") + "`)";
+    }
+
+    /**
+     * The step an execution's goals bind: {@code compile} without {@code testCompile} is
+     * compile-main, {@code testCompile} without {@code compile} is compile-test; no goals fall back
+     * to Maven's default execution ids, and anything else reaches both.
+     */
+    private static CompileStep compileStep(PluginExecution execution) {
+        List<String> goals = execution.getGoals();
+        boolean compile = goals.contains("compile");
+        boolean testCompile = goals.contains("testCompile");
+        if (compile && !testCompile) return CompileStep.MAIN;
+        if (testCompile && !compile) return CompileStep.TEST;
+        if (goals.isEmpty()) {
+            if ("default-compile".equals(execution.getId())) return CompileStep.MAIN;
+            if ("default-testCompile".equals(execution.getId())) return CompileStep.TEST;
+        }
+        return CompileStep.BOTH;
+    }
+
+    /**
+     * The compiler-plugin executions bound to one step that declare {@code <annotationProcessorPaths>}
+     * of their own, as {@code `<id>` (goal `compile`)}: jk's one {@code [processor-dependencies]}
+     * table serves both compile steps, so the import writes the paths and says so.
+     */
+    static List<String> stepScopedProcessorPaths(Model model) {
+        List<String> scoped = new ArrayList<>();
+        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        if (compiler.isEmpty()) return scoped;
+        for (PluginExecution execution : compiler.get().getExecutions()) {
+            if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
+            CompileStep step = compileStep(execution);
+            if (step != CompileStep.BOTH && config.getChild("annotationProcessorPaths") != null) {
+                scoped.add(label(execution, step));
+            }
+        }
+        return scoped;
     }
 
     /**

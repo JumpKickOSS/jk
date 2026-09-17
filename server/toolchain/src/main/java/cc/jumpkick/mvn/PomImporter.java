@@ -166,7 +166,7 @@ public final class PomImporter {
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(generators.openapi())
                 .pluginConfig(generators.protobuf())
-                .build(buildBlock(em.model(), sourceTree, tests))
+                .build(buildBlock(em.model(), sourceTree, tests, report))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
@@ -174,15 +174,32 @@ public final class PomImporter {
     }
 
     /**
-     * {@code [javac] args} from {@code <compilerArgs>}; {@code [build]} / {@code [test]} extra source
-     * roots; {@code [test]} tag filters, JVM flags and system properties from Surefire and Failsafe.
+     * {@code [javac] args} from {@code <compilerArgs>}, with a {@code [javac.test]} table when a
+     * compiler execution reached one compile step alone; {@code [build]} / {@code [test]} extra
+     * source roots; {@code [test]} tag filters, JVM flags and system properties from Surefire and
+     * Failsafe.
      */
     private static JkBuild.Build buildBlock(
-            Model model, SourceTreePlugins.SourceTree sourceTree, TestPlugins.TestSettings tests) {
+            Model model,
+            SourceTreePlugins.SourceTree sourceTree,
+            TestPlugins.TestSettings tests,
+            ImportReport.Builder report) {
         // A POM's direct version is the version Maven used, whatever a transitive asked for.
         JkBuild.Build build = JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST);
-        List<String> args = PluginFacts.compilerArgs(model);
-        if (!args.isEmpty()) build = build.withJavac(new JavacConfig(Map.of(), args));
+        PluginFacts.CompilerArgs args = PluginFacts.compilerArgs(model);
+        if (args.split()) {
+            build = build.withJavac(new JavacConfig(Map.of(), args.main(), new JavacConfig(Map.of(), args.test())));
+            report.warning("`maven-compiler-plugin` execution " + String.join(", ", args.scoped())
+                    + " carries `<compilerArgs>` for one compile step, so `[javac] args` is what compile-main"
+                    + " runs and `[javac.test] args` what compile-test runs, as under Maven.");
+        } else if (!args.main().isEmpty()) {
+            build = build.withJavac(new JavacConfig(Map.of(), args.main()));
+        }
+        for (String execution : PluginFacts.stepScopedProcessorPaths(model)) {
+            report.warning("`<annotationProcessorPaths>` on execution " + execution
+                    + " — jk's [processor-dependencies] serves compile-main and compile-test alike; the paths"
+                    + " are written there, so both compiles run them.");
+        }
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
         if (!sourceTree.testExtraSrc().isEmpty()) build = build.withTestExtraSrc(sourceTree.testExtraSrc());
         if (!tests.includeTags().isEmpty() || !tests.excludeTags().isEmpty()) {

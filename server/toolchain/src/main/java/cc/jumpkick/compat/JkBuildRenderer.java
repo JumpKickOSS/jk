@@ -115,14 +115,33 @@ public final class JkBuildRenderer {
         if (pins) sb.append("pins = \"").append(build.pinPolicy().wireName()).append("\"\n");
     }
 
-    /** {@code [javac]} — plugin names with their options, then verbatim args. */
+    /**
+     * {@code [javac]} — verbatim args, then {@code [javac.test]} when compile-test has a table of
+     * its own (an empty one is spelled {@code plugins = {}}), then each plugin's options table.
+     */
     private static void renderJavac(StringBuilder sb, JavacConfig javac) {
-        if (javac.isEmpty()) return;
-        sb.append("\n[javac]\n");
-        if (!javac.args().isEmpty())
-            sb.append("args = ").append(list(javac.args())).append('\n');
-        javac.plugins().forEach((name, options) -> {
-            sb.append("\n[javac.plugins.").append(safeKey(name)).append("]\n");
+        JavacConfig test = javac.test();
+        if (javac.isEmpty() && test == null) return;
+        if (!javac.isEmpty()) {
+            sb.append("\n[javac]\n");
+            if (!javac.args().isEmpty())
+                sb.append("args = ").append(list(javac.args())).append('\n');
+        }
+        if (test != null) {
+            sb.append("\n[javac.test]\n");
+            if (test.release() != null)
+                sb.append("release = ").append(test.release()).append('\n');
+            if (!test.args().isEmpty())
+                sb.append("args = ").append(list(test.args())).append('\n');
+            if (test.isEmpty() && test.release() == null) sb.append("plugins = {}\n");
+            renderJavacPlugins(sb, "[javac.test.plugins.", test.plugins());
+        }
+        renderJavacPlugins(sb, "[javac.plugins.", javac.plugins());
+    }
+
+    private static void renderJavacPlugins(StringBuilder sb, String prefix, Map<String, List<String>> plugins) {
+        plugins.forEach((name, options) -> {
+            sb.append('\n').append(prefix).append(safeKey(name)).append("]\n");
             if (!options.isEmpty())
                 sb.append("options = ").append(list(options)).append('\n');
         });
