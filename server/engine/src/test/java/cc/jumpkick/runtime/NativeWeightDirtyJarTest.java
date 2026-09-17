@@ -4,11 +4,14 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.JkThreads;
+import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.concurrent.CompletableFuture;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,8 +19,23 @@ import org.junit.jupiter.api.io.TempDir;
  * Plan-time native weight must reserve a full wall when main sources are dirty — even if an old
  * native binary is still newer than the pre-build jar (the failure mode that parked the bar at
  * 100% for the entire Graal run).
+ *
+ * <p>The weights are the cold ones: the state root is a throwaway, so no host calibration an
+ * engine wrote — a learned native mean well under the cold floor — can stand in for them, and the
+ * calibration memo is dropped on the way in and out so this JVM's earlier reads do not either.
  */
+@SysProps.TempRoots("jk.env.JK_STATE_DIR")
 class NativeWeightDirtyJarTest {
+
+    @BeforeAll
+    static void forgetTheHostsCalibration() {
+        Calibration.invalidateMemo();
+    }
+
+    @AfterAll
+    static void leaveTheMemoToTheNextReader() {
+        Calibration.invalidateMemo();
+    }
 
     /**
      * Backdate {@code older} a clear minute behind {@code newer}. Two writes in a row can land on

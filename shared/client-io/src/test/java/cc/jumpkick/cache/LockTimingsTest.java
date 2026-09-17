@@ -3,11 +3,18 @@ package cc.jumpkick.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
 
+/**
+ * The ledger under test is this class's own: {@code lock-timings.toml} lives under the state root,
+ * and the rates it asserts are exact, so the state root is a throwaway rather than the one a real
+ * lock — or the engine running this suite — has been writing to.
+ */
+@SysProps.TempRoots("jk.env.JK_STATE_DIR")
 class LockTimingsTest {
 
     @Test
