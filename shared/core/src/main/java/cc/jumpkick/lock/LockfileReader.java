@@ -15,16 +15,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
-import org.tomlj.TomlArray;
 import org.tomlj.TomlInvalidTypeException;
 import org.tomlj.TomlParseResult;
-import org.tomlj.TomlTable;
 
 /**
  * Parses {@code jk-lock.toml} into a {@link Lockfile}. Strict: unknown top-level keys, missing required
  * keys, and unsupported schema versions are rejected.
+ *
+ * <p>The text is read through {@link LockRowParser} — the lock's own row grammar, one pass, one
+ * object per value — and through tomlj only when some of it lies outside that grammar. Both
+ * produce a {@link LockToml} the one reading below gives meaning to, so the answer is the same
+ * whichever parsed it; the difference is that tomlj's parse tree costs hundreds of megabytes on
+ * a megabyte lock and the row grammar's tables cost about the lock's own size.
  */
 public final class LockfileReader {
 
@@ -61,6 +66,14 @@ public final class LockfileReader {
     /** Test seam: drop the per-process read memo so freshly-written files re-parse. */
     public static void clearCache() {
         READ_CACHE.clear();
+        PARSES.set(0);
+    }
+
+    private static final AtomicLong PARSES = new AtomicLong();
+
+    /** Test seam: lock texts parsed since the last {@link #clearCache()}. */
+    public static long parses() {
+        return PARSES.get();
     }
 
     public static Lockfile read(Path file) throws IOException {
@@ -89,29 +102,44 @@ public final class LockfileReader {
      * target open.
      */
     private static Lockfile parse(Path file) throws IOException {
-        TomlParseResult result = Toml.parse(Files.readString(file));
-        return fromResult(result, file.toString());
+        return parse(Files.readString(file), file.toString());
     }
 
     public static Lockfile parse(String content) {
-        TomlParseResult result = Toml.parse(content);
-        return fromResult(result, "<string>");
+        return parse(content, "<string>");
     }
 
-    private static Lockfile fromResult(TomlParseResult result, String origin) {
+    /** The row grammar first; tomlj's grammar and diagnostics for whatever lies outside it. */
+    private static Lockfile parse(String content, String origin) {
+        PARSES.incrementAndGet();
         try {
-            return read(result, origin);
+            return readRows(content, origin);
+        } catch (LockRowParser.Unrecognised outsideTheRowGrammar) {
+            return readToml(content, origin);
+        }
+    }
+
+    /** Test seam: the row-grammar reading alone; {@link LockRowParser.Unrecognised} when it does not apply. */
+    static Lockfile readRows(String content, String origin) {
+        return read(LockRowParser.parse(content), origin);
+    }
+
+    /** Test seam: the tomlj reading alone. */
+    static Lockfile readToml(String content, String origin) {
+        TomlParseResult result = Toml.parse(content);
+        if (result.hasErrors()) {
+            throw new IllegalArgumentException("jk-lock.toml parse error in " + origin + ": "
+                    + result.errors().getFirst().getMessage());
+        }
+        try {
+            return read(new TomljLockToml(result), origin);
         } catch (TomlInvalidTypeException e) {
             // A key holding the wrong TOML type is the same class of defect as a missing one.
             throw new IllegalArgumentException("jk-lock.toml in " + origin + ": " + e.getMessage(), e);
         }
     }
 
-    private static Lockfile read(TomlParseResult result, String origin) {
-        if (result.hasErrors()) {
-            throw new IllegalArgumentException("jk-lock.toml parse error in " + origin + ": "
-                    + result.errors().getFirst().getMessage());
-        }
+    private static Lockfile read(LockToml result, String origin) {
         Long lockVersionLong = result.getLong("version");
         if (lockVersionLong == null) {
             throw new IllegalArgumentException("jk-lock.toml is missing required key `version`");
@@ -143,7 +171,7 @@ public final class LockfileReader {
         String scala = result.getString("scala"); // optional, resolved Scala 3 compiler version
 
         List<Lockfile.Artifact> artifacts = new ArrayList<>();
-        TomlArray artifactArray = result.getArray("artifact");
+        LockToml.Array artifactArray = result.getArray("artifact");
         if (artifactArray != null) {
             for (int i = 0; i < artifactArray.size(); i++) {
                 artifacts.add(toArtifact(artifactArray.getTable(i)));
@@ -153,11 +181,10 @@ public final class LockfileReader {
         List<Lockfile.PluginEntry> plugins = readPlugins(result);
 
         List<Lockfile.SdkEntry> sdk = new ArrayList<>();
-        TomlArray sdkArray = result.getArray("sdk");
+        LockToml.Array sdkArray = result.getArray("sdk");
         if (sdkArray != null) {
             for (int i = 0; i < sdkArray.size(); i++) {
-                TomlTable t = sdkArray.getTable(i);
-                if (t == null) continue;
+                LockToml t = sdkArray.getTable(i);
                 String component = t.getString("component");
                 String revision = t.getString("revision");
                 if (component == null || revision == null) continue;
@@ -166,11 +193,10 @@ public final class LockfileReader {
         }
 
         List<ModuleEntry> modules = new ArrayList<>();
-        TomlArray moduleArray = result.getArray("module");
+        LockToml.Array moduleArray = result.getArray("module");
         if (moduleArray != null) {
             for (int i = 0; i < moduleArray.size(); i++) {
-                TomlTable t = moduleArray.getTable(i);
-                if (t == null) continue;
+                LockToml t = moduleArray.getTable(i);
                 String path = t.getString("path");
                 String group = t.getString("group");
                 String name = t.getString("name");
@@ -182,7 +208,7 @@ public final class LockfileReader {
                     if (raw instanceof Long l) java = l.intValue();
                     else if (raw instanceof Integer n) java = n;
                 }
-                TomlTable m2Table = t.getTable("m2");
+                LockToml m2Table = t.getTable("m2");
                 Boolean m2 =
                         m2Table != null && m2Table.contains("integration") ? m2Table.getBoolean("integration") : null;
                 Boolean m2install =
@@ -230,7 +256,7 @@ public final class LockfileReader {
      * normal clean diagnostic — not an unchecked {@code TomlInvalidTypeException} escaping to
      * callers that only catch {@code IOException}.
      */
-    private static @Nullable TomlTable tableOrFail(TomlParseResult result, String key, String origin) {
+    private static @Nullable LockToml tableOrFail(LockToml result, String key, String origin) {
         if (result.isTable(key)) return result.getTable(key);
         if (result.contains(key)) {
             throw new IllegalArgumentException("jk-lock.toml in " + origin + ": `" + key + "` must be a [" + key
@@ -246,7 +272,7 @@ public final class LockfileReader {
      * it cannot be read either way without guessing — it is rejected, and {@code jk lock} restates
      * it honestly.
      */
-    private static <T> @Nullable T toPin(@Nullable TomlTable table, String section, Pins<T> factory) {
+    private static <T> @Nullable T toPin(@Nullable LockToml table, String section, Pins<T> factory) {
         if (table == null) return null;
         if (table.contains("vendor") || table.contains("version")) {
             throw new IllegalArgumentException("["
@@ -275,7 +301,7 @@ public final class LockfileReader {
      * [native]}. A table with no {@code metadata-repository} is the same as no table: there is
      * nothing to extract without a version, and the checksum alone pins nothing.
      */
-    private static Lockfile.@Nullable NativeMetadata toNativeMetadata(@Nullable TomlTable table) {
+    private static Lockfile.@Nullable NativeMetadata toNativeMetadata(@Nullable LockToml table) {
         if (table == null) return null;
         String version = table.getString("metadata-repository");
         if (version == null || version.isBlank()) return null;
@@ -283,16 +309,16 @@ public final class LockfileReader {
         return new Lockfile.NativeMetadata(version, checksum == null || checksum.isBlank() ? null : checksum);
     }
 
-    private static Lockfile.Artifact toArtifact(TomlTable table) {
-        String name = requireString(table, "name");
-        String version = requireString(table, "version");
-        String source = requireString(table, "source");
+    private static Lockfile.Artifact toArtifact(LockToml table) {
+        String name = requireRowString(table, "name");
+        String version = requireRowString(table, "version");
+        String source = requireRowString(table, "source");
         String checksum = table.getString("checksum");
         String path = table.getString("path");
         String pinnedBy = table.getString("pinned-by"); // optional
 
         List<Scope> scopes = new ArrayList<>();
-        TomlArray scopesArray = table.getArray("scopes");
+        LockToml.Array scopesArray = table.getArray("scopes");
         if (scopesArray != null) {
             for (int i = 0; i < scopesArray.size(); i++) {
                 // fromCanonical, not valueOf: hyphenated scopes ("test-dev") don't
@@ -307,7 +333,7 @@ public final class LockfileReader {
 
         List<String> deps = new ArrayList<>();
         Map<String, String> declared = new LinkedHashMap<>();
-        TomlArray depsArray = table.getArray("deps");
+        LockToml.Array depsArray = table.getArray("deps");
         if (depsArray != null) {
             for (int i = 0; i < depsArray.size(); i++) {
                 String line = depsArray.getString(i);
@@ -325,16 +351,16 @@ public final class LockfileReader {
         Lockfile.Artifact.GitInfo git = null;
         String gitUrl = table.getString("git");
         if (gitUrl != null) {
-            git = new Lockfile.Artifact.GitInfo(gitUrl, requireString(table, "rev"), table.getString("ref"));
+            git = new Lockfile.Artifact.GitInfo(gitUrl, requireRowString(table, "rev"), table.getString("ref"));
         }
         String sourcesChecksum = table.getString("sources"); // optional
         List<String> excludedBy = new ArrayList<>();
-        TomlArray excludedArray = table.getArray("excluded-by");
+        LockToml.Array excludedArray = table.getArray("excluded-by");
         if (excludedArray != null) {
             for (int i = 0; i < excludedArray.size(); i++) excludedBy.add(excludedArray.getString(i));
         }
         List<String> members = new ArrayList<>();
-        TomlArray membersArray = table.getArray("members");
+        LockToml.Array membersArray = table.getArray("members");
         if (membersArray != null) {
             for (int i = 0; i < membersArray.size(); i++) members.add(membersArray.getString(i));
         }
@@ -359,7 +385,7 @@ public final class LockfileReader {
      * cannot read was written either by a newer jk — the format moved on — or by hand; the writer's
      * version tells the two apart, and the remedy differs.
      */
-    static @Nullable String newerWriter(TomlParseResult result) {
+    static @Nullable String newerWriter(LockToml result) {
         String generatedBy = result.getString("generated-by");
         if (generatedBy == null) return null;
         String version = generatedBy.trim();
@@ -386,7 +412,7 @@ public final class LockfileReader {
                 + " (docs/contributors/self-host.md, \"The bootstrap chain\")";
     }
 
-    private static String requireString(TomlParseResult result, String key) {
+    private static String requireString(LockToml result, String key) {
         String value = result.getString(key);
         if (value == null) {
             throw new IllegalArgumentException("jk-lock.toml is missing required key `" + key + "`");
@@ -398,14 +424,14 @@ public final class LockfileReader {
      * The {@code [[plugin]]} rows: each pinned by a jar {@code checksum}, by a workspace module
      * {@code path}, or by version alone (a first-party plugin at a pre-release version).
      */
-    private static List<Lockfile.PluginEntry> readPlugins(TomlParseResult result) {
+    private static List<Lockfile.PluginEntry> readPlugins(LockToml result) {
         List<Lockfile.PluginEntry> plugins = new ArrayList<>();
-        TomlArray pluginArray = result.getArray("plugin");
+        LockToml.Array pluginArray = result.getArray("plugin");
         if (pluginArray == null) return plugins;
         for (int i = 0; i < pluginArray.size(); i++) {
-            TomlTable t = pluginArray.getTable(i);
-            String coord = requireString(t, "coordinate");
-            String ver = requireString(t, "version");
+            LockToml t = pluginArray.getTable(i);
+            String coord = requireRowString(t, "coordinate");
+            String ver = requireRowString(t, "version");
             String chk = t.getString("checksum");
             String path = t.getString("path");
             if (chk != null && path != null) {
@@ -417,7 +443,7 @@ public final class LockfileReader {
         return plugins;
     }
 
-    private static String requireString(TomlTable table, String key) {
+    private static String requireRowString(LockToml table, String key) {
         String value = table.getString(key);
         if (value == null) {
             throw new IllegalArgumentException("[[artifact]] is missing required key `" + key + "`");
