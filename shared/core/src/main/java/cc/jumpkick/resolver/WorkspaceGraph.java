@@ -109,6 +109,21 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
     }
 
     /**
+     * {@code modules} with the workspace root ahead of them as a unit of its own when its manifest
+     * declares any dependency — its {@code [platform-dependencies]} and {@code [managed-dependencies]}
+     * tables are the workspace's facts and belong to no member's node; {@code modules} alone
+     * otherwise.
+     */
+    static List<LoadedModule> withRoot(JkBuild root, @Nullable Lockfile lock, List<LoadedModule> modules) {
+        boolean declares = root.dependencies().byScope().values().stream().anyMatch(deps -> !deps.isEmpty());
+        if (!declares) return modules;
+        List<LoadedModule> units = new ArrayList<>(modules.size() + 1);
+        units.add(new LoadedModule(root, lock));
+        units.addAll(modules);
+        return units;
+    }
+
+    /**
      * Load each workspace module (declaration order); a module whose jk.toml can't be parsed is
      * dropped.
      */

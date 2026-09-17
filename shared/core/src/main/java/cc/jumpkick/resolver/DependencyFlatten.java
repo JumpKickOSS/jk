@@ -51,15 +51,15 @@ final class DependencyFlatten {
         }
         if (sections.isEmpty()) return;
 
-        Set<String> platformMods = DeclaredDeps.platformModules(project);
         Map<String, String> declared = DeclaredDeps.versions(project, sections);
         if (stack) {
             LockGraph graph = LockGraph.forLock(lock, sections);
+            Map<String, String> pinTags = DeclaredDeps.pinTags(project, sections);
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (Scope s : sections) {
                 for (String m : DeclaredDeps.modulesOf(project, s)) {
-                    collect(m, graph, ws, visited, collected, declared.get(m), platformMods.contains(m));
+                    collect(m, graph, ws, visited, collected, declared.get(m), pinTags.get(m));
                 }
             }
             renderSection(DependencyTreeStyle.badgeRow(sections, styling), true, collected, styling, out);
@@ -69,17 +69,11 @@ final class DependencyFlatten {
             Scope s = sections.get(si);
             // The section's own graph: a scope-split coordinate reads at this scope's version.
             LockGraph graph = LockGraph.forLock(lock, List.of(s));
+            Map<String, String> pinTags = DeclaredDeps.pinTags(project, List.of(s));
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (String m : DeclaredDeps.modulesOf(project, s)) {
-                collect(
-                        m,
-                        graph,
-                        ws,
-                        visited,
-                        collected,
-                        declared.get(m),
-                        s == Scope.PLATFORM || s == Scope.MANAGED || platformMods.contains(m));
+                collect(m, graph, ws, visited, collected, declared.get(m), pinTags.get(m));
             }
             renderSection(
                     styling.scopeBadge().apply(DependencyTreeStyle.scopeLabel(s)),
@@ -90,12 +84,22 @@ final class DependencyFlatten {
         }
     }
 
-    /** Workspace-root flatten: each scope is the union of every module's closure for that scope. */
+    /**
+     * Workspace-root flatten: each scope is the union of every unit's closure for that scope, the
+     * root's own tables included.
+     */
     static void renderWorkspaceScopes(
-            JkBuild root, Path rootDir, Styling styling, List<Scope> scopeOrder, boolean stack, StringBuilder out) {
+            JkBuild root,
+            @Nullable Lockfile lock,
+            Path rootDir,
+            Styling styling,
+            List<Scope> scopeOrder,
+            boolean stack,
+            StringBuilder out) {
 
         WorkspaceGraph ws = WorkspaceGraph.collapse(WorkspaceGraph.modulesByName(root.workspaceModules(), rootDir));
-        List<LoadedModule> modules = WorkspaceGraph.loadModules(root.workspaceModules(), rootDir);
+        List<LoadedModule> modules =
+                WorkspaceGraph.withRoot(root, lock, WorkspaceGraph.loadModules(root.workspaceModules(), rootDir));
 
         List<Scope> sections = new ArrayList<>();
         for (Scope s : DependencyTreeStyle.sectionOrder(scopeOrder)) {
@@ -110,9 +114,11 @@ final class DependencyFlatten {
             Set<String> visited = new HashSet<>();
             for (LoadedModule m : modules) {
                 LockGraph graph = LockGraph.forLock(m.lock(), sections);
+                Map<String, String> declared = DeclaredDeps.versions(m.build(), sections);
+                Map<String, String> pinTags = DeclaredDeps.pinTags(m.build(), sections);
                 for (Scope s : sections) {
                     for (String dep : DeclaredDeps.modulesOf(m.build(), s)) {
-                        collect(dep, graph, ws, visited, collected);
+                        collect(dep, graph, ws, visited, collected, declared.get(dep), pinTags.get(dep));
                     }
                 }
             }
@@ -126,8 +132,10 @@ final class DependencyFlatten {
             for (LoadedModule m : modules) {
                 if (m.build().dependencies().of(s).isEmpty()) continue;
                 LockGraph graph = LockGraph.forLock(m.lock(), List.of(s));
+                Map<String, String> declared = DeclaredDeps.versions(m.build(), List.of(s));
+                Map<String, String> pinTags = DeclaredDeps.pinTags(m.build(), List.of(s));
                 for (String dep : DeclaredDeps.modulesOf(m.build(), s)) {
-                    collect(dep, graph, ws, visited, collected);
+                    collect(dep, graph, ws, visited, collected, declared.get(dep), pinTags.get(dep));
                 }
             }
             renderSection(
@@ -158,11 +166,13 @@ final class DependencyFlatten {
 
     private static void collect(
             String module, LockGraph graph, WorkspaceGraph ws, Set<String> visited, Map<String, FlatDep> out) {
-        collect(module, graph, ws, visited, out, null, false);
+        collect(module, graph, ws, visited, out, null, null);
     }
 
     /**
      * Walk a dependency and its transitive closure, accumulating distinct coords into {@code out}.
+     *
+     * @param pinTag the tag of a pin source (a BOM or a managed entry), or {@code null} for a dependency
      */
     private static void collect(
             String module,
@@ -171,7 +181,7 @@ final class DependencyFlatten {
             Set<String> visited,
             Map<String, FlatDep> out,
             @Nullable String declaredVersion,
-            boolean platformPin) {
+            @Nullable String pinTag) {
 
         LoadedModule sibling = ws.sibling(module);
         if (sibling != null) {
@@ -202,8 +212,8 @@ final class DependencyFlatten {
         if (!visited.add(module)) return;
         Lockfile.Artifact pkg = graph.artifact(module);
         if (pkg == null) {
-            if (platformPin) {
-                put(out, new FlatDep(module, declaredVersion, " (platform)"));
+            if (pinTag != null) {
+                put(out, new FlatDep(module, declaredVersion, pinTag));
             } else {
                 put(out, new FlatDep(module, null, DependencyTreeStyle.MISSING_SUFFIX));
             }

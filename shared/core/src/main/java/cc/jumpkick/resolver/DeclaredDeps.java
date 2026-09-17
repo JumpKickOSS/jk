@@ -6,10 +6,8 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -56,14 +54,23 @@ final class DeclaredDeps {
         return out;
     }
 
+    /** The tag a {@code [platform-dependencies]} BOM carries: it pins versions and is no lock jar row. */
+    static final String PLATFORM_TAG = " (platform)";
+
+    /** The tag a {@code [managed-dependencies]} entry carries under its own section. */
+    static final String MANAGED_TAG = " (managed)";
+
     /**
-     * The pin sources a manifest declares: the BOMs of {@code [platform-dependencies]} and the
-     * modules of {@code [managed-dependencies]}. Neither is a lock jar row in its own right.
+     * The pin sources a manifest declares, by module, with the tag each one prints: every BOM of
+     * {@code [platform-dependencies]} is {@value #PLATFORM_TAG} wherever it is listed, and an entry
+     * of {@code [managed-dependencies]} is {@value #MANAGED_TAG} when the managed section is among
+     * {@code scopes}. Neither is a lock jar row in its own right.
      */
-    static Set<String> platformModules(JkBuild project) {
-        Set<String> out = new LinkedHashSet<>();
-        for (Scope scope : List.of(Scope.PLATFORM, Scope.MANAGED)) {
-            for (Dependency d : project.dependencies().of(scope)) out.add(d.module());
+    static Map<String, String> pinTags(JkBuild project, List<Scope> scopes) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Dependency d : project.dependencies().of(Scope.PLATFORM)) out.putIfAbsent(d.module(), PLATFORM_TAG);
+        if (scopes.contains(Scope.MANAGED)) {
+            for (Dependency d : project.dependencies().of(Scope.MANAGED)) out.putIfAbsent(d.module(), MANAGED_TAG);
         }
         return out;
     }

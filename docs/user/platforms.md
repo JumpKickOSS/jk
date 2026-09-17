@@ -46,6 +46,7 @@ the BOM for that coordinate.
 
 ```bash
 jk tree -s platform          # BOM under the platform section, tagged (platform)
+jk tree -s managed           # [managed-dependencies] entries, tagged (managed)
 ```
 
 A version the platform BOM manages replaces the version a transitive POM declares, the
