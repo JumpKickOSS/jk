@@ -117,6 +117,12 @@ module is recorded on the lock edge (`<- 2.0.1.MR`) and reported as a warning, n
 `jk import` writes that line for a Maven POM so the imported project resolves as Maven resolved it;
 a transitive with no pin on it keeps the highest-declared rule either way.
 
+A dependency POM that asks for Maven's `LATEST` or `RELEASE` metaversion gets what Maven reads from
+the repository's metadata: `RELEASE` is the newest release, `LATEST` the newest version of any
+kind — a snapshot too, from a repository whose [snapshot policy](#snapshots) is on. Both float
+within the solve only; the lock pins the number and the edge records `<- LATEST`, so `jk why`
+explains it. `jk import` writes a direct `LATEST` or `RELEASE` as the `latest` selector with a row.
+
 **Maven relocations are followed** (`distributionManagement/relocation`). The stub's one edge
 carries the target's version as a floor, like any POM dependency, so a module whose line ended in
 a relocation (`bcprov-ext-jdk18on` → `bcprov-jdk18on`) does not hold the target below what another

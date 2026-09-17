@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DependencyKind;
+import cc.jumpkick.model.MavenMetaversion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.Pom;
@@ -54,6 +55,7 @@ final class DependencyMapping {
     static Dependency toDependency(Pom.Dep dep) {
         String version = PluginFacts.usable(dep.version());
         if (version == null) version = UNRESOLVED;
+        if (MavenMetaversion.of(version) != null) version = "latest";
         VersionSelector selector = VersionSelector.parse(version);
         if (isTestJar(dep)) {
             return Dependency.of(dep.artifactId() + "-tests", dep.module(), selector)
@@ -110,6 +112,20 @@ final class DependencyMapping {
      */
     static boolean isTestJar(Pom.Dep dep) {
         return dep.type() != null && "test-jar".equalsIgnoreCase(dep.type());
+    }
+
+    /**
+     * A {@code LATEST} or {@code RELEASE} version floats under Maven; the manifest spells that as the
+     * {@code latest} selector, which the lock pins to a number.
+     */
+    static void warnMetaversion(Pom.Dep dep, ImportReport.Builder report) {
+        String version = dep.version();
+        MavenMetaversion meta = MavenMetaversion.of(version);
+        if (meta == null || version == null) return;
+        report.warning("`<version>" + version.trim() + "</version>` on " + dep.module()
+                + " floats under Maven; written as the `latest` selector, so `jk lock` pins the newest"
+                + (meta == MavenMetaversion.RELEASE ? " release" : " version")
+                + " and `jk update` moves it.");
     }
 
     static void warnUnresolvedVersion(Pom.Dep dep, ImportReport.Builder report) {

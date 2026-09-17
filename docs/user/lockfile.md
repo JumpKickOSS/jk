@@ -253,7 +253,8 @@ Two versions on one line is the point: when a transitive lands somewhere surpris
 itself says which declaration produced it, without re-reading any POM. `jk why <coord>` walks
 these edges and prints each step with `(declared <selector> by <parent>)` beside the resolved
 version — the parent is `jk.toml` for a declared root and the previous step otherwise. An edge
-the lock does not carry a selector for is written without the `<-` part.
+the lock does not carry a selector for is written without the `<-` part. A POM edge written as
+Maven's `LATEST` or `RELEASE` records that word (`<- LATEST`) beside the number the solve pinned.
 
 Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
 sit below the declared one: `jakarta.inject-api:jar:@2.0.1 <- 2.0.1.MR` says the project pinned

@@ -79,7 +79,9 @@ One grammar, every place `jk.toml` names a version: every dependency scope,
 | `"g:a"` | Versionless / platform-managed |
 
 A bare version is a pin: `jk build` and `jk lock` never move it. Floating is always spelled
-out with a decoration or a keyword. `jk add` and `jk new` write today's stable as a number, and
+out with a decoration or a keyword. Maven's `LATEST` and `RELEASE` metaversions are not part of
+this grammar — `jk import` writes them as `latest` — but a dependency's POM may still use them,
+and the resolver reads them as Maven does ([Dependencies](dependencies.md#coordinates)). `jk add` and `jk new` write today's stable as a number, and
 `jk update` rewrites those numbers — [Lockfile](lockfile.md#jk-update). A `^N` major-line
 floor is the floating form of a framework version (`[spring-boot] version = "^4"`).
 
