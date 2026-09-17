@@ -28,8 +28,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The proxy jk's HTTP goes through, decided per request from {@code ~/.jk/config.toml}
- * {@code [network]}, failing that the active {@code <proxy>} of Maven's {@code settings.xml}, and
- * failing that the proxy variables of the shell that ran {@code jk}.
+ * {@code [network]}, failing that — for {@link Traffic#REPOSITORY repository} traffic only — the
+ * active {@code <proxy>} of Maven's {@code settings.xml}, and failing that the proxy variables of
+ * the shell that ran {@code jk}. Maven scopes its proxies to repositories, so jk does too: a
+ * settings.xml proxy that admits only the artifact host never carries a JDK download or a forge
+ * API call, which {@code [network]} and the shell variables keep covering.
  *
  * <p>Decided at {@link #select} time, not when the client is built: the engine is resident and
  * serves every later terminal, so a proxy captured once would be one network's answer for days.
@@ -181,12 +184,37 @@ public final class ProxyEnvironment extends ProxySelector {
     private final Supplier<MavenSettings> maven;
     private final Supplier<Function<String, @Nullable String>> env;
 
+    /** What a client's requests are for: only repository traffic reads Maven's {@code <proxy>}. */
+    public enum Traffic {
+        /** JDK and tool distributions, forge APIs, the engine jar, release checks, readiness probes. */
+        GENERAL,
+        /** Artifacts, POMs and metadata from Maven repositories — what Maven's own proxy covers. */
+        REPOSITORY
+    }
+
     /**
-     * Production: the user's config file, Maven's settings and the request's shell (then the
-     * engine's own), read per request.
+     * Production, for {@link Traffic#GENERAL} requests: the user's config file and the request's
+     * shell (then the engine's own), read per request.
      */
     public static ProxyEnvironment ambient() {
-        return new ProxyEnvironment(GlobalConfig::network, MavenSettings::current, BuildEnv::ambient);
+        return ambient(Traffic.GENERAL);
+    }
+
+    /**
+     * Production for {@code traffic}: the user's config file, Maven's settings when the traffic is
+     * a repository's, and the request's shell (then the engine's own), read per request.
+     */
+    public static ProxyEnvironment ambient(Traffic traffic) {
+        return of(traffic, GlobalConfig::network, MavenSettings::current, BuildEnv::ambient);
+    }
+
+    /** {@link #ambient(Traffic)} with every source injected: Maven's settings are read for repository traffic alone. */
+    static ProxyEnvironment of(
+            Traffic traffic,
+            Supplier<NetworkConfig> config,
+            Supplier<MavenSettings> maven,
+            Supplier<Function<String, @Nullable String>> env) {
+        return new ProxyEnvironment(config, traffic == Traffic.REPOSITORY ? maven : MavenSettings::empty, env);
     }
 
     /** Visible for tests — the file and the shell injected, no Maven settings. */

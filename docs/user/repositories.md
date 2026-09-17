@@ -323,9 +323,11 @@ stored there is removed, so a stub that reappears on a reused port in a later ru
 predecessor's artifacts from disk. Within one engine's lifetime the tree is a warm store like any
 other; an ssh-tunnelled repository re-downloads once per engine lifetime.
 
-**A `<proxy>` is jk's proxy** for the protocol it names, between `~/.jk/config.toml [network]` and
-the shell's `https_proxy` / `http_proxy` — see [Config § Network](config.md#network). Its
-username and password ride as Basic; its `nonProxyHosts` (`|`-separated globs) go direct.
+**A `<proxy>` is jk's proxy for repository traffic** — artifacts, POMs, metadata — for the
+protocol it names, between `~/.jk/config.toml [network]` and the shell's `https_proxy` /
+`http_proxy` — see [Config § Network](config.md#network). Its username and password ride as
+Basic; its `nonProxyHosts` (`|`-separated globs) go direct. As under Maven it reaches no other
+request: JDK and tool downloads and forge APIs read `[network]` and the shell alone.
 
 **Active-profile repositories join the project's.** For a coexistence build and for `jk import`,
 the `<repositories>` of every profile that `<activeProfiles>` lists (or that is

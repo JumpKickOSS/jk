@@ -266,7 +266,7 @@ public final class PomRuntimeClasspath {
 
     private static RepoGroup buildStoreRepos(Path storeRoot, @Nullable Path extraStore) {
         Cas cas = new Cas(storeRoot);
-        Http http = new Http();
+        Http http = Http.forRepositories();
         List<RepoArtifactStore> firstParty = RepoArtifactStore.firstParty(storeRoot);
         MavenRepo local = storeOnlyRepo(RepoArtifactResolver.JK_LOCAL, storeUri(firstParty.get(0)), http, cas);
         // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
@@ -317,7 +317,7 @@ public final class PomRuntimeClasspath {
 
     private static List<MavenRepo> fileRepos(Path storeRoot) {
         Cas cas = new Cas(storeRoot);
-        Http http = new Http();
+        Http http = Http.forRepositories();
         List<String> names = List.of(
                 RepoArtifactResolver.JK_LOCAL,
                 RepositorySpec.JUMPKICK_NAME,

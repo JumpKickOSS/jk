@@ -30,7 +30,7 @@ public final class Giter8Maven {
      * Central cannot hang {@code jk new} forever.
      */
     private static final class Client {
-        static final Http SHARED = new Http();
+        static final Http SHARED = Http.forRepositories();
     }
 
     /**

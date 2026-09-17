@@ -44,7 +44,7 @@ final class RepoModelResolver implements ModelResolver {
     private final Set<String> declared;
 
     RepoModelResolver(RepoGroup repos, Cas cas) {
-        this(repos, new Http(), cas, new HashSet<>());
+        this(repos, Http.forRepositories(), cas, new HashSet<>());
     }
 
     private RepoModelResolver(RepoGroup repos, Http http, Cas cas, Set<String> declared) {

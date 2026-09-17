@@ -165,7 +165,7 @@ public final class MavenRepo {
      * written without.
      */
     public MavenRepo mirroredThrough(Mirror mirror) {
-        Http client = http != null ? http : new Http();
+        Http client = http != null ? http : Http.forRepositories();
         return new MavenRepo(
                 name,
                 baseUrl,
@@ -283,7 +283,7 @@ public final class MavenRepo {
      * with the {@code <releases>} / {@code <snapshots>} policy the POM wrote.
      */
     public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots) {
-        Http client = http != null ? http : new Http();
+        Http client = http != null ? http : Http.forRepositories();
         return new MavenRepo(
                 name,
                 url,
