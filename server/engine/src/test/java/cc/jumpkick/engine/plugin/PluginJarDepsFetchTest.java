@@ -28,6 +28,12 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A thin worker fetched from the official repo provisions its runtime classpath from the
  * published Maven POM — jar + pom only; no {@code .deps} closure file.
+ *
+ * <p>Every coordinate the fixtures mint sits under {@code cc.jumpkick.fixture}, a group the
+ * official repository claims exclusively ({@link RepositorySpec#JUMPKICK}). The closure walk
+ * therefore asks the loopback stub standing in for that repository and no other: a synthetic
+ * coordinate under a group nobody claims would be asked of Maven Central first, and the test would
+ * then depend on Central answering 404 rather than on what the stub serves.
  */
 class PluginJarDepsFetchTest {
 
@@ -77,18 +83,18 @@ class PluginJarDepsFetchTest {
                   <version>%s</version>
                   <dependencies>
                     <dependency>
-                      <groupId>com.foo</groupId>
+                      <groupId>cc.jumpkick.fixture</groupId>
                       <artifactId>lib</artifactId>
                       <version>1.0</version>
                     </dependency>
                   </dependencies>
                 </project>
                 """.formatted(ver));
-        serve("/com/foo/lib/1.0/lib-1.0.jar", "dep-bytes");
-        serve("/com/foo/lib/1.0/lib-1.0.pom", """
+        serve("/cc/jumpkick/fixture/lib/1.0/lib-1.0.jar", "dep-bytes");
+        serve("/cc/jumpkick/fixture/lib/1.0/lib-1.0.pom", """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
-                  <groupId>com.foo</groupId>
+                  <groupId>cc.jumpkick.fixture</groupId>
                   <artifactId>lib</artifactId>
                   <version>1.0</version>
                 </project>
@@ -102,7 +108,7 @@ class PluginJarDepsFetchTest {
         Path pom = jar.resolveSibling(jar.getFileName().toString().replace(".jar", ".pom"));
         assertThat(pom).exists();
         List<Path> cp = PomRuntimeClasspath.resolve(jar);
-        Path dep = official(tmp).resolve("com/foo/lib/1.0/lib-1.0.jar");
+        Path dep = official(tmp).resolve("cc/jumpkick/fixture/lib/1.0/lib-1.0.jar");
         assertThat(cp).contains(dep.toAbsolutePath().normalize());
         assertThat(Files.readString(dep)).isEqualTo("dep-bytes");
     }
@@ -164,16 +170,16 @@ class PluginJarDepsFetchTest {
                   <version>%s</version>
                   <dependencies>
                     <dependency>
-                      <groupId>org.example</groupId>
+                      <groupId>cc.jumpkick.fixture</groupId>
                       <artifactId>databind</artifactId>
                       <version>1.0</version>
                     </dependency>
                   </dependencies>
                 </project>
                 """.formatted(ver));
-        serve("/org/example/parent/1.0/parent-1.0.pom", """
+        serve("/cc/jumpkick/fixture/parent/1.0/parent-1.0.pom", """
                 <project>
-                  <groupId>org.example</groupId>
+                  <groupId>cc.jumpkick.fixture</groupId>
                   <artifactId>parent</artifactId>
                   <version>1.0</version>
                   <packaging>pom</packaging>
@@ -182,11 +188,11 @@ class PluginJarDepsFetchTest {
                   </properties>
                 </project>
                 """);
-        serve("/org/example/databind/1.0/databind-1.0.jar", "databind-bytes");
-        serve("/org/example/databind/1.0/databind-1.0.pom", """
+        serve("/cc/jumpkick/fixture/databind/1.0/databind-1.0.jar", "databind-bytes");
+        serve("/cc/jumpkick/fixture/databind/1.0/databind-1.0.pom", """
                 <project>
                   <parent>
-                    <groupId>org.example</groupId>
+                    <groupId>cc.jumpkick.fixture</groupId>
                     <artifactId>parent</artifactId>
                     <version>1.0</version>
                   </parent>
@@ -194,17 +200,17 @@ class PluginJarDepsFetchTest {
                   <version>1.0</version>
                   <dependencies>
                     <dependency>
-                      <groupId>org.example</groupId>
+                      <groupId>cc.jumpkick.fixture</groupId>
                       <artifactId>annotations</artifactId>
                       <version>${jackson.version.annotations}</version>
                     </dependency>
                   </dependencies>
                 </project>
                 """);
-        serve("/org/example/annotations/2.21/annotations-2.21.jar", "annotations-bytes");
-        serve("/org/example/annotations/2.21/annotations-2.21.pom", """
+        serve("/cc/jumpkick/fixture/annotations/2.21/annotations-2.21.jar", "annotations-bytes");
+        serve("/cc/jumpkick/fixture/annotations/2.21/annotations-2.21.pom", """
                 <project>
-                  <groupId>org.example</groupId>
+                  <groupId>cc.jumpkick.fixture</groupId>
                   <artifactId>annotations</artifactId>
                   <version>2.21</version>
                 </project>
@@ -212,7 +218,7 @@ class PluginJarDepsFetchTest {
 
         Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
         List<Path> cp = PomRuntimeClasspath.resolve(jar);
-        Path annotations = official(tmp).resolve("org/example/annotations/2.21/annotations-2.21.jar");
+        Path annotations = official(tmp).resolve("cc/jumpkick/fixture/annotations/2.21/annotations-2.21.jar");
         assertThat(cp).contains(annotations.toAbsolutePath().normalize());
         assertThat(Files.readString(annotations)).isEqualTo("annotations-bytes");
     }
@@ -232,7 +238,7 @@ class PluginJarDepsFetchTest {
                   <dependencyManagement>
                     <dependencies>
                       <dependency>
-                        <groupId>org.example</groupId>
+                        <groupId>cc.jumpkick.fixture</groupId>
                         <artifactId>bom</artifactId>
                         <version>1.0</version>
                         <type>pom</type>
@@ -242,22 +248,22 @@ class PluginJarDepsFetchTest {
                   </dependencyManagement>
                   <dependencies>
                     <dependency>
-                      <groupId>org.example</groupId>
+                      <groupId>cc.jumpkick.fixture</groupId>
                       <artifactId>lib</artifactId>
                     </dependency>
                   </dependencies>
                 </project>
                 """.formatted(ver));
-        serve("/org/example/bom/1.0/bom-1.0.pom", """
+        serve("/cc/jumpkick/fixture/bom/1.0/bom-1.0.pom", """
                 <project>
-                  <groupId>org.example</groupId>
+                  <groupId>cc.jumpkick.fixture</groupId>
                   <artifactId>bom</artifactId>
                   <version>1.0</version>
                   <packaging>pom</packaging>
                   <dependencyManagement>
                     <dependencies>
                       <dependency>
-                        <groupId>org.example</groupId>
+                        <groupId>cc.jumpkick.fixture</groupId>
                         <artifactId>lib</artifactId>
                         <version>9.9.9</version>
                       </dependency>
@@ -265,10 +271,10 @@ class PluginJarDepsFetchTest {
                   </dependencyManagement>
                 </project>
                 """);
-        serve("/org/example/lib/9.9.9/lib-9.9.9.jar", "lib-bytes");
-        serve("/org/example/lib/9.9.9/lib-9.9.9.pom", """
+        serve("/cc/jumpkick/fixture/lib/9.9.9/lib-9.9.9.jar", "lib-bytes");
+        serve("/cc/jumpkick/fixture/lib/9.9.9/lib-9.9.9.pom", """
                 <project>
-                  <groupId>org.example</groupId>
+                  <groupId>cc.jumpkick.fixture</groupId>
                   <artifactId>lib</artifactId>
                   <version>9.9.9</version>
                 </project>
@@ -276,7 +282,7 @@ class PluginJarDepsFetchTest {
 
         Path jar = PluginJar.PUBLISHER.locate(new Cas(tmp.resolve("cache")));
         List<Path> cp = PomRuntimeClasspath.resolve(jar);
-        Path lib = official(tmp).resolve("org/example/lib/9.9.9/lib-9.9.9.jar");
+        Path lib = official(tmp).resolve("cc/jumpkick/fixture/lib/9.9.9/lib-9.9.9.jar");
         assertThat(cp).contains(lib.toAbsolutePath().normalize());
         assertThat(Files.readString(lib)).isEqualTo("lib-bytes");
     }
