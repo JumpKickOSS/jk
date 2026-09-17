@@ -3,11 +3,19 @@ package cc.jumpkick.diagnostic;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import org.junit.jupiter.api.Test;
 
 class CompilerLocusTest {
+
+    /**
+     * {@code file:///ws/app/src/Main.kt} as this host spells that path. {@link CompilerLocus#fileName}
+     * resolves the URI to a real {@link Path}, so the separator is the platform's — a POSIX literal
+     * here passes everywhere but Windows, where the same file reads {@code \ws\app\src\Main.kt}.
+     */
+    private static final String MAIN_KT = Path.of("/ws/app/src/Main.kt").toString();
 
     @Test
     void javac_header_without_column_uses_the_caret() {
@@ -77,7 +85,7 @@ class CompilerLocusTest {
     @Test
     void k2_header_with_a_space_after_the_column_parses_to_a_path() {
         CompilerLocus locus = parsed("file:///ws/app/src/Main.kt:3:5 Unresolved reference 'missing'.");
-        assertThat(locus.file()).isEqualTo("/ws/app/src/Main.kt");
+        assertThat(locus.file()).isEqualTo(MAIN_KT);
         assertThat(locus.line()).isEqualTo(3);
         assertThat(locus.col()).isEqualTo(5);
     }
@@ -88,7 +96,7 @@ class CompilerLocusTest {
         assertThat(m.matches()).isTrue();
         assertThat(m.group("col")).isEqualTo("5");
         assertThat(m.group("rest")).isEqualTo("Unresolved reference 'missing'.");
-        assertThat(CompilerLocus.fileName(m.group("file"))).isEqualTo("/ws/app/src/Main.kt");
+        assertThat(CompilerLocus.fileName(m.group("file"))).isEqualTo(MAIN_KT);
     }
 
     @Test
