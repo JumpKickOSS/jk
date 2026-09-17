@@ -3,6 +3,7 @@ package cc.jumpkick.java.compiler;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.JavacLevel;
 import cc.jumpkick.java.compiler.ScalaBridge.MixedScala;
 import cc.jumpkick.java.compiler.ZincSetup.ClasspathLookup;
 import cc.jumpkick.java.compiler.ZincSetup.QuietLogger;
@@ -744,10 +745,8 @@ public final class ZincJavaCompiler {
         // extraOptions, not this list, and pins the charset with a constant of its own.
         opts.add("-encoding");
         opts.add(SOURCE_ENCODING.name());
-        if (release > 0 && !containsFlag(extra, "--release")) {
-            opts.add("--release");
-            opts.add(Integer.toString(release));
-        }
+        if (!containsFlag(extra, "--release"))
+            opts.addAll(JavacLevel.options(release, extra == null ? List.of() : extra));
         if (sourceOutput != null && !containsFlag(extra, "-s")) {
             opts.add("-s");
             opts.add(sourceOutput.toAbsolutePath().toString());
