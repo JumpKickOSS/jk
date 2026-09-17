@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
+import org.apache.maven.model.PluginExecution;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
 import org.jspecify.annotations.Nullable;
 
@@ -64,6 +66,7 @@ final class PackagingPlugins {
             fatJar = false;
         }
         PluginConfig springBoot = PluginFacts.plugin(model, SPRING_BOOT)
+                .filter(boot -> repackages(boot, mainClass, report))
                 .map(boot -> mapSpringBoot(boot, model, report))
                 .orElse(null);
         PluginConfig quarkus = PluginFacts.plugin(model, QUARKUS)
@@ -190,6 +193,31 @@ final class PackagingPlugins {
                     + " descriptor; those assemblies were not imported.");
         }
         return fatJar;
+    }
+
+    /**
+     * Whether the Boot plugin packages this module: not skipped, and either bound to its {@code
+     * repackage} goal (the starter parent binds it in {@code pluginManagement}, so the effective
+     * model carries the execution) or told a {@code <mainClass>}. A bare declaration on a module
+     * with neither is a library that lists the plugin and runs nothing under Maven, and a {@code
+     * [spring-boot]} table would ask jk's Boot packager for a main the module does not have.
+     */
+    private static boolean repackages(Plugin boot, @Nullable String mainClass, ImportReport.Builder report) {
+        for (Xpp3Dom config : PluginFacts.configurations(boot)) {
+            if (EnvValues.parseBool(PluginFacts.child(config, "skip")).orElse(false)) {
+                report.warning("`spring-boot-maven-plugin` is skipped (`<skip>true</skip>`), so this module is not"
+                        + " the Boot jar; no `[spring-boot]` table is written.");
+                return false;
+            }
+        }
+        if (mainClass != null) return true;
+        for (PluginExecution execution : boot.getExecutions()) {
+            if (execution.getGoals().contains("repackage")) return true;
+        }
+        report.warning("`spring-boot-maven-plugin` binds no `repackage` execution and names no `<mainClass>`, so it"
+                + " packages nothing under Maven; no `[spring-boot]` table is written and the module packages a"
+                + " plain jar.");
+        return false;
     }
 
     /**

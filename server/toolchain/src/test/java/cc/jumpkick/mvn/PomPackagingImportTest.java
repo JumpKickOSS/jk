@@ -138,6 +138,82 @@ class PomPackagingImportTest {
                         m -> m.startsWith("`quarkus-maven-plugin` is declared without a resolvable platform version"));
     }
 
+    /**
+     * A library that lists the Boot plugin bare — no {@code repackage} execution, no {@code
+     * <mainClass>} — runs nothing under Maven (the starter parent is what binds the goal), so no
+     * {@code [spring-boot]} table asks jk's Boot packager for a main it does not have.
+     */
+    @Test
+    void a_bare_boot_plugin_on_a_module_with_no_main_and_no_repackage_writes_no_table(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>maintainer-client</artifactId>
+                  <version>1.0.0</version>
+                  <properties><spring-boot.version>3.5.5</spring-boot.version></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration><attach>false</attach></configuration>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
+        assertThat(result.jkBuild().applicationOpt()).isEmpty();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith(
+                        "`spring-boot-maven-plugin` binds no `repackage` execution and names no" + " `<mainClass>`"));
+    }
+
+    /** A {@code repackage} execution is the Boot jar even without a declared main: the packager scans for it. */
+    @Test
+    void a_repackage_execution_without_a_declared_main_is_the_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>svc</artifactId>
+                  <version>1.0.0</version>
+                  <properties><spring-boot.version>3.5.5</spring-boot.version></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <executions><execution><goals><goal>repackage</goal></goals></execution></executions>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfig("spring-boot")).isPresent();
+        assertThat(TestImporters.messages(result)).noneMatch(m -> m.contains("binds no `repackage` execution"));
+    }
+
+    /** {@code <skip>true</skip>} is Maven's way of saying this module is not the Boot jar. */
+    @Test
+    void a_skipped_boot_plugin_writes_no_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>lib</artifactId>
+                  <version>1.0.0</version>
+                  <properties><spring-boot.version>3.5.5</spring-boot.version></properties>
+                  <build><plugins><plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration><skip>true</skip><mainClass>com.ex.Lib</mainClass></configuration>
+                    <executions><execution><goals><goal>repackage</goal></goals></execution></executions>
+                  </plugin></plugins></build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfig("spring-boot")).isEmpty();
+        assertThat(TestImporters.messages(result))
+                .anyMatch(m -> m.startsWith("`spring-boot-maven-plugin` is skipped (`<skip>true</skip>`)"));
+    }
+
     @Test
     void a_boot_plugin_without_a_version_anywhere_is_a_row(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
@@ -149,6 +225,7 @@ class PomPackagingImportTest {
                   <build><plugins><plugin>
                     <groupId>org.springframework.boot</groupId>
                     <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration><mainClass>com.ex.Api</mainClass></configuration>
                   </plugin></plugins></build>
                 </project>
                 """);
