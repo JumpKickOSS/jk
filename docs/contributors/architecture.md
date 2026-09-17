@@ -347,6 +347,14 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   solver was doing when everything stood still. A thousand-dependency reactor on a busy engine
   takes as long as it takes. Conflict **watermarks** fingerprint decision maps that already
   failed so the solver cannot re-enter them (cleared when a universe expands).
+- **Where a lock's time went:** with `JK_RESOLVE_PROFILE=1` (or `-Djk.resolve.profile=true`) in
+  the engine's environment, `LockPipeline` logs one `resolve-profile` line per lock — POM builds
+  and their memo hits, dependency and version-catalog reads, the solve, and the prep / resolve /
+  partition / post phases in wall milliseconds. The line is logged from a `finally`, so a lock that
+  dies in the solve or the partition pass reports as much as one that finishes, with the phase in
+  flight credited up to the failure. The member-partition pass (`MemberPartitions`, every member
+  the merged answer cannot serve solved again on its own) is inside the resolve phase and has its
+  own entry, because on a large reactor it is minutes.
 - **Speculative reads end with the solve:** when a resolve returns, what the warm-up has not
   started is dropped and what it is reading is cancelled, and the call returns only once nothing is
   in flight — so a store the caller then deletes or replaces sees no late write.

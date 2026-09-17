@@ -271,7 +271,25 @@ public final class LockPipeline {
 
         boolean profile = ResolveProfile.on();
         if (profile) ResolveProfile.reset();
-        long prepT0 = profile ? System.nanoTime() : 0L;
+        // The report is logged from the finally: a lock that dies in the solve or the partition pass
+        // says where its time went as much as one that finishes.
+        ResolveProfile.Phases phases = ResolveProfile.phases();
+        try {
+            phases.begin(ResolveProfile::phasePrep);
+            return resolvePhased(existing, observer, progress, cas, phases);
+        } finally {
+            phases.end();
+            if (profile) Log.info("jk: " + ResolveProfile.report());
+        }
+    }
+
+    private Lockfile resolvePhased(
+            @Nullable Lockfile existing,
+            ResolveObserver observer,
+            Progress progress,
+            Cas cas,
+            ResolveProfile.Phases phases)
+            throws Exception {
         RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas, BuildEnv.forModule(lockDir));
         Map<String, String> lockedShas = policy.pinGitRefsFromLock() && existing != null
                 ? GitSourceResolution.lockedImmutableShas(existing)
@@ -286,7 +304,6 @@ public final class LockPipeline {
                 GitSourceResolution.prepare(effective, baseRepos, cas, javaHome, jkVersion, lockedShas);
         PathSourceResolution.Prepared pathPrep =
                 PathSourceResolution.prepare(prep.project(), prep.repos(), cas, lockDir, javaHome, jkVersion);
-        if (profile) ResolveProfile.phasePrep(System.nanoTime() - prepT0);
 
         // Deliberately no Diagnostics.Palette here — the engine emits plain text and the client themes it.
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
@@ -303,11 +320,10 @@ public final class LockPipeline {
         LanguageRuntimeInject.ToolVersions tools =
                 resolveToolVersions(keepPins ? existing : null, pathPrep.repos(), progress);
         orchestrator.withToolVersions(tools);
-        long resolveT0 = profile ? System.nanoTime() : 0L;
+        phases.begin(ResolveProfile::phaseResolve);
         Lockfile lock = solve(orchestrator, pathPrep.project(), keepPins ? existing : null, observer);
-        if (profile) ResolveProfile.phaseResolve(System.nanoTime() - resolveT0);
 
-        long postT0 = profile ? System.nanoTime() : 0L;
+        phases.begin(ResolveProfile::phasePost);
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         if (tools.kotlin() != null) lock = lock.withKotlin(tools.kotlin());
         if (tools.scala() != null) lock = lock.withScala(tools.scala());
@@ -325,10 +341,6 @@ public final class LockPipeline {
                         .map(NativeConfig::graalSpec)
                         .orElse(ToolchainSpec.NONE),
                 pathPrep.project().graal() != null));
-        if (profile) {
-            ResolveProfile.phasePost(System.nanoTime() - postT0);
-            Log.info("jk: " + ResolveProfile.report());
-        }
         trust = pathPrep.repos().trust();
         return lock;
     }

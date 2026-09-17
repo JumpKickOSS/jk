@@ -2,12 +2,17 @@
 package cc.jumpkick.resolve;
 
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.host.time.Clock;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongConsumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Optional wall-time counters for lock/resolve hot paths. Enable with {@code
  * -Djk.resolve.profile=true} (or env {@code JK_RESOLVE_PROFILE=1}). Thread-safe accumulators for a
- * single process; call {@link #reset()} before a measured lock and {@link #report()} after.
+ * single process; call {@link #reset()} before a measured lock and {@link #report()} after — after a
+ * lock that failed as much as after one that finished, since where a failed lock's time went is what
+ * a reader of the report most wants to know.
  */
 public final class ResolveProfile {
 
@@ -27,6 +32,7 @@ public final class ResolveProfile {
     private static final AtomicLong PHASE_PREP_NS = new AtomicLong();
     private static final AtomicLong PHASE_RESOLVE_NS = new AtomicLong();
     private static final AtomicLong PHASE_POST_NS = new AtomicLong();
+    private static final AtomicLong PHASE_PARTITION_NS = new AtomicLong();
 
     /**
      * Cached enable flag. {@link #on()} sits in the PubGrub inner loop ({@code relationTo} entry +
@@ -67,6 +73,7 @@ public final class ResolveProfile {
         PHASE_PREP_NS.set(0);
         PHASE_RESOLVE_NS.set(0);
         PHASE_POST_NS.set(0);
+        PHASE_PARTITION_NS.set(0);
     }
 
     /** Wall time for lock plan prep (git/path materialize, repo build) outside PubGrub. */
@@ -85,6 +92,52 @@ public final class ResolveProfile {
     public static void phasePost(long nanos) {
         if (!on()) return;
         PHASE_POST_NS.addAndGet(nanos);
+    }
+
+    /**
+     * Wall time of the member-partition pass: every workspace member the merged answer cannot serve
+     * solved again on its own. Part of {@link #phaseResolve}, reported apart so a reactor whose members
+     * re-solve for minutes says so.
+     */
+    public static void phasePartition(long nanos) {
+        if (!on()) return;
+        PHASE_PARTITION_NS.addAndGet(nanos);
+    }
+
+    /** A {@link Phases} over the JVM's clock. */
+    public static Phases phases() {
+        return new Phases(Clock.SYSTEM);
+    }
+
+    /**
+     * The phases of one lock, credited as the pipeline moves from one to the next. {@link #end} credits
+     * the phase in flight, so a caller that ends the phases from a {@code finally} has the time of a
+     * lock that threw attributed as well as the time of one that finished.
+     */
+    public static final class Phases {
+
+        private final Clock clock;
+        private @Nullable LongConsumer inFlight;
+        private long startedAt;
+
+        Phases(Clock clock) {
+            this.clock = clock;
+        }
+
+        /** Ends the phase in flight, if any, and starts one credited to {@code credit}. */
+        public void begin(LongConsumer credit) {
+            end();
+            inFlight = credit;
+            startedAt = clock.nanos();
+        }
+
+        /** Credits the phase in flight with the time since it began; nothing when none is. */
+        public void end() {
+            LongConsumer credit = inFlight;
+            if (credit == null) return;
+            inFlight = null;
+            credit.accept(clock.nanos() - startedAt);
+        }
     }
 
     public static void pomBuild(long nanos, boolean cacheHit) {
@@ -157,6 +210,8 @@ public final class ResolveProfile {
                 + ms(PHASE_PREP_NS)
                 + "ms phaseResolve="
                 + ms(PHASE_RESOLVE_NS)
+                + "ms phasePartition="
+                + ms(PHASE_PARTITION_NS)
                 + "ms phasePost="
                 + ms(PHASE_POST_NS)
                 + "ms";
