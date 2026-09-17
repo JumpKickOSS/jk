@@ -580,16 +580,16 @@ public final class IdeOps {
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue;
             if (isSibling(siblingCoords, pkg)) continue;
-            if (!pkg.inAnyScope(EnumSet.of(Scope.PROCESSOR))) continue;
+            if (!pkg.inAnyScope(EnumSet.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR))) continue;
             String[] def = allLibs.get(pkg.name() + ":" + pkg.version());
             if (def != null && def[1] != null) out.add(def[1]);
         }
         return out;
     }
 
-    /** True when {@code PROCESSOR} is the only classpath-relevant scope on a package. */
+    /** True when a processor scope is the only classpath-relevant one on a package. */
     private static boolean processorOnly(List<Scope> scopes) {
-        if (!scopes.contains(Scope.PROCESSOR)) return false;
+        if (!scopes.contains(Scope.PROCESSOR) && !scopes.contains(Scope.TEST_PROCESSOR)) return false;
         for (Scope s : scopes) {
             if (s == Scope.MAIN || s == Scope.EXPORT || s == Scope.PROVIDED || s == Scope.RUNTIME || s == Scope.TEST) {
                 return false;

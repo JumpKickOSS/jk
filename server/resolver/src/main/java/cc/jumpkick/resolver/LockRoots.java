@@ -27,7 +27,7 @@ final class LockRoots {
 
     static final List<Scope> TEST_SCOPES = List.of(Scope.TEST, Scope.TEST_DEV);
 
-    static final List<Scope> PROCESSOR_SCOPES = List.of(Scope.PROCESSOR);
+    static final List<Scope> PROCESSOR_SCOPES = List.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR);
 
     static final List<Scope> SCOPES = List.of(
             Scope.EXPORT,
@@ -36,6 +36,7 @@ final class LockRoots {
             Scope.PROVIDED,
             Scope.TEST,
             Scope.PROCESSOR,
+            Scope.TEST_PROCESSOR,
             Scope.DEV,
             Scope.TEST_DEV);
 
@@ -174,10 +175,10 @@ final class LockRoots {
         return roots;
     }
 
-    /** The graph a scope's roots are solved in: processor, test (with test-dev), else main. */
+    /** The graph a scope's roots are solved in: processor (with test-processor), test (with test-dev), else main. */
     static GraphGroup graphGroup(Scope scope) {
         return switch (scope) {
-            case PROCESSOR -> GraphGroup.PROCESSOR;
+            case PROCESSOR, TEST_PROCESSOR -> GraphGroup.PROCESSOR;
             case TEST, TEST_DEV -> GraphGroup.TEST;
             default -> GraphGroup.MAIN;
         };

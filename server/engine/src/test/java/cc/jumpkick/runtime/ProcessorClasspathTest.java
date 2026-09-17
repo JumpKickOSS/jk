@@ -75,7 +75,7 @@ class ProcessorClasspathTest {
         JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
 
         assertThat(PlannerSupport.unresolvedProcessorDeps(build, Lockfile.empty("test")))
-                .containsExactly("com.example:nope");
+                .containsExactly("[processor-dependencies] com.example:nope");
     }
 
     @Test
@@ -87,6 +87,62 @@ class ProcessorClasspathTest {
 
         assertThat(PlannerSupport.unresolvedProcessorDeps(build, Lockfile.empty("test"), siblings))
                 .isEmpty();
+    }
+
+    @Test
+    void a_test_processor_sibling_reaches_the_test_processor_path_and_not_the_main_one(@TempDir Path tmp)
+            throws Exception {
+        Path root = workspace(tmp);
+        Path consumer = root.resolve("consumer");
+        Files.writeString(consumer.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "consumer"
+                version = "1.0.0"
+
+                [test-processor-dependencies]
+                proc = { workspace = true }
+                """);
+        JkBuild build = JkBuildParser.parse(consumer.resolve("jk.toml"));
+        ClasspathResolver resolver = new ClasspathResolver(new Cas(tmp.resolve("cas")));
+
+        List<Path> main = PlannerSupport.processorClasspath(
+                build,
+                Lockfile.empty("test"),
+                resolver,
+                WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR)),
+                false);
+        List<Path> test = PlannerSupport.processorClasspath(
+                build,
+                Lockfile.empty("test"),
+                resolver,
+                WorkspaceClasspath.resolve(consumer, build, ClasspathResolver.PROCESSOR_PATH),
+                ClasspathResolver.PROCESSOR_PATH,
+                false);
+
+        assertThat(main).isEmpty();
+        assertThat(test).contains(root.resolve("target/proc/classes/main"));
+    }
+
+    @Test
+    void an_unresolved_test_processor_is_named_with_its_table(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("solo"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "solo"
+                version = "1.0.0"
+
+                [processor-dependencies]
+                nope = { group = "com.example", name = "nope", version = "1.0.0" }
+
+                [test-processor-dependencies]
+                test-nope = { group = "com.example", name = "test-nope", version = "1.0.0" }
+                """);
+        JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
+
+        assertThat(PlannerSupport.unresolvedProcessorDeps(build, Lockfile.empty("test")))
+                .containsExactly(
+                        "[processor-dependencies] com.example:nope",
+                        "[test-processor-dependencies] com.example:test-nope");
     }
 
     /** A two-module workspace: {@code consumer} takes {@code proc} as a processor, and proc has compiled. */

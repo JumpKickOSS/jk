@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.Repository;
@@ -140,8 +141,8 @@ public final class PomImporter {
         SourceTreePlugins.SourceTree sourceTree = SourceTreePlugins.map(
                 em, generators.outputRoots(), generators.consumedPlugins(), report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
-        List<Pom.Dep> processorPaths = PluginFacts.annotationProcessorPaths(em.model());
-        Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths, hoisted);
+        PluginFacts.ProcessorPaths processorPaths = PluginFacts.annotationProcessorPaths(em.model());
+        Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths.all(), hoisted);
         mapProcessorPaths(processorPaths, byScope, report);
         ProfileMapping.Mapped profiles = ProfileMapping.map(em, report);
         addOptionalDeps(byScope, profiles.optionalDeps());
@@ -201,9 +202,9 @@ public final class PomImporter {
         } else if (!args.main().isEmpty()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main()));
         }
-        for (String execution : PluginFacts.stepScopedProcessorPaths(model)) {
+        for (String execution : PluginFacts.mainScopedProcessorPaths(model)) {
             report.warning("`<annotationProcessorPaths>` on execution " + execution
-                    + " — jk's [processor-dependencies] serves compile-main and compile-test alike; the paths"
+                    + " — jk's [processor-dependencies] serves compile-test as well as compile-main; the paths"
                     + " are written there, so both compiles run them.");
         }
         if (!sourceTree.extraSrc().isEmpty()) build = build.withExtraSrc(sourceTree.extraSrc());
@@ -541,19 +542,36 @@ public final class PomImporter {
     }
 
     /**
-     * {@code <annotationProcessorPaths>} → {@code [processor-dependencies]}. With that element
-     * present Maven hands javac a processor path and stops discovering processors on the classpath,
-     * which is exactly what the jk table does, so only the listed paths are written. Without it,
-     * the processors {@link KnownProcessors} recognizes among the plain dependencies are written.
+     * {@code <annotationProcessorPaths>} → {@code [processor-dependencies]}, and the paths of a
+     * {@code testCompile}-only execution → {@code [test-processor-dependencies]}, so compile-test
+     * alone runs them as under Maven. With the element present Maven hands javac a processor path
+     * and stops discovering processors on the classpath, which is exactly what the jk tables do, so
+     * only the listed paths are written. Without it, the processors {@link KnownProcessors}
+     * recognizes among the plain dependencies are written.
      */
     private static void mapProcessorPaths(
-            List<Pom.Dep> paths, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+            PluginFacts.ProcessorPaths paths, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+        mapProcessorPaths(paths.shared(), Scope.PROCESSOR, byScope, report);
+        List<Pom.Dep> testOnly = new ArrayList<>();
+        for (Pom.Dep path : paths.test()) {
+            if (paths.shared().stream().noneMatch(s -> s.module().equals(path.module()))) testOnly.add(path);
+        }
+        mapProcessorPaths(testOnly, Scope.TEST_PROCESSOR, byScope, report);
+        if (!testOnly.isEmpty()) {
+            report.warning("`<annotationProcessorPaths>` on a `testCompile` execution: "
+                    + testOnly.stream().map(Pom.Dep::module).collect(Collectors.joining(", "))
+                    + " written to [test-processor-dependencies], so compile-test alone runs them.");
+        }
+    }
+
+    private static void mapProcessorPaths(
+            List<Pom.Dep> paths, Scope scope, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
         for (Pom.Dep path : paths) {
             if (PluginFacts.usable(path.version()) == null) {
                 report.warning("`<annotationProcessorPaths>` entry " + path.module()
                         + " has no version in the POM or its dependencyManagement; jk wrote `=unresolved`.");
             }
-            byScope.computeIfAbsent(Scope.PROCESSOR, s -> new ArrayList<>()).add(DependencyMapping.toDependency(path));
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(DependencyMapping.toDependency(path));
         }
     }
 

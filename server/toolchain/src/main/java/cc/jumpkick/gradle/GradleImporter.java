@@ -617,7 +617,8 @@ public final class GradleImporter {
             case "compileOnly", "compileOnlyApi", "providedRuntime", "providedCompile" -> Scope.PROVIDED;
             case "testImplementation", "testApi", "testCompile", "testRuntimeOnly", "testRuntime", "testCompileOnly" ->
                 Scope.TEST;
-            case "annotationProcessor", "kapt", "ksp", "testAnnotationProcessor" -> Scope.PROCESSOR;
+            case "annotationProcessor", "kapt", "ksp" -> Scope.PROCESSOR;
+            case "testAnnotationProcessor", "kaptTest", "kspTest" -> Scope.TEST_PROCESSOR;
             default -> null;
         };
     }

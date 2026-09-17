@@ -130,6 +130,7 @@ export const ModuleDepGraph = {
       'runtime',
       'provided',
       'processor',
+      'test-processor',
       'platform',
       'test',
       'dev',

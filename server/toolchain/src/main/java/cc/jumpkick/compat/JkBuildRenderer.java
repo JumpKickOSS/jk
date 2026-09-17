@@ -438,7 +438,8 @@ public final class JkBuildRenderer {
             Scope.TEST_DEV,
             Scope.PROVIDED,
             Scope.TEST,
-            Scope.PROCESSOR
+            Scope.PROCESSOR,
+            Scope.TEST_PROCESSOR
         }) {
             List<Dependency> deps = byScope.get(scope);
             if (deps == null || deps.isEmpty()) continue;

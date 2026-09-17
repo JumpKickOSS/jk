@@ -112,8 +112,9 @@ public final class PlannerSupport {
     }
 
     /**
-     * The {@code -processorpath} / KSP processor classpath: the lock's PROCESSOR scope plus any
-     * workspace siblings declared in {@code [processor-dependencies]} and their own external
+     * The {@code -processorpath} / KSP processor classpath: the lock's rows in {@code scopes} —
+     * {@link Scope#PROCESSOR} alone for compile-main, with {@link Scope#TEST_PROCESSOR} for
+     * compile-test — plus any workspace siblings declared in those tables and their own external
      * closures.
      *
      * <p>A processor runs as a program, so it needs its own dependencies (a KSP processor needs
@@ -130,7 +131,18 @@ public final class PlannerSupport {
             WorkspaceClasspath.Result siblings,
             boolean requirePresent)
             throws IOException {
-        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR), requirePresent, project));
+        return processorClasspath(project, lock, resolver, siblings, Set.of(Scope.PROCESSOR), requirePresent);
+    }
+
+    public static List<Path> processorClasspath(
+            JkBuild project,
+            Lockfile lock,
+            ClasspathResolver resolver,
+            WorkspaceClasspath.Result siblings,
+            Set<Scope> scopes,
+            boolean requirePresent)
+            throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, scopes, requirePresent, project));
         for (Path classes : siblings.siblingClosureClasses()) {
             if (!cp.contains(classes)) cp.add(classes);
         }
@@ -142,9 +154,10 @@ public final class PlannerSupport {
     }
 
     /**
-     * Declared {@code [processor-dependencies]} entries that resolve to nothing — not a workspace
-     * sibling and absent from the lock. Silently skipping code generation is the worst failure mode
-     * for an annotation-driven project, so callers turn this into a build error.
+     * Declared {@code [processor-dependencies]} and {@code [test-processor-dependencies]} entries
+     * that resolve to nothing — not a workspace sibling and absent from the lock — each as {@code
+     * <table> <module>}. Silently skipping code generation is the worst failure mode for an
+     * annotation-driven project, so callers turn this into a build error.
      *
      * <p>After {@link cc.jumpkick.model.WorkspaceMerge#resolveSiblingCoordinates}, workspace
      * processors are real {@code group:name} coords (so {@link
@@ -163,10 +176,12 @@ public final class PlannerSupport {
             siblings.addAll(processorSiblings.siblingCoords());
         }
         List<String> missing = new ArrayList<>();
-        for (Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
-            if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
-            if (siblings.contains(dep.module())) continue;
-            if (!locked.contains(dep.module())) missing.add(dep.module());
+        for (Scope scope : ClasspathResolver.PROCESSOR_PATH) {
+            for (Dependency dep : project.dependencies().of(scope)) {
+                if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
+                if (siblings.contains(dep.module())) continue;
+                if (!locked.contains(dep.module())) missing.add("[" + scope.tomlSection() + "] " + dep.module());
+            }
         }
         return missing;
     }

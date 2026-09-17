@@ -60,6 +60,7 @@ and Maven behave:
 |-------------|---------------------|
 | No `[processor-dependencies]` | When any compile-classpath entry registers one in `META-INF/services/javax.annotation.processing.Processor`, the whole compile classpath is the processor path — javac's own behaviour without `-processorpath` — so Lombok or MapStruct declared as a plain or `provided` dependency runs, and a processor that needs other jars at processing time (a Log4j plugin processor, Dagger's compiler) finds them beside it |
 | `[processor-dependencies]` present | That path alone; a processor that is only on the compile classpath does not run |
+| `[test-processor-dependencies]` present | compile-test's path is that table beside `[processor-dependencies]`; compile-main never sees it, so a processor a test suite alone needs (a test-fixture generator, MapStruct for test mappers) runs over the tests without touching the main compile. A module with only this table still discovers compile-main's processors on its classpath |
 
 A discovered processor and a declared one are the same thing downstream: the worker loads the
 processor path, records what each processor generates, and the compile action key hashes the
@@ -67,7 +68,10 @@ path's full content. A classpath that registers no processor hands javac none, a
 it by ABI alone. `compile-main`, `compile-test`, fixtures and the guard suite all apply the rule.
 Declare `[processor-dependencies]` when the manifest should say what runs, when the processor needs
 dependencies of its own that do not belong on the compile classpath, or when a classpath jar
-registers a processor you want silent.
+registers a processor you want silent; `[test-processor-dependencies]` when a processor belongs to
+the tests alone. Both tables' entries are solved in the processor graph, apart from the main and
+test graphs, and a `[test-processor-dependencies]` row in `jk-lock.toml` carries the
+`test-processor` scope.
 
 `jk explain --verbose` names what a compile step runs: each processor class on the step's
 processor path with the jar it comes from (`processors: org.mapstruct.ap.MappingProcessor
@@ -75,7 +79,10 @@ processor path with the jar it comes from (`processors: org.mapstruct.ap.Mapping
 `jk import` makes the intent explicit for a Maven module that relies on discovery: Lombok,
 MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared
 as plain dependencies in a POM without `annotationProcessorPaths` are written into
-`[processor-dependencies]` as well, and the import report says which. [Migration](migration.md).
+`[processor-dependencies]` as well, and the import report says which; the paths of a
+`maven-compiler-plugin` execution bound to `testCompile` alone, and Gradle's
+`testAnnotationProcessor`, `kaptTest` and `kspTest` configurations, are written into
+`[test-processor-dependencies]`. [Migration](migration.md).
 
 ## Java modules (`module-info.java`)
 

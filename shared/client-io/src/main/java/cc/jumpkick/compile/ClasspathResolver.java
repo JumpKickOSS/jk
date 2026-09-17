@@ -490,11 +490,14 @@ public final class ClasspathResolver {
         return found;
     }
 
+    /** The processor-path scopes: a filter of these alone prefers the processor graph's rows. */
+    public static final Set<Scope> PROCESSOR_PATH = EnumSet.of(Scope.PROCESSOR, Scope.TEST_PROCESSOR);
+
     /** One jar per module when dual-scoped; prefer processor, then test dual, else main/runtime. */
     static List<Lockfile.Artifact> selectPerModule(List<Lockfile.Artifact> matched, Set<Scope> scopes) {
         Map<String, Lockfile.Artifact> best = new LinkedHashMap<>();
         Map<String, Integer> bestScore = new HashMap<>();
-        boolean processorOnlyFilter = scopes.size() == 1 && scopes.contains(Scope.PROCESSOR);
+        boolean processorOnlyFilter = !scopes.isEmpty() && PROCESSOR_PATH.containsAll(scopes);
         boolean wantsTest = scopes.contains(Scope.TEST) || scopes.contains(Scope.TEST_DEV);
         for (Lockfile.Artifact pkg : matched) {
             int score = scopePreferenceScore(pkg, processorOnlyFilter, wantsTest);
@@ -515,7 +518,7 @@ public final class ClasspathResolver {
                 || sc.contains(Scope.PROVIDED)
                 || sc.contains(Scope.DEV);
         boolean hasTest = sc.contains(Scope.TEST) || sc.contains(Scope.TEST_DEV);
-        boolean hasProc = sc.contains(Scope.PROCESSOR);
+        boolean hasProc = sc.contains(Scope.PROCESSOR) || sc.contains(Scope.TEST_PROCESSOR);
         boolean procOnly = hasProc && !hasMain && !hasTest;
         boolean testOnly = hasTest && !hasMain && !hasProc;
 

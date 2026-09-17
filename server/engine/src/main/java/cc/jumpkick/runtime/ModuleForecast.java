@@ -175,6 +175,7 @@ final class ModuleForecast {
             Path javaHome,
             List<String> javacArgs,
             List<Path> processorCp,
+            List<Path> testProcessorCp,
             ActivePlugins.@Nullable Declared plugin,
             PluginBuild.@Nullable Declarations pkgDecls,
             Path mainSrcDir,
@@ -256,6 +257,7 @@ final class ModuleForecast {
         // build and every KSP module forecasts a phantom rebuild.
         List<Path> processorCp = PlannerSupport.processorClasspath(
                 project, lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)), false);
+        List<Path> testProcessorCp = ProcessorPaths.forecastTest(project, lock, resolver, dir, processorCp);
 
         // Only compile-scope dirty siblings force main recompile (and package/native cascade).
         // Test-only siblings (cli's jk-engine test-dep) leave main clean.
@@ -303,6 +305,7 @@ final class ModuleForecast {
                 javaHome,
                 javacArgs,
                 processorCp,
+                testProcessorCp,
                 plugin,
                 pkgDecls,
                 mainSrcDir,
@@ -627,7 +630,7 @@ final class ModuleForecast {
         int release = prepared.release();
         Path javaHome = prepared.javaHome();
         List<String> javacArgs = prepared.javacArgs();
-        List<Path> processorCp = prepared.processorCp();
+        List<Path> processorCp = prepared.testProcessorCp();
         if (compileDirty) {
             // Dependency-only dirtiness: the tests recompile only if main really does.
             steps.add(new TaskForecast.Task(

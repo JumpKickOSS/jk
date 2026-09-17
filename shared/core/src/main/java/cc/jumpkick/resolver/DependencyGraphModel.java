@@ -52,6 +52,7 @@ public final class DependencyGraphModel {
             Scope.RUNTIME,
             Scope.PROVIDED,
             Scope.PROCESSOR,
+            Scope.TEST_PROCESSOR,
             Scope.PLATFORM,
             Scope.MANAGED,
             Scope.TEST,

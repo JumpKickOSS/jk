@@ -63,6 +63,28 @@ class GradleExporterTest {
     }
 
     @Test
+    void test_processors_export_as_testAnnotationProcessor() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [processor-dependencies]
+                lombok = { group = "org.projectlombok", name = "lombok", version = "1.18.42" }
+
+                [test-processor-dependencies]
+                mapstruct-ap = { group = "org.mapstruct", name = "mapstruct-processor", version = "1.6.3" }
+                """);
+
+        String kts = GradleExporter.export(b, Map.of()).buildFiles().get("");
+
+        assertThat(kts)
+                .contains("    annotationProcessor(\"org.projectlombok:lombok:1.18.42\")")
+                .contains("    testAnnotationProcessor(\"org.mapstruct:mapstruct-processor:1.6.3\")");
+    }
+
+    @Test
     void locked_version_overrides_declared_selector() {
         JkBuild b = parse("""
                 group = "com.example"
