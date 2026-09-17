@@ -528,12 +528,13 @@ public final class ManifestTables {
 
     static WorkspaceDependency parseWorkspaceDepEntry(String name, TomlTable entry, LibraryCatalog catalog) {
         String displayPath = "workspace.dependencies." + name;
+        DependencyEntryKeys.requireKnown(entry, displayPath, DependencyEntryKeys.WORKSPACE);
         boolean hasVersion = entry.contains("version");
         boolean hasGit = entry.contains("git");
         if (entry.contains("path")) {
-            throw new JkBuildParseException(displayPath + " uses `path = \"...\"` — this is no longer supported."
-                    + " Move `" + name + "` into the root jk.toml's `[workspace] modules = [...]` list directly"
-                    + " instead (it becomes an ordinary workspace sibling); remove this"
+            throw new JkBuildParseException(displayPath + " uses `path = \"...\"`; a shared workspace dependency"
+                    + " is a Maven coordinate or a git source. A local sibling belongs in the root jk.toml's"
+                    + " `[workspace] modules = [...]` list, where it is an ordinary workspace member; remove this"
                     + " [workspace.dependencies." + name + "] entry.");
         }
         int sourceCount = (hasVersion ? 1 : 0) + (hasGit ? 1 : 0);

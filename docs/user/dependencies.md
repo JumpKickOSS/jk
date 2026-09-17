@@ -42,6 +42,11 @@ postgres = { group = "org.postgresql", name = "postgresql", version = "42.7.4", 
 | `name = "group:artifact:1.2.3"` | Any Maven coordinate; `group:artifact` alone is platform-managed |
 | `name = { group, name, version, … }` | Extra fields: `optional`, `features`, `classifier`, `kind`, `git`, `path`, `sha256` |
 
+An inline table takes exactly the keys jk knows — `group`, `name`, `version`, `git`, `path`,
+`sha256`, `workspace`, `optional`, `kind`, `classifier`, `fixtures`, `exclude`, `features`,
+`default-features` and the git ref keys `tag`, `branch`, `rev`, `submodules`, `verify-signed` — and
+refuses any other by name (`dependencies.guava unknown key \`excludes\``), so a typo cannot parse
+cleanly and silently drop; a `[workspace.dependencies]` entry is held to its own list the same way.
 `jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table.
 `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
 (`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of

@@ -51,6 +51,48 @@ class JkBuildParserDependencyTest {
     }
 
     @Test
+    void an_unknown_key_in_a_dependency_table_is_refused_naming_the_key_and_the_handle() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                        [dependencies]
+                        guava = { group = "com.google.guava", name = "guava", version = "33.0.0-jre", excludes = ["a:b"] }
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("dependencies.guava unknown key `excludes`")
+                .hasMessageContaining("expected one of:")
+                .hasMessageContaining("exclude");
+    }
+
+    @Test
+    void an_unknown_key_is_refused_in_every_scope_table() {
+        for (String table : new String[] {
+            "test-dependencies", "managed-dependencies", "platform-dependencies", "provided-dependencies"
+        }) {
+            assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                            [%s]
+                            leaf = { group = "com.acme", name = "leaf", version = "1.0", verison = "2.0" }
+                            """.formatted(table)))
+                    .as(table)
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining(table + ".leaf unknown key `verison`");
+        }
+    }
+
+    @Test
+    void every_documented_key_is_a_known_key() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                natives = { group = "org.lwjgl", name = "lwjgl", version = "3.3.4", classifier = "natives-linux", optional = true, exclude = ["a:b"], features = ["x"], default-features = false }
+                lib = { git = "https://example.com/acme/lib.git", tag = "v1.0.0", path = "lib", submodules = false, verify-signed = false }
+
+                [test-dependencies]
+                helpers = { workspace = true, kind = "tests", fixtures = true }
+                blob = { group = "com.acme", name = "blob", version = "1.0", sha256 = "%s" }
+                """.formatted("0".repeat(64)));
+        assertThat(parsed.dependencies().of(Scope.MAIN)).hasSize(2);
+        assertThat(parsed.dependencies().of(Scope.TEST)).hasSize(2);
+    }
+
+    @Test
     void artifact_defaults_to_key_name() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [dependencies]

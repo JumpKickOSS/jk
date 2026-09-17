@@ -307,6 +307,7 @@ public final class ManifestDeps {
 
     static Dependency parseDepEntry(
             String name, TomlTable entry, Scope scope, @Nullable Workspace workspace, LibraryCatalog catalog) {
+        DependencyEntryKeys.requireKnown(entry, scope.tomlSection() + "." + name, DependencyEntryKeys.DEPENDENCY);
         // `optional = true` withholds the dep from the default resolution; a
         // [features] entry pulls it in by name. Works with every dep form
         // (coord / git / path / workspace / sha256) since it's applied to the
@@ -621,11 +622,6 @@ public final class ManifestDeps {
 
         boolean submodules = obj.getBoolean("submodules", () -> true);
         boolean verifySigned = obj.getBoolean("verify-signed", () -> false);
-        if (obj.contains("fetch")) {
-            throw new JkBuildParseException(displayPath + ".fetch is no longer supported — every git dependency is"
-                    + " resolved once and pinned in jk-lock.toml; a branch ref's tip only moves on an explicit `jk"
-                    + " update --git` or `jk fetch`. Remove the `fetch` key.");
-        }
 
         GitRefSpec ref;
         boolean shallow;
