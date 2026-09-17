@@ -289,8 +289,11 @@ class PomPluginImportTest {
                 .as("the plugin's own configuration and the testCompile goal's execution")
                 .containsExactly("-parameters", "-Xlint:none");
         assertThat(versions(build.dependencies().of(Scope.PROCESSOR)))
-                .as("one processor path serves both compiles")
-                .containsExactly("com.uber.nullaway:nullaway=0.13.0", "org.mapstruct:mapstruct-processor=1.6.3");
+                .as("the plugin's own paths serve both compiles")
+                .containsExactly("com.uber.nullaway:nullaway=0.13.0");
+        assertThat(versions(build.dependencies().of(Scope.TEST_PROCESSOR)))
+                .as("a testCompile execution's paths run over the test sources alone")
+                .containsExactly("org.mapstruct:mapstruct-processor=1.6.3");
         List<String> messages = messages(result);
         assertThat(messages)
                 .anySatisfy(m -> assertThat(m)
@@ -298,16 +301,20 @@ class PomPluginImportTest {
                         .contains("goal `compile`")
                         .contains("[javac.test]"))
                 .anySatisfy(m -> assertThat(m)
-                        .contains("`<annotationProcessorPaths>` on execution `java-test-compile`")
-                        .contains("goal `testCompile`")
-                        .contains("[processor-dependencies]"));
+                        .contains("`testCompile` execution")
+                        .contains("org.mapstruct:mapstruct-processor")
+                        .contains("[test-processor-dependencies]"))
+                .noneSatisfy(m -> assertThat(m).contains("both compiles run them"));
 
         String rendered = JkBuildRenderer.render(build);
         assertThat(rendered)
                 .contains("[javac]\nargs = [\"-parameters\", \"-XDcompilePolicy=simple\","
                         + " \"-Xplugin:ErrorProne -Xep:NullAway:ERROR\"]")
-                .contains("[javac.test]\nargs = [\"-parameters\", \"-Xlint:none\"]");
+                .contains("[javac.test]\nargs = [\"-parameters\", \"-Xlint:none\"]")
+                .contains("[test-processor-dependencies]\nmapstruct-processor = ");
         JkBuild reparsed = JkBuildParser.parse(rendered);
+        assertThat(versions(reparsed.dependencies().of(Scope.TEST_PROCESSOR)))
+                .containsExactly("org.mapstruct:mapstruct-processor=1.6.3");
         assertThat(reparsed.build().javac().args())
                 .isEqualTo(build.build().javac().args());
         assertThat(reparsed.build().javac().forTests().args())

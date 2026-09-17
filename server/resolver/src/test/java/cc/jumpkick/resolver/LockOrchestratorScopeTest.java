@@ -249,6 +249,30 @@ class LockOrchestratorScopeTest {
         assertThat(proc.scopes()).doesNotContain(Scope.MAIN);
     }
 
+    @Test
+    void a_test_processor_root_rides_the_processor_graph_under_its_own_tag(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "proc", "1.0");
+        upstream.metadata("com.foo", "test-proc", "1.0");
+        upstream.pom("com.foo", "proc", "1.0", MavenStub.emptyPom("com.foo", "proc", "1.0"));
+        upstream.pom("com.foo", "test-proc", "1.0", MavenStub.emptyPom("com.foo", "test-proc", "1.0"));
+
+        JkBuild project = jkBuild(Map.of(
+                Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parse("1.0"))),
+                Scope.TEST_PROCESSOR, List.of(new Dependency("com.foo:test-proc", VersionSelector.parse("1.0")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+        Lockfile.Artifact proc = lock.artifacts().stream()
+                .filter(a -> a.packageKey().equals("com.foo:proc:jar:"))
+                .findFirst()
+                .orElseThrow();
+        Lockfile.Artifact testProc = lock.artifacts().stream()
+                .filter(a -> a.packageKey().equals("com.foo:test-proc:jar:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(proc.scopes()).containsExactly(Scope.PROCESSOR);
+        assertThat(testProc.scopes()).containsExactly(Scope.TEST_PROCESSOR);
+    }
+
     private static JkBuild jkBuild(Map<Scope, List<Dependency>> byScope) {
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(byScope);

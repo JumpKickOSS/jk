@@ -9,6 +9,11 @@ public enum Scope {
     RUNTIME("runtime", "runtime-dependencies"),
     TEST("test", "test-dependencies"),
     PROCESSOR("processor", "processor-dependencies"),
+    /**
+     * Annotation processors and javac plugins compile-test alone runs, beside every {@link
+     * #PROCESSOR} entry; compile-main never sees them. Solved in the processor graph.
+     */
+    TEST_PROCESSOR("test-processor", "test-processor-dependencies"),
     PLATFORM("platform", "platform-dependencies"),
     /**
      * Versions the manifest manages for modules it does not declare — Maven's inline {@code

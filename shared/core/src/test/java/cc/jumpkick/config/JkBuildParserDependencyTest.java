@@ -664,6 +664,28 @@ class JkBuildParserDependencyTest {
     }
 
     @Test
+    void a_test_processor_table_parses_into_its_own_scope() {
+        // A processor compile-test alone runs; compile-main keeps the shared table.
+        JkBuild b = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0"
+
+                [processor-dependencies]
+                lombok = { group = "org.projectlombok", name = "lombok", version = "1.18.42" }
+
+                [test-processor-dependencies]
+                mapstruct-processor = { group = "org.mapstruct", name = "mapstruct-processor", version = "1.6.3" }
+                """);
+        assertThat(b.dependencies().of(Scope.PROCESSOR))
+                .extracting(Dependency::module)
+                .containsExactly("org.projectlombok:lombok");
+        assertThat(b.dependencies().of(Scope.TEST_PROCESSOR))
+                .extracting(Dependency::module)
+                .containsExactly("org.mapstruct:mapstruct-processor");
+    }
+
+    @Test
     void versionless_dep_with_group_parses_as_platform_managed() {
         JkBuild b = JkBuildParser.parse("""
                 group = "com.example"

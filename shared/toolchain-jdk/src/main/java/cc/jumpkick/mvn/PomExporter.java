@@ -211,12 +211,14 @@ public final class PomExporter {
             StringBuilder sb, JkBuild jkBuild, Layout layout, Map<String, String> locked, ImportReport.Builder report) {
         Project p = jkBuild.project();
         List<Dependency> processors = jkBuild.dependencies().of(Scope.PROCESSOR);
+        List<Dependency> testProcessors = jkBuild.dependencies().of(Scope.TEST_PROCESSOR);
+        boolean anyProcessor = !processors.isEmpty() || !testProcessors.isEmpty();
         boolean kotlin = p.kotlin() != null;
         boolean toolchain = p.jdk() != null && !p.jdk().isBlank();
         boolean assembly = jkBuild.assembly();
         boolean nativeImg = jkBuild.nativeMode() == JkBuild.NativeMode.ALWAYS;
         boolean jarManifest = jkBuild.mainClass() != null || !jkBuild.manifest().isEmpty();
-        boolean anyPlugin = !processors.isEmpty() || kotlin || toolchain || assembly || nativeImg || jarManifest;
+        boolean anyPlugin = anyProcessor || kotlin || toolchain || assembly || nativeImg || jarManifest;
         boolean simple = layout == Layout.SIMPLE;
         if (!anyPlugin && !simple) return;
 
@@ -232,7 +234,9 @@ public final class PomExporter {
         if (anyPlugin) {
             sb.append("    <plugins>\n");
             if (kotlin) appendKotlinPlugin(sb, p, report);
-            if (!processors.isEmpty()) appendCompilerProcessorPlugin(sb, processors, p.javaRelease(), locked, report);
+            if (anyProcessor) {
+                appendCompilerProcessorPlugin(sb, processors, testProcessors, p.javaRelease(), locked, report);
+            }
             if (toolchain) appendToolchainsPlugin(sb, p);
             if (jarManifest) appendJarPlugin(sb, jkBuild.mainClass(), jkBuild.manifest());
             // Map jk assemble packaging onto maven-shade-plugin (export only).
@@ -258,9 +262,16 @@ public final class PomExporter {
         sb.append("      </plugin>\n");
     }
 
+    /**
+     * {@code [processor-dependencies]} as the plugin's own {@code <annotationProcessorPaths>}, which
+     * reach both compiles; {@code [test-processor-dependencies]} as a {@code testCompile} execution
+     * whose paths replace the plugin's with the shared list plus its own, so compile-test alone
+     * runs them.
+     */
     private static void appendCompilerProcessorPlugin(
             StringBuilder sb,
             List<Dependency> processors,
+            List<Dependency> testProcessors,
             int release,
             Map<String, String> locked,
             ImportReport.Builder report) {
@@ -269,23 +280,55 @@ public final class PomExporter {
         sb.append("        <artifactId>maven-compiler-plugin</artifactId>\n");
         sb.append("        <configuration>\n");
         sb.append("          <release>").append(release).append("</release>\n");
-        sb.append("          <annotationProcessorPaths>\n");
+        if (!processors.isEmpty()) appendProcessorPaths(sb, processors, "          ", false, locked, report);
+        sb.append("        </configuration>\n");
+        if (!testProcessors.isEmpty()) {
+            List<Dependency> all = new ArrayList<>(processors);
+            all.addAll(testProcessors);
+            sb.append("        <executions>\n");
+            sb.append("          <execution>\n");
+            sb.append("            <id>default-testCompile</id>\n");
+            sb.append("            <goals><goal>testCompile</goal></goals>\n");
+            sb.append("            <configuration>\n");
+            appendProcessorPaths(sb, all, "              ", true, locked, report);
+            sb.append("            </configuration>\n");
+            sb.append("          </execution>\n");
+            sb.append("        </executions>\n");
+        }
+        sb.append("      </plugin>\n");
+    }
+
+    /** One {@code <path>} per processor; {@code override} makes the list replace the plugin's own. */
+    private static void appendProcessorPaths(
+            StringBuilder sb,
+            List<Dependency> processors,
+            String indent,
+            boolean override,
+            Map<String, String> locked,
+            ImportReport.Builder report) {
+        sb.append(indent)
+                .append(
+                        override
+                                ? "<annotationProcessorPaths combine.self=\"override\">"
+                                : "<annotationProcessorPaths>")
+                .append('\n');
         for (Dependency d : processors) {
-            sb.append("            <path>\n");
-            sb.append("              <groupId>")
+            sb.append(indent).append("  <path>\n");
+            sb.append(indent)
+                    .append("    <groupId>")
                     .append(PomXml.escape(d.group()))
                     .append("</groupId>\n");
-            sb.append("              <artifactId>")
+            sb.append(indent)
+                    .append("    <artifactId>")
                     .append(PomXml.escape(d.name()))
                     .append("</artifactId>\n");
-            sb.append("              <version>")
+            sb.append(indent)
+                    .append("    <version>")
                     .append(PomXml.escape(resolveVersion(d, locked, report)))
                     .append("</version>\n");
-            sb.append("            </path>\n");
+            sb.append(indent).append("  </path>\n");
         }
-        sb.append("          </annotationProcessorPaths>\n");
-        sb.append("        </configuration>\n");
-        sb.append("      </plugin>\n");
+        sb.append(indent).append("</annotationProcessorPaths>\n");
     }
 
     /**

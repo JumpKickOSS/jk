@@ -326,22 +326,31 @@ public final class PlannerSetup {
         // lock, so a lock-only path silently yields no processors at all.
         WorkspaceClasspath.Result processorSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
+        // The test compile runs the shared table's processors and the test table's own.
+        WorkspaceClasspath.Result testProcessorSiblings =
+                WorkspaceClasspath.resolve(in.dir(), project, ClasspathResolver.PROCESSOR_PATH);
         // A declared processor that cannot be found generates nothing, and a build
         // that silently skips code generation is worse than one that fails. A sibling
         // processor is loaded from its classes tree, which holds its service registration
         // once the sibling's resources are copied — the point its tree is published at.
         requireSiblingsCompiled(ctx, processorSiblings, "processor sibling not compiled — ");
-        List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, processorSiblings);
+        if (!PlannerResources.skipJUnit(in)) {
+            requireSiblingsCompiled(ctx, testProcessorSiblings, "test processor sibling not compiled — ");
+        }
+        List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, testProcessorSiblings);
         if (!unresolvedProcessors.isEmpty()) {
             for (String unresolved : unresolvedProcessors)
                 ctx.error(
                         "processor",
-                        "processor dependency '" + unresolved + "' is declared in"
-                                + " [processor-dependencies] but is not in jk-lock.toml —"
+                        "processor dependency " + unresolved + " is declared but is not in jk-lock.toml —"
                                 + " run `jk lock`");
             throw new RuntimeException("unresolved processor dependencies");
         }
         ctx.put(PROCESSOR_CP, PlannerSupport.processorClasspath(project, lock, resolver, processorSiblings, true));
+        ctx.put(
+                TEST_PROCESSOR_CP,
+                PlannerSupport.processorClasspath(
+                        project, lock, resolver, testProcessorSiblings, ClasspathResolver.PROCESSOR_PATH, true));
 
         WorkspaceClasspath.Result testSiblings =
                 WorkspaceClasspath.resolve(in.dir(), project, WorkspaceClasspath.TEST_SCOPES);

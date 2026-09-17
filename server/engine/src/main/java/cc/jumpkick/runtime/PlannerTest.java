@@ -373,10 +373,15 @@ public final class PlannerTest {
             if (mixedTestGv) javaCp.add(gvTestOut);
         }
         List<String> javacArgs = ctx.require(JAVAC_ARGS);
-        // The same declared annotation processors run over test sources; the request
-        // builder discovers classpath processors when none are declared, exactly as
-        // compile-main does, so a Lombok-using test sees its generated members.
-        List<Path> processorCp = ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+        // The declared annotation processors run over test sources — the shared table's javac
+        // half, then the test table's own; the request builder discovers classpath processors
+        // when none are declared, exactly as compile-main does, so a Lombok-using test sees its
+        // generated members.
+        List<Path> shared = ctx.require(PROCESSOR_CP);
+        List<Path> processorCp = ProcessorPaths.forTest(
+                shared,
+                ctx.get(JAVAC_PROCESSOR_CP).orElse(shared),
+                ctx.get(TEST_PROCESSOR_CP).orElse(shared));
         Path genDir = ctx.require(LAYOUT).generatedSourcesDir("annotations", "test");
         Files.createDirectories(genDir);
         ScalaCompile.Setup scalaSetup =

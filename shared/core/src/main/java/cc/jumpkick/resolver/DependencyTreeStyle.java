@@ -121,6 +121,7 @@ public final class DependencyTreeStyle {
                 Scope.RUNTIME,
                 Scope.PROVIDED,
                 Scope.PROCESSOR,
+                Scope.TEST_PROCESSOR,
                 Scope.PLATFORM,
                 Scope.MANAGED,
                 Scope.TEST,

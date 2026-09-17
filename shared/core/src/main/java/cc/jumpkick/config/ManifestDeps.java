@@ -59,6 +59,7 @@ public final class ManifestDeps {
         addScopeDeps(byScope, root, Scope.TEST, workspace, catalog);
         addScopeDeps(byScope, root, Scope.PROVIDED, workspace, catalog);
         addScopeDeps(byScope, root, Scope.PROCESSOR, workspace, catalog);
+        addScopeDeps(byScope, root, Scope.TEST_PROCESSOR, workspace, catalog);
         addScopeDeps(byScope, root, Scope.EXPORT, workspace, catalog);
         addScopeDeps(byScope, root, Scope.RUNTIME, workspace, catalog);
         // [platform-dependencies] — BOM imports (version constraints, not classpath entries).

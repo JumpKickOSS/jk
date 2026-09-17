@@ -224,9 +224,12 @@ public final class LockOrchestrator {
                 continue;
             }
             // Prefer main-scoped rows over test-only / processor-only duals.
-            boolean specializedOnly =
-                    pkg.scopes().stream().allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
-                            && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
+            boolean specializedOnly = pkg.scopes().stream()
+                            .allMatch(s -> s == Scope.PROCESSOR
+                                    || s == Scope.TEST_PROCESSOR
+                                    || s == Scope.TEST
+                                    || s == Scope.TEST_DEV)
+                    && pkg.scopes().stream().noneMatch(LockRoots.MAIN_SCOPES::contains);
             if (specializedOnly) {
                 prefs.putIfAbsent(key, pkg.version());
                 prefs.putIfAbsent(ga, pkg.version());

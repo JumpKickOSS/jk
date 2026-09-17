@@ -301,7 +301,7 @@ relates to the Maven one.
 |---|---:|---|---|
 | spring-boot-maven-plugin | 36 | `[spring-boot] version` at the Boot version the chain resolves (Boot jar, platform BOM) when the plugin packages the module — a `repackage` execution (the starter parent binds one) or a `<mainClass>`; a bare declaration on a library with neither, or `<skip>true</skip>`, writes no table and the module packages a plain jar (a row says so); `<mainClass>` → `[application] main`; the `build-info` goal → `[build-info]`; `<excludes>` and buildpack `<image>` → rows | approximate |
 | maven-surefire-plugin | 35 | `<groups>` / `<excludedGroups>` → `[test] include-tags` / `exclude-tags`; `<argLine>` (minus `${argLine}` and the JaCoCo agent) → `[test] jvm-args`; `<systemPropertyVariables>` / `<systemProperties>` → `[test] system-properties`; `<includes>` / `<excludes>` and `skipTests` → rows (`--class`, `--skip-tests`) | exact |
-| maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` and the `<parameters>`, `<enablePreview>`, `<failOnWarning>` switches → `[javac] args`; the plugin's own `<configuration>` reaches both compiles, an execution bound to the `compile` goal alone reaches `[javac] args` for compile-main and one bound to `testCompile` alone reaches `[javac.test] args`, so Error Prone on the compile goal does not check the suite; `annotationProcessorPaths` → `[processor-dependencies]`, which serves both compiles whichever execution declared it (a row says so); without that element, Lombok, MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared as plain dependencies → `[processor-dependencies]` too | exact |
+| maven-compiler-plugin | 35 | `java =` (floor 17), `<compilerArgs>` and the `<parameters>`, `<enablePreview>`, `<failOnWarning>` switches → `[javac] args`; the plugin's own `<configuration>` reaches both compiles, an execution bound to the `compile` goal alone reaches `[javac] args` for compile-main and one bound to `testCompile` alone reaches `[javac.test] args`, so Error Prone on the compile goal does not check the suite; `annotationProcessorPaths` → `[processor-dependencies]` from the plugin's own configuration and any execution reaching compile-main (an execution bound to the `compile` goal alone reaches compile-test through that table too, and a row says so), and → `[test-processor-dependencies]` from an execution bound to `testCompile` alone, so compile-test alone runs those; without that element, Lombok, MapStruct, AutoValue, Dagger, Immutables, Micronaut inject-java and Hibernate jpamodelgen declared as plain dependencies → `[processor-dependencies]` too | exact |
 | maven-jar-plugin | 24 | `[manifest]` entries, `Main-Class` → `[application]` | exact |
 | dokka-maven-plugin | 1 | `[dokka] version` at the plugin's version; a plugin bound only to its `dokka` goal → `format = "html"`; the javadoc jar of a Kotlin module is Dokka output on every `jk build` | exact |
 | git-commit-id-maven-plugin / git-commit-id-plugin | 4 | `[build-info]` — `git.properties` with the commit, branch, times and dirty flag in the jar; a `<generateGitPropertiesFilename>` under the output directory → `file`; `<format>json`, another `<dateFormat>` or a file written outside the output directory → row | exact |
@@ -384,8 +384,14 @@ its own is a row and nothing is written.
 read on-disk `gradle/libs.versions.toml` (libraries, bundles, `version.ref`) and maps
 type-safe accessors like `libs.guava` into `[dependencies]`. Unresolved catalog refs show
 up in the import report rather than vanishing. Versions stay on deps/BOMs — they are not
-written into jk library catalog layers. Keep `jk gradle` for modules that still need full
-Gradle.
+written into jk library catalog layers. `annotationProcessor`, `kapt` and `ksp` land in
+`[processor-dependencies]`; `testAnnotationProcessor`, `kaptTest` and `kspTest` in
+`[test-processor-dependencies]`. Keep `jk gradle` for modules that still need full Gradle.
+
+**Export** writes what the manifest says: `jk export maven` writes `[processor-dependencies]` as the
+compiler plugin's `<annotationProcessorPaths>` and `[test-processor-dependencies]` as a `testCompile`
+execution whose paths are the shared table plus its own; `jk export gradle` writes
+`testAnnotationProcessor` for the test processors.
 
 Single-file scripts: `jk tool run script.java` / `jkx` — [Tools](tools.md).
 

@@ -197,18 +197,19 @@ final class PluginFacts {
     }
 
     /**
-     * The compiler-plugin executions bound to one step that declare {@code <annotationProcessorPaths>}
-     * of their own, as {@code `<id>` (goal `compile`)}: jk's one {@code [processor-dependencies]}
-     * table serves both compile steps, so the import writes the paths and says so.
+     * The compiler-plugin executions bound to the {@code compile} goal alone that declare {@code
+     * <annotationProcessorPaths>} of their own, as {@code `<id>` (goal `compile`)}: jk's {@code
+     * [processor-dependencies]} table serves compile-test as well, so the import writes the paths
+     * and says so. A {@code testCompile} execution's paths have a table of their own.
      */
-    static List<String> stepScopedProcessorPaths(Model model) {
+    static List<String> mainScopedProcessorPaths(Model model) {
         List<String> scoped = new ArrayList<>();
         Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
         if (compiler.isEmpty()) return scoped;
         for (PluginExecution execution : compiler.get().getExecutions()) {
             if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
             CompileStep step = compileStep(execution);
-            if (step != CompileStep.BOTH && config.getChild("annotationProcessorPaths") != null) {
+            if (step == CompileStep.MAIN && config.getChild("annotationProcessorPaths") != null) {
                 scoped.add(label(execution, step));
             }
         }
@@ -248,35 +249,51 @@ final class PluginFacts {
     }
 
     /**
-     * Every {@code <annotationProcessorPaths><path>} of the compiler plugin as a dependency. A path
-     * without a version takes the effective {@code dependencyManagement} pin for its GA, the way the
-     * compiler plugin itself resolves it; nothing there leaves the version unusable.
+     * The compiler plugin's {@code <annotationProcessorPaths>} by the compile step they reach:
+     * {@code shared} is the plugin's own configuration and every execution compile-main runs
+     * ({@code [processor-dependencies]}), {@code test} the {@code testCompile}-only executions'
+     * ({@code [test-processor-dependencies]}).
      */
-    static List<Pom.Dep> annotationProcessorPaths(Model model) {
-        List<Pom.Dep> paths = new ArrayList<>();
-        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
-        if (compiler.isEmpty()) return paths;
-        for (Xpp3Dom config : configurations(compiler.get())) {
-            Xpp3Dom list = config.getChild("annotationProcessorPaths");
-            if (list == null) continue;
-            for (Xpp3Dom path : list.getChildren()) {
-                String group = usable(text(path.getChild("groupId")));
-                String artifact = usable(text(path.getChild("artifactId")));
-                if (group == null || artifact == null) continue;
-                String version = usable(text(path.getChild("version")));
-                if (version == null) version = managedVersion(model, group, artifact);
-                paths.add(new Pom.Dep(
-                        group,
-                        artifact,
-                        version,
-                        null,
-                        false,
-                        usable(text(path.getChild("classifier"))),
-                        null,
-                        List.of()));
-            }
+    record ProcessorPaths(List<Pom.Dep> shared, List<Pom.Dep> test) {
+        /** Every path, the shared ones first. */
+        List<Pom.Dep> all() {
+            List<Pom.Dep> all = new ArrayList<>(shared);
+            all.addAll(test);
+            return all;
         }
-        return paths;
+    }
+
+    /**
+     * Every {@code <annotationProcessorPaths><path>} of the compiler plugin as a dependency, split
+     * by compile step. A path without a version takes the effective {@code dependencyManagement}
+     * pin for its GA, the way the compiler plugin itself resolves it; nothing there leaves the
+     * version unusable.
+     */
+    static ProcessorPaths annotationProcessorPaths(Model model) {
+        List<Pom.Dep> shared = new ArrayList<>();
+        List<Pom.Dep> test = new ArrayList<>();
+        Optional<Plugin> compiler = plugin(model, "maven-compiler-plugin");
+        if (compiler.isEmpty()) return new ProcessorPaths(shared, test);
+        if (compiler.get().getConfiguration() instanceof Xpp3Dom config) collectProcessorPaths(model, config, shared);
+        for (PluginExecution execution : compiler.get().getExecutions()) {
+            if (!(execution.getConfiguration() instanceof Xpp3Dom config)) continue;
+            collectProcessorPaths(model, config, compileStep(execution) == CompileStep.TEST ? test : shared);
+        }
+        return new ProcessorPaths(shared, test);
+    }
+
+    private static void collectProcessorPaths(Model model, Xpp3Dom config, List<Pom.Dep> paths) {
+        Xpp3Dom list = config.getChild("annotationProcessorPaths");
+        if (list == null) return;
+        for (Xpp3Dom path : list.getChildren()) {
+            String group = usable(text(path.getChild("groupId")));
+            String artifact = usable(text(path.getChild("artifactId")));
+            if (group == null || artifact == null) continue;
+            String version = usable(text(path.getChild("version")));
+            if (version == null) version = managedVersion(model, group, artifact);
+            paths.add(new Pom.Dep(
+                    group, artifact, version, null, false, usable(text(path.getChild("classifier"))), null, List.of()));
+        }
     }
 
     /** The effective {@code dependencyManagement} pin for {@code group:artifact}, when there is one. */

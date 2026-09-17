@@ -278,6 +278,39 @@ class PomExporterTest {
     }
 
     @Test
+    void test_processors_become_a_testCompile_execution_beside_the_shared_paths() throws Exception {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [processor-dependencies]
+                lombok = { group = "org.projectlombok", name = "lombok", version = "1.18.42" }
+
+                [test-processor-dependencies]
+                mapstruct-ap = { group = "org.mapstruct", name = "mapstruct-processor", version = "1.6.3" }
+                """);
+
+        String xml = PomExporter.export(b).xml();
+        Document doc = DomXml.parse(xml);
+        assertThat(doc.getElementsByTagName("execution").getLength()).isEqualTo(1);
+
+        int plugin = xml.indexOf("<configuration>");
+        int execution = xml.indexOf("<execution>");
+        assertThat(xml.substring(plugin, execution))
+                .as("the plugin's own paths: the shared table alone")
+                .contains("<artifactId>lombok</artifactId>")
+                .doesNotContain("mapstruct-processor");
+        assertThat(xml.substring(execution))
+                .as("the testCompile execution replaces the list with the shared table plus its own")
+                .contains("<goal>testCompile</goal>")
+                .contains("<annotationProcessorPaths combine.self=\"override\">")
+                .contains("<artifactId>lombok</artifactId>")
+                .contains("<artifactId>mapstruct-processor</artifactId>");
+    }
+
+    @Test
     void workspace_root_is_pom_packaging_with_modules() {
         JkBuild root = parse("""
                 group = "com.example"

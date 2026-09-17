@@ -67,6 +67,9 @@ public final class BuildPlanner {
     public static final BuildPlanKey<List<Path>> JAVAC_PROCESSOR_CP =
             BuildPlanKey.list("javac-processor-cp", Path.class);
 
+    /** The compile-test processor path: {@link #PROCESSOR_CP} plus the {@code [test-processor-dependencies]} closure. */
+    public static final BuildPlanKey<List<Path>> TEST_PROCESSOR_CP = BuildPlanKey.list("test-processor-cp", Path.class);
+
     /** The [[contribute.provided-classpath]] jars (platform), published for the test step. */
     public static final BuildPlanKey<List<Path>> PROVIDED_CP = BuildPlanKey.list("provided-cp", Path.class);
 
@@ -170,6 +173,7 @@ public final class BuildPlanner {
             JAVAC_ARGS,
             PROCESSOR_CP,
             JAVAC_PROCESSOR_CP,
+            TEST_PROCESSOR_CP,
             PROVIDED_CP,
             COMPILE_TEST_CP,
             TEST_RUNTIME_CP,

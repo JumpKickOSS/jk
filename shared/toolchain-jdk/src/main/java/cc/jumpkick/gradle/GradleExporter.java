@@ -167,6 +167,7 @@ public final class GradleExporter {
             new Pair(Scope.PROVIDED, "compileOnly"),
             new Pair(Scope.RUNTIME, "runtimeOnly"),
             new Pair(Scope.PROCESSOR, "annotationProcessor"),
+            new Pair(Scope.TEST_PROCESSOR, "testAnnotationProcessor"),
             new Pair(Scope.TEST, "testImplementation"),
         };
         sb.append("dependencies {\n");
@@ -195,7 +196,6 @@ public final class GradleExporter {
                 sb.append("        implementation(\"")
                         .append(kEsc(gav(d, locked, report)))
                         .append("\")\n");
-            }
             sb.append("    }\n");
         }
         sb.append("}\n");
