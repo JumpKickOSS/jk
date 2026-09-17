@@ -305,6 +305,9 @@ public final class LockOrchestrator {
             } finally {
                 pass.end();
             }
+            // Said on the rows each member reads once the partitions are in: a family a member's
+            // own platform table would have aligned, mixed on the plain rows it has instead.
+            for (String line : FamilyLines.warnings(lockfile, members)) observer.onNote(line);
         }
         // Said after every leg has run: a refusal Central gives during materialize opens the window
         // as much as one during the solve, and the results name it either way.

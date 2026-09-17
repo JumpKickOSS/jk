@@ -187,6 +187,18 @@ in the run record — the `Lock notes` section of `jk-results.md` and its `detai
 web view. `jk update` rewrites the declared pins and relocks, so a partition that stops being
 necessary disappears on its own.
 
+A member that holds no `[platform-dependencies]` table reads the workspace's plain rows, and
+nothing aligns them for it. When two artifacts of one library family land there on different
+lines for that member — `maven-resolver-api 2.0.22` beside `maven-resolver-transport-http 1.9.27`,
+the shape the converge-versions guard holds per artifact and a member's own BOM would hold per
+family — `jk lock` warns, member by member, naming the family and every artifact's version:
+`plugins/tool has no [platform-dependencies] table and its rows mix
+org.apache.maven.resolver:maven-resolver-* lines: maven-resolver-api 2.0.22, …`. A family is a
+group and the first two hyphen-separated segments of the artifact name, so `maven-resolver-api`,
+`maven-resolver-transport-http` and `maven-resolver-named-locks` are one and `commons-io` and
+`commons-lang3` are not. Pin the family to one line in the member, or hold it under a platform BOM
+there.
+
 ## One repository set
 
 A member's `[repositories]` table joins the workspace's: the lock resolves every member against
