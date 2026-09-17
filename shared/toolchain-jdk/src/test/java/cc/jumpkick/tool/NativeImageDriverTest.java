@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.jar.JarFile;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,49 @@ import org.junit.jupiter.api.io.TempDir;
 class NativeImageDriverTest {
 
     private static final Path BIN = Path.of("/opt/graalvm/bin/native-image");
+
+    @Test
+    void the_not_found_message_names_every_home_the_search_looked_in_and_why() {
+        Path resolved = Path.of("/jdks/graalvm-25");
+        Path project = Path.of("/jdks/temurin-25.0.4.1");
+
+        String message = requireNonNull(NativeImageDriver.notFoundError(List.of(
+                        new NativeImageDriver.Candidate("the GraalVM the client resolved", resolved),
+                        new NativeImageDriver.Candidate("the JDK this project builds with", project)))
+                .getMessage());
+
+        // The reported failure named only the last tier's home, so the GraalVM that was resolved
+        // and rejected — the whole explanation — was the one home missing from it.
+        assertThat(message).contains(resolved.toString(), "the GraalVM the client resolved");
+        assertThat(message).contains(project.toString(), "the JDK this project builds with");
+        assertThat(message.indexOf(resolved.toString()))
+                .as("in the order the search tried them")
+                .isLessThan(message.indexOf(project.toString()));
+        assertThat(message).contains("$GRAALVM_HOME", "PATH", "jk jdk install graalvm-25");
+    }
+
+    @Test
+    void a_home_two_tiers_both_named_is_printed_once() {
+        Path one = Path.of("/jdks/temurin-25");
+        String message = requireNonNull(NativeImageDriver.notFoundError(List.of(
+                        new NativeImageDriver.Candidate("the client's answer", one),
+                        new NativeImageDriver.Candidate("the project's JDK", one)))
+                .getMessage());
+
+        assertThat(message.split(Pattern.quote(one.toString()), -1))
+                .as("one line per home: the same directory twice reads like two searches")
+                .hasSize(2);
+        assertThat(message).contains("the client's answer").doesNotContain("the project's JDK");
+    }
+
+    @Test
+    void an_unlabelled_home_is_named_without_an_origin() {
+        String message = requireNonNull(
+                NativeImageDriver.notFoundError(Path.of("/jdks/temurin-25")).getMessage());
+
+        assertThat(message).contains(Path.of("/jdks/temurin-25").toString());
+        assertThat(message).doesNotContain(" — ");
+    }
 
     @Test
     void executable_command_ends_with_the_main_class_and_has_no_shared_flag() {

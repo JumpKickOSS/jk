@@ -29,6 +29,7 @@ import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.tool.GraalHomeLookup;
+import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -153,13 +154,12 @@ public final class PlannerNative {
      */
     private static Path preflightNativeImageHome(
             TaskContext ctx, @Nullable Path graalHome, Path dir, @Nullable Path jdksDir) throws Exception {
-        Path javaHomeEarly = resolveNativeImageHome(
-                graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
-        if (cc.jumpkick.tool.NativeImageDriver.resolve(javaHomeEarly).isEmpty()) {
-            ctx.error("native", Errors.text(cc.jumpkick.tool.NativeImageDriver.notFoundError(javaHomeEarly)));
+        GraalSearch search = searchNativeImageHome(graalHome, dir, jdksDir, ctx.require(PROJECT).graal());
+        if (NativeImageDriver.resolve(search.home()).isEmpty()) {
+            ctx.error("native", Errors.text(NativeImageDriver.notFoundError(search.checked())));
             throw new RuntimeException("native-image not found");
         }
-        return javaHomeEarly;
+        return search.home();
     }
 
     /**
@@ -478,7 +478,7 @@ public final class PlannerNative {
         // the listener never fires and the single ctx.progress(1) at the end
         // is the only tick — the bar jumps to 1/10, which is acceptable.
         java.util.concurrent.atomic.AtomicBoolean preambleDone = new java.util.concurrent.atomic.AtomicBoolean(false);
-        cc.jumpkick.tool.NativeImageDriver.ProgressListener listener = (current, total, label) -> {
+        NativeImageDriver.ProgressListener listener = (current, total, label) -> {
             if (preambleDone.compareAndSet(false, true)) {
                 ctx.progress(1); // preamble done (output before [1/N])
             }
@@ -490,9 +490,9 @@ public final class PlannerNative {
         // different image entirely (Quarkus enters through a generated --features
         // class, not a main method).
         var request = frameworkSources != null
-                ? cc.jumpkick.tool.NativeImageDriver.Request.verbatim(
+                ? NativeImageDriver.Request.verbatim(
                         javaHome, frameworkSources, frameworkNativeArgs(frameworkSources, allArgs), out)
-                : new cc.jumpkick.tool.NativeImageDriver.Request(javaHome, classpath, mainClass, out, allArgs, shared);
+                : new NativeImageDriver.Request(javaHome, classpath, mainClass, out, allArgs, shared);
         if (frameworkSources != null) {
             ctx.label("native-image from "
                     + ActivePlugins.packager(project, dir)
@@ -505,7 +505,7 @@ public final class PlannerNative {
         // default); --verbose streams it live. Do not gate on verbose/failure only —
         // that left the peek buffer empty during a successful native-image run.
         List<String> niLog = java.util.Collections.synchronizedList(new ArrayList<>());
-        int exit = cc.jumpkick.tool.NativeImageDriver.run(request, listener, line -> {
+        int exit = NativeImageDriver.run(request, listener, line -> {
             niLog.add(line);
             ctx.output(line);
         });
@@ -654,25 +654,62 @@ public final class PlannerNative {
      */
     static Path resolveNativeImageHome(
             @Nullable Path graalHome, Path projectDir, @Nullable Path jdksDir, @Nullable String moduleGraalSpec) {
-        if (graalHome != null
-                && cc.jumpkick.tool.NativeImageDriver.resolve(graalHome).isPresent()) {
-            return graalHome;
+        return searchNativeImageHome(graalHome, projectDir, jdksDir, moduleGraalSpec)
+                .home();
+    }
+
+    /**
+     * The home a native build links with, and every home the search looked in on the way there.
+     *
+     * <p>{@code home} is the last tier's answer even when no tier found a launcher, because the
+     * caller has to name a home to fail against. {@code checked} is what the failure prints: each
+     * tier records the home it produced BEFORE testing it, so a home that was resolved and rejected
+     * is in the message. Without that, a client-resolved GraalVM holding no launcher was dropped
+     * silently and the error named the project's JDK — which nobody had asked for GraalVM from, so
+     * the one line that would have explained the failure was the one line missing.
+     */
+    record GraalSearch(Path home, List<NativeImageDriver.Candidate> checked) {}
+
+    static GraalSearch searchNativeImageHome(
+            @Nullable Path graalHome, Path projectDir, @Nullable Path jdksDir, @Nullable String moduleGraalSpec) {
+        List<NativeImageDriver.Candidate> checked = new ArrayList<>();
+        if (graalHome != null) {
+            checked.add(new NativeImageDriver.Candidate(
+                    "the GraalVM the client resolved for this module", graalHome));
+            if (NativeImageDriver.resolve(graalHome).isPresent()) {
+                return new GraalSearch(graalHome, checked);
+            }
         }
         // The request's GRAALVM_HOME, carried as a typed field rather than sampled from this
         // process's environment — the engine is a daemon.
         var buildEnv = BuildEnv.forModule(projectDir);
         Path fromRequest = SessionContext.current().graalHome();
-        if (fromRequest != null
-                && cc.jumpkick.tool.NativeImageDriver.resolve(fromRequest, buildEnv)
-                        .isPresent()) {
-            return fromRequest;
+        if (fromRequest != null) {
+            checked.add(new NativeImageDriver.Candidate(
+                    "$GRAALVM_HOME as the request carried it", fromRequest));
+            if (NativeImageDriver.resolve(fromRequest, buildEnv)
+                    .isPresent()) {
+                return new GraalSearch(fromRequest, checked);
+            }
         }
         // No client answer (HTTP / MCP): the installed Graal the CLI's resolver would have named,
         // short of installing one — the request's --graal spec, the module's [native].graal, the
         // lock's [graal] pin, the jk jdk graal pointer, then policy.
         Optional<Path> installed = GraalHomeLookup.installed(
                 projectDir, jdksDir, buildEnv, SessionContext.current().graalSpec(), moduleGraalSpec);
-        if (installed.isPresent()) return installed.get();
+        if (installed.isPresent()) {
+            // This tier answers or stays silent — GraalHomeLookup applies its own launcher filter —
+            // so it records what it answered rather than a home it rejected.
+            checked.add(new NativeImageDriver.Candidate("an installed GraalVM", installed.get()));
+            return new GraalSearch(installed.get(), checked);
+        }
+        Path fallback = projectJdkOrRunningJvm(projectDir, jdksDir);
+        checked.add(new NativeImageDriver.Candidate(
+                "the JDK this project builds with, for want of a GraalVM", fallback));
+        return new GraalSearch(fallback, checked);
+    }
+
+    private static Path projectJdkOrRunningJvm(Path projectDir, @Nullable Path jdksDir) {
         try {
             return cc.jumpkick.jdk.JdkResolver.forProject(projectDir, jdksDir)
                     .map(cc.jumpkick.jdk.InstalledJdk::home)
