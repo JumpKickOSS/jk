@@ -450,6 +450,7 @@ public final class PomImporter {
                     + " Use a feature flag if it should be opt-in.");
         }
         DependencyMapping.warnUnresolvedVersion(dep, report);
+        DependencyMapping.warnMetaversion(dep, report);
         Scope scope = DependencyMapping.scope(dep.scope());
         if (DependencyMapping.isPom(dep)) {
             report.warning("`<type>pom</type>` on " + dep.module()

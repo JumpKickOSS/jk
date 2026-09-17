@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.MavenMetaversion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
@@ -74,6 +75,9 @@ public final class MavenPackageSource implements PackageSource {
      * pre-releases. Mutable for the same reason as {@link #lockedVersionPrefs}.
      */
     private volatile Set<String> snapshotPackages = Set.of();
+
+    /** The {@code group:artifact}s some POM edge asked for as {@code LATEST}, keyed like {@link #snapshotPackages}. */
+    private final Set<String> latestEdges = ConcurrentHashMap.newKeySet();
 
     /**
      * {@code group:artifact} → the exact version the project declares for it. Together with {@link
@@ -358,11 +362,34 @@ public final class MavenPackageSource implements PackageSource {
         return declared == null ? Set.of() : Set.copyOf(declared);
     }
 
-    /** True when {@code pkg} was requested with the {@code snapshot} selector. */
+    /**
+     * True when {@code pkg} was requested with the {@code snapshot} selector, or a POM edge onto it
+     * wrote Maven's {@code LATEST}, which names the newest version of any kind.
+     */
     private boolean isSnapshotPackage(String pkg) {
-        if (snapshotPackages.isEmpty()) return false;
-        return snapshotPackages.contains(pkg)
-                || snapshotPackages.contains(PackageId.parse(pkg).ga());
+        if (snapshotPackages.isEmpty() && latestEdges.isEmpty()) return false;
+        String ga = PackageId.parse(pkg).ga();
+        return snapshotPackages.contains(pkg) || snapshotPackages.contains(ga) || latestEdges.contains(ga);
+    }
+
+    /**
+     * The constraint a POM edge written as {@code LATEST} or {@code RELEASE} carries: a platform pin
+     * on the module stands as it does for every edge; otherwise the edge admits every version and
+     * the solver takes the newest candidate, the way Maven reads the repository's {@code <latest>}
+     * or {@code <release>}. {@code LATEST} widens the module's candidate window to snapshots and
+     * pre-releases where a repository serves them; {@code RELEASE} keeps the stable window.
+     */
+    private VersionSet constraintForMetaversionEdge(String depPkg, String metaversion) {
+        String ga = PackageId.parse(depPkg).ga();
+        String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+        if (bomPin != null) return constraintForManagedEdge(depPkg, bomPin);
+        if (MavenMetaversion.of(metaversion) == MavenMetaversion.LATEST && latestEdges.add(ga)) {
+            // The window differs for a package that may float to a snapshot, so a list cached
+            // under the stable window is stale.
+            versionCache.keySet().removeIf(k -> ga.equals(gaOf(k)));
+            expandedVersionCache.keySet().removeIf(k -> ga.equals(gaOf(k)));
+        }
+        return VersionSet.ALL;
     }
 
     /**
@@ -717,6 +744,10 @@ public final class MavenPackageSource implements PackageSource {
             }
             Set<String> edgeExcl = modulesOf(dep.exclusions());
             String edgeVersion = dep.version().trim();
+            if (MavenMetaversion.of(edgeVersion) != null) {
+                out.add(new RawEdge(depPkg, constraintForMetaversionEdge(depPkg, edgeVersion), edgeExcl, null));
+                continue;
+            }
             String declared = VersionSelectors.looksLikeMavenRange(edgeVersion) ? null : edgeVersion;
             out.add(new RawEdge(depPkg, constraintForManagedEdge(depPkg, edgeVersion), edgeExcl, declared));
         }
