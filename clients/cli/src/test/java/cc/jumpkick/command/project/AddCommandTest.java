@@ -325,6 +325,23 @@ class AddCommandTest {
         assertThat(workspaceOf(root).modules()).containsExactly("app");
     }
 
+    @Test
+    void add_classifier_writes_an_inline_table_under_the_classified_handle(@TempDir Path tmp) throws IOException {
+        write(tmp.resolve("jk.toml"), """
+                group    = "cc.jumpkick"
+                name     = "game"
+                version  = "0.1.0"
+                """);
+
+        int exit = Jk.execute("add", "org.lwjgl:lwjgl:3.3.6", "--classifier", "natives-linux", "-C", tmp.toString());
+        assertThat(exit).isEqualTo(0);
+
+        String toml = Files.readString(tmp.resolve("jk.toml"));
+        assertThat(toml)
+                .contains("lwjgl-natives-linux = { group = \"org.lwjgl\", name = \"lwjgl\", version = \"3.3.6\","
+                        + " classifier = \"natives-linux\" }");
+    }
+
     private static Workspace workspaceOf(JkBuild build) {
         assertThat(build.workspace()).as("[workspace] table").isNotNull();
         return Objects.requireNonNull(build.workspace());

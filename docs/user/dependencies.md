@@ -7,6 +7,7 @@ Declare libraries in `jk.toml`. JumpKick resolves them with PubGrub, writes
 jk add jackson3-databind          # catalog short name; writes today's stable as a pin
 jk add com.acme:mylib:1.2.3       # Maven coordinate, exact version
 jk add com.acme:mylib             # no version: today's stable, written as a number
+jk add org.lwjgl:lwjgl:3.3.6 --classifier natives-linux   # the classified jar, under lwjgl-natives-linux
 jk add ./path/to/module           # workspace / path
 jk remove jackson3-databind
 ```
@@ -47,8 +48,9 @@ An inline table takes exactly the keys jk knows — `group`, `name`, `version`, 
 `default-features` and the git ref keys `tag`, `branch`, `rev`, `submodules`, `verify-signed` — and
 refuses any other by name (`dependencies.guava unknown key \`excludes\``), so a typo cannot parse
 cleanly and silently drop; a `[workspace.dependencies]` entry is held to its own list the same way.
-`jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table.
-`jk format` never rewrites one spelling into another. A classifier or type in a GAV string
+`jk add` picks the spelling for you in that order: catalog hit → GAV string → inline table;
+`jk add --classifier <c>` always writes the inline table, under the handle `<name>-<c>` unless
+`--library` names one. `jk format` never rewrites one spelling into another. A classifier or type in a GAV string
 (`g:a:v:classifier`) is an error — use the inline table. `classifier` names the classified jar of
 the module (`natives-linux`, `linux-x86_64`); the solver and the lock key that edge as
 `group:artifact:jar:classifier`, so the plain jar and a classified twin are two entries under two

@@ -53,6 +53,7 @@ public final class AddCommand implements CliCommand {
     private @Nullable String groupFlag;
     private @Nullable String nameFlag;
     private @Nullable String versionFlag;
+    private @Nullable String classifierFlag;
     private boolean test;
     private boolean runtime;
     private boolean provided;
@@ -78,6 +79,7 @@ public final class AddCommand implements CliCommand {
                 Opt.value("<name>", "Maven artifactId; defaults to the library handle.", "--name"),
                 // --version collides with the global --version, so jk uses --ver.
                 Opt.value("<ver>", "Version selector, e.g. \"3.4.0\", \"^3.4\", \"~3.4.0\".", "--ver"),
+                Opt.value("<c>", "Maven classifier; the handle defaults to name-<c>.", "--classifier"),
                 Opt.flag("Test scope", "--test"),
                 Opt.flag("Runtime scope", "--runtime"),
                 Opt.flag("Provided scope", "--provided"),
@@ -102,6 +104,7 @@ public final class AddCommand implements CliCommand {
         this.groupFlag = in.value("group").orElse(null);
         this.nameFlag = in.value("name").orElse(null);
         this.versionFlag = in.value("ver").orElse(null);
+        this.classifierFlag = in.value("classifier").filter(c -> !c.isBlank()).orElse(null);
         this.test = in.isSet("test");
         this.runtime = in.isSet("runtime");
         this.provided = in.isSet("provided");
@@ -114,10 +117,15 @@ public final class AddCommand implements CliCommand {
         // Explicit coordinate flags mean the library/coord form: a bare name that happens to stat
         // as a directory must not silently drop --group/--name/--ver/--ping. On
         // explicit path syntax the combination is contradictory — refuse rather than guess.
-        boolean coordFlags =
-                libraryFlag != null || groupFlag != null || nameFlag != null || versionFlag != null || ping;
+        boolean coordFlags = libraryFlag != null
+                || groupFlag != null
+                || nameFlag != null
+                || versionFlag != null
+                || classifierFlag != null
+                || ping;
         if (coordFlags && isExplicitPathSyntax(coord)) {
-            CommandWedge.printFail("Add", "--library/--group/--name/--ver/--ping do not apply to a local path");
+            CommandWedge.printFail(
+                    "Add", "--library/--group/--name/--ver/--classifier/--ping do not apply to a local path");
             return Exit.USAGE;
         }
 
@@ -138,7 +146,7 @@ public final class AddCommand implements CliCommand {
 
         ParsedDep parsed;
         try {
-            parsed = ParsedDep.parse(coord, libraryFlag, groupFlag, nameFlag, versionFlag);
+            parsed = ParsedDep.parse(coord, libraryFlag, groupFlag, nameFlag, versionFlag, classifierFlag);
         } catch (IllegalArgumentException e) {
             CommandWedge.printFail("Add", e.getMessage());
             return Exit.USAGE;
@@ -170,7 +178,8 @@ public final class AddCommand implements CliCommand {
                             requireNonNull(parsed.library()),
                             requireNonNull(parsed.group()),
                             requireNonNull(parsed.name()),
-                            Objects.requireNonNullElse(parsed.versionLiteral(), "latest")));
+                            Objects.requireNonNullElse(parsed.versionLiteral(), "latest"),
+                            Objects.requireNonNullElse(parsed.classifier(), "")));
         } catch (IOException e) {
             CommandWedge.printFail("Add", e.getMessage());
             return 1;
@@ -179,6 +188,7 @@ public final class AddCommand implements CliCommand {
                 + Coords.shortName(parsed.library())
                 + " ("
                 + Coords.gav(parsed.group(), parsed.name(), version)
+                + (parsed.classifier() == null ? "" : ":" + parsed.classifier())
                 + ") to "
                 + Theme.colorize("dependency", Theme.active().cyan())
                 + "."
@@ -418,17 +428,37 @@ public final class AddCommand implements CliCommand {
     }
 
     /**
-     * Parsed representation of a dep spec: the four pieces the editor needs. {@code versionLiteral}
-     * is the selector as the user spelled it, or {@code null} when none was given (or {@code
-     * latest} was) — the engine then pins the newest stable release.
+     * Parsed representation of a dep spec: the pieces the editor needs. {@code versionLiteral} is
+     * the selector as the user spelled it, or {@code null} when none was given (or {@code latest}
+     * was) — the engine then pins the newest stable release. {@code classifier} is {@code
+     * --classifier} or null for the plain jar; with one and no {@code --library}, the handle is
+     * {@code <name>-<classifier>} so the plain jar and its classified twin sit under two keys.
      */
     public record ParsedDep(
             @Nullable String library,
             @Nullable String group,
             @Nullable String name,
-            @Nullable String versionLiteral) {
+            @Nullable String versionLiteral,
+            @Nullable String classifier) {
 
         static ParsedDep parse(
+                String coord,
+                @Nullable String libraryFlag,
+                @Nullable String groupFlag,
+                @Nullable String nameFlag,
+                @Nullable String versionFlag,
+                @Nullable String classifier) {
+            ParsedDep plain = parsePlain(coord, libraryFlag, groupFlag, nameFlag, versionFlag);
+            if (classifier == null) return plain;
+            if (classifier.indexOf(':') >= 0) {
+                throw new IllegalArgumentException("--classifier must be a word without `:`: " + classifier);
+            }
+            String library =
+                    (libraryFlag == null || libraryFlag.isBlank()) ? plain.name() + "-" + classifier : plain.library();
+            return new ParsedDep(library, plain.group(), plain.name(), plain.versionLiteral(), classifier);
+        }
+
+        private static ParsedDep parsePlain(
                 String coord,
                 @Nullable String libraryFlag,
                 @Nullable String groupFlag,
@@ -478,7 +508,7 @@ public final class AddCommand implements CliCommand {
                     throw new IllegalArgumentException(msg.toString());
                 }
                 String versionLiteral = nonBlank(versionFlag, atVersion);
-                return new ParsedDep(library, group, name, explicitOrNull(versionLiteral));
+                return new ParsedDep(library, group, name, explicitOrNull(versionLiteral), null);
             }
 
             // Maven-coord shorthand (has a colon). Three forms:
@@ -517,7 +547,7 @@ public final class AddCommand implements CliCommand {
             String library = nonBlank(libraryFlag, artifactFromCoord);
             String group = nonBlank(groupFlag, groupFromCoord);
             String name = nonBlank(nameFlag, artifactFromCoord);
-            return new ParsedDep(library, group, name, explicitOrNull(nonBlank(versionFlag, rawVersion)));
+            return new ParsedDep(library, group, name, explicitOrNull(nonBlank(versionFlag, rawVersion)), null);
         }
 
         private static @Nullable String nonBlank(@Nullable String flagValue, @Nullable String fallback) {

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
@@ -70,6 +71,26 @@ public final class JkBuildEditor {
             String artifact,
             String versionLiteral,
             LibraryCatalog catalog) {
+        return addDependency(content, scope, name, group, artifact, versionLiteral, null, catalog);
+    }
+
+    /**
+     * As {@link #addDependency(String, Scope, String, String, String, String, LibraryCatalog)}; a
+     * non-null {@code classifier} names the classified jar, which only the inline table can spell:
+     *
+     * <pre>{@code
+     * lwjgl-natives-linux = { group = "org.lwjgl", name = "lwjgl", version = "3.3.6", classifier = "natives-linux" }
+     * }</pre>
+     */
+    public static String addDependency(
+            String content,
+            Scope scope,
+            String name,
+            String group,
+            String artifact,
+            String versionLiteral,
+            @Nullable String classifier,
+            LibraryCatalog catalog) {
         requireWritable(scope);
         validateName(name);
         if (group == null || group.isBlank()) {
@@ -77,13 +98,27 @@ public final class JkBuildEditor {
         }
         requireVersionLiteral(versionLiteral);
         if (artifact == null || artifact.isBlank()) artifact = name;
+        if (classifier != null && (classifier.isBlank() || classifier.indexOf(':') >= 0)) {
+            throw new IllegalArgumentException("classifier must be a non-blank word without `:`");
+        }
 
         List<String> lines = splitPreservingTerminator(content);
         if (findDepKey(lines, scope, name) >= 0) {
             throw new IllegalStateException(scope.tomlSection() + " already contains \"" + name + "\"");
         }
-        return validated(
-                join(insertEntry(lines, scope, renderDependencyEntry(catalog, name, group, artifact, versionLiteral))));
+        String entry = classifier == null
+                ? renderDependencyEntry(catalog, name, group, artifact, versionLiteral)
+                : renderClassifiedEntry(name, group, artifact, versionLiteral, classifier);
+        return validated(join(insertEntry(lines, scope, entry)));
+    }
+
+    /** The inline table for a classified jar: group, name, version and classifier, every key written. */
+    private static String renderClassifiedEntry(
+            String name, String group, String artifact, String versionLiteral, String classifier) {
+        return name + " = { group = " + MinimalToml.quote(group)
+                + ", name = " + MinimalToml.quote(artifact)
+                + ", version = " + MinimalToml.quote(bareLiteral(versionLiteral))
+                + ", classifier = " + MinimalToml.quote(classifier) + " }";
     }
 
     /** The plugin scope has no manifest table: its rows are the lock's own ({@link ManifestDeps#PLUGIN_TABLE_REFUSED}). */
