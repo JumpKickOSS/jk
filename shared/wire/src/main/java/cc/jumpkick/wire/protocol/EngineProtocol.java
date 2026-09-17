@@ -224,6 +224,8 @@ public final class EngineProtocol {
 
     /** A job waited the engine's queue-wait bound for memory and gave up; the message names the live job. */
     public static final String ERR_QUEUE_WAIT = "queue-wait";
+    /** A job's estimated heap exceeds the engine's whole cap; refused at once, the message names the cap to set. */
+    public static final String ERR_ENGINE_HEAP = "engine-heap";
     /**
      * A build/test with the same job fingerprint is already running. Message is human text
      * like {@code Build #27 is already running}; optional {@code buildNumber}/{@code requestId}

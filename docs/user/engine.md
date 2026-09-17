@@ -63,9 +63,17 @@ and `jk cancel` dequeue a waiting job the same way they cancel a running one.
 
 The cost of a job is estimated from what it parses whole — the workspace `jk-lock.toml` and the
 project's metrics ledger; for `jk import`, the reactor's `pom.xml` files, build outputs pruned —
-so a small project queues behind a large one only when the heap is genuinely short. An idle
-engine always admits the next job. Raising `[engine] max-heap-mb` lets more jobs run at once; the
-default cap runs one build of a large workspace at a time.
+so a small project queues behind a large one only when the heap is genuinely short. A lock is
+sized by the larger of the lock on disk and 64 KiB per distinct dependency the workspace's
+manifests declare, so a first lock of a large reactor is sized before it starts. An idle engine
+admits any job the heap holds alone. Raising `[engine] max-heap-mb` lets more jobs run at once;
+the default cap runs one build of a large workspace at a time.
+
+A job whose estimate exceeds the whole cap is **refused at once** rather than admitted to die of
+`OutOfMemoryError` and take the engine's other jobs with it: `a lock of /home/me/reactor is
+estimated to need 300 MiB of engine heap and the engine's cap is 256 MiB — set [engine]
+max-heap-mb in ~/.jk/config.toml (or JK_ENGINE_MAX_HEAP_MB) to at least 332, then jk engine stop`.
+The engine cannot grow its own heap; the next command starts one under the new cap.
 
 **Fairness.** One long job never holds the whole budget for hours. Two rules admit past the
 plain arithmetic, both only when the host itself has memory to spare (256 MiB beyond the job's

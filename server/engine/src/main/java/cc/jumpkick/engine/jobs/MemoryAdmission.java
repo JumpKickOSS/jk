@@ -11,6 +11,8 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.DeclaredDependencies;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.runtime.base.ProjectIds;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,8 +38,11 @@ import org.jspecify.annotations.Nullable;
  * <p>Spoken for is the larger of two views: the idle footprint plus the estimates of the admitted
  * jobs (so two jobs admitted in the same instant cannot both count the same free heap), and the
  * heap actually committed right now (so a job running past its estimate still holds the door).
- * An empty engine always admits: waiting on nothing would be a hang, and the running job's cap
- * is the JVM's, not this gate's.
+ * An empty engine admits any job the heap could hold alone: waiting on nothing would be a hang.
+ * A job whose estimate exceeds the whole heap less the reserve is refused at once as {@link
+ * Verdict#TOO_LARGE} instead — no wait would ever admit it, and running it would end in the
+ * {@code OutOfMemoryError} exit that takes every other job with it; the refusal names the cap to
+ * raise.
  *
  * <p>Two fairness rules keep one long job from holding the whole budget for hours. A <em>brief</em>
  * job — any kind that is not a build, test, compile, native or image run: format, guard, lock,
@@ -89,7 +94,9 @@ public final class MemoryAdmission {
         /** The engine began draining while the job waited. */
         DRAINING,
         /** The job waited {@link Timing#queueWaitMs} without being admitted. */
-        TIMED_OUT
+        TIMED_OUT,
+        /** The job's estimate exceeds what the whole heap could hold; refused without waiting. */
+        TOO_LARGE
     }
 
     /** What a job of {@code kind} for {@code dir} will hold in this JVM, in bytes. */
@@ -151,6 +158,14 @@ public final class MemoryAdmission {
      * a 100 KiB lock parses in 48 MiB and fails in 32.
      */
     public static final long TOML_TREE_BYTES_PER_BYTE = 64;
+
+    /**
+     * Heap a lock holds per distinct dependency the manifests declare, for a lock with no lock on
+     * disk to size it by. Across the reference reactors a lock runs 0.5–3 KiB of TOML per declared
+     * dependency, which {@link #TOML_TREE_BYTES_PER_BYTE} puts at 32–200 KiB of heap each; 64 KiB
+     * sizes a 1,400-dependency reactor at about 90 MiB, which is what its lock measures.
+     */
+    public static final long LOCK_BYTES_PER_DECLARED_DEPENDENCY = 64L << 10;
 
     /**
      * Heap the metrics ledgers cost per byte of file. They are scanned line by line into three
@@ -240,6 +255,7 @@ public final class MemoryAdmission {
      */
     public Verdict admit(long jid, String kind, String dir, QueuedListener onQueued, BooleanSupplier draining) {
         long estimate = Math.max(0, estimator.estimate(kind, dir));
+        if (estimate > heap.maxBytes() - RESERVE_BYTES) return Verdict.TOO_LARGE;
         boolean brief = !BuildHistoryKinds.isBuildLike(kind);
         long arrived = nowMillis.getAsLong();
         int ahead;
@@ -346,6 +362,16 @@ public final class MemoryAdmission {
         return timing;
     }
 
+    /** What a job of {@code kind} for {@code dir} is estimated to hold, in bytes — the figure a refusal names. */
+    public long estimateFor(String kind, String dir) {
+        return Math.max(0, estimator.estimate(kind, dir));
+    }
+
+    /** The heap's ceiling in bytes, as the gate sees it. */
+    public long heapMaxBytes() {
+        return heap.maxBytes();
+    }
+
     /** Jobs waiting for memory right now. */
     public int queued() {
         synchronized (lock) {
@@ -429,16 +455,21 @@ public final class MemoryAdmission {
      * #IMPORT_BYTES_PER_POM} per {@code pom.xml} under {@code dir}, build outputs pruned. Any other
      * plan holds the workspace lock as a parse tree at {@link #TOML_TREE_BYTES_PER_BYTE}, the
      * project's metrics ledger and the host ledger as scanned maps at {@link
-     * #LEDGER_BYTES_PER_BYTE}. Both sit on top of {@link #BASE_JOB_BYTES}, which is all a job
-     * without a project directory costs.
+     * #LEDGER_BYTES_PER_BYTE}. A lock holds the graph it solves, which the lock on disk sizes when
+     * there is one and the manifests' declared dependencies size at {@link
+     * #LOCK_BYTES_PER_DECLARED_DEPENDENCY} each when there is not — the larger of the two. All sit
+     * on top of {@link #BASE_JOB_BYTES}, which is all a job without a project directory costs.
      */
     public static long estimate(String kind, @Nullable String dir) {
         if (dir == null || dir.isBlank()) return BASE_JOB_BYTES;
         if ("import".equals(kind)) return BASE_JOB_BYTES + IMPORT_BYTES_PER_POM * pomCount(Path.of(dir));
         long toml = 0;
+        long declared = 0;
         long ledgers = 0;
         try {
             toml += sizeOf(Path.of(dir).resolve(ManifestNames.LOCK));
+            if ("lock".equals(kind))
+                declared = DeclaredDependencies.countDistinct(LockPaths.lockOwnerDir(Path.of(dir)));
             String projectId = ProjectIds.idOf(dir);
             if (projectId != null) {
                 ledgers += sizeOf(ProjectBuilds.projectHome(projectId).resolve(ProjectBuilds.PROJECT_METRICS));
@@ -447,7 +478,8 @@ public final class MemoryAdmission {
         } catch (RuntimeException e) {
             Log.debug("estimate: inputs unreadable, base cost only", e);
         }
-        return BASE_JOB_BYTES + TOML_TREE_BYTES_PER_BYTE * toml + LEDGER_BYTES_PER_BYTE * ledgers;
+        long graph = Math.max(TOML_TREE_BYTES_PER_BYTE * toml, LOCK_BYTES_PER_DECLARED_DEPENDENCY * declared);
+        return BASE_JOB_BYTES + graph + LEDGER_BYTES_PER_BYTE * ledgers;
     }
 
     /** Every {@code pom.xml} under {@code root} outside {@link #IMPORT_SKIPPED_DIRS}; zero when the tree cannot be read. */

@@ -108,11 +108,41 @@ class MemoryAdmissionTest {
         assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
+    /** A job the whole heap could not hold is refused before it starts; one that fits alone is admitted at once. */
     @Test
-    void an_empty_engine_admits_a_job_that_would_never_fit() {
+    void a_job_larger_than_the_whole_heap_is_refused_at_once() {
         FakeHeap heap = new FakeHeap(256, 40);
         MemoryAdmission gate = gate(heap, (kind, dir) -> 5_000 * MIB);
-        assertThat(gate.admit(1, "build", "/huge", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admit(1, "lock", "/huge", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.TOO_LARGE);
+        assertThat(gate.admittedCount()).isZero();
+        assertThat(gate.estimateFor("lock", "/huge")).isEqualTo(5_000 * MIB);
+        assertThat(gate.heapMaxBytes()).isEqualTo(256 * MIB);
+
+        assertThat(gate(heap, (kind, dir) -> 200 * MIB).admit(2, "build", "/big", NEVER_QUEUED, () -> false))
+                .as("an empty engine admits a job the heap holds alone")
+                .isEqualTo(Verdict.ADMITTED);
+    }
+
+    /** A first lock, with no lock on disk, is sized by the distinct dependencies the manifests declare. */
+    @Test
+    void a_first_lock_is_sized_by_the_dependencies_the_manifests_declare(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "app"
+                version = "0.1.0"
+
+                [dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.0.0-jre" }
+                jackson = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.17.0" }
+
+                [test-dependencies]
+                guava-again = { group = "com.google.guava", name = "guava", version = "33.0.0-jre" }
+                assertj = { group = "org.assertj", name = "assertj-core", version = "3.26.0" }
+                """);
+
+        long lock = MemoryAdmission.estimate("lock", tmp.toString());
+        long build = MemoryAdmission.estimate("build", tmp.toString());
+        assertThat(lock - build).isEqualTo(3 * MemoryAdmission.LOCK_BYTES_PER_DECLARED_DEPENDENCY);
     }
 
     @Test
