@@ -260,6 +260,9 @@ public final class JobEnvelope {
             case TIMED_OUT -> {
                 return refuseTimedOut(jid, kind, dir, detached, writer);
             }
+            case TOO_LARGE -> {
+                return refuseTooLarge(jid, kind, dir, detached, writer);
+            }
             case ADMITTED -> {
                 /* fall through to the slot claim */
             }
@@ -315,6 +318,39 @@ public final class JobEnvelope {
                         + ahead + (ahead == 1 ? " job" : " jobs") + liveSummary(liveRows())
                         + " — `jk cancel <jid>` frees a live job, `jk engine status` lists them;"
                         + " [engine] queue-wait-ms / JK_ENGINE_QUEUE_WAIT_MS sets the wait";
+        return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_QUEUE_WAIT, message);
+    }
+
+    /**
+     * The job's estimate exceeds what the engine's heap could ever hold: refused before it starts,
+     * naming the estimate, the cap and the knob, since admitting it would end in the
+     * OutOfMemoryError exit that takes every other job with it. Nothing ran; no journal row began.
+     */
+    private long refuseTooLarge(long jid, String kind, String dir, boolean detached, @Nullable BufferedWriter writer) {
+        long estimate = admission.estimateFor(kind, dir);
+        long cap = admission.heapMaxBytes();
+        long needed = mib(estimate + MemoryAdmission.RESERVE_BYTES);
+        String message = "a " + kind + " of " + dir + " is estimated to need " + mib(estimate)
+                + " MiB of engine heap and the engine's cap is " + mib(cap)
+                + " MiB — set [engine] max-heap-mb in ~/.jk/config.toml (or JK_ENGINE_MAX_HEAP_MB) to at least "
+                + needed + ", then `jk engine stop`; the next command starts the engine under the new cap";
+        return refuse(jid, kind, dir, detached, writer, EngineProtocol.ERR_ENGINE_HEAP, message);
+    }
+
+    /** Whole mebibytes, rounded up. */
+    private static long mib(long bytes) {
+        return (bytes + (1L << 20) - 1) >> 20;
+    }
+
+    /** A refusal before the job ran: one log line, the dashboard card resolved, the error to the client. */
+    private long refuse(
+            long jid,
+            String kind,
+            String dir,
+            boolean detached,
+            @Nullable BufferedWriter writer,
+            String code,
+            String message) {
         host.log("jk engine: job " + jid + " (" + kind + " " + dir + ") " + message);
         host.publishEvent(
                 "request-finish",
@@ -331,7 +367,7 @@ public final class JobEnvelope {
                         .put("millis", 0L)
                         .put("activeBuildPlans", host.activeBuildPlans()));
         if (detached) throw new IllegalStateException(message);
-        if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_QUEUE_WAIT, message));
+        if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.error(code, message));
         return -1;
     }
 
