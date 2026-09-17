@@ -370,6 +370,17 @@ launcher pin on the wrong line (`junit-platform-launcher = "1.13.4"` beside `jun
 and a pin the solve itself cannot satisfy (`junit-jupiter-api = "=5.0.0"` under `junit-jupiter
 6.1.3`) never get this far: `jk lock` refuses them with the fix.
 
+A fork that dies before the runner speaks is reported with the JVM's own last words: HotSpot's
+reason under `Error occurred during initialization of VM` (`Could not reserve enough space for
+… object heap`), the launcher's line for a flag it refused (`Invalid initial heap size`,
+`Unrecognized VM option`), the hs_err report's `There is insufficient memory for the Java Runtime
+Environment to continue`, or `Terminating due to java.lang.OutOfMemoryError: …`. An exit of
+`128 + signal` names the signal — `test runner exited 137 (SIGKILL) before any test ran` is the
+kernel's out-of-memory killer under load or an outside kill — and when nothing the fork printed
+classifies, its last five lines ride in the message; a fork that printed nothing says so. The same
+sentence fails `jk guard` when the guard suite's JVM dies on start. The fix names the knobs that
+size the fork: `[test] workers` (`-w`), `[test] jvm-args` `-Xmx…`, `--ram-percent`.
+
 A test class the Platform's scan could not load — a framework loader that boots the application
 while loading it and fails, a supertype missing from the test classpath — is dropped by discovery
 without a word, so the runner loads the root's classes once more through the same loader and fails

@@ -74,9 +74,11 @@ else the module whose group prefixes the package — and the hint names that coo
 Each lock jar's package list is read once and kept under the store's `package-index/`. A failed test's stack is cut to 24 lines, and the cut always keeps the frame inside the
 test class together with the assertion frame above it — the middle is elided with a frame count —
 so the test's own `File.java:NN` is in the file however deep the framework's frames run. A test JVM whose launcher never ran a test — a JUnit engine that could not start, a
-launcher missing from the classpath — is that shape with code `test-launcher`: the exit, the
-exception and engine the runner named, the two conflicting JUnit coordinates when the lock names
-them, and the fix (`jk why <coordinate>`), with the fork's output as the fenced block. It is never
+launcher missing from the classpath, a JVM that could not reserve its heap — is that shape with
+code `test-launcher`: the exit (the signal's name beside it for `128 + signal`), the exception and
+engine the runner named or the JVM's own last words (else the fork's last lines, or that it printed
+nothing), the two conflicting JUnit coordinates when the lock names them, and the fix (`jk why
+<coordinate>`), with the fork's output as the fenced block. It is never
 counted as a red test, so there is no `Tests:` line for it. MCP `jk_diagnostics` returns it as one
 row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-launcher-cannot-start).
 

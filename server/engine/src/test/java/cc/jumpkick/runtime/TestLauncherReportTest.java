@@ -69,4 +69,31 @@ class TestLauncherReportTest {
         assertThat(message)
                 .contains("Fix: the runner's full output is above; rerun with --verbose for the live stream.");
     }
+
+    @Test
+    void a_jvm_refused_its_heap_names_the_refusal_and_the_flags_that_size_the_fork() {
+        String out = "Error occurred during initialization of VM\n"
+                + "Could not reserve enough space for 1048576000000 KB object heap";
+        String message = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, out), null);
+
+        assertThat(message)
+                .startsWith("test runner exited 1 before any test ran"
+                        + " — Could not reserve enough space for 1048576000000 KB object heap");
+        assertThat(message)
+                .contains("Fix: the test runner JVM refused to start")
+                .contains("`[test] jvm-args`")
+                .doesNotContain("the runner's full output is above");
+    }
+
+    @Test
+    void a_signal_exit_names_the_signal_and_what_sends_it() {
+        String message = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 137, ""), null);
+
+        assertThat(message)
+                .startsWith("test runner exited 137 (SIGKILL) before any test ran — the fork printed nothing");
+        assertThat(message)
+                .contains("Fix: the test runner JVM was killed by SIGKILL before it ran a test")
+                .contains("out-of-memory killer")
+                .doesNotContain("the runner's full output is above");
+    }
 }
