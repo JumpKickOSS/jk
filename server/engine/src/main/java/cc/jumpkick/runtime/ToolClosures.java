@@ -4,8 +4,10 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.EffectivePom;
@@ -26,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -41,8 +44,16 @@ import org.jspecify.annotations.Nullable;
  * target so the classpath carries classes and not a metadata jar — into a staging directory that
  * is published atomically, so a closure is whole or absent. A closure that fails to materialize
  * names the tool, the directory and the cause.
+ *
+ * <p>The directory's key names the jk that resolved it, and the directory carries a {@value
+ * #LISTING} listing its jars: a closure another jk's resolver materialized is another key, and
+ * one that lost a jar — or predates the listing — is materialized again in place, so a step never
+ * runs on a classpath the running resolver would not have built.
  */
 final class ToolClosures {
+
+    /** Every jar of the closure, one file name per line, written last into the staging directory. */
+    static final String LISTING = ".closure";
 
     private ToolClosures() {}
 
@@ -62,17 +73,20 @@ final class ToolClosures {
         }
 
         Path dir = cas.root().resolve("plugin-tools").resolve(cacheKey(roots, managedByResolved));
-        if (Files.isDirectory(dir) && PathUtil.anyRegularFile(dir, d -> false, f -> true)) return dir;
+        if (complete(dir)) return dir;
         Path staging = null;
         try {
             KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm");
             Resolution resolution = resolve(roots, managedByResolved, repos, kmp);
             staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
             stage(staging, roots, resolution, repos, kmp);
+            writeListing(staging);
+            // A directory that is there but incomplete — a jar lost, or no listing — is replaced.
+            if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
             try {
                 AtomicWrites.publishDir(staging, dir);
             } catch (IOException e) {
-                if (!Files.isDirectory(dir)) throw e; // lost a race → the winner's dir serves
+                if (!complete(dir)) throw e; // lost a race → the winner's dir serves
             }
         } catch (IOException e) {
             if (staging != null) PathUtil.deleteRecursively(staging);
@@ -176,8 +190,40 @@ final class ToolClosures {
     }
 
     /**
-     * Stable CAS dir name for a tool closure (resolved roots + resolved BOM). Short keys stay
-     * readable; long ones hash.
+     * True when {@code dir} holds a whole closure: its {@value #LISTING} is present and every jar
+     * it lists is a non-empty file. A directory without the listing, whatever it holds, is not.
+     */
+    static boolean complete(Path dir) {
+        Path manifest = dir.resolve(LISTING);
+        if (!Files.isRegularFile(manifest)) return false;
+        try {
+            for (String name : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
+                if (name.isBlank()) continue;
+                Path jar = dir.resolve(name);
+                if (!Files.isRegularFile(jar) || Files.size(jar) == 0) return false;
+            }
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** List every jar staged so far into {@value #LISTING}, sorted, one per line. */
+    static void writeListing(Path staging) throws IOException {
+        List<String> names = new ArrayList<>();
+        PathUtil.forEachRegularFile(staging, dir -> !dir.equals(staging), (file, attrs) -> {
+            String name = file.getFileName().toString();
+            if (name.endsWith(".jar")) names.add(name);
+        });
+        Collections.sort(names);
+        Files.writeString(staging.resolve(LISTING), String.join("\n", names) + "\n", StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Stable CAS dir name for a tool closure: the resolved roots, the resolved BOM, and the jk
+     * that resolves it — its version, and its build when the code runs from an archive — so a
+     * closure resolved by other resolver code is another directory. Short keys stay readable;
+     * long ones hash.
      */
     static String cacheKey(List<Coordinate> roots, @Nullable String managedByResolved) {
         StringBuilder sb = new StringBuilder();
@@ -188,16 +234,22 @@ final class ToolClosures {
         if (managedByResolved != null && !managedByResolved.isBlank()) {
             sb.append("__bom_").append(managedByResolved.replace(':', '_'));
         }
-        // Keep path components reasonable on case-sensitive FS / path length limits. The lookup
-        // is `Files.isDirectory(dir)` with no content check, so a collision silently serves one
-        // closure's jars for another — hash the whole key rather than truncating it and hoping
-        // the tail differs in 32 bits of String.hashCode.
+        sb.append("__by_").append(resolverKey());
+        // Keep path components reasonable on case-sensitive FS / path length limits. A collision
+        // would serve one closure's jars for another — hash the whole key rather than truncating
+        // it and hoping the tail differs in 32 bits of String.hashCode.
         String key = sb.toString();
         if (key.length() > 180) {
             String artifact = roots.isEmpty() ? "tools" : roots.getFirst().artifact();
             return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40) + "_" + artifact;
         }
         return key;
+    }
+
+    /** {@code jk_0.13.7-4ee07400a592}: the resolving jk's version and, from an archive, its build. */
+    static String resolverKey() {
+        String build = BuildIdentity.buildId();
+        return "jk_" + JkVersion.VERSION + (build.isEmpty() ? "" : "-" + build);
     }
 
     /**

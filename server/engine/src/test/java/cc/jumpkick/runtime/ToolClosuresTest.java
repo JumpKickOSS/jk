@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.JkVersion;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -15,10 +16,42 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Staging a tool's runtime closure: every resolved jar is linked under a readable alias, two
- * artifacts sharing a file name do not collide, and a failure names the tool, the directory and
- * the cause rather than the bare path a filesystem exception carries as its message.
+ * artifacts sharing a file name do not collide, the directory is keyed by the resolving jk and
+ * carries a listing its lookup checks, and a failure names the tool, the directory and the cause
+ * rather than the bare path a filesystem exception carries as its message.
  */
 class ToolClosuresTest {
+
+    @Test
+    void the_key_names_the_roots_the_bom_and_the_resolving_jk() {
+        List<Coordinate> roots = List.of(Coordinate.of("com.android.tools.build", "bundletool", "1.17.2"));
+
+        assertThat(ToolClosures.cacheKey(roots, null))
+                .isEqualTo("com.android.tools.build_bundletool_1.17.2__by_" + ToolClosures.resolverKey());
+        assertThat(ToolClosures.cacheKey(roots, "org.acme:bom:1.0"))
+                .isEqualTo("com.android.tools.build_bundletool_1.17.2__bom_org.acme_bom_1.0__by_"
+                        + ToolClosures.resolverKey());
+        assertThat(ToolClosures.resolverKey()).startsWith("jk_" + JkVersion.VERSION);
+    }
+
+    /** A closure is served only when its listing is there and every jar it names is a non-empty file. */
+    @Test
+    void a_closure_is_complete_only_with_its_listing_and_every_listed_jar(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("closure"));
+        Files.writeString(dir.resolve("a-1.jar"), "a");
+        Files.writeString(dir.resolve("b-1.jar"), "b");
+        assertThat(ToolClosures.complete(dir)).as("no listing").isFalse();
+
+        ToolClosures.writeListing(dir);
+        assertThat(Files.readString(dir.resolve(ToolClosures.LISTING))).isEqualTo("a-1.jar\nb-1.jar\n");
+        assertThat(ToolClosures.complete(dir)).isTrue();
+
+        Files.writeString(dir.resolve("b-1.jar"), "");
+        assertThat(ToolClosures.complete(dir)).as("an empty jar").isFalse();
+        Files.delete(dir.resolve("b-1.jar"));
+        assertThat(ToolClosures.complete(dir)).as("a missing jar").isFalse();
+        assertThat(ToolClosures.complete(tmp.resolve("absent"))).isFalse();
+    }
 
     @Test
     void a_jar_is_aliased_by_artifact_and_version(@TempDir Path tmp) throws Exception {
