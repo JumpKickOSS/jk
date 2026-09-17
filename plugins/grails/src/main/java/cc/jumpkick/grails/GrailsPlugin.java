@@ -55,7 +55,6 @@ public final class GrailsPlugin implements Plugin, PackageExtension {
                         inputs.startClass(),
                         inputs.bootVersion(),
                         attributes,
-                        Map.of(),
                         new byte[0],
                         List.of(),
                         0L));

@@ -60,7 +60,6 @@ maintenance cost is a gated example per preset.
 
 | Gap | Count | Tier | Why |
 |---|--:|---|---|
-| Git build info (`git.properties`, Boot `build-info.properties`) | 18k Maven, 3k Gradle | core | Boot's `/info` endpoint; deterministic; a few hundred lines |
 | Dokka for a Kotlin module's javadoc jar | 14k Gradle | core | a Kotlin library cannot publish to Central without it |
 | JavaFX module path for compile, run and packaging | 65k Maven, 12k Gradle | contrib | desktop; larger than the Quarkus plugin, outside the daily-loop target |
 | Hibernate bytecode enhancement | 8k Gradle, 2k Maven | contrib | a post-compile transformer; behaviour differs silently without it |
@@ -129,7 +128,7 @@ it is outer-loop work and is designed after 1.0.
 | 42 | `central-publishing-maven-plugin` | 15,840 | core | jk publish --central |
 | 43 | `license-maven-plugin` | 15,264 | gap | licence headers/report |
 | 44 | `versions-maven-plugin` | 12,672 | core | jk outdated / update |
-| 45 | `git-commit-id-plugin` | 11,536 | gap | git.properties resource |
+| 45 | `git-commit-id-plugin` | 11,536 | core | `[build-info]`: git.properties resource |
 | 46 | `liquibase-maven-plugin` | 10,912 | planned | migrations battery |
 | 47 | `native-maven-plugin` | 10,352 | core | jk native |
 | 48 | `dockerfile-maven-plugin` | 10,176 | core | jk image |
@@ -258,7 +257,7 @@ it is outer-loop work and is designed after 1.0.
 | 43 | `org.openapi.generator` | 3,130 | core | openapi battery |
 | 44 | `io.micronaut.application` | 3,082 | core | micronaut battery |
 | 45 | `com.adarshr.test-logger` | 3,032 | built in | jk test output |
-| 46 | `com.gorylenko.gradle-git-properties` | 3,012 | gap | git.properties resource (Boot info endpoint); small |
+| 46 | `com.gorylenko.gradle-git-properties` | 3,012 | core | `[build-info]`: git.properties resource (Boot info endpoint) |
 | 47 | `org.jetbrains.kotlinx.kover` | 2,544 | core | jk test --coverage (JaCoCo); Kover itself not needed |
 | 48 | `org.owasp.dependencycheck` | 2,501 | core | jk audit (OSV) |
 | 49 | `net.ltgt.errorprone` | 2,459 | core | [javac.plugins.ErrorProne] |
@@ -288,8 +287,8 @@ it is outer-loop work and is designed after 1.0.
 | maven | `liquibase-maven-plugin` | 10,912 | planned |
 | gradle | `org.openapi.generator` | 3,130 | core |
 | maven | `openapi-generator-maven-plugin` | 8,432 | core |
-| maven | `git-commit-id-maven-plugin` | 6,768 | gap |
-| gradle | `com.gorylenko.gradle-git-properties` | 3,012 | gap |
+| maven | `git-commit-id-maven-plugin` | 6,768 | core |
+| gradle | `com.gorylenko.gradle-git-properties` | 3,012 | core |
 | gradle | `org.hibernate.orm` | 7,932 | gap |
 | maven | `hibernate-enhance-maven-plugin` | 1,880 | gap |
 | maven | `aspectj-maven-plugin` | 6,048 | gap |

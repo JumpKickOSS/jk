@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -48,7 +47,6 @@ class BootJarPackagerTest {
                         "com.example.App",
                         "4.0.0",
                         Map.of("Implementation-Title", "app"),
-                        Map.of(),
                         new byte[0],
                         List.of(),
                         0L));
@@ -121,7 +119,6 @@ class BootJarPackagerTest {
                         "com.example.App",
                         "4.0.0",
                         Map.of(),
-                        Map.of(),
                         new byte[0],
                         List.of(),
                         0L));
@@ -165,7 +162,6 @@ class BootJarPackagerTest {
                         "com.example.App",
                         "4.0.0",
                         Map.of(),
-                        Map.of(),
                         new byte[0],
                         List.of(),
                         0L));
@@ -208,7 +204,6 @@ class BootJarPackagerTest {
                             "com.example.App",
                             selector,
                             Map.of(),
-                            Map.of(),
                             new byte[0],
                             List.of(),
                             0L))
@@ -226,7 +221,7 @@ class BootJarPackagerTest {
     }
 
     @Test
-    void embeds_build_info_and_sbom_when_supplied(@TempDir Path tmp) throws Exception {
+    void embeds_the_sbom_when_supplied(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));
         Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
         // The packager treats the SBOM as opaque bytes (the engine renders CycloneDX upstream).
@@ -238,29 +233,9 @@ class BootJarPackagerTest {
         Path out = tmp.resolve("app.jar");
         new BootJarPackager()
                 .packageBootJar(new BootJarPackager.BootJarRequest(
-                        classes,
-                        List.of(),
-                        loader,
-                        out,
-                        "com.example.App",
-                        "4.0.0",
-                        Map.of(),
-                        Map.of("group", "com.example", "artifact", "shop", "name", "shop", "version", "1.0.0"),
-                        sbom,
-                        List.of(),
-                        0L));
+                        classes, List.of(), loader, out, "com.example.App", "4.0.0", Map.of(), sbom, List.of(), 0L));
 
         try (JarFile jar = new JarFile(out.toFile())) {
-            String buildInfo = new String(
-                    jar.getInputStream(jar.getEntry("BOOT-INF/classes/META-INF/build-info.properties"))
-                            .readAllBytes(),
-                    StandardCharsets.UTF_8);
-            assertThat(buildInfo)
-                    .isEqualTo("build.artifact=shop\n"
-                            + "build.group=com.example\n"
-                            + "build.name=shop\n"
-                            + "build.version=1.0.0\n");
-
             String sbomJson = new String(
                     jar.getInputStream(jar.getEntry("BOOT-INF/classes/META-INF/sbom/application.cdx.json"))
                             .readAllBytes(),
@@ -326,7 +301,6 @@ class BootJarPackagerTest {
                         "com.example.App",
                         "4.1.1",
                         Map.of(),
-                        Map.of(),
                         new byte[0],
                         List.of(),
                         0L));
@@ -382,7 +356,6 @@ class BootJarPackagerTest {
                         "com.example.App",
                         "4.1.1",
                         Map.of(),
-                        Map.of(),
                         new byte[0],
                         List.of(),
                         0L));
@@ -406,38 +379,6 @@ class BootJarPackagerTest {
     /** UTF-8 text of one jar entry. */
     private static String entryText(JarFile jar, String name) throws IOException {
         return new String(jar.getInputStream(jar.getEntry(name)).readAllBytes(), StandardCharsets.UTF_8);
-    }
-
-    @Test
-    void build_info_entries_with_separators_and_spaces_survive_properties_load(@TempDir Path tmp) throws Exception {
-        Path classes = Files.createDirectories(tmp.resolve("classes"));
-        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
-
-        Path out = tmp.resolve("app.jar");
-        new BootJarPackager()
-                .packageBootJar(new BootJarPackager.BootJarRequest(
-                        classes,
-                        List.of(),
-                        loader,
-                        out,
-                        "com.example.App",
-                        "4.0.0",
-                        Map.of(),
-                        Map.of(
-                                "built by", "dev=ops:team \\ crew",
-                                "notes", " leading space and #hash",
-                                "revision", "line1\nline2"),
-                        new byte[0],
-                        List.of(),
-                        0L));
-
-        Properties loaded = new Properties();
-        try (JarFile jar = new JarFile(out.toFile())) {
-            loaded.load(jar.getInputStream(jar.getEntry("BOOT-INF/classes/META-INF/build-info.properties")));
-        }
-        assertThat(loaded.getProperty("build.built by")).isEqualTo("dev=ops:team \\ crew");
-        assertThat(loaded.getProperty("build.notes")).isEqualTo(" leading space and #hash");
-        assertThat(loaded.getProperty("build.revision")).isEqualTo("line1\nline2");
     }
 
     private static Path writeJar(Path path, String entryName) throws IOException {

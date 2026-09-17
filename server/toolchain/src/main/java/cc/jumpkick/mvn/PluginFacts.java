@@ -61,6 +61,8 @@ final class PluginFacts {
             "maven-shade-plugin",
             "maven-assembly-plugin",
             "spring-boot-maven-plugin",
+            "git-commit-id-maven-plugin",
+            "git-commit-id-plugin",
             "quarkus-maven-plugin",
             "native-maven-plugin",
             "jib-maven-plugin",

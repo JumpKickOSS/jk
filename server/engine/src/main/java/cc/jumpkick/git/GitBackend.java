@@ -4,6 +4,8 @@ package cc.jumpkick.git;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.plugin.Extension;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * In-process git SPI: {@link GitCliExtension} preferred, {@link JGitExtension} fallback.
@@ -22,4 +24,11 @@ public interface GitBackend extends Extension {
 
     /** Resolve the ref to a SHA plus commit time and nearest tag, for git-source versioning. */
     GitFetcher.RefInfo resolveRef(GitSource source) throws IOException;
+
+    /**
+     * Describe the checkout containing {@code dir}: its {@code HEAD}, branch, commit time, dirty
+     * state and nearest tag. Empty when {@code dir} is outside every repository or {@code HEAD}
+     * names no commit yet.
+     */
+    Optional<GitFetcher.Worktree> describeWorktree(Path dir) throws IOException;
 }

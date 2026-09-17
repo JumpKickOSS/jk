@@ -393,6 +393,9 @@ public final class JkBuildParser {
         // [audit] is a report policy, not a build input; it folds into the same block as [test] and [dev].
         List<JkBuild.AuditIgnore> auditIgnores = ManifestBuild.parseAuditIgnores(result);
         if (!auditIgnores.isEmpty()) build = build.withAuditIgnores(auditIgnores);
+        // [build-info] shapes the jar's resources; it folds into the same block as [javac].
+        Optional<JkBuild.BuildInfo> buildInfo = ManifestTables.parseBuildInfo(result);
+        if (buildInfo.isPresent()) build = build.withBuildInfo(buildInfo.get());
         JkBuild.FormatConfig format = ManifestTables.parseFormat(result);
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
         PomMetadata publish = ManifestTables.parsePublish(result).orElse(null);

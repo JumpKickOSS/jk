@@ -21,6 +21,7 @@ import cc.jumpkick.model.Workspace;
 import cc.jumpkick.model.Workspace.WorkspaceDependency;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -186,6 +187,38 @@ public final class ManifestTables {
         }
         if (productLib == null && productBin == null) return Optional.empty();
         return Optional.of(new JkBuild.Install(productLib, productBin));
+    }
+
+    static final List<String> BUILD_INFO_KEYS = List.of("file", "time");
+
+    /**
+     * {@code [build-info]} — the git build-info resources the jar carries; see {@link
+     * JkBuild.BuildInfo}. An empty table is the whole battery at its defaults.
+     */
+    static Optional<JkBuild.BuildInfo> parseBuildInfo(TomlTable root) {
+        if (root.contains(TaskNames.BUILD_INFO) && !root.isTable(TaskNames.BUILD_INFO)) {
+            throw new JkBuildParseException(
+                    "`build-info` must be a table — use [build-info], optionally with file and time keys");
+        }
+        TomlTable table = root.getTable(TaskNames.BUILD_INFO);
+        if (table == null) return Optional.empty();
+        rejectUnknownKeys(table, BUILD_INFO_KEYS, "[build-info]");
+        String file = stringOrThrow(table, "file", "build-info.file");
+        if (file != null && (file.isBlank() || file.startsWith("/") || file.contains(".."))) {
+            throw new JkBuildParseException(
+                    "[build-info] file must be a relative resource path inside the jar, such as git.properties");
+        }
+        String time = stringOrThrow(table, "time", "build-info.time");
+        boolean buildTime =
+                switch (time == null ? "commit" : time.trim().toLowerCase(Locale.ROOT)) {
+                    case "commit" -> false;
+                    case "build" -> true;
+                    default ->
+                        throw new JkBuildParseException(
+                                "[build-info] time must be \"commit\" (the HEAD"
+                                        + " commit's time; reproducible) or \"build\" (the wall clock; every build repackages)");
+                };
+        return Optional.of(new JkBuild.BuildInfo(file == null ? JkBuild.BuildInfo.DEFAULT_FILE : file, buildTime));
     }
 
     static final List<String> PUBLISH_KEYS = List.of("name", "url", "licenses", "developers", "scm");

@@ -33,6 +33,7 @@ register.
 | protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen, protoc plugins (`[protobuf.grpc-java]`) | core | the native-binary generator |
 | generator | `[generate.<name>]`: any JVM code generator as a cached generate-stage step | core | one worker behind every generator table |
 | openapi | `[openapi]`: OpenAPI Generator over a contract, interface-only Spring by default | core | most Spring services ship a contract |
+| build-info | `[build-info]`: `git.properties` and Boot's `build-info.properties` as cached resources in the jar | core | Boot's `/info` endpoint on every imported service; the git-commit-id plugins' consumers |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |
 | grails | `[grails]`: Grails 8 on the Groovy lane | **contrib** | tracks an 8.x milestone; `latest` would pick Grails 7 |
 | Scala 3 | mixed Java/Scala modules through Zinc | **contrib** | compiles; no cross-building, Scala.js/Native or sbt parity |

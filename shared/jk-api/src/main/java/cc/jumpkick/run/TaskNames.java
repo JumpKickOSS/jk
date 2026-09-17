@@ -42,6 +42,9 @@ public final class TaskNames {
 
     public static final String COPY_RESOURCES = "copy-resources";
 
+    /** {@code [build-info]}: {@code git.properties} (and Boot's {@code build-info.properties}) into the classes tree. */
+    public static final String BUILD_INFO = "build-info";
+
     /** Forecast-only: test-resource drift. Never discounts {@link #RUN_TESTS}. */
     public static final String COPY_TEST_RESOURCES = "copy-test-resources";
 

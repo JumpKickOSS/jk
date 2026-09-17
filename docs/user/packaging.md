@@ -61,6 +61,36 @@ javadoc = "strict"   # javadoc's own doclint checks fail the step instead of war
   `README` saying so. Central accepts an empty javadoc jar; jk does not run Dokka.
 - A workspace root that only coordinates members, and a module with no sources, ship neither.
 
+## Build info: `git.properties` and Boot's `build-info.properties`
+
+```toml
+[build-info]                    # the table alone is the whole declaration
+# file = "git.properties"       # where the git properties file sits inside the jar
+# time = "commit"               # or "build": the wall clock, so every build repackages
+```
+
+`[build-info]` writes `git.properties` into the module's classes tree after the static resources
+land, so every jar shape — thin, fat, Boot — carries it. The keys are the ones Spring Boot's
+`GitProperties` and the git-commit-id plugins' consumers read: `git.commit.id`,
+`git.commit.id.abbrev`, `git.branch` (the commit when `HEAD` is detached), `git.commit.time`,
+`git.dirty` (uncommitted or untracked files anywhere in the checkout), `git.build.time`,
+`git.build.version` (the module version) and `git.closest.tag.name` when a tag is reachable.
+A Spring Boot module also gets `META-INF/build-info.properties` with Boot's `build.group`,
+`build.artifact`, `build.name`, `build.version` and `build.time`, so `/actuator/info` reports
+both blocks.
+
+The `build-info` step is a resource step: it renders the files from the checkout's `HEAD`, its
+dirty state and the manifest, and writes only what differs from the classes tree. On one commit
+every build produces the same bytes and the step, and the jar behind it, are cache hits; a new
+commit rewrites the file and repackages the jar, and nothing recompiles. `git.build.time` and
+`build.time` are the commit time by default, which is what keeps the output reproducible;
+`time = "build"` records the wall clock instead and repackages on every build. Timestamps are
+spelled `yyyy-MM-dd'T'HH:mm:ssZ` in UTC, the plugin's default and the form Boot parses. A module
+outside a git checkout (an exported tree) builds with a warning and no `git.properties`.
+
+`jk import` writes the table for `git-commit-id-maven-plugin`, `pl.project13.maven:git-commit-id-plugin`,
+Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot { buildInfo() }`.
+
 ## One-off CLI override
 
 ```bash

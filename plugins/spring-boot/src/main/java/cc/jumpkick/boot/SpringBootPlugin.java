@@ -31,9 +31,9 @@ import java.util.stream.Stream;
  *
  * <p>{@code [spring-boot]} keys: {@code aot} (the step runs when true; absent, it runs when
  * {@code [native]} is declared), {@code aot-jvm-args} (flags for the processor's JVM), {@code
- * aot-args} (arguments for the application under processing), {@code include-tools} (nest the
- * jarmode tools jar; default true) and {@code build-info} (write {@code build-info.properties};
- * default false).
+ * aot-args} (arguments for the application under processing) and {@code include-tools} (nest the
+ * jarmode tools jar; default true). Boot's {@code build-info.properties} is the core {@code
+ * [build-info]} table's, written into the classes tree the Boot jar nests.
  */
 public final class SpringBootPlugin implements Plugin, BuildExtension, PackageExtension {
 
@@ -151,15 +151,6 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
             libs.add(new BootJarPackager.Lib(toolsFileName(tools), tools, false, BOOT_GROUP));
         }
 
-        // Build-info (opt-in): the coordinates BuildProperties surfaces via /actuator/info.
-        // No build.time — reproducibility wins; Boot handles its absence.
-        Map<String, String> buildInfo = boot.bool("build-info", false)
-                ? Map.of(
-                        "group", io.project().group(),
-                        "artifact", io.project().name(),
-                        "name", io.project().name(),
-                        "version", io.project().version())
-                : Map.of();
         byte[] sbom = new byte[0];
         Path sbomFile = io.extra("sbom").orElse(null);
         if (sbomFile != null && Files.isRegularFile(sbomFile)) sbom = Files.readAllBytes(sbomFile);
@@ -203,7 +194,6 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
                         inputs.startClass(),
                         inputs.bootVersion(),
                         attributes,
-                        buildInfo,
                         sbom,
                         aotDirs,
                         0L));

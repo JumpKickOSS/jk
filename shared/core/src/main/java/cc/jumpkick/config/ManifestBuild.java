@@ -25,6 +25,7 @@ import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.run.TaskNames;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -86,7 +87,8 @@ public final class ManifestBuild {
                 "m2",
                 "install",
                 "publish",
-                "guards"));
+                "guards",
+                TaskNames.BUILD_INFO));
         for (Scope scope : Scope.values()) out.add(scope.tomlSection()); // [dependencies] + scoped spellings
         return Set.copyOf(out);
     }
@@ -320,7 +322,8 @@ public final class ManifestBuild {
                     List.of(),
                     null,
                     List.of(),
-                    EnvConfig.EMPTY);
+                    EnvConfig.EMPTY,
+                    null);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
@@ -350,7 +353,8 @@ public final class ManifestBuild {
                 List.of(),
                 null,
                 List.of(),
-                EnvConfig.EMPTY);
+                EnvConfig.EMPTY,
+                null);
     }
 
     /** The three {@code [resolve]} policies, at their defaults when the table or key is absent. */

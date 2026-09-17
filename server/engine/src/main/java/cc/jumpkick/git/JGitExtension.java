@@ -19,11 +19,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.CredentialsProvider;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
@@ -107,6 +109,30 @@ public final class JGitExtension implements GitBackend {
             RevCommit c = walk.parseCommit(ObjectId.fromString(sha));
             return new GitFetcher.RefInfo(
                     sha, Instant.ofEpochSecond(c.getCommitTime()), describeNearestTag(git, ObjectId.fromString(sha)));
+        } catch (GitAPIException e) {
+            throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public Optional<GitFetcher.Worktree> describeWorktree(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return Optional.empty();
+        FileRepositoryBuilder builder = new FileRepositoryBuilder().findGitDir(dir.toFile());
+        if (builder.getGitDir() == null) return Optional.empty();
+        try (Repository repo = builder.build();
+                Git git = new Git(repo);
+                RevWalk walk = new RevWalk(repo)) {
+            ObjectId head = repo.resolve(Constants.HEAD);
+            if (head == null) return Optional.empty(); // an unborn HEAD
+            RevCommit commit = walk.parseCommit(head);
+            String branch = repo.getBranch(); // the sha itself when detached
+            boolean dirty = !git.status().call().isClean();
+            return Optional.of(new GitFetcher.Worktree(
+                    head.getName(),
+                    branch == null ? head.getName() : branch,
+                    Instant.ofEpochSecond(commit.getCommitTime()),
+                    dirty,
+                    describeNearestTag(git, head)));
         } catch (GitAPIException e) {
             throw new IOException(e.getMessage(), e);
         }

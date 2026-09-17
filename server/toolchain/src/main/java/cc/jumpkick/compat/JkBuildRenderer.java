@@ -50,6 +50,7 @@ public final class JkBuildRenderer {
         renderManifest(sb, jkBuild.manifest());
         renderWorkspace(sb, jkBuild);
         renderBuild(sb, jkBuild.build());
+        renderBuildInfo(sb, jkBuild.build().buildInfo());
         renderResolve(sb, jkBuild.build());
         renderJavac(sb, jkBuild.build().javac());
         renderProfiles(sb, jkBuild);
@@ -87,6 +88,16 @@ public final class JkBuildRenderer {
                     .append(inlineTable(build.testJvm().systemProperties()))
                     .append('\n');
         }
+    }
+
+    /** {@code [build-info]} — the table itself is the declaration; only keys off their defaults are written. */
+    private static void renderBuildInfo(StringBuilder sb, JkBuild.@Nullable BuildInfo info) {
+        if (info == null) return;
+        sb.append("\n[build-info]\n");
+        if (!info.file().equals(JkBuild.BuildInfo.DEFAULT_FILE)) {
+            sb.append("file = ").append(quote(info.file())).append('\n');
+        }
+        if (info.buildTime()) sb.append("time = \"build\"\n");
     }
 
     /** {@code { key = "value", "dotted.key" = "value" }} in map order. */
