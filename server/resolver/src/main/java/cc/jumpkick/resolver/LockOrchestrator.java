@@ -264,11 +264,11 @@ public final class LockOrchestrator {
             for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
         }
         if (!members.isEmpty()) {
-            MemberPartitions.MemberSolver solver = (manifest, prefs) -> {
+            MemberPartitions.MemberSolver solver = (manifest, features, prefs) -> {
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
                 Solve solve = solveManifest(
-                        manifest, featuresRequested, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder);
+                        manifest, features, withDefaults, prefs, silent, ResolveObserver.NOOP, pomBuilder);
                 silent.materializePhase(0);
                 return assemble(solve, manifest, jkVersion, silent, pomBuilder);
             };

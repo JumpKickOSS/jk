@@ -164,7 +164,9 @@ A declaration the pinned version does satisfy is a floor, as a sibling's higher 
 the member reads the workspace's row. A floating selector on the member's own root — `latest`, a
 caret, the Jupiter the test runner adds to a member that declares no test dependencies — asks
 the workspace for its answer and never disagrees with it; so a member that holds no platform table
-and pins nothing exactly reads the plain rows alone.
+and pins nothing exactly reads the plain rows alone. A `--features` name reaches a member's own
+solve only where that member's `[features]` declares it; a name the member lacks is not its to
+activate and is left out for it.
 
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
 belongs to. `jk lock` prints one note per member solved on its own, after the summary line, naming
