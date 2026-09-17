@@ -121,8 +121,9 @@ POMs declares** (Gradle's rule, not Maven nearest-wins), never to a newer releas
 repository happens to advertise; only your own opt-in selectors (`^`, `~`, `latest`, ranges)
 reach for the newest release in range — a bare version is a pin. Version order is Maven's, so
 an unknown qualifier such as `2.0.1.MR` counts as newer than `2.0.1` when a selector floats —
-a POM that declares `2.0.1` still gets `2.0.1`. Conflicts get PubGrub prose. With a BOM:
-[Platforms](platforms.md).
+a POM that declares `2.0.1` still gets `2.0.1`. A version a POM declares is a candidate even when
+the repository's version catalog (`maven-metadata.xml`) omits it: the POM it names is what has to
+exist. Conflicts get PubGrub prose. With a BOM: [Platforms](platforms.md).
 
 Your own exact pin is one constraint among the transitives' by default: a pin below a floor some
 POM declares is a conflict, explained. `[resolve] pins = "nearest"` makes the pin the version
