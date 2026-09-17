@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.MinimalToml;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -64,27 +66,34 @@ public final class TomlScan {
     }
 
     /**
-     * As {@link #scan}, but stops at the first {@code [[array-of-tables]]} header. Only for files
-     * whose wanted scalars all precede the array tables <em>by construction</em> — jk-lock.toml,
-     * whose writer emits the toolchain tables and top-level scalars before {@code [[artifact]]} —
-     * so a missing optional key does not read thousands of artifact lines on a hot path.
+     * As {@link #scan}, but reads and remembers only the file's head: the lines up to the first
+     * {@code [[array-of-tables]]} header. Only for files whose wanted scalars all precede the array
+     * tables <em>by construction</em> — jk-lock.toml, whose writer emits the toolchain tables and
+     * top-level scalars before {@code [[artifact]]} — so a head scalar of a megabyte lock costs a
+     * few lines read and a few lines kept, not the whole file memoized for a value in its first ten.
      * User-authored TOML carries no such ordering; use {@link #scan}.
      */
     public static TomlScan scanScalarHead(Path file, String... keys) {
         return scan(file, true, keys);
     }
 
+    /** The head of each file scanned for its head scalars, stamped like {@link #LINES}; see {@link #scanScalarHead}. */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> HEADS = StampedMemo.create();
+
     /**
      * {@code file}'s lines, from the memo when its stamp still matches. Empty for an absent or
      * unreadable file — every lookup then reads as absent, exactly as the tolerant full readers do.
      */
-    private static List<String> lines(Path file) {
+    private static List<String> lines(Path file, boolean headOnly) {
         SCANS.incrementAndGet();
         Path key = file.toAbsolutePath().normalize();
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(key);
         if (stamp == null) return List.of();
-        if (System.currentTimeMillis() - stamp.modified().toMillis() < SETTLE_MS) return read(key);
-        List<String> hit = LINES.get(key, stamp, () -> read(key));
+        if (Clock.SYSTEM.millis() - stamp.modified().toMillis() < SETTLE_MS) {
+            return headOnly ? readHead(key) : read(key);
+        }
+        List<String> hit =
+                headOnly ? HEADS.get(key, stamp, () -> readHead(key)) : LINES.get(key, stamp, () -> read(key));
         return hit == null ? List.of() : hit;
     }
 
@@ -107,25 +116,55 @@ public final class TomlScan {
         return READS.get();
     }
 
+    /** Test seam: lines read from disk since the last {@link #clearCache()}; a head read stops at the first array table. */
+    public static long linesRead() {
+        return LINES_READ.get();
+    }
+
+    private static final AtomicLong LINES_READ = new AtomicLong();
+
     private static List<String> read(Path file) {
         READS.incrementAndGet();
         try {
-            return Files.readAllLines(file, StandardCharsets.UTF_8);
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            LINES_READ.addAndGet(lines.size());
+            return lines;
         } catch (IOException unreadable) {
             return List.of();
         }
     }
 
+    /** The lines up to and including the first {@code [[array-of-tables]]} header; the whole file when it has none. */
+    private static List<String> readHead(Path file) {
+        READS.incrementAndGet();
+        List<String> head = new ArrayList<>();
+        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                head.add(line);
+                LINES_READ.incrementAndGet();
+                if (line.strip().startsWith("[[")) break;
+            }
+        } catch (IOException unreadable) {
+            return List.of();
+        }
+        return head;
+    }
+
     /** Drop {@code file}'s cached lines, for a writer that has just rewritten it. */
     public static void forget(Path file) {
-        LINES.forget(file.toAbsolutePath().normalize());
+        Path key = file.toAbsolutePath().normalize();
+        LINES.forget(key);
+        HEADS.forget(key);
     }
 
     /** Test seam: drop every cached file. */
     public static void clearCache() {
         LINES.clear();
+        HEADS.clear();
         SCANS.set(0);
         READS.set(0);
+        LINES_READ.set(0);
     }
 
     private static TomlScan scan(Path file, boolean stopAtArrayTable, String... keys) {
@@ -133,7 +172,7 @@ public final class TomlScan {
         Map<String, List<String>> arrays = new HashMap<>();
         Set<String> sections = new HashSet<>();
         Set<String> wanted = Set.of(keys);
-        List<String> body = lines(file);
+        List<String> body = lines(file, stopAtArrayTable);
         if (body.isEmpty()) return new TomlScan(values, arrays, sections);
         {
             String section = "";
