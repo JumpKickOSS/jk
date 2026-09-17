@@ -82,6 +82,41 @@ class RepositoryRoutesTest {
         assertThat(routes.remoteRepositories().get(0).getAuthentication()).isNull();
     }
 
+    /**
+     * The super POM declares {@code central} at Central's own address and Aether keeps it beside
+     * the list it was given; the session's mirror selector sends it to the route instead, with the
+     * route's credential, while a repository under no route's id is left to the session.
+     */
+    @Test
+    void a_pom_declared_repository_under_a_routes_id_is_mirrored_to_the_route() {
+        RepositoryRoutes routes = RepositoryRoutes.of(List.of(
+                new RepositoryRoutes.Route("central", MIRROR.toString(), null, null),
+                new RepositoryRoutes.Route("nexus", NEXUS.toString(), "deploy", "s3cret")));
+        var session = new DefaultRepositorySystemSession();
+        RemoteRepository superPomCentral =
+                new RemoteRepository.Builder("central", "default", "https://repo.maven.apache.org/maven2").build();
+        RemoteRepository pomNexus =
+                new RemoteRepository.Builder("nexus", "default", "https://old.example.test/").build();
+        RemoteRepository other =
+                new RemoteRepository.Builder("jboss", "default", "https://repository.jboss.org/").build();
+
+        routes.attachMirrors(session);
+
+        RemoteRepository central = session.getMirrorSelector().getMirror(superPomCentral);
+        assertThat(central.getUrl()).isEqualTo(MIRROR.toString());
+        assertThat(central.getId()).isEqualTo("central");
+        assertThat(central.getMirroredRepositories()).containsExactly(superPomCentral);
+        RemoteRepository nexus = session.getMirrorSelector().getMirror(pomNexus);
+        try (AuthenticationContext auth = AuthenticationContext.forRepository(session, nexus)) {
+            assertThat(auth.get(AuthenticationContext.USERNAME)).isEqualTo("deploy");
+        }
+        assertThat(session.getMirrorSelector().getMirror(other)).isNull();
+        assertThat(session.getMirrorSelector()
+                        .getMirror(routes.remoteRepositories().get(0)))
+                .as("a route already at its URL is not re-mirrored")
+                .isNull();
+    }
+
     @Test
     void a_line_without_an_id_or_url_is_refused_and_a_blank_line_skipped(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("routes.jsonl");

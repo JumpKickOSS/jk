@@ -9,10 +9,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.repository.MirrorSelector;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.util.repository.AuthenticationBuilder;
 import org.jspecify.annotations.Nullable;
@@ -92,17 +94,46 @@ final class RepositoryRoutes {
      */
     List<RemoteRepository> remoteRepositories() {
         List<RemoteRepository> out = new ArrayList<>(routes.size());
-        for (Route r : routes) {
-            RemoteRepository.Builder b = new RemoteRepository.Builder(r.id(), "default", r.url());
-            if (r.username() != null && r.secret() != null) {
-                b.setAuthentication(new AuthenticationBuilder()
-                        .addUsername(r.username())
-                        .addPassword(r.secret())
-                        .build());
-            }
-            out.add(b.build());
-        }
+        for (Route r : routes) out.add(remote(r).build());
         return out;
+    }
+
+    private static RemoteRepository.Builder remote(Route r) {
+        RemoteRepository.Builder b = new RemoteRepository.Builder(r.id(), "default", r.url());
+        if (r.username() != null && r.secret() != null) {
+            b.setAuthentication(new AuthenticationBuilder()
+                    .addUsername(r.username())
+                    .addPassword(r.secret())
+                    .build());
+        }
+        return b;
+    }
+
+    /**
+     * Send a repository a dependency POM declares under one of these ids — Maven's super POM
+     * declares {@code central} at Central's own address, and Aether keeps that beside the list it
+     * was given — to the route's URL with the route's credential, the way Maven's {@code
+     * <mirrorOf>} does. A repository under no route's id keeps whatever the session's own
+     * selector says. A session that cannot take a selector (read-only) is left as it is.
+     */
+    void attachMirrors(RepositorySystemSession session) {
+        if (!(session instanceof DefaultRepositorySystemSession mutable)) return;
+        Map<String, Route> byId = new LinkedHashMap<>();
+        for (Route r : routes) byId.putIfAbsent(r.id(), r);
+        @Nullable MirrorSelector previous = mutable.getMirrorSelector();
+        try {
+            mutable.setMirrorSelector(repository -> {
+                Route route = byId.get(repository.getId());
+                if (route == null) return previous == null ? null : previous.getMirror(repository);
+                if (route.url().equals(repository.getUrl())) return null;
+                return remote(route)
+                        .setMirroredRepositories(List.of(repository))
+                        .build();
+            });
+        } catch (IllegalStateException readOnly) {
+            System.err.println("jk-quarkus: warning: the resolver session cannot take jk's repository routing;"
+                    + " a repository a POM declares is asked where the POM says");
+        }
     }
 
     /**
