@@ -299,7 +299,9 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   scope into a Maven BOM POM for consumers.
 - **Remotes:** built-in order JumpKick → Central → Google; exclusive specialist groups
   `cc.jumpkick.*` / `build.jumpkick.*` never resolve from Central (see [maven-repo.md](maven-repo.md)).
-  Path/git remotes preserve exclusive bindings when prepended. The proxy a
+  Path/git remotes preserve exclusive bindings when prepended. A workspace's `[repositories]`
+  join by id across the root and its members (`WorkspaceMerge`); one id at two URLs is refused
+  naming both modules, a URL with and without its trailing slash being one URL. The proxy a
   request goes through (`ProxyEnvironment`) reads the user config's `[network]` table once per
   request and, off a request, once per version of the file (`GlobalConfig.network`): the selector
   asks on every HTTP request, and a lock makes tens of thousands.

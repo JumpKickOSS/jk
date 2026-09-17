@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model;
 
+import java.net.URI;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -284,7 +285,9 @@ public final class WorkspaceMerge {
      * The workspace's one repository set: the root's {@code [repositories]} entries, then each
      * member's in {@code [workspace] modules} order, keyed by id — an id already declared adds
      * nothing. One id at two URLs is refused naming both modules: the lock resolves every member
-     * against one set, so the two repositories need two ids or one URL.
+     * against one set, so the two repositories need two ids or one URL. A URL with and without its
+     * trailing slash is one URL: a Maven layout is asked with the slash either way, and a reactor's
+     * POMs spell the same repository both ways.
      */
     static List<RepositorySpec> joinRepositories(JkBuild root, Collection<JkBuild> modules) {
         Map<String, RepositorySpec> byId = new LinkedHashMap<>();
@@ -299,7 +302,7 @@ public final class WorkspaceMerge {
                 RepositorySpec first = byId.putIfAbsent(spec.name(), spec);
                 if (first == null) {
                     declaredIn.put(spec.name(), coord);
-                } else if (!first.url().equals(spec.url())) {
+                } else if (!sameRepository(first.url(), spec.url())) {
                     throw new IllegalStateException("[repositories] " + spec.name() + " is " + first.url() + " in "
                             + declaredIn.get(spec.name()) + " and " + spec.url() + " in " + coord
                             + "; a workspace resolves against one repository set — give the two repositories two ids,"
@@ -308,6 +311,14 @@ public final class WorkspaceMerge {
             }
         }
         return List.copyOf(byId.values());
+    }
+
+    private static boolean sameRepository(URI first, URI second) {
+        return withoutTrailingSlash(first.toString()).equals(withoutTrailingSlash(second.toString()));
+    }
+
+    private static String withoutTrailingSlash(String url) {
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
     private static String coordinate(JkBuild build) {

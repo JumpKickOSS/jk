@@ -185,7 +185,7 @@ the root's entries followed by each member's, in `[workspace] modules` order, ke
 the root or an earlier member already declared at the same URL adds nothing; the entry that
 declared it first keeps its credentials, exclusive groups and trust flags. The same id at two URLs
 is refused by `jk lock`, naming both modules and both URLs — give the two repositories two ids, or
-one URL.
+one URL. A URL with and without its trailing slash is one URL.
 
 ## Nothing to build
 
