@@ -276,7 +276,7 @@ public final class JkBuildRenderer {
      */
     private static void renderPluginTables(StringBuilder sb, JkBuild jkBuild) {
         for (PluginConfig config : jkBuild.pluginConfigs().values()) {
-            PluginDescriptor manifest = PluginTableRegistry.byIdOrTable(config.id());
+            PluginDescriptor manifest = installedManifest(config.id());
             String table = manifest != null ? manifest.table() : config.id();
             Map<String, Object> own = new LinkedHashMap<>(config.values());
             own.remove(PluginConfig.ENTRIES);
@@ -300,6 +300,19 @@ public final class JkBuildRenderer {
                 renderPluginKeys(sb, entrySchema, entry.getValue());
             }
         }
+    }
+
+    /**
+     * The manifest owning {@code idOrTable}, installing the built-in that owns it first when the
+     * store has not shelved its worker yet — an import writes a table before its plugin ever ran,
+     * and the table's defaults elide only against the schema. Null when no manifest can be had:
+     * a fetch that fails leaves the table rendered from its values.
+     */
+    private static @Nullable PluginDescriptor installedManifest(String idOrTable) {
+        PluginDescriptor manifest = PluginTableRegistry.byIdOrTable(idOrTable);
+        if (manifest != null) return manifest;
+        PluginTableRegistry.tryFetchMissingBuiltIn(idOrTable);
+        return PluginTableRegistry.byIdOrTable(idOrTable);
     }
 
     /** One table's keys: in schema order minus defaults when a schema is known, else every value as carried. */
