@@ -8,6 +8,8 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.Feature;
+import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.Project;
@@ -317,6 +319,39 @@ class LockOrchestratorMemberPartitionsTest {
         }
     }
 
+    /**
+     * The root's requested features reach a member only where the member declares them: a {@code
+     * --features} name a member lacks is not that member's to activate, so the member's own solve
+     * runs without it instead of refusing the lock as an unknown feature.
+     */
+    @Test
+    void a_requested_feature_a_member_lacks_is_ignored_for_that_member(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        Dependency middle = new Dependency("com.foo:middle", VersionSelector.parse("=1.0"));
+        Dependency leafOn = Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("=2.0"))
+                .withOptional(true);
+        Features extra = new Features(Map.of("extra", new Feature("extra", List.of("leaf"), List.of())), List.of());
+        JkBuild app = withFeatures(manifest("app", Map.of(Scope.MAIN, List.of(middle, leafOn))), extra);
+        JkBuild lib = manifest(
+                "lib",
+                Map.of(Scope.MAIN, List.of(middle, new Dependency("com.foo:leaf", VersionSelector.parse("=1.0")))));
+        JkBuild merged = withFeatures(manifest("root", Map.of(Scope.MAIN, List.of(middle, leafOn))), extra);
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir))
+                .withMembers(List.of(new LockOrchestrator.Member("app", app), new LockOrchestrator.Member("lib", lib)))
+                .lock(merged, "test", List.of("extra"), true);
+
+        assertThat(rows(lock, "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::members)
+                .containsExactlyInAnyOrder(tuple("2.0", List.of()), tuple("1.0", List.of("lib")));
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("2.0");
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("1.0");
+    }
+
     /** {@code the-bom} manages leaf at 2.0; {@code middle} declares leaf 1.0; both leaf releases exist. */
     private void serveMiddleOverLeaf() {
         upstream.pom(
@@ -360,6 +395,13 @@ class LockOrchestratorMemberPartitionsTest {
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(byScope);
         return new JkBuild(new Project("com.example", name, "0.1.0", 25), new JkBuild.Dependencies(copy));
+    }
+
+    private static JkBuild withFeatures(JkBuild manifest, Features features) {
+        return JkBuild.builder(manifest.project())
+                .dependencies(manifest.dependencies())
+                .features(features)
+                .build();
     }
 
     private RepoGroup repoGroup(Path tempDir) {

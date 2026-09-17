@@ -40,9 +40,13 @@ import java.util.TreeMap;
  */
 final class MemberPartitions {
 
-    /** Solves one member's effective manifest with the given soft preferences and assembles its rows. */
+    /**
+     * Solves one member's effective manifest under the requested features it declares and the given
+     * soft preferences, and assembles its rows.
+     */
     interface MemberSolver {
-        Lockfile solve(JkBuild manifest, Map<String, String> prefs) throws IOException, InterruptedException;
+        Lockfile solve(JkBuild manifest, Collection<String> features, Map<String, String> prefs)
+                throws IOException, InterruptedException;
     }
 
     /** How many partitioned coordinates one member's note names before counting the rest. */
@@ -102,7 +106,7 @@ final class MemberPartitions {
             Set<String> flagged = flagged(manifest, own);
             if (flagged.isEmpty()) continue;
             Map<String, String> prefs = prefsFor(flagged, memberPrefs.getOrDefault(member.path(), Map.of()));
-            Lockfile mine = solver.solve(manifest, prefs);
+            Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs);
             Map<String, String> differing = new TreeMap<>();
             for (Lockfile.Artifact row : mine.artifacts()) {
                 String key = row.packageKey() + "@" + row.version();
@@ -139,7 +143,7 @@ final class MemberPartitions {
      */
     private Set<String> flagged(JkBuild manifest, PlatformConstraints own) {
         Set<String> flagged = new LinkedHashSet<>();
-        LockRoots.Declared declared = LockRoots.partition(manifest, featuresRequested, withDefaults);
+        LockRoots.Declared declared = LockRoots.partition(manifest, featuresFor(manifest), withDefaults);
         List<Dependency> roots = new ArrayList<>();
         roots.addAll(declared.main().values());
         roots.addAll(declared.test().values());
@@ -163,6 +167,18 @@ final class MemberPartitions {
             if (ownManaged != null || edgeDeclaresOutside(key, merged.version(), closure)) flagged.add(ga);
         }
         return flagged;
+    }
+
+    /**
+     * The requested features {@code manifest} declares. A name the root has and a member lacks is not
+     * the member's to activate, so it stays out of that member's own solve.
+     */
+    private Collection<String> featuresFor(JkBuild manifest) {
+        List<String> mine = new ArrayList<>();
+        for (String name : featuresRequested) {
+            if (manifest.features().byName().containsKey(name)) mine.add(name);
+        }
+        return mine;
     }
 
     /**
