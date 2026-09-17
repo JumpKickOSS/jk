@@ -103,15 +103,15 @@ class InstallPlansAlreadyInstalledTest {
                     .isFalse();
 
             // The forecast judges the same step against the same root: explain and build agree.
-            assertThat(ModuleForecast.cacheInstallForecast(project, layout, cache, m2Dir, false)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, false)
                             .cached())
                     .as("the forecast reads the redirected repo the install wrote to")
                     .isTrue();
-            assertThat(ModuleForecast.cacheInstallForecast(project, layout, cache, tmp.resolve("other-m2"), false)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, tmp.resolve("other-m2"), false)
                             .cached())
                     .as("the forecast under another --m2-dir predicts the install the build would run")
                     .isFalse();
-            assertThat(ModuleForecast.cacheInstallForecast(project, layout, cache, m2Dir, true)
+            assertThat(ForecastPackagingTails.cacheInstall(project, layout, cache, m2Dir, true)
                             .cached())
                     .as("a jar this build rewrites is reinstalled whatever the repo holds")
                     .isFalse();

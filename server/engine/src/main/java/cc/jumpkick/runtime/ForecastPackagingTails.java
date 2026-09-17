@@ -109,4 +109,20 @@ final class ForecastPackagingTails {
                         TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.CACHED, "", TaskForecaster.key8(jdKey))
                 : new TaskForecast.Task(TaskNames.PACKAGE_JAVADOC, TaskForecast.Status.RUN, "javadoc", null);
     }
+
+    /**
+     * The cache-install step's forecast: cached when the shelf already holds this jar (matching
+     * SHA) and its POM — and, with {@code [m2] install} on, the Maven local repo under {@code
+     * m2Dir}, the request's {@code --m2-dir} root the step writes to. A packaged-but-never-installed
+     * module still runs, and so does one whose jar this build rewrites.
+     */
+    static TaskForecast.Task cacheInstall(
+            JkBuild project, BuildLayout layout, Path cache, @Nullable Path m2Dir, boolean jarDirty) {
+        boolean skip = !jarDirty && InstallPlans.alreadyInstalled(project, layout, cache, m2Dir);
+        return new TaskForecast.Task(
+                TaskNames.CACHE_INSTALL,
+                skip ? TaskForecast.Status.CACHED : TaskForecast.Status.RUN,
+                skip ? "" : "install to local repo",
+                null);
+    }
 }
