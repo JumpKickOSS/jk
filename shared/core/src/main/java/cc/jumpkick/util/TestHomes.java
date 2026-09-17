@@ -43,7 +43,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * behind for ever, and a root that several agents' engines share reaches a steady state within one
  * launch of a slot going stale. The pass is cheap where it can be: a launch within
  * {@link #REAP_EVERY_MILLIS} of a pass that removed nothing and left the root under the cap skips
- * its own. A launch marks every slot it reads with
+ * its own, and a slot's size is walked once and recorded ({@link #SIZE}) until the slot is used
+ * again, so a root of a thousand idle slots costs a listing, not a thousand walks. A launch marks
+ * every slot it reads with
  * a hold ({@link #hold}: a file under {@code .holds} naming its pid and start time, released when
  * the suite exits), and the reaper never removes a held slot — several gates share one machine and
  * one of them launching must not pull the dependency jars out from under another. A hold whose
@@ -77,6 +79,13 @@ public final class TestHomes {
 
     /** {@code <slot>/.used-at}: first line the module's absolute path, mtime the last hand-out. */
     private static final String STAMP = ".used-at";
+
+    /**
+     * The slot's byte count as of its last sizing, beside the stamp. A record at least as new as the
+     * stamp stands in for the walk; a launch re-stamps the slot and a closed hold removes the
+     * record, so a slot is walked again only after it has been used.
+     */
+    static final String SIZE = ".bytes";
 
     /** {@code <slot>/.holds/<pid>-<n>}, body {@code <pid> <start epoch millis>}: one per live launch. */
     private static final String HOLDS = ".holds";
@@ -237,6 +246,10 @@ public final class TestHomes {
             for (Path file : files) {
                 try {
                     Files.deleteIfExists(file);
+                    // The suite wrote into this slot while it ran: the next reap measures it afresh.
+                    Path holds = file.getParent();
+                    Path slot = holds == null ? null : holds.getParent();
+                    if (slot != null) Files.deleteIfExists(slot.resolve(SIZE));
                 } catch (IOException | RuntimeException e) {
                     // A hold left behind names this live process; it lapses when the process does.
                     Log.debug("Hold.close: A hold left behind lapses when this process exits", e);
@@ -347,7 +360,7 @@ public final class TestHomes {
                 if ((used <= cutoff || moduleGone(slot)) && !inUse) {
                     stale.add(slot);
                 } else {
-                    fresh.add(new Slot(slot, used, size(slot), inUse));
+                    fresh.add(new Slot(slot, used, size(slot, used), inUse));
                 }
                 return true;
             });
@@ -383,11 +396,46 @@ public final class TestHomes {
         }
     }
 
-    /** Bytes of regular files under {@code slot}; links are counted as themselves, never followed. */
-    private static long size(Path slot) {
+    /**
+     * Bytes under {@code slot}: the {@link #SIZE} record when it is at least as new as the slot's
+     * last use at {@code usedMillis}, else a walk, recorded for the next pass. A root of many idle
+     * slots is walked once, not at every launch.
+     */
+    static long size(Path slot, long usedMillis) {
+        Path record = slot.resolve(SIZE);
+        Optional<Long> recorded = PathUtil.stat(record)
+                .filter(st -> st.lastModifiedTime().toMillis() >= usedMillis)
+                .flatMap(st -> readSize(record));
+        if (recorded.isPresent()) return recorded.get();
+        long bytes = walk(slot);
+        try {
+            Files.writeString(record, Long.toString(bytes));
+        } catch (IOException | RuntimeException e) {
+            // An unrecorded size costs the next pass a walk, never a failed build.
+            Log.debug("size: An unrecorded size costs the next pass a walk", e);
+        }
+        return bytes;
+    }
+
+    private static Optional<Long> readSize(Path record) {
+        try {
+            return Optional.of(Long.parseLong(Files.readString(record).strip()));
+        } catch (IOException | RuntimeException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Bytes of regular files under {@code slot}, the {@link #SIZE} record itself aside; links are
+     * counted as themselves, never followed.
+     */
+    private static long walk(Path slot) {
         long[] total = {0};
         try {
-            PathUtil.forEachRegularFile(slot, (file, attrs) -> total[0] += attrs.size());
+            PathUtil.forEachRegularFile(slot, (file, attrs) -> {
+                Path name = file.getFileName();
+                if (name == null || !SIZE.equals(name.toString())) total[0] += attrs.size();
+            });
         } catch (IOException | RuntimeException e) {
             // A slot that will not list is sized by what did list.
             Log.debug("size: A slot that will not list is sized by what did list", e);
