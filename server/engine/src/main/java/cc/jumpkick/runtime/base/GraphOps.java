@@ -7,6 +7,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.resolver.DependencyTree;
@@ -35,7 +36,8 @@ public final class GraphOps {
     public static String treeRender(Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames)
             throws IOException {
         JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
-        Lockfile lock = LockfileReader.read(LockPaths.lockFile(dir));
+        Path lockFile = LockPaths.lockFile(dir);
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, dir);
         List<Scope> scopes = scopeNames.isEmpty()
                 ? null
                 : scopeNames.stream().map(Scope::fromCanonical).toList();

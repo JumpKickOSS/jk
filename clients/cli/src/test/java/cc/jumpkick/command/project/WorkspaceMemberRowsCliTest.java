@@ -8,14 +8,17 @@ import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.MockMavenServer;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.testing.FakeJdk;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -97,6 +100,63 @@ class WorkspaceMemberRowsCliTest {
         Path transcript = Path.of(details.group(1));
         assertThat(transcript).as("the lock's run record has a transcript").exists();
         assertThat(Files.readString(transcript)).contains("lock-note").contains("lib reads its own rows");
+    }
+
+    @Test
+    void the_tree_shows_each_member_the_version_it_reads(@TempDir Path root) throws Exception {
+        writeWorkspace(root);
+        assertThat(lock(root)).isEqualTo(0);
+
+        String lib = tree(root, ":lib");
+        assertThat(lib).contains("com.foo:leaf:1.0").doesNotContain("leaf:2.0");
+        String app = tree(root, ":app");
+        assertThat(app).contains("com.foo:leaf:2.0").doesNotContain("leaf:1.0");
+
+        String whole = tree(root, null);
+        int appNode = whole.indexOf("com.acme:app:0.1.0");
+        int libNode = whole.indexOf("com.acme:lib:0.1.0");
+        assertThat(appNode).isNotNegative();
+        assertThat(libNode).isGreaterThan(appNode);
+        assertThat(whole.substring(appNode, libNode)).contains("com.foo:leaf:2.0");
+        // middle was shown under app, so lib's node folds it to a back-reference: no 2.0 is claimed for lib.
+        assertThat(whole.substring(libNode)).doesNotContain("leaf:2.0");
+    }
+
+    @Test
+    void the_intellij_export_gives_each_member_the_library_it_reads(@TempDir Path root) throws Exception {
+        writeWorkspace(root);
+        assertThat(lock(root)).isEqualTo(0);
+        Path jdks = root.resolve("jdks");
+        FakeJdk.create(jdks.resolve("temurin-25.0.3"), "25.0.3");
+        Path ideConfig = root.resolve("ideconfig");
+        Files.createDirectories(ideConfig.resolve("JetBrains/IntelliJIdea2025.1/options"));
+
+        int exit = run(
+                "ide",
+                "--idea",
+                "-C",
+                root.toString(),
+                "--cache-dir",
+                root.resolve("cache").toString(),
+                "--jdks-dir",
+                jdks.toString(),
+                "--ide-config-dir",
+                ideConfig.toString());
+        assertThat(exit).isEqualTo(0);
+
+        String lib = Files.readString(root.resolve("lib/lib.iml"));
+        assertThat(lib).contains("com.foo:leaf:jar::1.0").doesNotContain("com.foo:leaf:jar::2.0");
+        String app = Files.readString(root.resolve("app/app.iml"));
+        assertThat(app).contains("com.foo:leaf:jar::2.0").doesNotContain("com.foo:leaf:jar::1.0");
+    }
+
+    private String tree(Path root, @Nullable String module) {
+        List<String> args = new ArrayList<>(List.of("tree", "-C", root.toString(), "--transitive", "--no-progress"));
+        if (module != null) args.add(module);
+        int[] exit = new int[1];
+        Capture.Streams out = Capture.both(() -> exit[0] = run(args.toArray(String[]::new)));
+        assertThat(exit[0]).as(out.out() + out.err()).isEqualTo(0);
+        return out.out().replaceAll("\u001b\\[[\\d;]*m", "");
     }
 
     private int lock(Path root) {

@@ -10,6 +10,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -117,10 +118,11 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
 
     /**
      * As {@link #loadModules(List, Path)}, but when {@code sharedLock} is non-null every member
-     * uses it directly — modules never own a lockfile ({@code LockPaths} resolves each to the same
+     * reads it directly — modules never own a lockfile ({@code LockPaths} resolves each to the same
      * root {@code jk-lock.toml}), and re-parsing that ~2,300-line file once per member threw away
-     * ~15 identical parses per render. With no shared lock, each distinct lock path is
-     * still parsed at most once.
+     * ~15 identical parses per render. With no shared lock, each distinct lock path is still
+     * parsed at most once. Either way a member's node carries the lock as that member reads it:
+     * its own partition rows in place of the workspace's ({@link MemberRows#view}).
      */
     static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir, @Nullable Lockfile sharedLock) {
         JkBuild rootBuild = null;
@@ -142,14 +144,13 @@ record WorkspaceGraph(Map<String, String> byName, Map<String, LoadedModule> byGa
             try {
                 Path toml = dir == null ? null : ManifestPaths.manifestIn(dir);
                 if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parseLocal(toml);
-                if (lock == null && dir != null) {
-                    Path lf = LockPaths.lockFile(dir);
-                    if (lf != null && Files.isRegularFile(lf)) {
-                        Path key = lf.toAbsolutePath().normalize();
-                        if (!lockMemo.containsKey(key)) lockMemo.put(key, readLockOrNull(key));
-                        lock = lockMemo.get(key);
-                    }
+                Path lf = dir == null ? null : LockPaths.lockFile(dir);
+                if (lock == null && lf != null && Files.isRegularFile(lf)) {
+                    Path key = lf.toAbsolutePath().normalize();
+                    if (!lockMemo.containsKey(key)) lockMemo.put(key, readLockOrNull(key));
+                    lock = lockMemo.get(key);
                 }
+                if (lock != null && lf != null && dir != null) lock = MemberRows.view(lock, lf, dir);
             } catch (Exception e) {
                 // unreadable module — dropped (can't read its scopes)
                 Log.debug("loadModules: unreadable module", e);

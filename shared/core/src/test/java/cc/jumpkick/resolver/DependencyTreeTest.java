@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class DependencyTreeTest {
 
@@ -132,7 +135,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void branch_git_dep_renders_as_a_locked_coordinate(@org.junit.jupiter.api.io.TempDir Path tmp) {
+    void branch_git_dep_renders_as_a_locked_coordinate(@TempDir Path tmp) {
         // A branch-ref git dep is materialized and pinned in jk-lock.toml like any other
         // git dep — it renders exactly like a locked Maven coordinate, no special tag.
         var deps = new ArrayList<Dependency>();
@@ -151,7 +154,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void branch_git_dep_missing_from_lock_is_marked_missing(@org.junit.jupiter.api.io.TempDir Path tmp) {
+    void branch_git_dep_missing_from_lock_is_marked_missing(@TempDir Path tmp) {
         var deps = new ArrayList<Dependency>();
         deps.add(Dependency.git(
                 "com.foo:forked", GitSource.of("https://x/forked", "https://x/forked", new GitRefSpec.Branch("main"))));
@@ -165,7 +168,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void direct_deps_are_grouped_into_scope_sections(@org.junit.jupiter.api.io.TempDir Path tmp) {
+    void direct_deps_are_grouped_into_scope_sections(@TempDir Path tmp) {
         JkBuild project = new JkBuild(
                 new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
@@ -195,7 +198,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void default_scopes_are_export_main_runtime_only(@org.junit.jupiter.api.io.TempDir Path tmp) {
+    void default_scopes_are_export_main_runtime_only(@TempDir Path tmp) {
         JkBuild project = new JkBuild(
                 new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
@@ -217,7 +220,7 @@ class DependencyTreeTest {
      * an effectively empty tree — it names the scopes that DO have deps and how to show them.
      */
     @Test
-    void empty_selection_names_the_scopes_that_do_have_deps(@org.junit.jupiter.api.io.TempDir Path tmp) {
+    void empty_selection_names_the_scopes_that_do_have_deps(@TempDir Path tmp) {
         JkBuild testOnly = new JkBuild(
                 new Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
@@ -250,8 +253,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void workspace_root_groups_modules_under_scope_sections(@org.junit.jupiter.api.io.TempDir Path root)
-            throws Exception {
+    void workspace_root_groups_modules_under_scope_sections(@TempDir Path root) throws Exception {
         // A workspace root with two modules; module b depends on a via `workspace = true`.
         Files.writeString(root.resolve("jk.toml"), """
                 group = "com.acme"
@@ -299,8 +301,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void member_tree_resolves_workspace_siblings_and_expands_when_depth_allows(
-            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+    void member_tree_resolves_workspace_siblings_and_expands_when_depth_allows(@TempDir Path root) throws Exception {
         // b → a (workspace) → c (workspace) + leaf → grand. Member-scoped trees must
         // treat siblings as modules (version from jk.toml), not lock-missing Maven coords.
         Files.writeString(root.resolve("jk.toml"), """
@@ -363,8 +364,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void sibling_subtree_shows_its_contributed_surface_not_the_consuming_scope(
-            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+    void sibling_subtree_shows_its_contributed_surface_not_the_consuming_scope(@TempDir Path root) throws Exception {
         // b consumes a under [test-dependencies]. The expanded sibling must show what the member
         // actually inherits from it — a's export/main/runtime deps — and never a's own test-only
         // deps.
@@ -417,7 +417,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void sibling_runtime_module_edges_do_not_chain(@org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+    void sibling_runtime_module_edges_do_not_chain(@TempDir Path root) throws Exception {
         // b -> a, and a declares sibling c under [runtime-dependencies]. WorkspaceClasspath only
         // chains sibling->sibling module edges through export/main (SIBLING_MODULE_SCOPES), so c's
         // jar is never on b's classpath — the tree must not draw it. a's EXTERNAL
@@ -470,7 +470,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void flatten_lists_each_scope_dep_once_without_nesting(@org.junit.jupiter.api.io.TempDir Path dir) {
+    void flatten_lists_each_scope_dep_once_without_nesting(@TempDir Path dir) {
         // Diamond: root -> a -> leaf ; root -> b -> leaf.
         JkBuild project = projectWithMainDeps("com.foo:root");
         Lockfile lock = lockOf(
@@ -495,7 +495,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void explicit_scope_order_filters_and_reorders_sections(@org.junit.jupiter.api.io.TempDir Path dir) {
+    void explicit_scope_order_filters_and_reorders_sections(@TempDir Path dir) {
         var main = List.of(new Dependency("com.foo:m", new VersionSelector.Exact("=1.0", "1.0")));
         var test = List.of(new Dependency("com.foo:t", new VersionSelector.Exact("=1.0", "1.0")));
         JkBuild project = new JkBuild(
@@ -519,7 +519,7 @@ class DependencyTreeTest {
     }
 
     @Test
-    void stack_blends_all_scopes_under_one_badge_row(@org.junit.jupiter.api.io.TempDir Path dir) {
+    void stack_blends_all_scopes_under_one_badge_row(@TempDir Path dir) {
         var main = List.of(new Dependency("com.foo:m", new VersionSelector.Exact("=1.0", "1.0")));
         var test = List.of(new Dependency("com.foo:t", new VersionSelector.Exact("=1.0", "1.0")));
         JkBuild project = new JkBuild(
@@ -548,6 +548,63 @@ class DependencyTreeTest {
     }
 
     // --- helpers -----------------------------------------------------------
+
+    /**
+     * A workspace lock partitions {@code leaf} per member: the plain row is 2.0, module {@code b}
+     * reads its own 1.0. The workspace-rooted tree shows each module's version under its node, and
+     * a member-rooted tree shows that member's alone.
+     */
+    @Test
+    void a_partitioned_coordinate_shows_each_members_own_version(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "9.9.9"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        // a reaches leaf through middle; b declares leaf itself, so its node lists leaf's row.
+        for (String module : List.of("a", "b")) {
+            Path dir = Files.createDirectories(root.resolve(module));
+            String handle = module.equals("a") ? "middle" : "leaf";
+            Files.writeString(dir.resolve("jk.toml"), """
+                    group = "com.acme"
+                    name = "%s"
+                    version = "9.9.9"
+
+                    [dependencies]
+                    %s = { group = "com.foo", version = "1.0" }
+                    """.formatted(module, handle));
+        }
+        Lockfile lock = lockOf(
+                pkg("com.foo:middle:jar:", "1.0", List.of("com.foo:leaf:jar:@2.0")),
+                pkg("com.foo:leaf:jar:", "2.0", List.of()),
+                pkg("com.foo:leaf:jar:", "1.0", List.of()).withMembers(List.of("b")));
+        LockfileWriter.write(lock, root.resolve("jk-lock.toml"));
+
+        JkBuild rootProject = JkBuildParser.parse(root.resolve("jk.toml"));
+        String whole =
+                DependencyTree.render(rootProject, lock, root, Integer.MAX_VALUE, DependencyTreeStyle.Styling.plain());
+        int a = whole.indexOf("com.acme:a:9.9.9");
+        int b = whole.indexOf("com.acme:b:9.9.9");
+        assertThat(a).isNotNegative();
+        assertThat(b).isGreaterThan(a);
+        assertThat(whole.substring(a, b)).as("a reads the workspace's row").contains("com.foo:leaf:2.0");
+        assertThat(whole.substring(b))
+                .as("b reads its own row")
+                .contains("com.foo:leaf:1.0")
+                .doesNotContain("leaf:2.0");
+
+        JkBuild member = JkBuildParser.parse(root.resolve("b/jk.toml"));
+        String own = DependencyTree.render(
+                member,
+                MemberRows.view(lock, root.resolve("jk-lock.toml"), root.resolve("b")),
+                root.resolve("b"),
+                Integer.MAX_VALUE,
+                DependencyTreeStyle.Styling.plain());
+        assertThat(own).contains("com.foo:leaf:1.0").doesNotContain("leaf:2.0");
+    }
 
     private static final String EMPTY_LOCK = """
             version = 1

@@ -299,8 +299,11 @@ members  = ["zipkin-collector/activemq"]
 3.1.0. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
 own graph reaches has only its `members` row. `jk lock` keeps the versions such a row holds like
 any other's, and says once per member which coordinates it reads its own rows for, with its version
-and the workspace's. `jk why` shows both versions with their members; the tools that read one
-module's classpath — the build, `jk run`, packaging — read that module's rows.
+and the workspace's. `jk why` shows both versions with their members; every tool that reads one
+module's rows — the build, `jk run`, packaging and its SBOM, `jk native` training, a plugin's
+platform pins, `jk export bom` from the member's directory, the IntelliJ libraries `jk ide` writes
+for the module — reads that module's rows, and `jk tree` shows each member's node the version it
+reads. `jk export bom` from the root freezes the workspace's rows.
 
 ## What an exclusion records
 
