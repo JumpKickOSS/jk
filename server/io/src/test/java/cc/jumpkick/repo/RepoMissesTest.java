@@ -76,9 +76,11 @@ class RepoMissesTest {
         assertThat(group.availableVersions(LIB, Set.of("1.0"), false)).containsExactlyInAnyOrder("1.0", "2.0");
 
         assertThat(empty.requestsFor(META)).as("a catalog is asked every time").isEqualTo(2);
+        // A loopback repository's list is revalidated on every ask (a conditional GET), never
+        // served for the day from the on-disk copy: the port names whatever process holds it now.
         assertThat(full.requestsFor(META))
-                .as("the hit came off disk the second time")
-                .isEqualTo(1);
+                .as("a loopback catalog is asked again the second time")
+                .isEqualTo(2);
         assertThat(RepoMisses.size()).as("catalogs are not memoized").isZero();
     }
 
