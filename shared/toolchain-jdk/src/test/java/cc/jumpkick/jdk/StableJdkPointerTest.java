@@ -11,10 +11,38 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class StableJdkPointerTest {
+
+    private @Nullable String prevStateDir;
+    private Path isolatedState;
+
+    /**
+     * The inventory file lives under the STATE dir, not under the jdks root, so an instance built
+     * for a temp root still reads and writes the real {@code ~/.jk/state/jk-jdks.toml} — and a
+     * displacement here renames a row by id, which a temp {@code graalvm-25} shares with the row a
+     * developer actually has. Isolated for the duration.
+     */
+    @BeforeEach
+    void isolateState() throws IOException {
+        isolatedState = Files.createTempDirectory("jk-state-");
+        prevStateDir = System.getProperty("jk.env.JK_STATE_DIR");
+        System.setProperty("jk.env.JK_STATE_DIR", isolatedState.toString());
+        JdkInventory.resetShared();
+    }
+
+    @AfterEach
+    void restoreState() {
+        if (prevStateDir == null) System.clearProperty("jk.env.JK_STATE_DIR");
+        else System.setProperty("jk.env.JK_STATE_DIR", prevStateDir);
+        JdkInventory.resetShared();
+        PathUtil.deleteRecursively(isolatedState);
+    }
 
     private static Path fakeJdk(Path root, String name, String version) throws IOException {
         Path home = root.resolve(name);
@@ -98,19 +126,86 @@ class StableJdkPointerTest {
     }
 
     @Test
-    void ensure_never_deletes_an_install_to_take_the_pointer_name(@TempDir Path tmp) throws IOException {
-        // tightens: even a JDK jk owns is not deleted to free a name. Removing one
-        // is minutes of download and belongs to an explicit `jk jdk` verb.
+    void ensure_moves_our_own_install_off_the_pointer_name_rather_than_deleting_it(@TempDir Path tmp)
+            throws IOException {
+        // A feed that reports a release with no point version — "25", as Oracle GraalVM 25 and six
+        // other JDKs do — makes <vendor>-<version> and <vendor>-<major> the same string, so the
+        // first install of a major lands on its own pointer. The second one then has no name to
+        // aim at, and refusing here left the stable path on the older install.
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path ours = fakeJdk(jdks, "temurin-25", "25");
         JdkOwnership.mark(ours);
         Path fresh = fakeJdk(jdks, "temurin-25.0.4", "25.0.4");
 
-        assertThatIOException()
-                .isThrownBy(() -> new StableJdkPointer(jdks).ensure("temurin-25", fresh))
-                .withMessageContaining("never deletes a JDK");
+        new StableJdkPointer(jdks).ensure("temurin-25", fresh);
 
-        assertThat(JdkFingerprint.java(ours)).as("even our own install stays").exists();
+        Path displaced = jdks.resolve("temurin-25-1");
+        assertThat(JdkFingerprint.java(displaced))
+                .as("moved, never deleted: an install is minutes of download")
+                .exists();
+        assertThat(Files.readString(displaced.resolve("release"))).contains("JAVA_VERSION");
+        assertThat(jdks.resolve("temurin-25").toRealPath())
+                .as("and the stable name now aims at the newest install")
+                .isEqualTo(fresh.toRealPath());
+    }
+
+    @Test
+    void a_displaced_name_is_a_counter_and_not_a_version(@TempDir Path tmp) throws IOException {
+        // -1 says only "the tree that was here first". A version would have to be invented: this
+        // release calls itself 25 in the feed and in its own release file, while GRAALVM_VERSION
+        // says 25.0.0 and the build says 25+37 — writing any of those on disk states something
+        // nothing else claims. The counter still has to parse, though: jk reads the directory name
+        // back to find the install by spec and to map it to this very pointer.
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        JdkOwnership.mark(fakeJdk(jdks, "graalvm-25", "25"));
+        Path next = fakeJdk(jdks, "graalvm-25.0.1", "25.0.1");
+
+        new StableJdkPointer(jdks).ensure("graalvm-25", next);
+
+        assertThat(jdks.resolve("graalvm-25-1")).isDirectory();
+        assertThat(StableJdkPointer.pointerNameFor("graalvm-25-1"))
+                .as("the displaced install still belongs to this pointer")
+                .contains("graalvm-25");
+        assertThat(JdkSelector.parseFlexible("graalvm-25-1").majorOpt())
+                .as("and is still major 25 to a spec search")
+                .contains(25);
+    }
+
+    @Test
+    void a_second_displacement_takes_the_next_counter(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        JdkOwnership.mark(fakeJdk(jdks, "temurin-25", "25"));
+        StableJdkPointer ptr = new StableJdkPointer(jdks);
+        ptr.ensure("temurin-25", fakeJdk(jdks, "temurin-25.0.4", "25.0.4"));
+
+        // The name is free again (it is a link now), so only a second install landing ON it is
+        // displaced — recreate that shape rather than assume it.
+        PathUtil.deleteRecursively(jdks.resolve("temurin-25"));
+        JdkOwnership.mark(fakeJdk(jdks, "temurin-25", "25"));
+        ptr.ensure("temurin-25", fakeJdk(jdks, "temurin-25.0.5", "25.0.5"));
+
+        assertThat(jdks.resolve("temurin-25-1")).isDirectory();
+        assertThat(jdks.resolve("temurin-25-2")).isDirectory();
+        assertThat(jdks.resolve("temurin-25").toRealPath())
+                .isEqualTo(jdks.resolve("temurin-25.0.5").toRealPath());
+    }
+
+    @Test
+    void a_displaced_installs_inventory_row_follows_it(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path ours = fakeJdk(jdks, "graalvm-25", "25");
+        JdkOwnership.mark(ours);
+        JdkInventory inventory = JdkInventory.of(jdks);
+        inventory.record(new InstalledJdk("graalvm-25", ours), false);
+        inventory.setGraal(new InstalledJdk("graalvm-25", ours));
+
+        new StableJdkPointer(jdks).ensure("graalvm-25", fakeJdk(jdks, "graalvm-25.0.1", "25.0.1"));
+
+        JdkInventory after = JdkInventory.of(jdks);
+        assertThat(after.graalId())
+                .as("the user chose that install, and it is still that install")
+                .contains("graalvm-25-1");
+        assertThat(after.homeOf("graalvm-25-1")).contains(jdks.resolve("graalvm-25-1"));
     }
 
     @Test

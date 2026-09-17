@@ -149,6 +149,36 @@ public final class JdkInventory {
         withExclusiveLock(() -> writeLocked(loadLocked().upsert(row)));
     }
 
+    /**
+     * Move a row to a new id after its install directory was renamed, keeping the fingerprint.
+     *
+     * <p>{@link JdkFingerprint#compute} hashes each file under a path relative to the tree, so a
+     * tree that only moved hashes the same — re-walking hundreds of megabytes to learn that is pure
+     * cost, and dropping the hash instead would have {@code jk jdk verify} report an install it has
+     * no reason to doubt. A default naming the old id follows it: the user chose that install, and
+     * it is still that install.
+     *
+     * <p>No-op when nothing is recorded under {@code oldId} — {@code jk jdk repair} picks up an
+     * owned tree that no row names.
+     */
+    public void rename(String oldId, String newId, Path newHome) throws IOException {
+        if (oldId == null || newId == null || oldId.isBlank() || newId.isBlank() || oldId.equals(newId)) return;
+        Row existing = snapshot().row(oldId);
+        if (existing == null) return;
+        // Built outside the lock, like record(): the probe it runs is another reader's business.
+        Row moved = rowFor(new InstalledJdk(newId, newHome), existing, false);
+        withExclusiveLock(() -> {
+            Snapshot snap = loadLocked();
+            if (!snap.rows.containsKey(oldId)) return;
+            Map<String, Row> rows = new LinkedHashMap<>(snap.rows);
+            rows.remove(oldId);
+            rows.put(newId, moved);
+            String def = oldId.equals(snap.defaultId) ? newId : snap.defaultId;
+            String graal = oldId.equals(snap.graalId) ? newId : snap.graalId;
+            writeLocked(new Snapshot(def, graal, rows));
+        });
+    }
+
     /** Drop a row. Default ids that still name it are left for the caller to retarget. */
     public void remove(String id) throws IOException {
         if (id == null || id.isBlank()) return;

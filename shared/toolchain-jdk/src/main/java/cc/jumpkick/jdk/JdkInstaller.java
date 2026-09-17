@@ -253,8 +253,14 @@ public final class JdkInstaller {
         // failure here must not fail the install itself.
         try {
             new StableJdkPointer(registry.jdksRoot()).ensure(pointerName(entry), target);
-        } catch (IOException ignored) {
-            // Pointer is a convenience; the install is already complete.
+        } catch (IOException pointerFailed) {
+            // Still not fatal — the install is on disk and usable by its own name. But silence was
+            // the wrong answer: a stable name left aiming at an older install is a wrong answer
+            // that looks like a right one, and whatever is configured with that path keeps building
+            // against the JDK the user just replaced.
+            Log.warn(
+                    "installed " + target.getFileName() + " but could not aim " + pointerName(entry) + " at it",
+                    pointerFailed);
         }
         InstalledJdk installed = new InstalledJdk(installName, javaHome);
         recordInventory(installed);
