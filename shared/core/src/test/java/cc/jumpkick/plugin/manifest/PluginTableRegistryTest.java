@@ -66,6 +66,27 @@ class PluginTableRegistryTest {
         assertThat(config.stringList("aot-args")).isEmpty();
     }
 
+    /** A string-list key takes a bare string as the one-element list, so `src = "proto"` and `src = ["a", "b"]` both read. */
+    @Test
+    void a_string_list_key_reads_a_bare_string_as_one_element() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id    = "zz-roots"
+                table = "zz-roots"
+
+                [schema]
+                src = { type = "string-list", default = ["proto"] }
+                """, "zz-roots.toml");
+        assertThat(PluginTableRegistry.validate(manifest, Toml.parse("src = \"src/main/proto\""))
+                        .stringList("src"))
+                .containsExactly("src/main/proto");
+        assertThat(PluginTableRegistry.validate(manifest, Toml.parse("src = [\"a\", \"b\"]"))
+                        .stringList("src"))
+                .containsExactly("a", "b");
+        assertThat(PluginTableRegistry.validate(manifest, Toml.parse("")).stringList("src"))
+                .containsExactly("proto");
+    }
+
     @Test
     void validate_enforces_required_with_example_and_hint() {
         var manifest = PluginTableRegistry.byTable("spring-boot").orElseThrow();

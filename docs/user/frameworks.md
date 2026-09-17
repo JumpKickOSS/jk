@@ -149,7 +149,7 @@ compile graph. The plugin owns the generate stage; `jk.toml` stays data.
 ```toml
 [protobuf]
 version = "4.33.1"        # the protoc release; pins com.google.protobuf:protoc in jk-lock.toml
-src     = "proto"         # module-relative proto root, protoc's include root
+src     = "proto"         # module-relative proto root(s), protoc's include roots; a list declares several
 lite    = false           # lite-runtime codegen (pairs with protobuf-javalite)
 kotlin  = false           # also emit the Kotlin DSL (--kotlin_out; pairs with protobuf-kotlin)
 
@@ -158,12 +158,13 @@ plugin  = "io.grpc:protoc-gen-grpc-java:1.81.0"
 options = []              # the plugin's parameter, e.g. ["@generated=omit"]
 ```
 
-protoc runs once over every `.proto` under `src`, writing `--java_out` (and `--kotlin_out`) and
+protoc runs once over every `.proto` under `src` — one root, or each of a list (`src = ["proto",
+"src/main/proto"]`) — writing `--java_out` (and `--kotlin_out`) and
 each entry's `--<id>_out` into one generated directory that joins the module's sources, so a
 `service` compiles against its gRPC stubs with no source root to declare. protoc and every
 plugin executable are fetched from the repositories for the host's OS and architecture and pinned
 in `jk-lock.toml`; an entry's `plugin` is a `group:artifact:version` and fewer segments fail the
-parse naming the entry. protoc's include path is the module's `src`, then the `src` of every
+parse naming the entry. protoc's include path is the module's `src` roots, then the `src` of every
 workspace sibling the module depends on that has a `[protobuf]` table — a proto imports a sibling's
 by bare name, as it does under Maven where the sibling's jar carries its protos — then the protos
 the runtime-closure jars carry, then those of the compile-only jars: `google/protobuf/*.proto` in

@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.build.BuildExtension;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -33,14 +34,14 @@ public final class ProtoCompiler implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        String src = ctx.config().stringOpt("src").orElse("proto");
+        List<In> inputs = new ArrayList<>();
+        for (String root : ProtocStep.roots(ctx.config())) inputs.add(In.projectFiles(root));
+        inputs.add(In.siblingProjectFiles("src"));
+        inputs.add(In.config());
+        inputs.add(In.runtimeClasspath());
+        inputs.add(In.compileClasspath());
         ctx.named("protoc")
-                .inputs(
-                        In.projectFiles(src),
-                        In.siblingProjectFiles("src"),
-                        In.config(),
-                        In.runtimeClasspath(),
-                        In.compileClasspath())
+                .inputs(inputs.toArray(In[]::new))
                 .outputs("gen")
                 .contributesSources("gen")
                 .run(ProtocStep::run);

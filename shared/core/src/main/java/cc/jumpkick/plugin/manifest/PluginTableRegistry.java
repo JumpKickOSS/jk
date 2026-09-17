@@ -382,6 +382,11 @@ public final class PluginTableRegistry {
                 yield v;
             }
             case STRING_LIST -> {
+                // A bare string is the one-element list: `src = "proto"` reads as `src = ["proto"]`.
+                if (table.isString(key.name())) {
+                    String one = Objects.requireNonNull(table.getString(key.name()));
+                    yield one.isBlank() ? List.of() : List.of(one);
+                }
                 TomlArray arr = getOr(() -> table.getArray(key.name()), where + " must be an array of strings");
                 if (arr == null) throw new JkBuildParseException(where + " must be an array of strings");
                 List<String> out = new ArrayList<>(arr.size());
