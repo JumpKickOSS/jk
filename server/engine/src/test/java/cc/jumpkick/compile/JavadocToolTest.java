@@ -13,11 +13,40 @@ class JavadocToolTest {
 
     @Test
     void lenient_turns_doclint_off_and_strict_keeps_javadocs_own_checks() {
-        List<String> lenient = JavadocTool.options(JavadocMode.LENIENT, 17);
+        List<String> lenient = JavadocTool.options(JavadocMode.LENIENT, 17, List.of());
         assertThat(lenient).contains("-Xdoclint:none", "-notimestamp", "-quiet").containsSequence("--release", "17");
-        List<String> strict = JavadocTool.options(JavadocMode.STRICT, 17);
+        List<String> strict = JavadocTool.options(JavadocMode.STRICT, 17, List.of());
         assertThat(strict).doesNotContain("-Xdoclint:none").contains("-notimestamp");
-        assertThat(JavadocTool.options(JavadocMode.LENIENT, 0)).doesNotContain("--release");
+        assertThat(JavadocTool.options(JavadocMode.LENIENT, 0, List.of())).doesNotContain("--release");
+    }
+
+    /**
+     * javadoc reads the module graph the compile did: the module's {@code --add-modules},
+     * {@code --add-exports} and {@code --add-reads} ride along, and an export of a system module
+     * — which javadoc refuses under {@code --release} as javac does — switches the level to
+     * {@code -source}, the one half of the compile's pair javadoc knows.
+     */
+    @Test
+    void the_modules_the_compile_adds_and_exports_ride_along_and_switch_the_level() {
+        List<String> javac = List.of(
+                "-parameters",
+                "--add-modules",
+                "jdk.javadoc",
+                "--add-exports",
+                "jdk.javadoc/jdk.javadoc.internal.tool=ALL-UNNAMED",
+                "-Xlint:all");
+        List<String> options = JavadocTool.options(JavadocMode.LENIENT, 17, javac);
+        assertThat(options)
+                .containsSequence("-source", "17")
+                .containsSequence("--add-modules", "jdk.javadoc")
+                .containsSequence("--add-exports", "jdk.javadoc/jdk.javadoc.internal.tool=ALL-UNNAMED")
+                .doesNotContain("--release", "-target", "-parameters", "-Xlint:all", "-Xlint:-options");
+
+        List<String> own = JavadocTool.options(
+                JavadocMode.LENIENT, 21, List.of("--add-reads=my.mod=ALL-UNNAMED", "--add-modules=ALL-MODULE-PATH"));
+        assertThat(own)
+                .containsSequence("--release", "21")
+                .contains("--add-reads=my.mod=ALL-UNNAMED", "--add-modules=ALL-MODULE-PATH");
     }
 
     /** javadoc repeats a comment's problems once per index pass; the results want each once. */

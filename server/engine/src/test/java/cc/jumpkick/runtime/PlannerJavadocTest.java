@@ -91,8 +91,8 @@ class PlannerJavadocTest {
         for (Path javaHome : javaHomes()) {
             for (JavadocMode mode : List.of(JavadocMode.LENIENT, JavadocMode.STRICT)) {
                 Path out = Files.createDirectories(tmp.resolve(javaHome.getFileName() + "-" + mode));
-                JavadocTool.Result r =
-                        JavadocTool.run(javaHome, out, List.of(source), List.of(), JavadocTool.options(mode, 21), tmp);
+                JavadocTool.Result r = JavadocTool.run(
+                        javaHome, out, List.of(source), List.of(), JavadocTool.options(mode, 21, List.of()), tmp);
                 PlannerJavadoc.Verdict verdict = PlannerJavadoc.verdict(mode, r, true);
                 if (mode == JavadocMode.LENIENT) {
                     assertThat(verdict)

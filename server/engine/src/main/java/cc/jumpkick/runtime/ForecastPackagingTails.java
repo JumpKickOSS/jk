@@ -88,7 +88,11 @@ final class ForecastPackagingTails {
         // The live step documents against what javac saw plus the module's own classes.
         List<Path> classpath = new ArrayList<>(mainCp);
         classpath.add(layout.classesDir());
-        List<String> options = JavadocTool.options(project.project().javadocMode(), prepared.release());
+        List<String> options = JavadocTool.options(
+                project.project().javadocMode(),
+                prepared.release(),
+                PlannerCompile.javacOptions(
+                        prepared.javacArgs(), project.build().javac()));
         // Kotlin sources make it a Dokka run; an exact [dokka] version (the default) needs no catalog.
         String dokkaVersion = prepared.ktSrc().isEmpty()
                 ? null

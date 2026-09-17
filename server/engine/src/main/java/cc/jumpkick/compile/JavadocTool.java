@@ -3,6 +3,7 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.JavacLevel;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.JavadocMode;
@@ -40,15 +41,19 @@ public final class JavadocTool {
     /**
      * The options a run keys on: lenient turns doclint off, strict keeps javadoc's own checks. No
      * timestamps and no status chatter, so the output tree — and the jar — is a pure function of
-     * the inputs.
+     * the inputs. The module graph is the compile's: its {@code --add-modules}, {@code
+     * --add-exports} and {@code --add-reads} ride along, and an export of a system module — which
+     * javadoc refuses beside {@code --release} as javac does — sets the level with {@code -source}
+     * instead, the half of {@link JavacLevel}'s pair javadoc knows.
      */
-    public static List<String> options(JavadocMode mode, int release) {
+    public static List<String> options(JavadocMode mode, int release, List<String> javacArgs) {
         List<String> opts = new ArrayList<>(List.of("-quiet", "-notimestamp", "-encoding", "UTF-8"));
         if (mode != JavadocMode.STRICT) opts.add("-Xdoclint:none");
         if (release > 0) {
-            opts.add("--release");
+            opts.add(JavacLevel.exportsSystemModule(javacArgs) ? "-source" : "--release");
             opts.add(Integer.toString(release));
         }
+        opts.addAll(JavacLevel.moduleGraphOptions(javacArgs));
         return List.copyOf(opts);
     }
 
