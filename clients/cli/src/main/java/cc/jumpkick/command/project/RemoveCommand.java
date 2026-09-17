@@ -49,11 +49,7 @@ public final class RemoveCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Test scope", "--test"),
-                Opt.flag("Runtime scope", "--runtime"),
-                Opt.flag("Provided scope", "--provided"),
-                Opt.flag("Annotation processor scope", "--processor"));
+        return DepScopeFlags.options();
     }
 
     @Override
@@ -68,23 +64,13 @@ public final class RemoveCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
-        boolean test = in.isSet("test");
-        boolean runtime = in.isSet("runtime");
-        boolean provided = in.isSet("provided");
-        boolean processor = in.isSet("processor");
         String nameArg = in.positionals().get(0);
 
         Path dir = global.workingDir();
         Path file = dir.resolve(ManifestPaths.MANIFEST);
         if (!Files.exists(file)) return ManifestEditRefusal.print("Remove", dir);
-        int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
-        if (selected > 1) {
-            CommandWedge.printFail("Remove", "--test / --runtime / --provided / --processor are mutually exclusive");
-            return Exit.USAGE;
-        }
-        Scope scope = test
-                ? Scope.TEST
-                : runtime ? Scope.RUNTIME : provided ? Scope.PROVIDED : processor ? Scope.PROCESSOR : Scope.MAIN;
+        Scope scope = DepScopeFlags.resolve("Remove", in);
+        if (scope == null) return Exit.USAGE;
         // Candidate manifest keys, most-literal first: for a bare name the manifest key wins over
         // a shadowing directory — an unrelated checkout ./jackson must not redirect
         // `jk remove jackson` to that module's project name. Explicit path syntax

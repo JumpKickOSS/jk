@@ -46,6 +46,43 @@ class AddRemoveCommandTest {
     }
 
     @Test
+    void add_processor_and_test_together_write_the_test_processor_table(@TempDir Path tempDir) throws Exception {
+        run("new", tempDir.toString());
+        int exit = run(
+                "add", "org.mapstruct:mapstruct-processor:1.6.3", "--processor", "--test", "-C", tempDir.toString());
+        assertThat(exit).isEqualTo(0);
+
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).contains("[test-processor-dependencies]");
+        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThat(parsed.dependencies().of(Scope.TEST_PROCESSOR))
+                .singleElement()
+                .satisfies(d -> {
+                    assertThat(d.library()).isEqualTo("mapstruct-processor");
+                    assertThat(d.module()).isEqualTo("org.mapstruct:mapstruct-processor");
+                });
+        assertThat(parsed.dependencies().of(Scope.PROCESSOR)).isEmpty();
+        assertThat(parsed.dependencies().of(Scope.TEST)).isEmpty();
+
+        assertThat(run("remove", "mapstruct-processor", "--processor", "--test", "-C", tempDir.toString()))
+                .isEqualTo(0);
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
+                        .dependencies()
+                        .of(Scope.TEST_PROCESSOR))
+                .isEmpty();
+    }
+
+    @Test
+    void add_refuses_two_scope_flags_that_name_two_tables(@TempDir Path tempDir) throws Exception {
+        run("new", tempDir.toString());
+        assertThat(run("add", "org.mapstruct:mapstruct:1.6.3", "--runtime", "--test", "-C", tempDir.toString()))
+                .isNotEqualTo(0);
+        assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml"))
+                        .dependencies()
+                        .of(Scope.TEST))
+                .isEmpty();
+    }
+
+    @Test
     void add_with_structured_flags(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
         int exit = run(

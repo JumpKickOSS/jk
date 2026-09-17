@@ -34,6 +34,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -54,11 +55,8 @@ public final class AddCommand implements CliCommand {
     private @Nullable String nameFlag;
     private @Nullable String versionFlag;
     private @Nullable String classifierFlag;
-    private boolean test;
-    private boolean runtime;
-    private boolean provided;
-    private boolean processor;
     private boolean ping;
+    private Invocation invocation;
     private GlobalOptions global;
 
     @Override
@@ -73,18 +71,16 @@ public final class AddCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
+        List<Opt> opts = new ArrayList<>(List.of(
                 Opt.value("<handle>", "Manifest key; defaults to the dependency name.", "--library"),
                 Opt.value("<group>", "Maven groupId. Required for a bare short name.", "--group"),
                 Opt.value("<name>", "Maven artifactId; defaults to the library handle.", "--name"),
                 // --version collides with the global --version, so jk uses --ver.
                 Opt.value("<ver>", "Version selector, e.g. \"3.4.0\", \"^3.4\", \"~3.4.0\".", "--ver"),
-                Opt.value("<c>", "Maven classifier; the handle defaults to name-<c>.", "--classifier"),
-                Opt.flag("Test scope", "--test"),
-                Opt.flag("Runtime scope", "--runtime"),
-                Opt.flag("Provided scope", "--provided"),
-                Opt.flag("Annotation processor scope", "--processor"),
-                Opt.flag("Check the dep is reachable without adding it.", "--ping"));
+                Opt.value("<c>", "Maven classifier; the handle defaults to name-<c>.", "--classifier")));
+        opts.addAll(DepScopeFlags.options());
+        opts.add(Opt.flag("Check the dep is reachable without adding it.", "--ping"));
+        return List.copyOf(opts);
     }
 
     @Override
@@ -105,11 +101,8 @@ public final class AddCommand implements CliCommand {
         this.nameFlag = in.value("name").orElse(null);
         this.versionFlag = in.value("ver").orElse(null);
         this.classifierFlag = in.value("classifier").filter(c -> !c.isBlank()).orElse(null);
-        this.test = in.isSet("test");
-        this.runtime = in.isSet("runtime");
-        this.provided = in.isSet("provided");
-        this.processor = in.isSet("processor");
         this.ping = in.isSet("ping");
+        this.invocation = in;
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
@@ -213,16 +206,9 @@ public final class AddCommand implements CliCommand {
                 + Theme.colorize("jk build", Theme.active().warning()) + " / " + lock + " picks the newest match";
     }
 
-    /** The selected dependency scope, or {@code null} if more than one flag was given. */
+    /** The selected dependency scope, or {@code null} when the flags name more than one table. */
     private @Nullable Scope resolveScope() {
-        int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
-        if (selected > 1) {
-            CommandWedge.printFail("Add", "--test / --runtime / --provided / --processor are mutually exclusive");
-            return null;
-        }
-        return test
-                ? Scope.TEST
-                : runtime ? Scope.RUNTIME : provided ? Scope.PROVIDED : processor ? Scope.PROCESSOR : Scope.MAIN;
+        return DepScopeFlags.resolve("Add", invocation);
     }
 
     /**
