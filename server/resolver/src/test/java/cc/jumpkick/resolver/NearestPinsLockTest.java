@@ -158,6 +158,35 @@ class NearestPinsLockTest {
                 .contains("2.0.1.MR");
     }
 
+    /**
+     * Every dependency the pin overrides is one line per pinned module, counted and naming each
+     * dependency and what it asked for, not a line per (dependency, module) pair.
+     */
+    @Test
+    void the_dependencies_a_pin_overrides_are_summarized_per_module(@TempDir Path tempDir) throws Exception {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(
+                Scope.MAIN,
+                List.of(
+                        new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0")),
+                        new Dependency("org.apache.shiro:shiro-lang", VersionSelector.parse("=3.0.0")),
+                        new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
+        JkBuild project = new JkBuild(
+                new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
+        List<String> overrides = new ArrayList<>();
+
+        new LockOrchestrator(repoGroup(tempDir))
+                .withPinPolicy(PinPolicy.NEAREST)
+                .lock(project, "test", List.of(), true, recording(overrides));
+
+        assertThat(overrides).hasSize(1);
+        assertThat(overrides.getFirst())
+                .startsWith("jakarta.inject:jakarta.inject-api 2.0.1 is the project's pin; 2 dependencies asked for"
+                        + " other versions: org.apache.shiro:shiro-lang 3.0.0 asked for [2.0.1.MR,+∞),"
+                        + " org.cryptomator:cryptofs 2.10.0 asked for 2.0.1.MR — the pin wins")
+                .endsWith("as a direct dependency does under Maven");
+    }
+
     private static ResolveObserver recording(List<String> overrides) {
         return new ResolveObserver() {
             @Override

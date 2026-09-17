@@ -3,11 +3,15 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,10 +37,24 @@ final class NearestPins {
      * @param pin the version the project declared
      */
     record Override(String parent, String module, String asked, String pin) {
-        String render() {
-            return module + " " + pin + " is the project's pin; " + parent + " asked for " + asked
-                    + " — the pin wins, as a direct dependency does under Maven";
+        /** What the parent asked, as one clause of the module's line. */
+        String asking() {
+            return parent + " asked for " + asked;
         }
+    }
+
+    /** One line per pinned module: the pin, then every dependency it overrode and what each asked for. */
+    static String render(String module, String pin, List<Override> overrides) {
+        StringBuilder out = new StringBuilder(module).append(' ').append(pin).append(" is the project's pin; ");
+        if (overrides.size() == 1) {
+            out.append(overrides.getFirst().asking());
+        } else {
+            out.append(overrides.size())
+                    .append(" dependencies asked for other versions: ")
+                    .append(overrides.stream().map(Override::asking).collect(Collectors.joining(", ")));
+        }
+        return out.append(" — the pin wins, as a direct dependency does under Maven")
+                .toString();
     }
 
     /** The exact roots of the graph about to be solved, or empty when pins are plain constraints. */
@@ -63,8 +81,17 @@ final class NearestPins {
         return VersionSet.exact(pin);
     }
 
-    /** Every override recorded so far, rendered and sorted. */
+    /** Every override recorded so far, one line per pinned module, sorted by module. */
     List<String> renderedOverrides() {
-        return overrides.stream().map(Override::render).sorted().toList();
+        Map<String, List<Override>> byModule = new TreeMap<>();
+        for (Override o : overrides) {
+            byModule.computeIfAbsent(o.module(), k -> new ArrayList<>()).add(o);
+        }
+        List<String> out = new ArrayList<>(byModule.size());
+        for (List<Override> group : byModule.values()) {
+            group.sort(Comparator.comparing(Override::parent));
+            out.add(render(group.getFirst().module(), group.getFirst().pin(), group));
+        }
+        return out;
     }
 }
