@@ -4,6 +4,11 @@ description = "JumpKick's Quarkus packaging plugin"
 [dependencies]
 jk-plugin-sdk.workspace = true
 
+# The bootstrap BOM holds every io.quarkus:quarkus-bootstrap-* and org.apache.maven.resolver row
+# the provided closure below reaches on one line; its rows are scoped to this member alone.
+[platform-dependencies]
+quarkus-bootstrap-bom = { group = "io.quarkus", version = "3.38.0" }
+
 [provided-dependencies]
 quarkus-bootstrap-core = "3.38.0"
 quarkus-bootstrap-maven-resolver = "3.38.0"
@@ -34,9 +39,5 @@ options = [
 [test-dependencies]
 jk-plugin-sdk = { workspace = true, fixtures = true }
 jk-host = { workspace = true, fixtures = true }
-# The Aether types the repository-routes reader maps to, so the suite that holds the fork's
-# remotes to jk's routing runs under the test JVM; the bootstrap closure itself stays provided.
-maven-resolver-api = { group = "org.apache.maven.resolver", version = "2.0.22" }
-maven-resolver-util = { group = "org.apache.maven.resolver", version = "2.0.22" }
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"
