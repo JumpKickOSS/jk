@@ -9,6 +9,10 @@ main = "$package$.Application"
 [spring-boot]
 version = "4.1.1"
 
+# `git.properties` and Boot's `META-INF/build-info.properties` in the jar, so `/actuator/info`
+# reports the commit and version the build came from.
+[build-info]
+
 [dependencies]
 starter-webmvc = "org.springframework.boot:spring-boot-starter-webmvc"
 starter-validation = "org.springframework.boot:spring-boot-starter-validation"

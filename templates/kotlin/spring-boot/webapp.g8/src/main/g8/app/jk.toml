@@ -7,6 +7,10 @@ main = "$package$.ApplicationKt"
 [spring-boot]
 version = "4.1.1"
 
+# `git.properties` and Boot's `META-INF/build-info.properties` in the jar: the commit, branch and
+# version the build came from.
+[build-info]
+
 # `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
 [image]
 name      = "$name$"

@@ -100,7 +100,10 @@ ships a small `jk-guards.toml` of its own — a file-size ratchet and one ban wi
 `guard-fixtures/` — so the guard loop is there from the first build.
 
 Every template also declares test tiers (`[test] exclude-tags` with one profile per tag), a
-`[format]` style, and, for a runnable app, an `[image]` table. None ships an `AGENTS.md`: `jk new`
+`[format]` style, and, for a runnable app, an `[image]` table. The Spring Boot and `library`
+templates carry a [`[build-info]`](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)
+table, so the jar records the commit it was built from (`git.properties`, and Boot's
+`META-INF/build-info.properties` for `/actuator/info`). None ships an `AGENTS.md`: `jk new`
 writes the current one into every project it scaffolds.
 
 MCP `jk_new`: `action=templates` lists `{id,name,language,framework,…}`; `preview=true`
