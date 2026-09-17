@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.layout;
 
+import cc.jumpkick.config.WorkspaceModules;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,8 +111,11 @@ public final class TestSuites {
             names.add(DEFAULT);
         }
         if (compact) {
+            // Under a workspace root a sibling holding src/ is a member, not a suite of the root.
+            Set<Path> members = Set.copyOf(WorkspaceModules.memberDirs(projectDir));
             try (Stream<Path> stream = Files.list(projectDir)) {
                 stream.filter(Files::isDirectory)
+                        .filter(p -> !members.contains(p.normalize()))
                         .map(p -> p.getFileName().toString())
                         .filter(n -> !n.startsWith("."))
                         .filter(n -> !SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT)))

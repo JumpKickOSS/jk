@@ -43,6 +43,40 @@ class ModuleLayoutTest {
                         p.toString().contains("integration") && p.toString().contains("resources"));
     }
 
+    /**
+     * In the compact layout a sibling directory holding {@code src/} is a test suite; under a
+     * workspace root that sibling is a member, so the root's walk stays at its own roots.
+     */
+    @Test
+    void a_workspace_roots_fingerprint_dirs_stop_at_its_own_roots_not_its_members(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "ws"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["core", "libs/*"]
+                """);
+        Files.createDirectories(tmp.resolve("src"));
+        Files.writeString(tmp.resolve("src/Root.java"), "class Root {}");
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/RootTest.java"), "class RootTest {}");
+        for (String member : List.of("core", "libs/util")) {
+            Files.createDirectories(tmp.resolve(member).resolve("src"));
+            Files.writeString(tmp.resolve(member).resolve("jk.toml"), "name = \"m\"\n");
+            Files.writeString(tmp.resolve(member).resolve("src/M.java"), "class M {}");
+        }
+
+        List<Path> dirs = ModuleLayout.fingerprintDirs(tmp, false);
+        assertThat(dirs).contains(tmp.resolve("src"), tmp.resolve("test/src"), tmp.resolve("test"));
+        assertThat(dirs).noneMatch(p -> p.startsWith(tmp.resolve("core")) || p.startsWith(tmp.resolve("libs")));
+        assertThat(ModuleLayout.discoveredSuites(tmp)).containsExactly("test");
+        assertThat(ModuleLayout.roots(tmp).stream().map(ModuleLayout.Root::relative))
+                .contains("src", "test/src")
+                .noneMatch(rel -> rel.startsWith("core") || rel.startsWith("libs"));
+    }
+
     @Test
     void traditional_main_resources_under_src_main(@TempDir Path tmp) throws Exception {
         writeToml(tmp);

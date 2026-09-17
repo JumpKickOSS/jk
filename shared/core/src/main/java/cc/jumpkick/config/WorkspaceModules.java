@@ -8,6 +8,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -60,6 +61,33 @@ public final class WorkspaceModules {
                         "[workspace] modules entry `" + entry + "` matches no directory with a jk.toml");
             }
             out.addAll(matches);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * The member directories the manifest at {@code root} lists under {@code [workspace] modules},
+     * globs expanded, as {@code root.resolve(rel)} normalized, in declared order; empty when
+     * {@code root} has no manifest or no list. A key scan of the manifest, not the full parser: the
+     * list is literal text, the scan costs milliseconds where the parser's first read of a
+     * workspace costs hundreds, and a manifest the parser would reject still names its members.
+     * Quiet on purpose — a glob that matches nothing contributes no member rather than failing a
+     * caller that is reading the tree, not validating the manifest.
+     */
+    public static List<Path> memberDirs(Path root) {
+        Path manifest = ManifestPaths.manifestIn(root);
+        if (!Files.isRegularFile(manifest)) return List.of();
+        List<String> rels = TomlScan.scan(manifest, "workspace.modules").stringArray("workspace.modules");
+        if (rels.isEmpty()) return List.of();
+        List<String> expanded;
+        try {
+            expanded = expand(root, rels);
+        } catch (RuntimeException e) {
+            expanded = rels.stream().filter(r -> r != null && !isGlob(r)).toList();
+        }
+        List<Path> out = new ArrayList<>();
+        for (String rel : expanded) {
+            if (rel != null && !rel.isBlank()) out.add(root.resolve(rel).normalize());
         }
         return List.copyOf(out);
     }
