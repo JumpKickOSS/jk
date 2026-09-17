@@ -637,7 +637,7 @@ public final class GradleImporter {
                 continue;
             try {
                 String name = "repo" + (deduped.size() + 1);
-                deduped.put(name, new RepositorySpec(name, new URI(url.trim())));
+                deduped.put(name, new RepositorySpec(name, RepositorySpec.normalizedUrl(new URI(url.trim()))));
             } catch (URISyntaxException e) {
                 report.warning("repository URL `" + url + "` is not a valid URI; skipped.");
             }
