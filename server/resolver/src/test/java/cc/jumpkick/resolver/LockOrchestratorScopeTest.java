@@ -17,6 +17,7 @@ import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -100,6 +101,65 @@ class LockOrchestratorScopeTest {
         assertThat(mainShared.version()).isEqualTo("2.0");
         assertThat(procShared.version()).isEqualTo("1.0");
         assertThat(procShared.scopes()).containsExactly(Scope.PROCESSOR);
+    }
+
+    /**
+     * Main floats onto shared 2.0; a test dependency's POM holds shared at 3.0. The test graph
+     * honours its edge, but the test classpath carries main's 2.0, so the lock says the 3.0 row is
+     * one nothing reads and names the dependency holding the floor.
+     */
+    @Test
+    void a_test_dependency_flooring_a_module_above_main_is_noted_as_a_dead_test_row(@TempDir Path tempDir)
+            throws Exception {
+        upstream.metadata("com.foo", "shared", "1.0", "2.0", "3.0");
+        upstream.metadata("com.foo", "lib-test", "1.0");
+        for (String v : new String[] {"1.0", "2.0", "3.0"}) {
+            upstream.pom("com.foo", "shared", v, MavenStub.emptyPom("com.foo", "shared", v));
+        }
+        upstream.pom("com.foo", "lib-test", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>lib-test</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>shared</artifactId><version>[3.0,3.0]</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        JkBuild project = jkBuild(Map.of(
+                Scope.MAIN, List.of(new Dependency("com.foo:shared", VersionSelector.parse("^2.0"))),
+                Scope.TEST, List.of(new Dependency("com.foo:lib-test", VersionSelector.parse("=1.0")))));
+        List<String> overrides = new ArrayList<>();
+
+        Lockfile lock =
+                new LockOrchestrator(repoGroup(tempDir)).lock(project, "test", List.of(), true, recording(overrides));
+
+        assertThat(lock.artifacts().stream()
+                        .filter(a -> a.packageKey().equals("com.foo:shared:jar:"))
+                        .map(Lockfile.Artifact::version))
+                .containsExactlyInAnyOrder("2.0", "3.0");
+        assertThat(overrides)
+                .singleElement()
+                .asString()
+                .contains("com.foo:shared resolves 2.0 in the main graph and 3.0 in the test graph")
+                .contains("held there by com.foo:lib-test@1.0 ([3.0,3.0])")
+                .contains("the test classpath carries main's 2.0")
+                .contains("declare com.foo:shared at 3.0 in a main scope");
+    }
+
+    private static ResolveObserver recording(List<String> overrides) {
+        return new ResolveObserver() {
+            @Override
+            public void onTotal(int total) {}
+
+            @Override
+            public void onPackage(String module, String version) {}
+
+            @Override
+            public void onOverride(String line) {
+                overrides.add(line);
+            }
+        };
     }
 
     @Test

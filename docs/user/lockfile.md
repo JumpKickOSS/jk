@@ -286,6 +286,12 @@ the pin and main's version. Move the pin to a main scope to make it the version 
 it. A test dependency's own edge onto such a module still resolves against main's version the same
 way ([Dependencies](dependencies.md#coordinates)).
 
+A test dependency whose POM floors a module *above* the version main floated onto is the same dead
+row from another cause: the test graph honours the edge and the lock keeps that row (its closure is
+what the dependency asked for), but the test classpath still carries main's version, so `jk lock`
+notes the module, both versions and the test dependency holding the floor. Declare the module in a
+main scope at the version the tests need, or pick a test dependency that accepts main's.
+
 `nearest` covers direct pins and BOM order and nothing else: a module only transitive POMs name
 resolves highest-declared under both policies, so a lock row can sit above the version Maven's
 nearer declaration gives the same module. Measured on the Maven top-20 corpus in jk-examples, over
