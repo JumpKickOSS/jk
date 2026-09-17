@@ -104,7 +104,11 @@ https-proxy = "http://proxy.corp:3129"    # https targets only, when they differ
 no-proxy = ["nexus.corp", ".internal.corp", "10.0.0.5:8081"]
 ```
 
-Without a `[network]` table, the shell's `https_proxy` / `HTTPS_PROXY` (https targets),
+Without a `[network]` table, an active `<proxy>` in Maven's `~/.m2/settings.xml` decides for
+the protocol it names (`https` for https targets, `http` for http ones, as Maven matches them),
+its username and password sent as Basic and its `nonProxyHosts` going direct — see
+[Repositories § Maven `settings.xml`](repositories.md#maven-settingsxml-mirrors-proxies-profiles).
+Failing both, the shell's `https_proxy` / `HTTPS_PROXY` (https targets),
 `http_proxy` / `HTTP_PROXY` (http targets) and `no_proxy` / `NO_PROXY` decide — lower case wins
 when both are set, and both `no-proxy` lists apply. A proxy URL is
 `http://[user:password@]host[:port]` (a bare `host:port` is http); https targets tunnel through it

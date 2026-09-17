@@ -12,8 +12,11 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.http.SafeUri;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.M2Dirs;
@@ -22,7 +25,9 @@ import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParser;
 import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.StoreWriteGate;
 import cc.jumpkick.version.Versions;
@@ -40,6 +45,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /** Cache/store inventory for {@code jk cache usage}, {@code jk storage usage}, and {@code jk repo}. */
@@ -71,6 +77,7 @@ public final class CacheInventoryOps {
             case "wipe-store" -> wipeStore(store, req.dryRun());
             case "workers" -> workers(store);
             case "repos" -> repos(store);
+            case "m2-settings" -> m2Settings();
             case "drop-workers" -> dropWorkers(store, req.dryRun());
             default -> CacheInventoryAck.error("unknown cache inventory query: " + query);
         };
@@ -293,6 +300,47 @@ public final class CacheInventoryOps {
                     o.isLegacy() ? "legacy" : "ok"));
         }
         return CacheInventoryAck.repos(lines);
+    }
+
+    /**
+     * Maven's {@code settings.xml} as this engine reads it — see {@link CacheInventoryAck#m2Settings}:
+     * the files looked for, every mirror with the built-in remotes it answers for, the active proxies
+     * (never their credentials) and the active profiles' repositories. {@code jk doctor} prints these.
+     */
+    private static CacheInventoryAck m2Settings() {
+        MavenSettings settings = MavenSettings.current();
+        List<String> lines = new ArrayList<>();
+        Path user = MavenSettings.userSettingsPath();
+        if (user != null && !settings.files().contains(user)) lines.add("file|" + user + "|absent");
+        for (Path file : settings.files()) lines.add("file|" + file + "|read");
+        for (MavenSettings.Mirror mirror : settings.mirrors()) {
+            String captured = RepoGroupBuilder.defaultRemoteRepos().stream()
+                    .filter(r -> mirror.matches(r.name(), r.url()))
+                    .map(RepositorySpec::name)
+                    .collect(Collectors.joining(","));
+            String refusal = RepoMirrors.refusal(mirror);
+            lines.add(String.join(
+                    "|",
+                    "mirror",
+                    mirror.id(),
+                    mirror.mirrorOf(),
+                    SafeUri.forMessage(mirror.url()),
+                    captured,
+                    refusal == null ? "" : refusal));
+        }
+        for (MavenSettings.Proxy proxy : settings.proxies()) {
+            lines.add(String.join(
+                    "|",
+                    "proxy",
+                    proxy.id(),
+                    proxy.protocol(),
+                    proxy.host() + ":" + proxy.port(),
+                    String.join(",", proxy.nonProxyHosts())));
+        }
+        for (RepositorySpec repo : settings.profileRepositories()) {
+            lines.add(String.join("|", "repository", repo.name(), SafeUri.forMessage(repo.url())));
+        }
+        return CacheInventoryAck.m2Settings(lines);
     }
 
     private static CacheInventoryAck repoRefresh(Path storeRoot, List<String> coords) {

@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.MinimalXml;
 import java.nio.file.Files;
@@ -16,8 +17,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code jk.m2.local} system property (tests)
  *   <li>{@code JK_M2_LOCAL} environment variable
  *   <li>{@code maven.repo.local} system property
- *   <li>user {@code ~/.m2/settings.xml} top-level {@code <localRepository>} (no profile merge;
- *       tests may point at a file via {@code jk.m2.settings})
+ *   <li>the user settings file's top-level {@code <localRepository>} (no profile merge; the file
+ *       is the one {@link MavenSettings#userSettingsPath()} names)
  *   <li>{@code ~/.m2/repository}
  * </ol>
  * An unparseable {@code settings.xml} localRepository is warned once per run and skipped.
@@ -94,13 +95,9 @@ public final class M2Dirs {
         }
     }
 
-    /** {@code jk.m2.settings} (tests) or {@code ~/.m2/settings.xml}. */
+    /** The user settings file — {@link MavenSettings#userSettingsPath()}. */
     private static @Nullable Path settingsXml() {
-        String prop = System.getProperty("jk.m2.settings");
-        if (prop != null && !prop.isBlank()) return Path.of(prop.trim());
-        String home = System.getProperty("user.home");
-        if (home == null || home.isBlank()) return null;
-        return Path.of(home, ".m2", "settings.xml");
+        return MavenSettings.userSettingsPath();
     }
 
     private static Path defaultRepository() {

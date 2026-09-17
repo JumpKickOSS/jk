@@ -9,6 +9,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
@@ -156,9 +157,9 @@ final class DeclaredRepositories {
             refuse(repository, "its URL names no host");
             return null;
         }
-        MavenRepo repo = base.repos()
+        MavenRepo repo = RepoMirrors.apply(base.repos()
                 .getFirst()
-                .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots());
+                .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots()));
         built.putIfAbsent(repository.url(), repo);
         return repo;
     }

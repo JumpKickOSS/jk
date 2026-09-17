@@ -145,7 +145,9 @@ Sources, in order — the first that yields a credential wins:
 2. `JK_REPO_<ID>_TOKEN`, or `JK_REPO_<ID>_USERNAME` + `JK_REPO_<ID>_PASSWORD` — `<ID>` is the id
    upper-cased with every non-alphanumeric as `_` (`corp-nexus` → `CORP_NEXUS`)
 3. `jk repo login <id>` (stored under `~/.jk/creds/repo/`, owner-only)
-4. the `<server>` with that `<id>` in `~/.m2/settings.xml`
+4. the `<server>` with that `<id>` in `~/.m2/settings.xml` (a `<mirror>` or active-profile
+   `<repository>` with that id in the same file binds the name to its URL — see
+   [Maven `settings.xml`](#maven-settingsxml-mirrors-proxies-profiles))
 5. a `jk auth login` forge token, for forge package registries (matched by host)
 
 `jk publish --central` reads the id `central`, bound to `https://central.sonatype.com` — see
@@ -222,6 +224,78 @@ committing one to a project is a leak of the project's secret, not of yours.
 Every `JK_REPO_*` variable is read from the shell that runs `jk` and sent with the request, so it
 reaches a resident engine that another terminal started, for that request only. Exporting a token
 in a new terminal is enough; no `jk engine stop` is needed.
+
+## Maven `settings.xml`: mirrors, proxies, profiles
+
+A team already on Maven usually reaches the outside world through `~/.m2/settings.xml`: a
+`<mirror>` that sends `central` (or `*`) to Nexus or Artifactory, a `<proxy>` in front of it, and
+the internal repositories listed in a profile that `<activeProfiles>` turns on. jk reads the same
+file, so `jk build` on an unmodified `pom.xml` and `jk import pom.xml` work on the machine `mvn`
+works on, with nothing added to the project:
+
+```xml
+<settings>
+  <mirrors>
+    <mirror>
+      <id>nexus</id>
+      <mirrorOf>*</mirrorOf>
+      <url>https://nexus.acme.com/repository/maven-public/</url>
+    </mirror>
+  </mirrors>
+  <servers>
+    <server><id>nexus</id><username>me</username><password>…</password></server>
+  </servers>
+  <proxies>
+    <proxy><id>corp</id><protocol>https</protocol><host>proxy.acme.com</host><port>3128</port>
+      <nonProxyHosts>*.acme.com|localhost</nonProxyHosts></proxy>
+  </proxies>
+  <profiles>
+    <profile><id>acme</id><repositories>
+      <repository><id>acme-releases</id><url>https://nexus.acme.com/repository/releases/</url></repository>
+    </repositories></profile>
+  </profiles>
+  <activeProfiles><activeProfile>acme</activeProfile></activeProfiles>
+</settings>
+```
+
+**A mirror is a transport rewrite, not a repository.** The resolver keeps asking `central`, the
+lock keeps recording `central+https://repo.maven.apache.org/maven2/`, the store keeps its
+`repos/central` tree — only the URL every request opens (POMs, jars, `maven-metadata.xml`,
+`.module` files, checksum sidecars) changes on this machine. A lock written behind Nexus is
+byte-identical to one written on the open internet, which is why a mirror does not go into
+`~/.jk/config.toml [repositories]`: a repository declared there is a real source and lands in
+every `source` field. `mirrorOf` follows Maven's grammar — `*`, `external:*` (everything not on
+this machine), `external:http:*`, `central,google`, `*,!jumpkick` — and the first mirror in file
+order that matches wins. The mirror's credential is the `<server>` with the mirror's own `<id>`,
+bound to the mirror URL by the file itself. `jk lock` prints one note per mirrored repository:
+
+```
+repository `central` is reached through mirror `nexus` (/home/me/.m2/settings.xml) at
+https://nexus.acme.com/repository/maven-public/; the lock records `central` at https://repo.maven.apache.org/maven2/
+```
+
+A plaintext `http://` mirror on a network path is refused with a warning naming the entry and the
+repository is asked at its own URL; a loopback mirror is fine. A `<repository>` a dependency's
+POM declares goes through the mirror too.
+
+**A `<proxy>` is jk's proxy** for the protocol it names, between `~/.jk/config.toml [network]` and
+the shell's `https_proxy` / `http_proxy` — see [Config § Network](config.md#network). Its
+username and password ride as Basic; its `nonProxyHosts` (`|`-separated globs) go direct.
+
+**Active-profile repositories join the project's.** For a coexistence build and for `jk import`,
+the `<repositories>` of every profile that `<activeProfiles>` lists (or that is
+`activeByDefault` when none is listed) are added to the imported `[repositories]` after the POM's
+own, with their `<releases>` / `<snapshots>` policy, and consulted for parents and BOMs during the
+import. Their `<server>` credentials are bound to their URLs by the file. These are real
+repositories: an artifact resolved from one is recorded under its id in the lock.
+
+Two files are read and merged the way Maven merges them: the user's `~/.m2/settings.xml` over
+`$M2_HOME/conf/settings.xml` (or `$MAVEN_HOME`); an id in the user's file hides the same id in the
+installation's, and the active-profile ids are the union. `JK_M2_SETTINGS=<file>` names another
+user file (Maven's `-s`). Both files are re-read when they change, so editing one needs no
+`jk engine stop`. `jk doctor` prints which files the engine read, every mirror with the built-in
+remotes it stands in for, the proxies and the profile repositories. Not read:
+`<pluginRepositories>`, `<pluginGroups>`, `${...}` expansion and encrypted passwords.
 
 ## Related
 

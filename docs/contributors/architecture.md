@@ -552,6 +552,11 @@ when the owner is shadowed, so every site that resolves modules, `.env` files or
 the lock owner reads the real tree. The POM's direct versions win over transitive requests
 (`[resolve] pins = "nearest"`, the policy `jk import` writes), bare versions are exact pins and
 BOM imports are enforced platforms; transitives resolve by PubGrub.
+A `<mirror>` in Maven's `settings.xml` (`cc.jumpkick.m2.MavenSettings`) is applied where the
+repository group is built (`RepoMirrors`, on every `MavenRepo` including the ones a dependency's
+POM declares): the repository keeps its name, URL and store, and only the URL its requests open
+changes, so the lock records `central` behind Nexus exactly as it does on the open internet. The
+active profiles' `<repositories>` join the shadow's `[repositories]` through `PomImporter`.
 
 **Tier-3 rows.** What the import report would grade Tier 3 (`<build><extensions>`, a `war`
 packaging, a `system`-scoped dependency, a parent no repository serves) does not stop the build:

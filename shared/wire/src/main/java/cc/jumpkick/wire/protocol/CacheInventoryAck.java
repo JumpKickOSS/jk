@@ -63,6 +63,16 @@ public record CacheInventoryAck(
         return new CacheInventoryAck(null, "repos", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, 0, 0);
     }
 
+    /**
+     * Maven's {@code settings.xml} as the engine reads it: {@code file|<path>|read} or {@code
+     * file|<path>|absent} per settings file looked for, {@code mirror|<id>|<mirrorOf>|<url>|<built-in
+     * remotes it answers for>|<refusal or empty>} per mirror, {@code proxy|<id>|<protocol>|<host>:<port>|<nonProxyHosts>}
+     * per active proxy, and {@code repository|<id>|<url>} per active-profile repository.
+     */
+    public static CacheInventoryAck m2Settings(List<String> lines) {
+        return new CacheInventoryAck(null, "m2-settings", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, 0, 0);
+    }
+
     public static CacheInventoryAck droppedWorkers(List<String> lines, long files, long bytes) {
         return new CacheInventoryAck(
                 null, "drop-workers", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, files, bytes);

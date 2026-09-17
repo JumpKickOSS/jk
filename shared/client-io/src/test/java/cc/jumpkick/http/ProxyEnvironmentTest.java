@@ -8,6 +8,7 @@ import cc.jumpkick.config.NetworkConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -18,6 +19,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,7 +44,7 @@ class ProxyEnvironmentTest {
     }
 
     private static ProxyEnvironment.Settings settings(NetworkConfig config, Map<String, String> env) {
-        return ProxyEnvironment.Settings.from(config, env::get);
+        return ProxyEnvironment.Settings.from(config, MavenSettings.empty(), env::get);
     }
 
     private static Optional<ProxyEnvironment.Endpoint> proxyFor(URI target, Map<String, String> env) {
@@ -274,5 +276,65 @@ class ProxyEnvironmentTest {
         assertThat(proxyFor(PLAIN, Map.of("ftp_proxy", "http://p:1", "all_proxy", "http://p:1")))
                 .as("a name off the list does nothing")
                 .isEmpty();
+    }
+
+    private static MavenSettings maven(Path dir, String xml) throws Exception {
+        Path file = dir.resolve("settings.xml");
+        Files.writeString(file, xml);
+        return MavenSettings.loadFrom(file);
+    }
+
+    private static String basic(String pair) {
+        return "Basic " + Base64.getEncoder().encodeToString(pair.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Maven's {@code <proxy>} sits between the file and the shell, is matched by protocol the way
+     * Maven matches it, sends its credential as Basic, and its {@code nonProxyHosts} go direct.
+     */
+    @Test
+    void a_settings_xml_proxy_is_taken_for_its_protocol_after_the_file_and_before_the_shell(@TempDir Path dir)
+            throws Exception {
+        MavenSettings maven = maven(dir, """
+                <settings><proxies>
+                  <proxy>
+                    <id>corp</id><protocol>https</protocol><host>maven.proxy</host><port>3129</port>
+                    <username>alice</username><password>s3cr3t</password>
+                    <nonProxyHosts>*.corp|nexus.example</nonProxyHosts>
+                  </proxy>
+                </proxies></settings>
+                """);
+        Map<String, String> shell = Map.of("https_proxy", "http://shell.proxy:1", "http_proxy", "http://shell.proxy:2");
+
+        ProxyEnvironment.Settings settings = ProxyEnvironment.Settings.from(NetworkConfig.EMPTY, maven, shell::get);
+        Optional<ProxyEnvironment.Endpoint> viaMaven = ProxyEnvironment.endpointFor(CENTRAL, settings);
+        assertThat(viaMaven)
+                .get()
+                .extracting(ProxyEnvironment.Endpoint::address)
+                .isEqualTo(at("maven.proxy", 3129));
+        assertThat(viaMaven.get().proxyAuthorization()).contains(basic("alice:s3cr3t"));
+        assertThat(viaMaven.get().shown()).hasToString("http://maven.proxy:3129");
+        // nonProxyHosts: a glob and an exact host go direct; a lookalike does not.
+        assertThat(ProxyEnvironment.endpointFor(URI.create("https://repo.corp/m2/"), settings))
+                .isEmpty();
+        assertThat(ProxyEnvironment.endpointFor(URI.create("https://nexus.example/m2/"), settings))
+                .isEmpty();
+        assertThat(ProxyEnvironment.endpointFor(URI.create("https://nexus.example.org/m2/"), settings))
+                .isPresent();
+        // No Maven entry for http targets, so the shell's http_proxy decides those.
+        assertThat(ProxyEnvironment.endpointFor(PLAIN, settings))
+                .get()
+                .extracting(ProxyEnvironment.Endpoint::address)
+                .isEqualTo(at("shell.proxy", 2));
+        // The user's own [network] table outranks Maven's file.
+        NetworkConfig file = new NetworkConfig("http://file.proxy:3", null, List.of());
+        assertThat(ProxyEnvironment.endpointFor(CENTRAL, ProxyEnvironment.Settings.from(file, maven, k -> null)))
+                .get()
+                .extracting(ProxyEnvironment.Endpoint::address)
+                .isEqualTo(at("file.proxy", 3));
+        // The shell's no_proxy still applies to a request the Maven proxy would carry.
+        ProxyEnvironment.Settings bypassed = ProxyEnvironment.Settings.from(
+                NetworkConfig.EMPTY, maven, Map.of("no_proxy", ".maven.apache.org")::get);
+        assertThat(ProxyEnvironment.endpointFor(CENTRAL, bypassed)).isEmpty();
     }
 }

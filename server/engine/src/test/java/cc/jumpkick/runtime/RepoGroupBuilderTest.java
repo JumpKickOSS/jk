@@ -12,9 +12,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.repo.MavenSettings;
+import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoCredentialStore;
 import cc.jumpkick.repo.RepoGroup;
@@ -468,5 +469,59 @@ class RepoGroupBuilderTest {
                 .contains("repository `corp`")
                 .contains("interpolates ${HOME}")
                 .doesNotContain(VICTIM_HOME);
+    }
+
+    /**
+     * A settings.xml mirror routes a repository's requests and nothing else: the group still names
+     * the repository at its own URL, which is what the lock's {@code source} is built from.
+     */
+    @Test
+    void a_settings_xml_mirror_routes_a_repository_without_changing_its_name_or_url(@TempDir Path tmp)
+            throws Exception {
+        Files.writeString(tmp.resolve("settings.xml"), """
+                <settings>
+                  <mirrors>
+                    <mirror>
+                      <id>nexus</id>
+                      <mirrorOf>central,!google</mirrorOf>
+                      <url>https://nexus.example/repository/maven-public/</url>
+                    </mirror>
+                  </mirrors>
+                </settings>
+                """);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+                """);
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+        String prior = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
+        System.setProperty(
+                MavenSettings.SETTINGS_PROPERTY, tmp.resolve("settings.xml").toString());
+        RepoGroup group;
+        try {
+            group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")), name -> null);
+        } finally {
+            if (prior == null) System.clearProperty(MavenSettings.SETTINGS_PROPERTY);
+            else System.setProperty(MavenSettings.SETTINGS_PROPERTY, prior);
+        }
+
+        MavenRepo central = group.repos().stream()
+                .filter(r -> r.name().equals(RepositorySpec.CENTRAL))
+                .findFirst()
+                .orElseThrow();
+        assertThat(central.baseUrl()).isEqualTo(RepositorySpec.MAVEN_CENTRAL.url());
+        assertThat(central.mirror()).hasValueSatisfying(m -> {
+            assertThat(m.id()).isEqualTo("nexus");
+            assertThat(m.url()).hasToString("https://nexus.example/repository/maven-public/");
+        });
+        assertThat(group.repos())
+                .filteredOn(r -> !r.name().equals(RepositorySpec.CENTRAL))
+                .allSatisfy(r -> assertThat(r.mirror()).isEmpty());
+        assertThat(group.mirrorNotes())
+                .singleElement()
+                .asString()
+                .contains("repository `central` is reached through mirror `nexus`")
+                .contains("the lock records `central` at https://repo.maven.apache.org/maven2/");
     }
 }

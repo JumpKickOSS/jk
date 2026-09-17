@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
@@ -72,6 +73,12 @@ public final class PomImporter {
     final RepoModelResolver resolver;
     private final RemoteFile remote;
 
+    /**
+     * Maven's {@code settings.xml}: the repositories of its active profiles join every imported
+     * manifest's {@code [repositories]}, the way Maven consults them beside a POM's own.
+     */
+    private final MavenSettings settings;
+
     /** Parents and BOM imports are fetched through {@code repos}, plus any {@code <repository>} the POM declares. */
     public PomImporter(RepoGroup repos, Cas cas) {
         this(repos, cas, overHttp(new Http()));
@@ -79,8 +86,14 @@ public final class PomImporter {
 
     /** {@code remote} answers the URLs a POM's generator plugins read their specs from. */
     public PomImporter(RepoGroup repos, Cas cas, RemoteFile remote) {
+        this(repos, cas, remote, MavenSettings.current());
+    }
+
+    /** As above over the given Maven settings rather than this machine's — tests. */
+    public PomImporter(RepoGroup repos, Cas cas, RemoteFile remote, MavenSettings settings) {
         this.resolver = new RepoModelResolver(repos, cas);
         this.remote = remote;
+        this.settings = settings;
     }
 
     private static RemoteFile overHttp(Http http) {
@@ -99,12 +112,16 @@ public final class PomImporter {
     public Result importFrom(Path pomXml) throws IOException {
         Path file = pomXml.toAbsolutePath();
         return importModel(
-                EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null), remote, null, null);
+                EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null),
+                remote,
+                settings,
+                null,
+                null);
     }
 
     /** A POM with no file behind it (an archive's embedded pom.xml): no {@code relativePath} lookup. */
     public Result importFromBytes(byte[] xml) {
-        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, null, null);
+        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, settings, null, null);
     }
 
     /**
@@ -114,6 +131,7 @@ public final class PomImporter {
     private static Result importModel(
             EffectiveModel em,
             RemoteFile remote,
+            MavenSettings settings,
             @Nullable InheritedRows inherited,
             @Nullable List<Dependency> hoisted) {
         ImportReport.Builder report = ImportReport.builder();
@@ -129,7 +147,7 @@ public final class PomImporter {
         addOptionalDeps(byScope, profiles.optionalDeps());
         List<Repository> repositories = new ArrayList<>(em.model().getRepositories());
         repositories.addAll(profiles.repositories());
-        List<RepositorySpec> repos = mapRepositories(repositories, report);
+        List<RepositorySpec> repos = withSettingsRepositories(mapRepositories(repositories, report), settings);
         warnUnsupportedSections(em, report, /* isWorkspaceRoot= */ false, inherited);
 
         String mainClass = PluginFacts.mainClass(em.model());
@@ -207,8 +225,8 @@ public final class PomImporter {
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
         if (!ReactorModules.declaresModules(rootRaw)) {
-            Result single =
-                    importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote, null, null);
+            Result single = importModel(
+                    EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote, settings, null, null);
             return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report(), Set.of(rootFile));
         }
 
@@ -225,7 +243,7 @@ public final class PomImporter {
         List<Dependency> hoistedManaged = new ArrayList<>();
         ReactorModules.Reactor found =
                 ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report, (leaf, model) -> {
-                    Result child = importModel(model, remote, inherited, hoistedManaged);
+                    Result child = importModel(model, remote, settings, inherited, hoistedManaged);
                     moduleBuilds.put(leaf.path(), child.jkBuild());
                     moduleRows.addAll(leaf.path(), child.report());
                     ShadedSiblings.Shaded member = ShadedSiblings.of(leaf, model.model());
@@ -255,7 +273,9 @@ public final class PomImporter {
                 .workspace(new Workspace(
                         leaves.stream().map(ReactorModules.Leaf::path).toList()))
                 .repositories(hoistRepositories(
-                        mapRepositories(rootModel.model().getRepositories(), report), members.values()))
+                        withSettingsRepositories(
+                                mapRepositories(rootModel.model().getRepositories(), report), settings),
+                        members.values()))
                 .application(rootApplication)
                 .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
@@ -738,6 +758,23 @@ public final class PomImporter {
             }
         }
         return new ArrayList<>(deduped.values());
+    }
+
+    /**
+     * {@code declared} followed by the repositories of the active {@code settings.xml} profiles the
+     * POM does not itself name; Central stays implicit. A profile repository a project uses without
+     * writing it into the POM is what the manifest's {@code [repositories]} has to carry for the
+     * lock to reach it.
+     */
+    static List<RepositorySpec> withSettingsRepositories(List<RepositorySpec> declared, MavenSettings settings) {
+        Map<String, RepositorySpec> byName = new LinkedHashMap<>();
+        for (RepositorySpec spec : declared) byName.putIfAbsent(spec.name(), spec);
+        for (RepositorySpec spec : settings.profileRepositories()) {
+            if (spec.name().equals("central")
+                    || RepoModelResolver.isCentral(spec.url().toString())) continue;
+            byName.putIfAbsent(spec.name(), spec);
+        }
+        return new ArrayList<>(byName.values());
     }
 
     /**

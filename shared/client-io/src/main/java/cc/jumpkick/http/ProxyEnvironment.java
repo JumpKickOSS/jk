@@ -4,6 +4,7 @@ package cc.jumpkick.http;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NetworkConfig;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
@@ -27,12 +28,19 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The proxy jk's HTTP goes through, decided per request from {@code ~/.jk/config.toml}
- * {@code [network]} and, failing that, the proxy variables of the shell that ran {@code jk}.
+ * {@code [network]}, failing that the active {@code <proxy>} of Maven's {@code settings.xml}, and
+ * failing that the proxy variables of the shell that ran {@code jk}.
  *
  * <p>Decided at {@link #select} time, not when the client is built: the engine is resident and
  * serves every later terminal, so a proxy captured once would be one network's answer for days.
  * {@link BuildEnv#ambient()} answers from the request's shell first and the engine's own
- * environment second, and the config file is re-read when it changes.
+ * environment second, and both files are re-read when they change.
+ *
+ * <p>A Maven proxy is matched the way Maven matches it: its {@code <protocol>} against the
+ * target's scheme, so https targets take the entry whose protocol is {@code https}; its {@code
+ * <nonProxyHosts>} ({@code |}-separated host globs) go direct, as do the {@code no-proxy} hosts of
+ * the file and the shell; its username and password ride as Basic exactly as a credential in a
+ * proxy URL does.
  *
  * <p>Spellings: {@code https_proxy} / {@code HTTPS_PROXY} for https targets, {@code http_proxy} /
  * {@code HTTP_PROXY} for http ones (lower case wins when both are set), {@code no_proxy} /
@@ -54,20 +62,44 @@ public final class ProxyEnvironment extends ProxySelector {
 
     private static final String TUNNELING_SCHEMES = "jdk.http.auth.tunneling.disabledSchemes";
 
-    /** One proxy setting: what wrote it (for a diagnostic), and the URL it wrote. */
-    record Source(String name, String value) {}
+    /**
+     * One proxy setting: what wrote it (for a diagnostic), the URL it wrote, and the hosts this
+     * setting alone sends direct — Maven's {@code <nonProxyHosts>}; empty for the file and the shell,
+     * whose bypass lists apply to every source.
+     */
+    record Source(String name, String value, MavenSettings.@Nullable Proxy maven) {
+
+        Source(String name, String value) {
+            this(name, value, null);
+        }
+
+        static Source of(MavenSettings.Proxy proxy) {
+            return new Source("~/.m2/settings.xml " + proxy.label(), proxy.url().toString(), proxy);
+        }
+
+        /** True when this source's own bypass list sends {@code host} direct. */
+        boolean bypasses(String host) {
+            return maven != null && maven.bypasses(host);
+        }
+    }
 
     /** What one lookup found: a proxy per target scheme, and the hosts that go direct. */
     record Settings(@Nullable Source http, @Nullable Source https, List<String> noProxy) {
 
-        /** The file first, then the shell; the bypass lists of both. */
-        static Settings from(NetworkConfig config, Function<String, @Nullable String> env) {
+        /** The file first, then Maven's settings, then the shell; the bypass lists of the file and the shell. */
+        static Settings from(NetworkConfig config, MavenSettings maven, Function<String, @Nullable String> env) {
             Source configProxy = source("[network] proxy", config.proxy());
-            Source http = configProxy != null ? configProxy : fromEnv(env, "http_proxy", "HTTP_PROXY");
+            Source mavenHttp = maven.proxyFor("http").map(Source::of).orElse(null);
+            Source http = configProxy != null
+                    ? configProxy
+                    : mavenHttp != null ? mavenHttp : fromEnv(env, "http_proxy", "HTTP_PROXY");
             Source configHttps = source("[network] https-proxy", config.httpsProxy());
+            Source mavenHttps = maven.proxyFor("https").map(Source::of).orElse(null);
             Source https = configHttps != null
                     ? configHttps
-                    : configProxy != null ? configProxy : fromEnv(env, "https_proxy", "HTTPS_PROXY");
+                    : configProxy != null
+                            ? configProxy
+                            : mavenHttps != null ? mavenHttps : fromEnv(env, "https_proxy", "HTTPS_PROXY");
             List<String> noProxy = new ArrayList<>(config.noProxy());
             addEntries(noProxy, env.apply("no_proxy"));
             addEntries(noProxy, env.apply("NO_PROXY"));
@@ -146,16 +178,29 @@ public final class ProxyEnvironment extends ProxySelector {
     }
 
     private final Supplier<NetworkConfig> config;
+    private final Supplier<MavenSettings> maven;
     private final Supplier<Function<String, @Nullable String>> env;
 
-    /** Production: the user's config file and the request's shell (then the engine's own), read per request. */
+    /**
+     * Production: the user's config file, Maven's settings and the request's shell (then the
+     * engine's own), read per request.
+     */
     public static ProxyEnvironment ambient() {
-        return new ProxyEnvironment(GlobalConfig::network, BuildEnv::ambient);
+        return new ProxyEnvironment(GlobalConfig::network, MavenSettings::current, BuildEnv::ambient);
     }
 
-    /** Visible for tests — both halves of the lookup injected. */
+    /** Visible for tests — the file and the shell injected, no Maven settings. */
     ProxyEnvironment(Supplier<NetworkConfig> config, Supplier<Function<String, @Nullable String>> env) {
+        this(config, MavenSettings::empty, env);
+    }
+
+    /** Visible for tests — every source of the lookup injected. */
+    ProxyEnvironment(
+            Supplier<NetworkConfig> config,
+            Supplier<MavenSettings> maven,
+            Supplier<Function<String, @Nullable String>> env) {
         this.config = Objects.requireNonNull(config, "config");
+        this.maven = Objects.requireNonNull(maven, "maven");
         this.env = Objects.requireNonNull(env, "env");
         // The JDK drops a Basic Proxy-Authorization from a CONNECT tunnel unless told otherwise, and
         // a proxy URL carrying a credential is that instruction. A value the user set is left alone.
@@ -179,7 +224,7 @@ public final class ProxyEnvironment extends ProxySelector {
     }
 
     Settings settings() {
-        return Settings.from(config.get(), env.get());
+        return Settings.from(config.get(), maven.get(), env.get());
     }
 
     /** The proxy {@code target} goes through under {@code settings}, or empty for a direct connection. */
@@ -188,6 +233,7 @@ public final class ProxyEnvironment extends ProxySelector {
         if (host == null || RepositorySpec.loopback(host)) return Optional.empty();
         Source source = "https".equalsIgnoreCase(target.getScheme()) ? settings.https() : settings.http();
         if (source == null || bypassed(host, effectivePort(target), settings.noProxy())) return Optional.empty();
+        if (source.bypasses(host)) return Optional.empty();
         return Endpoint.parse(source);
     }
 

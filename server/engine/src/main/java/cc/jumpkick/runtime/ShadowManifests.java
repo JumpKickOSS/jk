@@ -113,7 +113,7 @@ public final class ShadowManifests {
         Path pom = module.resolve(ManifestPaths.POM);
         try {
             Cas cas = JkStores.storeCas();
-            PomImporter importer = new PomImporter(RepoGroupBuilder.buildDefault(cas), cas);
+            PomImporter importer = new PomImporter(RepoGroupBuilder.buildForImport(cas), cas);
             List<PomShadow.Shadow> shadows = PomReactorScan.declaresModules(pom)
                     ? PomShadow.renderReactor(importer, pom)
                     : List.of(PomShadow.render(importer, pom));

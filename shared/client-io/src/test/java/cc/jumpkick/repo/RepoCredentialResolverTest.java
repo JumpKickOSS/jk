@@ -12,6 +12,7 @@ import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
@@ -679,5 +680,37 @@ class RepoCredentialResolverTest {
     @Test
     void the_env_prefix_is_published_for_diagnostics() {
         assertThat(RepoCredentialResolver.envVarPrefix("my-nexus")).isEqualTo("JK_REPO_MY_NEXUS_");
+    }
+
+    /**
+     * A settings.xml {@code <mirror>} is the user's own declaration of the id at that URL, so the
+     * {@code <server>} with the mirror's id is bound to the mirror — and to nothing else.
+     */
+    @Test
+    void a_settings_xml_mirror_binds_its_own_server_credential_to_the_mirror_url(@TempDir Path dir) throws Exception {
+        Path settings = dir.resolve("settings.xml");
+        Files.writeString(settings, """
+                <settings>
+                  <servers><server><id>nexus</id><username>u</username><password>p</password></server></servers>
+                  <mirrors>
+                    <mirror><id>nexus</id><mirrorOf>*</mirrorOf><url>https://nexus.corp/repo/maven-public/</url></mirror>
+                  </mirrors>
+                </settings>
+                """);
+        var r = resolver(
+                env(Map.of()),
+                MavenSettings.loadFrom(settings),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir)));
+
+        assertThat(r.resolve("nexus", URI.create("https://nexus.corp/repo/maven-public/"), Optional.empty()))
+                .isEqualTo(new RepoCredential.Basic("u", "p"));
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(
+                () -> resolved.set(r.resolve("nexus", URI.create("https://attacker.example/repo/"), Optional.empty())));
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings)
+                .contains("~/.m2/settings.xml declares `nexus` at https://nexus.corp, not https://attacker.example");
     }
 }

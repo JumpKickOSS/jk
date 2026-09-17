@@ -106,18 +106,16 @@ public final class DoctorCommand implements CliCommand {
         // The worker and repository rows are the engine's answers. A diagnostic must not change
         // the state it inspects, so by default only an engine that is already running answers;
         // --engine starts one for this check, --no-engine asks nothing.
-        Workers workers;
-        RepoStores.Stores repos;
-        if (in.isSet("no-engine")) {
-            workers = new Workers(List.of(), ROWS_SKIPPED);
-            repos = new RepoStores.Stores(List.of(), ROWS_SKIPPED);
-        } else if (in.isSet("engine")) {
-            workers = workers(DoctorCommand::queryWorkers);
-            repos = queryRepos(DoctorCommand::queryReposStarting);
-        } else {
-            workers = workers(DoctorCommand::queryWorkersIfRunning);
-            repos = queryRepos(DoctorCommand::queryReposIfRunning);
-        }
+        boolean ask = !in.isSet("no-engine");
+        boolean ifRunning = !in.isSet("engine");
+        Workers workers =
+                ask ? workers(() -> queryInventory("workers", ifRunning)) : new Workers(List.of(), ROWS_SKIPPED);
+        RepoStores.Stores repos = ask
+                ? queryRepos(() -> queryInventory("repos", ifRunning))
+                : new RepoStores.Stores(List.of(), ROWS_SKIPPED);
+        MavenSettingsRows.Rows settings = ask
+                ? MavenSettingsRows.query(() -> queryInventory("m2-settings", ifRunning))
+                : MavenSettingsRows.Rows.none(ROWS_SKIPPED);
 
         boolean hasFail = engine.status == Status.FAIL
                 || cache.status == Status.FAIL
@@ -142,7 +140,8 @@ public final class DoctorCommand implements CliCommand {
                     empty,
                     toolsError,
                     workers,
-                    repos));
+                    repos,
+                    settings));
             return hasFail ? 1 : 0;
         }
 
@@ -163,6 +162,7 @@ public final class DoctorCommand implements CliCommand {
         for (String line : renderWorkers(workers, global.verbose, t)) CliOutput.out(line);
         for (String line : renderShelf(workers, pointerEngineSha(), t)) CliOutput.out(line);
         for (String line : RepoStores.render(repos, t)) CliOutput.out(line);
+        for (String line : MavenSettingsRows.render(settings, t)) CliOutput.out(line);
 
         CliOutput.out(Theme.paint("---", t.darkGray()));
         String summary = Theme.colorize(String.valueOf(healthy), t.focused())
@@ -218,24 +218,13 @@ public final class DoctorCommand implements CliCommand {
     static final String ENGINE_NOT_RUNNING = "engine not running — start it with `jk engine start`, or run"
             + " `jk doctor --engine` to start one for this check";
 
-    private static CacheInventoryAck queryWorkers() throws IOException {
-        return EngineClient.cacheInventory(
-                EnginePaths.current(), "workers", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
-    }
-
-    private static CacheInventoryAck queryWorkersIfRunning() throws IOException {
-        return EngineClient.cacheInventoryIfRunning(
-                EnginePaths.current(), "workers", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
-    }
-
-    private static CacheInventoryAck queryReposStarting() throws IOException {
-        return EngineClient.cacheInventory(
-                EnginePaths.current(), "repos", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
-    }
-
-    private static CacheInventoryAck queryReposIfRunning() throws IOException {
-        return EngineClient.cacheInventoryIfRunning(
-                EnginePaths.current(), "repos", JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+    /** One engine inventory query; {@code ifRunning} asks only an engine that is already up. */
+    private static CacheInventoryAck queryInventory(String query, boolean ifRunning) throws IOException {
+        return ifRunning
+                ? EngineClient.cacheInventoryIfRunning(
+                        EnginePaths.current(), query, JkDirs.cache(), JkStores.store(), List.of(), List.of(), false)
+                : EngineClient.cacheInventory(
+                        EnginePaths.current(), query, JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
     }
 
     /** The repository stores and their origins, so a wrong-origin cache is one line apart from the symptom. */
@@ -820,7 +809,7 @@ public final class DoctorCommand implements CliCommand {
 
     /**
      * The `--output json` report: the six checks, the tool tallies and the scan error, then the
-     * installed workers with their launch classpaths.
+     * installed workers with their launch classpaths, the repository stores and Maven's settings.
      */
     public static String reportJson(
             Check engine,
@@ -838,7 +827,8 @@ public final class DoctorCommand implements CliCommand {
             int empty,
             @Nullable String toolsError,
             Workers workers,
-            RepoStores.Stores repos) {
+            RepoStores.Stores repos,
+            MavenSettingsRows.Rows settings) {
         return JsonFields.object()
                 .token("engine", checkJson(engine))
                 .token("cache", checkJson(cache))
@@ -860,6 +850,7 @@ public final class DoctorCommand implements CliCommand {
                                 .finish())
                 .token("workers", workersJson(workers))
                 .token("repos", RepoStores.json(repos))
+                .token("settings", MavenSettingsRows.json(settings))
                 .finish();
     }
 

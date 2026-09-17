@@ -9,6 +9,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.PomParser;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -120,7 +121,7 @@ final class RepoModelResolver implements ModelResolver {
         try {
             URI uri = new URI(url.trim());
             if (repos.repos().stream().anyMatch(r -> r.baseUrl().equals(uri))) return;
-            repos = repos.withReposPrepended(List.of(new MavenRepo(id, uri, http, cas)));
+            repos = repos.withReposPrepended(List.of(RepoMirrors.apply(new MavenRepo(id, uri, http, cas))));
         } catch (URISyntaxException | IllegalArgumentException e) {
             declared.remove(id);
         }

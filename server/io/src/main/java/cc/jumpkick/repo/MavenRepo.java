@@ -38,6 +38,17 @@ public final class MavenRepo {
 
     private final String name;
     private final URI baseUrl;
+
+    /**
+     * The settings.xml mirror this repository's requests go to, or null when they go to {@link
+     * #baseUrl}. A transport fact only: name, {@link #baseUrl} and the store's origin key are the
+     * repository's own.
+     */
+    private final @Nullable Mirror mirror;
+
+    /** Where a request for a relative path is opened: the mirror's URL, else {@link #baseUrl}. */
+    private final URI fetchBase;
+
     private final RepoTransport transport;
     private final Cas cas;
     private final RepoArtifactStore repoStore;
@@ -75,6 +86,9 @@ public final class MavenRepo {
     /** The network leg: stream under the host's permit, hash, verify against the published sidecar. */
     private final DownloadLeg download;
 
+    /** A settings.xml mirror standing in for a repository: the URL its requests open, the mirror's credential, its label. */
+    public record Mirror(String id, URI url, RepoCredential credential, String label) {}
+
     public MavenRepo(String name, URI baseUrl, Http http, Cas cas) {
         this(name, baseUrl, http, cas, RepoCredential.ANONYMOUS);
     }
@@ -101,26 +115,6 @@ public final class MavenRepo {
                 m2integration,
                 false,
                 false);
-    }
-
-    /**
-     * General constructor over any {@link RepoTransport} — the entry point for non-HTTP backends
-     * (s3://, file://, …) selected by the caller. These don't get the HTTP metadata cache (it has no
-     * status/headers to revalidate against). {@code m2integration} defaults to {@code true}.
-     */
-    public MavenRepo(String name, URI baseUrl, RepoTransport transport, Cas cas, RepoCredential credential) {
-        this(name, baseUrl, transport, cas, credential, null, true, false, false);
-    }
-
-    /** As above, with an explicit {@code m2integration}. */
-    public MavenRepo(
-            String name,
-            URI baseUrl,
-            RepoTransport transport,
-            Cas cas,
-            RepoCredential credential,
-            boolean m2integration) {
-        this(name, baseUrl, transport, cas, credential, null, m2integration, false, false);
     }
 
     /**
@@ -158,7 +152,37 @@ public final class MavenRepo {
                 allowUnverified,
                 allowInsecure,
                 releases,
-                snapshots);
+                snapshots,
+                mirror);
+    }
+
+    /**
+     * This repository with every request opened at {@code mirror}'s URL and authenticated with the
+     * mirror's credential, sharing its store, policy and client. The transport is re-selected for
+     * the mirror's scheme. Name, {@link #baseUrl()} and the store are unchanged: the lock still
+     * records this repository, and a lock written through a mirror is byte-identical to one
+     * written without.
+     */
+    public MavenRepo mirroredThrough(Mirror mirror) {
+        Http client = http != null ? http : new Http();
+        return new MavenRepo(
+                name,
+                baseUrl,
+                RepoTransports.forUrl(mirror.url(), client),
+                cas,
+                mirror.credential(),
+                client,
+                m2integration,
+                allowUnverified,
+                allowInsecure,
+                servesReleases,
+                servesSnapshots,
+                mirror);
+    }
+
+    /** The settings.xml mirror this repository's requests go through, when one applies. */
+    public Optional<Mirror> mirror() {
+        return Optional.ofNullable(mirror);
     }
 
     /**
@@ -188,10 +212,11 @@ public final class MavenRepo {
                 allowUnverified,
                 allowInsecure,
                 true,
-                true);
+                true,
+                null);
     }
 
-    /** As above, with the release/snapshot policy; Maven's default is both on. */
+    /** As above, with the release/snapshot policy — Maven's default is both on — and the mirror, if any. */
     private MavenRepo(
             String name,
             URI baseUrl,
@@ -203,9 +228,12 @@ public final class MavenRepo {
             boolean allowUnverified,
             boolean allowInsecure,
             boolean servesReleases,
-            boolean servesSnapshots) {
+            boolean servesSnapshots,
+            @Nullable Mirror mirror) {
         this.name = Objects.requireNonNull(name, "name");
         this.baseUrl = normalize(Objects.requireNonNull(baseUrl, "baseUrl"));
+        this.mirror = mirror;
+        this.fetchBase = mirror == null ? this.baseUrl : normalize(mirror.url());
         this.transport = Objects.requireNonNull(transport, "transport");
         this.cas = Objects.requireNonNull(cas, "cas");
         // Full store for every repo: Maven-layout artifact + {@code .jk} memo under the store
@@ -222,11 +250,11 @@ public final class MavenRepo {
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
         // with an Http client but must keep enumerating via the transport.
-        this.metadataCache = (httpOrNull != null && isHttp(this.baseUrl))
+        this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
                 ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), MavenMetadataCache.DEFAULT_TTL)
                 : null;
-        this.m2 = new M2Adoption(name, transport, credential, isHttp(this.baseUrl), repoStore, m2integration);
-        this.download = new DownloadLeg(name, this.baseUrl, transport, credential, storeDir(), allowUnverified);
+        this.m2 = new M2Adoption(name, transport, credential, isHttp(this.fetchBase), repoStore, m2integration);
+        this.download = new DownloadLeg(name, this.fetchBase, transport, credential, storeDir(), allowUnverified);
     }
 
     /**
@@ -248,7 +276,8 @@ public final class MavenRepo {
                 false,
                 false,
                 releases,
-                snapshots);
+                snapshots,
+                null);
     }
 
     /** True when {@code version} is of a kind this repository is asked for; see {@link #servesSnapshots()}. */
@@ -291,6 +320,10 @@ public final class MavenRepo {
         return Objects.requireNonNull(repoStore.root(), "a remote's store has a root");
     }
 
+    /**
+     * The repository's own URL — the lock's {@code source} and the store's origin are built from
+     * it — whether or not a {@link #mirror()} answers the requests.
+     */
     public URI baseUrl() {
         return baseUrl;
     }
@@ -366,7 +399,7 @@ public final class MavenRepo {
         }
         try {
             byte[] xml = metadataCache != null
-                    ? metadataCache.fetch(baseUrl.resolve(MavenLayout.metadataPath(coord)), credential)
+                    ? metadataCache.fetch(fetchBase.resolve(MavenLayout.metadataPath(coord)), credential)
                     : Files.readAllBytes(fetchMetadata(coord).cachePath());
             return MavenMetadata.parse(xml, coord.group(), coord.artifact()).versions();
         } catch (ArtifactNotFoundException notFound) {
@@ -420,7 +453,7 @@ public final class MavenRepo {
                 repoStore.evict(relativePath);
             }
         }
-        URI uri = baseUrl.resolve(relativePath);
+        URI uri = fetchBase.resolve(relativePath);
         // A miss this repository already answered is answered again without a request.
         if (!force && RepoMisses.known(uri)) {
             throw new ArtifactNotFoundException("not found in " + name + ": " + uri, coord);
