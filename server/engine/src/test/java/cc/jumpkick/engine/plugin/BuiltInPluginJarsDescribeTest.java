@@ -44,6 +44,24 @@ class BuiltInPluginJarsDescribeTest {
                 .hasMessageContaining("not registered");
     }
 
+    /**
+     * A shelved worker that carries no descriptor for the table a project configures is a shelf
+     * behind the plugin the project was written for: the detail names the jar, the checkout
+     * install and the jar override — never the generic "add it under [plugins]" alone.
+     */
+    @Test
+    void a_shelved_worker_that_does_not_own_the_table_names_the_jar_and_both_remedies() {
+        Path jar = Path.of("/store/repos/jk-local/cc/jumpkick/jk-openapi/0.13.7/jk-openapi-0.13.7.jar");
+
+        String detail = BuiltInPluginJars.doesNotOwn(PluginJar.OPENAPI, jar, "openapi");
+
+        assertThat(detail)
+                .contains("jk-openapi (" + jar + ") does not own [openapi]")
+                .contains("newer jk-openapi")
+                .contains("`jk install`")
+                .contains("-Djk.openapi.plugin.jar=");
+    }
+
     @Test
     void a_descriptor_without_a_code_table_is_matched_by_its_id() {
         var own = new BuiltInPluginJars.Located(PluginJar.GRAILS, JAR, descriptor("grails", null));

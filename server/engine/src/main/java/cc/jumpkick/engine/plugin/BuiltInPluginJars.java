@@ -57,19 +57,36 @@ public final class BuiltInPluginJars {
         PluginTableRegistry.missingBuiltInFetcher(BuiltInPluginJars::fetchAndInstall);
     }
 
-    /** Fetch + install the built-in whose worker is {@code jk-<table>}; failure detail or null. */
+    /**
+     * Fetch + install the built-in whose worker is {@code jk-<table>}; failure detail or null. A
+     * worker jar this machine holds that does not own the table is the detail of {@link
+     * #doesNotOwn}: the project was written for a newer plugin than the one installed here.
+     */
     private static @Nullable String fetchAndInstall(String table) {
         var plugin = PluginJar.byArtifactId("jk-" + table);
         if (plugin.isEmpty()) return null; // not a first-party table — the plain error stands
         try {
             Path jar = plugin.get().locate(JkStores.storeCas());
             String toml = manifestToml(jar);
-            if (toml == null || toml.isBlank()) return null; // not a table plugin — the plain error stands
+            if (toml == null || toml.isBlank()) return doesNotOwn(plugin.get(), jar, table);
             PluginTableRegistry.putBuiltIn(describe(new Located(plugin.get(), jar, toml), true), jar);
             return null;
         } catch (IOException | RuntimeException e) {
             return e.getMessage();
         }
+    }
+
+    /**
+     * Why {@code [table]} stays unowned when the installed {@code plugin} jar carries no root
+     * descriptor for it: the shelf is behind the plugin the project was written for. Names the
+     * jar, the checkout install that refreshes the shelf and the {@code -D} override that points
+     * one build at another jar.
+     */
+    static String doesNotOwn(PluginJar plugin, Path jar, String table) {
+        return "the installed " + plugin.artifactId() + " (" + jar + ") does not own [" + table
+                + "] — the project was written for a newer " + plugin.artifactId()
+                + " than this shelf holds. Run `jk install` from the jk checkout that has it, or set -D"
+                + plugin.jarProperty() + "=<path to its jar> to use that jar";
     }
 
     /**
