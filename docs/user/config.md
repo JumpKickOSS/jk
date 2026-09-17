@@ -119,7 +119,8 @@ Loopback targets always go direct.
 
 Every download jk makes — Maven Central and your repositories, JDK and tool distributions, the
 engine jar, release checks — goes through `Http`, so one setting covers them all. The decision is
-made per request: `[network]` is re-read when the file changes, and the six proxy variables ride
+made per request: `[network]` is read once per `jk` command and re-read when the file changes
+(an edit is seen by the next command), and the six proxy variables ride
 each request from the shell running `jk`, so exporting new ones in a terminal is enough — the
 engine falls back to the values of the shell that spawned it only for a request that carries
 none. Every worker a build forks — compilers, plugin workers, test JVMs — is handed the same six
