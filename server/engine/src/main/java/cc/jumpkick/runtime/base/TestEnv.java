@@ -31,8 +31,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR} and {@code JK_M2_LOCAL} point at the module's throwaway
  * sandbox ({@link TestHomes}) and the temp root at the module's build output, unless the module says
- * otherwise. Anything a suite genuinely needs from the real environment beyond
- * {@link BuildEnv#MACHINE} it can name explicitly — the sandbox is a default, not a wall.
+ * otherwise. The three roots with their own override — {@code JK_STATE_DIR}, {@code JK_STORE_DIR},
+ * {@code JK_CACHE_DIR} — are pinned under that home too: {@link WorkerEnv} lets the engine's own
+ * spellings of them through, and an engine started with {@code JK_STATE_DIR} in its shell would
+ * otherwise hand every test JVM its real build history and host calibration. Anything a suite
+ * genuinely needs from the real environment beyond {@link BuildEnv#MACHINE} it can name explicitly —
+ * the sandbox is a default, not a wall.
  *
  * <p>The declared values themselves are resolved by {@link TestEnvValues}, which the run-tests cache
  * key also uses: the two must agree about an unset {@code ${VAR}} or a build's outcome depends on
@@ -45,6 +49,13 @@ public final class TestEnv {
 
     /** Managed JDK write root — not relocated by {@code JK_HOME} alone. */
     static final String JK_JDKS_DIR = "JK_JDKS_DIR";
+
+    /** The roots with an override of their own, each pinned under the sandbox home. */
+    static final String JK_STATE_DIR = "JK_STATE_DIR";
+
+    static final String JK_STORE_DIR = "JK_STORE_DIR";
+
+    static final String JK_CACHE_DIR = "JK_CACHE_DIR";
 
     static final String JK_M2_LOCAL = "JK_M2_LOCAL";
 
@@ -140,6 +151,9 @@ public final class TestEnv {
         // reaper another module's preparation may run meanwhile.
         Path sandboxHome = TestHomes.prepare(moduleDir);
         out.put(JK_HOME, sandboxHome.toString());
+        out.put(JK_STATE_DIR, sandboxHome.resolve("state").toString());
+        out.put(JK_STORE_DIR, sandboxHome.resolve("store").toString());
+        out.put(JK_CACHE_DIR, sandboxHome.resolve("cache").toString());
         out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
         out.put(JK_M2_LOCAL, sandboxM2(moduleDir).toString());
         // Created at launch, not here: this method answers what the environment is, and the

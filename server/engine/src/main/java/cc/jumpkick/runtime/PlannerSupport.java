@@ -680,8 +680,9 @@ public final class PlannerSupport {
      * Isolated {@code JK_HOME} + {@code JK_STATE_DIR} in this module's sandbox slot ({@link TestHomes})
      * for nested-engine CLI tests. Keeps the host engine's socket, cache, and store alone.
      *
-     * <p>{@code JK_HOME} relocates cache and store together. Nested destructive tests must never
-     * receive the host's {@code JK_CACHE_DIR} or {@code JK_STORE_DIR}.
+     * <p>Nested destructive tests must never receive the host's {@code JK_CACHE_DIR} or {@code
+     * JK_STORE_DIR}: {@link TestEnv#forModule} pins both under the sandbox home, and this layers
+     * a per-run state dir over its state.
      *
      * <p>Plugin/worker jars for nested suites still arrive via {@code -Djk.*.plugin.jar} props
      * ({@link #enrichCliTestProps}), not by sharing the host store.
@@ -699,7 +700,6 @@ public final class PlannerSupport {
         env.put("JK_HOME", jkHome.toAbsolutePath().toString());
         env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
         env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
-        // Intentionally no JK_CACHE_DIR / JK_STORE_DIR — both resolve under JK_HOME.
         env.put("JK_HTTP_ENABLED", "false");
         env.put("JK_HTTP_PORT", "0");
         env.put("JK_STREAM_IDLE_MS", "45000");
