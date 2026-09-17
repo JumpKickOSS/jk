@@ -10,6 +10,8 @@ import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.CliSessionTranscript;
+import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
@@ -114,7 +116,24 @@ public final class UpdateCommand implements CliCommand {
             gitTarget = "*".equals(target) ? null : target;
         }
 
-        return in.has("git") ? runHostedGitOnly(dir, cache, gitTarget) : runHosted(dir, cache);
+        // The update's run record carries a details.jsonl like a lock's: the transcript binds to the
+        // engine job when its job-start arrives and mirrors the plan events the handlers see.
+        CliSessionTranscript transcript = CliSessionTranscript.open(dir, "update", updateArgv(in));
+        int code = in.has("git") ? runHostedGitOnly(dir, cache, gitTarget) : runHosted(dir, cache);
+        return CliSessionTranscript.finish(transcript, code, global.verbose);
+    }
+
+    /** Compact argv snapshot for details.jsonl. */
+    private List<String> updateArgv(Invocation in) {
+        List<String> argv = new ArrayList<>();
+        argv.add("update");
+        argv.addAll(deps);
+        if (major) argv.add("--major");
+        if (!features.isEmpty()) argv.add("--features=" + String.join(",", features));
+        if (noDefaultFeatures) argv.add("--no-default-features");
+        if (platform != null) argv.add("--platform=" + platform);
+        if (in.has("git")) argv.add("--git=" + in.value("git").orElse("*"));
+        return argv;
     }
 
     // ---- engine-hosted paths -------------------------------------------------
@@ -147,7 +166,8 @@ public final class UpdateCommand implements CliCommand {
 
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                return BuildPlanConsole.chooseConsoleListener("Update", "Updating versions", steps, mode);
+                return SessionMirrorListener.mirrored(
+                        BuildPlanConsole.chooseConsoleListener("Update", "Updating versions", steps, mode), mode);
             }
 
             @Override

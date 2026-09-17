@@ -9,7 +9,9 @@ import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -27,7 +29,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -107,6 +111,23 @@ public final class SyncCommand implements CliCommand {
             return 1;
         }
 
+        // The sync's run record carries a details.jsonl like a build's: the transcript binds to the
+        // engine job when its job-start arrives and mirrors the plan events the listener sees.
+        CliSessionTranscript transcript = CliSessionTranscript.open(dir, "sync", syncArgv());
+        int code = runHosted(dir, cache, mode, targetLabel);
+        return CliSessionTranscript.finish(transcript, code, global.verbose);
+    }
+
+    /** Compact argv snapshot for details.jsonl. */
+    private List<String> syncArgv() {
+        List<String> argv = new ArrayList<>();
+        argv.add("sync");
+        if (offlinePrepare) argv.add("--offline-prepare");
+        if (sources) argv.add("--sources");
+        return argv;
+    }
+
+    private int runHosted(Path dir, Path cache, BuildPlanConsole.Mode mode, String targetLabel) {
         // Summary counts arrive on the terminal plan-finish, before the console listener's own
         // planFinish renders the line — so these holders are settled exactly like the in-process
         // path's counters.
@@ -128,8 +149,9 @@ public final class SyncCommand implements CliCommand {
                             session.offline(),
                             session.force(),
                             session.config().forceOr(false),
-                            global.verbose),
-                    steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, targetLabel),
+                            Objects.requireNonNull(global).verbose),
+                    steps -> SessionMirrorListener.mirrored(
+                            BuildPlanConsole.chooseConsoleListener(steps, mode, spec, targetLabel), mode),
                     fetched,
                     upToDate);
         } catch (IOException e) {

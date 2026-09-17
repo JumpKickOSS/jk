@@ -6,6 +6,7 @@ import static cc.jumpkick.cli.testing.MockMavenServer.pom;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.cli.testing.TranscriptOf;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -109,6 +110,28 @@ class UpdateCommandTest {
 
         Lockfile updated = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(updated)).containsExactly("com.foo.update:leaf");
+    }
+
+    /** The run record's transcript line names a file the command wrote, as a lock's does. */
+    @Test
+    void update_writes_the_transcript_its_run_record_names(@TempDir Path tempDir) throws Exception {
+        maven.registerMetadata("com.foo.update", "leaf", "1.0");
+        maven.registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        maven.registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        run("new", tempDir.toString());
+        run("add", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
+
+        int exit = run(
+                "update",
+                "-C",
+                tempDir.toString(),
+                "--repo-url",
+                maven.base().toString(),
+                "--cache-dir",
+                tempDir.resolve("cache").toString());
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(TranscriptOf.results(tempDir)).exists();
     }
 
     @Test

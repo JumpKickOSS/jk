@@ -12,7 +12,6 @@ import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
-import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.theme.Coords;
@@ -152,13 +151,6 @@ public final class LockCommand implements CliCommand {
         return argv;
     }
 
-    /** The plan listener a hosted module's wire events drive, mirrored into the open transcript when there is one. */
-    private static BuildPlanListener mirrored(BuildPlanListener listener, BuildPlanConsole.Mode mode) {
-        CliSessionTranscript active = CliSessionTranscript.active();
-        if (active == null || mode == BuildPlanConsole.Mode.JSON) return listener;
-        return CompositeBuildPlanListener.of(listener, new SessionMirrorListener(active));
-    }
-
     // ---- engine-hosted paths -------------------------------------------------
 
     private EngineRequests.LockRequest lockRequest(Path dir, Path cache) {
@@ -267,7 +259,7 @@ public final class LockCommand implements CliCommand {
                     if (message != null && !message.isBlank()) notes.add(message);
                 }
             };
-            return mirrored(collector, mode);
+            return SessionMirrorListener.mirrored(collector, mode);
         }
 
         @Override
@@ -335,7 +327,8 @@ public final class LockCommand implements CliCommand {
 
             @Override
             public BuildPlanListener onModuleStart(String moduleDir, String coord, List<Task> steps) {
-                current = mirrored(BuildPlanConsole.chooseConsoleListener("lock", steps, mode), mode);
+                current = SessionMirrorListener.mirrored(
+                        BuildPlanConsole.chooseConsoleListener("lock", steps, mode), mode);
                 return current;
             }
 
