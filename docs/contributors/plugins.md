@@ -118,8 +118,10 @@ version = { type = "string", required = true, example = "4.1.0",
 aot     = { type = "bool" }   # no default = tri-state
 ```
 
-Schema types: `string`, `bool`, `int`, `string-list`, `string-map` (an inline table of strings:
-`options = { a = "1" }`). Missing `required` keys fail parse with your `example` / `hint`.
+Schema types: `string`, `coordinate` (a `group:artifact:version` the user writes, a classifier and
+`!type` allowed after it — fewer than three segments fails parse naming the table and key), `bool`,
+`int`, `string-list`, `string-map` (an inline table of strings: `options = { a = "1" }`). Missing
+`required` keys fail parse with your `example` / `hint`.
 
 A table of *things* rather than keys — `[generate.api]`, `[generate.grammar]` — declares
 `[entries]`: every `[<table>.<name>]` sub-table validates against the named `[sub-schema]` and the

@@ -317,7 +317,7 @@ public record PluginDescriptor(
     }
 
     /**
-     * One schema key: its type ({@code string | bool | int | string-list | string-map}), whether the table
+     * One schema key: its type ({@code string | coordinate | bool | int | string-list | string-map}), whether the table
      * must declare it, and the value applied when absent ({@code null} = stay absent — the
      * tri-state pattern). {@code example} and {@code hint} feed the required-key error message
      * so schema-driven validation keeps the hand-written diagnostics' quality.
@@ -333,6 +333,12 @@ public record PluginDescriptor(
 
         public enum Type {
             STRING,
+            /**
+             * A Maven coordinate the user writes: {@code group:artifact:version}, a classifier and
+             * {@code !type} allowed after it. Fewer than three segments is refused at parse time
+             * naming the key, where a fetch-time error would name a coordinate and no table.
+             */
+            COORDINATE,
             BOOL,
             INT,
             STRING_LIST,
@@ -342,13 +348,14 @@ public record PluginDescriptor(
             public static Type parse(String raw, String where) {
                 return switch (raw) {
                     case "string" -> STRING;
+                    case "coordinate" -> COORDINATE;
                     case "bool" -> BOOL;
                     case "int" -> INT;
                     case "string-list" -> STRING_LIST;
                     case "string-map" -> STRING_MAP;
                     default ->
-                        throw new IllegalArgumentException(
-                                where + ": unknown schema type `" + raw + "` (string|bool|int|string-list|string-map)");
+                        throw new IllegalArgumentException(where + ": unknown schema type `" + raw
+                                + "` (string|coordinate|bool|int|string-list|string-map)");
                 };
             }
         }

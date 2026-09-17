@@ -362,6 +362,15 @@ public final class PluginTableRegistry {
                 if (v == null || v.isBlank()) yield null;
                 yield v;
             }
+            case COORDINATE -> {
+                String v = getOr(() -> table.getString(key.name()), where + " must be a string");
+                if (v == null || v.isBlank()) yield null;
+                if (!Coordinates.wellFormed(v)) {
+                    throw new JkBuildParseException(where + " = \"" + v
+                            + "\" must be a group:artifact:version coordinate (a classifier and !type may follow)");
+                }
+                yield v;
+            }
             case BOOL -> {
                 Boolean v = getOr(() -> table.getBoolean(key.name()), where + " must be a boolean");
                 if (v == null) throw new JkBuildParseException(where + " must be a boolean");
