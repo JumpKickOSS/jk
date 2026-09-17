@@ -81,6 +81,43 @@ class RunSnapshotsTest {
     }
 
     @Test
+    void the_source_walk_keeps_to_the_builds_inputs_and_leaves_the_rest_of_the_checkout_alone(@TempDir Path root)
+            throws IOException {
+        Files.writeString(root.resolve("jk.toml"), "name = \"ws\"\n[workspace]\nmodules = [\"app\"]\n");
+        Files.writeString(root.resolve("jk-lock.toml"), "version = 1\n");
+        Files.writeString(root.resolve("jk-guards.toml"), "");
+        Files.createDirectories(root.resolve(".jk"));
+        Files.writeString(root.resolve(".jk/after-build.kts"), "// script\n");
+        Files.createDirectories(root.resolve("app/src/com"));
+        Files.writeString(root.resolve("app/jk.toml"), "name = \"app\"\n");
+        Files.writeString(root.resolve("app/src/com/A.java"), "class A {}\n");
+        Files.createDirectories(root.resolve("app/resources"));
+        Files.writeString(root.resolve("app/resources/app.properties"), "k=v\n");
+        Files.createDirectories(root.resolve("app/test/src/com"));
+        Files.writeString(root.resolve("app/test/src/com/ATest.java"), "class ATest {}\n");
+        Files.createDirectories(root.resolve("app/notes"));
+        Files.writeString(root.resolve("app/notes/todo.md"), "- later\n");
+        Files.createDirectories(root.resolve("docs"));
+        Files.writeString(root.resolve("docs/guide.md"), "# guide\n");
+        // A large untracked tree beside the modules: never a build input, never walked.
+        Files.createDirectories(root.resolve("scratch/corpus"));
+        for (int i = 0; i < 200; i++) Files.writeString(root.resolve("scratch/corpus/f" + i + ".txt"), "x");
+
+        Map<String, RunSnapshots.FileRow> rows = requireNonNull(RunSnapshots.walk(root, Map.of()));
+
+        assertThat(rows)
+                .containsOnlyKeys(
+                        "jk.toml",
+                        "jk-lock.toml",
+                        "jk-guards.toml",
+                        ".jk/after-build.kts",
+                        "app/jk.toml",
+                        "app/src/com/A.java",
+                        "app/resources/app.properties",
+                        "app/test/src/com/ATest.java");
+    }
+
+    @Test
     void a_missing_root_is_no_snapshot(@TempDir Path root) {
         assertThat(RunSnapshots.walk(root.resolve("nope"), Map.of())).isNull();
         assertThat(RunSnapshots.takeSources(root.resolve("nope"), null)).isNull();

@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.TomlScan;
+import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,9 +31,11 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Test outcomes: one line per test, {@code P|F|S <tab> Class#display}. Sources: one line per
  * file, {@code hash <tab> size <tab> mtime <tab> path}, paths relative to the project root with
- * {@code /} separators. The walk skips the trees a build writes or a VCS keeps ({@link #SKIPPED}
- * and every hidden directory) and gives up past {@link #MAX_FILES}, which leaves the file
- * comparison out rather than stalling the journal on a huge checkout.
+ * {@code /} separators. The walk covers the build's inputs only ({@link #scope}): the manifests,
+ * the lock, the guard rules, the {@code .jk/} scripts and every module's source, test and resource
+ * roots — never the rest of the checkout. Inside a root it skips the trees a build writes or a
+ * VCS keeps ({@link #SKIPPED} and every hidden directory) and gives up past {@link #MAX_FILES},
+ * which leaves the file comparison out rather than stalling the journal on a huge tree.
  */
 public final class RunSnapshots {
 
@@ -41,6 +50,12 @@ public final class RunSnapshots {
 
     /** Directory names the source walk never enters, at any depth. */
     static final Set<String> SKIPPED = Set.of(BuildLayout.TARGET, "build", "node_modules", "out");
+
+    /** Files beside the root manifest that the build reads: the lock and the guard rules. */
+    static final List<String> ROOT_FILES = List.of(ManifestPaths.LOCK, "jk-guards.toml");
+
+    /** The build scripts' directory beside the root manifest: hidden, so named here rather than walked into. */
+    static final String SCRIPTS_DIR = ".jk";
 
     // ------------------------------------------------------------------ tests
 
@@ -110,24 +125,100 @@ public final class RunSnapshots {
     public static @Nullable Map<String, FileRow> walk(Path root, Map<String, FileRow> previous) {
         Path base = root.toAbsolutePath().normalize();
         if (!Files.isDirectory(base)) return null;
+        Scope scope = scope(base);
         Map<String, FileRow> out = new TreeMap<>();
         try {
-            PathUtil.forEachRegularFile(base, RunSnapshots::skipDirectory, (file, attrs) -> {
-                // Past the cap the walk finishes without hashing; the snapshot is then not taken.
-                if (out.size() > MAX_FILES) return;
-                String rel = base.relativize(file).toString().replace('\\', '/');
-                long size = attrs.size();
-                long mtime = attrs.lastModifiedTime().toMillis();
-                FileRow known = previous.get(rel);
-                String hash = known != null && known.size() == size && known.mtime() == mtime
-                        ? known.hash()
-                        : FileHashMemo.contentHash(file, attrs);
-                out.put(rel, new FileRow(hash, size, mtime));
-            });
+            for (Path file : scope.files()) {
+                if (Files.isRegularFile(file)) {
+                    row(base, file, Files.readAttributes(file, BasicFileAttributes.class), previous, out);
+                }
+            }
+            for (Path dir : scope.dirs()) {
+                PathUtil.forEachRegularFile(dir, RunSnapshots::skipDirectory, (file, attrs) -> {
+                    // Past the cap the walk finishes without hashing; the snapshot is then not taken.
+                    if (out.size() > MAX_FILES) return;
+                    row(base, file, attrs, previous, out);
+                });
+            }
         } catch (IOException | RuntimeException e) {
             return null;
         }
         return out.size() > MAX_FILES ? null : out;
+    }
+
+    /** One file's row into {@code out}: the previous run's hash when its size and mtime match, else a read. */
+    private static void row(
+            Path base, Path file, BasicFileAttributes attrs, Map<String, FileRow> previous, Map<String, FileRow> out)
+            throws IOException {
+        String rel = base.relativize(file).toString().replace('\\', '/');
+        long size = attrs.size();
+        long mtime = attrs.lastModifiedTime().toMillis();
+        FileRow known = previous.get(rel);
+        String hash = known != null && known.size() == size && known.mtime() == mtime
+                ? known.hash()
+                : FileHashMemo.contentHash(file, attrs);
+        out.put(rel, new FileRow(hash, size, mtime));
+    }
+
+    /** The build's inputs under a root: files read as they are, and directories walked. */
+    record Scope(List<Path> files, List<Path> dirs) {}
+
+    /**
+     * What the build reads under {@code root}: the root's {@link #ROOT_FILES} and {@code .jk/}
+     * scripts, the root's own source roots, and for every {@code [workspace] modules} member its
+     * manifest and the source, test and resource roots {@link ModuleLayout#fingerprintDirs} names.
+     * A workspace root contributes only its main roots: the compact layout reads any sibling
+     * directory holding {@code src/} as a test suite, which under a root is a member. Docs, scratch
+     * trees and an IDE's files are not inputs, so they are not in scope.
+     */
+    static Scope scope(Path root) {
+        LinkedHashSet<Path> files = new LinkedHashSet<>();
+        LinkedHashSet<Path> dirs = new LinkedHashSet<>();
+        files.add(ManifestPaths.manifestIn(root));
+        for (String name : ROOT_FILES) files.add(root.resolve(name));
+        Path scripts = root.resolve(SCRIPTS_DIR);
+        if (Files.isDirectory(scripts)) dirs.add(scripts);
+        List<Path> members = memberDirs(root);
+        addExisting(dirs, ModuleLayout.fingerprintDirs(root, !members.isEmpty()));
+        for (Path member : members) {
+            files.add(ManifestPaths.manifestIn(member));
+            addExisting(dirs, ModuleLayout.fingerprintDirs(member, false));
+        }
+        return new Scope(List.copyOf(files), List.copyOf(dirs));
+    }
+
+    private static void addExisting(LinkedHashSet<Path> dirs, List<Path> candidates) {
+        for (Path dir : candidates) {
+            if (Files.isDirectory(dir)) dirs.add(dir);
+        }
+    }
+
+    /**
+     * The member directories the root manifest declares under {@code [workspace] modules}, globs
+     * expanded; empty for a standalone project. A key scan of the manifest, not the full parser:
+     * the list is literal text, the scan costs milliseconds where the parser's first read of a
+     * workspace costs hundreds, and a manifest the parser would reject still names its members.
+     */
+    static List<Path> memberDirs(Path root) {
+        Path manifest = ManifestPaths.manifestIn(root);
+        if (!Files.isRegularFile(manifest)) return List.of();
+        List<String> rels = TomlScan.scan(manifest, "workspace.modules").stringArray("workspace.modules");
+        List<Path> out = new ArrayList<>();
+        for (String rel : expandQuietly(root, rels)) {
+            if (rel != null && !rel.isBlank()) out.add(root.resolve(rel).normalize());
+        }
+        return out;
+    }
+
+    /** Globs expanded; a pattern that matches nothing scopes no member rather than failing the snapshot. */
+    private static List<String> expandQuietly(Path root, List<String> rels) {
+        try {
+            return WorkspaceModules.expand(root, rels);
+        } catch (RuntimeException e) {
+            return rels.stream()
+                    .filter(r -> r != null && !WorkspaceModules.isGlob(r))
+                    .toList();
+        }
     }
 
     /** A hidden directory or one of {@link #SKIPPED}: a build output, a VCS tree, an IDE's state. */

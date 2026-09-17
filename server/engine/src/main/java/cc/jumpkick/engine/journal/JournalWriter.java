@@ -16,6 +16,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
+import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
@@ -258,8 +259,10 @@ public final class JournalWriter {
                             p -> RunSnapshots.readOrNull(p.dir().resolve(BuildJournal.SOURCES_TSV)))
                     .map(RunSnapshots::decodeSources)
                     .orElse(null);
+            long walkStart = Perf.start();
             Map<String, RunSnapshots.FileRow> rows =
                     RunSnapshots.walk(Path.of(record.dir()), priorRows == null ? Map.of() : priorRows);
+            Perf.end("run-snapshot", walkStart, "files", rows == null ? -1 : rows.size());
             Map<String, Character> outcomes = tests.isEmpty() ? null : RunSnapshots.testOutcomes(tests);
             String testOutcomes = outcomes == null ? null : RunSnapshots.encodeTests(outcomes);
             String sources = rows == null ? null : RunSnapshots.encodeSources(rows);
