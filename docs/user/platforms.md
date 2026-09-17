@@ -84,13 +84,15 @@ alike constrains the workspace's rows, one only some members hold constrains the
 floor, and the first-declared BOM wins over a later one. It does not adopt Maven's mediation between
 transitives by depth and declaration order: an unmanaged module that two POMs ask for at different
 versions resolves to the highest declared version under both policies, and a workspace member's pin
-is the version for the whole lock. On the Maven top-20 corpus in jk-examples, the 14 repositories
-that lock were compared module by module against Maven's own resolution: 170 of 341 modules differ
-on at least one version, 705 (module, coordinate) pairs in all. 278 of those pairs are inline
-`<dependencyManagement>` entries Maven applies to transitives and jk applies to declared
-dependencies only, others are a Boot BOM one member's `[spring-boot]` table brings to that member
-and the members that depend on it, and 111 pairs over 35 coordinates are depth mediation proper,
-where Maven's nearer declaration is older than the highest one jk picks.
+is the version for the whole lock. On the Maven top-20 corpus in jk-examples, the 16 repositories
+that lock were compared module by module against Maven's own resolution, their manifests imported
+and their locks written by the jk under test: 225 of 493 modules differ on at least one version,
+713 (module, coordinate) pairs over 154 coordinates in all. 367 pairs over 98 coordinates are depth
+mediation proper, where Maven's nearer declaration is older than the highest one jk picks; 137
+pairs over 9 coordinates are two BOMs that manage one module, where the BOM Maven's module imports
+and the platform jk's row reads disagree; 70 pairs are another workspace member's direct pin; 102
+sit under a parent whose own version already differs; and 30 pairs over 5 coordinates are inline
+`<dependencyManagement>` entries that reached no `[managed-dependencies]` table.
 
 GAs the platform does **not** manage resolve to the highest version the POMs that name
 them declare (Maven/Gradle parity). Opt into exact fills for unmanaged GAs with

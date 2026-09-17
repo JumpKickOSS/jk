@@ -302,9 +302,9 @@ main scope at the version the tests need, or pick a test dependency that accepts
 `nearest` covers direct pins and BOM order and nothing else: a module only transitive POMs name
 resolves highest-declared under both policies, so a lock row can sit above the version Maven's
 nearer declaration gives the same module. Measured on the Maven top-20 corpus in jk-examples, over
-the 14 repositories that lock and their 341 modules, 170 modules differ from Maven on some
-version, mostly through inline `<dependencyManagement>` entries jk applies to declared dependencies
-only; depth mediation alone accounts for 111 of the 705 differing (module, coordinate) pairs. The
+the 16 repositories that lock and their 493 modules, 225 modules differ from Maven on some version;
+depth mediation accounts for 367 of the 713 differing (module, coordinate) pairs, two BOMs managing
+one module for 137, another member's pin for 70, and a parent that already differs for 102. The
 policy table is in [Platforms](platforms.md#two-boms-that-manage-one-module).
 
 ## Rows a member owns
