@@ -30,7 +30,7 @@ register.
 | spring-boot | `[spring-boot]`: Boot jar, platform BOM, AOT step | core | the largest server segment |
 | quarkus | `[quarkus]`: augmentation, fast-jar, native via Quarkus | core | second server segment |
 | micronaut | `[micronaut]`: platform BOM, AOT | core | third server segment; Test Resources is not part of it before 1.0 |
-| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen | core | the native-binary generator |
+| protobuf | `[protobuf]`: provisioned `protoc`, Java + Kotlin codegen, protoc plugins (`[protobuf.grpc-java]`) | core | the native-binary generator |
 | generator | `[generate.<name>]`: any JVM code generator as a cached generate-stage step | core | one worker behind every generator table |
 | openapi | `[openapi]`: OpenAPI Generator over a contract, interface-only Spring by default | core | most Spring services ship a contract |
 | android | `[android]`: resources, manifest, dex/R8, signing, APK/AAB, Hilt | **contrib** | not AGP parity; AGP moves monthly — keep `jk gradle` for full AGP |

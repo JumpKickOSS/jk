@@ -4,6 +4,7 @@ package cc.jumpkick.protobuf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -136,6 +137,106 @@ class ProtocStepTest {
         assertThatThrownBy(() -> ProtocStep.run(io))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("protoc failed (exit 3)");
+    }
+
+    /**
+     * A {@code [protobuf.<id>]} entry is one protoc plugin: its fetched executable is staged like
+     * protoc's and named to protoc as {@code protoc-gen-<id>}, with {@code --<id>_out} into the
+     * same gen dir, the entry's {@code options} comma-joined ahead of it.
+     */
+    @Test
+    void a_protoc_plugin_entry_adds_its_plugin_and_out_flags(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf")
+                .config(
+                        PluginConfig.ENTRIES,
+                        Map.of(
+                                "grpc-java",
+                                Map.of("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0", "options", List.of("a", "b"))));
+        Path protoDir = tmp.resolve("proto");
+        Path only = write(protoDir.resolve("svc.proto"), "syntax = \"proto3\";");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0));
+        Path fetched = write(tmp.resolve("fetched/protoc-gen-grpc-java-bin"), "#!/bin/sh\nexit 0\n");
+        Files.setPosixFilePermissions(fetched, EnumSet.of(PosixFilePermission.OWNER_READ));
+        io.extra("protoc-gen-grpc-java", fetched);
+
+        ProtocStep.run(io);
+
+        Path gen = tmp.resolve("scratch/gen").toAbsolutePath();
+        Path staged = tmp.resolve("scratch/tools/protoc-gen-grpc-java").toAbsolutePath();
+        assertThat(Files.readAllLines(argv))
+                .containsExactly(
+                        "--java_out=" + gen,
+                        "-I",
+                        protoDir.toAbsolutePath().toString(),
+                        "--plugin=protoc-gen-grpc-java=" + staged,
+                        "--grpc-java_out=a,b:" + gen,
+                        only.toAbsolutePath().toString());
+        assertThat(Files.isExecutable(staged))
+                .as("the plugin binary is staged executable")
+                .isTrue();
+    }
+
+    /** An entry whose fetched executable is absent names the tool the engine should have supplied. */
+    @Test
+    void a_missing_protoc_plugin_artifact_names_the_step_dependency(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf")
+                .config(
+                        PluginConfig.ENTRIES,
+                        Map.of("grpc-java", Map.of("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0")));
+        write(tmp.resolve("proto/a.proto"), "syntax = \"proto3\";");
+        io.extra("protoc", stubProtoc(tmp, tmp.resolve("argv.txt"), 0));
+
+        assertThatThrownBy(() -> ProtocStep.run(io))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("step-dependency `protoc-gen-grpc-java` was not supplied");
+    }
+
+    /**
+     * A {@code .proto} a dependency jar carries ({@code google/rpc/status.proto} in
+     * proto-google-common-protos, the well-known types in protobuf-java) is importable: each jar
+     * holding one is unpacked under scratch and joins the include path after the module's own
+     * root, in classpath order; a jar without protos adds no root.
+     */
+    @Test
+    void protos_inside_classpath_jars_are_include_roots(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf");
+        Path protoDir = tmp.resolve("proto");
+        Path only = write(protoDir.resolve("svc.proto"), "syntax = \"proto3\";");
+        io.entry("guava-33.jar", "com.google.guava", "guava", "33", "com/google/common/Guava.class");
+        io.entry(
+                "proto-google-common-protos-2.17.0.jar",
+                "com.google.api.grpc",
+                "proto-google-common-protos",
+                "2.17.0",
+                "google/rpc/status.proto");
+        io.entry(
+                "protobuf-java-3.25.5.jar",
+                "com.google.protobuf",
+                "protobuf-java",
+                "3.25.5",
+                "google/protobuf/any.proto");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0));
+
+        ProtocStep.run(io);
+
+        Path includes = tmp.resolve("scratch/includes").toAbsolutePath();
+        Path common = includes.resolve("proto-google-common-protos-2.17.0");
+        Path wellKnown = includes.resolve("protobuf-java-3.25.5");
+        assertThat(Files.readAllLines(argv))
+                .containsExactly(
+                        "--java_out=" + tmp.resolve("scratch/gen").toAbsolutePath(),
+                        "-I",
+                        protoDir.toAbsolutePath().toString(),
+                        "-I",
+                        common.toString(),
+                        "-I",
+                        wellKnown.toString(),
+                        only.toAbsolutePath().toString());
+        assertThat(common.resolve("google/rpc/status.proto")).isRegularFile();
+        assertThat(wellKnown.resolve("google/protobuf/any.proto")).isRegularFile();
+        assertThat(includes.resolve("guava-33")).doesNotExist();
     }
 
     /** The step-dependency the engine fetches must be there; its absence names the manifest table to fix. */

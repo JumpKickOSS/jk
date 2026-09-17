@@ -141,6 +141,28 @@ Compose app with a JVM unit test and the `jk run` deploy path; see
 `[protobuf]` table: generate Java (and friends) from `.proto` sources as part of the
 compile graph. The plugin owns the generate stage; `jk.toml` stays data.
 
+```toml
+[protobuf]
+version = "4.33.1"        # the protoc release; pins com.google.protobuf:protoc in jk-lock.toml
+src     = "proto"         # module-relative proto root, protoc's include root
+lite    = false           # lite-runtime codegen (pairs with protobuf-javalite)
+kotlin  = false           # also emit the Kotlin DSL (--kotlin_out; pairs with protobuf-kotlin)
+
+[protobuf.grpc-java]      # one protoc plugin per [protobuf.<id>]; <id> is protoc's name for it
+plugin  = "io.grpc:protoc-gen-grpc-java:1.81.0"
+options = []              # the plugin's parameter, e.g. ["@generated=omit"]
+```
+
+protoc runs once over every `.proto` under `src`, writing `--java_out` (and `--kotlin_out`) and
+each entry's `--<id>_out` into one generated directory that joins the module's sources, so a
+`service` compiles against its gRPC stubs with no source root to declare. protoc and every
+plugin executable are fetched from the repositories for the host's OS and architecture and pinned
+in `jk-lock.toml`. A `.proto` a dependency jar carries — `google/protobuf/*.proto` in
+protobuf-java, `google/rpc/status.proto` in proto-google-common-protos — is importable, as it is
+under Maven. The step re-runs when a proto, the table, a tool or the dependency classpath changes.
+`jk import` writes the table and its entries from a POM's `protobuf-maven-plugin`
+([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
 ## Related
 
 [Platforms](platforms.md) · [Packaging](packaging.md) · [Templates](templates.md) ·

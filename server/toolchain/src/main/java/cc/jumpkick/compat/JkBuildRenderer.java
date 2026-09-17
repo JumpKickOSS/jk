@@ -225,35 +225,52 @@ public final class JkBuildRenderer {
 
     /**
      * Every plugin-owned table ({@code [spring-boot]}, …), rendered from its manifest schema:
-     * keys in schema order, values formatted by type, entries equal to their schema default
+     * keys in schema order, values formatted by type, values equal to their schema default
      * omitted (and absent tri-state keys stay absent) — so the round trip through {@code jk
-     * import} stays as minimal as the hand-written Boot renderer was. Zero framework knowledge
-     * lives here.
+     * import} stays as minimal as the hand-written Boot renderer was. The table's
+     * {@code [<table>.<name>]} entries follow it, each against the manifest's entry schema. Zero
+     * framework knowledge lives here.
      */
     private static void renderPluginTables(StringBuilder sb, JkBuild jkBuild) {
         for (PluginConfig config : jkBuild.pluginConfigs().values()) {
             PluginDescriptor manifest = PluginTableRegistry.byIdOrTable(config.id());
-            sb.append("\n[")
-                    .append(manifest != null ? manifest.table() : config.id())
-                    .append("]\n");
-            if (manifest == null) {
-                // No manifest installed here: every value as the model carries it, so the table
-                // is never dropped from the file it belongs in.
-                for (Map.Entry<String, Object> e : config.values().entrySet()) {
-                    if (PluginConfig.ENTRIES.equals(e.getKey())) continue;
-                    sb.append(e.getKey()).append(" = ");
-                    renderPluginValue(sb, e.getValue());
-                    sb.append('\n');
-                }
-                continue;
+            String table = manifest != null ? manifest.table() : config.id();
+            sb.append("\n[").append(table).append("]\n");
+            // No manifest installed here: every value as the model carries it, so the table is
+            // never dropped from the file it belongs in.
+            renderPluginKeys(sb, manifest == null ? Map.of() : manifest.schema(), config.values());
+            Map<String, PluginDescriptor.SchemaKey> entrySchema = manifest == null || manifest.entrySchema() == null
+                    ? Map.of()
+                    : manifest.subSchemas().getOrDefault(manifest.entrySchema(), Map.of());
+            for (Map.Entry<String, Map<String, Object>> entry : config.entries().entrySet()) {
+                sb.append("\n[")
+                        .append(table)
+                        .append('.')
+                        .append(safeKey(entry.getKey()))
+                        .append("]\n");
+                renderPluginKeys(sb, entrySchema, entry.getValue());
             }
-            for (var schemaKey : manifest.schema().values()) {
-                Object value = config.values().get(schemaKey.name());
-                if (value == null || value.equals(schemaKey.normalizedDefault())) continue;
-                sb.append(schemaKey.name()).append(" = ");
-                renderPluginValue(sb, value);
+        }
+    }
+
+    /** One table's keys: in schema order minus defaults when a schema is known, else every value as carried. */
+    private static void renderPluginKeys(
+            StringBuilder sb, Map<String, PluginDescriptor.SchemaKey> schema, Map<String, Object> values) {
+        if (schema.isEmpty()) {
+            for (Map.Entry<String, Object> e : values.entrySet()) {
+                if (PluginConfig.ENTRIES.equals(e.getKey())) continue;
+                sb.append(safeKey(e.getKey())).append(" = ");
+                renderPluginValue(sb, e.getValue());
                 sb.append('\n');
             }
+            return;
+        }
+        for (var schemaKey : schema.values()) {
+            Object value = values.get(schemaKey.name());
+            if (value == null || value.equals(schemaKey.normalizedDefault())) continue;
+            sb.append(schemaKey.name()).append(" = ");
+            renderPluginValue(sb, value);
+            sb.append('\n');
         }
     }
 

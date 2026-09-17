@@ -1,8 +1,8 @@
-# The built-in protobuf build plugin's declarative manifest (android-plan Phase 5,
-# NiA blocker 3 — but deliberately ecosystem-neutral: any gRPC/protobuf JVM service is
-# the audience). Owns [protobuf]; the code layer runs the provisioned protoc binary over
-# the module's proto sources and contributes the generated Java to the compiler's source
-# set — the same before-compile source-generation lane the android res step uses.
+# The built-in protobuf build plugin's declarative manifest — ecosystem-neutral: any
+# gRPC/protobuf JVM service is the audience. Owns [protobuf]; the code layer runs the provisioned
+# protoc binary, and every protoc plugin a [protobuf.<id>] entry names, over the module's proto
+# sources and contributes the generated Java to the compiler's source set — the same
+# before-compile source-generation lane the android res step uses.
 
 [plugin]
 id        = "protobuf"
@@ -20,8 +20,25 @@ src     = { type = "string", default = "proto" }   # proto source dir, module-re
 lite    = { type = "bool", default = false }       # lite-runtime codegen (Android/datastore posture)
 kotlin  = { type = "bool", default = false }       # also emit Kotlin DSL codegen (--kotlin_out; pairs with protobuf-kotlin[-lite])
 
+# Every [protobuf.<id>] sub-table is one protoc plugin, <id> being the name protoc knows it by
+# (--<id>_out, protoc-gen-<id>): [protobuf.grpc-java] runs io.grpc's stub generator over the
+# same protos, its output joining the generated Java in gen.
+[entries]
+schema = "protoc-plugin"
+
+[sub-schema.protoc-plugin]
+plugin  = { type = "string", required = true, example = "io.grpc:protoc-gen-grpc-java:1.81.0", hint = "the plugin executable's group:artifact:version — the host's os-arch classifier and exe packaging are implied, as protoc's are" }
+options = { type = "string-list", default = [] }   # the plugin's parameter, comma-joined ahead of its output dir (--<id>_out=a,b:<gen>)
+
 # protoc ships as a per-OS/arch native binary published straight to Maven (no jar
 # wrapper) — ${host.os-arch} picks the classifier, !exe the packaging.
 [[contribute.step-dependency]]
 artifact   = "protoc"
 coordinate = "com.google.protobuf:protoc:${config.version}:${host.os-arch}!exe"
+
+# A protoc plugin publishes the same way; one per [protobuf.<id>] entry, handed to the step as
+# protoc-gen-<id>.
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "protoc-gen-${entry.name}"
+coordinate = "${entry.plugin}:${host.os-arch}!exe"

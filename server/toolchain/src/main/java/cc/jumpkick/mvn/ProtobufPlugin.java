@@ -5,7 +5,6 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -14,7 +13,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
@@ -25,12 +23,13 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code protobuf-maven-plugin} is the {@code [protobuf]} preset on a module that owns
  * {@code .proto} sources: {@code <protocArtifact>}'s version is {@code version} (the protobuf-java
- * dependency's when the POM names no protoc), {@code <protoSourceRoot>} is {@code src}. The
- * plugin's output under {@code target/generated-sources/protobuf} is the preset's contribution, so
- * a build-helper root inside it is not written as an {@code extra-src}; a module the plugin reaches
- * by inheritance without protos of its own gets neither the table nor the root. A protoc plugin the
- * {@code compile-custom} goal runs (gRPC's) has no key, so it is a row: Tier 3 when a proto declares
- * a {@code service} the stubs would serve, a warning otherwise.
+ * dependency's when the POM names no protoc), {@code <protoSourceRoot>} is {@code src}, and the
+ * protoc plugin the {@code compile-custom} goal runs (gRPC's) is the {@code [protobuf.<pluginId>]}
+ * entry — {@code <pluginArtifact>}'s {@code group:artifact:version} as {@code plugin},
+ * {@code <pluginParameter>}'s comma-separated items as {@code options}. The plugin's output under
+ * {@code target/generated-sources/protobuf} is the preset's contribution, so a build-helper root
+ * inside it is not written as an {@code extra-src}; a module the plugin reaches by inheritance
+ * without protos of its own gets neither the table nor the root.
  */
 final class ProtobufPlugin {
 
@@ -56,7 +55,7 @@ final class ProtobufPlugin {
             "protocArtifact", "protoSourceRoot", "outputDirectory", "pluginId", "pluginArtifact", "pluginParameter");
 
     private static final Set<String> GOALS = Set.of("compile", "compile-custom");
-    private static final Pattern SERVICE = Pattern.compile("(?m)^\\s*service\\s+\\w+");
+    private static final String CUSTOM_GOAL = "compile-custom";
 
     /** The table, null when the module owns no protos, and the output roots the plugin fills. */
     record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots) {
@@ -87,7 +86,8 @@ final class ProtobufPlugin {
         String version = version(model, configs, report);
         if (version != null) values.put("version", version);
         if (!PRESET_SRC.equals(src)) values.put("src", src);
-        reportProtocPlugin(plugin, configs, protoDir, protos, src, report);
+        Map<String, Map<String, Object>> plugins = protocPlugins(plugin, configs, report);
+        if (!plugins.isEmpty()) values.put(PluginConfig.ENTRIES, plugins);
         reportOtherGoals(plugin, report);
         reportUncovered(configs, report);
         return new Mapped(new PluginConfig("protobuf", values), outputRoots);
@@ -119,33 +119,51 @@ final class ProtobufPlugin {
         return null;
     }
 
-    /** The protoc plugin {@code compile-custom} runs; gRPC's stubs are needed when a proto declares a service. */
-    private static void reportProtocPlugin(
-            Plugin plugin,
-            List<Xpp3Dom> configs,
-            Path protoDir,
-            List<Path> protos,
-            String src,
-            ImportReport.Builder report) {
-        String pluginId = value(configs, "pluginId");
-        String pluginArtifact = value(configs, "pluginArtifact");
+    /**
+     * The protoc plugin {@code compile-custom} runs, as the {@code [protobuf.<pluginId>]} entry:
+     * {@code <pluginArtifact>} is {@code group:artifact:version:exe:classifier}, whose first three
+     * segments are {@code plugin} (the host classifier is the build's, not the POM's). A
+     * configured plugin no {@code compile-custom} execution runs is inert under Maven too, so it
+     * writes nothing; one the import cannot name is a row that says what to write.
+     */
+    private static Map<String, Map<String, Object>> protocPlugins(
+            Plugin plugin, List<Xpp3Dom> configs, ImportReport.Builder report) {
         boolean custom = plugin.getExecutions().stream()
-                .anyMatch(execution -> execution.getGoals().contains("compile-custom"));
-        if (pluginId == null && pluginArtifact == null && !custom) return;
-        String name = pluginId != null ? "`" + pluginId + "`" : "a";
-        String coordinate = pluginArtifact != null ? " (" + pluginArtifact + ")" : "";
-        List<String> services = declaringServices(protoDir, protos, src);
-        String text = "`" + ARTIFACT + "` runs " + name + " protoc plugin" + coordinate + " through"
-                + " `compile-custom`; `[protobuf]` has no key for a protoc plugin, so its output is not generated"
-                + " under jk";
-        if (services.isEmpty()) {
-            report.warning(text + ", and no `.proto` under `" + src + "` declares a `service`, so nothing here"
-                    + " needs it.");
-            return;
+                .anyMatch(execution -> execution.getGoals().contains(CUSTOM_GOAL));
+        if (!custom) return Map.of();
+        String pluginId = value(configs, "pluginId");
+        String artifact = value(configs, "pluginArtifact");
+        String coordinate = artifact == null ? null : gav(artifact);
+        if (pluginId == null || coordinate == null) {
+            String name = pluginId == null ? "a" : "the `" + pluginId + "`";
+            String table = "[protobuf." + (pluginId == null ? "<id>" : pluginId) + "]";
+            report.error("`" + ARTIFACT + "` `" + CUSTOM_GOAL + "` runs " + name + " protoc plugin but names no"
+                    + (pluginId == null ? " `<pluginId>`" : " resolvable `<pluginArtifact>`") + ", so no `" + table
+                    + "` entry was written; add it with `plugin = \"group:artifact:version\"` naming the plugin"
+                    + " executable (protoc's `--" + (pluginId == null ? "<id>" : pluginId) + "_out`).");
+            return Map.of();
         }
-        report.error(text + ". " + String.join(", ", services) + " declare a `service`, so a source importing"
-                + " the generated stubs does not compile; check the stubs in under a source root of their own,"
-                + " or keep the module under `jk mvn`.");
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("plugin", coordinate);
+        String parameter = value(configs, "pluginParameter");
+        if (parameter != null) {
+            List<String> options = new ArrayList<>();
+            for (String option : parameter.split(",")) {
+                if (!option.isBlank()) options.add(option.trim());
+            }
+            if (!options.isEmpty()) entry.put("options", options);
+        }
+        Map<String, Map<String, Object>> plugins = new LinkedHashMap<>();
+        plugins.put(pluginId, entry);
+        return plugins;
+    }
+
+    /** {@code group:artifact:version} out of a plugin artifact coordinate, null when a segment is missing. */
+    private static @Nullable String gav(String artifact) {
+        String[] parts = artifact.split(":");
+        if (parts.length < 3) return null;
+        for (int i = 0; i < 3; i++) if (PluginFacts.usable(parts[i]) == null) return null;
+        return parts[0].trim() + ":" + parts[1].trim() + ":" + parts[2].trim();
     }
 
     private static void reportOtherGoals(Plugin plugin, ImportReport.Builder report) {
@@ -168,7 +186,8 @@ final class ProtobufPlugin {
         }
         if (names.isEmpty()) return;
         report.warning("`" + ARTIFACT + "` " + String.join(", ", names) + " have no `[protobuf]` key; the preset"
-                + " runs protoc with `version`, `src`, `lite` and `kotlin`.");
+                + " runs protoc with `version`, `src`, `lite` and `kotlin`, and one `[protobuf.<id>]` entry per"
+                + " protoc plugin.");
     }
 
     /** The {@code .proto} files under {@code dir}, sorted; empty when it is not a directory. */
@@ -184,21 +203,6 @@ final class ProtobufPlugin {
         }
         protos.sort(null);
         return protos;
-    }
-
-    /** The protos under {@code protoDir} that declare a {@code service}, as backticked module-relative paths. */
-    private static List<String> declaringServices(Path protoDir, List<Path> protos, String src) {
-        List<String> names = new ArrayList<>();
-        for (Path proto : protos) {
-            try {
-                if (!SERVICE.matcher(Files.readString(proto, StandardCharsets.UTF_8))
-                        .find()) continue;
-            } catch (IOException e) {
-                continue;
-            }
-            names.add("`" + src + "/" + protoDir.relativize(proto).toString().replace('\\', '/') + "`");
-        }
-        return names;
     }
 
     /** The last usable value of {@code name} across {@code configs}, so an execution's wins over the plugin's. */
