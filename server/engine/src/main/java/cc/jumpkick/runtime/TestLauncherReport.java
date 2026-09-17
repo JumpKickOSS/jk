@@ -71,6 +71,27 @@ final class TestLauncherReport {
                     .append(" engine could not start on this test classpath — `jk why ")
                     .append(engineCoordinate(engine))
                     .append("` shows the line it came from; every JUnit artifact must sit on one version.");
+        } else if (e.signal() != null) {
+            sb.append("\n\nFix: the ")
+                    .append(e.phase())
+                    .append(" JVM was killed by ")
+                    .append(e.signal())
+                    .append(" before it ran a test")
+                    .append(e.lastLines().isEmpty() ? " and printed nothing" : "")
+                    .append(". SIGKILL with no output is the kernel's out-of-memory killer under load or an outside"
+                            + " kill: fewer test JVMs at once (`[test] workers`, `-w`) or a smaller heap each"
+                            + " (`[test] jvm-args` `-Xmx…`) keeps the fork inside the machine; SIGSEGV or SIGABRT is"
+                            + " the JVM's own crash, and its hs_err file names where.");
+        } else if (e.jvmRefused()) {
+            sb.append("\n\nFix: the ")
+                    .append(e.phase())
+                    .append(" JVM refused to start (")
+                    .append(e.headline())
+                    .append(
+                            ") before it loaded a test class: a heap or stack it could not reserve, or a flag it did not"
+                                    + " accept. The flags come from `[test] jvm-args`, the profile's `jvm-args` and jk's own"
+                                    + " heap cap (`--ram-percent`); a reservation refused under load fits with fewer test JVMs"
+                                    + " at once (`[test] workers`, `-w`) or a smaller `-Xmx`.");
         } else if (e.outOfMemory()) {
             sb.append("\n\nFix: the ")
                     .append(e.phase())
@@ -84,6 +105,10 @@ final class TestLauncherReport {
             sb.append("\n\nFix: the runner did not get to report; the failure is the framework's own — `")
                     .append(e.rootCause())
                     .append("` — and the frames above name where. Rerun with --verbose for the live stream.");
+        } else if (e.lastLines().isEmpty()) {
+            sb.append("\n\nFix: the fork printed nothing and named no reason; rerun with --verbose for the live"
+                    + " stream. The exit is the fork's own, so a launcher that exits before the runner speaks is"
+                    + " the place to look: `[test] jvm-args`, the agents the flags load, the test JDK.");
         } else {
             sb.append("\n\nFix: the runner's full output is above; rerun with --verbose for the live stream.");
         }

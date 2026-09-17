@@ -13,7 +13,10 @@ import org.jspecify.annotations.Nullable;
  * not start, a launcher missing from the classpath, a JVM that would not boot — so it fails the
  * {@code run-tests} step instead of counting as one red test. What the fork printed is the whole
  * evidence and rides along, with what can be read off it: the exception the runner reported, the
- * engine JUnit named, the cause chain.
+ * engine JUnit named, the cause chain, the JVM's own refusal to start. The message always carries
+ * the exit — with the signal's name when the exit is {@code 128 + signal} — and the fork's last
+ * words: the line the output classifies as, else its last {@link #LAST_LINES} lines, else that it
+ * printed nothing.
  */
 public final class TestLauncherFailure extends RuntimeException {
 
@@ -35,6 +38,38 @@ public final class TestLauncherFailure extends RuntimeException {
     /** HotSpot's last word under {@code -XX:+ExitOnOutOfMemoryError}, before it exits 3. */
     private static final String JVM_OOM_PREFIX = "Terminating due to ";
 
+    /** Lines kept from the end of an output nothing else classifies. */
+    static final int LAST_LINES = 5;
+
+    /** HotSpot's first line when it could not reserve or commit what a flag asked; the reason follows it. */
+    private static final String JVM_INIT_FAILED = "Error occurred during initialization of VM";
+
+    /** The launcher's line under a flag it refused; a specific line precedes it and is preferred. */
+    private static final String JVM_COULD_NOT_CREATE = "Error: Could not create the Java Virtual Machine.";
+
+    /** The hs_err report's opener; the signal line follows it. */
+    private static final String JVM_FATAL_ERROR = "A fatal error has been detected by the Java Runtime Environment";
+
+    /** Lines the JVM launcher or HotSpot print, on their own, when a flag or the machine refused the start. */
+    private static final List<String> JVM_REFUSAL_PREFIXES = List.of(
+            "Invalid initial heap size",
+            "Invalid maximum heap size",
+            "Invalid thread stack size",
+            "Improperly specified VM option",
+            "Unrecognized VM option",
+            "Unrecognized option",
+            "Error: Could not find or load main class",
+            "Error: Unable to initialize main class",
+            "Error: Unable to access jarfile",
+            "There is insufficient memory for the Java Runtime Environment to continue",
+            "Native memory allocation");
+
+    /** Signal names by number, for an exit of {@code 128 + signal}; the rest read {@code signal N}. */
+    private static final String[] SIGNALS = {
+        "", "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGKILL", "SIGUSR1",
+        "SIGSEGV", "SIGUSR2", "SIGPIPE", "SIGALRM", "SIGTERM"
+    };
+
     private static final Pattern ENGINE_ID = Pattern.compile("TestEngine with ID '([^']+)'");
     private static final Pattern CLASS_NAME = Pattern.compile("^([A-Za-z_$][\\w$]*\\.)+[A-Z][\\w$]*$");
 
@@ -44,7 +79,7 @@ public final class TestLauncherFailure extends RuntimeException {
     private final String output;
 
     private TestLauncherFailure(String moduleLabel, String phase, int exit, String output) {
-        super(phase + " exited " + exit + " before any test ran" + headlineSuffix(output));
+        super(phase + " exited " + exit + signalSuffix(exit) + " before any test ran" + headlineSuffix(output));
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         this.phase = phase;
         this.exit = exit;
@@ -104,6 +139,33 @@ public final class TestLauncherFailure extends RuntimeException {
     /** True when the fork was the JVM itself running out of memory, not a runner exception. */
     public boolean outOfMemory() {
         return "java.lang.OutOfMemoryError".equals(exceptionClass());
+    }
+
+    /**
+     * True when the JVM refused to start at all — a heap it could not reserve, a flag it did not
+     * accept, native memory it could not map — so no class of the suite was ever loaded.
+     */
+    public boolean jvmRefused() {
+        return jvmRefusal(output) != null;
+    }
+
+    /**
+     * The signal that ended the fork when the exit is {@code 128 + signal} ({@code SIGKILL} for
+     * 137), or {@code null} for an exit the fork chose itself.
+     */
+    public @Nullable String signal() {
+        return signalName(exit);
+    }
+
+    /** The last {@link #LAST_LINES} non-blank lines the fork printed, oldest first; empty when it printed nothing. */
+    public List<String> lastLines() {
+        List<String> kept = new ArrayList<>();
+        String[] lines = output.split("\n");
+        for (int i = lines.length - 1; i >= 0 && kept.size() < LAST_LINES; i--) {
+            String t = lines[i].strip();
+            if (!t.isEmpty()) kept.add(t);
+        }
+        return List.copyOf(kept.reversed());
     }
 
     /**
@@ -203,7 +265,60 @@ public final class TestLauncherFailure extends RuntimeException {
                 jvm = t.substring(JVM_OOM_PREFIX.length()).strip();
             if (trace == null) trace = exceptionLine(t);
         }
-        return jvm != null ? jvm : trace;
+        if (jvm != null) return jvm;
+        String refusal = jvmRefusal(output);
+        return refusal != null ? refusal : trace;
+    }
+
+    /**
+     * The line that says why the JVM would not start, or {@code null}: the reason under HotSpot's
+     * {@code Error occurred during initialization of VM}, the launcher's own line for a flag it
+     * refused, the hs_err report's memory or signal line — the launcher's generic {@code Could not
+     * create the Java Virtual Machine} only when no line before it is more specific.
+     */
+    private static @Nullable String jvmRefusal(@Nullable String output) {
+        if (output == null) return null;
+        String[] lines = output.split("\n");
+        boolean generic = false;
+        for (int i = 0; i < lines.length; i++) {
+            String t = stripReportMarker(lines[i]);
+            if (t.startsWith(JVM_INIT_FAILED) || t.startsWith(JVM_FATAL_ERROR)) {
+                String next = nextReportLine(lines, i + 1);
+                return next != null ? next : t;
+            }
+            for (String prefix : JVM_REFUSAL_PREFIXES) {
+                if (t.startsWith(prefix)) return t;
+            }
+            if (t.startsWith(JVM_COULD_NOT_CREATE)) generic = true;
+        }
+        return generic ? JVM_COULD_NOT_CREATE : null;
+    }
+
+    /** The next non-blank line, its {@code #} report marker removed, or {@code null} past the end. */
+    private static @Nullable String nextReportLine(String[] lines, int from) {
+        for (int i = from; i < lines.length; i++) {
+            String t = stripReportMarker(lines[i]);
+            if (!t.isEmpty()) return t;
+        }
+        return null;
+    }
+
+    /** The line without the {@code #} an hs_err report prefixes, stripped of surrounding blanks. */
+    private static String stripReportMarker(String line) {
+        String t = line.strip();
+        return t.startsWith("#") ? t.substring(1).strip() : t;
+    }
+
+    /** {@code " (SIGKILL)"} for an exit of {@code 128 + signal}; {@code ""} for the fork's own exit. */
+    private static String signalSuffix(int exit) {
+        String signal = signalName(exit);
+        return signal == null ? "" : " (" + signal + ")";
+    }
+
+    private static @Nullable String signalName(int exit) {
+        if (exit <= 128 || exit > 128 + 64) return null;
+        int number = exit - 128;
+        return number < SIGNALS.length ? SIGNALS[number] : "signal " + number;
     }
 
     /** {@code t} when it is a bare {@code <class>: <message>} or {@code <class>} exception line. */
@@ -217,11 +332,12 @@ public final class TestLauncherFailure extends RuntimeException {
     /**
      * What follows the exit in the message: the runner's own headline when it reported one, else
      * the whole {@code <class>: <message>} the JVM or a framework printed, since a bare
-     * {@code Metaspace} says nothing without its {@code OutOfMemoryError}.
+     * {@code Metaspace} says nothing without its {@code OutOfMemoryError}; when no line
+     * classifies, the fork's last lines, or that it printed nothing.
      */
     private static String headlineSuffix(@Nullable String output) {
         String header = header(output);
-        if (header == null || header.isBlank()) return "";
+        if (header == null || header.isBlank()) return lastWordsSuffix(output);
         if (!fromRunner(output)) return " — " + header;
         int colon = header.indexOf(": ");
         String headline =
@@ -229,6 +345,20 @@ public final class TestLauncherFailure extends RuntimeException {
                         ? header.substring(colon + 2).strip()
                         : header;
         return headline.isBlank() ? "" : " — " + headline;
+    }
+
+    /** The fork's last lines, one per indented line, or the silence named. */
+    private static String lastWordsSuffix(@Nullable String output) {
+        if (output == null || output.isBlank()) return " — the fork printed nothing";
+        StringBuilder sb = new StringBuilder(" — the fork's last output:");
+        List<String> kept = new ArrayList<>();
+        String[] lines = output.split("\n");
+        for (int i = lines.length - 1; i >= 0 && kept.size() < LAST_LINES; i--) {
+            String t = lines[i].strip();
+            if (!t.isEmpty()) kept.add(t);
+        }
+        for (String line : kept.reversed()) sb.append("\n    ").append(line);
+        return sb.toString();
     }
 
     private static boolean fromRunner(@Nullable String output) {
