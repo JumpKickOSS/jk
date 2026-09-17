@@ -356,6 +356,17 @@ path, and `jk why <child>` shows both — every path that brings it and every ed
 A pattern several paths declared lists each origin, comma-separated. A row with nothing pruned has
 no `excluded-by` key. See [Dependencies](dependencies.md#exclusions).
 
+## How the lock is read
+
+The lock is TOML, and any TOML reader can read it. jk reads it through the row grammar its
+writer emits — bare keys, quoted strings, integers, booleans, string arrays, `[table]` and
+`[[row]]` headers — in one pass, so a workspace lock of a thousand modules and a megabyte of rows
+is parsed in a few milliseconds and a few megabytes of heap, and a `jk lock` that produces one
+finishes at the default heap. Anything a hand edit adds that the writer never emits (a comment, a
+literal `'string'`, an inline table) is read through a full TOML parser instead, with its
+diagnostics; the meaning is the same either way. The `project-id` is scanned from the head of the
+file, so history and dashboard routes for a project resolve without reading its rows.
+
 ## Related
 
 [Dependencies](dependencies.md) · [Platforms](platforms.md) · [Repositories](repositories.md)

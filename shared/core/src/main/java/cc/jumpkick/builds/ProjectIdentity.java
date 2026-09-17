@@ -7,7 +7,6 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
@@ -74,6 +73,15 @@ public record ProjectIdentity(
 
     /** Resolve identity for a project or workspace root directory. */
     public static ProjectIdentity resolve(@Nullable Path projectDir) {
+        return resolve(projectDir, null);
+    }
+
+    /**
+     * As {@link #resolve(Path)}, taking the lock tier's {@code project-id} from {@code lock} — the
+     * one a writer holds in memory, having just rendered it — instead of the file on disk. An
+     * explicit {@code id} in {@code jk.toml} still wins.
+     */
+    public static ProjectIdentity resolve(@Nullable Path projectDir, @Nullable Lockfile lock) {
         Path abs = projectDir == null
                 ? Path.of(".").toAbsolutePath().normalize()
                 : projectDir.toAbsolutePath().normalize();
@@ -84,7 +92,7 @@ public record ProjectIdentity(
             return new ProjectIdentity(explicit.get(), coord, abs, Source.EXPLICIT, null, null);
         }
 
-        Optional<String> lockId = lockId(abs);
+        Optional<String> lockId = lock == null ? lockId(abs) : validId(lock.projectId());
         if (lockId.isPresent()) {
             return new ProjectIdentity(lockId.get(), coord, abs, Source.LOCK, null, null);
         }
@@ -276,16 +284,32 @@ public record ProjectIdentity(
         return Optional.of(normalizeId(id));
     }
 
-    private static Optional<String> lockId(Path projectDir) {
-        Path lock = LockPaths.lockFile(projectDir);
-        if (!Files.isRegularFile(lock)) return Optional.empty();
+    /** {@code raw} as a normalized id; empty when blank or not an id at all. */
+    private static Optional<String> validId(@Nullable String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
         try {
-            Lockfile lf = LockfileReader.read(lock);
-            if (lf.projectId() == null || lf.projectId().isBlank()) return Optional.empty();
-            return Optional.of(normalizeId(lf.projectId()));
-        } catch (Exception e) {
+            return Optional.of(normalizeId(raw));
+        } catch (RuntimeException notAnId) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * The id the root lock records. Scanned from the lock's head, as {@link #coordOf} scans the
+     * manifest: the writer puts {@code project-id} among the top-level scalars before the first
+     * {@code [[artifact]]}, so routing a project's history reads a few lines, not a megabyte of
+     * rows — and a lock this jk cannot read as a whole, one a newer writer's schema moved on,
+     * still names its project.
+     */
+    private static Optional<String> lockId(Path projectDir) {
+        return recordedId(LockPaths.lockFile(projectDir)).flatMap(ProjectIdentity::validId);
+    }
+
+    /** The {@code project-id} scalar {@code lockFile} carries, verbatim; empty when absent or blank. */
+    public static Optional<String> recordedId(Path lockFile) {
+        if (!Files.isRegularFile(lockFile)) return Optional.empty();
+        String id = TomlScan.scanScalarHead(lockFile, "project-id").get("project-id");
+        return id == null || id.isBlank() ? Optional.empty() : Optional.of(id);
     }
 
     private static String hashId(String material) {

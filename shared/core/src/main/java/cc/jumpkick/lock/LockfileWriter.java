@@ -5,16 +5,17 @@ import cc.jumpkick.builds.DeclaredDeps;
 import cc.jumpkick.builds.DepFrequency;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -46,32 +47,26 @@ public final class LockfileWriter {
      */
     public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
         Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
-        // Preserve / mint durable project-id: never drop on rewrite.
+        // Preserve / mint durable project-id: never drop on rewrite. The id an earlier lock recorded
+        // is scanned from its head — a torn or unreadable lock with an intact head keeps its id.
         Path owner = ownerOf(file);
         if (stamped.projectId() == null || stamped.projectId().isBlank()) {
-            String existing = null;
-            if (Files.isRegularFile(file)) {
-                try {
-                    existing = LockfileReader.read(file).projectId();
-                } catch (Exception e) {
-                    // torn or unreadable — mint/recover below
-                    Log.debug("write: torn or unreadable", e);
-                }
-            }
-            if (existing != null && !existing.isBlank()) {
-                stamped = stamped.withProjectId(existing);
-            } else {
-                stamped = ProjectIdentity.ensureProjectId(stamped, owner);
-            }
+            Optional<String> existing = ProjectIdentity.recordedId(file);
+            stamped = existing.isPresent()
+                    ? stamped.withProjectId(existing.get())
+                    : ProjectIdentity.ensureProjectId(stamped, owner);
         }
         // Atomic (temp + rename): concurrent readers never observe a truncated lock.
         // Durable: the lockfile is the source of truth, not a cache. A torn target after power loss is
         // not recoverable by re-running — the resolve that produced it is gone.
         AtomicWrites.replaceDurably(file, render(stamped));
         // Materialize identity.toml so project= id resolves to a checkout without a prior build.
+        // The identity comes from the lock in memory: reading a megabyte lock back through the TOML
+        // parser to learn the id this method just wrote is what pushed the engine past its heap.
         try {
             LockfileReader.clearCache();
-            ProjectIdentity identity = ProjectIdentity.resolve(owner);
+            TomlScan.forget(file);
+            ProjectIdentity identity = ProjectIdentity.resolve(owner, stamped);
             Path home = ProjectBuilds.projectHome(ProjectBuilds.buildsRoot(), identity);
             ProjectIdentity.IdentityFile.write(home, identity);
             // Host declared-dep frequency for the New wizard library picker.

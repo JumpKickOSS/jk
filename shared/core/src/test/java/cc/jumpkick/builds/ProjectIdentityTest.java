@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -243,5 +244,76 @@ class ProjectIdentityTest {
         Path file = Files.writeString(dir.resolve(name), body);
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwx------"));
         return file;
+    }
+    /**
+     * A lock write parses no lock text: the identity it materializes comes from the rows in
+     * memory, and the id an earlier lock recorded is scanned from the file's head. Reading the
+     * lock back through the TOML parser costs hundreds of megabytes of heap on a megabyte lock.
+     */
+    @Test
+    void writing_a_lock_parses_no_lock_text(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        Path lock = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), lock);
+        LockfileReader.clearCache();
+        long before = LockfileReader.parses();
+
+        LockfileWriter.write(Lockfile.empty("test"), lock);
+        LockfileWriter.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), lock);
+        ProjectIdentity id = ProjectIdentity.resolve(dir);
+
+        assertThat(LockfileReader.parses())
+                .as("lock texts parsed by two writes and a resolve")
+                .isEqualTo(before);
+        assertThat(id.source()).isEqualTo(ProjectIdentity.Source.LOCK);
+        assertThat(id.id()).isEqualTo("aabbccddeeff00112233445566778899");
+        assertThat(LockfileReader.read(lock).projectId())
+                .as("a write without an id keeps the one on disk")
+                .isEqualTo("aabbccddeeff00112233445566778899");
+    }
+
+    @Test
+    void a_lock_held_in_memory_names_the_identity_without_a_file(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        Lockfile lock = Lockfile.empty("test").withProjectId("00112233445566778899aabbccddeeff");
+        ProjectIdentity id = ProjectIdentity.resolve(dir, lock);
+        assertThat(id.source()).isEqualTo(ProjectIdentity.Source.LOCK);
+        assertThat(id.id()).isEqualTo("00112233445566778899aabbccddeeff");
+        assertThat(id.coord()).isEqualTo("com.example:demo");
+    }
+
+    /**
+     * The id is scanned from the lock's head, so a lock this jk cannot read as a whole — one a
+     * newer jk wrote in a schema this one refuses — still routes its history to the same project.
+     */
+    @Test
+    void lock_id_is_read_from_a_lock_this_jk_cannot_parse(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        Files.writeString(dir.resolve("jk-lock.toml"), """
+                version = 99
+                generated-by = "jk 9.0.0"
+                resolution-algorithm = "pubgrub-v1"
+                project-id = "ffeeddccbbaa99887766554433221100"
+
+                [[artifact]]
+                name = "g:a:jar:"
+                version = "1.0"
+                source = "central"
+                """);
+        ProjectIdentity id = ProjectIdentity.resolve(dir);
+        assertThat(id.source()).isEqualTo(ProjectIdentity.Source.LOCK);
+        assertThat(id.id()).isEqualTo("ffeeddccbbaa99887766554433221100");
     }
 }
