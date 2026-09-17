@@ -35,13 +35,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * is <b>warm on purpose</b> — it holds a fetched store, and a per-run home would re-download every
  * dependency on every {@code jk test}.
  *
- * <p><b>Cleanup.</b> Warm is not unbounded. {@link #prepare} stamps the slot it hands out, and every
- * launch reaps every slot not stamped within {@link #KEEP_DAYS} days, then the least recently
- * stamped slots until the root fits {@link #KEEP_BYTES} — before the run, so a project that was
- * deleted or renamed cannot leave one behind for ever, and a root that several agents' engines
- * share reaches a steady state within one launch of a slot going stale. The pass is cheap where it
- * can be: a launch within {@link #REAP_EVERY_MILLIS} of a pass that removed nothing and left the
- * root under the cap skips its own. A launch marks every slot it reads with
+ * <p><b>Cleanup.</b> Warm is not unbounded. {@link #prepare} stamps the slot it hands out with the
+ * module's path, and every launch reaps every slot whose module directory no longer exists — a
+ * deleted worktree, a fixture project a suite made under a temp dir and removed — every slot not
+ * stamped within {@link #KEEP_DAYS} days, then the least recently stamped slots until the root fits
+ * {@link #KEEP_BYTES} — before the run, so a project that was deleted or renamed cannot leave one
+ * behind for ever, and a root that several agents' engines share reaches a steady state within one
+ * launch of a slot going stale. The pass is cheap where it can be: a launch within
+ * {@link #REAP_EVERY_MILLIS} of a pass that removed nothing and left the root under the cap skips
+ * its own. A launch marks every slot it reads with
  * a hold ({@link #hold}: a file under {@code .holds} naming its pid and start time, released when
  * the suite exits), and the reaper never removes a held slot — several gates share one machine and
  * one of them launching must not pull the dependency jars out from under another. A hold whose
@@ -73,6 +75,7 @@ public final class TestHomes {
     /** A slot stamped this recently is held: a gate that launched it may still be running. */
     static final int HOLD_HOURS = 24;
 
+    /** {@code <slot>/.used-at}: first line the module's absolute path, mtime the last hand-out. */
     private static final String STAMP = ".used-at";
 
     /** {@code <slot>/.holds/<pid>-<n>}, body {@code <pid> <start epoch millis>}: one per live launch. */
@@ -151,7 +154,7 @@ public final class TestHomes {
         reapIfDue(root(), clock.millis(), KEEP_BYTES);
         Path slot = slotFor(dir);
         Files.createDirectories(slot);
-        stamp(slot);
+        stamp(slot, dir);
         return slot;
     }
 
@@ -173,20 +176,48 @@ public final class TestHomes {
      * real path when the module exists, so a module reached through a link keys as the directory itself.
      */
     public static String keyFor(Path moduleDir) {
-        Path abs = moduleDir.toAbsolutePath().normalize();
-        try {
-            abs = abs.toRealPath();
-        } catch (IOException notYetOnDisk) {
-            // The absolute form is the identity until the directory exists.
-        }
-        return Hashing.sha256Hex(abs.toString()).substring(0, 12);
+        return Hashing.sha256Hex(realPath(moduleDir).toString()).substring(0, 12);
     }
 
-    /** Record that this slot is in use, so the next run's reap leaves it alone. Best effort. */
-    static void stamp(Path slot) {
+    private static Path realPath(Path moduleDir) {
+        Path abs = moduleDir.toAbsolutePath().normalize();
+        try {
+            return abs.toRealPath();
+        } catch (IOException notYetOnDisk) {
+            // The absolute form is the identity until the directory exists.
+            return abs;
+        }
+    }
+
+    /**
+     * Whether the stamp names a module directory that does not exist. A stamp naming none — a bare
+     * note, or one that will not read — leaves the slot to its age.
+     */
+    static boolean moduleGone(Path slot) {
+        try {
+            String first = Files.readString(slot.resolve(STAMP))
+                    .lines()
+                    .findFirst()
+                    .orElse("")
+                    .strip();
+            if (first.isEmpty()) return false;
+            Path module = Path.of(first);
+            return module.isAbsolute() && !Files.isDirectory(module);
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
+    }
+
+    /**
+     * Record that this slot is in use by {@code moduleDir}, so the next run's reap leaves it alone
+     * for as long as the module exists. Best effort.
+     */
+    static void stamp(Path slot, Path moduleDir) {
         try {
             Files.createDirectories(slot);
-            Files.writeString(slot.resolve(STAMP), "jk test sandbox; see cc.jumpkick.util.TestHomes\n");
+            Files.writeString(
+                    slot.resolve(STAMP),
+                    realPath(moduleDir) + "\njk test sandbox for the module above; see cc.jumpkick.util.TestHomes\n");
         } catch (IOException | RuntimeException e) {
             // A missing stamp costs this home an early reap, never a failed build.
             Log.debug("stamp: A missing stamp costs this home an early reap, never a failed build", e);
@@ -290,11 +321,12 @@ public final class TestHomes {
     private record Slot(Path dir, long usedMillis, long bytes, boolean held) {}
 
     /**
-     * Delete every slot whose stamp is older than {@link #KEEP_DAYS} — and every entry that carries no
-     * stamp at all, since nothing else writes here — then the least recently stamped survivors until
-     * the rest fit {@code capBytes}. Never a slot a live launch holds, and never one stamped within
-     * {@link #HOLD_HOURS}. Returns the pass: how many were removed and the bytes that stayed. Best
-     * effort: a slot another process still has open is left for the run after this one.
+     * Delete every slot whose module directory is gone or whose stamp is older than
+     * {@link #KEEP_DAYS} — and every entry that carries no stamp at all, since nothing else writes
+     * here — then the least recently stamped survivors until the rest fit {@code capBytes}. Never a
+     * slot a live launch holds, and never one stamped within {@link #HOLD_HOURS} unless its module is
+     * gone. Returns the pass: how many were removed and the bytes that stayed. Best effort: a slot
+     * another process still has open is left for the run after this one.
      */
     static Pass reapStale(Path root, long nowMillis, long capBytes) {
         long cutoff = nowMillis - KEEP_DAYS * 24L * 60 * 60 * 1000;
@@ -312,7 +344,7 @@ public final class TestHomes {
                         .map(st -> st.lastModifiedTime().toMillis())
                         .orElseGet(() -> attrs.lastModifiedTime().toMillis());
                 boolean inUse = held(slot);
-                if (used <= cutoff && !inUse) {
+                if ((used <= cutoff || moduleGone(slot)) && !inUse) {
                     stale.add(slot);
                 } else {
                     fresh.add(new Slot(slot, used, size(slot), inUse));

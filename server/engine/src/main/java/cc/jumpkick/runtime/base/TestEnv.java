@@ -9,6 +9,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -37,6 +38,10 @@ import org.jspecify.annotations.Nullable;
  * otherwise hand every test JVM its real build history and host calibration. Anything a suite
  * genuinely needs from the real environment beyond {@link BuildEnv#MACHINE} it can name explicitly —
  * the sandbox is a default, not a wall.
+ *
+ * <p>The sandbox store is warmed with the JUnit Platform from the engine's own ({@link
+ * TestStoreSeed}): the injected test roots a fixture lock needs, version lists included, are on disk
+ * before the first fixture asks, and a Central that throttles this host cannot turn a suite red.
  *
  * <p>The declared values themselves are resolved by {@link TestEnvValues}, which the run-tests cache
  * key also uses: the two must agree about an unset {@code ${VAR}} or a build's outcome depends on
@@ -83,6 +88,20 @@ public final class TestEnv {
     static final String TEMP = "TEMP";
 
     private TestEnv() {}
+
+    /**
+     * The sandbox store learns the JUnit Platform from this engine's store ({@link TestStoreSeed}),
+     * so the suite's fixtures lock their injected test roots without Central. Warmth only: a seed
+     * that fails leaves the fixtures to fetch what they need.
+     */
+    private static void warmStore(Path sandboxHome) {
+        try {
+            int seeded = TestStoreSeed.seed(JkDirs.store(), sandboxHome.resolve("store"));
+            if (seeded > 0) Log.debug("TestEnv: seeded " + seeded + " JUnit Platform files into " + sandboxHome);
+        } catch (IOException | RuntimeException e) {
+            Log.debug("TestEnv: the sandbox store keeps whatever it had; fixtures fetch the rest", e);
+        }
+    }
 
     /**
      * The sandbox local-m2 root: one per <em>workspace</em>, not one per module.
@@ -150,6 +169,7 @@ public final class TestEnv {
         // in use — so anything the build stages into it before the suite launches survives the
         // reaper another module's preparation may run meanwhile.
         Path sandboxHome = TestHomes.prepare(moduleDir);
+        warmStore(sandboxHome);
         out.put(JK_HOME, sandboxHome.toString());
         out.put(JK_STATE_DIR, sandboxHome.resolve("state").toString());
         out.put(JK_STORE_DIR, sandboxHome.resolve("store").toString());

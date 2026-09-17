@@ -212,6 +212,22 @@ calibration, learned weights) build it under a throwaway: `@SysProps.TempRoots("
 on the class, and `Calibration.invalidateMemo()` where a process-wide memo could carry a previous
 reader's file. `:cli` classes use `@IsolatedState` / `@IsolatedStore` (guard `cli-test-isolated-state`).
 
+**The fixtures' injected test roots are warm by construction.** Every fixture lock injects
+`junit-platform-launcher` (and `junit-jupiter` when the fixture declares no test dependencies) as
+`latest`, which needs a version list. When the engine prepares a module's sandbox it seeds that
+sandbox's store from its own (`TestStoreSeed`): the JUnit Platform trees hard-linked under
+`repos/central`, and for each artifact a version list naming exactly the versions whose POM came
+along, under the key the metadata cache reads for the Central URL. A cold sandbox therefore locks
+its test roots without Central, and a Central that throttles this host cannot turn the tier red; a
+real index the sandbox fetched itself is left in place. Only those trees: everything else a
+fixture needs is exact-pinned and fetched once into the warm sandbox, and a whole-store link would
+make every sandbox weigh the whole store to the slot reaper's byte cap.
+
+**Slots live as long as their module.** A sandbox slot's stamp names the module directory it was
+handed to; every launch reaps the slots whose module is gone — a removed worktree, a fixture
+project a suite made under a temp dir — before the age and size rules apply, so a full run of the
+CLI tier leaves no slot per fixture behind. A slot a live launch holds is never reaped.
+
 ## Suites and tags
 
 | Intent | Command |

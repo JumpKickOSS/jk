@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
@@ -92,7 +93,7 @@ class TestHomesTest {
     void a_home_is_created_and_stamped_so_the_next_reap_spares_it(@TempDir Path tmp) throws Exception {
         Path root = tmp.resolve("homes");
         Path home = Files.createDirectories(root.resolve("abc123abc123"));
-        TestHomes.stamp(home);
+        TestHomes.stamp(home, root);
 
         assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
                 .as("a home in use is not reaped")
@@ -106,7 +107,7 @@ class TestHomesTest {
         Path root = Files.createDirectories(tmp.resolve("homes"));
         Path stale = Files.createDirectories(root.resolve("dddddddddddd"));
         Files.createDirectories(stale.resolve("store/templates"));
-        TestHomes.stamp(stale);
+        TestHomes.stamp(stale, root);
         age(stale.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
 
         assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
@@ -246,7 +247,7 @@ class TestHomesTest {
     void prepare_reaps_on_the_supplied_clock(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("homes"));
         Path old = Files.createDirectories(root.resolve("aaaaaaaaaaaa"));
-        TestHomes.stamp(old);
+        TestHomes.stamp(old, root);
         long wellPast = Files.getLastModifiedTime(old.resolve(".used-at")).toMillis()
                 + Duration.ofDays(TestHomes.KEEP_DAYS + 5).toMillis();
 
@@ -270,7 +271,7 @@ class TestHomesTest {
             long t0 = System.currentTimeMillis();
             TestHomes.prepareSlot(module, at(t0));
             Path stale = Files.createDirectories(root.resolve("cccccccccccc"));
-            TestHomes.stamp(stale);
+            TestHomes.stamp(stale, root);
             age(stale.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
 
             TestHomes.prepareSlot(module, at(t0 + 1000));
@@ -329,7 +330,7 @@ class TestHomesTest {
 
     private static Path staleSlot(Path root, String key) throws Exception {
         Path slot = Files.createDirectories(root.resolve(key));
-        TestHomes.stamp(slot);
+        TestHomes.stamp(slot, root);
         age(slot.resolve(".used-at"), Duration.ofDays(TestHomes.KEEP_DAYS + 1));
         return slot;
     }
@@ -360,12 +361,84 @@ class TestHomesTest {
     private static Path slotWithBytes(Path root, String key, int bytes) throws Exception {
         Path slot = Files.createDirectories(root.resolve(key));
         Files.write(Files.createDirectories(slot.resolve("home/store")).resolve("blob"), new byte[bytes]);
-        TestHomes.stamp(slot);
+        TestHomes.stamp(slot, root);
         return slot;
     }
 
     private static void age(Path path, Duration by) throws Exception {
         Files.setLastModifiedTime(
                 path, FileTime.from(System.currentTimeMillis() - by.toMillis(), TimeUnit.MILLISECONDS));
+    }
+
+    // ---- a slot lives as long as its module -----------------------------------
+
+    /**
+     * A CLI fixture is a project under a temp dir, and its nested engine gives it a slot. The
+     * fixture goes when the test ends; the slot must not stay for fourteen days per run.
+     */
+    @Test
+    void a_slot_whose_module_directory_is_gone_is_reaped_at_the_next_launch(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path fixture = Files.createDirectories(tmp.resolve("junit-1234/app"));
+        Path slot = Files.createDirectories(root.resolve(TestHomes.keyFor(fixture)));
+        TestHomes.stamp(slot, fixture);
+        Path living = Files.createDirectories(root.resolve(TestHomes.keyFor(tmp)));
+        TestHomes.stamp(living, tmp);
+
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
+                .as("both modules exist")
+                .isZero();
+
+        PathUtil.deleteRecursivelyOrThrow(fixture);
+
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
+                .isEqualTo(1);
+        assertThat(slot).doesNotExist();
+        assertThat(living)
+                .as("the module that still exists keeps its slot, however fresh")
+                .isDirectory();
+    }
+
+    /** The stamp names the module, so a reader can see what a slot was for. */
+    @Test
+    void the_stamp_names_the_module_it_was_handed_to(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("ws/lib"));
+        Path slot = Files.createDirectories(tmp.resolve("homes").resolve(TestHomes.keyFor(module)));
+        TestHomes.stamp(slot, module);
+
+        assertThat(Files.readString(slot.resolve(".used-at")).lines().findFirst())
+                .contains(module.toRealPath().toString());
+        assertThat(TestHomes.moduleGone(slot)).isFalse();
+    }
+
+    /** A stamp that names no module — a note alone — is judged by its age. */
+    @Test
+    void a_stamp_without_a_module_path_is_kept_by_age_alone(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path slot = Files.createDirectories(root.resolve("eeeeeeeeeeee"));
+        Files.writeString(slot.resolve(".used-at"), "jk test sandbox\n");
+
+        assertThat(TestHomes.moduleGone(slot)).isFalse();
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
+                .isZero();
+        assertThat(slot).isDirectory();
+    }
+
+    /** A launch still reading the slot's jars keeps it, even after the module directory went. */
+    @Test
+    void a_held_slot_survives_its_module_going_away(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path fixture = Files.createDirectories(tmp.resolve("fixture"));
+        Path slot = Files.createDirectories(root.resolve(TestHomes.keyFor(fixture)));
+        TestHomes.stamp(slot, fixture);
+        try (TestHomes.Hold hold = TestHomes.hold(slot)) {
+            PathUtil.deleteRecursivelyOrThrow(fixture);
+            assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP)
+                            .removed())
+                    .isZero();
+            assertThat(slot).isDirectory();
+        }
+        assertThat(TestHomes.reapStale(root, System.currentTimeMillis(), NO_CAP).removed())
+                .isEqualTo(1);
     }
 }
