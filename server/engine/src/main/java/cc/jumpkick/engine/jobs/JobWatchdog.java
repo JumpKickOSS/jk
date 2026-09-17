@@ -82,27 +82,15 @@ final class JobWatchdog {
             @Nullable BufferedWriter writer,
             WallDeadline deadline,
             long startMillis) {
-        long heartbeatMs = limits.heartbeatMs();
-        boolean heartbeats = heartbeatMs > 0 && writer != null;
-        boolean stalls = stallNoteMs > 0;
-        if (!(heartbeats || deadline.bounded() || stalls)) return null;
+        Watch watch = watch(eventRequestId, kind, dir, cancelToken, runnerRef, writer, deadline, startMillis);
+        if (watch == null) return null;
         // Holds the job's cancel token explicitly; reads no session.
         return Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
-            long start = startMillis;
-            long lastNoted = start;
             while (done.getCount() > 0) {
-                long elapsed = nowMillis.getAsLong() - start;
-                // The heartbeat sets the tick only when there is a stream to keep alive; a
-                // deadline-only watch re-reads the clock every second, a stall-only watch at a
-                // fraction of the silence it is looking for.
-                long wait = heartbeats ? heartbeatMs : deadline.bounded() ? 1_000L : stallTick();
-                if (deadline.bounded()) {
-                    long remaining = deadline.ms() - elapsed;
-                    if (remaining <= 0) {
-                        enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadline);
-                        return;
-                    }
-                    wait = Math.min(wait, remaining);
+                long wait = watch.nextWait();
+                if (wait < 0) {
+                    watch.deadlinePassed();
+                    return;
                 }
                 try {
                     if (done.await(wait, TimeUnit.MILLISECONDS)) return;
@@ -111,12 +99,95 @@ final class JobWatchdog {
                     return;
                 }
                 if (done.getCount() == 0) return;
-                if (heartbeats) {
-                    WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(nowMillis.getAsLong() - start));
-                }
-                if (stalls) lastNoted = noteStall(eventRequestId, kind, dir, start, lastNoted);
+                watch.pass();
             }
         });
+    }
+
+    /**
+     * One job's watch — what a tick does and how long the next one waits — or {@code null} when no
+     * arm is live. The thread {@link #start} runs is the loop around it; a test drives the passes
+     * itself against a clock it advances, so nothing it asserts waits on the wall.
+     */
+    @Nullable
+    Watch watch(
+            long eventRequestId,
+            String kind,
+            String dir,
+            Session.CancelToken cancelToken,
+            AtomicReference<Thread> runnerRef,
+            @Nullable BufferedWriter writer,
+            WallDeadline deadline,
+            long startMillis) {
+        boolean heartbeats = limits.heartbeatMs() > 0 && writer != null;
+        boolean stalls = stallNoteMs > 0;
+        if (!(heartbeats || deadline.bounded() || stalls)) return null;
+        return new Watch(eventRequestId, kind, dir, cancelToken, runnerRef, writer, deadline, startMillis, heartbeats);
+    }
+
+    /** The arms of one job's watch and the stamp the stall arm carries from pass to pass. */
+    final class Watch {
+        private final long eventRequestId;
+        private final String kind;
+        private final String dir;
+        private final Session.CancelToken cancelToken;
+        private final AtomicReference<Thread> runnerRef;
+        private final @Nullable BufferedWriter writer;
+        private final WallDeadline deadline;
+        private final long start;
+        private final boolean heartbeats;
+        private long lastNoted;
+
+        private Watch(
+                long eventRequestId,
+                String kind,
+                String dir,
+                Session.CancelToken cancelToken,
+                AtomicReference<Thread> runnerRef,
+                @Nullable BufferedWriter writer,
+                WallDeadline deadline,
+                long start,
+                boolean heartbeats) {
+            this.eventRequestId = eventRequestId;
+            this.kind = kind;
+            this.dir = dir;
+            this.cancelToken = cancelToken;
+            this.runnerRef = runnerRef;
+            this.writer = writer;
+            this.deadline = deadline;
+            this.start = start;
+            this.heartbeats = heartbeats;
+            this.lastNoted = start;
+        }
+
+        /**
+         * Milliseconds until the next pass, or a negative number once the deadline has passed. The
+         * heartbeat sets the tick only when there is a stream to keep alive; a deadline-only watch
+         * re-reads the clock every second, a stall-only watch at a fraction of the silence it is
+         * looking for.
+         */
+        long nextWait() {
+            long wait = heartbeats ? limits.heartbeatMs() : deadline.bounded() ? 1_000L : stallTick();
+            if (deadline.bounded()) {
+                long remaining = deadline.ms() - (nowMillis.getAsLong() - start);
+                if (remaining <= 0) return -1L;
+                wait = Math.min(wait, remaining);
+            }
+            return wait;
+        }
+
+        /** One pass after a tick: the heartbeat line, then the stall note when the job has been silent long enough. */
+        void pass() {
+            if (heartbeats) {
+                WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(nowMillis.getAsLong() - start));
+            }
+            if (stallNoteMs > 0) lastNoted = noteStall(eventRequestId, kind, dir, start, lastNoted);
+        }
+
+        /** The deadline arm: cancel the job and tell the client. */
+        void deadlinePassed() {
+            enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadline);
+        }
     }
 
     private long stallTick() {
