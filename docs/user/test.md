@@ -182,7 +182,11 @@ exclude-tags = ["slow", "network", "bench"]
 
 A module whose tests all carry tags the active profile drops reports
 `0 tests (all excluded by profile <name>)` as a plain results line: that tier has no tests in the
-module, which is the expected outcome and not a warning.
+module, which is the expected outcome and not a warning. A profile that includes a tag the
+`[test] exclude-tags` baseline still lists selects nothing — a `@Tag("integration")` on a method
+inside an untagged class included, since the exclude applies to the method — and the line says so,
+naming the tag and the fix: the profile clears the list with `exclude-tags = []` (or lists only the
+tags it does not run), as the scaffolded profiles do.
 
 **The default tier cannot reach Maven Central.** A run that includes no tag and excludes at
 least one — the bare `jk test`, and the test step of `jk build` — hands every test JVM
