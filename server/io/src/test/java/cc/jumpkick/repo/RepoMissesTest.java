@@ -12,13 +12,10 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
-import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,10 +44,10 @@ class RepoMissesTest {
     final LoopbackHttp full = new LoopbackHttp();
 
     /** A remote that holds nothing. */
-    private final StubRemote emptyRemote = new StubRemote("empty.example.test");
+    private final RemoteStub emptyRemote = new RemoteStub("empty.example.test");
 
     /** A remote that holds the library. */
-    private final StubRemote fullRemote = new StubRemote("full.example.test");
+    private final RemoteStub fullRemote = new RemoteStub("full.example.test");
 
     @BeforeEach
     void seed() {
@@ -149,6 +146,31 @@ class RepoMissesTest {
         assertThat(full.requestsFor(POM)).isEqualTo(1);
     }
 
+    /**
+     * A {@code file://} repository is the disk right now — a workspace path, a git materialization —
+     * and what it lacks it can gain without a session boundary, so its not-found answers are never
+     * held: the artifact it gains is seen on the next ask, with no {@code --force}.
+     */
+    @Test
+    void a_file_repository_that_gains_an_artifact_is_seen_without_force(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("local"));
+        MavenRepo local = new MavenRepo(
+                "local", dir.toUri(), new Http(), new Cas(tmp.resolve("cas")), RepoCredential.ANONYMOUS, false);
+        assertThat(RepoMisses.memoizes(dir.toUri()))
+                .as("a file:// repository is not memoized")
+                .isFalse();
+
+        assertThatThrownBy(() -> local.fetchPom(LIB)).isInstanceOf(MavenRepo.ArtifactNotFoundException.class);
+        assertThat(RepoMisses.size()).as("the miss was not kept").isZero();
+
+        // Published since, by a path or git materialization writing into the directory.
+        Path pom = dir.resolve("com/example/lib/1.0/lib-1.0.pom");
+        Files.createDirectories(pom.getParent());
+        Files.writeString(pom, "<project><modelVersion>4.0.0</modelVersion></project>");
+
+        assertThat(local.fetchPom(LIB).url().getPath()).endsWith("/com/example/lib/1.0/lib-1.0.pom");
+    }
+
     private RepoGroup group(Path tmp) {
         return new RepoGroup(List.of(repo(tmp, "empty", empty), repo(tmp, "full", full)));
     }
@@ -156,36 +178,5 @@ class RepoMissesTest {
     private static MavenRepo repo(Path tmp, String name, LoopbackHttp server) {
         return new MavenRepo(
                 name, server.base(), new Http(), new Cas(tmp.resolve("cas")), RepoCredential.ANONYMOUS, false);
-    }
-
-    /** A remote repository as the transport sees it: a path-to-body map under a remote host, counting requests. */
-    private static final class StubRemote implements RepoTransport {
-        final Map<String, byte[]> served = new ConcurrentHashMap<>();
-        private final Map<String, Integer> requests = new ConcurrentHashMap<>();
-        private final URI base;
-
-        StubRemote(String host) {
-            this.base = URI.create("https://" + host + "/");
-        }
-
-        MavenRepo repo(Path tmp, String name) {
-            return MavenRepo.overTransport(
-                    name, base, this, new Cas(tmp.resolve("cas")), RepoCredential.ANONYMOUS, null, false, false, false);
-        }
-
-        int requestsFor(String path) {
-            return requests.getOrDefault(path, 0);
-        }
-
-        @Override
-        public Optional<byte[]> fetch(URI uri, RepoCredential credential) {
-            requests.merge(uri.getPath(), 1, Integer::sum);
-            return Optional.ofNullable(served.get(uri.getPath()));
-        }
-
-        @Override
-        public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
-            return 405;
-        }
     }
 }
