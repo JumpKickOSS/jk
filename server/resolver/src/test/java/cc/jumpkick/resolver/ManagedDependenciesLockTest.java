@@ -33,7 +33,8 @@ import org.junit.jupiter.api.io.TempDir;
  * brings in, as Maven's inline {@code dependencyManagement} does: {@code middle 1.0} asks for
  * {@code leaf 1.5}, the repository advertises {@code 2.0}, and the manifest's entry lands the lock
  * on {@code 1.0} under both pin policies, with the entry named on the row. The entry beats a BOM
- * that manages the same module, and an exact pin the project declares itself beats the entry.
+ * that manages the same module, an exact pin the project declares itself beats the entry, and the
+ * entry's {@code exclude} prunes every edge onto its module, a POM's and the project's own alike.
  */
 class ManagedDependenciesLockTest {
 
@@ -152,6 +153,60 @@ class ManagedDependenciesLockTest {
 
         assertThat(row(lock, LEAF).version()).isEqualTo("1.0");
         assertThat(row(lock, LEAF).pinnedBy()).isEqualTo("jk.toml:leaf");
+    }
+
+    /** leaf 1.0 brings deep; the managed entry on leaf excludes everything under it. */
+    private void publishLeafWithDeep() {
+        upstream.metadata("com.foo", "deep", "1.0");
+        upstream.pom("com.foo", "deep", "1.0", MavenStub.emptyPom("com.foo", "deep", "1.0"));
+        upstream.jar("com.foo", "deep", "1.0");
+        upstream.pom("com.foo", "leaf", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>deep</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+    }
+
+    @Test
+    void a_managed_entrys_exclusions_prune_a_pom_edge_onto_its_module(@TempDir Path tempDir) throws Exception {
+        publishLeafWithDeep();
+        JkBuild project = project(Map.of(
+                Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))),
+                Scope.MANAGED,
+                        List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0"))
+                                .withExclusions(List.of("*:*")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+
+        assertThat(lock.artifacts())
+                .extracting(Lockfile.Artifact::packageKey)
+                .contains("com.foo:middle:jar:", LEAF)
+                .doesNotContain("com.foo:deep:jar:");
+        assertThat(row(lock, LEAF).version()).isEqualTo("1.0");
+        assertThat(row(lock, LEAF).excludedBy())
+                .as("the row whose edge was pruned names the managed entry")
+                .containsExactly("com.foo:deep <- jk.toml:leaf");
+    }
+
+    @Test
+    void a_managed_entrys_exclusions_prune_the_projects_own_edge_onto_its_module(@TempDir Path tempDir)
+            throws Exception {
+        publishLeafWithDeep();
+        JkBuild project = project(Map.of(
+                Scope.MAIN, List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("=1.0"))),
+                Scope.MANAGED,
+                        List.of(Dependency.of("leaf", "com.foo:leaf", VersionSelector.parse("1.0"))
+                                .withExclusions(List.of("com.foo:deep")))));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+
+        assertThat(lock.artifacts()).extracting(Lockfile.Artifact::packageKey).doesNotContain("com.foo:deep:jar:");
+        assertThat(row(lock, LEAF).excludedBy()).containsExactly("com.foo:deep <- jk.toml:leaf");
     }
 
     private static ResolveObserver recording(List<String> overrides) {

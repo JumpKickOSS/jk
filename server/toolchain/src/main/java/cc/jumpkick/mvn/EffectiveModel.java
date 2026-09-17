@@ -309,10 +309,11 @@ final class EffectiveModel {
     }
 
     /**
-     * An inline {@code dependencyManagement} pin no declared dependency uses. {@code owner} labels
-     * the POM that wrote it ({@code this POM}, or an ancestor's label); {@code reactorParent} is true
-     * when that ancestor is a sibling pom.xml of the reactor, whose table a workspace import writes
-     * once on the root.
+     * An inline {@code dependencyManagement} entry {@code [managed-dependencies]} carries: a pin no
+     * declared dependency uses, or one with {@code <exclusions>}, which govern every edge onto the
+     * module and not only a declared one's. {@code owner} labels the POM that wrote it ({@code this
+     * POM}, or an ancestor's label); {@code reactorParent} is true when that ancestor is a sibling
+     * pom.xml of the reactor, whose table a workspace import writes once on the root.
      */
     record InlinePin(Pom.Dep dep, String owner, boolean reactorParent) {}
 
@@ -321,8 +322,9 @@ final class EffectiveModel {
      * the BOM imports to write with their versions resolved; {@code parentPlatform} is the nearest
      * published parent when its chain manages versions of its own, so one {@code [platform]} entry
      * carries the whole inherited table; {@code inline} are the bare pins no declared dependency
-     * uses and no platform entry carries, which {@code [managed-dependencies]} carries so they
-     * govern transitive versions as they do under Maven.
+     * uses and no platform entry carries, plus every entry with exclusions, which {@code
+     * [managed-dependencies]} carries so they govern transitive versions and prune transitive edges
+     * as they do under Maven.
      */
     record Management(List<Pom.Dep> platform, @Nullable Ancestor parentPlatform, List<InlinePin> inline) {}
 
@@ -340,7 +342,7 @@ final class EffectiveModel {
             if (carriedByParent) continue;
             if (isImport(m)) {
                 platform.add(toDep(m));
-            } else if (!usedKeys.contains(key)) {
+            } else if (!usedKeys.contains(key) || !m.getExclusions().isEmpty()) {
                 String label = own ? "this POM" : owner.map(Ancestor::label).orElse("a parent");
                 boolean reactorParent = !own && owner.map(Ancestor::inReactor).orElse(false);
                 inline.add(new InlinePin(toDep(m), label, reactorParent));

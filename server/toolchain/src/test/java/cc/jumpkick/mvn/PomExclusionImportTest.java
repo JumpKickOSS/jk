@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A dependency's {@code <exclusions>} reach the manifest as {@code exclude = [...]}: a plain
  * exclusion is {@code group:artifact}, a {@code *} artifactId is {@code group:*}, a {@code *}
- * groupId is a report row, and a BOM import's exclusions are not written.
+ * groupId is {@code *:artifact}, and a BOM import's exclusions are not written.
  */
 class PomExclusionImportTest {
 
@@ -76,7 +76,7 @@ class PomExclusionImportTest {
             """;
 
     @Test
-    void exclusions_land_on_the_entry_and_a_wildcard_group_is_a_row(@TempDir Path tempDir) throws Exception {
+    void exclusions_land_on_the_entry_in_every_maven_spelling(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, POM);
         JkBuild build = result.jkBuild();
         List<String> messages = TestImporters.messages(result);
@@ -88,8 +88,8 @@ class PomExclusionImportTest {
         assertThat(messages).noneMatch(m -> m.contains("apicurio-common-app-components-logging"));
 
         Dependency noisy = only(build.dependencies().of(Scope.MAIN), "noisy");
-        assertThat(noisy.exclusions()).containsExactly("org.demo:chatter");
-        assertThat(messages).anyMatch(m -> m.startsWith("`<exclusion>` *:slf4j-simple on org.demo:noisy"));
+        assertThat(noisy.exclusions()).containsExactly("*:slf4j-simple", "org.demo:chatter");
+        assertThat(messages).noneMatch(m -> m.startsWith("`<exclusion>`"));
 
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .allSatisfy(d -> assertThat(d.exclusions()).isEmpty());
@@ -104,7 +104,7 @@ class PomExclusionImportTest {
                         + " exclude = [\"io.apicurio:apicurio-common-app-components-logging\","
                         + " \"com.github.everit-org.json-schema:*\"] }");
         Dependency reparsed = only(JkBuildParser.parse(toml).dependencies().of(Scope.MAIN), "noisy");
-        assertThat(reparsed.exclusions()).containsExactly("org.demo:chatter");
+        assertThat(reparsed.exclusions()).containsExactly("*:slf4j-simple", "org.demo:chatter");
     }
 
     private static Dependency only(List<Dependency> deps, String library) {

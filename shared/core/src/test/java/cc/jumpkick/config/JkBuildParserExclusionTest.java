@@ -46,14 +46,29 @@ class JkBuildParserExclusionTest {
     }
 
     @Test
-    void a_wildcard_group_is_refused() {
+    void a_wildcard_group_names_an_artifact_in_any_group_or_the_whole_subtree() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [dependencies]
+                lib = { group = "org.demo", version = "1.0", exclude = ["*:noise", "*:*"] }
+
+                [managed-dependencies]
+                hadoop = { group = "org.apache.hadoop", name = "hadoop-common", version = "3.4.1", exclude = ["*:*"] }
+                """);
+        assertThat(parsed.dependencies().of(Scope.MAIN).getFirst().exclusions()).containsExactly("*:noise", "*:*");
+        assertThat(parsed.dependencies().of(Scope.MANAGED).getFirst().exclusions())
+                .as("a managed entry carries exclude like any other")
+                .containsExactly("*:*");
+    }
+
+    @Test
+    void a_partial_wildcard_is_refused() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                         [dependencies]
-                        lib = { group = "org.demo", version = "1.0", exclude = ["*:noise"] }
+                        lib = { group = "org.demo", version = "1.0", exclude = ["org.*:noise"] }
                         """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("dependencies.lib.exclude")
-                .hasMessageContaining("wildcard");
+                .hasMessageContaining("'*'");
     }
 
     @Test

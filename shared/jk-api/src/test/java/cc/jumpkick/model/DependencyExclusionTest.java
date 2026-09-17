@@ -11,11 +11,13 @@ import org.junit.jupiter.api.Test;
 class DependencyExclusionTest {
 
     @Test
-    void group_artifact_and_group_wildcard_are_the_two_spellings() {
+    void the_four_maven_spellings_are_accepted_and_a_partial_wildcard_is_not() {
         assertThat(Dependency.exclusion("org.demo:noise")).isEqualTo("org.demo:noise");
         assertThat(Dependency.exclusion("org.demo:*")).isEqualTo("org.demo:*");
-        assertThatThrownBy(() -> Dependency.exclusion("*:noise")).hasMessageContaining("wildcard");
-        assertThatThrownBy(() -> Dependency.exclusion("*:*")).hasMessageContaining("wildcard");
+        assertThat(Dependency.exclusion("*:noise")).isEqualTo("*:noise");
+        assertThat(Dependency.exclusion("*:*")).isEqualTo("*:*");
+        assertThatThrownBy(() -> Dependency.exclusion("org.*:noise")).hasMessageContaining("'*'");
+        assertThatThrownBy(() -> Dependency.exclusion("org.demo:noise-*")).hasMessageContaining("'*'");
         assertThatThrownBy(() -> Dependency.exclusion("noise")).hasMessageContaining("group:artifact");
         assertThatThrownBy(() -> Dependency.exclusion("org.demo:")).hasMessageContaining("group:artifact");
         assertThatThrownBy(() -> Dependency.exclusion("org.demo:noise:1.0")).hasMessageContaining("group:artifact");
@@ -39,7 +41,7 @@ class DependencyExclusionTest {
     @Test
     void the_record_refuses_an_entry_the_grammar_refuses() {
         assertThatThrownBy(() -> Dependency.of("lib", "org.demo:lib", VersionSelector.parse("1.0"))
-                        .withExclusions(List.of("*:noise")))
+                        .withExclusions(List.of("org.*:noise")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

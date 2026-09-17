@@ -306,12 +306,7 @@ public final class PomImporter {
             Map<Scope, List<Dependency>> rootDeps = new EnumMap<>(Scope.class);
             rootDeps.put(Scope.MANAGED, hoistedManaged);
             rootJkBuild = rootJkBuild.withDependencies(new JkBuild.Dependencies(rootDeps));
-            List<String> modules =
-                    hoistedManaged.stream().map(Dependency::module).toList();
-            report.warning("`<dependencyManagement>` of the reactor's parent POMs pins " + count(modules, "version")
-                    + " no module declares (" + sample(modules) + "); written once to the root's"
-                    + " [managed-dependencies], so they govern every member's transitive versions as they do under"
-                    + " Maven.");
+            ManagedRows.reportHoisted(hoistedManaged, report);
         }
         Set<String> importedBoms = new HashSet<>();
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
@@ -607,10 +602,11 @@ public final class PomImporter {
     /**
      * BOM imports become {@code [platform]} entries with their versions resolved; a published parent
      * whose chain manages versions is carried as one {@code [platform]} entry of its own, so the
-     * inherited table governs transitive versions too. Bare pins nothing declared uses become
-     * {@code [managed-dependencies]} rows, which govern transitive versions the way Maven's inline
-     * {@code dependencyManagement} does; the ones a reactor parent owns are gathered into {@code
-     * hoisted} for the workspace root when a workspace import passes one.
+     * inherited table governs transitive versions too. Bare pins nothing declared uses, and every
+     * entry with {@code <exclusions>}, become {@code [managed-dependencies]} rows, which govern
+     * transitive versions and prune every edge onto the module the way Maven's inline {@code
+     * dependencyManagement} does; the ones a reactor parent owns are gathered into {@code hoisted}
+     * for the workspace root when a workspace import passes one.
      */
     private static void mapManagement(
             EffectiveModel.Management mgmt,
@@ -635,54 +631,35 @@ public final class PomImporter {
                     + parent.gav()
                     + ", so its managed versions govern transitive dependencies as well.");
         }
-        Map<String, List<String>> writtenBy = new LinkedHashMap<>();
-        Map<String, List<String>> versionless = new LinkedHashMap<>();
-        Map<String, List<String>> unresolved = new LinkedHashMap<>();
+        ManagedRows rows = new ManagedRows();
         Set<String> seen = new HashSet<>();
         for (EffectiveModel.InlinePin pin : mgmt.inline()) {
             Pom.Dep dep = pin.dep();
             if (dep.version() == null || dep.version().isBlank()) {
-                versionless.computeIfAbsent(pin.owner(), k -> new ArrayList<>()).add(dep.module());
+                rows.versionless(pin.owner(), dep.module());
                 continue;
             }
             if (PluginFacts.usable(dep.version()) == null) {
-                unresolved.computeIfAbsent(pin.owner(), k -> new ArrayList<>()).add(dep.module());
+                rows.unresolved(pin.owner(), dep.module());
                 continue;
             }
             if (DependencyMapping.unmappedType(dep) != null || !seen.add(dep.module())) continue;
-            Dependency row = Dependency.of(
-                    dep.artifactId(),
-                    dep.module(),
-                    VersionSelector.parse(dep.version().trim()));
+            Dependency row = ExclusionMapping.apply(
+                    Dependency.of(
+                            dep.artifactId(),
+                            dep.module(),
+                            VersionSelector.parse(dep.version().trim())),
+                    dep,
+                    report);
             if (pin.reactorParent() && hoisted != null) {
                 // Reported once, by the workspace import, when the root's table is written.
                 if (hoisted.stream().noneMatch(h -> h.module().equals(row.module()))) hoisted.add(row);
                 continue;
             }
             byScope.computeIfAbsent(Scope.MANAGED, s -> new ArrayList<>()).add(row);
-            writtenBy.computeIfAbsent(pin.owner(), k -> new ArrayList<>()).add(dep.module());
+            rows.written(pin.owner(), row);
         }
-        writtenBy.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner + " pins "
-                + count(modules, "version") + " no declared dependency uses (" + sample(modules)
-                + "); written to [managed-dependencies], so they govern transitive versions as they do under"
-                + " Maven."));
-        versionless.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner
-                + " carries " + count(modules, "entry") + " with exclusions and no version (" + sample(modules)
-                + "); jk has no versionless constraint, so the exclusions reach only a dependency that declares"
-                + " the module."));
-        unresolved.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner + " pins "
-                + count(modules, "version") + " no declared dependency uses whose version is still a property ("
-                + sample(modules) + "); no [managed-dependencies] row is written for them."));
-    }
-
-    private static String count(List<String> modules, String noun) {
-        int n = modules.size();
-        String plural = noun.equals("entry") ? "entries" : noun + "s";
-        return n + " " + (n == 1 ? noun : plural);
-    }
-
-    private static String sample(List<String> modules) {
-        return modules.size() > 5 ? String.join(", ", modules.subList(0, 5)) + ", …" : String.join(", ", modules);
+        rows.flush(report);
     }
 
     /**

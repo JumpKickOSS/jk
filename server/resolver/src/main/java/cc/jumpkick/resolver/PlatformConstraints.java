@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -49,6 +50,9 @@ public final class PlatformConstraints {
 
     /** The modules a {@code [managed-dependencies]} entry pins; their provenance is {@code jk.toml:<handle>}. */
     private final Set<String> managedByManifest = new HashSet<>();
+
+    /** Per managed module, the patterns its entries exclude, each with the {@code jk.toml:<handle>} that wrote it. */
+    private final Map<String, Map<String, Set<String>>> managedExclusions = new LinkedHashMap<>();
 
     private final PinPolicy pinPolicy;
 
@@ -97,6 +101,15 @@ public final class PlatformConstraints {
     /** {@code group:artifact -> version} for every managed module. */
     Map<String, String> versions() {
         return versions;
+    }
+
+    /**
+     * The {@code exclude} lists of the {@code [managed-dependencies]} entries, per {@code
+     * group:artifact}: each pattern with the {@code jk.toml:<handle>} that declared it. They apply
+     * to every edge onto the module, as Maven's dependencyManagement exclusions do.
+     */
+    Map<String, Map<String, Set<String>>> managedExclusions() {
+        return managedExclusions;
     }
 
     /**
@@ -179,8 +192,9 @@ public final class PlatformConstraints {
 
     /**
      * Every {@code [managed-dependencies]} entry becomes the module's version, provenance {@code
-     * jk.toml:<handle>}. A floating selector is resolved against the repositories' metadata as a
-     * BOM's is; the first entry on a module wins.
+     * jk.toml:<handle>}, and its {@code exclude} list joins the module's managed exclusions. A
+     * floating selector is resolved against the repositories' metadata as a BOM's is; the first
+     * entry on a module wins the version.
      */
     private void foldManaged(JkBuild project, RepoGroup repos) throws IOException, InterruptedException {
         for (Dependency managed : project.dependencies().of(Scope.MANAGED)) {
@@ -188,6 +202,12 @@ public final class PlatformConstraints {
             if (versions.putIfAbsent(managed.module(), version) == null) {
                 provenance.put(managed.module(), "jk.toml:" + managed.library());
                 managedByManifest.add(managed.module());
+            }
+            if (managed.exclusions().isEmpty()) continue;
+            Map<String, Set<String>> patterns =
+                    managedExclusions.computeIfAbsent(managed.module(), k -> new LinkedHashMap<>());
+            for (String pattern : managed.exclusions()) {
+                patterns.computeIfAbsent(pattern, k -> new LinkedHashSet<>()).add("jk.toml:" + managed.library());
             }
         }
     }
