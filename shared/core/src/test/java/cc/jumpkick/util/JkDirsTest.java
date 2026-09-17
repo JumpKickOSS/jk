@@ -355,4 +355,87 @@ class JkDirsTest {
                 .as("the store holds nothing secret")
                 .isEqualTo(loose);
     }
+
+    // ---- the overlay over the environment ----------------------------------
+
+    private static JkDirs layered(Map<String, String> overlay, Map<String, String> env) {
+        return JkDirs.of(overlay::get, env::get, "/home/me");
+    }
+
+    /**
+     * The incident this pins: a test overlays its throwaway home while the shell that started the
+     * gate exports {@code JK_STORE_DIR} for the real one. The store, cache and state of an overlay
+     * home are the overlay's — the environment's overrides describe another home and never reach in.
+     */
+    @Test
+    void an_overlay_home_takes_no_root_from_the_environment() {
+        Path overlayHome = tmp("jk-overlay-home");
+        Path sentinel = tmp("jk-shell-store");
+        JkDirs dirs = layered(
+                Map.of("JK_HOME", overlayHome.toString()),
+                Map.of(
+                        "JK_HOME", tmp("jk-shell-home").toString(),
+                        "JK_STORE_DIR", sentinel.toString(),
+                        "JK_CACHE_DIR", tmp("jk-shell-cache").toString(),
+                        "JK_STATE_DIR", tmp("jk-shell-state").toString()));
+
+        assertThat(dirs.homeDir()).isEqualTo(overlayHome);
+        assertThat(dirs.storeDir()).isEqualTo(overlayHome.resolve("store")).isNotEqualTo(sentinel);
+        assertThat(dirs.cacheDir()).isEqualTo(overlayHome.resolve("cache"));
+        assertThat(dirs.stateDir()).isEqualTo(overlayHome.resolve("state"));
+    }
+
+    @Test
+    void an_overlay_root_relocates_its_root_under_an_overlay_home() {
+        Path overlayHome = tmp("jk-overlay-home");
+        Path overlayStore = tmp("jk-overlay-store");
+        JkDirs dirs = layered(
+                Map.of("JK_HOME", overlayHome.toString(), "JK_STORE_DIR", overlayStore.toString()),
+                Map.of("JK_STORE_DIR", tmp("jk-shell-store").toString()));
+
+        assertThat(dirs.storeDir()).isEqualTo(overlayStore);
+        assertThat(dirs.stateDir()).isEqualTo(overlayHome.resolve("state"));
+    }
+
+    /** The per-method isolation of one root: an overlay root over an environment home. */
+    @Test
+    void an_overlay_root_alone_relocates_that_root_under_the_environments_home() {
+        Path shellHome = tmp("jk-shell-home");
+        Path overlayState = tmp("jk-overlay-state");
+        JkDirs dirs = layered(
+                Map.of("JK_STATE_DIR", overlayState.toString()),
+                Map.of(
+                        "JK_HOME",
+                        shellHome.toString(),
+                        "JK_STORE_DIR",
+                        tmp("jk-shell-store").toString()));
+
+        assertThat(dirs.homeDir()).isEqualTo(shellHome);
+        assertThat(dirs.stateDir()).isEqualTo(overlayState);
+        assertThat(dirs.storeDir())
+                .as("the environment's store still belongs to the environment's home")
+                .isEqualTo(tmp("jk-shell-store"));
+    }
+
+    /** {@code JK_HOME=/scratch JK_STORE_DIR=~/.jk/store} in one shell keeps sharing the store. */
+    @Test
+    void an_environment_home_keeps_the_environments_root_overrides() {
+        Path shellHome = tmp("jk-shell-home");
+        Path shared = tmp("jk-shared-store");
+        JkDirs dirs = layered(Map.of(), Map.of("JK_HOME", shellHome.toString(), "JK_STORE_DIR", shared.toString()));
+
+        assertThat(dirs.homeDir()).isEqualTo(shellHome);
+        assertThat(dirs.storeDir()).isEqualTo(shared);
+    }
+
+    @Test
+    void the_managed_jdk_root_reads_the_overlay_over_the_environment() {
+        Path overlayJdks = tmp("jk-overlay-jdks");
+        assertThat(layered(Map.of("JK_JDKS_DIR", overlayJdks.toString()), Map.of("JK_JDKS_DIR", tmp("x").toString()))
+                        .jdksDir())
+                .isEqualTo(overlayJdks);
+        assertThat(layered(Map.of(), Map.of("JK_JDKS_DIR", tmp("jk-shell-jdks").toString()))
+                        .jdksDir())
+                .isEqualTo(tmp("jk-shell-jdks"));
+    }
 }
