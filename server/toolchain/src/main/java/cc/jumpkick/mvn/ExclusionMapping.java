@@ -9,8 +9,9 @@ import java.util.List;
 
 /**
  * A Maven dependency's {@code <exclusions>} become the jk entry's {@code exclude} list: one
- * {@code group:artifact} per exclusion, {@code group:*} when the artifactId is {@code *}. A
- * {@code <groupId>*</groupId>} exclusion has no jk spelling and is a report row naming the limit.
+ * {@code group:artifact} per exclusion, with {@code *} where the POM wrote {@code *} or left the
+ * side out — {@code group:*}, {@code *:artifact} or {@code *:*}, the spellings the lock prunes by.
+ * An exclusion the grammar refuses is a report row naming it.
  */
 final class ExclusionMapping {
 
@@ -22,15 +23,13 @@ final class ExclusionMapping {
         for (Pom.Dep.Exclusion exclusion : source.exclusions()) {
             String group = PluginFacts.usable(exclusion.groupId());
             String artifact = PluginFacts.usable(exclusion.artifactId());
-            if (group == null || group.contains("*")) {
-                report.warning(
-                        "`<exclusion>` " + (group == null ? "*" : group) + ":" + (artifact == null ? "*" : artifact)
-                                + " on " + source.module()
-                                + " names every group; jk's `exclude` prunes `group:artifact` or `group:*`, so this exclusion"
-                                + " was not written. List the coordinates it should keep out on the entry's `exclude`.");
-                continue;
+            String spelling = (group == null ? "*" : group) + ":" + (artifact == null ? "*" : artifact);
+            try {
+                exclude.add(Dependency.exclusion(spelling));
+            } catch (IllegalArgumentException e) {
+                report.warning("`<exclusion>` " + spelling + " on " + source.module()
+                        + " is not a coordinate jk prunes by (" + e.getMessage() + "); it was not written.");
             }
-            exclude.add(group + ":" + (artifact == null ? "*" : artifact));
         }
         return exclude.isEmpty() ? dep : dep.withExclusions(exclude);
     }

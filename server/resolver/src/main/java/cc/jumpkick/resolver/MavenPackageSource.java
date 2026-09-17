@@ -129,6 +129,9 @@ public final class MavenPackageSource implements PackageSource {
     /** The exclusions in force per package, their origins, and the edges they pruned. */
     private final ExclusionLedger exclusions = new ExclusionLedger();
 
+    /** {@code group:artifact} → pattern → the {@code jk.toml:<handle>} entries that exclude it under the module. */
+    private Map<String, Map<String, Set<String>>> managedExclusions = Map.of();
+
     /**
      * Speculative work not yet run, drained by at most {@link #PREFETCH_WORKERS} threads. A queue
      * rather than a thread per submission: a reactor's roots or a widening pass hand over hundreds
@@ -238,6 +241,16 @@ public final class MavenPackageSource implements PackageSource {
 
     public PlatformPolicy platformPolicy() {
         return platformPolicy;
+    }
+
+    /**
+     * The exclusions the manifest's {@code [managed-dependencies]} entries declare, per {@code
+     * group:artifact}, each pattern with the {@code jk.toml:<handle>} that wrote it. They join every
+     * path's view of an edge onto the module, a root's and a POM's alike, so the module expands
+     * without those children wherever it is reached, as under Maven's dependencyManagement.
+     */
+    public void setManagedExclusions(Map<String, Map<String, Set<String>>> byModule) {
+        this.managedExclusions = Map.copyOf(Objects.requireNonNull(byModule, "byModule"));
     }
 
     /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
@@ -661,6 +674,7 @@ public final class MavenPackageSource implements PackageSource {
                     });
                 }
             }
+            addManagedExclusions(child, edge.depPkg());
             exclusions.register(edge.depPkg(), child);
             if (edge.declaredVersion() != null) {
                 declaredVersions
@@ -792,8 +806,21 @@ public final class MavenPackageSource implements PackageSource {
      * manifest declares directly.
      */
     void registerRootExclusions(String pkg, List<String> patterns, String handle) {
-        exclusions.register(
-                pkg, ExclusionLedger.view(new LinkedHashSet<>(patterns), ExclusionLedger.MANIFEST_ORIGIN + handle));
+        Map<String, Set<String>> view =
+                ExclusionLedger.view(new LinkedHashSet<>(patterns), ExclusionLedger.MANIFEST_ORIGIN + handle);
+        addManagedExclusions(view, pkg);
+        exclusions.register(pkg, view);
+    }
+
+    /** {@code view} plus the managed exclusions on {@code pkg}'s module, origins merged per pattern. */
+    private void addManagedExclusions(Map<String, Set<String>> view, String pkg) {
+        Map<String, Set<String>> managed = managedExclusions.get(gaOf(pkg));
+        if (managed == null) return;
+        managed.forEach((pattern, from) -> view.merge(pattern, from, (a, b) -> {
+            Set<String> both = new LinkedHashSet<>(a);
+            both.addAll(b);
+            return both;
+        }));
     }
 
     /** The exclusions currently applied when {@code pkg} expands. Package-visible for tests. */

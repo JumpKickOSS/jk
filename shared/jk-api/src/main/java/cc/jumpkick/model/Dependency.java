@@ -90,23 +90,29 @@ public record Dependency(
     }
 
     /**
-     * Validates one exclusion and returns it: {@code group:artifact}, or {@code group:*} for every
-     * artifact of a group. A wildcard group ({@code *:artifact}) is refused — Maven's
-     * {@code <groupId>*</groupId>} is not expressible — and so is a version or a third field.
+     * Validates one exclusion and returns it: {@code group:artifact}, {@code group:*} for every
+     * artifact of a group, {@code *:artifact} for the artifact whatever its group, or {@code *:*}
+     * for the whole subtree — Maven's four {@code <exclusion>} spellings. A {@code *} is a whole
+     * side or nothing ({@code org.*:a} is refused), and so is a version or a third field.
      */
     public static String exclusion(String spelling) {
         Objects.requireNonNull(spelling, "exclusion");
         int colon = spelling.indexOf(':');
         if (colon <= 0 || colon != spelling.lastIndexOf(':') || colon == spelling.length() - 1) {
             throw new IllegalArgumentException(
-                    "exclusion must be 'group:artifact' or 'group:*' (got: " + spelling + ")");
+                    "exclusion must be 'group:artifact', 'group:*', '*:artifact' or '*:*' (got: " + spelling + ")");
         }
         String group = spelling.substring(0, colon);
-        if (group.isBlank() || group.contains("*")) {
+        String artifact = spelling.substring(colon + 1);
+        if (group.isBlank() || partialWildcard(group) || partialWildcard(artifact)) {
             throw new IllegalArgumentException(
-                    "exclusion group must be a Maven group, not a wildcard (got: " + spelling + ")");
+                    "an exclusion's group and artifact are each a Maven name or '*' (got: " + spelling + ")");
         }
         return spelling;
+    }
+
+    private static boolean partialWildcard(String side) {
+        return side.contains("*") && !side.equals("*");
     }
 
     /** Every component but the provenance; the manifest declares the edge. */

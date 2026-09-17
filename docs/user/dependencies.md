@@ -63,9 +63,9 @@ schema-json = { group = "io.apicurio", name = "apicurio-registry-schema-util-jso
                 exclude = ["io.apicurio:apicurio-common-app-components-logging", "com.github.everit-org.json-schema:*"] }
 ```
 
-Each entry is `group:artifact`, or `group:*` for every artifact of a group. A wildcard group
-(`*:artifact`, Maven's `<groupId>*</groupId>`) is refused; name the groups. The key needs the
-inline table: a catalog one-liner or a GAV string has nowhere to carry it, so a catalog name with an
+Each entry is `group:artifact`, `group:*` for every artifact of a group, `*:artifact` for an
+artifact whatever its group, or `*:*` for the whole subtree — Maven's `<groupId>*</groupId>`
+spellings. The key needs the inline table: a catalog one-liner or a GAV string has nowhere to carry it, so a catalog name with an
 exclusion is written `jackson2-databind = { version = "2.22.2", exclude = ["…"] }` — the group and
 artifact still come from the catalog.
 
@@ -149,10 +149,19 @@ highest version the POMs that name it declare. The lock row records the entry as
 every member, then each member's own; a member's entry on a module another member pins exactly is
 that member's [own row](workspaces.md#members-that-disagree).
 
+An entry may carry `exclude` like any dependency, and it reaches further than an edge's: the
+managed exclusions apply to *every* edge onto the module — a dependency POM's as much as your
+own — so `hadoop = { group = "org.apache.hadoop", name = "hadoop-common", version = "3.4.1",
+exclude = ["*:*"] }` leaves hadoop-common on the classpath bare wherever anything brings it in,
+as Maven's `<dependencyManagement>` exclusions do. The lock row whose edge was pruned names the
+entry under `excluded-by` (`jk.toml:hadoop`).
+
 `jk import` writes a POM's inline pins that no declared dependency uses into this table, and a
 reactor's parent pins once on the workspace root, so the imported project resolves a transitive the
-parent forced to the version Maven built with; the report names the modules it wrote. A
-coexistence build of an unmodified `pom.xml` reads the same table from its shadow manifest.
+parent forced to the version Maven built with; a managed entry's `<exclusions>` are written as the
+row's `exclude`, whether or not a declared dependency uses its version, so the closure loses what
+Maven's did. The report names the modules it wrote. A coexistence build of an unmodified `pom.xml`
+reads the same table from its shadow manifest.
 
 **Maven relocations are followed** (`distributionManagement/relocation`). The stub's one edge
 carries the target's version as a floor, like any POM dependency, so a module whose line ended in

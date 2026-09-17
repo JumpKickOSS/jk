@@ -323,6 +323,7 @@ public final class LockOrchestrator {
         MavenPackageSource sharedSource = resolverOverride != null
                 ? null
                 : new MavenPackageSource(repos, pomBuilder, bomConstraints, prefs, kmp, platformPolicy, unmappedPolicy);
+        if (sharedSource != null) sharedSource.setManagedExclusions(constraints.managedExclusions());
 
         progress.graphPhase(roots.declaredCount());
         ScopeSolves.Solved solved = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy)
