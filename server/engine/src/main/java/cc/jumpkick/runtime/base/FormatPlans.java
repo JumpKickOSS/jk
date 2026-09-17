@@ -223,7 +223,7 @@ public final class FormatPlans {
                         return;
                     }
                     ctx.label("resolve formatter jars");
-                    var resolver = ToolResolver.mavenCentral(new Http(), JkStores.storeCas());
+                    var resolver = ToolResolver.mavenCentral(Http.forRepositories(), JkStores.storeCas());
                     try {
                         if (javaFiles.isEmpty()) {
                             ctx.put(k.javaJarsKey(), List.of());

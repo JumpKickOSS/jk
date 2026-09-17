@@ -212,7 +212,7 @@ public final class SyncPlans {
                     ctx.label("fetch deps");
 
                     Cas cas = JkStores.storeCas();
-                    Http http = new Http();
+                    Http http = Http.forRepositories();
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     boolean mirrorToM2 = build != null && build.project().m2integration();
                     var observer = new CacheSync.ProgressObserver() {
@@ -436,7 +436,7 @@ public final class SyncPlans {
                         }
                     };
                     try {
-                        new CacheSync(cas, new Http()).syncSources(lock, observer);
+                        new CacheSync(cas, Http.forRepositories()).syncSources(lock, observer);
                     } catch (Exception e) {
                         ctx.warn("sources", "sources sync failed: " + e.getMessage());
                     }

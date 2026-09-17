@@ -82,7 +82,7 @@ public final class PomImporter {
 
     /** Parents and BOM imports are fetched through {@code repos}, plus any {@code <repository>} the POM declares. */
     public PomImporter(RepoGroup repos, Cas cas) {
-        this(repos, cas, overHttp(new Http()));
+        this(repos, cas, overHttp(Http.forRepositories()));
     }
 
     /** {@code remote} answers the URLs a POM's generator plugins read their specs from. */

@@ -274,7 +274,7 @@ public final class PlannerSetup {
                         }
                     };
                     boolean refresh = in.session().config().forceOr(false);
-                    var report = new CacheSync(cas, new Http(), mirrorToM2).sync(lock, observer, refresh);
+                    var report = new CacheSync(cas, Http.forRepositories(), mirrorToM2).sync(lock, observer, refresh);
                     if (report.hasErrors()) throw new RuntimeException("dep sync had errors");
                     // Classpaths must be resolved HERE, after jars are on disk. parse-build used
                     // to snapshot them first; on a cold store ClasspathResolver soft-skipped

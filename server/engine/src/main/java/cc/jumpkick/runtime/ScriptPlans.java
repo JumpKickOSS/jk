@@ -136,7 +136,7 @@ public final class ScriptPlans {
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
                     Cas cas = JkStores.storeCas();
-                    Http http = new Http();
+                    Http http = Http.forRepositories();
                     RepoGroup repos = buildRepos(header, repoUrl, http, cas);
                     try {
                         List<Path> classpath = resolveClasspath(header.deps(), repos);
@@ -267,7 +267,7 @@ public final class ScriptPlans {
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
                     Cas cas = JkStores.storeCas();
-                    Http http = new Http();
+                    Http http = Http.forRepositories();
                     RepoGroup repos = buildRepos(header, repoUrl, http, cas);
                     try {
                         List<Path> classpath = resolveClasspath(header.deps(), repos);
@@ -293,7 +293,7 @@ public final class ScriptPlans {
                                     ? "resolve kotlin compiler " + header.kotlinVersion()
                                     : "resolve kotlin compiler");
                     Cas cas = JkStores.storeCas();
-                    RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
+                    RepoGroup repos = buildRepos(header, repoUrl, Http.forRepositories(), cas);
                     try {
                         KotlinPluginSetup.Prepared prep = KotlinPluginSetup.prepare(repos, cas, header.kotlinVersion());
                         ctx.put(WORKER_CP, prep.workerClasspath());
@@ -408,7 +408,7 @@ public final class ScriptPlans {
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
                     Cas cas = JkStores.storeCas();
-                    RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
+                    RepoGroup repos = buildRepos(header, repoUrl, Http.forRepositories(), cas);
                     try {
                         ctx.put(CLASSPATH, resolveClasspath(header.deps(), repos));
                     } catch (RuntimeException e) {
@@ -460,7 +460,7 @@ public final class ScriptPlans {
 
                     List<Dependency> declaredDeps = new ArrayList<>();
                     Cas cas = JkStores.storeCas();
-                    PomImporter poms = new PomImporter(jarRepos(repoUrl, new Http(), cas), cas);
+                    PomImporter poms = new PomImporter(jarRepos(repoUrl, Http.forRepositories(), cas), cas);
                     for (JarManifest.EmbeddedPom p : JarManifest.scanEmbeddedPoms(jar)) {
                         if (!p.hasPomXml()) continue;
                         try {
@@ -506,7 +506,7 @@ public final class ScriptPlans {
                     ctx.label("fetch " + declaredDeps.size() + " embedded deps");
                     Files.createDirectories(cacheDir);
                     Cas cas = JkStores.storeCas();
-                    RepoGroup repos = jarRepos(repoUrl, new Http(), cas);
+                    RepoGroup repos = jarRepos(repoUrl, Http.forRepositories(), cas);
                     try {
                         classpath.addAll(resolveClasspath(declaredDeps, repos));
                     } catch (RuntimeException e) {

@@ -405,7 +405,7 @@ public final class IdeOps {
 
         if (fetchMissing) {
             try {
-                new CacheSync(cas, new Http()).sync(lock, CacheSync.ProgressObserver.NOOP);
+                new CacheSync(cas, Http.forRepositories()).sync(lock, CacheSync.ProgressObserver.NOOP);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
