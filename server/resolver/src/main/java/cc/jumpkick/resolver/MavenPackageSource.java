@@ -320,15 +320,18 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * The versions of {@code pkg} something has asked for by name: the project's exact pin and every
-     * plain version a POM edge wrote. A repository walk continues past the first catalog until
-     * it has seen them all.
+     * The versions of {@code pkg} something has asked for by name: the project's exact pin, the
+     * version a platform BOM manages it at, and every plain version a POM edge wrote. A repository
+     * walk continues past the first catalog until it has seen them all — a BOM pin published only
+     * to a later repository is otherwise refused as a version nothing advertises.
      */
     private Set<String> wantedVersions(String pkg) {
         LinkedHashSet<String> out = new LinkedHashSet<>(declaredVersions(pkg));
-        String root = firstNonBlank(
-                exactRoots.get(pkg), exactRoots.get(PackageId.parse(pkg).ga()));
+        String ga = PackageId.parse(pkg).ga();
+        String root = firstNonBlank(exactRoots.get(pkg), exactRoots.get(ga));
         if (root != null) out.add(root);
+        String bom = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg));
+        if (bom != null) out.add(bom);
         return out;
     }
 

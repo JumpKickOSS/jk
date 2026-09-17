@@ -179,10 +179,16 @@ final class LockfileAssembler {
         String source = fallbackSource;
         String checksum = null;
         RepoGroup group = reposFor.apply(mod.module());
-        RepoGroup.RepoFetched hit =
-                kmpAlias ? null : group.tryFetchArtifact(coord, abort).orElse(null);
+        // A relocation stub or a packaging=pom row has no artifact to ask for: its POM, read by the
+        // solve, already says so. Asking every repository for a jar that exists nowhere turns one
+        // remote's refusal under a download burst into a failed lock.
+        boolean pomOnly = !kmpAlias && isPomOnlyPackage(coord, pomBuilder);
+        RepoGroup.RepoFetched hit = kmpAlias || pomOnly
+                ? null
+                : group.tryFetchArtifact(coord, abort).orElse(null);
         if (hit == null
                 && !kmpAlias
+                && !pomOnly
                 && (coord.type() == null || "jar".equals(coord.type()))
                 && (coord.classifier() == null || coord.classifier().isEmpty())) {
             // Jar miss for a bare-GA dep whose POM packaging is aar: probe packaging
@@ -204,7 +210,7 @@ final class LockfileAssembler {
         if (hit != null) {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
-        } else if (!kmpAlias && !isPomOnlyPackage(coord, pomBuilder)) {
+        } else if (!kmpAlias && !pomOnly) {
             // a resolved package whose artifact 404s must not land as a checksum-less
             // lock row that ClasspathResolver silently drops. KMP aliases and packaging=pom
             // (BOMs / aggregators) legitimately have no file; everything else fails the lock.
