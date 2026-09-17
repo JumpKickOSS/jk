@@ -96,6 +96,33 @@ class BuildPlannerTestOnlyPlanTest {
                         TaskNames.PACKAGE_JAR);
     }
 
+    /**
+     * A source generator ({@code [generate]}, a preset) feeds compile-java or compile-test, which
+     * a test plan runs; the plan must carry the generator, or it fails validation before anything
+     * runs.
+     */
+    @Test
+    void test_only_plan_keeps_the_source_generators_the_compiles_require() throws Exception {
+        Path dir = pluginProject();
+        JkBuild build = VariantApply.apply(
+                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
+                .build();
+        seedDescribeCache(
+                dir,
+                build,
+                List.of(
+                        "{\"t\":\"task\",\"name\":\"generate-api\",\"stage\":\"generate\",\"inputs\":[\"config\"],"
+                                + "\"outputs\":[\"g\"],\"contributesSources\":[\"g\"]}",
+                        "{\"t\":\"task\",\"name\":\"generate-fixtures\",\"stage\":\"generate\",\"inputs\":[\"config\"],"
+                                + "\"outputs\":[\"f\"],\"contributesTestSources\":[\"f\"]}",
+                        "{\"t\":\"task\",\"name\":\"dex\",\"inputs\":[\"classes\"],\"outputs\":[\"dex\"]}"));
+
+        assertThat(planNames(dir, true))
+                .as("the compiles' generators ride the test plan; packaging-time work stays out")
+                .contains(TaskNames.RUN_TESTS, "plugin-generate-api", "plugin-generate-fixtures")
+                .doesNotContain("plugin-dex", TaskNames.PACKAGE_JAR);
+    }
+
     @Test
     void declared_tails_do_not_apply_to_test_or_compile_plans() throws Exception {
         Path dir = tmp.resolve("app");

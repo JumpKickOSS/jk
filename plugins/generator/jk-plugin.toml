@@ -25,6 +25,7 @@ unpack      = { type = "string", example = "io.zipkin.proto3:zipkin-proto3:1.0.0
 args        = { type = "string-list", default = [] }   # ${in} ${inputs} ${unpacked} ${out} ${module.dir} expand
 contributes = { type = "string", default = "sources" } # sources | test-sources | resources
 out         = { type = "string" }                      # output dir name; default generated/<name>
+discard     = { type = "string-list", default = [], example = "[\"generated-examples\"]", hint = "paths under the output, or globs over it, removed once the tool has run: what it writes beside its contribution" }
 
 # One tool per entry: its full runtime closure, read only by the step that forks it — a bump
 # in one generator's version re-runs that generator alone.

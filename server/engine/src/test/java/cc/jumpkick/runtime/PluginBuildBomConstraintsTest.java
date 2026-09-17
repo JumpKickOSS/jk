@@ -31,7 +31,7 @@ class PluginBuildBomConstraintsTest {
                         dep("org.apache.maven.resolver", "maven-resolver-api", "1.9.24"),
                         dep("org.apache.maven.resolver", "maven-resolver-impl", "1.9.24")));
 
-        Map<String, String> constraints = PluginBuild.bomConstraintsOf(bom, "io.quarkus.platform:quarkus-bom:3.38.0");
+        Map<String, String> constraints = ToolClosures.bomConstraintsOf(bom, "io.quarkus.platform:quarkus-bom:3.38.0");
 
         assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-named-locks"))
                 .isEqualTo("1.9.24");
@@ -52,7 +52,7 @@ class PluginBuildBomConstraintsTest {
                 List.of(),
                 List.of(dep("com.example", "anything", "1.0")));
 
-        Map<String, String> constraints = PluginBuild.bomConstraintsOf(bom, "io.quarkus:quarkus-bootstrap-bom:3.38.0");
+        Map<String, String> constraints = ToolClosures.bomConstraintsOf(bom, "io.quarkus:quarkus-bootstrap-bom:3.38.0");
 
         assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-named-locks"))
                 .isEqualTo("1.9.22");

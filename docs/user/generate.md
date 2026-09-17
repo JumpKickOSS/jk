@@ -21,11 +21,12 @@ contributes = "sources"                                      # sources | resourc
 |---|---|
 | `tool` | The generator's coordinate. A bare version is an exact pin; `^`/`~` float within the line; `latest` is the newest stable. The tool's runtime closure is fetched with it, so a tool that is not a fat jar still runs. |
 | `main` | The class to run. Omitted, jk reads `Main-Class` from the tool's own jar. |
-| `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`). A pattern matching nothing fails the step. An entry with an `unpack` may leave them out. |
+| `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`; `**` names zero or more directories). A pattern matching nothing fails the step. An entry with an `unpack` may leave them out. |
 | `unpack` | A jar coordinate whose contents the tool reads — a schema published as an artifact (`io.zipkin.proto3:zipkin-proto3:1.0.0`). The jar is fetched like the tool, extracted before the run, and `${unpacked}` names the directory. |
 | `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${unpacked}` the extracted jar, `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
 | `contributes` | `sources` (default) folds the output into the compiler's source set; `test-sources` into the test compiler's, beside the suites' own sources; `resources` into the packaged resources. |
 | `out` | The output directory's name under the step's output root; default `generated/<name>`. |
+| `discard` | Paths under the output, or globs over it, removed once the tool has run — what it writes beside its contribution, such as DGS codegen's example data fetchers under `generated-examples`. |
 
 Each entry is one step named `generate-<name>`. Its **action key** is the input files' content
 (a glob's whole base directory), the entry's config, the tool's jar hashes, the unpacked jar's
@@ -122,14 +123,21 @@ its core jar:
 
 ```toml
 [generate.dgs]
-tool   = "com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-core:8.6.0"
-main   = "com.netflix.graphql.dgs.codegen.CodeGenCli"
-inputs = ["src/main/resources/schema/**/*.graphqls"]
-args   = ["--output-dir", "${out}", "--package-name", "com.acme.graphql", "--generate-client", "${inputs}"]
+tool    = "com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-core:8.6.0"
+main    = "com.netflix.graphql.dgs.codegen.CodeGenCli"
+inputs  = ["src/main/resources/schema/**/*.graphqls"]
+args    = ["--output-dir", "${out}", "--package-name", "com.acme.graphql", "--generate-client", "${inputs}"]
+discard = ["generated-examples"]   # the CLI's example data fetchers, which need the DGS runtime
+
+[dependencies]
+graphql-dgs-codegen-shared-core = "com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-shared-core:8.6.0"  # the client's base classes
 ```
 
 The types land under `<package>.types`, the client under `<package>.client`; a schema edit
-re-runs the step and an unchanged schema is a cache hit.
+re-runs the step and an unchanged schema is a cache hit. The tool is Kotlin: its closure's
+multiplatform roots (clikt, mordant) are redirected to their JVM jars the way the lock redirects a
+module's. The worked example: [`graphql/dgs-codegen`](https://github.com/JumpKickOSS/jk-examples)
+in jk-examples.
 
 [graphql-java-codegen](https://github.com/kobylynskyi/graphql-java-codegen) ships no command
 line — its Maven and Gradle plugins are the only drivers of `GraphQLCodegen` — so it has no
@@ -150,7 +158,9 @@ refuses that pair by name ([Using plugins](plugins.md#more-than-one-plugin-in-a-
 The tool coordinate you write is the pin: a bare version is exact and costs no network; a
 floating selector resolves against the tool's own `maven-metadata.xml` at fetch time. The tool's
 transitive closure resolves from the tool's POMs into a content-addressed directory whose hash is
-in the step's action key, so a closure that changes moves the key.
+in the step's action key, so a closure that changes moves the key. A closure that cannot be
+materialized — a jar no declared repository holds, a checksum that does not match — fails the
+step naming the tool, the directory it was bound for and the cause.
 
 ## Presets to come
 

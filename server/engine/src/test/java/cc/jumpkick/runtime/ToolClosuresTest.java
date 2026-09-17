@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.model.Coordinate;
+import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * Staging a tool's runtime closure: every resolved jar is linked under a readable alias, two
+ * artifacts sharing a file name do not collide, and a failure names the tool, the directory and
+ * the cause rather than the bare path a filesystem exception carries as its message.
+ */
+class ToolClosuresTest {
+
+    @Test
+    void a_jar_is_aliased_by_artifact_and_version(@TempDir Path tmp) throws Exception {
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        Files.createDirectories(tmp.resolve("cas"));
+        Path jar = Files.writeString(tmp.resolve("cas/abc.jar"), "jar");
+
+        Path alias = ToolClosures.alias(staging, Coordinate.of("org.springframework", "spring-context", "6.1.15"), jar);
+
+        assertThat(alias)
+                .isEqualTo(staging.resolve("spring-context-6.1.15.jar"))
+                .hasSameBinaryContentAs(jar);
+    }
+
+    @Test
+    void two_artifacts_with_one_file_name_both_land_in_the_closure(@TempDir Path tmp) throws Exception {
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        Files.createDirectories(tmp.resolve("cas"));
+        Path first = Files.writeString(tmp.resolve("cas/first.jar"), "first");
+        Path second = Files.writeString(tmp.resolve("cas/second.jar"), "second");
+
+        ToolClosures.alias(staging, Coordinate.of("org.springframework", "spring-context", "6.1.15"), first);
+        Path alias = ToolClosures.alias(staging, Coordinate.of("com.acme.fork", "spring-context", "6.1.15"), second);
+
+        assertThat(alias)
+                .isEqualTo(staging.resolve("com.acme.fork_spring-context-6.1.15.jar"))
+                .hasSameBinaryContentAs(second);
+        assertThat(staging.resolve("spring-context-6.1.15.jar")).hasSameBinaryContentAs(first);
+    }
+
+    @Test
+    void a_filesystem_failure_names_the_tool_the_directory_and_the_cause(@TempDir Path tmp) {
+        List<Coordinate> roots =
+                List.of(Coordinate.of("com.netflix.graphql.dgs.codegen", "graphql-dgs-codegen-core", "8.6.0"));
+        Path dir = tmp.resolve("plugin-tools/dgs");
+
+        IOException failure = ToolClosures.failure(
+                roots,
+                dir,
+                new FileAlreadyExistsException(
+                        tmp.resolve(".closure-1/spring-context-6.1.15.jar").toString()));
+
+        assertThat(failure)
+                .hasMessageContaining("com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-core:8.6.0")
+                .hasMessageContaining(dir.toString())
+                .hasMessageContaining("FileAlreadyExistsException")
+                .hasMessageContaining("spring-context-6.1.15.jar")
+                .hasMessageContaining("already exists");
+        assertThat(ToolClosures.failure(
+                        roots,
+                        dir,
+                        new NoSuchFileException(tmp.resolve("gone.jar").toString())))
+                .hasMessageContaining("NoSuchFileException")
+                .hasMessageContaining("gone.jar")
+                .hasMessageContaining("does not exist");
+    }
+
+    @Test
+    void a_failure_with_a_message_of_its_own_keeps_it(@TempDir Path tmp) {
+        IOException failure = ToolClosures.failure(
+                List.of(Coordinate.of("org.antlr", "antlr4", "4.13.2")),
+                tmp,
+                new IOException("cannot fetch org.antlr:ST4:4.3.4 — a transitive step-dependency's closure must exist"
+                        + " in a declared repo"));
+
+        assertThat(failure)
+                .hasMessageContaining("org.antlr:antlr4:4.13.2")
+                .hasMessageContaining("cannot fetch org.antlr:ST4:4.3.4")
+                .hasMessageNotContaining("IOException");
+    }
+}

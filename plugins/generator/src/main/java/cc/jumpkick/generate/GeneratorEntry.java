@@ -32,6 +32,8 @@ import org.jspecify.annotations.Nullable;
  * @param out the output directory's name under the step's scratch
  * @param classpath entries put ahead of the tool's closure on the forked classpath — a preset's
  *     own {@code main} over a library that ships none
+ * @param discard paths under the output, or globs over it, removed once the tool has run: what it
+ *     writes beside its contribution (DGS codegen's {@code generated-examples})
  */
 public record GeneratorEntry(
         String name,
@@ -43,7 +45,8 @@ public record GeneratorEntry(
         List<String> args,
         Contribution contributes,
         String out,
-        List<Path> classpath) {
+        List<Path> classpath,
+        List<String> discard) {
 
     /** Where a generator's output joins the module. */
     public enum Contribution {
@@ -68,6 +71,7 @@ public record GeneratorEntry(
         inputs = List.copyOf(inputs);
         args = List.copyOf(args);
         classpath = List.copyOf(classpath);
+        discard = List.copyOf(discard);
         if (inputs.isEmpty() && unpack == null) {
             throw new IllegalArgumentException("[generate." + name + "] declares no inputs — name the files the tool"
                     + " reads (inputs), or the jar whose contents it reads (unpack)");
@@ -89,7 +93,8 @@ public record GeneratorEntry(
                 (List<String>) values.getOrDefault("args", List.of()),
                 Contribution.parse((String) values.getOrDefault("contributes", "sources"), where),
                 (String) values.getOrDefault("out", "generated/" + name),
-                List.of());
+                List.of(),
+                (List<String>) values.getOrDefault("discard", List.of()));
     }
 
     /** The step's name on the plan: {@code generate-<name>}, the name a manifest's {@code for-step} uses. */

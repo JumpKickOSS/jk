@@ -511,9 +511,10 @@ final class CorePlan {
         }
         // `jk test` stops at run-tests — it never packages a jar. Plugin steps run only
         // when packaging does: they exist to feed the packaged/native artifact. The exception
-        // is plugin tasks run-tests itself requires (test-only or test-classpath contributors,
-        // mirroring runTestsStep's requires) plus any plugin tasks those transitively require —
-        // without them the plan fails validation before anything runs.
+        // is plugin tasks the test plan's own steps require — what feeds the forked test JVM
+        // (mirroring runTestsStep's requires) and the source generators the compiles read —
+        // plus any plugin tasks those transitively require; without them the plan fails
+        // validation before anything runs.
         if (!in.testOnly()) {
             for (Task p : s.pluginSteps()) b.addTask(p);
             b.addTask(PlannerResources.buildLogicBeforePackageStep(cx, s.buildInfo() != null));
@@ -535,14 +536,17 @@ final class CorePlan {
         }
     }
 
-    /** The plugin tasks a test-only plan still needs: test-classpath contributors and what they require. */
+    /**
+     * The plugin tasks a test-only plan still needs: what feeds the forked test JVM, the source
+     * generators compile-java and compile-test read, and what those require.
+     */
     private static void addTestClasspathPlugins(
             BuildPlan.Builder b, List<Task> pluginSteps, PluginBuild.Declarations decls) {
         Map<String, Task> pluginByName = new LinkedHashMap<>();
         for (Task p : pluginSteps) pluginByName.put(p.name(), p);
         ArrayDeque<String> want = new ArrayDeque<>();
         for (PluginBuild.TaskDecl step : decls.steps()) {
-            if (step.testOnly() || !step.contributesTestClasspath().isEmpty()) {
+            if (step.testOnly() || step.feedsTests() || step.sourceGenerating()) {
                 want.add("plugin-" + step.name());
             }
         }
