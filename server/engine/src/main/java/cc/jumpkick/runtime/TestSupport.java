@@ -690,6 +690,7 @@ public final class TestSupport {
         Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
         JavaCompile.Result r = JavaCompile.run(
                 cacheTaskId,
+                PlannerCompile.compileLabel(ctx, taskId),
                 request,
                 BuildIdentity.cacheKeyVersion(),
                 useCache,

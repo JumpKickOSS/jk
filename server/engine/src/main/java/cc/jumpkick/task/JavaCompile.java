@@ -78,8 +78,10 @@ public final class JavaCompile {
         }
     }
 
+    /** {@code label} names the module and step in a worker failure; see {@link ForkedJavac.Request#label()}. */
     public static Result run(
             String taskId,
+            String label,
             CompileRequest request,
             String jkVersion,
             boolean useCache,
@@ -92,6 +94,7 @@ public final class JavaCompile {
             throws IOException {
         return run(
                 taskId,
+                label,
                 request,
                 jkVersion,
                 useCache,
@@ -106,6 +109,7 @@ public final class JavaCompile {
 
     public static Result run(
             String taskId,
+            String label,
             CompileRequest request,
             String jkVersion,
             boolean useCache,
@@ -166,7 +170,8 @@ public final class JavaCompile {
                             request.scalaCompilerJar(),
                             request.scalaBridgeJar(),
                             env)
-                    .withClasspathAnalyses(producerAnalyses(request, stateDir)));
+                    .withClasspathAnalyses(producerAnalyses(request, stateDir))
+                    .withLabel(label));
         } catch (RuntimeException | Error compileFailure) {
             // The failure is the result. finish() walks and hashes the output tree, and a walk
             // over what a dying compiler left behind can throw too — from a finally block that

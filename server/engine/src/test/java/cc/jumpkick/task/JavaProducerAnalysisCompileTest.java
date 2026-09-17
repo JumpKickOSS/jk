@@ -168,6 +168,7 @@ class JavaProducerAnalysisCompileTest {
         Run build(List<Path> classpath) throws IOException {
             JavaCompile.Result result = JavaCompile.run(
                     taskId,
+                    "test:module compile-main",
                     request(classpath),
                     "jk-test",
                     true,

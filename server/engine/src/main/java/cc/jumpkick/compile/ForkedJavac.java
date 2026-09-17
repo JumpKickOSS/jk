@@ -115,10 +115,13 @@ public final class ForkedJavac {
              * Classpath entries other jk compiles produced, each with its producer's Zinc analysis
              * file — a hint for Zinc's per-entry lookup, never part of the compile's key.
              */
-            Map<Path, Path> classpathAnalyses) {
+            Map<Path, Path> classpathAnalyses,
+            /** What a failure names: the module and step this compile is for; empty when unknown. */
+            String label) {
 
         public Request {
             classpathAnalyses = classpathAnalyses == null ? Map.of() : Map.copyOf(classpathAnalyses);
+            label = label == null ? "" : label;
         }
 
         /** The same request for a worker started under {@code env}. */
@@ -140,7 +143,8 @@ public final class ForkedJavac {
                     scalaCompilerJar,
                     scalaBridgeJar,
                     env,
-                    classpathAnalyses);
+                    classpathAnalyses,
+                    label);
         }
 
         /** The same request handing the worker {@code classpathAnalyses}. */
@@ -162,7 +166,31 @@ public final class ForkedJavac {
                     scalaCompilerJar,
                     scalaBridgeJar,
                     env,
-                    classpathAnalyses);
+                    classpathAnalyses,
+                    label);
+        }
+
+        /** The same request, its failures naming {@code label}. */
+        public Request withLabel(String label) {
+            return new Request(
+                    javaHome,
+                    workerJar,
+                    sources,
+                    classpath,
+                    processorPath,
+                    classOutput,
+                    sourceOutput,
+                    release,
+                    extraArgs,
+                    workdir,
+                    scalaVersion,
+                    compilerClasspath,
+                    scalaLibraryJar,
+                    scalaCompilerJar,
+                    scalaBridgeJar,
+                    env,
+                    classpathAnalyses,
+                    label);
         }
 
         public Request(
@@ -199,7 +227,8 @@ public final class ForkedJavac {
                     scalaCompilerJar,
                     scalaBridgeJar,
                     env,
-                    Map.of());
+                    Map.of(),
+                    "");
         }
 
         public Request(
@@ -281,7 +310,30 @@ public final class ForkedJavac {
         }
     }
 
+    /**
+     * One-shot fork, sized by {@link WorkerHeap}: a worker that runs out of heap is forked once more
+     * at twice the size, and a second exhaustion is the failure, naming the module and both heaps.
+     */
     private static Result run(Request req) throws IOException, InterruptedException {
+        Long heap = WorkerHeap.forRequest(req);
+        WorkerTranscript transcript = new WorkerTranscript();
+        Attempt first = run(req, heap, transcript);
+        if (first.answered || heap == null || !WorkerHeap.outOfMemory(transcript.render())) return first.result;
+        Long bigger = WorkerHeap.grown(heap);
+        if (bigger == null) throw WorkerHeap.exhausted(req.label(), heap, null, transcript.render());
+        transcript.reset();
+        Attempt second = run(req, bigger, transcript);
+        if (!second.answered && WorkerHeap.outOfMemory(transcript.render())) {
+            throw WorkerHeap.exhausted(req.label(), heap, bigger, transcript.render());
+        }
+        return second.result;
+    }
+
+    /** One fork's outcome; {@code answered} is false when the worker died before its RESULT line. */
+    private record Attempt(Result result, boolean answered) {}
+
+    private static Attempt run(Request req, @Nullable Long heapBytes, WorkerTranscript transcript)
+            throws IOException, InterruptedException {
         Path spec = writeSpec(req);
         try {
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
@@ -300,13 +352,16 @@ public final class ForkedJavac {
             // Thin worker + Maven runtime closure from its POM.
             String workerCp = workerClasspath(req);
             // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
-            List<String> jvmFlags = workerJvmFlags(PluginAot.javaCompilerFlags(
-                    hostJavaHome,
-                    workerCp,
-                    (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)));
+            List<String> jvmFlags = workerJvmFlags(
+                    PluginAot.javaCompilerFlags(
+                            hostJavaHome,
+                            workerCp,
+                            (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)),
+                    heapBytes);
             List<String> command =
                     PluginLoader.command(javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new PluginClient(PREFIX)
+                    .passthrough(transcript::record)
                     .on(PluginProtocol.DIAGNOSTIC, json -> {
                         // Same contract as the pull-mode host: the locus must live in the
                         // message text (WorkerDiagnostics), not only in the record fields.
@@ -334,7 +389,8 @@ public final class ForkedJavac {
                     })
                     .run(command, req.env());
             boolean success = exit == 0 && "OK".equals(status[0]);
-            return new Result(success, diagnostics, generated, compiledSources, 0L);
+            return new Attempt(
+                    new Result(success, diagnostics, generated, compiledSources, 0L), exit == 0 || status[0] != null);
         } finally {
             Files.deleteIfExists(spec);
         }
@@ -433,9 +489,18 @@ public final class ForkedJavac {
      * the compile would record a cache the compile cannot use.
      */
     static List<String> workerJvmFlags(List<String> aot) {
+        return workerJvmFlags(aot, null);
+    }
+
+    /**
+     * {@link #workerJvmFlags(List)} with the worker's {@link WorkerHeap} as {@code -Xmx}, after the
+     * batch flags so it wins over the plan's share; {@code null} leaves the plan's heap in force.
+     */
+    static List<String> workerJvmFlags(List<String> aot, @Nullable Long heapBytes) {
         List<String> flags = new ArrayList<>(aot);
         flags.addAll(JdkCompilerAccess.JVM_FLAGS);
         flags.addAll(JvmOptions.batchFlags(1));
+        if (heapBytes != null) flags.add("-Xmx" + WorkerHeap.mib(heapBytes) + "m");
         return flags;
     }
 

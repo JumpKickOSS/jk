@@ -493,6 +493,7 @@ public final class PlannerCompile {
         ctx.put(PRE_COMPILE_ABI, preAbi);
         JavaCompile.Result r = JavaCompile.run(
                 taskId,
+                compileLabel(ctx, TaskNames.COMPILE_MAIN),
                 request,
                 BuildIdentity.cacheKeyVersion(),
                 !rerun,
@@ -515,6 +516,15 @@ public final class PlannerCompile {
         advanceAbiIndex(ctx, in, r, abiFile, preAbi);
         advanceSourceApiIndex(in.dir(), ctx.require(LAYOUT).buildDir(), r, sources);
         ctx.progress(sources.size());
+    }
+
+    /** What a compiler-worker failure names: the module's coordinates when the plan carries them, and the {@code step}. */
+    static String compileLabel(TaskContext ctx, String step) {
+        return ctx.get(PROJECT)
+                        .map(build ->
+                                build.project().group() + ":" + build.project().name() + " ")
+                        .orElse("")
+                + step;
     }
 
     /**

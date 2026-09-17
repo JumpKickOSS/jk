@@ -115,6 +115,18 @@ Worker JVMs are job-scoped: compiler lanes, test runners and plugin workers exit
 job ends. The build-script host (`.jk/*.kts`) is the one worker that outlives a job, and it
 shuts down after ten idle minutes.
 
+### Compiler worker heap
+
+A compiler worker's heap follows the module it compiles. Each worker starts with the larger
+of the memory plan's per-worker share and an estimate from the module's inputs — a 384 MiB
+base, one MiB per classpath entry, one byte per eight bytes of jar and 96 bytes per byte of
+source — rounded up to a multiple of 256 MiB and capped at what the host can give a single
+worker, so a module with a several-hundred-jar test classpath and a large test tree gets a
+worker of its own size while modules of about one size share one. A worker that still runs
+out of heap is replaced once by one with twice the heap; a second exhaustion fails the step
+with a message naming the module and both heaps. A pinned worker heap (`--ram-percent`,
+`[jvm] args` with `-Xmx`) switches the sizing and the retry off: your number is the heap.
+
 ### Log
 
 The engine writes its log to `~/.jk/state/engine/<key>.log`, beside its socket and pid file.

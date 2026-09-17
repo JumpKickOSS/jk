@@ -3,11 +3,11 @@ package cc.jumpkick.compile;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.compile.JavaCompilerHost.Lanes;
 import cc.jumpkick.compile.JavaCompilerHost.Session;
 import cc.jumpkick.compile.JavaCompilerHost.SpecFile;
-import cc.jumpkick.compile.JavaCompilerHost.Work;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -39,7 +40,7 @@ class JavaCompilerHostPoolTest {
         CountDownLatch release = new CountDownLatch(1);
         Lanes pool = new Lanes(
                 1, (owner, index) -> new Session(owner, 1L, index, self -> release.await()), ForkedJavac::writeSpec);
-        Work w = Work.compile(request(dir, "a"));
+        CompileWork w = CompileWork.compile(request(dir, "a"));
         pool.enqueue(w);
         assertThat(pool.liveLanes()).isEqualTo(1);
         assertThat(pool.queued())
@@ -66,12 +67,12 @@ class JavaCompilerHostPoolTest {
                 1,
                 (owner, index) -> new Session(owner, 6L, index, self -> {
                     seen.set(SessionContext.current().requestedTestWorkers());
-                    for (Work w = self.takeNext(); w != Work.POISON; w = self.takeNext()) {
+                    for (CompileWork w = self.takeNext(); w != CompileWork.POISON; w = self.takeNext()) {
                         w.compile.complete(ok());
                     }
                 }),
                 ForkedJavac::writeSpec);
-        Work w = Work.compile(request(dir, "a"));
+        CompileWork w = CompileWork.compile(request(dir, "a"));
         SessionContext.runWhere(marked, () -> pool.enqueue(w));
         pool.close();
         assertThat(w.compile).isCompletedWithValueMatching(ForkedJavac.Result::success);
@@ -83,7 +84,7 @@ class JavaCompilerHostPoolTest {
         CountDownLatch release = new CountDownLatch(1);
         Lanes pool = new Lanes(
                 1, (owner, index) -> new Session(owner, 2L, index, self -> release.await()), ForkedJavac::writeSpec);
-        Work w = Work.compile(request(dir, "a"));
+        CompileWork w = CompileWork.compile(request(dir, "a"));
         pool.enqueue(w);
         release.countDown();
         awaitTrue(w.compile::isDone, "the orphaned item is failed by the lane's death");
@@ -96,13 +97,13 @@ class JavaCompilerHostPoolTest {
         Lanes pool = new Lanes(
                 1,
                 (owner, index) -> new Session(owner, 3L, index, self -> {
-                    for (Work w = self.takeNext(); w != Work.POISON; w = self.takeNext()) {
+                    for (CompileWork w = self.takeNext(); w != CompileWork.POISON; w = self.takeNext()) {
                         w.compile.complete(ok());
                     }
                 }),
                 ForkedJavac::writeSpec);
-        Work a = Work.compile(request(dir, "a"));
-        Work b = Work.compile(request(dir, "b"));
+        CompileWork a = CompileWork.compile(request(dir, "a"));
+        CompileWork b = CompileWork.compile(request(dir, "b"));
         pool.enqueue(a);
         pool.enqueue(b);
         pool.close();
@@ -117,11 +118,11 @@ class JavaCompilerHostPoolTest {
         CountDownLatch release = new CountDownLatch(1);
         Lanes pool = new Lanes(
                 1, (owner, index) -> new Session(owner, 4L, index, self -> release.await()), ForkedJavac::writeSpec);
-        pool.enqueue(Work.compile(request(dir, "a")));
+        pool.enqueue(CompileWork.compile(request(dir, "a")));
         Thread closer = Thread.ofVirtual().start(pool::close);
         awaitTrue(pool::closing, "close() marks the pool closed");
 
-        Work late = Work.compile(request(dir, "late"));
+        CompileWork late = CompileWork.compile(request(dir, "late"));
         pool.enqueue(late);
         assertThat(late.compile).isCompletedExceptionally();
 
@@ -151,8 +152,8 @@ class JavaCompilerHostPoolTest {
                     return s;
                 },
                 specs);
-        Work bad = Work.compile(request(dir, "bad"));
-        Work good = Work.compile(request(dir, "good"));
+        CompileWork bad = CompileWork.compile(request(dir, "bad"));
+        CompileWork good = CompileWork.compile(request(dir, "good"));
         pool.enqueue(bad);
         pool.enqueue(good);
 
@@ -189,12 +190,12 @@ class JavaCompilerHostPoolTest {
                     return s;
                 },
                 ForkedJavac::writeSpec);
-        pool.enqueue(Work.compile(request(dir, "a")));
+        pool.enqueue(CompileWork.compile(request(dir, "a")));
         awaitTrue(
                 () -> pool.queued() == 0 && requireNonNull(first.get()).working(),
                 "the first lane takes the item and is busy");
 
-        pool.enqueue(Work.compile(request(dir, "b")));
+        pool.enqueue(CompileWork.compile(request(dir, "b")));
         assertThat(pool.liveLanes())
                 .as("a lane holding an undispatched item is busy, so the second item opens a second lane")
                 .isEqualTo(2);
@@ -223,7 +224,7 @@ class JavaCompilerHostPoolTest {
                     return new Session(owner, 7L, index, self -> secondDies.await());
                 },
                 ForkedJavac::writeSpec);
-        pool.enqueue(Work.compile(request(dir, "a")));
+        pool.enqueue(CompileWork.compile(request(dir, "a")));
         awaitTrue(() -> pool.queued() == 0, "the first lane's body took the item");
 
         List<String> sent = new ArrayList<>();
@@ -236,7 +237,7 @@ class JavaCompilerHostPoolTest {
         firstDies.countDown();
         awaitTrue(() -> pool.liveLanes() == 0, "the first lane is gone");
 
-        Work b = Work.compile(request(dir, "b"));
+        CompileWork b = CompileWork.compile(request(dir, "b"));
         pool.enqueue(b);
         pump.join(TimeUnit.SECONDS.toMillis(10));
 
@@ -279,7 +280,7 @@ class JavaCompilerHostPoolTest {
                     return new Session(owner, 8L, index, self -> secondDies.await());
                 },
                 specs);
-        Work a = Work.compile(request(dir, "a"));
+        CompileWork a = CompileWork.compile(request(dir, "a"));
         pool.enqueue(a);
 
         List<String> sent = new ArrayList<>();
@@ -305,6 +306,126 @@ class JavaCompilerHostPoolTest {
         secondDies.countDown();
         awaitTrue(a.compile::isDone, "the last lane's death fails the item that was handed back");
         assertThat(a.compile).isCompletedExceptionally();
+    }
+
+    @Test
+    void a_worker_that_runs_out_of_heap_is_answered_with_one_retry_on_twice_the_heap(@TempDir Path dir)
+            throws Exception {
+        // The lane's worker dies with the JVM's out-of-memory banner in its output. The item is not
+        // failed: the pool hands it to a worker started with twice the heap, once.
+        CountDownLatch dies = new CountDownLatch(1);
+        AtomicReference<@Nullable Session> lane = new AtomicReference<>();
+        AtomicReference<@Nullable CompileWork> retried = new AtomicReference<>();
+        AtomicLong retryHeap = new AtomicLong();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    Session s = new Session(owner, 8L, index, self -> {
+                        dies.await();
+                        self.output("Terminating due to java.lang.OutOfMemoryError: GC overhead limit exceeded");
+                        throw new IOException("zinc worker exited with status 3");
+                    });
+                    lane.set(s);
+                    return s;
+                },
+                ForkedJavac::writeSpec,
+                (failed, heap) -> {
+                    retried.set(failed);
+                    retryHeap.set(heap);
+                });
+        long heap = 512L << 20;
+        CompileWork w = CompileWork.compile(request(dir, "a").withLabel("g:app compile-test"), heap);
+        pool.enqueue(w);
+        List<String> sent = new ArrayList<>();
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+        awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
+        pump.join(TimeUnit.SECONDS.toMillis(10));
+
+        dies.countDown();
+        awaitTrue(() -> retried.get() != null, "the pool is asked to retry the item");
+
+        assertThat(retried.get()).isSameAs(w);
+        assertThat(retryHeap.get()).as("twice the heap the worker had").isEqualTo(2 * heap);
+        assertThat(w.compile)
+                .as("the retry's outcome is the caller's; nothing is decided yet")
+                .isNotDone();
+    }
+
+    @Test
+    void a_second_exhaustion_fails_the_item_naming_the_module_and_both_heaps(@TempDir Path dir) throws Exception {
+        CountDownLatch dies = new CountDownLatch(1);
+        AtomicReference<@Nullable Session> lane = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    Session s = new Session(owner, 9L, index, self -> {
+                        dies.await();
+                        self.output("Terminating due to java.lang.OutOfMemoryError: Java heap space");
+                        throw new IOException("zinc worker exited with status 3");
+                    });
+                    lane.set(s);
+                    return s;
+                },
+                ForkedJavac::writeSpec,
+                (failed, heap) -> {
+                    throw new AssertionError("a retried item is not retried again");
+                });
+        CompileWork retry = CompileWork.compile(request(dir, "a").withLabel("g:app compile-test"), 2048L << 20);
+        retry.previousHeapBytes = 1024L << 20;
+        pool.enqueue(retry);
+        List<String> sent = new ArrayList<>();
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+        awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
+        pump.join(TimeUnit.SECONDS.toMillis(10));
+
+        dies.countDown();
+        awaitTrue(retry.compile::isDone, "the second exhaustion is the failure");
+
+        assertThat(retry.compile).isCompletedExceptionally();
+        assertThatThrownBy(retry.compile::join)
+                .cause()
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("g:app compile-test")
+                .hasMessageContaining("1024 MiB")
+                .hasMessageContaining("2048 MiB")
+                .hasMessageContaining("OutOfMemoryError");
+    }
+
+    @Test
+    void a_worker_that_dies_without_an_out_of_memory_banner_fails_its_item_at_once(@TempDir Path dir) throws Exception {
+        CountDownLatch dies = new CountDownLatch(1);
+        AtomicReference<@Nullable Session> lane = new AtomicReference<>();
+        Lanes pool = new Lanes(
+                1,
+                (owner, index) -> {
+                    Session s = new Session(owner, 10L, index, self -> {
+                        dies.await();
+                        self.output("Exception in thread main: java.lang.IllegalStateException: boom");
+                        throw new IOException("zinc worker exited with status 1");
+                    });
+                    lane.set(s);
+                    return s;
+                },
+                ForkedJavac::writeSpec,
+                (failed, heap) -> {
+                    throw new AssertionError("only an out-of-memory death is retried");
+                });
+        CompileWork w = CompileWork.compile(request(dir, "a"), 512L << 20);
+        pool.enqueue(w);
+        List<String> sent = new ArrayList<>();
+        Thread pump = Thread.ofVirtual().start(() -> requireNonNull(lane.get())
+                .onLine("{\"" + PluginProtocol.T + "\":\"" + PluginProtocol.READY + "\"}", recording(sent)));
+        awaitTrue(() -> sent.stream().anyMatch(l -> l.startsWith("COMPILE ")), "the item is on the wire");
+        pump.join(TimeUnit.SECONDS.toMillis(10));
+
+        dies.countDown();
+        awaitTrue(w.compile::isDone, "the death fails the item");
+        assertThatThrownBy(w.compile::join)
+                .cause()
+                .hasMessageContaining("status 1")
+                .hasMessageContaining("boom");
     }
 
     private static PluginProcess.Conversation recording(List<String> sent) {

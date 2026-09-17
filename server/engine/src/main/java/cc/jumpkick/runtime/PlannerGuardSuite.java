@@ -285,6 +285,7 @@ public final class PlannerGuardSuite {
                     ctx.label("compiling " + sources.size() + " guard sources");
                     JavaCompile.Result r = JavaCompile.run(
                             taskId,
+                            PlannerCompile.compileLabel(ctx, TaskNames.COMPILE_GUARD),
                             request,
                             BuildIdentity.cacheKeyVersion(),
                             !rerun,
