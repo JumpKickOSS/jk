@@ -222,6 +222,41 @@ public record RepositorySpec(
         return !groups.isEmpty();
     }
     /**
+     * The one written form of a repository URL, so two manifests naming one origin agree by text:
+     * scheme and host lower-cased, an explicit default port ({@code :80} for http, {@code :443} for
+     * https) dropped, and the path ending in exactly one slash — a Maven layout is asked with the
+     * slash either way. An opaque URL ({@code s3:bucket/path}) is left as declared. The same
+     * instance comes back when nothing changes.
+     */
+    public static URI normalizedUrl(URI url) {
+        if (url.isOpaque()) return url;
+        String scheme = url.getScheme() == null ? null : url.getScheme().toLowerCase(Locale.ROOT);
+        String host = url.getHost() == null ? null : url.getHost().toLowerCase(Locale.ROOT);
+        int port = url.getPort();
+        if (("http".equals(scheme) && port == 80) || ("https".equals(scheme) && port == 443)) port = -1;
+        String rawPath = url.getRawPath() == null ? "" : url.getRawPath();
+        String path = rawPath.replaceAll("/+$", "") + "/";
+        StringBuilder out = new StringBuilder();
+        if (scheme != null) out.append(scheme).append(':');
+        if (host != null || url.getRawAuthority() != null || "file".equals(scheme)) {
+            out.append("//");
+            if (url.getRawUserInfo() != null) out.append(url.getRawUserInfo()).append('@');
+            if (host != null) out.append(host);
+            if (port >= 0) out.append(':').append(port);
+        }
+        out.append(path);
+        if (url.getRawQuery() != null) out.append('?').append(url.getRawQuery());
+        if (url.getRawFragment() != null) out.append('#').append(url.getRawFragment());
+        String normalized = out.toString();
+        return normalized.equals(url.toString()) ? url : URI.create(normalized);
+    }
+
+    /** True when this repository and {@code other} name one origin: their {@link #normalizedUrl} forms agree. */
+    public boolean sameOrigin(RepositorySpec other) {
+        return normalizedUrl(url).equals(normalizedUrl(other.url()));
+    }
+
+    /**
      * A host on this machine's loopback interface. Plaintext to it is not the threat the
      * insecure-repository refusal names — there is no network path for anyone to sit on — so a
      * local mirror, an ssh-tunnelled Nexus or a test stub needs no opt-in and is not reported as

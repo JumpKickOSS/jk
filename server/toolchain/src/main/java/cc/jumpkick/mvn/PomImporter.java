@@ -764,7 +764,8 @@ public final class PomImporter {
                     repo.getSnapshots() == null || repo.getSnapshots().isEnabled();
             if (!releases && !snapshots) continue;
             try {
-                deduped.put(name, new RepositorySpec(name, new URI(url.trim())).withPolicy(releases, snapshots));
+                URI written = RepositorySpec.normalizedUrl(new URI(url.trim()));
+                deduped.put(name, new RepositorySpec(name, written).withPolicy(releases, snapshots));
             } catch (URISyntaxException e) {
                 report.warning("`<repository><url>" + url + "</url></repository>` is not a valid URI; skipped.");
             }

@@ -325,6 +325,25 @@ class WorkspaceMergeTest {
         assertThat(merged.repositories()).containsExactly(central, jitpack, confluent);
     }
 
+    /** Scheme and host case and an explicit default port do not make a second repository of one origin. */
+    @Test
+    void one_repository_spelled_with_host_case_or_its_default_port_is_one_repository() {
+        RepositorySpec plain = new RepositorySpec("confluent", URI.create("https://packages.confluent.example/maven/"));
+        RepositorySpec loud =
+                new RepositorySpec("confluent", URI.create("HTTPS://Packages.Confluent.example:443/maven"));
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "root", "0.1.0", 0))
+                .workspace(new Workspace(List.of("a", "b")))
+                .build();
+        JkBuild a = JkBuild.builder(new Project("cc.jumpkick", "a", "0.1.0", 0))
+                .repositories(List.of(plain))
+                .build();
+        JkBuild b = JkBuild.builder(new Project("cc.jumpkick", "b", "0.1.0", 0))
+                .repositories(List.of(loud))
+                .build();
+
+        assertThat(WorkspaceMerge.merge(root, List.of(a, b)).repositories()).containsExactly(plain);
+    }
+
     @Test
     void one_repository_spelled_with_and_without_its_trailing_slash_is_one_repository() {
         RepositorySpec bare = new RepositorySpec("confluent", URI.create("https://packages.confluent.example/maven"));

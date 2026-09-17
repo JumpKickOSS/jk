@@ -206,7 +206,9 @@ the root's entries followed by each member's, in `[workspace] modules` order, ke
 the root or an earlier member already declared at the same URL adds nothing; the entry that
 declared it first keeps its credentials, exclusive groups and trust flags. The same id at two URLs
 is refused by `jk lock`, naming both modules and both URLs — give the two repositories two ids, or
-one URL. A URL with and without its trailing slash is one URL.
+one URL. Two spellings of one origin are one URL: scheme and host case, an explicit default port
+(`:443` on https) and the trailing slash do not count, and `jk import` writes the one normalized
+form (`https://packages.confluent.io/maven/`).
 
 ## Nothing to build
 
