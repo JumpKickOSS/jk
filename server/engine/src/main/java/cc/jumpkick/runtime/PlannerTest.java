@@ -491,6 +491,7 @@ public final class PlannerTest {
                     // when the session selection carries no tags at all, apply this module's
                     // own config here. The effective selection feeds BOTH the stamp and the runner.
                     var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
+                    testEnv = TestLaunch.withHostWall(testEnv, effectiveSel);
                     AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel);
                     if (affected != null && affected.classNames().isEmpty()) {
                         return; // nothing affected — no stamp store

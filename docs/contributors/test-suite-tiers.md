@@ -32,6 +32,13 @@ Tag new heavy tests at class level:
 @Tag("bench")       // microbench only (never PR)
 ```
 
+**The fast tier is walled off from Maven Central.** The launcher hands every JVM of a launch that
+includes no tag and excludes at least one `JK_HTTP_DENY_HOSTS=repo.maven.apache.org,<mirror>`;
+`Http` refuses a request to a listed host before it leaves the process, redirects and the Central
+failover included, with a `DeniedHostException` that names the host. A unit test that needs Central
+is an integration test — tag it. Fixture locks in the fast tier resolve their injected JUnit
+Platform from the sandbox store the engine seeds (`TestStoreSeed`), never from the network.
+
 **Every tag is run by exactly one tier.** G23 verifies the executable partition, and G52 verifies
 that the marked table above matches it.
 
