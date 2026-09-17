@@ -8,12 +8,17 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.PubGrubSolver;
+import cc.jumpkick.resolver.pubgrub.Term;
+import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -163,6 +168,53 @@ class DeclaredVersionResolutionTest {
         Resolution floating = new PubGrubResolver(repoGroup(tempDir.resolve("floating")))
                 .resolve(List.of(new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("^2.0.1"))));
         assertThat(requireNonNull(floating.modules().get(injectApi)).version()).isEqualTo("2.0.1.MR");
+    }
+
+    /**
+     * A catalog that omits a published release: drone names spacelift 1.0.2, whose POM is served,
+     * while maven-metadata lists only the Alphas. The declared version is a candidate in a solve
+     * that reads full catalogs up front (the retry a compact-list unsat earns) as it is in the
+     * compact one, and a lock preference naming that very version does not hide it.
+     */
+    @Test
+    void a_wide_solve_admits_a_declared_version_the_catalog_omits_under_a_lock_preference(@TempDir Path tempDir)
+            throws Exception {
+        String spacelift = "org.arquillian.spacelift:arquillian-spacelift:jar:";
+        upstream.metadata("org.arquillian.spacelift", "arquillian-spacelift", "1.0.0.Alpha8", "1.0.0.Alpha9");
+        for (String v : List.of("1.0.0.Alpha8", "1.0.0.Alpha9", "1.0.2")) {
+            upstream.pomOnly(
+                    "org.arquillian.spacelift",
+                    "arquillian-spacelift",
+                    v,
+                    MavenStub.emptyPom("org.arquillian.spacelift", "arquillian-spacelift", v));
+        }
+        upstream.metadata("org.jboss.arquillian.extension", "arquillian-drone-webdriver", "3.0.1.Final");
+        upstream.pomOnly(
+                "org.jboss.arquillian.extension",
+                "arquillian-drone-webdriver",
+                "3.0.1.Final",
+                pomDeclaring(
+                        "org.jboss.arquillian.extension",
+                        "arquillian-drone-webdriver",
+                        "3.0.1.Final",
+                        "org.arquillian.spacelift",
+                        "arquillian-spacelift",
+                        "1.0.2"));
+        RepoGroup repos = repoGroup(tempDir);
+        MavenPackageSource source = new MavenPackageSource(
+                repos,
+                new EffectivePomBuilder(repos),
+                Map.of(),
+                Map.of("org.arquillian.spacelift:arquillian-spacelift", "1.0.2"));
+        Term drone = Term.positive(
+                "org.jboss.arquillian.extension:arquillian-drone-webdriver:jar:", VersionSet.exact("3.0.1.Final"));
+
+        Map<String, String> compact = new PubGrubSolver(source).solve("<root>", "0.0.0", List.of(drone));
+        Map<String, String> wide =
+                new PubGrubSolver(source).withWideUniverses().solve("<root>", "0.0.0", List.of(drone));
+
+        assertThat(compact).containsEntry(spacelift, "1.0.2");
+        assertThat(wide).containsEntry(spacelift, "1.0.2");
     }
 
     private void serveAnnotations(String... versions) {

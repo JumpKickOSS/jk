@@ -575,8 +575,10 @@ public class PubGrubSolver {
         if (solution.hasNoCandidates(pkg) && widenable(pkg)) {
             expandUniverse(pkg);
         }
+        // A version an edge named is a candidate whatever the catalogs list, in every mode: a
+        // release the catalog omits is what an edge naming it outright is for.
+        if (!lazyUniverses.contains(pkg)) admitDeclared(pkg, source.declaredVersions(pkg));
         Set<String> declared = steeringDeclarations(pkg);
-        if (!declared.isEmpty()) admitDeclared(pkg, declared);
 
         String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg, declared);
         if (pick == null) {
@@ -653,7 +655,8 @@ public class PubGrubSolver {
      * The versions dependency edges declared for {@code pkg} when those should decide its version:
      * nothing asked for "newest in range" (no floating root selector, no range or caret anywhere
      * in its constraint) and no lock/BOM pin is still in play. Empty otherwise, which leaves the
-     * highest allowed release as the pick.
+     * highest allowed release as the pick. The declared versions are candidates either way; this
+     * only says whether the pick steers to one.
      */
     private Set<String> steeringDeclarations(String pkg) {
         if (floatingRoots.contains(pkg)) return Set.of();
@@ -669,9 +672,11 @@ public class PubGrubSolver {
     /**
      * Make sure every declared version is a candidate. The compact window holds the newest
      * releases, and a version an edge names is usually older than all of them; a universe that
-     * cannot see it would resolve past it.
+     * cannot see it would resolve past it. A full catalog can be short of one too — a release the
+     * repository's metadata omits — and then the edge naming it is the only way in.
      */
     private void admitDeclared(String pkg, Set<String> declared) {
+        if (declared.isEmpty()) return;
         VersionUniverse u = universes.get(pkg);
         if (u == null) return;
         List<String> missing = new ArrayList<>();
