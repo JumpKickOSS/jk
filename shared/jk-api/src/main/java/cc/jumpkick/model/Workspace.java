@@ -30,16 +30,27 @@ public record Workspace(List<String> modules, Map<String, WorkspaceDependency> d
         return modules.isEmpty();
     }
 
-    /** Shared external dep in {@code [workspace.dependencies]} (version or git; not a sibling). */
+    /**
+     * Shared external dep in {@code [workspace.dependencies]} (version or git; not a sibling).
+     * {@code exclusions} is the entry's own {@code exclude} list — {@code group:artifact} or
+     * {@code group:*} each — which every member edge to the entry carries beside its own.
+     */
     public record WorkspaceDependency(
             String group,
             String artifact,
             @Nullable VersionSelector version,
-            @Nullable GitSource gitSource) {
+            @Nullable GitSource gitSource,
+            List<String> exclusions) {
+
+        public WorkspaceDependency(
+                String group, String artifact, @Nullable VersionSelector version, @Nullable GitSource gitSource) {
+            this(group, artifact, version, gitSource, List.of());
+        }
 
         public WorkspaceDependency {
             Objects.requireNonNull(group, "group");
             Objects.requireNonNull(artifact, "artifact");
+            exclusions = List.copyOf(exclusions);
             if (group.isBlank()) {
                 throw new IllegalArgumentException("workspace dependency group must not be blank");
             }

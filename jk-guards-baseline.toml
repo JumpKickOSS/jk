@@ -7,11 +7,12 @@ population = { constants = 1, files = 3542, literals = 110531 }
 [archive-instant-owner]
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -27,14 +28,14 @@ population = { files = 1938 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
 "plugins/micronaut" = { classes = 1, sites = 192 }
 "plugins/minified" = { classes = 5, sites = 536 }
-"plugins/protobuf" = { classes = 2, sites = 104 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "server/toolchain" = { classes = 20, sites = 1776 }
 "shared/client-io" = { classes = 88, sites = 4844 }
@@ -186,10 +187,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "plugins/minified"
 at     = "cc.jumpkick.minified.MinifiedJarPackager#zipClasses(Ljava/nio/file/Path;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "plugins/protobuf"
-at     = "cc.jumpkick.protobuf.ProtocStep#protoFiles(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/quarkus"
@@ -745,11 +742,12 @@ population = { constants = 29, files = 2021, literals = 36955 }
 [case-conversion-locale]
 [case-conversion-locale.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -787,11 +785,12 @@ population = { examined = 4 }
 "clients/cli-terminal" = { classes = 48, sites = 1630 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/test-runner" = { classes = 9, sites = 556 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 "shared/core" = { classes = 330, sites = 17852 }
@@ -1443,10 +1442,6 @@ at     = "cc.jumpkick.repo.MavenMetadataCache#touch(Ljava/nio/file/Path;)V -> ja
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/io"
-at     = "cc.jumpkick.repo.RepoGroup#availableVersions(Lcc/jumpkick/model/Coordinate;)Ljava/util/List; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
 at     = "cc.jumpkick.repo.RepoGroup$VersionsEntry#expired()Z -> java.lang.System#nanoTime()J"
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
@@ -1750,6 +1745,7 @@ population = { examined = 15 }
 [engine-log-owner.populations]
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -1791,11 +1787,12 @@ population = { files = 1529 }
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 0 }
 "plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 0 }
-"server/io" = { classes = 34, sites = 0 }
+"server/io" = { classes = 50, sites = 0 }
 "server/resolver" = { classes = 85, sites = 0 }
 "shared/client-io" = { classes = 88, sites = 0 }
 
@@ -2133,52 +2130,58 @@ population = { examined = 5 }
 [null-marked-packages]
 [null-marked-packages.populations]
 "clients/cli" = { classes = 676, elements = 18 }
+"plugins/protobuf" = { classes = 4, elements = 1 }
 "plugins/publisher" = { classes = 16, elements = 1 }
 "server/engine" = { classes = 921, elements = 19 }
 "server/guard" = { classes = 178, elements = 7 }
-"server/io" = { classes = 34, elements = 1 }
+"server/io" = { classes = 50, elements = 1 }
 "server/resolver" = { classes = 85, elements = 3 }
 "shared/client-io" = { classes = 88, elements = 6 }
 
 [one-digest-surface]
 [one-digest-surface.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
 [one-hex-spelling]
 [one-hex-spelling.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
 [one-host-surface]
 [one-host-surface.populations]
 "clients/cli" = { classes = 676, sites = 31445 }
+"plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
 "server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 34, sites = 1555 }
+"server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 85, sites = 3320 }
 "shared/client-io" = { classes = 88, sites = 3617 }
 
 [one-http-client]
 [one-http-client.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -2194,11 +2197,12 @@ population = { files = 1938 }
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
 "clients/cli" = { classes = 676, sites = 31445 }
+"plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
 "server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 34, sites = 1555 }
+"server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 85, sites = 3320 }
 "shared/client-io" = { classes = 88, sites = 3617 }
 
@@ -2206,6 +2210,7 @@ population = { files = 1938 }
 [package-cycles.populations]
 "clients/cli" = { edges = 79, slices = 18 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
+"plugins/protobuf" = { edges = 0, slices = 1 }
 "plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
 "server/engine" = { edges = 92, slices = 19 }
@@ -2283,17 +2288,19 @@ population = { examined = 15 }
 
 [plugin-fork-owner]
 [plugin-fork-owner.populations]
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 
 [properties-render-owner]
 [properties-render-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -2318,11 +2325,12 @@ population = { files = 2063 }
 [runnable-owner]
 [runnable-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }
 
@@ -2412,11 +2420,12 @@ population = { examined = 5 }
 
 [toolchain-env-from-request]
 [toolchain-env-from-request.populations]
+"plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
 "server/engine" = { classes = 921, sites = 44529 }
 "server/guard" = { classes = 178, sites = 8280 }
-"server/io" = { classes = 34, sites = 1555 }
+"server/io" = { classes = 50, sites = 2206 }
 "server/resolver" = { classes = 85, sites = 3320 }
 "shared/client-io" = { classes = 88, sites = 3617 }
 
@@ -2444,10 +2453,11 @@ population = { files = 1 }
 [xml-parser-owner]
 [xml-parser-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
 "server/engine" = { classes = 921, sites = 60097 }
 "server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 34, sites = 1989 }
+"server/io" = { classes = 50, sites = 2850 }
 "server/resolver" = { classes = 85, sites = 4380 }
 "shared/client-io" = { classes = 88, sites = 4844 }

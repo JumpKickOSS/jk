@@ -73,6 +73,33 @@ class WorkspaceMergeTest {
         assertThat(merged.dependencies().of(Scope.MAIN)).isEmpty();
     }
 
+    /** The shared entry's exclusions come first, the edge's own after, each once. */
+    @Test
+    void a_shared_dependencys_own_exclusions_join_the_edges() {
+        Workspace.WorkspaceDependency guavaDep = new Workspace.WorkspaceDependency(
+                "com.google.guava",
+                "guava",
+                VersionSelector.parse("33.4.8-jre"),
+                null,
+                List.of("com.google.errorprone:*", "com.google.guava:listenablefuture"));
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "jk", "0.1.0", 0))
+                .workspace(new Workspace(List.of("jk-cli"), Map.of("guava", guavaDep)))
+                .build();
+        JkBuild cli = newProject(
+                "jk-cli",
+                Map.of(
+                        Scope.MAIN,
+                        List.of(workspacePlaceholder("guava")
+                                .withExclusions(
+                                        List.of("com.google.guava:listenablefuture", "org.checkerframework:*")))));
+        JkBuild merged = WorkspaceMerge.merge(root, List.of(cli));
+
+        Dependency guava = merged.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(guava.exclusions())
+                .containsExactly(
+                        "com.google.errorprone:*", "com.google.guava:listenablefuture", "org.checkerframework:*");
+    }
+
     @Test
     void a_workspace_edge_keeps_its_exclusions_when_it_resolves_to_a_shared_dependency() {
         Workspace.WorkspaceDependency guavaDep = new Workspace.WorkspaceDependency(

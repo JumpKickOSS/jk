@@ -588,7 +588,8 @@ public final class ManifestDeps {
             return Dependency.git(name, module, source);
         }
         // The record admits exactly one of version/source, which no type here can state.
-        return Dependency.of(name, module, Objects.requireNonNull(wd.version(), "version"));
+        return Dependency.of(name, module, Objects.requireNonNull(wd.version(), "version"))
+                .withExclusions(wd.exclusions());
     }
 
     static GitSource parseGitSource(TomlTable obj, String displayPath) {

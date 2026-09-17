@@ -357,16 +357,19 @@ public final class WorkspaceMerge {
         }
         Workspace.WorkspaceDependency ws = wsDeps.get(name);
         if (ws != null) {
+            // The shared entry's own exclusions, then the edge's: both prune the resolved subtree.
+            List<String> exclusions = new ArrayList<>(ws.exclusions());
+            for (String own : d.exclusions()) if (!exclusions.contains(own)) exclusions.add(own);
             if (ws.gitSource() != null) {
                 return Dependency.git(d.library(), ws.module(), ws.gitSource())
                         .withKind(d.kind())
                         .withFixtures(d.fixtures())
-                        .withExclusions(d.exclusions());
+                        .withExclusions(exclusions);
             }
             return Dependency.of(d.library(), ws.module(), Objects.requireNonNull(ws.version()))
                     .withKind(d.kind())
                     .withFixtures(d.fixtures())
-                    .withExclusions(d.exclusions());
+                    .withExclusions(exclusions);
         }
         throw new IllegalStateException("no workspace dependency or sibling named `" + name + "`");
     }
