@@ -3,6 +3,8 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.http.HostRateLimiter;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The materialize bound follows cores and heap, inside its floor and ceiling. */
@@ -44,5 +46,29 @@ class DownloadSlotsTest {
         assertThat(DownloadSlots.available()).isEqualTo(before - 1);
         DownloadSlots.release();
         assertThat(DownloadSlots.available()).isEqualTo(before);
+    }
+
+    @Test
+    void leg_slots_are_a_pool_per_host_sized_from_its_request_permits() throws Exception {
+        assertThat(DownloadSlots.legWidth(6)).isEqualTo(6 * DownloadSlots.LEGS_PER_PERMIT);
+        for (String host :
+                List.of("repo.example.org", "repo1.maven.org", "maven-central.storage-download.googleapis.com")) {
+            assertThat(DownloadSlots.legWidth(host))
+                    .as("%s queues four legs per request permit", host)
+                    .isEqualTo(HostRateLimiter.shared().permitsFor(host) * DownloadSlots.LEGS_PER_PERMIT);
+        }
+        int rows = DownloadSlots.available();
+        int legs = DownloadSlots.legsAvailable("repo.example.org");
+        assertThat(legs).isEqualTo(DownloadSlots.legWidth("repo.example.org"));
+        DownloadSlots.acquireLeg("repo.example.org");
+        assertThat(DownloadSlots.legsAvailable("repo.example.org")).isEqualTo(legs - 1);
+        assertThat(DownloadSlots.legsAvailable("other.example.org"))
+                .as("another host's queue is untouched")
+                .isEqualTo(DownloadSlots.legWidth("other.example.org"));
+        assertThat(DownloadSlots.available()).as("a leg takes no row slot").isEqualTo(rows);
+        assertThat(DownloadSlots.tryAcquireLeg("repo.example.org")).isTrue();
+        DownloadSlots.releaseLeg("repo.example.org");
+        DownloadSlots.releaseLeg("repo.example.org");
+        assertThat(DownloadSlots.legsAvailable("repo.example.org")).isEqualTo(legs);
     }
 }

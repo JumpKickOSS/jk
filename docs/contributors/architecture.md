@@ -318,12 +318,21 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   past every memo. Neither the not-found memo nor the sixty-second version-list memo keeps an
   answer from a loopback repository (`localhost`, `127.*`, `::1`): its port names whatever process
   holds it now, and a loopback round trip is not the cost the memos exist to save.
-- **Materialize fan-out:** every lock row is a task on the io pool, but only `DownloadSlots.width()`
-  of them run at once — four per core, one per 4 MiB of engine heap, within [8, 64] — and a
-  task holds its slot for the row's per-repository legs, download and sidecar reads. `jk sync`
-  shares the same slots. Per host, six requests at once (`HostRateLimiter`; twenty on the Central
-  mirror). A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp in the
-  repository's store tree (`DownloadLeg`), so a row in flight costs its connection and that
+- **Download budget:** `DownloadSlots.width()` — four per core, one per 4 MiB of engine heap,
+  within [8, 64] — bounds two pools. *Row slots:* every lock row `ArtifactMaterializer` or
+  `CacheSync` assembles is a task on the io pool holding a row slot for its per-repository legs,
+  download and sidecar reads. *Leg slots:* every network
+  leg `RepoGroup` fans out across repositories — a POM, a version catalog or an artifact asked of
+  one repository — takes a leg slot of its host (a pool per host of four times the host's
+  `HostRateLimiter` permits) on the calling thread before it is handed to the io pool, and releases
+  it as it ends or when cancelled unstarted. Legs are submitted in two passes — first those whose
+  host has room, then the rest in repository order — so a slow repository holds back only its own
+  legs while the other hosts' permits stay busy, and the solver's warm-up (`MavenPackageSource`
+  prefetch workers, sized to half the width, and `EffectivePomBuilder`'s BOM-import expansions) is
+  bounded in what it parks as well as in what it connects. A row never waits on a leg's slot and a
+  leg never waits on a row's, so the two cannot deadlock. Per host, six requests at once (`HostRateLimiter`; twenty on
+  the Central mirror). A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp
+  in the repository's store tree (`DownloadLeg`), so a row in flight costs its connection and that
   buffer, never its payload.
 - **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS`
   (default 600 s per graph, sized for a cold multi-repository reactor of a few hundred modules).
