@@ -100,6 +100,29 @@ replacement, or (if displaced/orphaned) after draining. Details of lifetime and 
 [contributor HTTP](../contributors/http.md). User-facing dashboard: [Web](web.md).
 MCP: [MCP](mcp.md). Token, bind, and reporting: [Security](security.md).
 
+### A silent engine
+
+A client that connects to the engine's socket and gets no handshake within two seconds does not
+conclude the engine is dead. It probes again — four probes over about eight seconds — and then
+reads the process the pid file names for the life it shows without a reply: how long it has been
+up, how many worker processes it has forked, whether its CPU time is still advancing. An engine
+younger than two minutes is loading; one with workers, or whose CPU advances between readings, is
+busy — a coordinator mid-build answers its socket late, not never. Either is left alone: the client
+keeps probing for thirty seconds plus fifteen per worker (three minutes at most) and, if the
+handshake still has not come, fails —
+
+```
+the build engine (pid 2945622) is alive and busy — up 3m 12s, 6 worker processes — but has not
+answered a handshake in 2m 00s; it is not displaced, since that would kill the jobs it runs for
+other terminals. Retry in a moment; `jk engine status` shows its jobs, and `jk engine stop --now`
+stops it regardless
+```
+
+— rather than kill the jobs the engine runs for other terminals. Only a holder that shows no life
+across two readings — past its startup, no workers, no CPU — is displaced: hard-killed once and
+replaced, with `displacing unresponsive engine (pid N)` in the engine log. `jk engine status` says
+when the engine it cannot reach is alive and busy; `jk engine stop --now` stops it regardless.
+
 ## Configuration
 
 `[engine]` in `~/.jk/config.toml` is machine-scoped: not project-overridable. The **Read**
