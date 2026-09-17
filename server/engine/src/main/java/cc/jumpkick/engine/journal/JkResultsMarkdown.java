@@ -6,8 +6,8 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.test.MarkdownTestReport;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.DirKeys;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -84,10 +84,10 @@ public final class JkResultsMarkdown {
         Path details = runDir == null ? null : runDir.resolve(ProjectBuilds.DETAILS);
         String md = render(record, details, latestPath, tests, previous);
         if (runDir != null) {
-            AtomicWrites.replace(runDir.resolve(FILE_NAME), md);
+            MarkdownReports.write(runDir.resolve(FILE_NAME), md);
         }
         if (latestPath != null) {
-            AtomicWrites.replace(latestPath, md);
+            MarkdownReports.write(latestPath, md);
         }
     }
 

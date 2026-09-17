@@ -2,7 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,7 +26,7 @@ public final class JkTestsAffectedMarkdown {
 
     public static void write(Path file, AffectedTests report) throws IOException {
         Files.createDirectories(file.getParent());
-        AtomicWrites.replace(file, render(report));
+        MarkdownReports.write(file, render(report));
     }
 
     public static String render(AffectedTests report) {

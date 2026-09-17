@@ -7,6 +7,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.mvn.DeclaredPins;
 import cc.jumpkick.mvn.PomImporter;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -114,7 +115,7 @@ public final class ProjectImport {
             if (reportTarget != null) {
                 Path rDir = reportTarget.getParent();
                 if (rDir != null) Files.createDirectories(rDir);
-                Files.writeString(reportTarget, importReport.renderMarkdown(source.toString()), StandardCharsets.UTF_8);
+                MarkdownReports.write(reportTarget, importReport.renderMarkdown(source.toString()));
                 wrote.add(reportTarget);
             }
             return new Outcome(0, importReport.issues().size(), null, wrote);

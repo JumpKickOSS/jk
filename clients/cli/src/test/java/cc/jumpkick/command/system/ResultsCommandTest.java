@@ -8,6 +8,7 @@ import cc.jumpkick.cli.CommandDispatch;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.util.MarkdownReports;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -71,6 +72,37 @@ class ResultsCommandTest {
         String out = Capture.stdout(() -> Jk.execute("-C", proj.toString(), "results", "--details"));
         assertThat(out).isEqualTo("{\"type\":\"error\",\"message\":\"boom\"}\n");
         assertThat(out).doesNotContain("\"n\":1");
+    }
+
+    /**
+     * The file on disk leads with a UTF-8 BOM so a Windows {@code cat} decodes it; a terminal is
+     * not that reader. Printing the mark would put a visible {@code ï»¿} in front of the heading
+     * under PowerShell's ANSI codepage, and hand a leading U+FEFF to anything parsing the pipe.
+     */
+    @Test
+    void the_files_byte_order_mark_is_not_printed() throws Exception {
+        Path proj = project();
+        ProjectBuilds.RunDir run = open(proj);
+        MarkdownReports.write(run.resultsFile(), "# jk results — OK\n");
+        Files.writeString(run.detailsFile(), "{\"n\":1}\n");
+        assertThat(Files.readString(run.resultsFile(), StandardCharsets.UTF_8))
+                .as("the file itself keeps the mark")
+                .startsWith(MarkdownReports.BOM);
+
+        String out = Capture.stdout(() -> Jk.execute("-C", proj.toString(), "results"));
+        assertThat(out).isEqualTo("# jk results — OK\n");
+        assertThat(out).doesNotContain(MarkdownReports.BOM);
+    }
+
+    /** The fallback copy under {@code target/} is written the same way, and read back the same way. */
+    @Test
+    void the_target_copys_mark_is_not_printed_either() throws Exception {
+        Path proj = project();
+        Files.createDirectories(proj.resolve("target"));
+        MarkdownReports.write(proj.resolve("target").resolve("jk-results.md"), "# from target\n");
+
+        String out = Capture.stdout(() -> Jk.execute("-C", proj.toString(), "results"));
+        assertThat(out).isEqualTo("# from target\n");
     }
 
     @Test
