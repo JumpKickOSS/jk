@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.discovery.ProbeSupport;
+import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -17,6 +18,7 @@ import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -166,14 +168,36 @@ public final class JdkInstaller {
     }
 
     /**
-     * Fast path: if the target directory already exists, return the existing install descriptor
+     * Fast path: if the target directory already holds a finished install, return its descriptor
      * without touching the network or disk. Returns {@code null} when nothing's installed yet.
+     *
+     * <p>{@link #completeInstall} decides, not {@link Files#exists}: a directory at the install name
+     * is not an install. An empty one is what a canceled install leaves behind, and what a recursive
+     * delete that could not unlink the top directory leaves behind — and answering either as "already
+     * installed" is worse than answering nothing, because the install short-circuits forever and the
+     * failure surfaces at whatever step needed the JDK, naming some other home entirely.
+     * {@code ~/.jdks/graalvm-25}, empty, made {@code jk build} report "GraalVM 25 is already
+     * installed" and then fail its native-image step against the pinned Temurin.
+     *
+     * <p>A GraalVM is held to one thing more: a {@code native-image} launcher. It is the reason a
+     * caller asks for a GraalVM by name at all — {@code GraalResolver} reaches this method only from
+     * a tier that wants one to link with — so a GraalVM tree without it is not the install that was
+     * asked for, and answering it as one hands the native step a home it cannot build in. Where the
+     * launcher may sit is {@link GraalLauncher}'s answer, not this class's: {@code bin} or {@code
+     * lib/svm/bin}, and any of the three spellings a host uses.
      */
     public @Nullable InstalledJdk alreadyInstalled(JdkCatalog.Entry entry) {
         String installName = installName(entry);
         Path target = registry.jdksRoot().resolve(installName);
-        if (!Files.exists(target)) return null;
-        return new InstalledJdk(installName, javaHomeFor(entry, target));
+        Path javaHome = javaHomeFor(entry, target);
+        if (!completeInstall(target, javaHome)) return null;
+        if (isGraal(entry) && GraalLauncher.in(javaHome).isEmpty()) return null;
+        return new InstalledJdk(installName, javaHome);
+    }
+
+    /** Whether {@code entry} is one of the GraalVM flavours, by the vendor the feed reported. */
+    private static boolean isGraal(JdkCatalog.Entry entry) {
+        return DefaultGraalPolicy.isGraal(JdkVendor.fromFeed(entry.vendor(), entry.product()));
     }
 
     /**
@@ -336,13 +360,15 @@ public final class JdkInstaller {
      * and rename to the same target. A rename is one {@code rename(2)}, so whatever refused ours
      * is a complete tree: {@link java.nio.file.FileAlreadyExistsException} when it was there before
      * our move began, and a bare "directory not empty" (or, on Windows, an access-denied)
-     * {@link FileSystemException} when it landed between the existence check and the syscall. The
-     * loser adopts the winner's tree and marks it — marking is idempotent, so the loser also
-     * closes the winner's gap between its rename and its mark. A target that is not a JDK
-     * (nothing jk marked, no {@code release} beside {@code bin/java}) is whatever refused the
-     * move, and the failure says so.
+     * {@link FileSystemException} when it landed between the existence check and the syscall — once
+     * {@link #clearEmptyTarget} has taken an empty directory or a stale pointer out of the way, so
+     * that what refuses the rename is a tree and not a leftover. The loser adopts the winner's tree
+     * and marks it — marking is idempotent, so the loser also closes the winner's gap between its
+     * rename and its mark. A target that is not a JDK (nothing jk marked, no {@code release} beside
+     * {@code bin/java}) is whatever refused the move, and the failure says so.
      */
     private void moveIntoPlace(Path stagingDir, Path target, Path javaHome) throws IOException {
+        clearEmptyTarget(target);
         try {
             Files.move(flattenedRoot(stagingDir), target);
         } catch (FileSystemException raced) {
@@ -358,8 +384,49 @@ public final class JdkInstaller {
         JdkOwnership.mark(target);
     }
 
-    /** Whether {@code target} holds a finished install: jk's marker, or a JDK the probe accepts. */
+    /**
+     * Unlink an empty directory, or a stale pointer, sitting at the install name — so the rename that
+     * follows is what decides the outcome.
+     *
+     * <p>Nothing is lost: an empty directory holds nothing, and a {@code StableJdkPointer} alias is a
+     * link this install is about to make redundant by taking the name itself (Oracle GraalVM reports
+     * version 25 for major 25, so the install dir and the pointer are one path). A POSIX {@code
+     * rename(2)} would have replaced an empty directory for free; Windows refuses, which is how one
+     * such directory came to wedge every later install of that version on the reporting host. A
+     * <em>populated</em> tree is left exactly where it is — it may be somebody's JDK — and the rename
+     * below reports it.
+     */
+    private static void clearEmptyTarget(Path target) {
+        // A directory or a link, and nothing else: the two shapes described above. Whether a Windows
+        // junction answers isSymbolicLink or isDirectory(NOFOLLOW_LINKS) has moved between JDKs, so
+        // both are asked and either is enough.
+        if (!Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(target)) return;
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException populated) {
+            // Not ours to remove: Files.move reports whatever is in the way.
+        }
+    }
+
+    /**
+     * Whether {@code target} holds a finished install: a launcher, plus jk's marker or a JDK the
+     * probe accepts.
+     *
+     * <p>The launcher is checked first and on its own, because both of the other two answers survive
+     * a tree that no longer has one. {@code JdkOwnership.MARKER} is one small file at the top of an
+     * install jk extracted, so it outlives a delete or an unclean shutdown that took the JDK out from
+     * under it; the probe reads {@code release}, beside {@code bin} rather than in it. A tree missing
+     * {@code bin/java} is not something to adopt or to report as installed whatever else it carries.
+     *
+     * <p>This asks about a JDK and stops there — {@code native-image} is {@link
+     * #alreadyInstalled}'s extra question, not this one's. The two callers differ: deciding whether
+     * a download can be skipped is a judgement about what the caller asked for, while adopting the
+     * tree that just won a rename is a judgement about what is on disk. Holding the rename path to
+     * the launcher too would turn a GraalVM that ships without one into an unbounded re-download,
+     * and then a hard failure, for a JDK that is in fact installed.
+     */
     static boolean completeInstall(Path target, Path javaHome) {
+        if (!Files.isRegularFile(JdkFingerprint.java(javaHome))) return false;
         return JdkOwnership.isJkOwned(target)
                 || ProbeSupport.discoverJdk(javaHome, "jk").isPresent();
     }

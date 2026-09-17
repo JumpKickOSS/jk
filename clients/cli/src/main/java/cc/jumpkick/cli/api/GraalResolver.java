@@ -154,6 +154,31 @@ public final class GraalResolver {
         return GraalLauncher.homeOf(launcher).orElse(fallback);
     }
 
+    /**
+     * Whether {@code home} itself holds a {@code native-image} launcher, complaining if it does not.
+     *
+     * <p>Every tier above filters its candidates; an install does not, and this is the one place a
+     * home reaches the caller without having been looked at. It is also where the unchecked answer
+     * did the most damage: an install that reports "already installed" for a directory that is not
+     * one handed back a home with no launcher, the engine quietly fell through to the project's JDK,
+     * and the native step failed naming a Temurin. Asked here, the build stops with the home that is
+     * actually wrong in the message.
+     *
+     * <p>{@link GraalLauncher#in} and not {@code NativeImageDriver.resolve}: the question is whether
+     * THIS home can build, and {@code resolve} would answer yes for a launcher it found on {@code
+     * $PATH} — a different GraalVM than the one the tier named.
+     */
+    static boolean carriesNativeImage(Path home) {
+        if (GraalLauncher.in(home).isPresent()) return true;
+        CliOutput.err("jk native: " + home + " holds no " + GraalLauncher.NAME + " launcher ("
+                + GraalLauncher.searchedDirs() + ").");
+        // --force is what JdkInstallCommand turns into JdkService's refresh, and refresh is what
+        // reinstalls over a tree already sitting at the name.
+        CliOutput.err("  Reinstall it with `jk jdk install --force " + home.getFileName()
+                + "`, or set $GRAALVM_HOME to a GraalVM that has one.");
+        return false;
+    }
+
     private @Nullable Path offerOracleGraalVm(@Nullable Path searchedJavaHome, JdkRegistry registry) {
         if (!assumeYes && !Confirm.isInteractiveTerminal()) {
             // Can't prompt — fail with the same actionable hint as the driver.
@@ -205,13 +230,13 @@ public final class GraalResolver {
             // The same bar, phases and done line `jk jdk install native` renders; the header says
             // which pin asked for it.
             String label = JdkService.displayLabel(e);
-            return ToolchainInstalls.run(
+            Optional<Path> home = ToolchainInstalls.run(
                             mode,
                             "Installing GraalVM " + e.installFolderName() + " (" + announce + ")",
                             label,
                             (progress, warn) -> new JdkService().install(e, registry, false, progress))
-                    .map(InstalledJdk::home)
-                    .orElse(null);
+                    .map(InstalledJdk::home);
+            return home.filter(GraalResolver::carriesNativeImage).orElse(null);
         } catch (Exception ex) {
             CliOutput.err("jk native: failed to install GraalVM (" + spec + "): " + ex.getMessage());
             return null;

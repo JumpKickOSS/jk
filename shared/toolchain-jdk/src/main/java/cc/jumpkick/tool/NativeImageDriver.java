@@ -369,16 +369,52 @@ public final class NativeImageDriver {
         return Optional.empty();
     }
 
+    /**
+     * A home the search looked in, and — when the caller knows it — where that home came from.
+     *
+     * <p>The origin is what makes the failure readable. A native build's home comes from one of
+     * several tiers (the client's answer for the module, the request's {@code $GRAALVM_HOME}, an
+     * installed Graal, the project's JDK), and a message naming only the home the last tier happened
+     * to hand back reads as though nothing else was tried: {@code ~/.jdks/graalvm-25}, resolved by
+     * the client and holding no launcher, went unmentioned while the message named the pinned
+     * Temurin — a JDK nobody had asked for GraalVM from.
+     */
+    public record Candidate(@Nullable String origin, Path home) {
+        public Candidate {
+            Objects.requireNonNull(home, "home");
+        }
+    }
+
+    /** {@link #notFoundError(List)} for a search that looked in one home it cannot label. */
     public static IOException notFoundError(@Nullable Path javaHome) {
-        return new IOException(GraalLauncher.NAME + " binary not found.\n"
-                + "  Checked ("
-                + GraalLauncher.searchedDirs()
-                + "): "
-                + (javaHome != null ? javaHome + ", " : "")
-                + "$GRAALVM_HOME, PATH\n"
-                + "  Install a GraalVM JDK and pin it:\n"
-                + "    jk jdk install graalvm-25\n"
-                + "    (or set $GRAALVM_HOME to your GraalVM installation)");
+        return notFoundError(javaHome == null ? List.of() : List.of(new Candidate(null, javaHome)));
+    }
+
+    /**
+     * The failure for a search that found no launcher, naming every home it looked in and in the
+     * order it looked — so the home the caller expected to work is in the message whether or not it
+     * was the last one tried.
+     */
+    public static IOException notFoundError(List<Candidate> checked) {
+        StringBuilder message = new StringBuilder(GraalLauncher.NAME)
+                .append(" binary not found.\n  Checked (")
+                .append(GraalLauncher.searchedDirs())
+                .append("):\n");
+        List<Path> shown = new ArrayList<>();
+        for (Candidate c : checked) {
+            // One line per home. Two tiers naming the same directory is normal — the project's JDK
+            // is often the home the client resolved — and printing it twice reads like two searches.
+            if (shown.contains(c.home())) continue;
+            shown.add(c.home());
+            message.append("    ").append(c.home());
+            if (c.origin() != null) message.append(" — ").append(c.origin());
+            message.append('\n');
+        }
+        return new IOException(message.append("    then $GRAALVM_HOME, and every PATH entry\n")
+                .append("  Install a GraalVM JDK and pin it:\n")
+                .append("    jk jdk install graalvm-25\n")
+                .append("    (or set $GRAALVM_HOME to your GraalVM installation)")
+                .toString());
     }
 
     /**
