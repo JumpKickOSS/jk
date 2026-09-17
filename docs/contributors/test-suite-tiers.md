@@ -200,6 +200,13 @@ started with `JK_STATE_DIR` or `JK_STORE_DIR` in its shell would otherwise hand 
 real build history — and a nested `jk self nuke` its real store. With `W > 1` each runner gets a
 child state dir of its own.
 
+**The overlay rule.** Layout settings come in two layers: the `jk.env.<NAME>` system properties
+(the in-process seam a test sets per class or method, forwarded by the engine spawner to the
+engine it starts) over the real environment. A root override binds to the home it was set beside,
+so a home named by the overlay takes its store, cache and state from the overlay alone — an
+environment `JK_STORE_DIR` describes the shell's home and never reaches into an overlay home.
+`JK_HOME=/scratch JK_STORE_DIR=~/.jk/store` in one shell still shares the store.
+
 ## Suites and tags
 
 | Intent | Command |

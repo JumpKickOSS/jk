@@ -32,6 +32,15 @@ import org.jspecify.annotations.Nullable;
  * Managed JDKs are the one thing deliberately outside the home tree: they share IntelliJ's root so
  * the IDE and jk see the same runtimes ({@link #jdksDir()}, {@code JK_JDKS_DIR}).
  *
+ * <p>The settings come in two layers: the {@code jk.env.<NAME>} system properties — the
+ * <em>overlay</em>, the in-process seam a test sets and the engine spawner forwards — over the
+ * real environment. A root override binds to the home it was set beside. A home named by the
+ * overlay therefore takes its store, cache and state from the overlay alone: an environment
+ * {@code JK_STORE_DIR} describes the shell's home, and letting it reach into an overlay home would
+ * point a test's {@code jk self nuke --store} at the developer's store. A home named by the
+ * environment keeps the environment's overrides, so {@code JK_HOME=/scratch JK_STORE_DIR=~/.jk/store}
+ * still shares one store.
+ *
  * <p>The home and {@code state} are owner-only ({@link #secureRoots()}): the engine socket under
  * {@code state/engine} is trusted on directory permissions alone, so any process running as the
  * user can drive the engine and nobody else can reach it. {@code store} and {@code cache} hold
@@ -63,11 +72,22 @@ public final class JkDirs {
     /** Provisioned build-tool distribution directory under {@link #storeDir()}. */
     public static final String TOOLS_DIR = "tools";
 
+    /** The {@code jk.env.<NAME>} property that overrides one variable. */
+    private static final String OVERLAY = "jk.env.";
+
+    private static final Function<String, @Nullable String> NO_OVERLAY = name -> null;
+
+    private final Function<String, @Nullable String> overlay;
     private final Function<String, @Nullable String> env;
     private final String userHome;
     private final String osName;
 
-    private JkDirs(Function<String, @Nullable String> env, String userHome, String osName) {
+    private JkDirs(
+            Function<String, @Nullable String> overlay,
+            Function<String, @Nullable String> env,
+            String userHome,
+            String osName) {
+        this.overlay = Objects.requireNonNull(overlay, "overlay");
         this.env = Objects.requireNonNull(env, "env");
         this.userHome = Objects.requireNonNull(userHome, "userHome");
         this.osName = osName != null ? osName : "";
@@ -81,7 +101,11 @@ public final class JkDirs {
      * same layout as the client that asked for it.
      */
     public static JkDirs current() {
-        return new JkDirs(JkDirs::env, System.getProperty("user.home"), Os.name());
+        return new JkDirs(JkDirs::overlay, System::getenv, System.getProperty("user.home"), Os.name());
+    }
+
+    private static @Nullable String overlay(String name) {
+        return System.getProperty(OVERLAY + name);
     }
 
     /**
@@ -90,13 +114,13 @@ public final class JkDirs {
      * test without the JVM-wide value every other test depends on.
      */
     public static String env(String name) {
-        String prop = System.getProperty("jk.env." + name);
+        String prop = overlay(name);
         return prop != null ? prop : System.getenv(name);
     }
 
-    /** Test seam: fully synthetic environment (host OS name). */
+    /** Test seam: fully synthetic environment (host OS name), with no overlay over it. */
     public static JkDirs of(Function<String, @Nullable String> env, String userHome) {
-        return new JkDirs(env, userHome, Os.name());
+        return new JkDirs(NO_OVERLAY, env, userHome, Os.name());
     }
 
     /**
@@ -104,7 +128,16 @@ public final class JkDirs {
      * only reaches {@link #jdksDir()}.
      */
     public static JkDirs of(Function<String, @Nullable String> env, String userHome, String osName) {
-        return new JkDirs(env, userHome, osName);
+        return new JkDirs(NO_OVERLAY, env, userHome, osName);
+    }
+
+    /**
+     * Test seam: both layers synthetic — {@code overlay} stands for the {@code jk.env.*} properties,
+     * {@code env} for the environment beneath them.
+     */
+    public static JkDirs of(
+            Function<String, @Nullable String> overlay, Function<String, @Nullable String> env, String userHome) {
+        return new JkDirs(overlay, env, userHome, Os.name());
     }
 
     public static Path home() {
@@ -178,9 +211,15 @@ public final class JkDirs {
      * hangs off it, so relocating this relocates the product.
      */
     public Path homeDir() {
-        String override = nonBlank(env.apply("JK_HOME"));
+        String override = nonBlank(overlay.apply("JK_HOME"));
+        if (override == null) override = nonBlank(env.apply("JK_HOME"));
         if (override != null) return absoluteOverride("JK_HOME", override);
         return Path.of(userHome).resolve(HOME_DIR);
+    }
+
+    /** True when the home comes from the overlay, so the environment's root overrides describe another home. */
+    private boolean overlayHome() {
+        return nonBlank(overlay.apply("JK_HOME")) != null;
     }
 
     /**
@@ -343,7 +382,8 @@ public final class JkDirs {
      * set {@code JK_JDKS_DIR}.
      */
     public Path jdksDir() {
-        String override = nonBlank(env.apply("JK_JDKS_DIR"));
+        String override = nonBlank(overlay.apply("JK_JDKS_DIR"));
+        if (override == null) override = nonBlank(env.apply("JK_JDKS_DIR"));
         if (override != null) return absoluteOverride("JK_JDKS_DIR", override);
         Path home = Path.of(userHome);
         if (Os.isDarwin(osName)) {
@@ -352,9 +392,14 @@ public final class JkDirs {
         return home.resolve(".jdks");
     }
 
-    /** A root with its own override: the {@code JK_*_DIR} when set, else {@code <home>/<name>}. */
+    /**
+     * A root with its own override: the {@code JK_*_DIR} when set, else {@code <home>/<name>}. The
+     * override is read from the layer the home came from — the overlay's alone under an overlay
+     * home, else the overlay's over the environment's.
+     */
     private Path root(String jkEnv, String name) {
-        String override = nonBlank(env.apply(jkEnv));
+        String override = nonBlank(overlay.apply(jkEnv));
+        if (override == null && !overlayHome()) override = nonBlank(env.apply(jkEnv));
         if (override != null) return absoluteOverride(jkEnv, override);
         return homeDir().resolve(name);
     }

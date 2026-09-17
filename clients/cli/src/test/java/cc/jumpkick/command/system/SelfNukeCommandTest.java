@@ -60,6 +60,10 @@ class SelfNukeCommandTest {
 
     @org.junit.jupiter.api.BeforeEach
     void isolateHome() throws IOException {
+        // The suite's layout, read before the overlay hides it: self nuke is engine-hosted, and the
+        // isolated home needs a REAL launchable engine (EngineTestExtension materialized the suite's
+        // in beforeAll). A stub jar here just reproduces "no build engine" (exit 1).
+        IsolatedEngineHome.Suite suite = IsolatedEngineHome.Suite.current();
         prevHome = System.getProperty("jk.env.JK_HOME");
         prevState = System.getProperty("jk.env.JK_STATE_DIR");
         prevStore = System.getProperty("jk.env.JK_STORE_DIR");
@@ -69,34 +73,7 @@ class SelfNukeCommandTest {
                 Files.createDirectories(isolatedHome.resolve("state")).toString());
         // The store the tests wipe is the isolated home's, whatever JK_STORE_DIR the shell exports.
         System.setProperty("jk.env.JK_STORE_DIR", isolatedHome.resolve("store").toString());
-        // self nuke is engine-hosted: give the isolated home a REAL launchable engine by
-        // copying the suite home's materialized install (EngineTestExtension ran beforeAll,
-        // before this overlay). A stub jar here just reproduces "no build engine" (exit 1).
-        String suiteHome = System.getenv("JK_HOME");
-        if (suiteHome != null && !suiteHome.isBlank()) {
-            Path fromLib = Path.of(suiteHome).resolve("lib").resolve("jk-engine");
-            Path toLib = Files.createDirectories(isolatedHome.resolve("lib").resolve("jk-engine"));
-            if (Files.isDirectory(fromLib)) {
-                try (var stream = Files.list(fromLib)) {
-                    for (Path p : stream.toList()) {
-                        if (Files.isRegularFile(p)) {
-                            Files.copy(p, toLib.resolve(p.getFileName().toString()));
-                        }
-                    }
-                }
-            }
-            Path fromCfg = Path.of(suiteHome).resolve("config").resolve("jk-engine");
-            Path toCfg = Files.createDirectories(isolatedHome.resolve("config").resolve("jk-engine"));
-            if (Files.isDirectory(fromCfg)) {
-                try (var stream = Files.list(fromCfg)) {
-                    for (Path p : stream.toList()) {
-                        if (Files.isRegularFile(p)) {
-                            Files.copy(p, toCfg.resolve(p.getFileName().toString()));
-                        }
-                    }
-                }
-            }
-        }
+        IsolatedEngineHome.copyEngine(suite, isolatedHome);
     }
 
     /**
