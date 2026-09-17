@@ -58,7 +58,8 @@ public final class RepoGroup {
      * stale, with a TTL and a conditional GET; this memo only skips re-parsing what that layer
      * already handed over. Living for the life of the process would put it above that decision, and
      * in the resident engine "the life of the process" is days — a version published after the
-     * first resolve would stay invisible.
+     * first resolve would stay invisible. A group that asks a loopback repository is not memoized
+     * at all: the port names whatever process holds it now ({@link RepoMisses#memoizes}).
      */
     private static final ConcurrentHashMap<String, VersionsEntry> VERSIONS_CACHE = new ConcurrentHashMap<>();
 
@@ -393,8 +394,9 @@ public final class RepoGroup {
         boolean offline = SessionContext.current().config().offlineOr(false);
         String key = (offline ? "offline|" : "online|") + (snapshots ? "snapshots|" : "") + repoIdentity + "|"
                 + coord.group() + ":" + coord.artifact();
-        // Force means the caller does not trust any cached view of what exists.
-        boolean memoable = !MavenMetadataCache.forceRevalidate();
+        // Force means the caller does not trust any cached view of what exists; a loopback
+        // repository's answer speaks for the process that holds the port right now.
+        boolean memoable = !MavenMetadataCache.forceRevalidate() && memoizesEveryRepo();
         if (memoable) {
             VersionsEntry cached = VERSIONS_CACHE.get(key);
             if (cached != null && !cached.expired() && cached.versions().containsAll(wanted)) return cached.versions();
@@ -455,6 +457,14 @@ public final class RepoGroup {
             VERSIONS_CACHE.put(key, new VersionsEntry(immutable, Clock.SYSTEM.nanos() + VERSIONS_TTL_NANOS));
         }
         return immutable;
+    }
+
+    /** True when every repository here is one whose answers the process memos may keep; see {@link RepoMisses#memoizes}. */
+    private boolean memoizesEveryRepo() {
+        for (MavenRepo repo : repos) {
+            if (!RepoMisses.memoizes(repo.baseUrl())) return false;
+        }
+        return true;
     }
 
     /** Add {@code found} to {@code union} under {@code repo}'s policy: releases always, snapshots only when asked. */

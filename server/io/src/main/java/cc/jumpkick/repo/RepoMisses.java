@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.model.RepositorySpec;
 import java.net.URI;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +23,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * late. A forced session ({@code --force}, or a revalidating lock) bypasses the memo and refreshes
  * it, and {@link RepoGroup#clearProcessFetchCache()} drops it with the positive fetch memos. Capped
  * so a long-lived engine cannot retain an unbounded set of misses.
+ *
+ * <p>A loopback repository is never memoized: its URL names whatever process holds the port right
+ * now — a stub, a proxy under development — and the memo exists to save remote round trips, which
+ * a loopback request is not. See {@link #memoizes}.
  */
 final class RepoMisses {
 
@@ -47,8 +52,17 @@ final class RepoMisses {
         return true;
     }
 
-    /** Remember that {@code uri} answered not-found. */
+    /**
+     * True when misses from {@code uri}'s host are remembered: every host but a loopback one, whose
+     * port can belong to a different process the next time it is asked.
+     */
+    static boolean memoizes(URI uri) {
+        return !RepositorySpec.loopback(uri.getHost());
+    }
+
+    /** Remember that {@code uri} answered not-found; a loopback repository's miss is not kept. */
     static void record(URI uri) {
+        if (!memoizes(uri)) return;
         String key = uri.toString();
         if (MISSES.size() >= MAX && !MISSES.containsKey(key)) return;
         MISSES.put(key, Clock.SYSTEM.nanos() + TTL.toNanos());

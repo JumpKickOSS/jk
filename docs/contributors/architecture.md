@@ -312,7 +312,9 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   artifact path a repository answered "not found" is remembered for the metadata TTL, so a
   re-lock in the same engine pays none of those 404s a multi-repository walk produces; a version
   catalog miss is never remembered, and `jk outdated`, `jk update` and `--force` read catalogs
-  past every memo.
+  past every memo. Neither the not-found memo nor the sixty-second version-list memo keeps an
+  answer from a loopback repository (`localhost`, `127.*`, `::1`): its port names whatever process
+  holds it now, and a loopback round trip is not the cost the memos exist to save.
 - **Materialize fan-out:** every lock row is a task on the io pool, but only `DownloadSlots.width()`
   of them run at once — four per core, one per 4 MiB of engine heap, within [8, 64] — and a
   task holds its slot for the row's per-repository legs, download and sidecar reads. `jk sync`
