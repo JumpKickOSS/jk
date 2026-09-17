@@ -129,7 +129,9 @@ public final class QuarkusAugmentMain {
      * <p>The remote repositories are {@code routes} and nothing else — the module's set as jk
      * routes it, Central's mirror in Central's place while the failover window is open — so the
      * deployment closure, which the lock does not carry, comes through the same doors every other
-     * fetch of the build does and Maven's own defaults are never consulted.
+     * fetch of the build does and Maven's own defaults are never consulted. A repository a
+     * dependency POM declares under a route's id (the super POM's {@code central}) is sent to the
+     * route as well.
      *
      * <p>The resolver is built and dropped here: no method of this class takes or returns a
      * resolver type, so a miss can never fall back to resolving through the user's Maven settings
@@ -160,6 +162,7 @@ public final class QuarkusAugmentMain {
             cfg.setOffline(true);
         }
         MavenArtifactResolver mvn = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
+        routes.attachMirrors(mvn.getSession());
         routes.attachBearerTokens(mvn.getSession());
         System.err.println("jk-quarkus-augment: remote repositories: " + routes.describe());
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);
