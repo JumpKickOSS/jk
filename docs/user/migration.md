@@ -208,12 +208,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 |
-| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 |
-| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 | 2 |
+| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 | run 11 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 | 12 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 | 16 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 | 11 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -269,6 +269,11 @@ Central instead of taking the workspace root, and keycloak's lock outgrows the d
 966 packages; both are tickets, as are the four new walls the runs exposed (a proto include path,
 a library module packaged as an application, `--add-exports` under `--release`, two spellings of one
 repository URL).
+Run 11 (main bd55560ec) compiles eleven: nacos and jenkins build through to their tests for the
+first time (a plain jar where a bare Boot plugin packaged nothing, the `[antlr]` and `[taglib]`
+presets for jenkins core) and thingsboard builds until the harness's cap. Both new test walls are
+the same gap: a `provided` row Maven's test classpath carries and jk's does not (log4j-core for
+nacos's adapter, jsr305 for jenkins-war), one ticket.
 
 Two of run 7's test walls are the repository's contract with Maven rather than something jk
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
