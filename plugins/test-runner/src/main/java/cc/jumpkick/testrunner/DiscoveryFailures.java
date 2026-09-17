@@ -74,9 +74,11 @@ final class DiscoveryFailures implements LauncherDiscoveryListener {
 
     /**
      * Load every top-level class file under the root the class-name filter admits, with the loader
-     * the Platform scanned with. A class the scan already loaded is a lookup; one it dropped throws
-     * here, and the throwable is the reason it was dropped — recorded when the class file is one
-     * Jupiter would have admitted as a test class, and left alone when it is a helper.
+     * the Platform scanned with, and read its declared members as the Platform's test-class filter
+     * does. A class the scan already loaded is a lookup; one it dropped throws here — on the load,
+     * or on the members when a type a signature names is not on the test classpath, which loading
+     * never resolves — and the throwable is the reason it was dropped: recorded when the class file
+     * is one Jupiter would have admitted as a test class, and left alone when it is a helper.
      */
     @Override
     public void launcherDiscoveryFinished(LauncherDiscoveryRequest request) {
@@ -87,13 +89,25 @@ final class DiscoveryFailures implements LauncherDiscoveryListener {
             if (classNames != null && !classNames.matcher(name).matches()) continue;
             if (failures.stream().anyMatch(f -> f.subject().equals(name))) continue;
             try {
-                Class.forName(name, false, loader);
+                declaredMembers(Class.forName(name, false, loader));
             } catch (OutOfMemoryError | StackOverflowError fatal) {
                 throw fatal;
             } catch (Throwable t) {
                 if (shape.isTestClass(name)) failures.add(new Failure(name, t));
             }
         }
+    }
+
+    /**
+     * Resolve what the Platform's filter reads off a loaded class — its methods, fields and
+     * constructors, and the same of its nested classes — so a member type absent from the test
+     * classpath throws here as it throws there.
+     */
+    private static void declaredMembers(Class<?> type) {
+        type.getDeclaredMethods();
+        type.getDeclaredFields();
+        type.getDeclaredConstructors();
+        for (Class<?> nested : type.getDeclaredClasses()) declaredMembers(nested);
     }
 
     /**

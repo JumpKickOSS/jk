@@ -368,7 +368,12 @@ public final class PlannerSetup {
         for (Path p : resolver.siblingClasspath(testSiblings.siblingLocks(), ClasspathResolver.RUNTIME, true)) {
             if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
         }
+        // A plugin's contributed provided classpath is provided scope by another door: on both test
+        // classpaths, as a [provided-dependencies] row is, and in no artifact.
         compileTestCp.addAll(contributedProvided);
+        for (Path p : contributedProvided) {
+            if (!testRuntimeCp.contains(p)) testRuntimeCp.add(p);
+        }
         ctx.put(PROVIDED_CP, contributedProvided);
         ctx.put(COMPILE_TEST_CP, compileTestCp);
         ctx.put(TEST_RUNTIME_CP, testRuntimeCp);

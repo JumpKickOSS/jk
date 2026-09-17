@@ -40,6 +40,32 @@ class ClasspathResolverTest {
         assertThat(cp).allMatch(p -> p.getFileName().toString().endsWith(".jar"));
     }
 
+    /**
+     * The test classpath carries the provided rows as Maven's does: the container or framework
+     * API a test reaches for is there at test time and still absent from the packaged artifact.
+     */
+    @Test
+    void a_provided_row_is_on_the_test_classpath_and_not_the_runtime_one(@TempDir Path tempDir) throws Exception {
+        Path main = putJar(tempDir, "com/foo/main/1.0/main-1.0.jar", "main");
+        Path provided = putJar(tempDir, "com/foo/api/1.0/api-1.0.jar", "api");
+        Path test = putJar(tempDir, "com/foo/junit/1.0/junit-1.0.jar", "junit");
+        Lockfile lock = lock(
+                scoped("com.foo:main", "1.0", Hashing.sha256Hex(main), Scope.MAIN),
+                scoped("com.foo:api", "1.0", Hashing.sha256Hex(provided), Scope.PROVIDED),
+                scoped("com.foo:junit", "1.0", Hashing.sha256Hex(test), Scope.TEST));
+        ClasspathResolver resolver = new ClasspathResolver(tempDir);
+
+        assertThat(resolver.classpathFor(lock, ClasspathResolver.TEST))
+                .containsExactly(
+                        main.toAbsolutePath().normalize(),
+                        provided.toAbsolutePath().normalize(),
+                        test.toAbsolutePath().normalize());
+        assertThat(resolver.classpathFor(lock, ClasspathResolver.RUNTIME))
+                .containsExactly(main.toAbsolutePath().normalize());
+        assertThat(resolver.classpathFor(lock, ClasspathResolver.RUN))
+                .containsExactly(main.toAbsolutePath().normalize());
+    }
+
     @Test
     void skips_packages_without_checksum(@TempDir Path tempDir) throws Exception {
         Path a = putJar(tempDir, "com/foo/a/1.0/a-1.0.jar", "aaaa");
@@ -266,6 +292,17 @@ class ClasspathResolverTest {
 
     private static Lockfile.Artifact pkg(String module, String version, @Nullable String checksum) {
         return pkg(module, version, checksum, List.of());
+    }
+
+    private static Lockfile.Artifact scoped(String module, String version, String checksum, Scope scope) {
+        return new Lockfile.Artifact(
+                module,
+                version,
+                "central+https://repo.maven.apache.org/maven2/",
+                "sha256:" + checksum,
+                null,
+                List.of(scope),
+                List.of());
     }
 
     private static Lockfile.Artifact pkg(String module, String version, @Nullable String checksum, List<String> deps) {

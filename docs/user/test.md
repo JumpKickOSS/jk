@@ -391,10 +391,12 @@ sentence fails `jk guard` when the guard suite's JVM dies on start. The fix name
 size the fork: `[test] workers` (`-w`), `[test] jvm-args` `-Xmx…`, `--ram-percent`.
 
 A test class the Platform's scan could not load — a framework loader that boots the application
-while loading it and fails, a supertype missing from the test classpath — is dropped by discovery
-without a word, so the runner loads the root's classes once more through the same loader and fails
-the run as `test discovery failed: N classes could not be loaded during discovery: <names>`, with
-each class's cause chain under it. Only test classes count: the runner reads each dropped class's
+while loading it and fails, a supertype missing from the test classpath, a type a method
+signature names that no jar on the test classpath carries — is dropped by discovery without a
+word, so the runner loads the root's classes once more through the same loader, reads each
+class's declared members the way the Platform's filter does, and fails the run as `test discovery
+failed: N classes could not be loaded during discovery: <names>`, with each class's cause chain
+under it. Only test classes count: the runner reads each dropped class's
 bytes and keeps the failure when the class declares a test method or a test annotation (Jupiter's,
 JUnit 4's, TestNG's, or one of your own composed of them), extends a class that does, or extends a
 specification base such as Spock's. A helper under the test root that cannot load — a fixture
@@ -495,6 +497,16 @@ Every test JVM jk forks runs on the JVM's default thread stack, as Surefire's an
 recursive test that passes under Maven passes under jk. jk's own compiler and plugin workers run
 with a smaller reserve (`-Xss512k`); the suite never inherits it. A suite that needs a deeper stack
 puts `-Xss` in `[test] jvm-args`.
+
+## What the test classpath carries
+
+The forked test JVM sees the module's own test classes and resources, its main classes, and the
+lock's rows in every scope a test can reach: `[dependencies]`, `[export-dependencies]`,
+`[runtime-dependencies]`, `[provided-dependencies]`, `[test-dependencies]` and
+`[test-dev-dependencies]`, then the workspace siblings those scopes reach and their closures. A
+`provided` row is on the test classpath as it is under Maven — the container or framework API a
+test reaches for is there at test time and still absent from the packaged artifact — and a
+plugin's contributed provided classpath rides the same way.
 
 ## Isolation contract
 

@@ -58,9 +58,13 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ClasspathResolver {
 
-    /** Scopes used to build the runtime / test runtime classpath. */
+    /**
+     * Scopes on the test runtime classpath — what a forked test JVM sees. {@code provided} is among
+     * them as it is on Maven's test classpath: the container or framework API a test reaches for is
+     * there at test time and still absent from {@link #RUNTIME}, which is what ships.
+     */
     public static final Set<Scope> TEST =
-            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.TEST, Scope.TEST_DEV);
+            EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST, Scope.TEST_DEV);
 
     /** Scopes bundled into a runnable app (assembly jar / installed {@code <home>/lib/<bin>/}). */
     public static final Set<Scope> RUNTIME = EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME);
