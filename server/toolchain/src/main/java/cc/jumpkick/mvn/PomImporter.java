@@ -166,6 +166,7 @@ public final class PomImporter {
                 .pluginConfig(packaging.quarkus())
                 .pluginConfig(generators.openapi())
                 .pluginConfig(generators.protobuf())
+                .pluginConfig(generators.localizer())
                 .pluginConfig(generators.generate())
                 .build(buildBlock(em.model(), sourceTree, tests, report))
                 .build();

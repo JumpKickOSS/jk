@@ -304,12 +304,12 @@ class PomGeneratorImportTest {
 
     /**
      * jenkins's {@code cli} shape: localizer-maven-plugin generates {@code hudson.cli.client.Messages}
-     * from a resource bundle and build-helper adds the output as a source root. The plugin has no
-     * entry point jk can run, so the module gets a Tier-3 row naming the class, and the output is
-     * not written as an {@code extra-src} root nothing would fill.
+     * from a resource bundle and build-helper adds the output as a source root. The plugin lands as
+     * the {@code [localizer]} preset, whose step generates the classes into the compile, so the
+     * output is not written as an {@code extra-src} root.
      */
     @Test
-    void localizer_plugin_is_a_tier_3_row_naming_the_generated_classes(@TempDir Path tempDir) throws Exception {
+    void localizer_plugin_becomes_the_localizer_preset(@TempDir Path tempDir) throws Exception {
         Path project = Files.createDirectories(tempDir.resolve("project"));
         Path bundle = Files.createDirectories(project.resolve("src/main/resources/hudson/cli/client"));
         Files.writeString(bundle.resolve("Messages.properties"), "CLI.Usage=Jenkins CLI\n");
@@ -332,6 +332,7 @@ class PomGeneratorImportTest {
                             <configuration>
                               <fileMask>Messages.properties</fileMask>
                               <outputDirectory>target/generated-sources/localizer</outputDirectory>
+                              <accessModifierAnnotations>true</accessModifierAnnotations>
                             </configuration>
                           </execution>
                         </executions>
@@ -355,22 +356,70 @@ class PomGeneratorImportTest {
                 """);
 
         assertThat(result.jkBuild().build().extraSrc())
-                .as("a root nothing fills is not written")
+                .as("the preset's output is its own contribution")
                 .isEmpty();
-        assertThat(result.report().issues())
-                .filteredOn(i -> i.message().startsWith("`localizer-maven-plugin` generates"))
-                .singleElement()
-                .satisfies(issue -> {
-                    assertThat(issue.severity()).isEqualTo(ImportReport.Severity.ERROR);
-                    assertThat(issue.message())
-                            .contains("`hudson.cli.client.Messages`")
-                            .doesNotContain("Messages_de")
-                            .contains("`target/generated-sources/localizer`")
-                            .contains("jk mvn generate-sources");
-                });
+        PluginConfig localizer = result.jkBuild().pluginConfig("localizer").orElseThrow();
+        assertThat(localizer.values())
+                .containsEntry("access-modifier-annotations", true)
+                .containsEntry("version", "1.31")
+                .doesNotContainKey("mask")
+                .doesNotContainKey("resources");
+        assertThat(result.report().issues()).noneMatch(i -> i.severity() == ImportReport.Severity.ERROR);
         assertThat(messages(result))
                 .anyMatch(m -> m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/localizer`, the"
-                        + " localizer plugin's output"))
+                        + " localizer preset's output"))
+                .anyMatch(m -> m.contains("`[localizer]`") && m.contains("`org.jvnet.localizer:localizer`"))
                 .noneMatch(m -> m.contains("`<plugin>localizer-maven-plugin</plugin>` was not imported"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("[localizer]").contains("access-modifier-annotations = true");
+        assertThat(JkBuildParser.parse(rendered).pluginConfig("localizer")).isPresent();
+    }
+
+    /** A mask, resource directories and encoding the POM sets travel into the table. */
+    @Test
+    void localizer_configuration_travels_into_the_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId>
+                  <artifactId>msgs</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <resources>
+                      <resource><directory>src/main/resources</directory></resource>
+                      <resource><directory>src/main/i18n</directory></resource>
+                    </resources>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jvnet.localizer</groupId>
+                        <artifactId>localizer-maven-plugin</artifactId>
+                        <version>1.31</version>
+                        <configuration>
+                          <outputEncoding>ISO-8859-1</outputEncoding>
+                        </configuration>
+                        <executions>
+                          <execution>
+                            <goals><goal>generate</goal></goals>
+                            <configuration>
+                              <fileMask>*.properties</fileMask>
+                              <keyPattern>[a-z.]+</keyPattern>
+                              <strictTypes>true</strictTypes>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig localizer = result.jkBuild().pluginConfig("localizer").orElseThrow();
+        assertThat(localizer.values())
+                .containsEntry("mask", "*.properties")
+                .containsEntry("resources", List.of("src/main/resources", "src/main/i18n"))
+                .containsEntry("encoding", "ISO-8859-1")
+                .containsEntry("key-pattern", "[a-z.]+")
+                .containsEntry("strict-types", true)
+                .doesNotContainKey("access-modifier-annotations");
     }
 }

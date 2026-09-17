@@ -86,6 +86,31 @@ The worked example: [`examples/openapi-spring`](examples/openapi-spring/) — a 
 implementing the generated interface. `jk import` writes this table from a POM's
 `openapi-generator-maven-plugin` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## `[localizer]` — Jenkins-style `Messages` classes
+
+The [localizer](https://github.com/jenkinsci/localizer) library generates a `Messages` class per
+`Messages.properties` bundle, a typed method per key. Its generator ships only as a Maven mojo and
+an Ant task, so jk carries the `main` itself: the preset runs it over the module's resource
+directories, a bundle's directory becoming its class's package.
+
+```toml
+[localizer]
+# mask      = "Messages.properties"     # the bundles that get a class; a locale variant never does
+# resources = ["src/main/resources"]    # the directories scanned
+# encoding  = "UTF-8"
+# access-modifier-annotations = false   # @Restricted(NoExternalUse.class) on the classes
+# strict-types = false                  # type each message's arguments from its format
+# key-pattern = "[A-Za-z0-9._]+"        # every key must match
+# version   = "1.31"                    # the localizer release; a bare version is exact
+
+[dependencies]
+localizer = "1.31"                      # the generated classes read org.jvnet.localizer at run time
+```
+
+The step is `generate-localizer`; a bundle edit re-runs it, and the classes join the compile.
+`jk import` writes the table from a POM's `localizer-maven-plugin`
+([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
 ## Beside a framework table
 
 A module runs every plugin whose table it declares, each in its own worker, so `[generate]` or a
@@ -104,9 +129,9 @@ in the step's action key, so a closure that changes moves the key.
 
 ## Presets to come
 
-`[jooq]`, `[avro]`, `[antlr]` and `[jaxb]` follow the same shape — a manifest with a schema and a
-tool coordinate, a small expansion into a generator entry. Until they land, each tool works through
-`[generate]` today.
+`[jooq]`, `[avro]`, `[antlr]` and `[jaxb]` follow the same shape `[openapi]` and `[localizer]`
+take — a manifest with a schema and a tool coordinate, a small expansion into a generator entry.
+Until they land, each tool works through `[generate]` today.
 
 ## Related
 

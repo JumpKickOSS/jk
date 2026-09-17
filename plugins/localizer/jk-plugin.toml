@@ -1,0 +1,31 @@
+# The built-in localizer preset's declarative manifest. Owns [localizer]; the code layer turns the
+# table into one generator entry — jk's own main over org.jvnet.localizer's Generator, run over the
+# module's Messages.properties bundles, into the generate stage, contributed as sources — and runs
+# it through the generator plugin's step. `jk explain` shows that entry as the step
+# `generate-localizer`.
+
+[plugin]
+id        = "localizer"
+table     = "localizer"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-localizer"
+protocol-prefix = "##JKLZ:"
+
+[schema]
+mask      = { type = "string", default = "Messages.properties", hint = "the bundle files that get a class: a file name or glob; a locale variant (Messages_de.properties) never does" }
+resources = { type = "string-list", default = ["src/main/resources"], hint = "the module-relative directories scanned for bundles; a bundle's directory is its class's package" }
+encoding  = { type = "string", default = "UTF-8", hint = "the generated sources' encoding" }
+access-modifier-annotations = { type = "bool", default = false, hint = "annotate the generated classes @Restricted(NoExternalUse.class), which needs access-modifier-annotation on the compile classpath" }
+strict-types = { type = "bool", default = false, hint = "type each message's arguments from its format" }
+key-pattern  = { type = "string", hint = "a regex every message key must match" }
+version   = { type = "string", default = "1.31", example = "1.31", hint = "the localizer release; a bare version is exact" }
+
+# The Maven plugin's jar holds the generator; its runtime closure (codemodel, ant) comes with it.
+[[contribute.step-dependency]]
+artifact   = "localizer"
+coordinate = "org.jvnet.localizer:localizer-maven-plugin:${config.version}"
+transitive = true
+for-step   = "generate-localizer"

@@ -58,6 +58,7 @@ public final class PluginTableRegistry {
             "protobuf.jk-plugin.toml",
             "generator.jk-plugin.toml",
             "openapi.jk-plugin.toml",
+            "localizer.jk-plugin.toml",
             "minified.jk-plugin.toml",
             "micronaut.jk-plugin.toml");
 

@@ -46,6 +46,7 @@ public enum PluginJar {
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar"),
     GENERATOR("jk-generator", "jk.generator.plugin.jar"),
     OPENAPI("jk-openapi", "jk.openapi.plugin.jar"),
+    LOCALIZER("jk-localizer", "jk.localizer.plugin.jar"),
     MINIFIED("jk-minified", "jk.minified.plugin.jar");
 
     private final String artifactId;

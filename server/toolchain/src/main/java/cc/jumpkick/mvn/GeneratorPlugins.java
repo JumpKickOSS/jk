@@ -32,7 +32,8 @@ import org.jspecify.annotations.Nullable;
  * files whose content is the step's cache key. What the preset has no key for is a row naming
  * the option. The generator's output directory is reported back so the {@code add-source} that
  * put it on Maven's compile path is not written as an {@code extra-src} root.
- * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table, {@code wire-maven-plugin}
+ * {@code protobuf-maven-plugin} is {@link ProtobufPlugin}'s {@code [protobuf]} table,
+ * {@code localizer-maven-plugin} {@link LocalizerPlugin}'s {@code [localizer]}, {@code wire-maven-plugin}
  * {@link WirePlugin}'s {@code [generate.wire]} entry.
  */
 final class GeneratorPlugins {
@@ -46,6 +47,7 @@ final class GeneratorPlugins {
     record Generators(
             @Nullable PluginConfig openapi,
             @Nullable PluginConfig protobuf,
+            @Nullable PluginConfig localizer,
             @Nullable PluginConfig generate,
             Map<String, String> outputRoots,
             /** Plugins another mapping consumed, which get no "not imported" row of their own. */
@@ -85,8 +87,8 @@ final class GeneratorPlugins {
             outputRoots.put(outputRoot, OPENAPI_ADD_SOURCE_ROW);
             openapi = mapOpenApi(plugin.get(), configs, baseDir, remote, report);
         }
-        LocalizerPlugin.outputRoot(model, report)
-                .ifPresent(root -> outputRoots.put(root, LocalizerPlugin.ADD_SOURCE_ROW));
+        LocalizerPlugin.Mapped localizer = LocalizerPlugin.map(model, report);
+        outputRoots.putAll(localizer.outputRoots());
         ProtobufPlugin.Mapped protobuf = ProtobufPlugin.map(model, report);
         outputRoots.putAll(protobuf.outputRoots());
         WirePlugin.Mapped wire = WirePlugin.map(model, report);
@@ -95,7 +97,12 @@ final class GeneratorPlugins {
                 ? null
                 : new PluginConfig("generator", Map.of(PluginConfig.ENTRIES, Map.of(WirePlugin.ENTRY, wire.entry())));
         return new Generators(
-                openapi, protobuf.table(), generate, Collections.unmodifiableMap(outputRoots), wire.consumed());
+                openapi,
+                protobuf.table(),
+                localizer.table(),
+                generate,
+                Collections.unmodifiableMap(outputRoots),
+                wire.consumed());
     }
 
     /**
