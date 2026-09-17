@@ -319,9 +319,10 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   answer from a loopback repository (`localhost`, `127.*`, `::1`): its port names whatever process
   holds it now, and a loopback round trip is not the cost the memos exist to save.
 - **Download budget:** `DownloadSlots.width()` — four per core, one per 4 MiB of engine heap,
-  within [8, 64] — bounds two pools. *Row slots:* every lock row `ArtifactMaterializer` or
-  `CacheSync` assembles is a task on the io pool holding a row slot for its per-repository legs,
-  download and sidecar reads. *Leg slots:* every network
+  within [8, 64] — bounds two pools. *Row slots:* `ArtifactMaterializer` and `CacheSync` submit
+  lock rows through a window of that width (a task exists only once an earlier one finished, so
+  the population stays near the width rather than a parked thread per row) and each task holds a
+  row slot for its per-repository legs, download and sidecar reads. *Leg slots:* every network
   leg `RepoGroup` fans out across repositories — a POM, a version catalog or an artifact asked of
   one repository — takes a leg slot of its host (a pool per host of four times the host's
   `HostRateLimiter` permits) on the calling thread before it is handed to the io pool, and releases

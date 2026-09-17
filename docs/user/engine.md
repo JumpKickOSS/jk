@@ -130,8 +130,9 @@ with a message naming the module and both heaps. A pinned worker heap (`--ram-pe
 ### Downloads and repository legs
 
 The engine holds a bounded number of downloads in flight, however many rows a lock has:
-`DownloadSlots` is four slots per core, one per 4 MiB of engine heap, within [8, 64]: that
-many rows are assembled at once. Each repository leg — one
+`DownloadSlots` is four slots per core, one per 4 MiB of engine heap, within [8, 64]. Rows
+are submitted through a window of that width, so a lock of a thousand rows keeps about
+sixty tasks alive rather than a parked thread per row. Each repository leg — one
 repository asked for one POM, catalog or artifact, during the solver's warm-up as much as
 during materialize — takes a leg slot of its host before it is handed to the io pool: four
 per request permit of that host, so a repository that answers slowly queues at most that
