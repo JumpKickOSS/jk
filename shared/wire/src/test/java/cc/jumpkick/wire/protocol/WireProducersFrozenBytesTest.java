@@ -130,13 +130,14 @@ class WireProducersFrozenBytesTest {
                                 List.of("g:a"),
                                 List.of("1.0"),
                                 List.of("app,lib"),
+                                List.of("jk.toml:a"),
                                 List.of("0"),
                                 List.of("root>g:a"),
                                 List.of("^1\t1.0"),
                                 List.of("g:b\tjk.toml:a\tg:a@1.0"))
                         .encode())
                 .isEqualTo("{\"type\":\"why-ack\",\"error\":null,\"matchNames\":[\"g:a\"],\"matchVersions\":[\"1.0\"],"
-                        + "\"matchMembers\":[\"app,lib\"],\"pathOwners\":[\"0\"],\"paths\":[\"root>g:a\"],\"pathSelectors\":[\"^1\\t1.0\"],"
+                        + "\"matchMembers\":[\"app,lib\"],\"matchPinnedBy\":[\"jk.toml:a\"],\"pathOwners\":[\"0\"],\"paths\":[\"root>g:a\"],\"pathSelectors\":[\"^1\\t1.0\"],"
                         + "\"exclusions\":[\"g:b\\tjk.toml:a\\tg:a@1.0\"]}");
         assertThat(new PluginCommandReport("oops", false, 3, List.of("x")).encode())
                 .isEqualTo(

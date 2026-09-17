@@ -11,6 +11,13 @@ public enum Scope {
     PROCESSOR("processor", "processor-dependencies"),
     PLATFORM("platform", "platform-dependencies"),
     /**
+     * Versions the manifest manages for modules it does not declare — Maven's inline {@code
+     * <dependencyManagement>} entries, Gradle's {@code constraints}. An entry pins a transitive
+     * edge onto its module the way a one-module BOM does; it is never a classpath entry of its
+     * own, and it beats every {@link #PLATFORM} BOM on that module.
+     */
+    MANAGED("managed", "managed-dependencies"),
+    /**
      * Jars a plugin worker's fork needs and nothing of the module's own compiles or runs with: the
      * SDK floor of a pinned third-party plugin, written by {@code jk lock} itself. The only scope
      * with no manifest table: a hand-written {@code [plugin-dependencies]} is a parse error.

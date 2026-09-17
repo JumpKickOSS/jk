@@ -256,6 +256,10 @@ version — the parent is `jk.toml` for a declared root and the previous step ot
 the lock does not carry a selector for is written without the `<-` part. A POM edge written as
 Maven's `LATEST` or `RELEASE` records that word (`<- LATEST`) beside the number the solve pinned.
 
+A row whose version a pin source decided carries `pinned-by`: the BOM as `group:artifact:version`
+for a `[platform-dependencies]` entry, or `jk.toml:<handle>` for a
+[`[managed-dependencies]`](dependencies.md#managed-versions) entry.
+
 Under `[resolve] pins = "nearest"` (what `jk import` writes for a Maven POM) the picked version can
 sit below the declared one: `jakarta.inject-api:jar:@2.0.1 <- 2.0.1.MR` says the project pinned
 `2.0.1` and the parent's floor of `2.0.1.MR` gave way to it, as a transitive's version gives way to

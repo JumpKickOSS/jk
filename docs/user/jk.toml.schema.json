@@ -608,6 +608,20 @@
         ]
       }
     },
+    "managed-dependencies": {
+      "type": "object",
+      "description": "[managed-dependencies]: one managed version per key \u2014 a group:artifact:version string, a catalog short name with a version, or { group, name, version }. The entry pins the version a transitive dependency on the module resolves to, as Maven's inline dependencyManagement does; a version is required and the entry is not a classpath dependency of its own.",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object"
+          }
+        ]
+      }
+    },
     "dev-dependencies": {
       "type": "object",
       "description": "[dev-dependencies]: one dependency per key \u2014 a version string when the key is a catalog short name, a group:artifact[:version] string (versionless = platform-managed), or { group, name, version, features, ... }. A bare version is an exact pin; ^ ~ ranges and latest are opt-in.",

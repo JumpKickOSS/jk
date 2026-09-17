@@ -186,6 +186,18 @@ public final class GradleExporter {
                         .append("\")\n");
             }
         }
+        // [managed-dependencies] are Gradle's constraints: a version for a module the graph brings in.
+        List<Dependency> managed = jk.dependencies().of(Scope.MANAGED);
+        if (!managed.isEmpty()) {
+            sb.append("    constraints {\n");
+            for (Dependency d : managed) {
+                if (warnIfUnmappable(d, report)) continue;
+                sb.append("        implementation(\"")
+                        .append(kEsc(gav(d, locked, report)))
+                        .append("\")\n");
+            }
+            sb.append("    }\n");
+        }
         sb.append("}\n");
     }
 

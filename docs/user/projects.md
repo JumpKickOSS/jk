@@ -95,6 +95,7 @@ floor is the floating form of a framework version (`[spring-boot] version = "^4"
 | `[runtime-dependencies]` | Runtime only |
 | `[processor-dependencies]` | Annotation processors and javac plugins (own resolve graph); absent, processors registered on the compile classpath run — [Annotation processors](build.md#annotation-processors) |
 | `[platform-dependencies]` | BOMs — [Platforms](platforms.md) |
+| `[managed-dependencies]` | Versions for modules only transitive POMs bring in (Maven's inline `dependencyManagement`) — [Managed versions](dependencies.md#managed-versions) |
 | `[plugin-dependencies]` | Refused in `jk.toml`. The `plugin` scope is the lock's own: `jk lock` writes a pinned third-party plugin's SDK floor (`jk-plugin-sdk`, `jk-host`) into `jk-lock.toml` under it — [Using plugins](plugins.md#third-party-and-vendored-plugins) |
 | `[export-dependencies]` | Published API surface |
 | `[dev-dependencies]` / `[test-dev-dependencies]` | Optional extra scopes |

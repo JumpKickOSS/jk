@@ -12,9 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -311,20 +309,28 @@ final class EffectiveModel {
     }
 
     /**
+     * An inline {@code dependencyManagement} pin no declared dependency uses. {@code owner} labels
+     * the POM that wrote it ({@code this POM}, or an ancestor's label); {@code reactorParent} is true
+     * when that ancestor is a sibling pom.xml of the reactor, whose table a workspace import writes
+     * once on the root.
+     */
+    record InlinePin(Pom.Dep dep, String owner, boolean reactorParent) {}
+
+    /**
      * How the flattened {@code dependencyManagement} reaches {@code jk.toml}: {@code platform} are
      * the BOM imports to write with their versions resolved; {@code parentPlatform} is the nearest
      * published parent when its chain manages versions of its own, so one {@code [platform]} entry
-     * carries the whole inherited table; {@code unusedPins} are bare pins (owner label → modules)
-     * that no declared dependency uses and no platform entry carries.
+     * carries the whole inherited table; {@code inline} are the bare pins no declared dependency
+     * uses and no platform entry carries, which {@code [managed-dependencies]} carries so they
+     * govern transitive versions as they do under Maven.
      */
-    record Management(
-            List<Pom.Dep> platform, @Nullable Ancestor parentPlatform, Map<String, List<String>> unusedPins) {}
+    record Management(List<Pom.Dep> platform, @Nullable Ancestor parentPlatform, List<InlinePin> inline) {}
 
     Management management(Set<String> usedKeys) {
         boolean parentCarries = externalChainManages();
         Set<String> ownKeys = keys(ownManaged());
         List<Pom.Dep> platform = new ArrayList<>();
-        Map<String, List<String>> unused = new LinkedHashMap<>();
+        List<InlinePin> inline = new ArrayList<>();
         for (Dependency m : assembledManagement) {
             String key = m.getManagementKey();
             boolean own = ownKeys.contains(key);
@@ -336,10 +342,11 @@ final class EffectiveModel {
                 platform.add(toDep(m));
             } else if (!usedKeys.contains(key)) {
                 String label = own ? "this POM" : owner.map(Ancestor::label).orElse("a parent");
-                unused.computeIfAbsent(label, k -> new ArrayList<>()).add(m.getGroupId() + ":" + m.getArtifactId());
+                boolean reactorParent = !own && owner.map(Ancestor::inReactor).orElse(false);
+                inline.add(new InlinePin(toDep(m), label, reactorParent));
             }
         }
-        return new Management(platform, parentCarries ? nearestExternal().orElse(null) : null, unused);
+        return new Management(platform, parentCarries ? nearestExternal().orElse(null) : null, inline);
     }
 
     private List<Dependency> ownManaged() {

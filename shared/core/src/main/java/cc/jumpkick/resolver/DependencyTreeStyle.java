@@ -122,6 +122,7 @@ public final class DependencyTreeStyle {
                 Scope.PROVIDED,
                 Scope.PROCESSOR,
                 Scope.PLATFORM,
+                Scope.MANAGED,
                 Scope.TEST,
                 Scope.DEV,
                 Scope.TEST_DEV);

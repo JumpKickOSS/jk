@@ -19,6 +19,7 @@ class ReportStructuredTest {
                 List.of("g:a", "g:b"),
                 List.of("1.0", "2.0"),
                 List.of("", "lib"),
+                List.of("", "org.example:bom:1.0"),
                 List.of("0", "1", "0"),
                 List.of("root>g:a@1.0", "root>g:b@2.0", "other>g:a@1.0"),
                 List.of("^1\t1.0", "\t[2.0,3.0)", "\t"),

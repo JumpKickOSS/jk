@@ -82,7 +82,7 @@ public final class WorkspaceLock {
                     // Workspace root: merge is done at lock time; package count from the existing
                     // root lock (above) is the best size signal. Declared roots = rough cold seed.
                     for (var scope : Scope.values()) {
-                        if (scope == Scope.PLATFORM) continue;
+                        if (scope == Scope.PLATFORM || scope == Scope.MANAGED) continue;
                         declared += b.dependencies().of(scope).size();
                     }
                 }

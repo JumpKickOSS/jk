@@ -69,7 +69,7 @@ final class SiblingNames {
     private static boolean dependsOnAnyOther(JkBuild module, List<String> coords) {
         String own = ga(module);
         for (Scope scope : Scope.values()) {
-            if (scope == Scope.PLATFORM) continue;
+            if (scope == Scope.PLATFORM || scope == Scope.MANAGED) continue;
             for (Dependency d : module.dependencies().of(scope)) {
                 if (!d.module().equals(own) && coords.contains(d.module())) return true;
             }

@@ -32,6 +32,8 @@ public record WhyReport(
         List<String> matchVersions,
         /** Per match, the workspace members whose classpath reads that row, comma-joined; {@code ""} for the workspace's row. */
         List<String> matchMembers,
+        /** Per match, the row's {@code pinned-by} (a BOM's {@code g:a:v} or {@code jk.toml:<handle>}); {@code ""} when nothing pinned it. */
+        List<String> matchPinnedBy,
         List<String> pathOwners,
         List<String> paths,
         List<String> pathSelectors,
@@ -44,7 +46,8 @@ public record WhyReport(
     public static final String EXCLUSION_FIELD_SEPARATOR = "\t";
 
     public static WhyReport error(String message) {
-        return new WhyReport(message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+        return new WhyReport(
+                message, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     /** The three fields of pruned edge {@code index}: child, origin, and the row that dropped it. */
@@ -58,11 +61,18 @@ public record WhyReport(
                 .array("matchNames", matchNames)
                 .array("matchVersions", matchVersions)
                 .array("matchMembers", matchMembers)
+                .array("matchPinnedBy", matchPinnedBy)
                 .array("pathOwners", pathOwners)
                 .array("paths", paths)
                 .array("pathSelectors", pathSelectors)
                 .array("exclusions", exclusions)
                 .finish();
+    }
+
+    /** What pinned match {@code index}, or {@code null} when nothing did or the wire had no column. */
+    public @Nullable String pinnedByOf(int index) {
+        if (index >= matchPinnedBy.size() || matchPinnedBy.get(index).isEmpty()) return null;
+        return matchPinnedBy.get(index);
     }
 
     /** The members that read match {@code index}; empty for the workspace's row. */
@@ -94,6 +104,8 @@ public record WhyReport(
             row.put("version", i < matchVersions.size() ? matchVersions.get(i) : "");
             String members = i < matchMembers.size() ? matchMembers.get(i) : "";
             row.put("members", members.isEmpty() ? List.of() : List.of(members.split(",")));
+            String pinnedBy = pinnedByOf(i);
+            if (pinnedBy != null) row.put("pinnedBy", pinnedBy);
             List<String> mine = new ArrayList<>();
             List<List<String>> declared = new ArrayList<>();
             String idx = Integer.toString(i);
@@ -126,6 +138,7 @@ public record WhyReport(
                 Jsonl.strArray(line, "matchNames"),
                 Jsonl.strArray(line, "matchVersions"),
                 Jsonl.strArray(line, "matchMembers"),
+                Jsonl.strArray(line, "matchPinnedBy"),
                 Jsonl.strArray(line, "pathOwners"),
                 Jsonl.strArray(line, "paths"),
                 Jsonl.strArray(line, "pathSelectors"),

@@ -78,9 +78,15 @@ public final class WhyCommand implements CliCommand {
                     : Theme.colorize(
                             " (for " + String.join(", ", members) + ")",
                             Theme.active().darkGray());
+            String pinnedBy = report.pinnedByOf(i);
+            String pinned = pinnedBy == null
+                    ? ""
+                    : Theme.colorize(
+                            " (pinned by " + pinnedBy + ")", Theme.active().darkGray());
             CliOutput.out(Coords.module(
                             report.matchNames().get(i), report.matchVersions().get(i))
                     + forMembers
+                    + pinned
                     + " is pulled in by:");
             boolean any = false;
             for (int j = 0; j < report.paths().size(); j++) {

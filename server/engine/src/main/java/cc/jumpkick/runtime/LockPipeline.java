@@ -728,7 +728,7 @@ public final class LockPipeline {
             }
         }
         for (var entry : effective.dependencies().byScope().entrySet()) {
-            if (entry.getKey() == Scope.PLATFORM) continue;
+            if (entry.getKey() == Scope.PLATFORM || entry.getKey() == Scope.MANAGED) continue;
             for (var dep : entry.getValue()) {
                 if (!locked.contains(dep.module())) {
                     throw new IllegalStateException("offline: " + dep.module()

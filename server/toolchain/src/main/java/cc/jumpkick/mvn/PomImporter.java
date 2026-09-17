@@ -99,16 +99,23 @@ public final class PomImporter {
     public Result importFrom(Path pomXml) throws IOException {
         Path file = pomXml.toAbsolutePath();
         return importModel(
-                EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null), remote, null);
+                EffectiveModel.build(Files.readAllBytes(file), file, resolver.newCopy(), null), remote, null, null);
     }
 
     /** A POM with no file behind it (an archive's embedded pom.xml): no {@code relativePath} lookup. */
     public Result importFromBytes(byte[] xml) {
-        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, null);
+        return importModel(EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, null, null);
     }
 
-    /** {@code inherited} collects the rows a workspace module inherits; {@code null} for a POM imported on its own. */
-    private static Result importModel(EffectiveModel em, RemoteFile remote, @Nullable InheritedRows inherited) {
+    /**
+     * {@code inherited} collects the rows a workspace module inherits and {@code hoisted} the managed
+     * pins its reactor parents own; both {@code null} for a POM imported on its own.
+     */
+    private static Result importModel(
+            EffectiveModel em,
+            RemoteFile remote,
+            @Nullable InheritedRows inherited,
+            @Nullable List<Dependency> hoisted) {
         ImportReport.Builder report = ImportReport.builder();
         reportInheritanceFailure(em, report);
         GeneratorPlugins.Generators generators = GeneratorPlugins.map(em.model(), remote, report);
@@ -116,7 +123,7 @@ public final class PomImporter {
                 SourceTreePlugins.map(em, generators.outputRoots(), report, inherited, false);
         Project project = mapProject(em, report, sourceTree);
         List<Pom.Dep> processorPaths = PluginFacts.annotationProcessorPaths(em.model());
-        Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths);
+        Map<Scope, List<Dependency>> byScope = mapDependencies(em, report, processorPaths, hoisted);
         mapProcessorPaths(processorPaths, byScope, report);
         ProfileMapping.Mapped profiles = ProfileMapping.map(em, report);
         addOptionalDeps(byScope, profiles.optionalDeps());
@@ -201,7 +208,7 @@ public final class PomImporter {
         Model rootRaw = EffectiveModel.rawModel(rootXml);
         if (!ReactorModules.declaresModules(rootRaw)) {
             Result single =
-                    importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote, null);
+                    importModel(EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null), remote, null, null);
             return new WorkspaceImportResult(single.jkBuild(), Map.of(), single.report(), Set.of(rootFile));
         }
 
@@ -213,9 +220,12 @@ public final class PomImporter {
         ModuleRows moduleRows = new ModuleRows();
         List<ShadedSiblings.Shaded> shaded = new ArrayList<>();
         InheritedRows inherited = new InheritedRows(Objects.requireNonNull(rootFile.getParent()));
+        // The managed pins a reactor parent owns are written once, on the root, whose table every
+        // member's lock reads.
+        List<Dependency> hoistedManaged = new ArrayList<>();
         ReactorModules.Reactor found =
                 ReactorModules.collect(rootFile, rootXml, rootRaw, reactor, report, (leaf, model) -> {
-                    Result child = importModel(model, remote, inherited);
+                    Result child = importModel(model, remote, inherited, hoistedManaged);
                     moduleBuilds.put(leaf.path(), child.jkBuild());
                     moduleRows.addAll(leaf.path(), child.report());
                     ShadedSiblings.Shaded member = ShadedSiblings.of(leaf, model.model());
@@ -251,6 +261,19 @@ public final class PomImporter {
         Map<String, String> siblingByGa = SiblingEdges.siblingGaIndex(rootJkBuild, moduleBuilds.values());
         Set<String> sharedNames = SiblingNames.shared(moduleBuilds);
         Map<String, String> bomByGa = bomGaIndex(found.boms());
+        // A reactor parent's managed pin on a reactor POM is the workspace's to supply.
+        hoistedManaged.removeIf(d -> SiblingEdges.namesReactorPom(d.module(), siblingByGa, found.unbuilt(), bomByGa));
+        if (!hoistedManaged.isEmpty()) {
+            Map<Scope, List<Dependency>> rootDeps = new EnumMap<>(Scope.class);
+            rootDeps.put(Scope.MANAGED, hoistedManaged);
+            rootJkBuild = rootJkBuild.withDependencies(new JkBuild.Dependencies(rootDeps));
+            List<String> modules =
+                    hoistedManaged.stream().map(Dependency::module).toList();
+            report.warning("`<dependencyManagement>` of the reactor's parent POMs pins " + count(modules, "version")
+                    + " no module declares (" + sample(modules) + "); written once to the root's"
+                    + " [managed-dependencies], so they govern every member's transitive versions as they do under"
+                    + " Maven.");
+        }
         Set<String> importedBoms = new HashSet<>();
         Map<String, JkBuild> rewritten = new LinkedHashMap<>();
         for (var e : moduleBuilds.entrySet()) {
@@ -393,9 +416,16 @@ public final class PomImporter {
 
     // --- dependencies -------------------------------------------------------
 
-    /** {@code processorPaths} count as users of a managed version too, so their pins are not reported unused. */
+    /**
+     * {@code processorPaths} count as users of a managed version too, so their pins are not reported
+     * unused; {@code hoisted} collects the reactor parent's inline pins for the workspace root, and is
+     * {@code null} for a POM imported on its own.
+     */
     private static Map<Scope, List<Dependency>> mapDependencies(
-            EffectiveModel em, ImportReport.Builder report, List<Pom.Dep> processorPaths) {
+            EffectiveModel em,
+            ImportReport.Builder report,
+            List<Pom.Dep> processorPaths,
+            @Nullable List<Dependency> hoisted) {
         Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
         Set<String> used = new HashSet<>();
         for (Pom.Dep path : processorPaths) used.add(path.module() + ":jar");
@@ -418,7 +448,7 @@ public final class PomImporter {
             }
             mapDependency(declared.dep(), byScope, report);
         }
-        mapManagement(em.management(used), byScope, report);
+        mapManagement(em.management(used), byScope, report, hoisted);
         managedBy.forEach((source, modules) ->
                 report.warning("versions for " + String.join(", ", modules) + " managed by " + source + "."));
         inheritedFrom.forEach((source, modules) ->
@@ -538,10 +568,16 @@ public final class PomImporter {
     /**
      * BOM imports become {@code [platform]} entries with their versions resolved; a published parent
      * whose chain manages versions is carried as one {@code [platform]} entry of its own, so the
-     * inherited table governs transitive versions too. Bare pins nothing declared uses are named.
+     * inherited table governs transitive versions too. Bare pins nothing declared uses become
+     * {@code [managed-dependencies]} rows, which govern transitive versions the way Maven's inline
+     * {@code dependencyManagement} does; the ones a reactor parent owns are gathered into {@code
+     * hoisted} for the workspace root when a workspace import passes one.
      */
     private static void mapManagement(
-            EffectiveModel.Management mgmt, Map<Scope, List<Dependency>> byScope, ImportReport.Builder report) {
+            EffectiveModel.Management mgmt,
+            Map<Scope, List<Dependency>> byScope,
+            ImportReport.Builder report,
+            @Nullable List<Dependency> hoisted) {
         for (Pom.Dep bom : mgmt.platform()) {
             if (PluginFacts.usable(bom.version()) == null) {
                 reportUnresolvedBom(bom, report);
@@ -560,20 +596,54 @@ public final class PomImporter {
                     + parent.gav()
                     + ", so its managed versions govern transitive dependencies as well.");
         }
-        mgmt.unusedPins().forEach((owner, modules) -> {
-            String sample =
-                    modules.size() > 5 ? String.join(", ", modules.subList(0, 5)) + ", …" : String.join(", ", modules);
-            report.warning("`<dependencyManagement>` in "
-                    + owner
-                    + " pins "
-                    + modules.size()
-                    + " version"
-                    + (modules.size() == 1 ? "" : "s")
-                    + " no declared dependency uses ("
-                    + sample
-                    + "); jk applies managed versions to declared dependencies only, so transitive"
-                    + " versions follow the resolver.");
-        });
+        Map<String, List<String>> writtenBy = new LinkedHashMap<>();
+        Map<String, List<String>> versionless = new LinkedHashMap<>();
+        Map<String, List<String>> unresolved = new LinkedHashMap<>();
+        Set<String> seen = new HashSet<>();
+        for (EffectiveModel.InlinePin pin : mgmt.inline()) {
+            Pom.Dep dep = pin.dep();
+            if (dep.version() == null || dep.version().isBlank()) {
+                versionless.computeIfAbsent(pin.owner(), k -> new ArrayList<>()).add(dep.module());
+                continue;
+            }
+            if (PluginFacts.usable(dep.version()) == null) {
+                unresolved.computeIfAbsent(pin.owner(), k -> new ArrayList<>()).add(dep.module());
+                continue;
+            }
+            if (DependencyMapping.unmappedType(dep) != null || !seen.add(dep.module())) continue;
+            Dependency row = Dependency.of(
+                    dep.artifactId(),
+                    dep.module(),
+                    VersionSelector.parse(dep.version().trim()));
+            if (pin.reactorParent() && hoisted != null) {
+                // Reported once, by the workspace import, when the root's table is written.
+                if (hoisted.stream().noneMatch(h -> h.module().equals(row.module()))) hoisted.add(row);
+                continue;
+            }
+            byScope.computeIfAbsent(Scope.MANAGED, s -> new ArrayList<>()).add(row);
+            writtenBy.computeIfAbsent(pin.owner(), k -> new ArrayList<>()).add(dep.module());
+        }
+        writtenBy.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner + " pins "
+                + count(modules, "version") + " no declared dependency uses (" + sample(modules)
+                + "); written to [managed-dependencies], so they govern transitive versions as they do under"
+                + " Maven."));
+        versionless.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner
+                + " carries " + count(modules, "entry") + " with exclusions and no version (" + sample(modules)
+                + "); jk has no versionless constraint, so the exclusions reach only a dependency that declares"
+                + " the module."));
+        unresolved.forEach((owner, modules) -> report.warning("`<dependencyManagement>` in " + owner + " pins "
+                + count(modules, "version") + " no declared dependency uses whose version is still a property ("
+                + sample(modules) + "); no [managed-dependencies] row is written for them."));
+    }
+
+    private static String count(List<String> modules, String noun) {
+        int n = modules.size();
+        String plural = noun.equals("entry") ? "entries" : noun + "s";
+        return n + " " + (n == 1 ? noun : plural);
+    }
+
+    private static String sample(List<String> modules) {
+        return modules.size() > 5 ? String.join(", ", modules.subList(0, 5)) + ", …" : String.join(", ", modules);
     }
 
     /**

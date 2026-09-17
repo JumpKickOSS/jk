@@ -505,7 +505,8 @@ public record Lockfile(
     /**
      * The platform BOMs this lock resolved: {@code group:artifact} → the version that pinned a
      * managed artifact, read off the {@code pinned-by} rows. A BOM that manages nothing here is
-     * absent.
+     * absent, and so is a row a {@code [managed-dependencies]} entry pinned ({@code jk.toml:<handle>}),
+     * which names no BOM.
      */
     public Map<String, String> platformPins() {
         Map<String, String> out = new LinkedHashMap<>();
@@ -513,7 +514,7 @@ public record Lockfile(
             String by = a.pinnedBy();
             if (by == null) continue;
             int colon = by.lastIndexOf(':');
-            if (colon <= 0 || colon == by.length() - 1) continue;
+            if (colon <= 0 || colon == by.length() - 1 || by.indexOf(':') == colon) continue;
             out.putIfAbsent(by.substring(0, colon), by.substring(colon + 1));
         }
         return out;
