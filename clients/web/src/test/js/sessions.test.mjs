@@ -122,3 +122,20 @@ test('a token in a project route fragment is adopted and scrubbed, keeping the r
   assert.equal(adoptFragmentToken('#project/ab12?line=3'), null);
   assert.equal(adoptFragmentToken(''), null);
 });
+
+test('a timeline row carries its one-chip delta beside the wall', () => {
+  const delta = {
+    previousBuildNumber: 6,
+    previousSuccess: false,
+    previousMillis: 900,
+    files: { count: 1, shown: ['src/main/java/Foo.java'] },
+    appeared: { count: 0, shown: [] },
+    gone: { count: 1, shown: ['error · compile-java · Foo.java:3 · x'] },
+  };
+  const cards = [historyCard(rec({ buildNumber: 6, success: false })), historyCard(rec({ buildNumber: 7, delta }))];
+  const [group] = groupBySession(cards);
+  assert.equal(group.runs[0].deltaChip, null);
+  assert.equal(group.runs[1].deltaChip.text, '−1 diagnostic');
+  assert.equal(group.runs[1].deltaChip.cls, 'good');
+  assert.equal(group.runs[1].deltaChip.tip.startsWith('since #6 · failed · '), true);
+});

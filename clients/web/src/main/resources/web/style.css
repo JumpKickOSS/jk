@@ -2426,6 +2426,9 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .timeline li.failed::before { background: var(--err); }
 .timeline li.running::before { background: var(--runc); }
 .timeline li .badge { font-size: 10.5px; padding: 2px 7px; }
+.timeline li .timeline-delta { font-size: 11px; color: var(--mu); }
+.timeline li .timeline-delta.good { color: var(--ok); }
+.timeline li .timeline-delta.bad { color: var(--err); }
 .focused-run { margin-bottom: 14px; }
 .focused-run .card-head { margin-top: 4px; }
 /* The per-iteration strip: one line of chips, counts first; click opens the rows behind them. */
