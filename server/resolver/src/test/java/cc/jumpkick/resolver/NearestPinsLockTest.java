@@ -187,6 +187,45 @@ class NearestPinsLockTest {
                 .endsWith("as a direct dependency does under Maven");
     }
 
+    /**
+     * A test-scope dependency asks for more than a main-scope pin allows. The test classpath is
+     * the main classpath plus the test rows, so the pin is the version there too: the test solve
+     * takes it for every edge onto the module under both policies, the lock carries one row with
+     * both scopes rather than a test row above the pin, and the edge still says what was asked.
+     */
+    @Test
+    void a_main_pin_governs_the_test_solve(@TempDir Path tempDir) throws Exception {
+        for (PinPolicy policy : PinPolicy.values()) {
+            List<String> overrides = new ArrayList<>();
+            EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+            byScope.put(
+                    Scope.MAIN,
+                    List.of(new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1"))));
+            byScope.put(
+                    Scope.TEST, List.of(new Dependency("org.cryptomator:cryptofs", VersionSelector.parse("=2.10.0"))));
+            JkBuild project = new JkBuild(
+                    new Project("org.cryptomator", "cryptomator", "1.0", 25), new JkBuild.Dependencies(byScope));
+
+            Lockfile lock = new LockOrchestrator(repoGroup(tempDir.resolve(policy.name())))
+                    .withPinPolicy(policy)
+                    .lock(project, "test", List.of(), true, recording(overrides));
+
+            List<Lockfile.Artifact> injectRows = lock.artifacts().stream()
+                    .filter(a -> a.packageKey().equals(INJECT_API))
+                    .toList();
+            assertThat(injectRows).as(policy.name()).hasSize(1);
+            assertThat(injectRows.getFirst().version()).as(policy.name()).isEqualTo("2.0.1");
+            assertThat(injectRows.getFirst().scopes()).as(policy.name()).contains(Scope.MAIN, Scope.TEST);
+            Lockfile.Artifact cryptofs = row(lock, CRYPTOFS);
+            assertThat(cryptofs.deps()).as(policy.name()).contains(INJECT_API + "@2.0.1");
+            assertThat(cryptofs.declaredFor(INJECT_API + "@2.0.1"))
+                    .as(policy.name())
+                    .isEqualTo("2.0.1.MR");
+            assertThat(overrides).as(policy.name()).hasSize(1);
+            assertThat(overrides.getFirst()).as(policy.name()).contains("org.cryptomator:cryptofs 2.10.0");
+        }
+    }
+
     private static ResolveObserver recording(List<String> overrides) {
         return new ResolveObserver() {
             @Override

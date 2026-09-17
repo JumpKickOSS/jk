@@ -20,9 +20,12 @@ import org.jspecify.annotations.Nullable;
  * The three scope solves, in the order that decides which version wins: {@link #ORDER}. Each graph
  * is seeded with the versions every earlier graph decided, so a module main already chose is
  * preferred by test and processor rather than re-decided; a module reachable only from a later
- * graph is solved fresh. One {@link MavenPackageSource} serves all three so version and dependency
- * caches survive the scope split, while its per-graph exclusion state is reset between them: main's
- * clean paths must not bleed into the test and processor solves.
+ * graph is solved fresh. The test classpath is the main classpath plus the test rows, so a module
+ * main pins exactly is that version on it: the test graph takes main's exact pins for every edge
+ * onto them under both pin policies, the way its own exact roots govern under {@code nearest}. One
+ * {@link MavenPackageSource} serves all three so version and dependency caches survive the scope
+ * split, while its per-graph exclusion state is reset between them: main's clean paths must not
+ * bleed into the test and processor solves.
  */
 final class ScopeSolves {
 
@@ -61,9 +64,11 @@ final class ScopeSolves {
     Solved solve(LockRoots.Roots roots, Map<String, String> lockedVersionPrefs, LockProgress progress)
             throws IOException, InterruptedException {
         Map<String, String> prefs = new HashMap<>(lockedVersionPrefs);
+        Map<String, String> mainPins = exactRoots(roots.main());
         EnumMap<LockRoots.GraphGroup, Resolution> solved = new EnumMap<>(LockRoots.GraphGroup.class);
         for (LockRoots.GraphGroup graph : ORDER) {
-            Resolution resolution = resolve(roots.of(graph), new HashMap<>(prefs), progress);
+            Map<String, String> inherited = graph == LockRoots.GraphGroup.TEST ? mainPins : Map.of();
+            Resolution resolution = resolve(roots.of(graph), inherited, new HashMap<>(prefs), progress);
             progress.noteGraph(resolution);
             // Locked pins and earlier graphs win over this graph's decisions: putIfAbsent, in ORDER.
             for (var e : resolution.modules().entrySet()) {
@@ -78,7 +83,13 @@ final class ScopeSolves {
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.PROCESSOR)));
     }
 
-    private Resolution resolve(List<Dependency> roots, Map<String, String> prefs, LockProgress progress)
+    /**
+     * @param inheritedPins exact pins of an earlier graph whose classpath this graph's classpath
+     *     contains; they govern this graph's edges the way its own roots do under {@code nearest},
+     *     where the graph's own exact roots take precedence
+     */
+    private Resolution resolve(
+            List<Dependency> roots, Map<String, String> inheritedPins, Map<String, String> prefs, LockProgress progress)
             throws IOException, InterruptedException {
         if (roots.isEmpty()) return new Resolution(Map.of());
         if (resolverOverride != null) return resolverOverride.resolve(roots);
@@ -87,9 +98,15 @@ final class ScopeSolves {
         sharedSource.setLockedVersionPrefs(prefs);
         sharedSource.setSnapshotPackages(snapshotModules(roots));
         Map<String, String> exact = exactRoots(roots);
-        sharedSource.setExactRoots(exact);
-        // Nearest-wins is a per-graph fact: a test-only pin has no say on the main classpath.
-        sharedSource.setNearestPins(pinPolicy == PinPolicy.NEAREST ? exact : Map.of());
+        Map<String, String> wanted = new LinkedHashMap<>(exact);
+        inheritedPins.forEach(wanted::putIfAbsent);
+        sharedSource.setExactRoots(wanted);
+        // Nearest-wins is a per-graph fact: a test-only pin has no say on the main classpath. A
+        // pin inherited from main governs here under both policies: main's classpath already
+        // fixed the version, and its own graph judged the pin against main's edges.
+        Map<String, String> pins = new LinkedHashMap<>(pinPolicy == PinPolicy.NEAREST ? exact : Map.of());
+        for (var e : inheritedPins.entrySet()) if (!exact.containsKey(e.getKey())) pins.put(e.getKey(), e.getValue());
+        sharedSource.setNearestPins(pins);
         // exclusion state is per-graph; main's clean paths must not bleed into
         // the test/processor solves.
         sharedSource.resetSolveScopedState();
