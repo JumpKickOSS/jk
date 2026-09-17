@@ -152,7 +152,7 @@ and `auto-warmup` do not follow CI.
 | `continue` | `JK_CONTINUE` | false; true when CI is set | each job | Keep going after a failed module. Does not change the verdict. |
 | `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | engine start | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
 | `auto-warmup` | `JK_AUTO_WARMUP` | true | each idle cycle | Idle AOT train and host calibration. false skips the whole pass. |
-| `log-max-mb` | `JK_ENGINE_LOG_MAX_MB` | 16 | engine start | Engine log size cap in MiB; at the cap the log rolls to .1 (one generation kept). 0 = no cap. |
+| `log-max-mb` | `JK_ENGINE_LOG_MAX_MB` | 16 | engine start | Engine log size cap in MiB; at the cap the log rolls to .1. 0 = no cap. |
 | `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
 | `detached-deadline-ms` | `JK_ENGINE_DETACHED_DEADLINE_MS` | 3600000 | engine start | Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off. |
 | `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound. |
@@ -219,11 +219,14 @@ Central answers a 429 or a Cloudflare 403 — see
 ### Log
 
 The engine writes its log to `~/.jk/state/engine/<key>.log`, beside its socket and pid file.
-The file is rotated to `<key>.log.1` when a fresh engine starts, and the running engine rolls
-it to the same `.1` on its own when it reaches `log-max-mb` (default 16 MiB; `0` = no cap), so
-a resident engine that warns in a loop for weeks cannot fill the disk. One previous generation
-is kept. `jk engine status` prints a `Log` row with the current size and when this engine last
-rolled it; `--output json` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
+When a fresh engine starts, `<key>.log.1` becomes `<key>.log.2` and the log becomes `.1`, so
+the last lines of the engine before the last one are still there after a crash and the respawn
+that follows it. Two clients that start an engine within the same 15 seconds — the second yields
+to the first — share one log: the second spawn appends to the first's rather than rotating it
+again. The running engine rolls the log to `.1` on its own when it reaches `log-max-mb` (default
+16 MiB; `0` = no cap), so a resident engine that warns in a loop for weeks cannot fill the disk.
+`jk engine status` prints a `Log` row with the current size and when this engine last rolled it;
+`--output json` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
 
 Every line is leveled: `HH:mm:ss.SSS LEVEL message key=value …`, with `LEVEL` one of `DEBUG`,
 `INFO`, `WARN`, `ERROR`. `log-level` (or `JK_LOG_LEVEL`) sets the threshold, default `info`; it
