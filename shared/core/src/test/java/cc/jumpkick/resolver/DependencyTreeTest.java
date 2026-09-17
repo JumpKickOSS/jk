@@ -653,6 +653,44 @@ class DependencyTreeTest {
         assertThat(own).contains("com.foo:leaf:1.0").doesNotContain("leaf:2.0");
     }
 
+    /**
+     * A coordinate the lock holds at one version for main and another for test is printed under
+     * each scope at that scope's version, nested and flattened alike.
+     */
+    @Test
+    void a_scope_split_coordinate_shows_each_scopes_own_version(@TempDir Path dir) {
+        var main = List.of(new Dependency("com.foo:m", new VersionSelector.Exact("=1.0", "1.0")));
+        var test = List.of(new Dependency("com.foo:t", new VersionSelector.Exact("=1.0", "1.0")));
+        JkBuild project = new JkBuild(
+                new Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(Scope.MAIN, main, Scope.TEST, test)));
+        Lockfile lock = lockOf(
+                pkg("com.foo:m:jar:", "1.0", List.of("com.foo:split:jar:@1.0")),
+                pkg("com.foo:split:jar:", "1.0", List.of()),
+                pkg("com.foo:split:jar:", "2.0", List.of()).withScopes(List.of(Scope.TEST)),
+                pkg("com.foo:t:jar:", "1.0", List.of("com.foo:split:jar:@2.0")).withScopes(List.of(Scope.TEST)));
+
+        for (boolean flatten : new boolean[] {false, true}) {
+            String rendered = DependencyTree.render(
+                    project,
+                    lock,
+                    dir,
+                    Integer.MAX_VALUE,
+                    DependencyTreeStyle.Styling.plain(),
+                    flatten,
+                    List.of(Scope.MAIN, Scope.TEST));
+            int testSection = rendered.indexOf("─test\n");
+            assertThat(rendered.substring(0, testSection))
+                    .as("main section, flatten=" + flatten)
+                    .contains("com.foo:split:1.0")
+                    .doesNotContain("split:2.0");
+            assertThat(rendered.substring(testSection))
+                    .as("test section, flatten=" + flatten)
+                    .contains("com.foo:split:2.0")
+                    .doesNotContain("split:1.0");
+        }
+    }
+
     private static final String EMPTY_LOCK = """
             version = 1
             generated-by = "jk test"

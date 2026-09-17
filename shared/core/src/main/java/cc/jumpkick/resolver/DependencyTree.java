@@ -413,7 +413,7 @@ public final class DependencyTree {
             StringBuilder out,
             boolean siblingSurface) {
 
-        LockGraph graph = LockGraph.forLock(lock);
+        LockGraph graph = LockGraph.forLock(lock, scopes);
         // Declared versions (and which modules are PLATFORM-only pins / BOMs).
         Map<String, String> declaredVersions = DeclaredDeps.versions(project, scopes);
         Set<String> platformModules = DeclaredDeps.platformModules(project);

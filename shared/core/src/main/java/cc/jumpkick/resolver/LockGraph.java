@@ -4,9 +4,13 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.Scope;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -22,8 +26,10 @@ import org.jspecify.annotations.Nullable;
  * request never rebuilds the same walk twice.
  *
  * <p>Lookups accept an artifact name, full package key ({@code g:a:type:classifier}), or bare GA —
- * the same aliasing the lockfile index always had. The reverse adjacency is materialized lazily:
- * tree/graph renders never pay for it.
+ * the same aliasing the lockfile index always had. A coordinate the lock holds at one version for
+ * main and another for test has two rows under one name; a graph built {@linkplain #forLock(Lockfile,
+ * Collection) for a scope} answers with the row in that scope, and a graph built for none with the
+ * lock's last row. The reverse adjacency is materialized lazily: tree/graph renders never pay for it.
  */
 public final class LockGraph {
 
@@ -61,28 +67,37 @@ public final class LockGraph {
     public static LockGraph of(@Nullable JkBuild project, @Nullable Lockfile lock, @Nullable Path projectDir) {
         Set<String> roots =
                 project == null ? Set.of() : new LinkedHashSet<>(DependencyTree.collectRoots(project, projectDir));
-        return build(lock, roots, DependencyTree.collectRootSelectors(project, projectDir));
+        return build(lock, roots, DependencyTree.collectRootSelectors(project, projectDir), Set.of());
     }
 
     /** Lock-only graph (no declared roots) — per-member locks in workspace renders. */
     public static LockGraph forLock(@Nullable Lockfile lock) {
-        return build(lock, Set.of(), Map.of());
+        return build(lock, Set.of(), Map.of(), Set.of());
     }
 
-    private static LockGraph build(@Nullable Lockfile lock, Set<String> roots, Map<String, String> rootSelectors) {
+    /**
+     * Lock-only graph as one scope section reads it: where a name has several rows, the one in any
+     * of {@code scopes} answers for it, so a test-only version never stands in for the main one.
+     */
+    public static LockGraph forLock(@Nullable Lockfile lock, Collection<Scope> scopes) {
+        return build(lock, Set.of(), Map.of(), Set.copyOf(scopes));
+    }
+
+    private static LockGraph build(
+            @Nullable Lockfile lock, Set<String> roots, Map<String, String> rootSelectors, Set<Scope> scopes) {
         if (lock == null && roots.isEmpty()) return EMPTY;
-        Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
+        Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock, scopes);
         Map<String, List<String>> forward = new HashMap<>();
         Map<String, List<String>> forwardSorted = new HashMap<>();
-        if (lock != null) {
-            for (Lockfile.Artifact pkg : lock.artifacts()) {
-                List<String> children = new ArrayList<>(pkg.deps().size());
-                for (String depRef : pkg.deps()) children.add(stripVersion(depRef));
-                forward.put(pkg.name(), List.copyOf(children));
-                List<String> sorted = new ArrayList<>(children);
-                sorted.sort(null);
-                forwardSorted.put(pkg.name(), List.copyOf(sorted));
-            }
+        Set<Lockfile.Artifact> chosen = Collections.newSetFromMap(new IdentityHashMap<>());
+        chosen.addAll(byModule.values());
+        for (Lockfile.Artifact pkg : chosen) {
+            List<String> children = new ArrayList<>(pkg.deps().size());
+            for (String depRef : pkg.deps()) children.add(stripVersion(depRef));
+            forward.put(pkg.name(), List.copyOf(children));
+            List<String> sorted = new ArrayList<>(children);
+            sorted.sort(null);
+            forwardSorted.put(pkg.name(), List.copyOf(sorted));
         }
         return new LockGraph(byModule, forward, forwardSorted, roots, rootSelectors);
     }
@@ -176,8 +191,20 @@ public final class LockGraph {
      * default-jar row when one exists.
      */
     static Map<String, Lockfile.Artifact> indexByModule(Lockfile lock) {
+        return indexByModule(lock, Set.of());
+    }
+
+    /**
+     * As {@link #indexByModule(Lockfile)}; with {@code scopes} given, a row in one of them is never
+     * displaced under its name by a row in none of them, so a scope-split coordinate indexes to the
+     * row the section reads.
+     */
+    private static Map<String, Lockfile.Artifact> indexByModule(Lockfile lock, Set<Scope> scopes) {
         Map<String, Lockfile.Artifact> result = new HashMap<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
+            boolean inScope = pkg.inAnyScope(scopes);
+            Lockfile.Artifact named = result.get(pkg.name());
+            if (named != null && !inScope && named.inAnyScope(scopes)) continue;
             result.put(pkg.name(), pkg);
             result.put(pkg.packageKey(), pkg);
             if (PackageId.isMavenPackageKey(pkg.name())) {

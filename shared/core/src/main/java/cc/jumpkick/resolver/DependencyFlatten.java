@@ -45,7 +45,6 @@ final class DependencyFlatten {
             WorkspaceGraph ws,
             StringBuilder out) {
 
-        LockGraph graph = LockGraph.forLock(lock);
         List<Scope> sections = new ArrayList<>();
         for (Scope s : DependencyTreeStyle.sectionOrder(scopeOrder)) {
             if (!project.dependencies().of(s).isEmpty()) sections.add(s);
@@ -55,6 +54,7 @@ final class DependencyFlatten {
         Set<String> platformMods = DeclaredDeps.platformModules(project);
         Map<String, String> declared = DeclaredDeps.versions(project, sections);
         if (stack) {
+            LockGraph graph = LockGraph.forLock(lock, sections);
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (Scope s : sections) {
@@ -67,6 +67,8 @@ final class DependencyFlatten {
         }
         for (int si = 0; si < sections.size(); si++) {
             Scope s = sections.get(si);
+            // The section's own graph: a scope-split coordinate reads at this scope's version.
+            LockGraph graph = LockGraph.forLock(lock, List.of(s));
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (String m : DeclaredDeps.modulesOf(project, s)) {
@@ -107,7 +109,7 @@ final class DependencyFlatten {
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (LoadedModule m : modules) {
-                LockGraph graph = LockGraph.forLock(m.lock());
+                LockGraph graph = LockGraph.forLock(m.lock(), sections);
                 for (Scope s : sections) {
                     for (String dep : DeclaredDeps.modulesOf(m.build(), s)) {
                         collect(dep, graph, ws, visited, collected);
@@ -123,7 +125,7 @@ final class DependencyFlatten {
             Set<String> visited = new HashSet<>();
             for (LoadedModule m : modules) {
                 if (m.build().dependencies().of(s).isEmpty()) continue;
-                LockGraph graph = LockGraph.forLock(m.lock());
+                LockGraph graph = LockGraph.forLock(m.lock(), List.of(s));
                 for (String dep : DeclaredDeps.modulesOf(m.build(), s)) {
                     collect(dep, graph, ws, visited, collected);
                 }
