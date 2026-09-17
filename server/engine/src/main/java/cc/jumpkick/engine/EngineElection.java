@@ -79,7 +79,6 @@ final class EngineElection {
     private final String version;
     private final String buildId;
     private final long pid;
-    private final long startedAtMillis;
     private final Consumer<String> log;
 
     private @Nullable FileChannel lockChannel;
@@ -90,18 +89,11 @@ final class EngineElection {
     /** The generation this engine bound (socket/lock/pid/token) — see EnginePaths.generation. */
     private EnginePaths.@Nullable Paths active;
 
-    EngineElection(
-            EnginePaths.Paths paths,
-            String version,
-            String buildId,
-            long pid,
-            long startedAtMillis,
-            Consumer<String> log) {
+    EngineElection(EnginePaths.Paths paths, String version, String buildId, long pid, Consumer<String> log) {
         this.paths = paths;
         this.version = version;
         this.buildId = buildId == null ? "" : buildId;
         this.pid = pid;
-        this.startedAtMillis = startedAtMillis;
         this.log = log != null ? log : s -> {};
     }
 
@@ -202,7 +194,8 @@ final class EngineElection {
             // Defence in depth under the 0700 directory; bind itself follows the umask.
             OwnerOnlyFiles.setOwnerOnly(active.socket(), "rw-------");
         }
-        Files.writeString(active.pid(), pid + "\n" + startedAtMillis + "\n", StandardCharsets.UTF_8);
+        // The pid file is the pid and nothing else: a script reads it whole as a process id.
+        Files.writeString(active.pid(), pid + "\n", StandardCharsets.UTF_8);
 
         // TAKEOVER: from this write on, every new connection resolves to this generation.
         EnginePaths.writeEndpoint(paths, active.socket());
