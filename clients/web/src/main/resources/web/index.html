@@ -121,6 +121,8 @@
               <span class="coord"><template v-if="coordParts(r).group"><span class="cg">{{ coordParts(r).group }}</span><span class="csep">:</span></template><span class="cn">{{ coordParts(r).name }}</span></span>
               <span class="kind">{{ r.kind }}</span>
               <span class="spacer"></span>
+              <!-- One chip of what changed since the run before from this origin (delta.js). -->
+              <span v-if="r.deltaChip" class="run-delta-chip timeline-delta" :class="r.deltaChip.cls" :data-tip="r.deltaChip.tip">{{ r.deltaChip.text }}</span>
               <span class="millis">{{ r.outcome === 'running' ? elapsed(r) : duration(r.millis) }}</span>
               <span class="ago" :data-tip="fmtDateTime(r.finishedAt || r.startedAt) || undefined">{{ ago(r.finishedAt || r.startedAt) }}</span>
             </li>

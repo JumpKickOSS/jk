@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { deltaSummary, rowLines, signedDuration, RunDelta } = await spa('delta.js');
+const { deltaChip, deltaSummary, rowLines, signedDuration, RunDelta } = await spa('delta.js');
 const { historyCard, seedFromHistory } = await spa('fold.js');
 
 const rows = (shown, count = shown.length) => ({ count, shown });
@@ -115,4 +115,36 @@ test('the component renders the strip and opens the rows on click', () => {
   const lines = RunDelta.computed.openLines.call({ summary });
   assert.deepEqual(lines.slice(0, 2), ['files · src/main/java/Foo.java', 'files · src/test/java/FooTest.java']);
   assert.equal(RunDelta.template.includes('run-delta-chip'), true);
+});
+
+test('one chip per run row: the strongest signal, with the whole strip behind it as the tooltip', () => {
+  // A fix session: nothing broke, two diagnostics gone, a test fixed, faster — the fix reads first.
+  const fixed = deltaChip(delta, 6100);
+  assert.equal(fixed.text, '1 fixed');
+  assert.equal(fixed.cls, 'good');
+  assert.equal(fixed.tip.startsWith('since #12 · failed · '), true);
+  assert.equal(fixed.tip.includes('3 files'), true);
+  assert.equal(fixed.tip.includes('+0 / −2 diagnostics'), true);
+
+  // Something broke: that outranks every gain.
+  const broke = deltaChip({ ...delta, broke: rows(['com.example.FooTest#adds()']) }, 6100);
+  assert.equal(broke.text, '1 broke');
+  assert.equal(broke.cls, 'bad');
+
+  // A diagnostic appeared and no test flipped.
+  const worse = deltaChip(
+    { ...delta, appeared: rows(['error · compile-java · Foo.java:1 · x']), gone: rows([]), fixed: rows([]) },
+    6100,
+  );
+  assert.equal(worse.text, '+1 diagnostic');
+  assert.equal(worse.cls, 'bad');
+
+  // Only files moved: the count; nothing at all: the wall against the previous attempt.
+  const files = deltaChip({ ...delta, gone: rows([]), fixed: rows([]) }, 6100);
+  assert.equal(files.text, '3 files');
+  assert.equal(files.cls, '');
+  const wall = deltaChip({ ...delta, files: undefined, gone: rows([]), fixed: rows([]) }, 6100);
+  assert.equal(wall.text.startsWith('−'), true);
+  assert.equal(wall.cls, 'good');
+  assert.equal(deltaChip(null, 6100), null);
 });

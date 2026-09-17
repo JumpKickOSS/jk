@@ -23,9 +23,12 @@ prints the same as `trigger: mcp · session: claude-code 3f9a`, and `jk history`
 Trigger column.
 
 **By session** on the Activity feed regroups the feed: one block per session, newest first,
-with its runs as a timeline in the order they happened — outcome, `#build`, kind and wall
-per run — and the block's tallies (ok / failed / cancelled / running, total wall). Two agents
-on one project are two blocks; your own `jk build` is a third.
+with its runs as a timeline in the order they happened — outcome, `#build`, kind, one chip of
+what that run changed and its wall — and the block's tallies (ok / failed / cancelled / running,
+total wall). The chip is the strongest signal of the run's [iteration strip](#since-the-previous-run):
+a test that broke, else a diagnostic that appeared, else a test fixed, else a diagnostic gone, else
+the files changed, else the wall against the previous attempt; hovering it shows the whole strip.
+Two agents on one project are two blocks; your own `jk build` is a third.
 
 ## Following a run
 

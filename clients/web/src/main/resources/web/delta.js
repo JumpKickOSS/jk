@@ -84,6 +84,31 @@ export function deltaSummary(delta, millis) {
   return { since, chips };
 }
 
+/**
+ * The one chip a run row wears where the whole strip would not fit: the strongest signal of the
+ * delta — a test that broke, then a diagnostic that appeared, then a test fixed, then a diagnostic
+ * gone, then the files changed, else the wall against the previous attempt. `tip` is the whole
+ * strip in one line. Null when there is no delta.
+ */
+export function deltaChip(delta, millis) {
+  const summary = deltaSummary(delta, millis);
+  if (!summary) return null;
+  const tip = [summary.since].concat(summary.chips.map((c) => c.text)).join(' · ');
+  const one = (count, noun, cls) => ({ text: count + ' ' + noun, cls, tip });
+  const broke = n(delta.broke);
+  if (broke > 0) return one(broke, 'broke', 'bad');
+  const appeared = n(delta.appeared);
+  if (appeared > 0) return one('+' + appeared, appeared === 1 ? 'diagnostic' : 'diagnostics', 'bad');
+  const fixed = n(delta.fixed);
+  if (fixed > 0) return one(fixed, 'fixed', 'good');
+  const gone = n(delta.gone);
+  if (gone > 0) return one('−' + gone, gone === 1 ? 'diagnostic' : 'diagnostics', 'good');
+  const files = n(delta.files);
+  if (files > 0) return one(files, files === 1 ? 'file' : 'files', '');
+  const wall = summary.chips.find((c) => c.key === 'wall');
+  return wall ? { text: wall.text, cls: wall.cls, tip } : null;
+}
+
 export const RunDelta = {
   props: {
     delta: { type: Object, required: true },

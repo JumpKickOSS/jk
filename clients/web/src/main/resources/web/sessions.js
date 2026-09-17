@@ -3,6 +3,7 @@
 // and the project page's followed-or-pinned run. Pure functions over folded cards and journal
 // records (no DOM), plus the root-component mixins that spread them into computed/methods.
 
+import { deltaChip } from './delta.js';
 import { outcomeOf } from './outcome.js';
 
 /** Human label for a run's trigger — the same vocabulary the results header prints. */
@@ -31,8 +32,9 @@ export function sessionKey(run) {
 
 /**
  * Cards grouped by session, newest group first (by its newest run). Each group carries its
- * timeline — the runs in the order they happened, oldest first — with the outcome and wall per run,
- * and the tallies the group header prints.
+ * timeline — the runs in the order they happened, oldest first — with the outcome, wall and one
+ * delta chip per run (the strongest signal of what changed since the run before, `deltaChip`), and
+ * the tallies the group header prints.
  */
 export function groupBySession(cards) {
   const groups = new Map();
@@ -69,6 +71,7 @@ export function groupBySession(cards) {
       millis: outcome === 'running' ? null : card.millis ?? null,
       startedAt: card.startedAt ?? null,
       finishedAt: card.finishedAt ?? null,
+      deltaChip: deltaChip(card.delta, outcome === 'running' ? null : card.millis ?? null),
     });
     if (outcome === 'success') g.passed++;
     else if (outcome === 'failed') g.failed++;
