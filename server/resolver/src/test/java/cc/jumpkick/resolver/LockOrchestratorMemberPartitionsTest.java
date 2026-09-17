@@ -216,6 +216,48 @@ class LockOrchestratorMemberPartitionsTest {
                 .containsExactly("2.0");
     }
 
+    /**
+     * The BOM only {@code app} holds manages leaf at the version the workspace's row takes anyway
+     * ({@code bridge} declares leaf 2.0), so no member reads a row of its own; the plain row still
+     * says who pinned it, for every member's {@code jk why}. A module the holder's graph never
+     * reaches gets no provenance from its table.
+     */
+    @Test
+    void a_plain_row_a_members_bom_agrees_with_carries_that_boms_provenance(@TempDir Path tempDir) throws Exception {
+        serveMiddleOverLeaf();
+        upstream.metadata("com.foo", "bridge", "1.0");
+        upstream.pom("com.foo", "bridge", "1.0", depending("bridge", "leaf", "2.0"));
+        upstream.jar("com.foo", "bridge", "1.0");
+        upstream.leaf("com.foo", "widget", "1.0");
+        upstream.pom(
+                "org.example",
+                "the-bom",
+                "1.0",
+                MavenStub.bom("org.example", "the-bom", "1.0", List.of("com.foo:leaf:2.0", "com.foo:widget:1.0")));
+        Dependency bom = Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"));
+        Dependency bridge = new Dependency("com.foo:bridge", VersionSelector.parse("=1.0"));
+        Dependency widget = new Dependency("com.foo:widget", VersionSelector.parse("=1.0"));
+        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(bridge)));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(bridge, widget)));
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(app, lib));
+
+        assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
+        assertThat(rows(lock, "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("2.0", "org.example:the-bom:1.0"));
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::pinnedBy)
+                .containsExactly("org.example:the-bom:1.0");
+        assertThat(rows(lock, "com.foo:widget:jar:"))
+                .as("app's graph never reaches widget, so app's BOM says nothing about the row")
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
+                .containsExactly(tuple("1.0", null));
+        assertThat(rows(lock, "com.foo:bridge:jar:"))
+                .extracting(Lockfile.Artifact::pinnedBy)
+                .containsExactly((String) null);
+    }
+
     @Test
     void two_members_pinning_one_coordinate_differently_each_read_their_own(@TempDir Path tempDir) throws Exception {
         upstream.metadata("com.foo", "widget", "1.0", "2.0");
@@ -259,7 +301,8 @@ class LockOrchestratorMemberPartitionsTest {
      * platform table, one asks for the widget at {@code latest} and none declares a test dependency.
      * The BOM moves no plain row: the widget is the latest the floating selector asks for, Jupiter is
      * the starter's declaration, and the holder's table agrees with that row, so every member reads
-     * the workspace's rows and the lock carries no {@code members} key.
+     * the workspace's rows and the lock carries no {@code members} key; the Jupiter row names the
+     * BOM that agrees with it.
      */
     @Test
     void a_member_without_a_platform_table_reads_the_workspaces_rows(@TempDir Path tempDir) throws Exception {
@@ -323,7 +366,7 @@ class LockOrchestratorMemberPartitionsTest {
         assertThat(lock.artifacts()).allMatch(r -> !r.isPartition());
         assertThat(rows(lock, "org.junit.jupiter:junit-jupiter:jar:"))
                 .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
-                .containsExactly(tuple("6.0.3", null));
+                .containsExactly(tuple("6.0.3", "org.example:boot-bom:1.0"));
         assertThat(rows(lock, "com.foo:starter-test:jar:"))
                 .extracting(Lockfile.Artifact::version, Lockfile.Artifact::pinnedBy)
                 .containsExactly(tuple("1.0", "org.example:boot-bom:1.0"));

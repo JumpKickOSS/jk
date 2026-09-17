@@ -747,6 +747,24 @@ public record Lockfile(
                     members);
         }
 
+        /** This row with {@code pinnedBy} as what decided its version; every other field kept. */
+        public Artifact withPinnedBy(@Nullable String pinnedBy) {
+            return new Artifact(
+                    name,
+                    version,
+                    source,
+                    checksum,
+                    path,
+                    scopes,
+                    deps,
+                    pinnedBy,
+                    git,
+                    sourcesChecksum,
+                    declared,
+                    excludedBy,
+                    members);
+        }
+
         /** This row as the partition the listed members read; every other field kept. */
         public Artifact withMembers(List<String> members) {
             return new Artifact(
