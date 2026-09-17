@@ -3,17 +3,15 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.http.Http;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A repository's use of the Maven local repository ({@code ~/.m2/repository}). A local-repo file
@@ -26,15 +24,28 @@ final class M2Adoption {
 
     private final String name;
 
-    /** The HTTP client for the sidecar GET that confirms a candidate; null for a non-HTTP repository. */
-    private final @Nullable Http http;
+    /** The transport the confirming sidecars are read through, with the repository's credential. */
+    private final RepoTransport transport;
+
+    private final RepoCredential credential;
+
+    /** Adoption confirms against a remote repository's checksum; a repository on local disk has nothing to save. */
+    private final boolean remote;
 
     private final RepoArtifactStore repoStore;
     private final boolean m2integration;
 
-    M2Adoption(String name, @Nullable Http http, RepoArtifactStore repoStore, boolean m2integration) {
+    M2Adoption(
+            String name,
+            RepoTransport transport,
+            RepoCredential credential,
+            boolean remote,
+            RepoArtifactStore repoStore,
+            boolean m2integration) {
         this.name = Objects.requireNonNull(name, "name");
-        this.http = http;
+        this.transport = Objects.requireNonNull(transport, "transport");
+        this.credential = Objects.requireNonNull(credential, "credential");
+        this.remote = remote;
         this.repoStore = Objects.requireNonNull(repoStore, "repoStore");
         this.m2integration = m2integration;
     }
@@ -79,38 +90,31 @@ final class M2Adoption {
      * ~40 bytes against a jar that can be tens of megabytes, so the saving is bandwidth — it does not
      * reduce request count, and so does not by itself relieve a per-IP quota.
      *
-     * <p>Empty on any doubt whatsoever: lookup disabled, no local file, no HTTP client, sidecar missing
-     * or unparseable, or bytes that do not match. Every one of those falls through to the ordinary
-     * download, so the worst case is one wasted small GET. An adopted artifact counts as verified:
-     * the repository's own checksum vouched for it, exactly as it would for a download.
+     * <p>Empty on any doubt whatsoever: lookup disabled, no local file, a repository on local disk,
+     * sidecar missing or unparseable, or bytes that do not match. Every one of those falls through to
+     * the ordinary download, so the worst case is two small GETs. An adopted artifact counts as
+     * verified: the repository's own checksum vouched for it, exactly as it would for a download.
      */
     Optional<Adopted> tryAdopt(String relativePath, URI uri) {
         if (!enabled()) return Optional.empty();
-        if (http == null) return Optional.empty();
+        if (!remote) return Optional.empty();
         try {
             Path candidate = MavenLayout.safeResolve(M2Dirs.localRepository(), relativePath);
             if (!Files.isRegularFile(candidate)) return Optional.empty();
 
-            // Prefer the collision-resistant .sha256 sidecar; fall back to .sha1 only when the repo
-            // doesn't publish one (SHA-1 is chosen-prefix broken, and its match becomes the lock pin
-            // for bytes any `mvn install` could have seeded). The SHA-256 is computed once: it is
-            // both the comparison and the memo the adoption records.
+            // The .sha256 and .sha1 sidecars are read together and the strongest published one
+            // decides (SHA-1 is chosen-prefix broken, and its match becomes the lock pin for bytes
+            // any `mvn install` could have seeded). The SHA-256 is computed once: it is both the
+            // comparison and the memo the adoption records.
+            ChecksumSidecars sidecars = ChecksumSidecars.start(transport, credential, uri);
             String sha256 = Hashing.sha256Hex(candidate);
-            String vouchAlgo;
-            Optional<String> advertised = fetchSidecar(uri, ".sha256", 64);
-            if (advertised.isPresent()) {
-                vouchAlgo = "sha256";
-                if (!sha256.equalsIgnoreCase(advertised.get())) {
-                    return Optional.empty();
-                }
-            } else {
-                vouchAlgo = "sha1";
-                advertised = fetchSidecar(uri, ".sha1", 40);
-                if (advertised.isEmpty()) return Optional.empty();
-                if (!Hashing.fileHex("SHA-1", candidate).equalsIgnoreCase(advertised.get())) {
-                    return Optional.empty();
-                }
-            }
+            Optional<ChecksumSidecars.Published> published = sidecars.strongestSha();
+            if (published.isEmpty()) return Optional.empty();
+            ChecksumSidecars.Algorithm algorithm = published.get().algorithm();
+            String actual =
+                    algorithm == ChecksumSidecars.Algorithm.SHA256 ? sha256 : Hashing.fileHex(algorithm.jca, candidate);
+            if (!actual.equalsIgnoreCase(published.get().hex())) return Optional.empty();
+            String vouchAlgo = algorithm.label;
 
             // Into the store: the build reads only what the store owns, so an adopted file is a copy
             // and the local repository keeps its own.
@@ -122,26 +126,10 @@ final class M2Adoption {
                         + name + ")");
             }
             return Optional.of(new Adopted(placed, sha256, Files.size(placed)));
-        } catch (IOException | RuntimeException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return Optional.empty();
-        }
-    }
-
-    /**
-     * The digest this repository publishes in the {@code suffix} sidecar beside {@code uri}; empty
-     * when absent or not a {@code hexLength}-digit digest. Some repositories answer a missing
-     * sidecar with an HTML error page under HTTP 200, which is why the body is validated and not
-     * merely non-empty.
-     */
-    private Optional<String> fetchSidecar(URI uri, String suffix, int hexLength) {
-        Http client = http;
-        if (client == null) return Optional.empty(); // a non-HTTP transport publishes no sidecar this way
-        try {
-            var resp = client.get(URI.create(uri + suffix));
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
-            return Hashing.checksumFromSidecar(new String(resp.body(), StandardCharsets.UTF_8), hexLength);
-        } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+        } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
     }
