@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import com.sun.net.httpserver.HttpServer;
@@ -81,6 +82,10 @@ class CoexistenceMirrorE2eTest {
     @BeforeEach
     void start() throws IOException {
         priorSettings = System.getProperty(MavenSettings.SETTINGS_PROPERTY);
+        // The process memos are keyed by the repository, which a mirror does not change: a launcher
+        // another test in this JVM resolved would answer here without a request reaching the mirror.
+        RepoGroup.clearProcessFetchCache();
+        RepoGroup.clearProcessVersionsCache();
         nexus.start();
     }
 
