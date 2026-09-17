@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.test.MarkdownTestReport;
+import cc.jumpkick.util.MarkdownReports;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -543,6 +544,9 @@ class JkResultsMarkdownTest {
         assertThat(Files.readString(latest)).contains("# jk results — OK");
         assertThat(Files.readString(latest))
                 .contains(run.resolve("details.jsonl").toString().replace('\\', '/'));
+        // Both copies are the file a person opens, so both carry the UTF-8 mark PowerShell reads.
+        assertThat(Files.readString(run.resolve("jk-results.md"))).startsWith(MarkdownReports.BOM);
+        assertThat(Files.readString(latest)).startsWith(MarkdownReports.BOM);
     }
 
     @Test

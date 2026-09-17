@@ -35,6 +35,12 @@ target/jk-results.md
 ~/.jk/state/builds/projects/<key>/runs/<build-number>/jk-results.md
 ```
 
+Both copies are UTF-8 **with a byte-order mark**, as are `target/jk-tests-affected.md` and the
+`jk import` report. The mark is there for Windows: PowerShell 5.1 decodes a file that has none
+in the host's ANSI codepage, so a `—` reads back as `â€”` and a `·` as `Â·`. Readers that do not
+need it ignore it. `details.jsonl`, `jk-lock.toml` and every other file jk parses again are
+written without one, because their parsers would read the mark as content.
+
 The header's second line names who asked: `trigger: cli`, or `trigger: mcp · session:
 claude-code 3f9a` for an agent's connection (`bsp · IntelliJ-BSP 7b2c` for an IDE), then
 `commit:` and the jk version. The same `trigger`/`session` fields sit on the journal record
