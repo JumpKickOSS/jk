@@ -323,18 +323,19 @@ final class ResultAggregator {
     }
 
     synchronized TestSummary toResult(int exitCode) {
-        return toResult(exitCode, "");
+        return toResult(exitCode, "", List.of());
     }
 
     /**
      * As {@link #toResult(int)}. A non-zero exit with no test event at all is a {@link
-     * TestLauncherFailure} carrying {@code crashOutput} (the worker's captured stdout/stderr): the
-     * launcher never ran a test, so the step fails on that instead of counting one red test.
+     * TestLauncherFailure} carrying {@code crashOutput} (the worker's captured stdout/stderr) and
+     * {@code command} (how the worker was started): the launcher never ran a test, so the step
+     * fails on that instead of counting one red test.
      */
-    synchronized TestSummary toResult(int exitCode, String crashOutput) {
+    synchronized TestSummary toResult(int exitCode, String crashOutput, List<String> command) {
         long total = succeeded + failed + skipped;
         if (total == 0 && exitCode != 0) {
-            throw TestLauncherFailure.runner(moduleLabel, exitCode, crashOutput == null ? "" : crashOutput);
+            throw TestLauncherFailure.runner(moduleLabel, exitCode, crashOutput == null ? "" : crashOutput, command);
         }
         return new TestSummary(
                 total,

@@ -390,7 +390,8 @@ class JUnitLauncherAggregatorTest {
             assertThat(row.stack()).contains("decoder choked on totals");
         });
         // A clean listing with a shutdown blemish keeps its verdict: the list survives a non-zero exit.
-        assertThat(new Discovery(List.of("com.acme.ATest"), 1, "").crashed()).isFalse();
+        assertThat(new Discovery(List.of("com.acme.ATest"), 1, "", List.of()).crashed())
+                .isFalse();
     }
 
     @Test
@@ -437,7 +438,7 @@ class JUnitLauncherAggregatorTest {
         var agg = new ResultAggregator();
         String crash = "Exception in thread \"main\" java.lang.NoClassDefFoundError: Missing\n"
                 + "\tat cc.jumpkick.Boot.main(Boot.java:1)";
-        assertThatThrownBy(() -> agg.toResult(1, crash)) // no events, non-zero exit
+        assertThatThrownBy(() -> agg.toResult(1, crash, List.of())) // no events, non-zero exit
                 .isInstanceOfSatisfying(TestLauncherFailure.class, f -> {
                     assertThat(f.exit()).isEqualTo(1);
                     assertThat(f.phase()).isEqualTo("test runner");

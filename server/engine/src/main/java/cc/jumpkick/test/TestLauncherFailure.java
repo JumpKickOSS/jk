@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.Classpaths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -16,7 +18,8 @@ import org.jspecify.annotations.Nullable;
  * engine JUnit named, the cause chain, the JVM's own refusal to start. The message always carries
  * the exit — with the signal's name when the exit is {@code 128 + signal} — and the fork's last
  * words: the line the output classifies as, else its last {@link #LAST_LINES} lines, else that it
- * printed nothing.
+ * printed nothing. The command the fork was started with rides along too, for the fork that said
+ * nothing: the java binary, the JVM flags and the arguments are then the whole diagnostic.
  */
 public final class TestLauncherFailure extends RuntimeException {
 
@@ -73,27 +76,43 @@ public final class TestLauncherFailure extends RuntimeException {
     private static final Pattern ENGINE_ID = Pattern.compile("TestEngine with ID '([^']+)'");
     private static final Pattern CLASS_NAME = Pattern.compile("^([A-Za-z_$][\\w$]*\\.)+[A-Z][\\w$]*$");
 
+    /** Flags whose next argument is a path list, folded to its entry count in {@link #commandLine}. */
+    private static final Set<String> PATH_LIST_FLAGS =
+            Set.of("-cp", "-classpath", "--class-path", "-p", "--module-path");
+
     private final String moduleLabel;
     private final String phase;
     private final int exit;
     private final String output;
+    private final List<String> command;
 
-    private TestLauncherFailure(String moduleLabel, String phase, int exit, String output) {
+    private TestLauncherFailure(String moduleLabel, String phase, int exit, String output, List<String> command) {
         super(phase + " exited " + exit + signalSuffix(exit) + " before any test ran" + headlineSuffix(output));
         this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         this.phase = phase;
         this.exit = exit;
         this.output = output == null ? "" : output;
+        this.command = List.copyOf(command);
     }
 
-    /** The list-only discovery fork died with nothing named. */
+    /** The list-only discovery fork died with nothing named; the command it was started with is not at hand. */
     public static TestLauncherFailure discovery(String moduleLabel, int exit, String output) {
-        return new TestLauncherFailure(moduleLabel, "test discovery", exit, output);
+        return discovery(moduleLabel, exit, output, List.of());
     }
 
-    /** A suite-running fork (the single runner or every pool worker) died before its first event. */
+    /** The list-only discovery fork, started as {@code command}, died with nothing named. */
+    public static TestLauncherFailure discovery(String moduleLabel, int exit, String output, List<String> command) {
+        return new TestLauncherFailure(moduleLabel, "test discovery", exit, output, command);
+    }
+
+    /** A suite-running fork died before its first event; the command it was started with is not at hand. */
     public static TestLauncherFailure runner(String moduleLabel, int exit, String output) {
-        return new TestLauncherFailure(moduleLabel, "test runner", exit, output);
+        return runner(moduleLabel, exit, output, List.of());
+    }
+
+    /** A suite-running fork (the single runner or a pool worker), started as {@code command}, died before its first event. */
+    public static TestLauncherFailure runner(String moduleLabel, int exit, String output, List<String> command) {
+        return new TestLauncherFailure(moduleLabel, "test runner", exit, output, command);
     }
 
     public String moduleLabel() {
@@ -112,6 +131,36 @@ public final class TestLauncherFailure extends RuntimeException {
     /** Everything the fork printed outside the protocol, newest {@code CaptureBuffer} tail. */
     public String output() {
         return output;
+    }
+
+    /** The argv the fork was started with — java binary first — or empty when the launcher did not record it. */
+    public List<String> command() {
+        return command;
+    }
+
+    /**
+     * {@link #command} as one line: arguments with whitespace single-quoted, and a class path or
+     * module path folded to {@code <N entries>}, since a hundred jar paths hide the flags a reader
+     * needs. Empty when the command was not recorded.
+     */
+    public String commandLine() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < command.size(); i++) {
+            String arg = command.get(i);
+            if (i > 0) sb.append(' ');
+            sb.append(quoted(arg));
+            if (PATH_LIST_FLAGS.contains(arg) && i + 1 < command.size()) {
+                String list = command.get(++i);
+                int entries = list.isEmpty() ? 0 : list.split(Pattern.quote(Classpaths.SEPARATOR), -1).length;
+                sb.append(" <").append(entries).append(entries == 1 ? " entry>" : " entries>");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static String quoted(String arg) {
+        boolean plain = !arg.isEmpty() && arg.chars().noneMatch(Character::isWhitespace);
+        return plain ? arg : "'" + arg.replace("'", "'\\''") + "'";
     }
 
     /**

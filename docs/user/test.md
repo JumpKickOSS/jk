@@ -390,8 +390,10 @@ reason under `Error occurred during initialization of VM` (`Could not reserve en
 Environment to continue`, or `Terminating due to java.lang.OutOfMemoryError: …`. An exit of
 `128 + signal` names the signal — `test runner exited 137 (SIGKILL) before any test ran` is the
 kernel's out-of-memory killer under load or an outside kill — and when nothing the fork printed
-classifies, its last five lines ride in the message; a fork that printed nothing says so. The same
-sentence fails `jk guard` when the guard suite's JVM dies on start. The fix names the knobs that
+classifies, its last five lines ride in the message; a fork that printed nothing says so, and
+the report then carries the command the fork was started with — the java binary, the JVM flags
+and the arguments, a class path folded to its entry count — since how it was started is the whole
+diagnostic left. The same sentence fails `jk guard` when the guard suite's JVM dies on start. The fix names the knobs that
 size the fork: `[test] workers` (`-w`), `[test] jvm-args` `-Xmx…`, `--ram-percent`.
 
 A test class the Platform's scan could not load — a framework loader that boots the application

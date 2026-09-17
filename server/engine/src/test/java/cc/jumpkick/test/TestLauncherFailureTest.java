@@ -3,6 +3,8 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Classpaths;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class TestLauncherFailureTest {
@@ -142,6 +144,31 @@ class TestLauncherFailureTest {
                 .isEqualTo("test runner exited 1 before any test ran"
                         + " — There is insufficient memory for the Java Runtime Environment to continue.");
         assertThat(f.jvmRefused()).isTrue();
+    }
+
+    /** How the fork was started rides along, its class path folded to a count so the flags stay readable. */
+    @Test
+    void the_command_line_rides_along_with_its_class_path_folded() {
+        String classpath = String.join(Classpaths.SEPARATOR, "/lib/a.jar", "/lib/b.jar", "/ws/target/test-classes");
+        List<String> command = List.of(
+                "/jdk/bin/java",
+                "-Xmx512m",
+                "-javaagent:/agents/jacoco.jar=destfile=/ws/target/cov exec",
+                "-cp",
+                classpath,
+                "cc.jumpkick.plugin.Worker",
+                "--pull");
+        TestLauncherFailure f = TestLauncherFailure.runner("g:app", 137, "", command);
+
+        assertThat(f.command()).isEqualTo(command);
+        assertThat(f.commandLine())
+                .isEqualTo("/jdk/bin/java -Xmx512m '-javaagent:/agents/jacoco.jar=destfile=/ws/target/cov exec'"
+                        + " -cp <3 entries> cc.jumpkick.plugin.Worker --pull");
+        assertThat(TestLauncherFailure.discovery("g:app", 1, "", List.of("/jdk/bin/java", "-cp", "/lib/a.jar", "M"))
+                        .commandLine())
+                .isEqualTo("/jdk/bin/java -cp <1 entry> M");
+        assertThat(TestLauncherFailure.runner("g:app", 1, "").command()).isEmpty();
+        assertThat(TestLauncherFailure.runner("g:app", 1, "").commandLine()).isEmpty();
     }
 
     /** A fork the kernel or a neighbour killed: the exit is 128 plus the signal, and the signal is named. */

@@ -67,6 +67,7 @@ final class PullWorkerPool {
         var captures = new ArrayList<CaptureBuffer>();
         var lastClasses = new ArrayList<AtomicReference<String>>();
         var handlerFailures = new ArrayList<AtomicReference<@Nullable RuntimeException>>();
+        var commands = new ArrayList<AtomicReference<List<String>>>();
 
         for (int w = 0; w < actualWorkers; w++) {
             // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
@@ -82,13 +83,15 @@ final class PullWorkerPool {
             lastClasses.add(last);
             final var handlerFailure = new AtomicReference<@Nullable RuntimeException>();
             handlerFailures.add(handlerFailure);
+            final var command = new AtomicReference<List<String>>(List.of());
+            commands.add(command);
             final int totalWorkers = actualWorkers;
             // Virtual: the thread blocks on the child's stdout for the worker's whole life —
             // exactly the shape VT is for.
             Thread t = SessionContext.startVirtual(
                     "jk-test-worker-" + workerId,
-                    () -> exits[idx] =
-                            driveWorker(workerId, totalWorkers, args, queue, agg, crash, last, handlerFailure));
+                    () -> exits[idx] = driveWorker(
+                            workerId, totalWorkers, args, queue, agg, crash, last, handlerFailure, command));
             workerThreads.add(t);
         }
         // Each worker thread owns its process (via PluginProcess.converse) and
@@ -116,15 +119,19 @@ final class PullWorkerPool {
         boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
         if (total == 0 && worstExit != 0 && !handlerFailed) {
             // No test events but a worker died — the launcher failed before any test ran; what
-            // the crashed worker(s) printed (the dropped stderr) is the evidence.
+            // the crashed worker(s) printed (the dropped stderr) is the evidence, and how the
+            // first of them was started is the evidence when they printed nothing.
             StringBuilder crash = new StringBuilder();
+            List<String> command = List.of();
             for (int i = 0; i < actualWorkers; i++) {
-                if (exits[i] != 0 && !captures.get(i).isEmpty()) {
+                if (exits[i] == 0) continue;
+                if (command.isEmpty()) command = commands.get(i).get();
+                if (!captures.get(i).isEmpty()) {
                     if (crash.length() > 0) crash.append('\n');
                     crash.append(captures.get(i).text());
                 }
             }
-            throw TestLauncherFailure.runner(moduleLabel, worstExit, crash.toString());
+            throw TestLauncherFailure.runner(moduleLabel, worstExit, crash.toString(), command);
         }
         // A worker that dies mid-suite while its siblings keep going must not vanish silently:
         // its in-flight class is neither run nor reported, and the suite would go green with a
@@ -196,7 +203,8 @@ final class PullWorkerPool {
             ResultAggregator aggregator,
             CaptureBuffer crash,
             AtomicReference<String> lastClass,
-            AtomicReference<@Nullable RuntimeException> handlerFailure) {
+            AtomicReference<@Nullable RuntimeException> handlerFailure,
+            AtomicReference<List<String>> command) {
         BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, lastClass);
         Consumer<String> passthrough = line -> {
             crash.add(line);
@@ -208,6 +216,7 @@ final class PullWorkerPool {
             Path tmp = TestTmpDir.forWorker(launcher.testTmpDir(), workerId, totalWorkers);
             WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
+            command.set(PluginLoader.command(javaBinary, classpath, flags, args));
             return PluginLoader.converse(
                     javaBinary,
                     classpath,

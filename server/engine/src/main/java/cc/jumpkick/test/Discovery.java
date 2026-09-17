@@ -10,17 +10,18 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What one list-only test-discovery fork produced: the classes it named, its exit code, what it
- * printed outside the protocol (the crash text when it died), and the parent-side exception when
- * the parent's own decoder ended the conversation.
+ * printed outside the protocol (the crash text when it died), the command it was started with,
+ * and the parent-side exception when the parent's own decoder ended the conversation.
  */
 record Discovery(
         List<String> classes,
         int exit,
         String output,
+        List<String> command,
         @Nullable RuntimeException handler) {
 
-    Discovery(List<String> classes, int exit, String output) {
-        this(classes, exit, output, null);
+    Discovery(List<String> classes, int exit, String output, List<String> command) {
+        this(classes, exit, output, command, null);
     }
 
     /**
@@ -52,7 +53,7 @@ record Discovery(
      * decoder could not finish reading, so none of it is trusted.
      */
     static Discovery handlerFailed(List<String> classes, String output, RuntimeException handler) {
-        return new Discovery(classes, -1, output, handler);
+        return new Discovery(classes, -1, output, List.of(), handler);
     }
 
     /**
@@ -75,6 +76,6 @@ record Discovery(
         if (handler != null) {
             return new TestSummary(1, 0, 1, 0, List.of(WorkerFailureRow.discovery(moduleLabel, handler)));
         }
-        throw TestLauncherFailure.discovery(moduleLabel, exit, output);
+        throw TestLauncherFailure.discovery(moduleLabel, exit, output, command);
     }
 }

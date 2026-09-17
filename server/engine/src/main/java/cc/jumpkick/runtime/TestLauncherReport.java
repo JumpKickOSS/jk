@@ -48,6 +48,9 @@ final class TestLauncherReport {
         if (engine != null) sb.append("\nengine: ").append(engine);
         for (String cause : e.causes()) sb.append("\ncaused by: ").append(cause);
         for (String frame : e.frames()) sb.append("\n    at ").append(frame);
+        // A fork that said nothing is diagnosed from how it was started.
+        if (e.lastLines().isEmpty() && !e.command().isEmpty())
+            sb.append("\ncommand: ").append(e.commandLine());
         List<String> dropped = e.droppedClasses();
         if (conflict != null) {
             sb.append("\n\n").append(conflict.text());
