@@ -570,14 +570,16 @@ public final class JUnitLauncher {
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
         var crash = new CaptureBuffer();
+        List<String> flags = jvmFlags(JvmRole.SUITE, 1, testTmpDir);
+        List<String> args = withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames));
         TestSummary result;
         try {
             int exit = PluginLoader.run(
                     javaBinary,
                     classpath,
-                    jvmFlags(JvmRole.SUITE, 1, testTmpDir),
+                    flags,
                     PROTOCOL_PREFIX,
-                    withTagArgs(JUnitClassFilter.singleWorkerArgs(testClassesDir, classNames)),
+                    args,
                     testEnv,
                     workDir(),
                     aggregator::accept,
@@ -585,7 +587,7 @@ public final class JUnitLauncher {
                         crash.add(line);
                         aggregator.userOutput(line);
                     });
-            result = aggregator.toResult(exit, crash.text());
+            result = aggregator.toResult(exit, crash.text(), PluginLoader.command(javaBinary, classpath, flags, args));
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the fork: the pool's handler row, not an IOException.
             listener.onUserOutput(WorkerFailureRow.SINGLE_WORKER, Objects.requireNonNull(e.getMessage()));
@@ -705,14 +707,16 @@ public final class JUnitLauncher {
             throws IOException, InterruptedException {
         var classes = new ArrayList<String>();
         var crash = new CaptureBuffer();
+        List<String> flags = jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir);
+        List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir));
         int exit;
         try {
             exit = PluginLoader.run(
                     javaBinary,
                     classpath,
-                    jvmFlags(JvmRole.DISCOVERY, 1, testTmpDir),
+                    flags,
                     PROTOCOL_PREFIX,
-                    withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
+                    args,
                     testEnv,
                     workDir(),
                     Discovery.handler(classes, listener),
@@ -721,7 +725,8 @@ public final class JUnitLauncher {
             // The parent's own decoder ended the listing: a handler row, and no trust in the list.
             return Discovery.handlerFailed(List.copyOf(classes), crash.text(), e.handler());
         }
-        return new Discovery(List.copyOf(classes), exit, crash.text());
+        return new Discovery(
+                List.copyOf(classes), exit, crash.text(), PluginLoader.command(javaBinary, classpath, flags, args));
     }
 
     // -------- shared helpers --------------------------------------------

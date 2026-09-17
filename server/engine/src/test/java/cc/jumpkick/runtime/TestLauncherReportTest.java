@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.test.TestLauncherFailure;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class TestLauncherReportTest {
@@ -83,6 +84,30 @@ class TestLauncherReportTest {
                 .contains("Fix: the test runner JVM refused to start")
                 .contains("`[test] jvm-args`")
                 .doesNotContain("the runner's full output is above");
+    }
+
+    /** A fork that printed nothing is diagnosed from how it was started; one with last words is not repeated its argv. */
+    @Test
+    void a_fork_that_printed_nothing_names_the_command_it_was_started_with() {
+        List<String> command =
+                List.of("/jdk/bin/java", "-Xmx256m", "-cp", "/lib/a.jar", "cc.jumpkick.plugin.Worker", "--list-only");
+
+        String silent = TestLauncherReport.message(TestLauncherFailure.discovery("g:app", 1, "", command), null);
+        assertThat(silent)
+                .startsWith("test discovery exited 1 before any test ran — the fork printed nothing\n"
+                        + "command: /jdk/bin/java -Xmx256m -cp <1 entry> cc.jumpkick.plugin.Worker --list-only")
+                .contains("Fix: the fork printed nothing and named no reason");
+
+        String killed = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 137, "", command), null);
+        assertThat(killed)
+                .contains("\ncommand: /jdk/bin/java -Xmx256m -cp <1 entry> cc.jumpkick.plugin.Worker --list-only")
+                .contains("Fix: the test runner JVM was killed by SIGKILL");
+
+        String spoke = TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, "a last line", command), null);
+        assertThat(spoke).contains("the fork's last output:").doesNotContain("command: ");
+        assertThat(TestLauncherReport.message(TestLauncherFailure.runner("g:app", 1, ""), null))
+                .as("no command recorded, none shown")
+                .doesNotContain("command: ");
     }
 
     @Test

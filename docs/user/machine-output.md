@@ -80,7 +80,7 @@ so the test's own `File.java:NN` is in the file however deep the framework's fra
 launcher missing from the classpath, a JVM that could not reserve its heap — is that shape with
 code `test-launcher`: the exit (the signal's name beside it for `128 + signal`), the exception and
 engine the runner named or the JVM's own last words (else the fork's last lines, or that it printed
-nothing), the two conflicting JUnit coordinates when the lock names them, and the fix (`jk why
+nothing and the command it was started with), the two conflicting JUnit coordinates when the lock names them, and the fix (`jk why
 <coordinate>`), with the fork's output as the fenced block. It is never
 counted as a red test, so there is no `Tests:` line for it. MCP `jk_diagnostics` returns it as one
 row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-launcher-cannot-start).
