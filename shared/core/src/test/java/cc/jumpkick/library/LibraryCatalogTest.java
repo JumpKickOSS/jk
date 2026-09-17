@@ -181,6 +181,32 @@ class LibraryCatalogTest {
                 .get()
                 .extracting(LibraryCatalog.Module::moduleKey)
                 .isEqualTo("org.mockito:mockito-junit-jupiter");
+        // The ANTLR tool and its runtime share the org.antlr.v4 prefix; the longer one wins.
+        assertThat(r.moduleForPackage("org.antlr.v4.runtime.tree"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("org.antlr:antlr4-runtime");
+        assertThat(r.moduleForPackage("org.antlr.v4.tool"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("org.antlr:antlr4");
+    }
+
+    @Test
+    void the_bundled_catalog_names_the_antlr_and_dgs_codegen_handles() {
+        LibraryCatalog r = LibraryCatalog.bundled();
+        assertThat(r.lookup("antlr4"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("org.antlr:antlr4");
+        assertThat(r.lookup("antlr4-runtime"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("org.antlr:antlr4-runtime");
+        assertThat(r.lookup("graphql-dgs-codegen-shared-core"))
+                .get()
+                .extracting(LibraryCatalog.Module::moduleKey)
+                .isEqualTo("com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-shared-core");
     }
 
     @Test

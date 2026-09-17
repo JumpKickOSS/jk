@@ -181,6 +181,13 @@ jgit                         = "org.eclipse.jgit:org.eclipse.jgit"
 # Giter8 / StringTemplate (engine-only renderer)
 ST4                          = "org.antlr:ST4"
 
+# ANTLR: the tool a grammar compiles with, and the runtime a generated parser links against
+antlr4                       = "org.antlr:antlr4"
+antlr4-runtime               = "org.antlr:antlr4-runtime"
+
+# GraphQL: the DGS codegen core a [generate] recipe runs over a schema
+graphql-dgs-codegen-shared-core = "com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-shared-core"
+
 # Crypto
 bcpg-jdk18on                 = "org.bouncycastle:bcpg-jdk18on"
 bcprov-jdk18on               = "org.bouncycastle:bcprov-jdk18on"
@@ -238,3 +245,5 @@ spring-boot-testcontainers          = "org.springframework.boot:spring-boot-test
 "okhttp3"                           = "okhttp"
 "picocli"                           = "picocli"
 "org.jspecify"                      = "jspecify"
+"org.antlr.v4"                      = "antlr4"
+"org.antlr.v4.runtime"              = "antlr4-runtime"

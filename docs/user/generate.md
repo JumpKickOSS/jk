@@ -181,7 +181,7 @@ args    = ["--output-dir", "${out}", "--package-name", "com.acme.graphql", "--ge
 discard = ["generated-examples"]   # the CLI's example data fetchers, which need the DGS runtime
 
 [dependencies]
-graphql-dgs-codegen-shared-core = "com.netflix.graphql.dgs.codegen:graphql-dgs-codegen-shared-core:8.6.0"  # the client's base classes
+graphql-dgs-codegen-shared-core = "8.6.0"   # the client's base classes, a catalog short name
 ```
 
 The types land under `<package>.types`, the client under `<package>.client`; a schema edit
