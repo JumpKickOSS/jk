@@ -29,7 +29,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
@@ -135,11 +134,9 @@ public final class PlannerSupport {
         for (Path classes : siblings.siblingClosureClasses()) {
             if (!cp.contains(classes)) cp.add(classes);
         }
-        for (Path sibLock : siblings.siblingLockfiles()) {
-            Lockfile sl = LockfileReader.read(sibLock);
-            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
-                if (!cp.contains(p)) cp.add(p);
-            }
+        for (Path p :
+                resolver.siblingClasspath(siblings.siblingLocks(), ClasspathResolver.COMPILE_MAIN, requirePresent)) {
+            if (!cp.contains(p)) cp.add(p);
         }
         return cp;
     }
@@ -190,13 +187,11 @@ public final class PlannerSupport {
         // schedule: javac compiles against these paths while the sibling may still be packaging.
         // After `jk clean` they still let `jk explain` reproduce the build's key.
         cp.addAll(siblings.siblingClosureClasses());
-        // A sibling's lock is read like this module's: under requirePresent a row that is not on
-        // disk fails by name rather than leaving the classpath short.
-        for (Path sibLock : siblings.siblingLockfiles()) {
-            Lockfile sl = LockfileReader.read(sibLock);
-            for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN, requirePresent)) {
-                if (!cp.contains(p)) cp.add(p);
-            }
+        // A sibling's lock is read like this module's — its own declarations first — and under
+        // requirePresent a row that is not on disk fails by name rather than leaving the classpath short.
+        for (Path p :
+                resolver.siblingClasspath(siblings.siblingLocks(), ClasspathResolver.COMPILE_MAIN, requirePresent)) {
+            if (!cp.contains(p)) cp.add(p);
         }
         return cp;
     }
@@ -803,14 +798,13 @@ public final class PlannerSupport {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_TEST, false, project));
         cp.addAll(sib.siblingClosureClasses());
-        for (Path sl : sib.siblingLockfiles()) {
-            try {
-                Lockfile s = LockfileReader.read(sl);
-                for (Path p : resolver.classpathFor(s, ClasspathResolver.COMPILE_MAIN)) if (!cp.contains(p)) cp.add(p);
-            } catch (Exception e) {
-                /* best-effort */
-                Log.debug("testStampExtras: best-effort", e);
+        try {
+            for (Path p : resolver.siblingClasspath(sib.siblingLocks(), ClasspathResolver.COMPILE_MAIN, false)) {
+                if (!cp.contains(p)) cp.add(p);
             }
+        } catch (Exception e) {
+            /* best-effort */
+            Log.debug("testStampExtras: best-effort", e);
         }
         return cp;
     }
@@ -821,14 +815,13 @@ public final class PlannerSupport {
         WorkspaceClasspath.Result sib = WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES);
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.TEST, false, project));
         cp.addAll(sib.siblingClosureJars());
-        for (Path sl : sib.siblingLockfiles()) {
-            try {
-                Lockfile s = LockfileReader.read(sl);
-                for (Path p : resolver.classpathFor(s, ClasspathResolver.RUNTIME)) if (!cp.contains(p)) cp.add(p);
-            } catch (Exception e) {
-                /* best-effort */
-                Log.debug("testStampExtras: best-effort", e);
+        try {
+            for (Path p : resolver.siblingClasspath(sib.siblingLocks(), ClasspathResolver.RUNTIME, false)) {
+                if (!cp.contains(p)) cp.add(p);
             }
+        } catch (Exception e) {
+            /* best-effort */
+            Log.debug("testStampExtras: best-effort", e);
         }
         return cp;
     }

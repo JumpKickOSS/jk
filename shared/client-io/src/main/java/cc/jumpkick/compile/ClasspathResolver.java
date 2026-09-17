@@ -4,8 +4,11 @@ package cc.jumpkick.compile;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.ExplodedArchives;
 import cc.jumpkick.config.JkM2Config;
+import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
@@ -153,6 +156,27 @@ public final class ClasspathResolver {
             if (entry.jar() != null) result.add(entry.jar());
         }
         return result;
+    }
+
+    /**
+     * The rows of every composite sibling's lock in {@code scopes}, each lock read as its own module
+     * reads it (a member's rows of a shared workspace lock) and in the order that module's own
+     * classpath has — its declarations first, their transitives breadth-first, then the rest of its
+     * lock — so a package a sibling's transitive and its declaration both carry resolves to the jar
+     * the sibling declared. Deduplicated across siblings; a caller appends it after the module's
+     * own rows.
+     */
+    public List<Path> siblingClasspath(
+            List<WorkspaceClasspath.SiblingLock> siblings, Set<Scope> scopes, boolean requirePresent)
+            throws IOException {
+        List<Path> out = new ArrayList<>();
+        for (WorkspaceClasspath.SiblingLock sibling : siblings) {
+            Lockfile lock = MemberRows.view(LockfileReader.read(sibling.lockFile()), sibling.lockFile(), sibling.dir());
+            for (Path p : classpathFor(lock, scopes, requirePresent, sibling.build())) {
+                if (!out.contains(p)) out.add(p);
+            }
+        }
+        return out;
     }
 
     /** As {@link #classpathFor(Lockfile, Set, boolean, JkBuild)}, each path paired with its lock row. */
