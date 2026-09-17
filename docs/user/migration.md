@@ -208,12 +208,12 @@ or newer and drives Maven and jk through one protocol: import, lock, build, test
 cold / no-op / one-file-edit walls for both tools. Its `RESULTS.md` is the ratchet; a run that
 lowers a count is a regression.
 
-| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 |
-| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 |
-| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 |
-| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 |
+| Count (of 20) | jk 0.13.7 | run 2 | run 3 | run 4 | run 5 | run 6 | run 7 | run 8 | run 9 | run 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| import with no Tier-3 row | 15 | 13 | 11 | 12 | 12 | 13 | 13 | 12 | 11 | 12 |
+| `jk lock` succeeds | 2 | 6 | 6 | 4 | 10 | 9 | 14 | 14 | 14 | 16 |
+| `jk build --skip-tests` compiles something | 1 | 3 | 3 | 2 | 4 | 4 | 8 | 7 | 10 | 9 |
+| `jk test` runs and passes | 0 | 0 | 0 | 1 | 2 | 2 | 2 | 2 | 2 | 2 |
 
 The lock and build counts moved because the effective-POM import resolved every managed version;
 the import count fell because the same import now reports a parent or BOM it cannot fetch as a
@@ -262,6 +262,13 @@ its lock asks for the platform BOM the `[quarkus]` table implies at the reactor'
 no repository has; thingsboard's lock ends with the engine's heap in the materialize fan-out; hadoop's
 lock passes its parent-version wall and outruns the harness's fifteen-minute cap. The import count
 fell because nacos gained the same honest grpc row. Each is a ticket.
+Run 10 (main 62707c258) locks sixteen: thingsboard and hadoop lock for the first time, hadoop's in
+under five minutes where run 9 outran the harness's cap, and nacos compiles through to packaging. The
+build count fell by one because floci's Quarkus augment looks the application's own coordinate up on
+Central instead of taking the workspace root, and keycloak's lock outgrows the default engine heap at
+966 packages; both are tickets, as are the four new walls the runs exposed (a proto include path,
+a library module packaged as an application, `--add-exports` under `--release`, two spellings of one
+repository URL).
 
 Two of run 7's test walls are the repository's contract with Maven rather than something jk
 translates. cryptomator's `SecurePasswordFieldTest` starts the JavaFX platform in `@BeforeAll`;
