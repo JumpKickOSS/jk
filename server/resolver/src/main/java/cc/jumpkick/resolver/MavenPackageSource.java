@@ -8,6 +8,7 @@ import cc.jumpkick.model.MavenMetaversion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
+import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.GradleModuleMetadata;
@@ -52,10 +53,19 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * Workers draining the speculative warm queue at once (pre-solve BOM blast, roots, frontier,
-     * widening). Disk-bound on a warm CAS; virtual threads + local store tolerate higher fan-out
-     * than network-polite Maven Central.
+     * widening): half the {@linkplain DownloadSlots#width() download slots}, at most {@value
+     * #PREFETCH_WORKERS_CAP}. Each worker's POM chain fans out across repositories and BOM imports
+     * into network legs that take leg slots, so the workers are sized to keep the legs busy without
+     * outnumbering them.
      */
-    private static final int PREFETCH_WORKERS = 32;
+    static final int PREFETCH_WORKERS_CAP = 32;
+
+    private static final int PREFETCH_WORKERS = prefetchWorkers(DownloadSlots.width());
+
+    /** The prefetch worker count for {@code slotWidth} download slots. */
+    static int prefetchWorkers(int slotWidth) {
+        return Math.max(1, Math.min(PREFETCH_WORKERS_CAP, slotWidth / 2));
+    }
 
     /** Upper bound on how long a solve waits for speculative prefetches to wind down. */
     private static final long QUIESCE_TIMEOUT_MS = 30_000;

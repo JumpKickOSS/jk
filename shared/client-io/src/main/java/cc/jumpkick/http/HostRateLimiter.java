@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Per-host HTTP concurrency cap (default {@value #DEFAULT_PERMITS}). Acquire around the request;
@@ -39,7 +40,7 @@ public final class HostRateLimiter {
     private final ConcurrentMap<String, Semaphore> semaphores = new ConcurrentHashMap<>();
 
     /** The cap for {@code host}: an override when one applies, else this limiter's default. */
-    int permitsFor(String host) {
+    public int permitsFor(@Nullable String host) {
         // The override lifts the DEFAULT limiter for a host known to tolerate more. A limiter constructed
         // at any other capacity was an explicit choice by its caller and is left exactly as asked — being
         // "helpfully" widened to 20 is the last thing a caller that said 2 wants.
