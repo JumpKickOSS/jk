@@ -256,8 +256,10 @@ touching one module in a big workspace still shards wide — that is the inner l
 
 An explicit `-w N` is never rescaled; it means N.
 
-When `W > 1`, each runner gets its own `java.io.tmpdir` and its own `JK_STATE_DIR`
-(nested-engine suites get distinct engine sockets).
+When `W > 1`, each runner gets its own `java.io.tmpdir`, its own `JK_STATE_DIR` under the
+module's sandbox (nested-engine suites get distinct engine sockets) and its own jqwik
+failure-replay database (`jqwik.database`, under that temp root rather than `.jqwik-database`
+in the module root, so two runners never write one file).
 
 ```bash
 jk test -w1          # debug flakes / one JVM per module

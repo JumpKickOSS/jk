@@ -198,7 +198,7 @@ shared `JK_M2_LOCAL` and a temp root under the module's `target/`. The three roo
 explicitly because `WorkerEnv` lets the engine's own spellings of them through by name: an engine
 started with `JK_STATE_DIR` or `JK_STORE_DIR` in its shell would otherwise hand every suite its
 real build history — and a nested `jk self nuke` its real store. With `W > 1` each runner gets a
-child state dir of its own.
+child state dir and a jqwik database of its own under its temp root.
 
 **The overlay rule.** Layout settings come in two layers: the `jk.env.<NAME>` system properties
 (the in-process seam a test sets per class or method, forwarded by the engine spawner to the
