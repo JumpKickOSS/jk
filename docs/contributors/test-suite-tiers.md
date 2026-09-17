@@ -207,6 +207,11 @@ so a home named by the overlay takes its store, cache and state from the overlay
 environment `JK_STORE_DIR` describes the shell's home and never reaches into an overlay home.
 `JK_HOME=/scratch JK_STORE_DIR=~/.jk/store` in one shell still shares the store.
 
+**Unit tests that read the state root** (`JkDirs.state()` / `JkDirs.builds()`: lock timings, host
+calibration, learned weights) build it under a throwaway: `@SysProps.TempRoots("jk.env.JK_STATE_DIR")`
+on the class, and `Calibration.invalidateMemo()` where a process-wide memo could carry a previous
+reader's file. `:cli` classes use `@IsolatedState` / `@IsolatedStore` (guard `cli-test-isolated-state`).
+
 ## Suites and tags
 
 | Intent | Command |
