@@ -3,6 +3,7 @@ package cc.jumpkick.protobuf;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,22 +34,38 @@ final class ProtocStep {
 
     private ProtocStep() {}
 
+    /**
+     * The module-relative proto roots {@code [protobuf] src} names — one string or a list, {@code
+     * proto} when absent — in declared order.
+     */
+    static List<String> roots(PluginConfig config) {
+        Object value = config.values().get("src");
+        if (value instanceof String one) return one.isBlank() ? List.of("proto") : List.of(one);
+        List<String> list = config.stringList("src");
+        return list.isEmpty() ? List.of("proto") : list;
+    }
+
     static void run(TaskExec exec) throws Exception {
-        String src = exec.config().stringOpt("src").orElse("proto");
-        Path protoDir = exec.moduleDir().resolve(src);
+        List<Path> protoDirs = new ArrayList<>();
+        List<Path> protos = new ArrayList<>();
+        for (String root : roots(exec.config())) {
+            Path protoDir = exec.moduleDir().resolve(root);
+            protoDirs.add(protoDir);
+            protos.addAll(protoFiles(protoDir));
+        }
         Path gen = exec.outputDir("gen");
-        List<Path> protos = protoFiles(protoDir);
         if (protos.isEmpty()) {
-            return; // an empty/missing proto dir is a no-op, not an error — gen stays empty
+            return; // empty/missing proto dirs are a no-op, not an error — gen stays empty
         }
         boolean lite = exec.config().bool("lite", false);
         Path protoc = executable(exec, "protoc");
         exec.label("protoc (" + protos.size() + (protos.size() == 1 ? " file)" : " files)"));
         TaskExec.ToolRun run = exec.tool(protoc)
                 .arg("--java_out=" + (lite ? "lite:" : "") + gen.toAbsolutePath())
-                .arg("-I")
-                .arg(protoDir.toAbsolutePath().toString())
                 .cwd(exec.moduleDir());
+        for (Path protoDir : protoDirs) {
+            run.arg("-I").arg(protoDir.toAbsolutePath().toString());
+        }
         for (Path sibling : exec.siblingFiles("src")) {
             if (Files.isDirectory(sibling))
                 run.arg("-I").arg(sibling.toAbsolutePath().toString());

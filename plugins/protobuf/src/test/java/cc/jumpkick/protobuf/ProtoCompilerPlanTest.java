@@ -61,6 +61,23 @@ class ProtoCompilerPlanTest {
                         "project:src/main/proto", "sibling:src", "config", "runtime-classpath", "compile-classpath");
     }
 
+    /** A list of proto roots declares one input per root, each fingerprinted by the engine. */
+    @Test
+    void a_list_of_src_dirs_declares_an_input_per_root(@TempDir Path dir) throws Exception {
+        String line = protocTask(
+                        dir,
+                        "{\"t\":\"config\",\"key\":\"src\",\"kind\":\"list\",\"values\":[\"proto\",\"src/main/proto\"]}")
+                .orElseThrow(() -> new AssertionError("no protoc task line"));
+        assertThat(arrayOf(line, "inputs"))
+                .containsExactly(
+                        "project:proto",
+                        "project:src/main/proto",
+                        "sibling:src",
+                        "config",
+                        "runtime-classpath",
+                        "compile-classpath");
+    }
+
     /** No packager and no commands: the plugin is a single codegen step. */
     @Test
     void contributes_no_packager_and_no_command(@TempDir Path dir) throws Exception {
@@ -77,7 +94,7 @@ class ProtoCompilerPlanTest {
                 .findFirst();
     }
 
-    /** Run the plugin's describe op over a spec with the given `src` (absent when null). */
+    /** Run the plugin's describe op over a spec with the given `src` (absent when null; a whole config line when it starts with a brace). */
     private static List<String> describe(Path dir, @Nullable String src) throws Exception {
         Path spec = dir.resolve("describe.spec");
         List<String> lines = new ArrayList<>(List.of(
@@ -85,7 +102,11 @@ class ProtoCompilerPlanTest {
                 "{\"t\":\"project\",\"group\":\"com.example\",\"name\":\"svc\",\"version\":\"1\","
                         + "\"javaRelease\":25,\"nativeDeclared\":false,\"kotlin\":false}"));
         if (src != null) {
-            lines.add(1, "{\"t\":\"config\",\"key\":\"src\",\"kind\":\"string\",\"value\":\"" + src + "\"}");
+            lines.add(
+                    1,
+                    src.startsWith("{")
+                            ? src
+                            : "{\"t\":\"config\",\"key\":\"src\",\"kind\":\"string\",\"value\":\"" + src + "\"}");
         }
         Files.write(spec, lines);
         var buffer = new ByteArrayOutputStream();

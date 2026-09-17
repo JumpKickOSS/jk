@@ -19,8 +19,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The directories a plugin step's {@code sibling:<key>} input names: for every workspace sibling
  * in the module's MAIN/EXPORT closure that declares the plugin's table, the sibling's value under
- * {@code key} — the schema default when its table omits the key — resolved against the sibling's
- * own directory, in dependency order. A sibling without the table contributes nothing: it has no
+ * {@code key} — one directory or a list of them, the schema default when its table omits the key —
+ * resolved against the sibling's own directory, in dependency order. A sibling without the table contributes nothing: it has no
  * sources of that kind to import.
  */
 final class SiblingFiles {
@@ -51,6 +51,12 @@ final class SiblingFiles {
             Object value = table.get().values().getOrDefault(key, fallback);
             if (value instanceof String rel && !rel.isBlank())
                 out.add(sibling.getKey().resolve(rel));
+            if (value instanceof List<?> rels) {
+                for (Object rel : rels) {
+                    if (rel instanceof String s && !s.isBlank())
+                        out.add(sibling.getKey().resolve(s));
+                }
+            }
         }
         return out;
     }

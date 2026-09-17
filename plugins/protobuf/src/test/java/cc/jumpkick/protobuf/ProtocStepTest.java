@@ -96,6 +96,29 @@ class ProtocStepTest {
         assertThat(args).noneMatch(s -> s.endsWith("ignored.proto"));
     }
 
+    /** Several proto roots: protoc reads the protos of each and gets each as an include root, in the declared order. */
+    @Test
+    void a_list_of_src_dirs_compiles_every_root_and_includes_each(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf").config("src", List.of("proto", "src/main/proto"));
+        Path first = tmp.resolve("proto");
+        Path second = tmp.resolve("src/main/proto");
+        Path a = write(first.resolve("a.proto"), "syntax = \"proto3\";");
+        Path b = write(second.resolve("b.proto"), "syntax = \"proto3\";");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0));
+
+        ProtocStep.run(io);
+
+        List<String> args = Files.readAllLines(argv);
+        assertThat(args)
+                .containsSubsequence(
+                        "-I",
+                        first.toAbsolutePath().toString(),
+                        "-I",
+                        second.toAbsolutePath().toString())
+                .contains(a.toAbsolutePath().toString(), b.toAbsolutePath().toString());
+    }
+
     /** No protos is a no-op: nothing forks, no label, an empty gen. */
     @Test
     void an_empty_or_missing_proto_dir_runs_nothing(@TempDir Path tmp) throws Exception {
