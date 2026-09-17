@@ -103,6 +103,23 @@ class LockDeclaredRepositoryTest {
         assertThat(notes).isEmpty();
     }
 
+    /** The sources jar of a row a declared repository served is asked of that repository. */
+    @Test
+    void sources_attach_looks_in_the_repository_that_served_the_row(@TempDir Path dir) throws Exception {
+        new MavenStub(jitpack).sourcesJar("com.github.everit-org.json-schema", "org.everit.json.schema", "1.14.4");
+        LockOrchestrator orchestrator = new LockOrchestrator(repos(dir));
+        Lockfile lock = orchestrator.lock(
+                project("io.apicurio:schema-util-json", "=2.6.13"), "test", List.of(), true, observer());
+
+        Lockfile withSources = orchestrator.attachSources(lock);
+
+        Lockfile.Artifact everit = withSources.artifacts().stream()
+                .filter(a -> a.name().startsWith("com.github.everit-org.json-schema:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(everit.sourcesChecksum()).startsWith("sha256:");
+    }
+
     private RepoGroup repos(Path dir) {
         return RepoGroup.of(new MavenRepo("central", central.base(), new Http(), new Cas(dir.resolve("cache"))));
     }
