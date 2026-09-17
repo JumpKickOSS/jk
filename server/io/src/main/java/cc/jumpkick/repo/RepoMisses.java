@@ -14,6 +14,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * the positive memos answer only for what was found. A known miss is answered without a request
  * until it expires.
  *
+ * <p>The key is the URL the request opened, not the repository's logical origin: a repository a
+ * settings.xml {@code <mirror>} starts routing is asked at the mirror's URL, which no miss recorded
+ * at the origin answers for, and a mirror removed leaves the origin asked afresh.
+ *
  * <p>Version catalogs are never memoized here: a {@code maven-metadata.xml} that is absent is a
  * coordinate nothing has been published under yet, exactly the answer that changes when something
  * is, so a catalog miss is asked again every time and {@code jk outdated} sees the first release.
