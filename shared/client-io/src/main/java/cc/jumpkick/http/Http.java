@@ -3,6 +3,7 @@ package cc.jumpkick.http;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.model.RepositorySpec;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -556,27 +557,13 @@ public final class Http {
         return !("https".equalsIgnoreCase(from.getScheme()) && "http".equalsIgnoreCase(to.getScheme()));
     }
 
-    /** Same scheme, host and effective port — the boundary a credential is scoped to. */
-    public static boolean sameOrigin(URI a, URI b) {
-        return a.getScheme() != null
-                && a.getScheme().equalsIgnoreCase(b.getScheme())
-                && a.getHost() != null
-                && a.getHost().equalsIgnoreCase(b.getHost())
-                && effectivePort(a) == effectivePort(b);
-    }
-
-    private static int effectivePort(URI uri) {
-        if (uri.getPort() != -1) return uri.getPort();
-        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
-    }
-
     /**
      * The request re-aimed at {@code target}: every header when the origin is unchanged, everything
      * but {@link #CREDENTIAL_HEADERS} when it is not, and the proxy credential decided afresh for
      * the target either way. Method and body are the caller's to decide.
      */
     private HttpRequest.Builder reissue(HttpRequest request, URI target) {
-        boolean sameOrigin = sameOrigin(request.uri(), target);
+        boolean sameOrigin = RepositorySpec.sameOrigin(request.uri(), target);
         HttpRequest.Builder next = HttpRequest.newBuilder(request, (name, value) -> {
                     String lower = name.toLowerCase(Locale.ROOT);
                     if (lower.equals("proxy-authorization")) return false;
