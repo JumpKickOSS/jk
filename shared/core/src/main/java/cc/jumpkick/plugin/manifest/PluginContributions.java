@@ -29,6 +29,9 @@ public final class PluginContributions {
     /** A parse-time platform (BOM) injection: the module plus its exact version pin. */
     public record PlatformDep(String module, String version) {}
 
+    /** A platform BOM a plugin's table implies: the module, its version and the table that brought it. */
+    public record ImpliedPlatform(String module, String version, String table) {}
+
     /** A compile-time Kotlin compiler plugin: BTA id, jar coordinate pieces, plugin options. */
     public record KotlinPluginUse(String id, String group, String artifact, String version, List<String> options) {}
 
@@ -36,18 +39,18 @@ public final class PluginContributions {
      * The platform dependencies every present plugin contributes — evaluated at parse time
      * (before resolution; the manifest loader already rejected classpath-has conditions here).
      */
-    public static List<PlatformDep> platformDependencies(
+    public static List<ImpliedPlatform> platformDependencies(
             Project project, boolean nativeDeclared, Map<String, PluginConfig> pluginConfigs) {
         return platformDependencies(project, nativeDeclared, pluginConfigs, PluginTableRegistry.manifests());
     }
 
     /** As above against an explicit manifest set (the parser passes built-ins + resolved third-party). */
-    public static List<PlatformDep> platformDependencies(
+    public static List<ImpliedPlatform> platformDependencies(
             Project project,
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> manifests) {
-        List<PlatformDep> out = new ArrayList<>();
+        List<ImpliedPlatform> out = new ArrayList<>();
         for (PluginDescriptor manifest : manifests) {
             PluginConfig config = pluginConfigs.get(manifest.id());
             if (config == null) continue;
@@ -55,7 +58,8 @@ public final class PluginContributions {
                     manifest.contributions().platformDependencies()) {
                 if (!holds(dep.when(), config, project, nativeDeclared, null, manifest.id())) continue;
                 String coordinate = Interpolation.resolve(dep.coordinate(), config, project, null);
-                out.add(splitCoordinate(coordinate, manifest.id()));
+                PlatformDep split = splitCoordinate(coordinate, manifest.id());
+                out.add(new ImpliedPlatform(split.module(), split.version(), manifest.table()));
             }
         }
         return out;

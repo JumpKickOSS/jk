@@ -45,7 +45,12 @@ public record Dependency(
          * Coordinates pruned from this edge's subtree, each {@code group:artifact} or
          * {@code group:*}; see {@link #exclusion(String)} for the grammar. Empty for most edges.
          */
-        List<String> exclusions) {
+        List<String> exclusions,
+        /**
+         * The plugin table that implied this edge, {@code quarkus} for the platform BOM a
+         * {@code [quarkus]} table brings; {@code null} for an edge the manifest declares.
+         */
+        @Nullable String impliedBy) {
 
     /**
      * Synthetic {@code module} for an unresolved workspace sibling, {@code workspace:<name>} or
@@ -102,6 +107,40 @@ public record Dependency(
                     "exclusion group must be a Maven group, not a wildcard (got: " + spelling + ")");
         }
         return spelling;
+    }
+
+    /** Every component but the provenance; the manifest declares the edge. */
+    public Dependency(
+            String library,
+            String module,
+            VersionSelector version,
+            @Nullable GitSource gitSource,
+            @Nullable String sha256,
+            boolean pinned,
+            boolean optional,
+            @Nullable PathSource pathSource,
+            List<String> requestedFeatures,
+            boolean defaultFeatures,
+            DependencyKind kind,
+            boolean fixtures,
+            @Nullable String classifier,
+            List<String> exclusions) {
+        this(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions,
+                null);
     }
 
     /** Every component but the classifier; the edge is the plain jar. */
@@ -254,7 +293,8 @@ public record Dependency(
                 kind,
                 fixtures,
                 classifier,
-                exclusions);
+                exclusions,
+                impliedBy);
     }
 
     public Dependency withFeatures(List<String> features, boolean defaultFeatures) {
@@ -272,7 +312,8 @@ public record Dependency(
                 kind,
                 fixtures,
                 classifier,
-                exclusions);
+                exclusions,
+                impliedBy);
     }
 
     public Dependency withKind(DependencyKind kind) {
@@ -290,7 +331,8 @@ public record Dependency(
                 kind == null ? DependencyKind.MAIN : kind,
                 fixtures,
                 classifier,
-                exclusions);
+                exclusions,
+                impliedBy);
     }
 
     public Dependency withFixtures(boolean fixtures) {
@@ -308,7 +350,8 @@ public record Dependency(
                 kind,
                 fixtures,
                 classifier,
-                exclusions);
+                exclusions,
+                impliedBy);
     }
 
     /** The same edge naming the classified artifact; {@code null} returns to the plain jar. */
@@ -327,7 +370,8 @@ public record Dependency(
                 kind,
                 fixtures,
                 classifier,
-                exclusions);
+                exclusions,
+                impliedBy);
     }
 
     /** The same edge pruning {@code exclusions} from its subtree; each is validated by {@link #exclusion(String)}. */
@@ -346,7 +390,28 @@ public record Dependency(
                 kind,
                 fixtures,
                 classifier,
-                exclusions == null ? List.of() : exclusions);
+                exclusions == null ? List.of() : exclusions,
+                impliedBy);
+    }
+
+    /** The same edge as the one a plugin's {@code table} implies rather than a declared one. */
+    public Dependency withImpliedBy(String table) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions,
+                Objects.requireNonNull(table, "table"));
     }
 
     /**

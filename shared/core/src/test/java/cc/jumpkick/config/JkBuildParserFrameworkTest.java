@@ -16,6 +16,30 @@ import org.junit.jupiter.api.io.TempDir;
 class JkBuildParserFrameworkTest {
 
     @Test
+    void the_bom_a_framework_table_implies_carries_the_table_as_its_provenance() {
+        JkBuild b = JkBuildParser.parse("""
+                group = "com.example"
+                name = "api"
+                version = "1.0"
+
+                [quarkus]
+                version = "3.39.2"
+
+                [platform-dependencies]
+                junit-bom = { group = "org.junit", version = "6.1.3" }
+                """);
+        var platform = b.dependencies().of(Scope.PLATFORM);
+        assertThat(platform).hasSize(2);
+        assertThat(platform.get(0).module()).isEqualTo("org.junit:junit-bom");
+        assertThat(platform.get(0).impliedBy())
+                .as("a declared BOM has no implying table")
+                .isNull();
+        assertThat(platform.get(1).module()).isEqualTo("io.quarkus.platform:quarkus-bom");
+        assertThat(platform.get(1).version().raw()).isEqualTo("3.39.2");
+        assertThat(platform.get(1).impliedBy()).isEqualTo("quarkus");
+    }
+
+    @Test
     void spring_boot_table_parses_and_auto_imports_the_bom() {
         JkBuild b = JkBuildParser.parse("""
                 group = "com.example"

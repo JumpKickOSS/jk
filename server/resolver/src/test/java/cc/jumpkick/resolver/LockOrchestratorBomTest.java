@@ -114,6 +114,32 @@ class LockOrchestratorBomTest {
     }
 
     @Test
+    void a_plugin_implied_bom_no_repository_has_names_the_table(@TempDir Path tempDir) {
+        JkBuild project = jkBuildWithPlatformDeps(
+                Dependency.of("quarkus-bom", "io.quarkus.platform:quarkus-bom", VersionSelector.parse("=999-SNAPSHOT"))
+                        .withImpliedBy("quarkus"));
+
+        LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
+        assertThatThrownBy(() -> orchestrator.lock(project, "test"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("`[quarkus]`")
+                .hasMessageContaining("io.quarkus.platform:quarkus-bom:999-SNAPSHOT")
+                .hasMessageContaining("no declared repository")
+                .hasMessageContaining("POM not found in any declared repo");
+    }
+
+    @Test
+    void a_declared_bom_no_repository_has_stays_a_missing_pom(@TempDir Path tempDir) {
+        JkBuild project =
+                jkBuildWithPlatformDeps(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0")));
+
+        LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
+        assertThatThrownBy(() -> orchestrator.lock(project, "test"))
+                .isInstanceOf(MavenRepo.ArtifactNotFoundException.class)
+                .hasMessageContaining("POM not found in any declared repo: org.example:the-bom:1.0");
+    }
+
+    @Test
     void platform_bom_pins_lockfile_package(@TempDir Path tempDir) throws Exception {
         upstream.pom("org.example", "the-bom", "1.0", """
                 <project>

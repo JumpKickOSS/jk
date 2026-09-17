@@ -113,6 +113,16 @@ of the same manifests, folded in the same order. They do not reach a member that
 that only depends on `activemq-client` compiles against the 2.0.3 that library declares, as it
 does under Maven.
 
+A BOM a framework table implies is a coordinate the lock fetches like any other: `[quarkus]
+version = "3.39.2"` is `io.quarkus.platform:quarkus-bom:3.39.2`, and repositories publish it for
+releases only. A workspace that builds the framework itself has no such release — the Quarkus
+reactor's members run `quarkus-maven-plugin` at `999-SNAPSHOT`, and the BOM their tables would
+imply exists nowhere — so `jk import` writes no `[quarkus]` table on a member whose version is one
+the reactor builds `quarkus-bom` at, and its report says which members build as plain jars (the
+same rule covers `[spring-boot]` and `spring-boot-dependencies`). A framework table written by hand
+at such a version fails the lock with an error that names the table and the BOM it implies; a
+missing BOM never fails the lock as a bare coordinate.
+
 So a member is resolved on its own exactly when the workspace's answer cannot be its answer:
 
 - it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`

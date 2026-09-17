@@ -446,8 +446,7 @@ class PluginContributionsTest {
                 .kotlin(VersionSelector.parse("=2.4.10"))
                 .build();
         assertThat(PluginContributions.platformDependencies(resolved, false, configs, List.of(manifest)))
-                .extracting(PluginContributions.PlatformDep::module)
-                .containsExactly("com.acme:kt-bom");
+                .containsExactly(new PluginContributions.ImpliedPlatform("com.acme:kt-bom", "1.0.0", "ktextra"));
     }
 
     // ---- for-step — a step tool scoped to the steps or packagers that read it ------------------
