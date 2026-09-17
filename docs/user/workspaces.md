@@ -162,7 +162,12 @@ the workspace's answer cannot be its answer:
   as the workspace's row, as an exact pin would — and the member's own platform table manages it
   at another version or a dependency's POM in the member's own graph declared a version the pinned
   one cannot stand in for: below the declaration, or past its compatible line (`^` of what the POM
-  declared), or outside a range it wrote.
+  declared), or outside a range it wrote, or
+- a BOM or `[managed-dependencies]` entry of its own table that not every member holds writes
+  `exclude` patterns on a module in its graph — a BOM's `<exclusions>` on a root it manages, an
+  entry's on every edge onto its module — that prune an edge the workspace's row carries. The
+  versions may agree; the member's row is the workspace's version without the pruned edges, as
+  Maven applies an imported BOM's exclusions to the module that imports it.
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
@@ -186,7 +191,9 @@ activate and is left out for it.
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
 belongs to. `jk lock` prints one note per member solved on its own, after the summary line, naming
 the coordinates it reads its own rows for with the member's version and the workspace's
-(`lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)`); the same notes land
+(`lib reads its own rows for 1 coordinate: com.foo:leaf 1.0 (workspace 2.0)`; a row at the
+workspace's version that lacks edges its exclusions pruned reads `com.foo:leaf 1.0 (the
+workspace's without com.foo:deep)`); the same notes land
 in the run record — the `Lock notes` section of `jk-results.md` and its `details.jsonl` — and the
 web view. `jk update` rewrites the declared pins and relocks, so a partition that stops being
 necessary disappears on its own.

@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * The rows a workspace member reads instead of the merged solve's. The merged manifest is solved
@@ -37,9 +38,11 @@ import java.util.TreeMap;
  * does not hold at a version an edge of the member's own graph cannot take — its own platform
  * table manages the module at another version, or a dependency's POM declared one the pinned
  * version is below or past the compatible line of. A floating selector and a compatible lift are
- * floors the workspace's row satisfies.
- * Where the member's solve disagrees with a merged row, its row is added with {@code members =
- * [path]}; where it agrees, nothing is added. A merged row a member's own table manages at the
+ * floors the workspace's row satisfies. A member is also solved on its own when a BOM or entry of
+ * its table that not every member holds excludes an edge the merged rows carry; its row is then the
+ * merged version without that edge.
+ * Where the member's solve disagrees with a merged row — its version, its scopes or the edges it
+ * keeps — its row is added with {@code members = [path]}; where it agrees, nothing is added. A merged row a member's own table manages at the
  * merged version, through a BOM or entry the workspace's table never folded, carries that
  * provenance as {@code pinned-by}: the version is what the holder's BOM says, and the lock says so
  * for every member that reads the row. See {@code docs/user/workspaces.md}.
@@ -103,12 +106,13 @@ final class MemberPartitions {
             MemberSolver solver,
             ResolveObserver observer)
             throws IOException, InterruptedException {
-        // name@version → the scope groups the merged rows at that version carry.
-        Map<String, Set<LockRoots.GraphGroup>> unionRows = new HashMap<>();
+        // name@version → the scope groups and edges the merged rows at that version carry.
+        Map<String, UnionRow> unionRows = new HashMap<>();
         for (Lockfile.Artifact row : merged.artifacts()) {
-            unionRows
-                    .computeIfAbsent(row.packageKey() + "@" + row.version(), k -> new HashSet<>())
-                    .addAll(groupsOf(row));
+            UnionRow union = unionRows.computeIfAbsent(
+                    row.packageKey() + "@" + row.version(), k -> new UnionRow(new HashSet<>(), new HashSet<>()));
+            union.groups().addAll(groupsOf(row));
+            union.depKeys().addAll(depKeys(row));
         }
 
         // name@version → the partition row and the members that read it.
@@ -123,14 +127,26 @@ final class MemberPartitions {
             Reach reach = reach(manifest);
             carryProvenance(reach, own, merged, carried);
             Set<String> flagged = flagged(reach, own);
-            if (flagged.isEmpty()) continue;
+            if (flagged.isEmpty() && !prunes(reach, own)) continue;
             Map<String, String> prefs = prefsFor(flagged, memberPrefs.getOrDefault(member.path(), Map.of()));
             // The table read to flag the member is the table its solve runs under.
             Lockfile mine = solver.solve(manifest, featuresFor(manifest), prefs, own);
             Map<String, String> differing = new TreeMap<>();
+            Map<String, Set<String>> pruned = new HashMap<>();
             for (Lockfile.Artifact row : mine.artifacts()) {
                 String key = row.packageKey() + "@" + row.version();
-                if (unionRows.getOrDefault(key, Set.of()).containsAll(groupsOf(row))) continue;
+                UnionRow union = unionRows.get(key);
+                Set<String> keys = depKeys(row);
+                if (union != null && union.groups().containsAll(groupsOf(row)) && keys.containsAll(union.depKeys())) {
+                    continue;
+                }
+                if (union != null) {
+                    Set<String> lacking = new TreeSet<>();
+                    for (String dep : union.depKeys())
+                        if (!keys.contains(dep))
+                            lacking.add(PackageId.parse(dep).ga());
+                    pruned.put(row.displayIdentity(), lacking);
+                }
                 partitions.putIfAbsent(key, row);
                 partitionMembers
                         .computeIfAbsent(key, k -> new LinkedHashSet<>())
@@ -139,7 +155,7 @@ final class MemberPartitions {
                 for (Scope scope : row.scopes()) scopes.put(scope, Boolean.TRUE);
                 differing.put(row.displayIdentity(), row.version());
             }
-            if (!differing.isEmpty()) observer.onNote(note(member.path(), differing, merged));
+            if (!differing.isEmpty()) observer.onNote(note(member.path(), differing, pruned, merged));
         }
         if (partitions.isEmpty() && carried.isEmpty()) return merged;
         List<Lockfile.Artifact> rows = new ArrayList<>(merged.artifacts().size() + partitions.size());
@@ -195,6 +211,58 @@ final class MemberPartitions {
             String by = own.pinnedBy(ga, row.version());
             if (by != null) carried.putIfAbsent(row.packageKey() + "@" + row.version(), by);
         }
+    }
+
+    /** What the merged rows at one {@code name@version} carry: their scope groups and the packages they edge onto. */
+    private record UnionRow(Set<LockRoots.GraphGroup> groups, Set<String> depKeys) {}
+
+    /** The package keys a row edges onto, whatever version each edge names. */
+    private static Set<String> depKeys(Lockfile.Artifact row) {
+        Set<String> keys = new HashSet<>();
+        for (String ref : row.deps()) {
+            int at = ref.indexOf('@');
+            keys.add(at > 0 ? ref.substring(0, at) : ref);
+        }
+        return keys;
+    }
+
+    /**
+     * True when the member's own table excludes an edge the merged solve kept in the member's
+     * reach: a BOM of the table writes exclusions on a root the member declares without exclusions
+     * of its own, or a {@code [managed-dependencies]} entry of the table writes them on a module in
+     * the closure, and the workspace's table — solved under what every member holds — does not
+     * write the same pattern, so the merged row of that module still carries a matching edge.
+     */
+    private boolean prunes(Reach reach, PlatformConstraints own) {
+        PlatformConstraints shared = union.constraints();
+        for (Dependency root : reach.roots()) {
+            if (!root.exclusions().isEmpty() || root.isWorkspace() || root.isGit() || root.isPath()) continue;
+            Set<String> patterns = new LinkedHashSet<>(own.bomExclusions(root.module()));
+            shared.bomExclusions(root.module()).forEach(patterns::remove);
+            if (!patterns.isEmpty() && keepsExcludedEdge(root.packageKey(), patterns)) return true;
+        }
+        for (Map.Entry<String, Map<String, Set<String>>> e :
+                own.managedExclusions().entrySet()) {
+            Set<String> patterns = new LinkedHashSet<>(e.getValue().keySet());
+            Map<String, Set<String>> sharedPatterns = shared.managedExclusions().get(e.getKey());
+            if (sharedPatterns != null) patterns.removeAll(sharedPatterns.keySet());
+            if (patterns.isEmpty()) continue;
+            for (String key : reach.closure()) {
+                if (PackageId.parse(key).ga().equals(e.getKey()) && keepsExcludedEdge(key, patterns)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when the merged module at {@code key} edges onto a package one of {@code patterns} covers. */
+    private boolean keepsExcludedEdge(String key, Set<String> patterns) {
+        Resolution.ResolvedModule merged = unionByKey.get(key);
+        if (merged == null) return false;
+        for (String ref : merged.deps()) {
+            int at = ref.indexOf('@');
+            if (ExclusionLedger.isExcluded(at > 0 ? ref.substring(0, at) : ref, patterns)) return true;
+        }
+        return false;
     }
 
     /**
@@ -356,8 +424,12 @@ final class MemberPartitions {
         return dropped ? manifest.withDependencies(new JkBuild.Dependencies(byScope)) : manifest;
     }
 
-    /** One line per member: which coordinates it reads its own rows for, and what the workspace has. */
-    private static String note(String path, Map<String, String> differing, Lockfile merged) {
+    /**
+     * One line per member: which coordinates it reads its own rows for, and what the workspace has —
+     * its version, or, at the same version, the edges the member's row lacks.
+     */
+    private static String note(
+            String path, Map<String, String> differing, Map<String, Set<String>> pruned, Lockfile merged) {
         Map<String, String> mergedVersions = new HashMap<>();
         for (Lockfile.Artifact row : merged.artifacts())
             mergedVersions.putIfAbsent(row.displayIdentity(), row.version());
@@ -374,7 +446,16 @@ final class MemberPartitions {
             if (named > 0) out.append(", ");
             out.append(e.getKey()).append(' ').append(e.getValue());
             String workspace = mergedVersions.get(e.getKey());
-            out.append(workspace == null ? " (only there)" : " (workspace " + workspace + ")");
+            Set<String> lacking = pruned.get(e.getKey());
+            if (workspace == null) {
+                out.append(" (only there)");
+            } else if (workspace.equals(e.getValue()) && lacking != null && !lacking.isEmpty()) {
+                out.append(" (the workspace's without ")
+                        .append(String.join(", ", lacking))
+                        .append(')');
+            } else {
+                out.append(" (workspace ").append(workspace).append(')');
+            }
             named++;
         }
         return out.toString();

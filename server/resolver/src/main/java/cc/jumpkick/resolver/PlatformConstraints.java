@@ -217,6 +217,14 @@ public final class PlatformConstraints {
     }
 
     /**
+     * The {@code group:artifact} patterns the first BOM managing {@code module} excludes under it;
+     * empty when none does. They reach a declared root the BOM manages that excludes nothing itself.
+     */
+    List<String> bomExclusions(String module) {
+        return bomExclusions.getOrDefault(module, List.of());
+    }
+
+    /**
      * What pinned {@code ga} at exactly {@code version}: a BOM as {@code group:artifact:version}, a
      * {@code [managed-dependencies]} entry as {@code jk.toml:<handle>}, or {@code null} when nothing did.
      */

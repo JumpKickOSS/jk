@@ -258,6 +258,62 @@ class LockOrchestratorMemberPartitionsTest {
                 .containsExactly((String) null);
     }
 
+    /**
+     * The BOM only {@code app} holds manages leaf at the version both members pin and writes an
+     * exclusion on it. The versions agree, so the workspace's leaf row keeps the edge onto deep;
+     * app reads a leaf row of its own at the same version without that edge, the note says what the
+     * row lacks, and lib's classpath walk still reaches deep through the plain row.
+     */
+    @Test
+    void a_member_only_boms_exclusions_reach_the_member_through_a_row_of_its_own(@TempDir Path tempDir)
+            throws Exception {
+        upstream.leaf("com.foo", "deep", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0");
+        upstream.pom("com.foo", "leaf", "1.0", depending("leaf", "deep", "1.0"));
+        upstream.jar("com.foo", "leaf", "1.0");
+        upstream.pom("org.example", "pruning-bom", "1.0", """
+                <project>
+                  <groupId>org.example</groupId><artifactId>pruning-bom</artifactId><version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement><dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                      <exclusions><exclusion><groupId>com.foo</groupId><artifactId>deep</artifactId></exclusion></exclusions>
+                    </dependency>
+                  </dependencies></dependencyManagement>
+                </project>
+                """);
+        Dependency bom = Dependency.of("pruning-bom", "org.example:pruning-bom", VersionSelector.parse("=1.0"));
+        Dependency leaf = new Dependency("com.foo:leaf", VersionSelector.parse("=1.0"));
+        JkBuild app = manifest("app", Map.of(Scope.PLATFORM, List.of(bom), Scope.MAIN, List.of(leaf)));
+        JkBuild lib = manifest("lib", Map.of(Scope.MAIN, List.of(leaf)));
+        List<String> notes = new ArrayList<>();
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(app, lib), notes);
+
+        String deepRef = "com.foo:deep:jar:@1.0";
+        Lockfile.Artifact workspace = rows(lock, "com.foo:leaf:jar:").stream()
+                .filter(r -> !r.isPartition())
+                .findFirst()
+                .orElseThrow();
+        assertThat(workspace.version()).isEqualTo("1.0");
+        assertThat(workspace.deps()).contains(deepRef);
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::version, Lockfile.Artifact::deps, Lockfile.Artifact::members)
+                .containsExactly(tuple("1.0", List.of(), List.of("app")));
+        assertThat(rows(lock.forMember("app"), "com.foo:leaf:jar:").getFirst().excludedBy())
+                .singleElement()
+                .asString()
+                .startsWith("com.foo:deep <- ");
+        assertThat(rows(lock.forMember("lib"), "com.foo:leaf:jar:"))
+                .extracting(Lockfile.Artifact::deps)
+                .containsExactly(List.of(deepRef));
+        assertThat(rows(lock, "com.foo:deep:jar:")).hasSize(1).allMatch(r -> !r.isPartition());
+        assertThat(notes)
+                .contains(
+                        "app reads its own rows for 1 coordinate: com.foo:leaf 1.0 (the workspace's without com.foo:deep)");
+    }
+
     @Test
     void two_members_pinning_one_coordinate_differently_each_read_their_own(@TempDir Path tempDir) throws Exception {
         upstream.metadata("com.foo", "widget", "1.0", "2.0");
@@ -591,6 +647,13 @@ class LockOrchestratorMemberPartitionsTest {
     /** The workspace locked as the pipeline locks it: the merged manifest, with every member behind it. */
     private Lockfile lockWorkspace(Path tempDir, Map<Scope, List<Dependency>> rootDeps, List<JkBuild> modules)
             throws Exception {
+        return lockWorkspace(tempDir, rootDeps, modules, new ArrayList<>());
+    }
+
+    /** {@link #lockWorkspace(Path, Map, List)}, recording the lock's notes into {@code notes}. */
+    private Lockfile lockWorkspace(
+            Path tempDir, Map<Scope, List<Dependency>> rootDeps, List<JkBuild> modules, List<String> notes)
+            throws Exception {
         List<String> names = modules.stream().map(m -> m.project().name()).toList();
         EnumMap<Scope, List<Dependency>> copy = new EnumMap<>(Scope.class);
         copy.putAll(rootDeps);
@@ -603,9 +666,21 @@ class LockOrchestratorMemberPartitionsTest {
             members.add(new LockOrchestrator.Member(
                     module.project().name(), WorkspaceMerge.applyToModule(root, module, modules)));
         }
+        ResolveObserver recording = new ResolveObserver() {
+            @Override
+            public void onTotal(int total) {}
+
+            @Override
+            public void onPackage(String module, String version) {}
+
+            @Override
+            public void onNote(String line) {
+                notes.add(line);
+            }
+        };
         return new LockOrchestrator(repoGroup(tempDir))
                 .withMembers(members)
-                .lock(WorkspaceMerge.merge(root, modules), "test");
+                .lock(WorkspaceMerge.merge(root, modules), "test", List.of(), true, recording);
     }
 
     /** Every row without a {@code members} key as (package, version, scopes, pinned-by). */
