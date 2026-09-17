@@ -112,6 +112,57 @@ The step is `generate-localizer`; a bundle edit re-runs it, and the classes join
 `jk import` writes the table from a POM's `localizer-maven-plugin`
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
+## `[antlr]` — ANTLR grammars
+
+The [ANTLR](https://www.antlr.org/) tool generates a lexer, parser, and listener or visitor per
+grammar. The preset runs it over the module's grammar directory the way `antlr4-maven-plugin`
+does: each grammar's subdirectory under `src` is the generated classes' package and their
+subdirectory under the output, and a grammar under `lib` is an import other grammars read, never
+a target of its own.
+
+```toml
+[antlr]
+# src       = "src/main/antlr4"          # the grammar directory; a subdirectory is a package
+# lib       = "src/main/antlr4/imports"  # imported grammars and .tokens files
+# package   = "com.acme.parser"          # one package for every class, in place of the directories'
+# listener  = true
+# visitor   = false
+# encoding  = "UTF-8"
+# arguments = ["-Werror"]                # further tool arguments, as written on its command line
+# options   = { superClass = "com.acme.Base" }   # grammar options set from outside (-D<name>=<value>)
+# version   = "4.13.2"                   # the ANTLR release; a bare version is exact
+
+[dependencies]
+antlr4-runtime = "4.13.2"               # the generated parsers read it at run time; keep it at the tool's version
+```
+
+The step is `generate-antlr`; a grammar edit re-runs it, and the classes join the compile. The
+tool warns at run time when the runtime is another release than the one that generated the
+parser, so the two versions travel together. `jk import` writes the table from a POM's
+`antlr4-maven-plugin` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
+## `[taglib]` — Jenkins tag-library interfaces
+
+A Jenkins module's Groovy views call its Jelly tag libraries through typed interfaces —
+`lib.LayoutTagLib`, `lib.FormTagLib` — that Maven's `maven-hpi-plugin` generates from the
+resource tree. The preset writes them the same way, with no tool to fetch: every resource
+directory holding a `taglib` marker is one interface, named after the directory in its parent's
+package (a `hudson` segment read as `jenkins`), with four overloads per Jelly view and the view's
+`st:documentation` as their Javadoc.
+
+```toml
+[taglib]
+# resources = ["src/main/resources"]   # the directories scanned for tag libraries
+# encoding  = "UTF-8"
+
+[dependencies]
+stapler-groovy = "2119.v8544a_3749d39"  # the interfaces extend TypedTagLibrary at compile time
+```
+
+The step is `generate-taglib`; a view added or renamed re-runs it. `jk import` writes the table
+from a POM's `maven-hpi-plugin` `generate-taglib-interface` goal
+([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+
 ## GraphQL — a recipe, not a table
 
 Spring for GraphQL, the common JVM server, is schema-first with annotated controllers and needs no
@@ -164,7 +215,7 @@ step naming the tool, the directory it was bound for and the cause.
 
 ## Presets to come
 
-`[jooq]`, `[avro]`, `[antlr]` and `[jaxb]` follow the same shape `[openapi]` and `[localizer]`
+`[jooq]`, `[avro]` and `[jaxb]` follow the same shape `[openapi]`, `[localizer]` and `[antlr]`
 take — a manifest with a schema and a tool coordinate, a small expansion into a generator entry.
 Until they land, each tool works through `[generate]` today.
 

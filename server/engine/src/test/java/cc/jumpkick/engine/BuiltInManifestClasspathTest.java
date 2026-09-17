@@ -31,6 +31,8 @@ class BuiltInManifestClasspathTest {
                         "generator",
                         "openapi",
                         "localizer",
+                        "antlr",
+                        "taglib",
                         "minified");
     }
 

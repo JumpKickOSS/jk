@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import org.jspecify.annotations.Nullable;
@@ -39,7 +40,8 @@ final class GeneratorStep {
                         exec.scratch().resolve("unpacked"));
         Path out = exec.outputDir(entry.out());
         List<Path> classpath = new ArrayList<>(entry.classpath());
-        classpath.addAll(toolClasspath(exec.requireExtra(entry.toolArtifact())));
+        String toolArtifact = entry.toolArtifact();
+        if (toolArtifact != null) classpath.addAll(toolClasspath(exec.requireExtra(toolArtifact)));
         String main = entry.main() != null ? entry.main() : mainClass(classpath, entry);
         List<String> args =
                 Arguments.expand(entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir()));
@@ -106,7 +108,7 @@ final class GeneratorStep {
      * artifact — when the entry names no {@code main}.
      */
     static String mainClass(List<Path> classpath, GeneratorEntry entry) throws IOException {
-        String artifact = artifactOf(entry.toolCoordinate());
+        String artifact = artifactOf(Objects.requireNonNull(entry.toolCoordinate(), "tool"));
         Path own = classpath.size() == 1
                 ? classpath.getFirst()
                 : classpath.stream()

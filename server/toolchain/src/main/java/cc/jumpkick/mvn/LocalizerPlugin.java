@@ -79,7 +79,7 @@ final class LocalizerPlugin {
     }
 
     /** The module-relative main resource directories the plugin scans, the layout's when the POM lists none. */
-    private static List<String> resourceDirs(Model model, @Nullable Path baseDir) {
+    static List<String> resourceDirs(Model model, @Nullable Path baseDir) {
         List<String> dirs = new ArrayList<>();
         if (model.getBuild() != null) {
             for (Resource resource : model.getBuild().getResources()) {

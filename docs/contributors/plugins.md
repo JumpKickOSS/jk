@@ -416,7 +416,9 @@ contributes = "sources"                                      # sources | resourc
 A preset is a first-party plugin owning its own table whose code layer builds one
 `GeneratorEntry` and registers `entry.task()` — the same body, no second worker protocol. Its
 manifest carries the schema and the tool's `[[contribute.step-dependency]]` scoped to
-`for-step = "generate-<name>"`. `jk explain` shows the step the preset expands to.
+`for-step = "generate-<name>"`. A preset whose `main` is its own code and needs no tool
+(`[taglib]`) declares no step-dependency: the entry's `toolArtifact` is null and its classpath is
+the worker's jar alone. `jk explain` shows the step the preset expands to.
 
 | Table | Tool | Default inputs | Status |
 |---|---|---|---|
@@ -424,7 +426,8 @@ manifest carries the schema and the tool's `[[contribute.step-dependency]]` scop
 | `[localizer]` | localizer-maven-plugin's jar + `LocalizerMain` from the worker's own jar | `src/main/resources/**/Messages.properties` | shipped (`plugins/localizer`): `mask`, `resources`, `encoding`, `access-modifier-annotations`, `strict-types`, `key-pattern`, `version` |
 | `[jooq]` | jooq-codegen | `src/main/resources/db/*.sql` via `DDLDatabase` | planned; a live JDBC schema is opt-in and marked uncached unless the user supplies a schema digest |
 | `[avro]` | avro-tools | `src/main/avro/**/*.avsc` | planned (`compile schema`) |
-| `[antlr]` | antlr4 | `src/main/antlr/**/*.g4` | planned (`-package` from the module group by default) |
+| `[antlr]` | antlr4's tool jar + `AntlrMain` from the worker's own jar | `src/main/antlr4/**/*.g4` | shipped (`plugins/antlr`): `src`, `lib`, `package`, `listener`, `visitor`, `encoding`, `arguments`, `options`, `version` |
+| `[taglib]` | none — `TaglibMain` from the worker's own jar | `src/main/resources/**/*.jelly` | shipped (`plugins/taglib`): `resources`, `encoding` |
 | `[jaxb]` | jaxb-xjc | `src/main/xsd/**/*.xsd` | planned (`-p` package) |
 
 A tool with no preset works through `[generate]`.

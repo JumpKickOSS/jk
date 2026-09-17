@@ -167,6 +167,8 @@ public final class PomImporter {
                 .pluginConfig(generators.openapi())
                 .pluginConfig(generators.protobuf())
                 .pluginConfig(generators.localizer())
+                .pluginConfig(generators.antlr())
+                .pluginConfig(generators.taglib())
                 .pluginConfig(generators.generate())
                 .build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))

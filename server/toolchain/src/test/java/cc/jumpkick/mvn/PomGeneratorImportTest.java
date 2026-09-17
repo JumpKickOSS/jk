@@ -461,4 +461,195 @@ class PomGeneratorImportTest {
                 .containsEntry("strict-types", true)
                 .doesNotContainKey("access-modifier-annotations");
     }
+
+    /** jenkins core's shape: the plugin with one antlr4 execution, build-helper adding its output. */
+    @Test
+    void antlr4_plugin_becomes_the_antlr_preset(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.jenkins-ci.main</groupId>
+                  <artifactId>jenkins-core</artifactId>
+                  <version>2.583</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.antlr</groupId>
+                        <artifactId>antlr4-maven-plugin</artifactId>
+                        <version>4.13.2</version>
+                        <executions>
+                          <execution>
+                            <id>antlr</id>
+                            <goals><goal>antlr4</goal></goals>
+                          </execution>
+                        </executions>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>add-source</goal></goals>
+                            <configuration>
+                              <sources><source>${project.build.directory}/generated-sources/antlr4</source></sources>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().extraSrc())
+                .as("the preset's output is its own contribution")
+                .isEmpty();
+        PluginConfig antlr = result.jkBuild().pluginConfig("antlr").orElseThrow();
+        assertThat(antlr.values()).as("every default stays unwritten").isEmpty();
+        assertThat(result.report().issues()).noneMatch(i -> i.severity() == ImportReport.Severity.ERROR);
+        assertThat(messages(result))
+                .anyMatch(m -> m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/antlr4`, the"
+                        + " antlr preset's output"))
+                .anyMatch(m -> m.contains("`[antlr]`") && m.contains("`org.antlr:antlr4-runtime`"))
+                .noneMatch(m -> m.contains("`<plugin>antlr4-maven-plugin</plugin>` was not imported"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered).contains("[antlr]");
+        assertThat(JkBuildParser.parse(rendered).pluginConfig("antlr")).isPresent();
+    }
+
+    /** Every configured option travels into the table; the ones the preset has no key for are a row. */
+    @Test
+    void antlr_configuration_travels_into_the_table(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.acme</groupId>
+                  <artifactId>parser</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.antlr</groupId>
+                        <artifactId>antlr4-maven-plugin</artifactId>
+                        <version>4.12.0</version>
+                        <configuration>
+                          <sourceDirectory>${basedir}/src/main/antlr</sourceDirectory>
+                          <libDirectory>${basedir}/src/main/antlr-lib</libDirectory>
+                          <outputDirectory>${project.build.directory}/generated-sources/parsers</outputDirectory>
+                          <listener>false</listener>
+                          <visitor>true</visitor>
+                          <inputEncoding>ISO-8859-1</inputEncoding>
+                          <treatWarningsAsErrors>true</treatWarningsAsErrors>
+                          <arguments><argument>-Xexact-output-dir</argument></arguments>
+                          <options><superClass>com.acme.Base</superClass></options>
+                          <includes><include>**/*.g4</include></includes>
+                        </configuration>
+                        <executions>
+                          <execution><goals><goal>antlr4</goal></goals></execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig antlr = result.jkBuild().pluginConfig("antlr").orElseThrow();
+        assertThat(antlr.values())
+                .containsEntry("src", "src/main/antlr")
+                .containsEntry("lib", "src/main/antlr-lib")
+                .containsEntry("listener", false)
+                .containsEntry("visitor", true)
+                .containsEntry("encoding", "ISO-8859-1")
+                .containsEntry("arguments", List.of("-Werror", "-Xexact-output-dir"))
+                .containsEntry("options", Map.of("superClass", "com.acme.Base"))
+                .containsEntry("version", "4.12.0");
+        assertThat(messages(result)).anyMatch(m -> m.contains("`<includes>` have no `[antlr]` key"));
+    }
+
+    /** jenkins core's shape: the hpi plugin's taglib goal beside another goal, build-helper adding the output. */
+    @Test
+    void hpi_taglib_interface_goal_becomes_the_taglib_preset(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.jenkins-ci.main</groupId>
+                  <artifactId>jenkins-core</artifactId>
+                  <version>2.583</version>
+                  <build>
+                    <resources>
+                      <resource><directory>src/main/resources</directory></resource>
+                      <resource><directory>src/filter/resources</directory></resource>
+                    </resources>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jenkins-ci.tools</groupId>
+                        <artifactId>maven-hpi-plugin</artifactId>
+                        <version>3.1838.va_13472137a_6a_</version>
+                        <executions>
+                          <execution>
+                            <goals>
+                              <goal>generate-taglib-interface</goal>
+                              <goal>record-core-location</goal>
+                            </goals>
+                          </execution>
+                        </executions>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>add-source</goal></goals>
+                            <configuration>
+                              <sources><source>${project.build.directory}/generated-sources/taglib-interface</source></sources>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().build().extraSrc()).isEmpty();
+        PluginConfig taglib = result.jkBuild().pluginConfig("taglib").orElseThrow();
+        assertThat(taglib.values()).containsEntry("resources", List.of("src/main/resources", "src/filter/resources"));
+        assertThat(messages(result))
+                .anyMatch(m ->
+                        m.startsWith("`build-helper-maven-plugin` adds `target/generated-sources/taglib-interface`,"
+                                + " the taglib preset's output"))
+                .anyMatch(m -> m.contains("`[taglib]`") && m.contains("`org.kohsuke.stapler:stapler-groovy`"))
+                .anyMatch(m -> m.startsWith("`maven-hpi-plugin` goal `record-core-location` was not imported"))
+                .noneMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
+        assertThat(JkBuildParser.parse(JkBuildRenderer.render(result.jkBuild())).pluginConfig("taglib"))
+                .isPresent();
+    }
+
+    /** A Jenkins plugin packaged by the hpi plugin without the taglib goal keeps the plugin's generic row. */
+    @Test
+    void hpi_plugin_without_the_taglib_goal_stays_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.jenkins-ci.plugins</groupId>
+                  <artifactId>demo</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jenkins-ci.tools</groupId>
+                        <artifactId>maven-hpi-plugin</artifactId>
+                        <version>3.1838.va_13472137a_6a_</version>
+                        <extensions>true</extensions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().pluginConfig("taglib")).isEmpty();
+        assertThat(messages(result)).anyMatch(m -> m.contains("`<plugin>maven-hpi-plugin</plugin>` was not imported"));
+    }
 }

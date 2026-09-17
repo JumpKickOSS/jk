@@ -150,6 +150,41 @@ class GeneratorStepTest {
     }
 
     @Test
+    void an_entry_without_a_tool_runs_its_main_from_its_own_classpath(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("src/main/resources/lib/a.jelly"), "<a/>");
+
+        GeneratorEntry entry = new GeneratorEntry(
+                "taglib",
+                null,
+                null,
+                StubTool.class.getName(),
+                List.of("src/main/resources/**/*.jelly"),
+                null,
+                List.of("-i", "${in}", "-o", "${out}"),
+                GeneratorEntry.Contribution.SOURCES,
+                "generated/taglib",
+                List.of(stubJar(tmp.resolve("shim/shim.jar"), null)),
+                List.of());
+        GeneratorStep.run(io, entry);
+
+        assertThat(tmp.resolve("scratch/generated/taglib/Hello.java")).isRegularFile();
+        assertThatThrownBy(() -> new GeneratorEntry(
+                        "bare",
+                        null,
+                        null,
+                        null,
+                        List.of("a.txt"),
+                        null,
+                        List.of(),
+                        GeneratorEntry.Contribution.SOURCES,
+                        "generated/bare",
+                        List.of(),
+                        List.of()))
+                .hasMessageContaining("names no tool", List.of());
+    }
+
+    @Test
     void discarded_paths_leave_the_output_once_the_tool_ran(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = new FakeBuildIo(tmp, "generate");
         FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");

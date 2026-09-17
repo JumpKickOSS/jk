@@ -48,6 +48,7 @@ final class PluginFacts {
             "openapi-generator-maven-plugin",
             "protobuf-maven-plugin",
             "localizer-maven-plugin",
+            "antlr4-maven-plugin",
             "wire-maven-plugin",
             "graphqlcodegen-maven-plugin",
             "graphql-codegen-maven-plugin",

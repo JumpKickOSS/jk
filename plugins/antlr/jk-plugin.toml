@@ -1,0 +1,33 @@
+# The built-in ANTLR preset's declarative manifest. Owns [antlr]; the code layer turns the table
+# into one generator entry — jk's own main over the ANTLR tool, run over the module's grammar
+# directory, a package per grammar subdirectory, into the generate stage, contributed as sources —
+# and runs it through the generator plugin's step. `jk explain` shows that entry as the step
+# `generate-antlr`.
+
+[plugin]
+id        = "antlr"
+table     = "antlr"
+version   = "0.1.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-antlr"
+protocol-prefix = "##JKANTLR:"
+
+[schema]
+src       = { type = "string", default = "src/main/antlr4", hint = "the module-relative directory holding the .g4 grammars; a grammar's subdirectory under it is its package" }
+lib       = { type = "string", hint = "the directory of grammars and .tokens files other grammars import; default <src>/imports, and never generated from" }
+package   = { type = "string", example = "com.acme.parser", hint = "one package for every generated class, in place of the one each grammar's subdirectory names" }
+listener  = { type = "bool", default = true, hint = "generate the parse-tree listener interface and base class" }
+visitor   = { type = "bool", default = false, hint = "generate the parse-tree visitor interface and base class" }
+encoding  = { type = "string", hint = "the grammar files' encoding" }
+arguments = { type = "string-list", default = [], hint = "further ANTLR tool arguments, as written on its command line (-Werror, -Xexact-output-dir, …)" }
+options   = { type = "string-map", default = {}, hint = "grammar options set from outside the grammar (-D<name>=<value>): language, superClass, …" }
+version   = { type = "string", default = "4.13.2", example = "4.13.2", hint = "the ANTLR release; a bare version is exact, and the module's antlr4-runtime is expected to match" }
+
+# The tool jar and its runtime closure (the runtime, StringTemplate, ICU) come together.
+[[contribute.step-dependency]]
+artifact   = "antlr"
+coordinate = "org.antlr:antlr4:${config.version}"
+transitive = true
+for-step   = "generate-antlr"
