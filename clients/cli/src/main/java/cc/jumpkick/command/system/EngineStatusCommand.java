@@ -21,6 +21,9 @@ import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -98,7 +101,11 @@ public final class EngineStatusCommand implements CliCommand {
         detail("Version", s.version());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
-        if (s.queuedBuildPlans() > 0) detail("Queued", s.queuedBuildPlans() + " (waiting for engine memory)");
+        for (EngineProbe.Job job : s.jobs()) if (job.live()) jobRow(job, now);
+        if (s.queuedBuildPlans() > 0) {
+            detail("Queued", s.queuedBuildPlans() + " (waiting for engine memory)");
+            for (EngineProbe.Job job : s.jobs()) if (!job.live()) jobRow(job, now);
+        }
         if (s.idleDropped() >= 0) {
             detail("Dropped", s.idleDropped() + (s.idleDropped() == 1 ? " idle connection" : " idle connections"));
         }
@@ -132,6 +139,55 @@ public final class EngineStatusCommand implements CliCommand {
         if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
     }
+
+    /** One job under the {@code Live Jobs} or {@code Queued} row, indented to the value column. */
+    private static void jobRow(EngineProbe.Job job, long nowMillis) {
+        CliOutput.out(" ".repeat(VALUE_COL)
+                + Theme.colorize(jobLine(job, nowMillis), Theme.active().settled()));
+    }
+
+    /**
+     * {@code #739 test /home/me/app · since 22:36 (2h 05m) · 1 worker · last event 3m ago} for a live
+     * job; {@code #741 build /home/me/lib · behind 0 · waiting 12m} for a queued one.
+     */
+    static String jobLine(EngineProbe.Job job, long nowMillis) {
+        StringBuilder line = new StringBuilder("#" + job.jid() + " " + job.kind() + " " + job.dir());
+        if (job.live()) {
+            line.append(" · since ")
+                    .append(wallClock(job.sinceMillis()))
+                    .append(" (")
+                    .append(formatAge(nowMillis - job.sinceMillis()))
+                    .append(")");
+            if (job.workers() >= 0)
+                line.append(" · ").append(job.workers()).append(job.workers() == 1 ? " worker" : " workers");
+            if (job.lastEventAt() > 0) {
+                line.append(" · last event ")
+                        .append(formatAge(nowMillis - job.lastEventAt()))
+                        .append(" ago");
+            }
+        } else {
+            line.append(" · behind ").append(Math.max(0, job.ahead()));
+            line.append(" · waiting ").append(formatAge(nowMillis - job.sinceMillis()));
+        }
+        return line.toString();
+    }
+
+    /** {@code 2h 05m} / {@code 12m} / {@code 40s}: how long ago, for a job row. */
+    static String formatAge(long millis) {
+        long s = Math.max(0, millis / 1000);
+        long h = s / 3600;
+        long m = (s % 3600) / 60;
+        if (h > 0) return h + "h " + String.format("%02d", m) + "m";
+        if (m > 0) return m + "m";
+        return s + "s";
+    }
+
+    /** Epoch millis as the local wall clock, {@code HH:mm}. */
+    static String wallClock(long epochMillis) {
+        return WALL_CLOCK.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()));
+    }
+
+    private static final DateTimeFormatter WALL_CLOCK = DateTimeFormatter.ofPattern("HH:mm");
 
     /** The heap dump a previous engine of this identity left when it exited on OutOfMemoryError, if any. */
     private static void heapDumpRow(EnginePaths.Paths paths) {
@@ -190,6 +246,7 @@ public final class EngineStatusCommand implements CliCommand {
                 .number("activeRequests", s.activeRequests())
                 .number("idleDropped", s.idleDropped())
                 .number("queuedBuildPlans", s.queuedBuildPlans())
+                .token("jobs", jobsJson(s.jobs()))
                 .number("heapUsedBytes", s.heapUsedBytes())
                 .number("heapCommittedBytes", s.heapCommittedBytes())
                 .number("heapMaxBytes", s.heapMaxBytes())
@@ -209,6 +266,13 @@ public final class EngineStatusCommand implements CliCommand {
                 .string("mcpUrl", s.mcpUrl());
         if (s.vfsJson() != null) json.token("vfs", s.vfsJson());
         return json.token("engines", enginesJson(fleet)).finish();
+    }
+
+    /** The engine's job rows as one JSON array, the engine's own field names. */
+    static String jobsJson(List<EngineProbe.Job> jobs) {
+        List<String> rows = new ArrayList<>();
+        for (EngineProbe.Job j : jobs) rows.add(j.toJson());
+        return "[" + String.join(",", rows) + "]";
     }
 
     public static String enginesJson(List<EngineFleet.Member> fleet) {

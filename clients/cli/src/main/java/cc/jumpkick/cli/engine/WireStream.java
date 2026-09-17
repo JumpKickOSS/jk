@@ -10,6 +10,11 @@ import cc.jumpkick.wire.protocol.JobStartFrame;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -94,7 +99,7 @@ public final class WireStream {
                     JobQueuedFrame queued = JobQueuedFrame.decode(line);
                     notedJid = queued.jid();
                     ActiveJobs.note(notedJid);
-                    CliOutput.err(waitingLine(queued.ahead()));
+                    CliOutput.err(waitingLine(queued));
                     continue;
                 }
                 if (EngineProtocol.JOB_START.equals(type)) {
@@ -119,10 +124,47 @@ public final class WireStream {
         }
     }
 
-    /** The one line a queued job prints: {@code waiting for engine memory (2 jobs ahead)}. */
-    static String waitingLine(int ahead) {
-        if (ahead <= 0) return "waiting for engine memory (next in line)";
-        return "waiting for engine memory (" + ahead + (ahead == 1 ? " job" : " jobs") + " ahead)";
+    /**
+     * The line a queued job prints. On joining the queue: {@code waiting for engine memory (2 jobs
+     * ahead); live: test /home/me/app since 22:36}. On every later report: {@code queued behind 2
+     * jobs for 5m, live: test /home/me/app since 22:36}. The live suffix is dropped when the engine
+     * named no live job.
+     */
+    static String waitingLine(JobQueuedFrame queued) {
+        int ahead = queued.ahead();
+        String live = liveSuffix(queued.live());
+        if (queued.waitedMs() <= 0) {
+            String position = ahead <= 0
+                    ? "waiting for engine memory (next in line)"
+                    : "waiting for engine memory (" + ahead + (ahead == 1 ? " job" : " jobs") + " ahead)";
+            return live.isEmpty() ? position : position + "; live: " + live;
+        }
+        String waited =
+                "queued behind " + ahead + (ahead == 1 ? " job" : " jobs") + " for " + formatWait(queued.waitedMs());
+        return live.isEmpty() ? waited : waited + ", live: " + live;
+    }
+
+    /** {@code test /home/me/app since 22:36, build /home/me/lib since 22:40}; {@code ""} when none. */
+    private static String liveSuffix(List<JobQueuedFrame.Live> live) {
+        List<String> parts = new ArrayList<>();
+        for (JobQueuedFrame.Live l : live) parts.add(l.kind() + " " + l.dir() + " since " + wallClock(l.sinceMillis()));
+        return String.join(", ", parts);
+    }
+
+    private static final DateTimeFormatter WALL_CLOCK = DateTimeFormatter.ofPattern("HH:mm");
+
+    private static String wallClock(long epochMillis) {
+        return WALL_CLOCK.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()));
+    }
+
+    /** {@code 5m} / {@code 1h 02m} / {@code 40s}. */
+    static String formatWait(long millis) {
+        long s = Math.max(0, millis / 1000);
+        long h = s / 3600;
+        long m = (s % 3600) / 60;
+        if (h > 0) return h + "h " + String.format("%02d", m) + "m";
+        if (m > 0) return m + "m";
+        return s + "s";
     }
 
     /** Hand a decoded {@code job-start} to the registered observer, if any. */

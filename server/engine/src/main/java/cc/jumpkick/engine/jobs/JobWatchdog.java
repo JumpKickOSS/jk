@@ -12,38 +12,70 @@ import java.io.BufferedWriter;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
+import java.util.function.LongUnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Heartbeats from {@link JobLimits} and one {@link WallDeadline} for one job. A heartbeat is a wire
- * line that resets the client's stream idle timer, so a detached (HTTP/MCP) job with no writer runs
- * only the deadline arm — and with no deadline either, no thread starts at all. Its only host
- * collaborators are the clock and the accumulator lookup.
+ * Heartbeats from {@link JobLimits}, one {@link WallDeadline}, and a stall note for one job. A
+ * heartbeat is a wire line that resets the client's stream idle timer, so a detached (HTTP/MCP)
+ * job with no writer runs only the deadline and stall arms. The stall arm writes one engine log
+ * line, naming the job and its live workers, when the job has emitted no task event for {@link
+ * #STALL_NOTE_MS}, and again after every further silence of that length; it never cancels — a
+ * single test JVM working through a long suite is silent and healthy. Its host collaborators are
+ * the clock, the accumulator lookup, the session's last-event stamp and the log.
  */
 final class JobWatchdog {
+
+    /** Silence after which a live job is named in the engine log: thirty minutes. */
+    static final long STALL_NOTE_MS = 30 * 60_000L;
 
     private final JobLimits limits;
     private final LongSupplier nowMillis;
     private final Function<Long, @Nullable BuildAccumulator> accumulatorOf;
+    private final LongUnaryOperator lastEventAt;
+    private final Consumer<String> log;
+    private final long stallNoteMs;
 
-    JobWatchdog(JobLimits limits, LongSupplier nowMillis, Function<Long, @Nullable BuildAccumulator> accumulatorOf) {
+    JobWatchdog(
+            JobLimits limits,
+            LongSupplier nowMillis,
+            Function<Long, @Nullable BuildAccumulator> accumulatorOf,
+            LongUnaryOperator lastEventAt,
+            Consumer<String> log) {
+        this(limits, nowMillis, accumulatorOf, lastEventAt, log, STALL_NOTE_MS);
+    }
+
+    /** As above with the stall silence supplied — a test names a job after milliseconds. */
+    JobWatchdog(
+            JobLimits limits,
+            LongSupplier nowMillis,
+            Function<Long, @Nullable BuildAccumulator> accumulatorOf,
+            LongUnaryOperator lastEventAt,
+            Consumer<String> log,
+            long stallNoteMs) {
         this.limits = limits;
         this.nowMillis = nowMillis;
         this.accumulatorOf = accumulatorOf;
+        this.lastEventAt = lastEventAt;
+        this.log = log;
+        this.stallNoteMs = stallNoteMs;
     }
 
     /**
      * Start the watchdog for a job admitted at {@code startMillis} that counts {@code done} down
-     * when it ends, or return {@code null} when neither arm is live. The deadline runs from the
-     * job's admission — the one start the join and the journal also measure from — not from when
-     * this thread happens to run. On deadline: cancel, worker shutdown (grace then force),
-     * interrupt the runner, and one {@code error} line for the client.
+     * when it ends, or return {@code null} when no arm is live. The deadline runs from the job's
+     * admission — the one start the join and the journal also measure from — not from when this
+     * thread happens to run. On deadline: cancel, worker shutdown (grace then force), interrupt the
+     * runner, and one {@code error} line for the client. On silence: one log line naming the job.
      */
     @Nullable
     Thread start(
             long eventRequestId,
+            String kind,
+            String dir,
             Session.CancelToken cancelToken,
             AtomicReference<Thread> runnerRef,
             CountDownLatch done,
@@ -52,15 +84,18 @@ final class JobWatchdog {
             long startMillis) {
         long heartbeatMs = limits.heartbeatMs();
         boolean heartbeats = heartbeatMs > 0 && writer != null;
-        if (!(heartbeats || deadline.bounded())) return null;
+        boolean stalls = stallNoteMs > 0;
+        if (!(heartbeats || deadline.bounded() || stalls)) return null;
         // Holds the job's cancel token explicitly; reads no session.
         return Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
             long start = startMillis;
+            long lastNoted = start;
             while (done.getCount() > 0) {
                 long elapsed = nowMillis.getAsLong() - start;
                 // The heartbeat sets the tick only when there is a stream to keep alive; a
-                // deadline-only watch re-reads the clock every second.
-                long wait = heartbeats ? heartbeatMs : 1_000L;
+                // deadline-only watch re-reads the clock every second, a stall-only watch at a
+                // fraction of the silence it is looking for.
+                long wait = heartbeats ? heartbeatMs : deadline.bounded() ? 1_000L : stallTick();
                 if (deadline.bounded()) {
                     long remaining = deadline.ms() - elapsed;
                     if (remaining <= 0) {
@@ -79,8 +114,29 @@ final class JobWatchdog {
                 if (heartbeats) {
                     WireWriter.sendQuiet(writer, ProtoLifecycle.heartbeat(nowMillis.getAsLong() - start));
                 }
+                if (stalls) lastNoted = noteStall(eventRequestId, kind, dir, start, lastNoted);
             }
         });
+    }
+
+    private long stallTick() {
+        return Math.max(1_000L, Math.min(60_000L, stallNoteMs / 2));
+    }
+
+    /**
+     * Log the job when it has been silent for {@link #stallNoteMs} since its last task event, its
+     * start, or the last note; returns the stamp the next silence is measured from.
+     */
+    private long noteStall(long jid, String kind, String dir, long start, long lastNoted) {
+        long now = nowMillis.getAsLong();
+        long basis = Math.max(Math.max(lastEventAt.applyAsLong(jid), start), lastNoted);
+        if (now - basis < stallNoteMs) return lastNoted;
+        int workers = JobWorkers.liveCountForRequest(jid);
+        log.accept("jk engine: job " + jid + " (" + kind + " " + dir + ") has emitted no task event for "
+                + JobRow.duration(now - Math.max(lastEventAt.applyAsLong(jid), start)) + "; "
+                + workers + (workers == 1 ? " worker process" : " worker processes") + " alive, "
+                + "the job is still live and holds its memory share — `jk cancel " + jid + "` stops it");
+        return now;
     }
 
     /**

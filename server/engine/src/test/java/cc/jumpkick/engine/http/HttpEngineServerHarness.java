@@ -85,6 +85,10 @@ abstract class HttpEngineServerHarness {
             new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     CacheSnapshot cacheSnapshot = EMPTY_CACHE;
+
+    /** The snapshot served by {@code GET /api/status} — tests reassign the field directly. */
+    StatusSnapshot snapshot = SNAPSHOT;
+
     HttpEngineServer server;
     HttpClient client;
     String baseUrl;
@@ -141,7 +145,7 @@ abstract class HttpEngineServerHarness {
                 tokenFile,
                 logFile,
                 "9.9.9-test",
-                () -> SNAPSHOT,
+                () -> snapshot,
                 events,
                 stubJobs,
                 testJournal(),

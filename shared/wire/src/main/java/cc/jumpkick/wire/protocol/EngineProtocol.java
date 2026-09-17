@@ -93,8 +93,10 @@ public final class EngineProtocol {
 
     /**
      * Server → client: the job is waiting for coordinator memory behind {@code ahead} others;
-     * carries {@code jid} (already the cancel handle), {@code ahead} and {@code reason}. Sent at
-     * most once, before {@link #JOB_START}; a job that fits at once never sends it.
+     * carries {@code jid} (already the cancel handle), {@code ahead}, {@code reason}, {@code
+     * waitedMs} and the {@code live} jobs holding the heap. Sent when the job first queues and
+     * again every report interval while it waits, all before {@link #JOB_START}; a job that fits
+     * at once never sends it.
      */
     public static final String JOB_QUEUED = "job-queued";
 
@@ -219,6 +221,9 @@ public final class EngineProtocol {
     public static final String ERR_AUTH = "auth";
     /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
     public static final String ERR_DEADLINE = "deadline";
+
+    /** A job waited the engine's queue-wait bound for memory and gave up; the message names the live job. */
+    public static final String ERR_QUEUE_WAIT = "queue-wait";
     /**
      * A build/test with the same job fingerprint is already running. Message is human text
      * like {@code Build #27 is already running}; optional {@code buildNumber}/{@code requestId}

@@ -42,18 +42,19 @@ class JobLimitsTest {
 
     @Test
     void the_detached_deadline_reads_env_over_file_over_default() {
-        assertThat(JobLimits.resolve(k -> null, 20_000L).detachedDeadlineMs()).isEqualTo(20_000L);
-        assertThat(JobLimits.resolve(Map.of("JK_ENGINE_DETACHED_DEADLINE_MS", "5000")::get, 20_000L)
+        assertThat(JobLimits.resolve(k -> null, 20_000L, null).detachedDeadlineMs())
+                .isEqualTo(20_000L);
+        assertThat(JobLimits.resolve(Map.of("JK_ENGINE_DETACHED_DEADLINE_MS", "5000")::get, 20_000L, null)
                         .detachedDeadlineMs())
                 .isEqualTo(5_000L);
-        assertThat(JobLimits.resolve(Map.of("JK_ENGINE_DETACHED_DEADLINE_MS", "-5")::get, 20_000L)
+        assertThat(JobLimits.resolve(Map.of("JK_ENGINE_DETACHED_DEADLINE_MS", "-5")::get, 20_000L, null)
                         .detachedDeadlineMs())
                 .as("a negative env value falls through to the file layer")
                 .isEqualTo(20_000L);
-        assertThat(JobLimits.resolve(k -> null, -1L).detachedDeadlineMs())
+        assertThat(JobLimits.resolve(k -> null, -1L, null).detachedDeadlineMs())
                 .as("a negative file value falls through to the default")
                 .isEqualTo(JobLimits.DEFAULT_DETACHED_DEADLINE_MS);
-        assertThat(JobLimits.fromFile(0L).detachedDeadlineMs())
+        assertThat(JobLimits.fromFile(0L, null).detachedDeadlineMs())
                 .as("0 lifts the cap")
                 .isZero();
     }
@@ -89,7 +90,27 @@ class JobLimitsTest {
                 "JK_ENGINE_JOB_DEADLINE_MS", "50",
                 "JK_ENGINE_JOB_DEADLINE_GRACE_MS", "100",
                 "JK_CANCEL_GRACE_MS", "5")::get);
-        assertThat(limits).isEqualTo(new JobLimits(0L, 50L, JobLimits.DEFAULT_DETACHED_DEADLINE_MS, 100L, 5L));
+        assertThat(limits)
+                .isEqualTo(new JobLimits(
+                        0L, 50L, JobLimits.DEFAULT_DETACHED_DEADLINE_MS, 100L, 5L, JobLimits.DEFAULT_QUEUE_WAIT_MS));
+    }
+
+    @Test
+    void the_queue_wait_reads_env_over_file_over_default(@TempDir Path dir) throws Exception {
+        assertThat(JobLimits.DEFAULTS.queueWaitMs()).isEqualTo(JobLimits.DEFAULT_QUEUE_WAIT_MS);
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, "[engine]\nqueue-wait-ms = 120000\n");
+        assertThat(JkEngineConfig.resolve(file, k -> null).jobLimits().queueWaitMs())
+                .isEqualTo(120_000L);
+        assertThat(JkEngineConfig.fromToml(file).jobLimits().queueWaitMs()).isEqualTo(120_000L);
+        assertThat(JkEngineConfig.resolve(file, Map.of("JK_ENGINE_QUEUE_WAIT_MS", "0")::get)
+                        .jobLimits()
+                        .queueWaitMs())
+                .as("0 waits without bound and beats the file")
+                .isZero();
+        assertThat(JobLimits.resolve(Map.of("JK_ENGINE_QUEUE_WAIT_MS", "-5")::get)
+                        .queueWaitMs())
+                .isEqualTo(JobLimits.DEFAULT_QUEUE_WAIT_MS);
     }
 
     @Test
@@ -106,9 +127,9 @@ class JobLimitsTest {
         assertThat(resolved.jobLimits().deadlineMs()).isEqualTo(50L);
         assertThat(JkEngineConfig.DEFAULTS.jobLimits()).isEqualTo(JobLimits.DEFAULTS);
         assertThat(JkEngineConfig.DEFAULTS
-                        .withJobLimits(new JobLimits(1L, 2L, 4L, 3L, 500L))
+                        .withJobLimits(new JobLimits(1L, 2L, 4L, 3L, 500L, 6L))
                         .jobLimits())
-                .isEqualTo(new JobLimits(1L, 2L, 4L, 3L, 500L));
+                .isEqualTo(new JobLimits(1L, 2L, 4L, 3L, 500L, 6L));
     }
 
     /** The default {@code docs/user/engine.md} renders for {@code env}, so the two cannot disagree. */

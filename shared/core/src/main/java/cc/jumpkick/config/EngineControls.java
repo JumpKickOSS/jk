@@ -74,7 +74,13 @@ public final class EngineControls {
                     "JK_ENGINE_DETACHED_DEADLINE_MS",
                     "3600000",
                     ENGINE_START,
-                    "Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off."));
+                    "Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off."),
+            control(
+                    "queue-wait-ms",
+                    "JK_ENGINE_QUEUE_WAIT_MS",
+                    "3600000",
+                    ENGINE_START,
+                    "How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound."));
 
     /** {@code JK_ENGINE_*} env that is not an {@code [engine]} key. */
     public static final List<Control> PROCESS = List.of(

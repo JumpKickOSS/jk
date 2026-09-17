@@ -16,6 +16,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,19 +60,25 @@ class MemoryAdmissionTest {
     }
 
     private static final MemoryAdmission.QueuedListener NEVER_QUEUED =
-            ahead -> fail("this job was expected to be admitted at once");
+            (ahead, waited) -> fail("this job was expected to be admitted at once");
+
+    /** A gate on a frozen clock with a generous host: only the heap arithmetic decides. */
+    private static MemoryAdmission gate(FakeHeap heap, MemoryAdmission.Estimator estimator) {
+        return new MemoryAdmission(heap, estimator, () -> 64L << 30, JobEnvelopeQueueTest.PATIENT, () -> 1_000L);
+    }
 
     @Test
     void two_jobs_fit_the_third_queues_and_is_admitted_when_one_finishes() throws Exception {
         // 1000 MiB heap, 100 idle, 32 reserved: 868 to hand out. Two 350 MiB jobs fit; a third does not.
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 350 * MIB);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> 350 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        AtomicInteger ahead = new AtomicInteger(-1);
-        CompletableFuture<Verdict> third = async(() -> gate.admit(3, "build", "/c", ahead::set, () -> false));
+        AtomicInteger aheadRef = new AtomicInteger(-1);
+        CompletableFuture<Verdict> third =
+                async(() -> gate.admit(3, "build", "/c", (ahead, waited) -> aheadRef.set(ahead), () -> false));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
-        assertThat(ahead).hasValue(0);
+        assertThat(aheadRef).hasValue(0);
         assertThat(third).isNotDone();
         assertThat(gate.admittedCount()).isEqualTo(2);
 
@@ -87,11 +95,12 @@ class MemoryAdmissionTest {
     @Test
     void committed_heap_beyond_the_estimates_holds_the_door_until_it_shrinks() throws Exception {
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> 100 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         // The running job holds far more than it estimated: 900 committed leaves 68, not the 768 the ledger says.
         heap.committed = 900 * MIB;
-        CompletableFuture<Verdict> second = async(() -> gate.admit(2, "build", "/b", ahead -> {}, () -> false));
+        CompletableFuture<Verdict> second =
+                async(() -> gate.admit(2, "build", "/b", (ahead, waited) -> {}, () -> false));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         assertThat(second).isNotDone();
         // A collection (or the job's own release of memory) brings committed back; the poll notices.
@@ -102,17 +111,19 @@ class MemoryAdmissionTest {
     @Test
     void an_empty_engine_admits_a_job_that_would_never_fit() {
         FakeHeap heap = new FakeHeap(256, 40);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 5_000 * MIB);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> 5_000 * MIB);
         assertThat(gate.admit(1, "build", "/huge", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
     }
 
     @Test
     void a_queued_job_is_cancelled_by_jid_or_by_dir() throws Exception {
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 600 * MIB);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> 600 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
-        CompletableFuture<Verdict> byJid = async(() -> gate.admit(2, "build", "/b", ahead -> {}, () -> false));
-        CompletableFuture<Verdict> byDir = async(() -> gate.admit(3, "build", "/c", ahead -> {}, () -> false));
+        CompletableFuture<Verdict> byJid =
+                async(() -> gate.admit(2, "build", "/b", (ahead, waited) -> {}, () -> false));
+        CompletableFuture<Verdict> byDir =
+                async(() -> gate.admit(3, "build", "/c", (ahead, waited) -> {}, () -> false));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
         assertThat(gate.cancel(99)).as("an unknown jid is not waiting").isFalse();
         assertThat(gate.cancel(2)).isTrue();
@@ -126,10 +137,11 @@ class MemoryAdmissionTest {
     @Test
     void a_drain_ends_the_wait() throws Exception {
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 600 * MIB);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> 600 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         AtomicBoolean draining = new AtomicBoolean();
-        CompletableFuture<Verdict> second = async(() -> gate.admit(2, "build", "/b", ahead -> {}, draining::get));
+        CompletableFuture<Verdict> second =
+                async(() -> gate.admit(2, "build", "/b", (ahead, waited) -> {}, draining::get));
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         draining.set(true);
         assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.DRAINING);
@@ -140,19 +152,19 @@ class MemoryAdmissionTest {
         // 400 MiB jobs: two fit (100 + 800 = 900 of 968). A third queues; a 10 MiB job behind it would
         // fit the 68 MiB left, and still waits its turn.
         FakeHeap heap = new FakeHeap(1000, 100);
-        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> dir.equals("/small") ? 10 * MIB : 400 * MIB);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> dir.equals("/small") ? 10 * MIB : 400 * MIB);
         assertThat(gate.admit(1, "build", "/a", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         assertThat(gate.admit(2, "build", "/b", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
         List<Long> admittedOrder = new CopyOnWriteArrayList<>();
         CompletableFuture<Verdict> third = async(() -> {
-            Verdict v = gate.admit(3, "build", "/c", ahead -> {}, () -> false);
+            Verdict v = gate.admit(3, "build", "/c", (ahead, waited) -> {}, () -> false);
             admittedOrder.add(3L);
             return v;
         });
         Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
         AtomicInteger smallAhead = new AtomicInteger(-1);
         CompletableFuture<Verdict> small = async(() -> {
-            Verdict v = gate.admit(4, "build", "/small", smallAhead::set, () -> false);
+            Verdict v = gate.admit(4, "build", "/small", (ahead, waited) -> smallAhead.set(ahead), () -> false);
             admittedOrder.add(4L);
             return v;
         });
@@ -165,6 +177,206 @@ class MemoryAdmissionTest {
         assertThat(third.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(small.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
         assertThat(admittedOrder).containsExactly(3L, 4L);
+    }
+
+    /** A clock the test advances by hand. */
+    static final class FakeClock implements LongSupplier {
+        volatile long now = 1_000L;
+
+        @Override
+        public long getAsLong() {
+            return now;
+        }
+    }
+
+    /** One long job holds a 256 MiB heap: 60 idle, 100 estimated, and 250 committed once it runs. */
+    private static FakeHeap heldByOneLongJob() {
+        return new FakeHeap(256, 60);
+    }
+
+    @Test
+    void a_brief_job_runs_beside_a_long_job_whose_committed_heap_would_refuse_it() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        MemoryAdmission gate = new MemoryAdmission(
+                heap,
+                (kind, dir) -> "test".equals(kind) ? 100 * MIB : 30 * MIB,
+                () -> 8L << 30,
+                JobEnvelopeQueueTest.PATIENT,
+                () -> 1_000L);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        // The suite's heap grew to 250 of 256: the plain arithmetic admits nothing behind it.
+        heap.committed = 250 * MIB;
+        CompletableFuture<Verdict> build =
+                async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        assertThat(build).isNotDone();
+
+        // format and guard are judged by the ledger (60 + 100 + 30 + 30 of 224) and the host, and do
+        // not wait behind the build.
+        assertThat(gate.admit(3, "format", "/tool", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admit(4, "guard", "/tool", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        assertThat(gate.admittedCount()).isEqualTo(3);
+        assertThat(gate.queued()).as("the build still waits its turn").isEqualTo(1);
+        assertThat(build).isNotDone();
+
+        // The ledger still caps brief jobs: a third one (250 of 224) queues like anything else.
+        AtomicInteger treeAhead = new AtomicInteger(-1);
+        CompletableFuture<Verdict> tree =
+                async(() -> gate.admit(5, "tree", "/tool", (ahead, waited) -> treeAhead.set(ahead), () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        assertThat(treeAhead).hasValue(1);
+        assertThat(tree).isNotDone();
+
+        gate.release(3);
+        assertThat(tree.get(5, TimeUnit.SECONDS))
+                .as("brief jobs do not wait behind the queued build")
+                .isEqualTo(Verdict.ADMITTED);
+        assertThat(build).isNotDone();
+        gate.release(1);
+        gate.release(4);
+        gate.release(5);
+        heap.committed = 60 * MIB;
+        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+    }
+
+    @Test
+    void a_brief_job_waits_while_the_host_itself_is_short_and_runs_when_it_frees() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        AtomicLong hostFree = new AtomicLong(100 * MIB);
+        MemoryAdmission gate = new MemoryAdmission(
+                heap, (kind, dir) -> 50 * MIB, hostFree::get, JobEnvelopeQueueTest.PATIENT, () -> 1_000L);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        heap.committed = 250 * MIB;
+        AtomicInteger aheadRef = new AtomicInteger(-1);
+        CompletableFuture<Verdict> format =
+                async(() -> gate.admit(2, "format", "/tool", (ahead, waited) -> aheadRef.set(ahead), () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        assertThat(aheadRef).hasValue(0);
+        assertThat(format)
+                .as("the host has 100 MiB free; a 50 MiB job needs 256 MiB of headroom beyond it")
+                .isNotDone();
+
+        hostFree.set(8L << 30);
+        assertThat(format.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+    }
+
+    @Test
+    void the_head_of_the_queue_is_admitted_after_the_fair_wait_when_the_host_has_room() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        FakeClock clock = new FakeClock();
+        MemoryAdmission.Timing timing = new MemoryAdmission.Timing(10_000L, 0L, Long.MAX_VALUE / 4);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        heap.committed = 250 * MIB;
+        CompletableFuture<Verdict> build =
+                async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        clock.now += 5_000L;
+        CompletableFuture<Verdict> second =
+                async(() -> gate.admit(3, "build", "/app", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+        clock.now += 4_999L;
+        Thread.sleep(2 * MemoryAdmission.POLL_MS);
+        assertThat(build).as("one millisecond short of the fair wait").isNotDone();
+
+        clock.now += 1L;
+        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+        Thread.sleep(2 * MemoryAdmission.POLL_MS);
+        assertThat(second)
+                .as("the next head waits its own fair wait, measured from its own arrival")
+                .isNotDone();
+        assertThat(gate.queued()).isEqualTo(1);
+        clock.now += 5_000L;
+        assertThat(second.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+    }
+
+    @Test
+    void the_fair_wait_does_not_admit_a_job_the_host_has_no_room_for() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        FakeClock clock = new FakeClock();
+        MemoryAdmission.Timing timing = new MemoryAdmission.Timing(10_000L, 0L, Long.MAX_VALUE / 4);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 200 * MIB, timing, clock);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        heap.committed = 250 * MIB;
+        CompletableFuture<Verdict> build =
+                async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        clock.now += 60_000L;
+        Thread.sleep(2 * MemoryAdmission.POLL_MS);
+        assertThat(build).isNotDone();
+        assertThat(gate.cancel(2)).isTrue();
+        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+    }
+
+    @Test
+    void a_job_that_waits_the_queue_wait_gives_up_and_leaves_the_queue() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        FakeClock clock = new FakeClock();
+        MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 5_000L, Long.MAX_VALUE / 4);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        heap.committed = 250 * MIB;
+        CompletableFuture<Verdict> build =
+                async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        clock.now += 5_000L;
+        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.TIMED_OUT);
+        assertThat(gate.queued()).isZero();
+        assertThat(gate.admittedCount()).as("the live job is untouched").isEqualTo(1);
+    }
+
+    @Test
+    void a_waiting_job_hears_its_position_every_report_interval() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        FakeClock clock = new FakeClock();
+        MemoryAdmission.Timing timing = new MemoryAdmission.Timing(Long.MAX_VALUE / 4, 0L, 1_000L);
+        MemoryAdmission gate = new MemoryAdmission(heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, timing, clock);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        heap.committed = 250 * MIB;
+        List<long[]> reports = new CopyOnWriteArrayList<>();
+        CompletableFuture<Verdict> build = async(() -> gate.admit(
+                2, "build", "/lib", (ahead, waited) -> reports.add(new long[] {ahead, waited}), () -> false));
+        Await.until(Duration.ofSeconds(5), () -> reports.size() == 1);
+        assertThat(reports.get(0)).containsExactly(0L, 0L);
+        clock.now += 1_000L;
+        Await.until(Duration.ofSeconds(5), () -> reports.size() == 2);
+        assertThat(reports.get(1)).containsExactly(0L, 1_000L);
+        clock.now += 1_000L;
+        Await.until(Duration.ofSeconds(5), () -> reports.size() == 3);
+        assertThat(reports.get(2)).containsExactly(0L, 2_000L);
+        assertThat(gate.cancel(2)).isTrue();
+        assertThat(build.get(5, TimeUnit.SECONDS)).isEqualTo(Verdict.CANCELLED);
+    }
+
+    @Test
+    void queued_rows_carry_kind_dir_arrival_and_position() throws Exception {
+        FakeHeap heap = heldByOneLongJob();
+        FakeClock clock = new FakeClock();
+        MemoryAdmission gate = new MemoryAdmission(
+                heap, (kind, dir) -> 100 * MIB, () -> 8L << 30, JobEnvelopeQueueTest.PATIENT, clock);
+        assertThat(gate.admit(1, "test", "/suite", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        heap.committed = 250 * MIB;
+        CompletableFuture<Verdict> first =
+                async(() -> gate.admit(2, "build", "/lib", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 1);
+        clock.now = 4_000L;
+        CompletableFuture<Verdict> second =
+                async(() -> gate.admit(3, "compile", "/app", (ahead, waited) -> {}, () -> false));
+        Await.until(Duration.ofSeconds(5), () -> gate.queued() == 2);
+
+        List<JobRow> rows = gate.queuedRows();
+        assertThat(rows)
+                .containsExactly(
+                        JobRow.queued(2, "build", "/lib", 1_000L, 0), JobRow.queued(3, "compile", "/app", 4_000L, 1));
+        assertThat(rows.get(1).toJson())
+                .containsEntry("state", "queued")
+                .containsEntry("ahead", 1)
+                .containsEntry("since", 4_000L)
+                .containsEntry("workers", -1);
+        gate.cancel(2);
+        gate.cancel(3);
+        first.get(5, TimeUnit.SECONDS);
+        second.get(5, TimeUnit.SECONDS);
     }
 
     @Test

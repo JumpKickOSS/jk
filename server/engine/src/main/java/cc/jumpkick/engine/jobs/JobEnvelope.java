@@ -29,6 +29,9 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
@@ -55,7 +58,7 @@ public final class JobEnvelope {
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
-        this(host, limits, MemoryAdmission.forRuntime());
+        this(host, limits, MemoryAdmission.forRuntime(limits.queueWaitMs(), host::nowMillis));
     }
 
     /** As above with the memory gate supplied — tests hand in a fake heap and a fixed per-job cost. */
@@ -63,7 +66,7 @@ public final class JobEnvelope {
         this.host = host;
         this.limits = limits;
         this.admission = admission;
-        this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf);
+        this.watchdogs = new JobWatchdog(limits, host::nowMillis, host::accumulatorOf, host::lastEventAt, host::log);
         this.live = new LiveJobRegistry(host::accumulatorOf, host::log, limits.cancelGraceMs());
         this.settlement = new JobSettlement(host, host, host, host);
     }
@@ -189,6 +192,7 @@ public final class JobEnvelope {
                 cancelSignal,
                 eventDir,
                 eventKind,
+                eventStartMillis,
                 workspaceStream);
         Admitted admitted = new Admitted(
                 requestLine,
@@ -214,8 +218,8 @@ public final class JobEnvelope {
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
         runnerRef.set(started);
         started.start(); // register live job + runnerRef before start
-        final Thread watchdog =
-                watchdogs.start(eventRequestId, cancelToken, runnerRef, done, writer, deadline, eventStartMillis);
+        final Thread watchdog = watchdogs.start(
+                eventRequestId, eventKind, eventDir, cancelToken, runnerRef, done, writer, deadline, eventStartMillis);
         Runnable finish = () -> finish(admitted, reader, watchdog);
         if (detached) {
             // Joins and journals the detached job; reads no session.
@@ -240,14 +244,21 @@ public final class JobEnvelope {
             boolean workspaceStream,
             boolean detached,
             @Nullable BufferedWriter writer) {
-        MemoryAdmission.Verdict verdict =
-                admission.admit(jid, kind, dir, ahead -> announceQueued(jid, kind, dir, ahead, writer), host::draining);
+        MemoryAdmission.Verdict verdict = admission.admit(
+                jid,
+                kind,
+                dir,
+                (ahead, waitedMs) -> announceQueued(jid, kind, dir, ahead, waitedMs, writer),
+                host::draining);
         switch (verdict) {
             case CANCELLED -> {
                 return refuseCancelledInQueue(jid, kind, dir, workspaceStream, detached, writer);
             }
             case DRAINING -> {
                 return refuseDraining(detached, writer);
+            }
+            case TIMED_OUT -> {
+                return refuseTimedOut(jid, kind, dir, detached, writer);
             }
             case ADMITTED -> {
                 /* fall through to the slot claim */
@@ -261,15 +272,67 @@ public final class JobEnvelope {
     }
 
     /**
-     * The job has to wait for coordinator memory: one {@code job-queued} line so the client can
-     * say so and keeps the jid as its cancel handle, one {@code request-queued} frame so the
-     * dashboard paints the queued card, one log line for the post-mortem.
+     * The job has to wait for coordinator memory: a {@code job-queued} line naming its position and
+     * the live jobs, so the client can say who it waits on and keeps the jid as its cancel handle.
+     * The first one ({@code waitedMs == 0}) also sends the {@code request-queued} frame that paints
+     * the dashboard's queued card and writes one log line for the post-mortem; the later ones are
+     * the wire's alone, which also keeps the client's stream-idle timer from firing while it waits.
      */
-    private void announceQueued(long jid, String kind, String dir, int ahead, @Nullable BufferedWriter writer) {
-        if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobQueued(jid, ahead));
+    private void announceQueued(
+            long jid, String kind, String dir, int ahead, long waitedMs, @Nullable BufferedWriter writer) {
+        List<JobRow> liveRows = liveRows();
+        if (writer != null) {
+            WireWriter.sendQuiet(writer, ProtoLifecycle.jobQueued(jid, ahead, waitedMs, JobRow.toWire(liveRows)));
+        }
+        if (waitedMs > 0) return;
         host.publishRequestQueued(jid, kind, dir, ahead);
         host.log("jk engine: job " + jid + " (" + kind + " " + dir + ") waits for engine memory behind " + ahead
-                + (ahead == 1 ? " job" : " jobs"));
+                + (ahead == 1 ? " job" : " jobs") + liveSummary(liveRows));
+    }
+
+    /** {@code ; live: test /app (jid 739) since 22:36} for a log line or an error, {@code ""} with no live job. */
+    private static String liveSummary(List<JobRow> liveRows) {
+        if (liveRows.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("; live: ");
+        for (int i = 0; i < liveRows.size(); i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(liveRows.get(i).describe());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Waited the engine's queue-wait bound without being admitted: the client gets an {@code
+     * error} naming the jobs ahead, the live job holding the heap and the knob, instead of a
+     * connection that closes with no result; the dashboard card resolves through {@code
+     * request-finish}. Nothing ran, so no journal row was ever begun.
+     */
+    private long refuseTimedOut(long jid, String kind, String dir, boolean detached, @Nullable BufferedWriter writer) {
+        int ahead = admission.queued();
+        String message =
+                "gave up after waiting " + JobRow.duration(admission.timing().queueWaitMs())
+                        + " for engine memory behind "
+                        + ahead + (ahead == 1 ? " job" : " jobs") + liveSummary(liveRows())
+                        + " — `jk cancel <jid>` frees a live job, `jk engine status` lists them;"
+                        + " [engine] queue-wait-ms / JK_ENGINE_QUEUE_WAIT_MS sets the wait";
+        host.log("jk engine: job " + jid + " (" + kind + " " + dir + ") " + message);
+        host.publishEvent(
+                "request-finish",
+                JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "request-finish")
+                        .put("jid", jid)
+                        .put("kind", kind)
+                        .put("dir", dir)
+                        .put("projectId", ProjectIds.idOf(dir))
+                        .put("success", false)
+                        .put("cancelled", false)
+                        .put("error", message)
+                        .put("millis", 0L)
+                        .put("activeBuildPlans", host.activeBuildPlans()));
+        if (detached) throw new IllegalStateException(message);
+        if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.error(EngineProtocol.ERR_QUEUE_WAIT, message));
+        return -1;
     }
 
     /**
@@ -572,6 +635,22 @@ public final class JobEnvelope {
     /** Jobs waiting for coordinator memory right now; the status vital behind {@code queuedBuildPlans}. */
     public int queued() {
         return admission.queued();
+    }
+
+    /** Every live job, oldest first, then every queued job in arrival order. */
+    public List<JobRow> jobs() {
+        List<JobRow> out = new ArrayList<>(liveRows());
+        out.addAll(admission.queuedRows());
+        return out;
+    }
+
+    /** {@link #jobs()} as the status vitals carry it. */
+    public List<Map<String, Object>> jobsJson() {
+        return JobRow.toJson(jobs());
+    }
+
+    private List<JobRow> liveRows() {
+        return live.rows(JobWorkers::liveCountForRequest, host::lastEventAt);
     }
 
     /** Whether a job's cancel token means a real cancel — see {@link JobSettlement#effectiveCancelled}. */

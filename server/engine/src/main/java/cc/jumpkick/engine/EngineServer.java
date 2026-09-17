@@ -430,7 +430,8 @@ public final class EngineServer implements AutoCloseable {
                 () -> EngineLogSink.sizeOf(paths.log()),
                 this::logRolledAtMillis,
                 TerminalSignals::ignoredSignals,
-                jobs::queued);
+                jobs::queued,
+                jobs::jobsJson);
     }
 
     private long logRolledAtMillis() {
