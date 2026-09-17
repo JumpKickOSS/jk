@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.plugin.manifest.PluginDescriptors;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
@@ -224,6 +226,68 @@ class ManifestUpdatesTest {
         assertThat(major.rewrites())
                 .extracting(r -> r.handle(), r -> r.to())
                 .containsExactlyInAnyOrder(tuple("dokka", "3.0.0"), tuple("grpc-java", "1.81.0"));
+    }
+
+    /**
+     * A plugin whose step-dependency coordinate templates its group or artifact from the table —
+     * or, per entry, from the entry — pins the module those values name, and the key holding the
+     * version moves like any other tool pin.
+     */
+    @Test
+    void a_templated_group_or_artifact_is_read_through_the_table(@TempDir Path project) throws Exception {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                        [plugin]
+                        id = "templated-tool"
+                        table = "templated-tool"
+
+                        [schema]
+                        group   = { type = "string", required = true }
+                        tool    = { type = "string", required = true }
+                        version = { type = "string", required = true }
+
+                        [entries]
+                        schema = "gen"
+
+                        [sub-schema.gen]
+                        version = { type = "string", required = true }
+
+                        [[contribute.step-dependency]]
+                        artifact   = "tool"
+                        coordinate = "${config.group}:${config.tool}-cli:${config.version}"
+
+                        [[contribute.step-dependency]]
+                        per-entry  = true
+                        artifact   = "gen-${entry.name}"
+                        coordinate = "${config.group}:gen-${entry.name}:${entry.version}"
+                        """, "templated-tool.toml"), null);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "tools"
+                version = "1.0.0"
+                java = 25
+
+                [templated-tool]
+                group   = "io.acme"
+                tool    = "shaper"
+                version = "1.0.0"
+
+                [templated-tool.widget]
+                version = "2.0.0"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "io.acme", "shaper-cli", "1.0.0", "1.1.0");
+        published(upstream, "io.acme", "gen-widget", "2.0.0", "2.2.0");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL);
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.handle(), r -> r.module(), r -> r.from(), r -> r.to())
+                .containsExactlyInAnyOrder(
+                        tuple("templated-tool.version", "templated-tool", "io.acme:shaper-cli", "1.0.0", "1.1.0"),
+                        tuple("templated-tool.widget.version", "widget", "io.acme:gen-widget", "2.0.0", "2.2.0"));
+        String text = Objects.requireNonNull(plan.contents().get(project.resolve("jk.toml")));
+        assertThat(text).contains("version = \"1.1.0\"").contains("[templated-tool.widget]\nversion = \"2.2.0\"");
+        JkBuildParser.parse(text);
     }
 
     // ---- fixture ---------------------------------------------------------------

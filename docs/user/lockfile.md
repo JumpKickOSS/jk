@@ -68,7 +68,9 @@ The tool tables move under the same rule and flags: an exact `[dokka] version`, 
 rewritten to the newest stable on their major; `jk update dokka`, `jk update grpc-java` or the tool's
 `group:artifact` selects one, and the rewrite line names the key (`grpc-java  1.70.0 → 1.81.0
 (protobuf.grpc-java.plugin)`). A floating selector in a tool table keeps its text as a dependency's
-does.
+does. Any plugin's tool pins move the same way: a step dependency whose coordinate takes its
+version from the plugin's table, or from an entry's key, is a pin on the module the coordinate
+names — its group and artifact filled from the table the way the step fills them.
 
 The Maven major is the first numeric segment (`2.18.2` → 2.x, `33.4.8-jre` → 33.x). Pre-releases
 are never "stable", so an RC is taken only by an opt-in selector that admits it. The rewritten
