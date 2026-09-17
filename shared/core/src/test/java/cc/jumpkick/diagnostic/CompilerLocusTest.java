@@ -4,6 +4,7 @@ package cc.jumpkick.diagnostic;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Objects;
+import java.util.regex.Matcher;
 import org.junit.jupiter.api.Test;
 
 class CompilerLocusTest {
@@ -62,6 +63,29 @@ class CompilerLocusTest {
         assertThat(locus.file()).isEqualTo("/w/src/main/groovy/Foo.groovy");
         assertThat(locus.line()).isEqualTo(5);
         assertThat(locus.col()).isEqualTo(1);
+    }
+
+    @Test
+    void k2_header_with_a_space_after_the_column_parses_to_a_path() {
+        CompilerLocus locus = parsed("file:///ws/app/src/Main.kt:3:5 Unresolved reference 'missing'.");
+        assertThat(locus.file()).isEqualTo("/ws/app/src/Main.kt");
+        assertThat(locus.line()).isEqualTo(3);
+        assertThat(locus.col()).isEqualTo(5);
+    }
+
+    @Test
+    void k2_header_rest_is_the_message_without_the_column() {
+        Matcher m = CompilerLocus.HEADER.matcher("file:///ws/app/src/Main.kt:3:5 Unresolved reference 'missing'.");
+        assertThat(m.matches()).isTrue();
+        assertThat(m.group("col")).isEqualTo("5");
+        assertThat(m.group("rest")).isEqualTo("Unresolved reference 'missing'.");
+        assertThat(CompilerLocus.fileName(m.group("file"))).isEqualTo("/ws/app/src/Main.kt");
+    }
+
+    @Test
+    void a_plain_path_is_its_own_file_name() {
+        assertThat(CompilerLocus.fileName("/ws/Foo.java")).isEqualTo("/ws/Foo.java");
+        assertThat(CompilerLocus.fileName("src/Foo.kt")).isEqualTo("src/Foo.kt");
     }
 
     /** {@link CompilerLocus#parse}, failing the test when the text is not a compiler diagnostic. */
