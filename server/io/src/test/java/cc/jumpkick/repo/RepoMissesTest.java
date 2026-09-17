@@ -125,6 +125,30 @@ class RepoMissesTest {
         assertThat(emptyRemote.requestsFor(POM)).isEqualTo(2);
     }
 
+    /**
+     * A miss is keyed by the URL the request opened, so a settings.xml mirror that starts routing the
+     * repository is asked afresh for what the repository itself missed: the memo written at the
+     * origin never answers for the mirror, and the mirror's for the origin.
+     */
+    @Test
+    void a_settings_mirror_is_asked_afresh_for_what_the_repository_missed_before_it_existed(@TempDir Path tmp)
+            throws Exception {
+        MavenRepo central = emptyRemote.repo(tmp, "central");
+        assertThatThrownBy(() -> central.fetchPom(LIB)).isInstanceOf(MavenRepo.ArtifactNotFoundException.class);
+        assertThat(RepoMisses.size()).isEqualTo(1);
+
+        // ~/.m2/settings.xml gains a <mirror> for central: the same repository, its requests opened elsewhere.
+        MavenRepo mirrored = central.mirroredThrough(
+                new MavenRepo.Mirror("nexus", full.base(), RepoCredential.ANONYMOUS, "mirror `nexus`"));
+
+        assertThat(mirrored.name()).isEqualTo("central");
+        assertThat(mirrored.fetchPom(LIB).url().getHost()).isEqualTo("127.0.0.1");
+        assertThat(emptyRemote.requestsFor(POM))
+                .as("the origin was asked once, before the mirror")
+                .isEqualTo(1);
+        assertThat(full.requestsFor(POM)).isEqualTo(1);
+    }
+
     private RepoGroup group(Path tmp) {
         return new RepoGroup(List.of(repo(tmp, "empty", empty), repo(tmp, "full", full)));
     }

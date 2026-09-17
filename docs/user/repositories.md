@@ -302,7 +302,9 @@ https://nexus.acme.com/repository/maven-public/; the lock records `central` at h
 
 A plaintext `http://` mirror on a network path is refused with a warning naming the entry and the
 repository is asked at its own URL; a loopback mirror is fine. A `<repository>` a dependency's
-POM declares goes through the mirror too.
+POM declares goes through the mirror too. The engine's not-found memo is keyed by the URL a request
+opened, so a mirror that appears is asked afresh for a coordinate the repository missed before it
+existed, and a mirror removed leaves the repository asked afresh at its own URL.
 
 **A `<proxy>` is jk's proxy** for the protocol it names, between `~/.jk/config.toml [network]` and
 the shell's `https_proxy` / `http_proxy` — see [Config § Network](config.md#network). Its
