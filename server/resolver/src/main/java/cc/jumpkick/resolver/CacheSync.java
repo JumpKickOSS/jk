@@ -26,6 +26,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -66,6 +68,15 @@ public final class CacheSync {
     /** Visible for tests — inject a credential resolver. */
     public CacheSync(Cas cas, Http http, RepoCredentialResolver creds) {
         this(cas, http, creds, true);
+    }
+
+    /** The pool fetch tasks run on; {@link #onExecutor} swaps it for tests. */
+    private Executor executor = JkThreads.io();
+
+    /** Test seam: run fetch tasks on {@code executor} instead of the io pool. */
+    CacheSync onExecutor(Executor executor) {
+        this.executor = Objects.requireNonNull(executor, "executor");
+        return this;
     }
 
     /** Visible for tests — inject a credential resolver and {@code m2integration} explicitly. */
@@ -138,12 +149,12 @@ public final class CacheSync {
             pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
         }
 
-        // Every fetch is dispatched; DownloadSlots bounds how many run at once and MavenRepo
-        // rate-limits the network leg per host.
+        // Fetches are dispatched through a window of DownloadSlots.width() tasks alive at once;
+        // each takes a DownloadSlots slot and MavenRepo rate-limits the network leg per host.
+        Semaphore window = new Semaphore(DownloadSlots.width());
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
         for (PendingFetch p : pending) {
-            CompletableFuture<FetchResult> fut =
-                    CompletableFuture.supplyAsync(() -> inSlot(() -> fetch(p)), JkThreads.io());
+            CompletableFuture<FetchResult> fut = submit(window, () -> fetch(p));
             // Fire the per-package callback on the fetcher's completion
             // thread so the progress bar updates as parallel fetches
             // finish, not in a single end-of-pass burst. thenAccept
@@ -203,9 +214,10 @@ public final class CacheSync {
         }
 
         int fetched = 0;
+        Semaphore window = new Semaphore(DownloadSlots.width());
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>();
         for (PendingFetch p : pending) {
-            futures.add(CompletableFuture.supplyAsync(() -> inSlot(() -> fetchSources(p)), JkThreads.io()));
+            futures.add(submit(window, () -> fetchSources(p)));
         }
         for (int i = 0; i < futures.size(); i++) {
             FetchResult r;
@@ -258,6 +270,24 @@ public final class CacheSync {
         default void skipped(Lockfile.Artifact pkg) {}
 
         default void failed(Lockfile.Artifact pkg, @Nullable String error) {}
+    }
+
+    /**
+     * Submit one fetch once {@code window} has room for it, on the pool, inside a {@link
+     * DownloadSlots} slot; the window permit goes back as the task ends. Waiting here, on the
+     * submitting thread, is what keeps the task population near the slot width instead of one
+     * parked thread per row of the lock.
+     */
+    private CompletableFuture<FetchResult> submit(Semaphore window, Supplier<FetchResult> fetch)
+            throws InterruptedException {
+        window.acquire();
+        try {
+            return CompletableFuture.supplyAsync(() -> inSlot(fetch), executor)
+                    .whenComplete((r, e) -> window.release());
+        } catch (RuntimeException rejected) {
+            window.release();
+            throw rejected;
+        }
     }
 
     /** Run one fetch inside a {@link DownloadSlots} slot, so the fan-out is bounded process-wide. */

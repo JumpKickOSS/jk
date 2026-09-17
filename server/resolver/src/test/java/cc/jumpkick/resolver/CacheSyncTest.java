@@ -7,13 +7,18 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.SysProps;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -116,6 +121,47 @@ class CacheSyncTest {
 
     private CacheSync newSync(Path tempDir) {
         return newSync(tempDir, false);
+    }
+
+    @Test
+    void fetch_tasks_alive_at_once_never_exceed_the_download_slots(@TempDir Path tempDir) throws Exception {
+        int rows = DownloadSlots.width() * 3;
+        http.beforeServe(path -> {
+            try {
+                Thread.sleep(5);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        List<Lockfile.Artifact> pkgs = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            byte[] jar = ("jar-" + i).getBytes(StandardCharsets.UTF_8);
+            registerJar("com.foo", "lib" + i, "1.0", jar);
+            pkgs.add(pkg("com.foo:lib" + i, "1.0", "sha256:" + Hashing.sha256Hex(jar)));
+        }
+        AtomicInteger alive = new AtomicInteger();
+        AtomicInteger peakAlive = new AtomicInteger();
+        Executor counting = task -> {
+            peakAlive.accumulateAndGet(alive.incrementAndGet(), Math::max);
+            JkThreads.io().execute(() -> {
+                try {
+                    task.run();
+                } finally {
+                    alive.decrementAndGet();
+                }
+            });
+        };
+
+        CacheSync.Report report =
+                newSync(tempDir).onExecutor(counting).sync(lockOf(pkgs.toArray(Lockfile.Artifact[]::new)));
+
+        assertThat(report.errors()).isEmpty();
+        assertThat(report.fetched()).isEqualTo(rows);
+        assertThat(peakAlive.get())
+                .as("fetch tasks alive at once: the window's permit goes back as a row completes, a tick before its"
+                        + " thread unwinds, so the next row may start while the finished one exits")
+                .isLessThanOrEqualTo(DownloadSlots.width() + 1)
+                .isGreaterThan(1);
     }
 
     private CacheSync newSync(Path tempDir, boolean mirrorToM2) {

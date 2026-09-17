@@ -16,7 +16,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -38,23 +40,33 @@ final class ArtifactMaterializer {
 
     private final RowAssembler rows;
     private final LockProgress progress;
+    private final Executor executor;
 
     ArtifactMaterializer(RowAssembler rows, LockProgress progress) {
+        this(rows, progress, JkThreads.io());
+    }
+
+    /** Test seam: the pool the row tasks run on. */
+    ArtifactMaterializer(RowAssembler rows, LockProgress progress, Executor executor) {
         this.rows = rows;
         this.progress = progress;
+        this.executor = executor;
     }
 
     /**
      * Rows for {@code ordered}, in that order. Progress ticks on completion order via a queue drained
      * on this thread so the wedge and UI stay single-threaded.
      *
-     * <p>Every task takes a {@link DownloadSlots} slot before it assembles its row and holds it for
-     * the row's legs — the per-repository probes, the download, its sidecar reads — so a lock of
-     * several hundred rows keeps a bounded number of connections, copy buffers and parked legs in
-     * the engine at once. Warm re-locks serve immutable GAVs from the local mirror, so a slot is
-     * cheap for them; the per-host cap around the network leg alone ({@code HostRateLimiter}, six
-     * per host) is what keeps a cold lock polite, and wrapping the whole row in it once turned a
-     * one-second store walk into minutes.
+     * <p>Rows are submitted through a window of {@link DownloadSlots#width()}: a row task exists only
+     * once an earlier one has finished, so the population of tasks stays near the width instead of
+     * one parked thread per row of the lock. Every task then takes a {@link DownloadSlots} slot
+     * before it assembles its row and holds it for the row's legs — the per-repository probes, the
+     * download, its sidecar reads — so a lock of several hundred rows keeps a bounded number of
+     * connections, copy buffers and parked legs in the engine at once, even beside another job's
+     * downloads. Warm re-locks serve immutable GAVs from the local mirror, so a slot is cheap for
+     * them; the per-host cap around the network leg alone ({@code HostRateLimiter}, six per host) is
+     * what keeps a cold lock polite, and wrapping the whole row in it once turned a one-second store
+     * walk into minutes.
      */
     List<Lockfile.Artifact> materialize(
             List<Map.Entry<String, Resolution.ResolvedModule>> ordered, Map<String, EnumSet<Scope>> tagsByKey)
@@ -66,41 +78,16 @@ final class ArtifactMaterializer {
         // of hammering the host for a lock that is already dead.
         AtomicBoolean failed = new AtomicBoolean();
         List<CompletableFuture<?>> inFlight = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            final int idx = i;
-            var e = ordered.get(i);
-            EnumSet<Scope> tags = Objects.requireNonNull(tagsByKey.get(e.getKey()), "every module has its scope tags");
-            inFlight.add(CompletableFuture.supplyAsync(
-                            () -> {
-                                try {
-                                    DownloadSlots.acquire();
-                                    try {
-                                        if (failed.get()) {
-                                            throw new CompletionException(new MavenRepo.FetchAbortedException(
-                                                    "lock already failed — skipped"));
-                                        }
-                                        return rows.toArtifact(e.getValue(), tags, failed::get);
-                                    } finally {
-                                        DownloadSlots.release();
-                                    }
-                                } catch (IOException | InterruptedException ex) {
-                                    throw new CompletionException(ex);
-                                }
-                            },
-                            JkThreads.io())
-                    .whenComplete((art, ex) -> {
-                        if (ex != null) {
-                            failed.set(true);
-                            doneQ.offer(MaterializeDone.fail(ex));
-                        } else {
-                            var mod = e.getValue();
-                            doneQ.offer(MaterializeDone.ok(
-                                    idx, art, LockProgress.displayModule(mod.module()), mod.version()));
-                        }
-                    }));
-        }
+        // The submission window: a permit per task alive, given back before its done event is
+        // queued, so the drain loop below always finds room for another row when it wakes.
+        Semaphore window = new Semaphore(DownloadSlots.width());
+        int submitted = 0;
         int received = 0;
         while (received < n) {
+            while (submitted < n && !failed.get() && window.tryAcquire()) {
+                inFlight.add(submit(ordered.get(submitted), submitted, tagsByKey, failed, window, doneQ));
+                submitted++;
+            }
             MaterializeDone d;
             try {
                 d = doneQ.take();
@@ -148,6 +135,46 @@ final class ArtifactMaterializer {
             received++;
         }
         return List.of(arts);
+    }
+
+    /** One row's task: a slot, the row, then the done event; the window permit goes back first. */
+    private CompletableFuture<?> submit(
+            Map.Entry<String, Resolution.ResolvedModule> e,
+            int idx,
+            Map<String, EnumSet<Scope>> tagsByKey,
+            AtomicBoolean failed,
+            Semaphore window,
+            BlockingQueue<MaterializeDone> doneQ) {
+        EnumSet<Scope> tags = Objects.requireNonNull(tagsByKey.get(e.getKey()), "every module has its scope tags");
+        return CompletableFuture.supplyAsync(
+                        () -> {
+                            try {
+                                DownloadSlots.acquire();
+                                try {
+                                    if (failed.get()) {
+                                        throw new CompletionException(
+                                                new MavenRepo.FetchAbortedException("lock already failed — skipped"));
+                                    }
+                                    return rows.toArtifact(e.getValue(), tags, failed::get);
+                                } finally {
+                                    DownloadSlots.release();
+                                }
+                            } catch (IOException | InterruptedException ex) {
+                                throw new CompletionException(ex);
+                            }
+                        },
+                        executor)
+                .whenComplete((art, ex) -> {
+                    window.release();
+                    if (ex != null) {
+                        failed.set(true);
+                        doneQ.offer(MaterializeDone.fail(ex));
+                    } else {
+                        var mod = e.getValue();
+                        doneQ.offer(
+                                MaterializeDone.ok(idx, art, LockProgress.displayModule(mod.module()), mod.version()));
+                    }
+                });
     }
 
     /** Unwrap the layered CompletionExceptions around a materialize failure. */

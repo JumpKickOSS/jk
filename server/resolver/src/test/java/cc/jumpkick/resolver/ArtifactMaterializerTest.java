@@ -6,12 +6,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.DownloadSlots;
+import cc.jumpkick.run.JkThreads;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -68,6 +70,56 @@ class ArtifactMaterializerTest {
                 .isGreaterThan(1);
         assertThat(out).extracting(Lockfile.Artifact::name).containsExactly(names(rows));
         assertThat(ticked).hasSize(rows);
+    }
+
+    @Test
+    void row_tasks_alive_at_once_never_exceed_the_download_slots() throws Exception {
+        // A task exists from its submission to its completion; parked on a slot it still holds its
+        // thread and closure. The window keeps the population near the width, not the row count.
+        int rows = DownloadSlots.width() * 4;
+        AtomicInteger alive = new AtomicInteger();
+        AtomicInteger peakAlive = new AtomicInteger();
+        Executor counting = task -> {
+            peakAlive.accumulateAndGet(alive.incrementAndGet(), Math::max);
+            JkThreads.io().execute(() -> {
+                try {
+                    task.run();
+                } finally {
+                    alive.decrementAndGet();
+                }
+            });
+        };
+        ArtifactMaterializer.RowAssembler assembler = (mod, tags, abort) -> {
+            Thread.sleep(10);
+            return row(mod);
+        };
+        LockProgress progress = new LockProgress(
+                new ResolveObserver() {
+                    @Override
+                    public void onTotal(int total) {}
+
+                    @Override
+                    public void onPackage(String module, String version) {}
+                },
+                (graphMs, graphPackages, materializeMs, materialized, totalMs) -> {});
+        List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>();
+        Map<String, EnumSet<Scope>> tags = new HashMap<>();
+        for (int i = 0; i < rows; i++) {
+            String key = "com.example:lib" + i + "@1.0";
+            ordered.add(Map.entry(
+                    key, new Resolution.ResolvedModule("com.example:lib" + i, "1.0", List.of(), Map.of(), List.of())));
+            tags.put(key, EnumSet.of(Scope.MAIN));
+        }
+
+        List<Lockfile.Artifact> out =
+                new ArtifactMaterializer(assembler, progress, counting).materialize(ordered, tags);
+
+        assertThat(peakAlive.get())
+                .as("row tasks alive at once: the window's permit goes back as a row completes, a tick before its"
+                        + " thread unwinds, so the next row may start while the finished one exits")
+                .isLessThanOrEqualTo(DownloadSlots.width() + 1)
+                .isGreaterThan(1);
+        assertThat(out).extracting(Lockfile.Artifact::name).containsExactly(names(rows));
     }
 
     private static String[] names(int rows) {
