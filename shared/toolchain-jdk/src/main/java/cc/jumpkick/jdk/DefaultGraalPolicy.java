@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 
 /**
  * De-facto default GraalVM when no explicit {@code jk jdk graal} / lock {@code [graal]} is set:
@@ -25,7 +26,16 @@ public final class DefaultGraalPolicy {
 
     /** True for Oracle GraalVM or GraalVM CE. */
     public static boolean isGraal(JdkHit h) {
-        return h != null && (h.vendor() == JdkVendor.ORACLE_GRAALVM || h.vendor() == JdkVendor.GRAALVM_CE);
+        return h != null && isGraal(h.vendor());
+    }
+
+    /**
+     * True for the two GraalVM flavours. Takes the vendor alone, for a caller holding a catalog
+     * entry rather than an installed hit — {@code JdkInstaller} asks this to decide whether an
+     * install has to carry a {@code native-image} launcher to count as finished.
+     */
+    public static boolean isGraal(@Nullable JdkVendor vendor) {
+        return vendor == JdkVendor.ORACLE_GRAALVM || vendor == JdkVendor.GRAALVM_CE;
     }
 
     /** Oracle GraalVM before GraalVM CE; newer version first within a flavour. */

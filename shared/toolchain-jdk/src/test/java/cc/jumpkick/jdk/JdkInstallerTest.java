@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -254,6 +255,96 @@ class JdkInstallerTest {
             assertThat(entries.filter(p -> p.getFileName().toString().startsWith(".stage-")))
                     .isEmpty();
         }
+    }
+
+    @Test
+    void a_directory_at_the_install_name_with_no_launcher_is_not_answered_as_an_install(@TempDir Path tempDir)
+            throws Exception {
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkCatalog.Entry entry = entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), null);
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        Path target = Files.createDirectories(jdksRoot.resolve("temurin-21.0.5"));
+
+        assertThat(installer.alreadyInstalled(entry))
+                .as("an empty directory is what a canceled install leaves, not an install")
+                .isNull();
+
+        // jk's marker is one file at the top of the tree, so it outlives the JDK underneath it.
+        // The hollowed tree it marks is still not something to report as installed.
+        JdkOwnership.mark(target);
+        Files.createDirectories(target.resolve("bin"));
+
+        assertThat(installer.alreadyInstalled(entry))
+                .as("a marker with no bin/java under it is not an install either")
+                .isNull();
+    }
+
+    @Test
+    void a_graalvm_without_a_native_image_launcher_is_not_answered_as_installed(@TempDir Path tempDir)
+            throws Exception {
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot));
+        // Oracle GraalVM reports version 25 for major 25, so its install dir is graalvm-25 — the
+        // directory this went wrong in. A JDK by every other measure: bin/java, release, jk's mark.
+        JdkCatalog.Entry graal = graalEntry();
+        Path graalHome = fakeJdk(jdksRoot, "graalvm-25", "25");
+        JdkOwnership.mark(graalHome);
+
+        assertThat(installer.alreadyInstalled(graal))
+                .as("a GraalVM is installed to link with, and this one cannot")
+                .isNull();
+
+        // A plain JDK is never asked to carry the launcher: same shape, answered as installed.
+        Path plain = fakeJdk(jdksRoot, "temurin-21.0.5", "21.0.5");
+        JdkOwnership.mark(plain);
+        assertThat(installer.alreadyInstalled(entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), null)))
+                .isNotNull();
+
+        // GraalLauncher probes lib/svm/bin and every spelling on every host, so this is the
+        // launcher a Windows GraalVM keeps and a POSIX run recognises it too.
+        Path svm = Files.createDirectories(graalHome.resolve("lib").resolve("svm").resolve("bin"));
+        Files.writeString(svm.resolve(GraalLauncher.EXE), "fake");
+
+        assertThat(installer.alreadyInstalled(graal)).isNotNull();
+    }
+
+    /** Oracle GraalVM 25 as the feed reports it: version == major, so the install dir is graalvm-25. */
+    private JdkCatalog.Entry graalEntry() {
+        return new JdkCatalog.Entry(
+                "Oracle",
+                "GraalVM",
+                "graalvm-jdk-25",
+                25,
+                "25",
+                true,
+                false,
+                List.of("graalvm-25", "graalvm", "25"),
+                "linux",
+                "x86_64",
+                "targz",
+                base.resolve("/graalvm.tar.gz"),
+                null,
+                1024L,
+                "graalvm-jdk-25",
+                "");
+    }
+
+    @Test
+    void an_install_claims_the_name_an_empty_directory_was_holding(@TempDir Path tempDir) throws Exception {
+        byte[] archive = buildTarGz("jdk-21.0.5+11", discoverableJdkFiles());
+        served.put("/jdk.tar.gz", archive);
+        Path jdksRoot = tempDir.resolve("jdks");
+        JdkCatalog.Entry entry =
+                entry("linux", "x86_64", "", base.resolve("/jdk.tar.gz"), Hashing.sha256Hex(archive));
+        // The shape that wedged the reporting host: ~/.jdks/graalvm-25, empty. A POSIX rename
+        // replaces it; Windows refuses, so without the unlink the install could never land.
+        Path target = Files.createDirectories(jdksRoot.resolve("temurin-21.0.5"));
+
+        InstalledJdk installed = new JdkInstaller(new Http(), new JdkRegistry(jdksRoot)).install(entry);
+
+        assertThat(installed.home()).isEqualTo(target);
+        assertThat(JdkFingerprint.java(installed.home())).isRegularFile();
+        assertThat(JdkOwnership.isJkOwned(target)).isTrue();
     }
 
     @Test

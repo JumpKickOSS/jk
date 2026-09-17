@@ -4,6 +4,8 @@ package cc.jumpkick.cli.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.GraalLauncher;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +17,21 @@ import org.junit.jupiter.api.io.TempDir;
  * and silently wrong for the {@code lib/svm/bin} layout the same search can return.
  */
 class GraalResolverTest {
+
+    @Test
+    void a_home_that_holds_no_launcher_is_refused_rather_than_handed_on(@TempDir Path dir) throws IOException {
+        // What an install used to hand back for a directory that was not an install: a home with
+        // nothing in it. Unchecked, it reached the engine, which fell through to the project's JDK
+        // and failed naming that instead.
+        Path home = Files.createDirectories(dir.resolve("graalvm-25"));
+
+        assertThat(GraalResolver.carriesNativeImage(home)).isFalse();
+
+        Files.createDirectories(home.resolve("bin"));
+        Files.writeString(home.resolve("bin").resolve(GraalLauncher.NAME), "#!/fake");
+
+        assertThat(GraalResolver.carriesNativeImage(home)).isTrue();
+    }
 
     @Test
     void svm_launcher_yields_the_home_not_the_lib_dir(@TempDir Path dir) {
