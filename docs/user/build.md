@@ -132,7 +132,10 @@ both a value and a table.
 `--add-reads` of a system module (`java.*`, `jdk.*`), so a module whose `args` export one —
 Hadoop's annotations reach `jdk.javadoc.internal.tool` — compiles with `-source N -target N`
 against the running JDK's API instead, as Maven does for a POM that writes `<source>`/`<target>`;
-the class-file level is the same either way.
+the class-file level is the same either way. The module's javadoc jar documents under the same
+module graph — the `--add-modules`, `--add-exports` and `--add-reads` of its `args` ride along, and
+such an export sets javadoc's level with `-source N` — so a type the compile reaches through an
+export is documented, not reported as a missing package.
 
 `compile-main` and `compile-test` run the same plugins, and every plugin and option is part
 of the compile action key — bumping a severity recompiles. A `[javac.test]` table with the

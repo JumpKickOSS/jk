@@ -21,6 +21,27 @@ class JavacLevelTest {
         assertThat(JavacLevel.options(0, List.of())).isEmpty();
     }
 
+    /** The module-graph options of a compile, both spellings, in order; a dangling flag is dropped. */
+    @Test
+    void the_module_graph_options_are_lifted_out_of_the_arguments() {
+        assertThat(JavacLevel.moduleGraphOptions(List.of(
+                        "-parameters",
+                        "--add-modules",
+                        "jdk.javadoc",
+                        "--add-exports",
+                        "jdk.javadoc/jdk.javadoc.internal.tool=ALL-UNNAMED",
+                        "--add-reads=my.mod=ALL-UNNAMED",
+                        "-Xlint:all",
+                        "--add-exports")))
+                .containsExactly(
+                        "--add-modules",
+                        "jdk.javadoc",
+                        "--add-exports",
+                        "jdk.javadoc/jdk.javadoc.internal.tool=ALL-UNNAMED",
+                        "--add-reads=my.mod=ALL-UNNAMED");
+        assertThat(JavacLevel.moduleGraphOptions(List.of("-parameters"))).isEmpty();
+    }
+
     @Test
     void a_dangling_add_exports_exports_nothing() {
         assertThat(JavacLevel.exportsSystemModule(List.of("--add-exports"))).isFalse();

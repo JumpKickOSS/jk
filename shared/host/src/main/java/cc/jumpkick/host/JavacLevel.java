@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -15,7 +16,29 @@ import java.util.List;
  */
 public final class JavacLevel {
 
+    private static final List<String> MODULE_GRAPH = List.of("--add-modules", "--add-exports", "--add-reads");
+
     private JavacLevel() {}
+
+    /**
+     * The options in {@code args} that shape the module graph — {@code --add-modules}, {@code
+     * --add-exports} and {@code --add-reads}, in either spelling, in order — which javadoc reads as
+     * javac does; a flag with no value is dropped.
+     */
+    public static List<String> moduleGraphOptions(List<String> args) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (MODULE_GRAPH.contains(arg)) {
+                if (i + 1 >= args.size()) break;
+                out.add(arg);
+                out.add(args.get(++i));
+            } else if (MODULE_GRAPH.stream().anyMatch(flag -> arg.startsWith(flag + "="))) {
+                out.add(arg);
+            }
+        }
+        return List.copyOf(out);
+    }
 
     /** The level options for {@code release}, given the compile's other arguments; empty for {@code 0}. */
     public static List<String> options(int release, List<String> args) {

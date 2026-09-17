@@ -51,7 +51,9 @@ javadoc = "strict"   # javadoc's own doclint checks fail the step instead of war
 - `sources = true` keeps its publish-only meaning for an application: `jk publish` assembles
   the sources jar; `jk build` does not. A library builds it regardless.
 - Javadoc runs the project JDK's `javadoc` over the module's Java sources with the compile
-  classpath, **doclint off** (`-Xdoclint:none`) unless `javadoc = "strict"`. An imperfect
+  classpath and the compile's module graph (the `--add-modules` / `--add-exports` / `--add-reads`
+  of `[javac] args`, and `-source` in place of `--release` when one exports a system module),
+  **doclint off** (`-Xdoclint:none`) unless `javadoc = "strict"`. An imperfect
   comment still packages; every `file:line: warning:` javadoc prints lands under
   **Warnings** in `target/jk-results.md`, and so does every line javadoc calls an error under
   the default mode — the step never fails there, and the jar holds whatever javadoc wrote, or

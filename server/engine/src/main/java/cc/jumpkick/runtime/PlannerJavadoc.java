@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static cc.jumpkick.runtime.BuildPlanner.CLASSPATH;
+import static cc.jumpkick.runtime.BuildPlanner.JAVAC_ARGS;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_HOME;
 import static cc.jumpkick.runtime.BuildPlanner.JAVA_SOURCES;
 import static cc.jumpkick.runtime.BuildPlanner.KOTLIN_SOURCES;
@@ -92,7 +93,11 @@ final class PlannerJavadoc {
         Path javaHome = ctx.require(JAVA_HOME);
         JavadocMode mode = project.project().javadocMode();
         int release = ctx.require(RELEASE);
-        List<String> options = JavadocTool.options(mode, release);
+        // The module graph javac compiled under: the plugin-contributed and profile args, then the
+        // module's own [javac] table, as the compile step assembles them.
+        List<String> javacArgs = PlannerCompile.javacOptions(
+                ctx.require(JAVAC_ARGS), project.build().javac());
+        List<String> options = JavadocTool.options(mode, release, javacArgs);
         // Kotlin sources make it a Dokka run; the release documents with is part of the key.
         RepoGroup repos = kotlinSources.isEmpty() ? null : RepoGroupBuilder.buildFor(project, null, cas);
         String dokkaVersion = repos == null ? null : DokkaResolver.version(project, repos);
