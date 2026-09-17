@@ -85,6 +85,41 @@ class GradleExporterTest {
     }
 
     @Test
+    void exclusions_export_as_exclude_blocks_and_a_constraint_cannot_carry_one() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                kafka = { group = "org.apache.kafka", name = "kafka-clients", version = "4.1.0", exclude = ["org.slf4j:slf4j-api", "com.github.luben:*", "*:snappy-java"] }
+                netty = { group = "io.netty", name = "netty-all", version = "4.2.7.Final", exclude = ["*:*"] }
+
+                [managed-dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.5.0-jre", exclude = ["*:listenablefuture"] }
+                """);
+
+        GradleExporter.Result result = GradleExporter.export(b, Map.of());
+        String kts = result.buildFiles().get("");
+
+        assertThat(kts)
+                .contains("    implementation(\"org.apache.kafka:kafka-clients:4.1.0\") {\n"
+                        + "        exclude(group = \"org.slf4j\", module = \"slf4j-api\")\n"
+                        + "        exclude(group = \"com.github.luben\")\n"
+                        + "        exclude(module = \"snappy-java\")\n"
+                        + "    }\n")
+                .contains("    implementation(\"io.netty:netty-all:4.2.7.Final\") {\n"
+                        + "        isTransitive = false\n"
+                        + "    }\n")
+                .contains("        implementation(\"com.google.guava:guava:33.5.0-jre\")\n");
+        assertThat(result.report().issues()).anySatisfy(i -> assertThat(i.message())
+                .contains("com.google.guava:guava")
+                .contains("*:listenablefuture")
+                .contains("constraint carries no exclusions"));
+    }
+
+    @Test
     void locked_version_overrides_declared_selector() {
         JkBuild b = parse("""
                 group = "com.example"

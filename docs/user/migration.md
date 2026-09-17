@@ -388,10 +388,13 @@ written into jk library catalog layers. `annotationProcessor`, `kapt` and `ksp` 
 `[processor-dependencies]`; `testAnnotationProcessor`, `kaptTest` and `kspTest` in
 `[test-processor-dependencies]`. Keep `jk gradle` for modules that still need full Gradle.
 
-**Export** writes what the manifest says: `jk export maven` writes `[processor-dependencies]` as the
-compiler plugin's `<annotationProcessorPaths>` and `[test-processor-dependencies]` as a `testCompile`
-execution whose paths are the shared table plus its own; `jk export gradle` writes
-`testAnnotationProcessor` for the test processors.
+**Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`
+list as `<exclusions>`, a `[managed-dependencies]` entry's included on its
+`<dependencyManagement>` row, `[processor-dependencies]` as the compiler plugin's
+`<annotationProcessorPaths>` and `[test-processor-dependencies]` as a `testCompile` execution whose
+paths are the shared table plus its own. `jk export gradle` writes an `exclude(group = …, module =
+…)` block per exclusion (`*:*` as `isTransitive = false`) and `testAnnotationProcessor` for the
+test processors; a Gradle constraint carries no exclusions, so a managed entry's are a report row.
 
 Single-file scripts: `jk tool run script.java` / `jkx` — [Tools](tools.md).
 

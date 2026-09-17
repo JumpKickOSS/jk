@@ -9,6 +9,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -184,7 +185,9 @@ public final class GradleExporter {
                         .append(pr.config())
                         .append("(\"")
                         .append(kEsc(gav(d, locked, report)))
-                        .append("\")\n");
+                        .append("\")")
+                        .append(excludeBlock(d.exclusions()))
+                        .append('\n');
             }
         }
         // [managed-dependencies] are Gradle's constraints: a version for a module the graph brings in.
@@ -196,9 +199,40 @@ public final class GradleExporter {
                 sb.append("        implementation(\"")
                         .append(kEsc(gav(d, locked, report)))
                         .append("\")\n");
+                if (!d.exclusions().isEmpty()) {
+                    report.warning("managed dependency `" + d.module() + "` excludes "
+                            + String.join(", ", d.exclusions())
+                            + "; a Gradle constraint carries no exclusions, so they were not written —"
+                            + " exclude them on the configuration or on each declaring dependency.");
+                }
+            }
             sb.append("    }\n");
         }
         sb.append("}\n");
+    }
+
+    /**
+     * The exclusions of one dependency as its declaration's block: {@code exclude(group = …, module
+     * = …)} per {@code group:artifact}, a {@code *} side left out, and {@code *:*} — the whole
+     * subtree — as {@code isTransitive = false}. Empty when the edge prunes nothing.
+     */
+    static String excludeBlock(List<String> exclusions) {
+        if (exclusions.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(" {\n");
+        for (String exclusion : exclusions) {
+            int colon = exclusion.indexOf(':');
+            String group = colon < 0 ? exclusion : exclusion.substring(0, colon);
+            String module = colon < 0 ? "*" : exclusion.substring(colon + 1);
+            if ("*".equals(group) && "*".equals(module)) {
+                sb.append("        isTransitive = false\n");
+                continue;
+            }
+            List<String> args = new ArrayList<>(2);
+            if (!"*".equals(group)) args.add("group = \"" + kEsc(group) + "\"");
+            if (!"*".equals(module)) args.add("module = \"" + kEsc(module) + "\"");
+            sb.append("        exclude(").append(String.join(", ", args)).append(")\n");
+        }
+        return sb.append("    }").toString();
     }
 
     /**
