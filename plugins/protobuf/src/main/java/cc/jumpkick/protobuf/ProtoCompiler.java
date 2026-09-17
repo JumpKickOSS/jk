@@ -12,10 +12,11 @@ import java.util.List;
 
 /**
  * The protobuf build plugin's code layer: one COMPILE-phase contribution — a {@code protoc} step
- * (before COMPILE) that runs the provisioned protoc binary over the module's proto sources and
- * contributes the generated Java to the compiler's source set. The engine fingerprints the
- * declared inputs (the proto dir, config, the fetched protoc binary) and skips the body on a
- * cache hit — no plugin-side staleness logic.
+ * (before COMPILE) that runs the provisioned protoc binary, and every protoc plugin a
+ * {@code [protobuf.<id>]} entry names, over the module's proto sources and contributes the
+ * generated Java to the compiler's source set. The engine fingerprints the declared inputs (the
+ * proto dir, config, the runtime classpath whose jars may carry importable protos, the fetched
+ * binaries) and skips the body on a cache hit — no plugin-side staleness logic.
  */
 public final class ProtoCompiler implements Plugin, BuildExtension {
 
@@ -33,7 +34,7 @@ public final class ProtoCompiler implements Plugin, BuildExtension {
     public void build(BuildContext ctx) {
         String src = ctx.config().stringOpt("src").orElse("proto");
         ctx.named("protoc")
-                .inputs(In.projectFiles(src), In.config())
+                .inputs(In.projectFiles(src), In.config(), In.runtimeClasspath())
                 .outputs("gen")
                 .contributesSources("gen")
                 .run(ProtocStep::run);

@@ -10,13 +10,15 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Where {@code protobuf-maven-plugin} lands: the {@code [protobuf]} table on a module that owns
  * protos, with protoc's version and the source root, the plugin's output dropped from the root
- * POM's build-helper roots, and rows for the gRPC protoc plugin the preset has no key for.
+ * POM's build-helper roots, and {@code compile-custom}'s protoc plugin as a {@code [protobuf.<id>]}
+ * entry.
  */
 class PomProtobufImportTest {
 
@@ -127,21 +129,25 @@ class PomProtobufImportTest {
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
                 .startsWith("`build-helper-maven-plugin` adds `target/generated-sources/protobuf/java`")
                 .contains("no `extra-src` root is written"));
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("runs `grpc-java` protoc plugin (io.grpc:protoc-gen-grpc-java:1.81.0")
-                .contains("no `.proto` under `src/main/proto` declares a `service`"));
+        assertThat(protobuf.entries())
+                .as("compile-custom's grpc-java plugin is the [protobuf.grpc-java] entry")
+                .containsOnlyKeys("grpc-java");
+        assertThat(protobuf.entries().get("grpc-java"))
+                .containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0")
+                .doesNotContainKey("options");
+        assertThat(messages(result)).noneMatch(m -> m.contains("protoc plugin"));
         assertThat(messages(result)).noneMatch(m -> m.contains("protobuf-maven-plugin</plugin>` was not imported"));
 
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered)
                 .contains("[protobuf]")
                 .contains("version = \"3.25.5\"")
-                .contains("src = \"src/main/proto\"");
-        assertThat(JkBuildParser.parse(rendered)
-                        .pluginConfig("protobuf")
-                        .orElseThrow()
-                        .string("version"))
-                .isEqualTo("3.25.5");
+                .contains("src = \"src/main/proto\"")
+                .contains("\n[protobuf.grpc-java]\nplugin = \"io.grpc:protoc-gen-grpc-java:1.81.0\"\n");
+        PluginConfig reparsed =
+                JkBuildParser.parse(rendered).pluginConfig("protobuf").orElseThrow();
+        assertThat(reparsed.string("version")).isEqualTo("3.25.5");
+        assertThat(reparsed.entries().get("grpc-java")).containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0");
     }
 
     /** istio's shape: the protos under a resource directory, and options the preset has no key for. */
@@ -161,25 +167,47 @@ class PomProtobufImportTest {
                 .contains("no `[protobuf]` key"));
     }
 
-    /** A proto with a service needs the gRPC stubs the preset does not generate: Tier 3. */
+    /** {@code <pluginParameter>} is the plugin's parameter string: its comma-separated items are the entry's {@code options}. */
     @Test
-    void a_service_proto_makes_the_grpc_plugin_row_tier_3(@TempDir Path tempDir) throws Exception {
+    void the_plugin_parameter_is_the_entrys_options(@TempDir Path tempDir) throws Exception {
         Files.writeString(tempDir.resolve("pom.xml"), ROOT.formatted(""));
         Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/proto/api"));
         Files.writeString(
                 protoDir.resolve("service.proto"),
                 "syntax = \"proto3\";\nmessage Ping {}\nservice Request {\n  rpc request (Ping) returns (Ping);\n}\n");
-        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(PLUGIN.formatted("")));
+        String options = "<pluginParameter>@generated=omit,jakarta_omit</pluginParameter>";
+        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(PLUGIN.formatted(options)));
 
-        assertThat(result.jkBuild().pluginConfig("protobuf")).isPresent();
+        PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
+        assertThat(protobuf.entries().get("grpc-java"))
+                .containsEntry("plugin", "io.grpc:protoc-gen-grpc-java:1.81.0")
+                .containsEntry("options", List.of("@generated=omit", "jakarta_omit"));
+        assertThat(result.report().hasErrors()).as(messages(result).toString()).isFalse();
+        assertThat(messages(result)).noneMatch(m -> m.contains("`<pluginParameter>`"));
+        assertThat(JkBuildRenderer.render(result.jkBuild()))
+                .contains("[protobuf.grpc-java]\nplugin = \"io.grpc:protoc-gen-grpc-java:1.81.0\"\n"
+                        + "options = [\"@generated=omit\", \"jakarta_omit\"]\n");
+    }
+
+    /** {@code compile-custom} with a plugin artifact the import cannot resolve is a row: the entry has to be written by hand. */
+    @Test
+    void an_unresolvable_plugin_artifact_is_a_row(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), ROOT.formatted(""));
+        Path protoDir = Files.createDirectories(tempDir.resolve("project/src/main/proto"));
+        Files.writeString(protoDir.resolve("Data.proto"), "syntax = \"proto3\";\nmessage Data {}\n");
+        String plugin = PLUGIN.replace("${grpc-java.version}", "${undefined.grpc.version}");
+        PomImporter.Result result = TestImporters.importXml(tempDir, MODULE.formatted(plugin.formatted("")));
+
+        PluginConfig protobuf = result.jkBuild().pluginConfig("protobuf").orElseThrow();
+        assertThat(protobuf.entries()).isEmpty();
         assertThat(result.report().issues())
                 .filteredOn(i -> i.message().contains("protoc plugin"))
                 .singleElement()
                 .satisfies(issue -> {
                     assertThat(issue.severity()).isEqualTo(ImportReport.Severity.ERROR);
                     assertThat(issue.message())
-                            .contains("`src/main/proto/api/service.proto` declare a `service`")
-                            .contains("does not compile");
+                            .contains("`compile-custom` runs the `grpc-java` protoc plugin")
+                            .contains("[protobuf.grpc-java]");
                 });
     }
 

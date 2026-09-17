@@ -310,7 +310,7 @@ relates to the Maven one.
 | maven-antrun-plugin | 10 | build logic script → row | manual |
 | maven-pmd-plugin | 8 | lint step (planned battery) | manual |
 | license-maven-plugin | 8 | nothing → row | manual |
-| protobuf-maven-plugin | 8 | `[protobuf]` on a module with `.proto` files under `<protoSourceRoot>` (default `src/main/proto`): the `<protocArtifact>` version → `version` (the protobuf-java dependency's when none), the root → `src`; the output under `target/generated-sources/protobuf` is the preset's contribution, so a build-helper root inside it is not written; a module the plugin reaches by inheritance without protos gets no table; the `compile-custom` protoc plugin (gRPC) → row, Tier 3 when a proto declares a `service` | approximate |
+| protobuf-maven-plugin | 8 | `[protobuf]` on a module with `.proto` files under `<protoSourceRoot>` (default `src/main/proto`): the `<protocArtifact>` version → `version` (the protobuf-java dependency's when none), the root → `src`; the output under `target/generated-sources/protobuf` is the preset's contribution, so a build-helper root inside it is not written; a module the plugin reaches by inheritance without protos gets no table; `compile-custom`'s `<pluginId>` + `<pluginArtifact>` → `[protobuf.<pluginId>] plugin` (`<pluginParameter>` → `options`), a row when either is unresolvable | approximate |
 | versions-maven-plugin | 7 | `jk outdated` / `jk update` | exact |
 | docker-maven-plugin / jib-maven-plugin | 7 | row carrying the `[image]` lines to paste (`base`, `registry`, `name`, `tag` from `<from>` / `<to>`); nothing is written to `jk.toml` | manual |
 | frontend-maven-plugin | 7 | `[dev.sidecars]` + a resource module | manual |

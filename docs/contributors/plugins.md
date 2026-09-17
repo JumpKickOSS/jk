@@ -186,7 +186,9 @@ declaration expanded once per `[entries]` sub-table: `artifact`, `coordinate`, `
 `managed-by` and `for-step` may use `${entry.name}` (the sub-table's name) and `${entry.<key>}`
 (its validated values). The generator plugin declares `artifact = "${entry.name}"`,
 `coordinate = "${entry.tool}"`, `for-step = "generate-${entry.name}"`, so each entry's tool is
-fetched by and keyed into that entry's step alone.
+fetched by and keyed into that entry's step alone. A table may carry `[schema]` keys and
+`[entries]` at once: protobuf's `[protobuf.<id>]` entries are protoc plugins, each fetched as
+`protoc-gen-${entry.name}` beside the table's own protoc.
 
 **Interpolation (closed set):** `${config.<key>}`, `${entry.name}` / `${entry.<key>}` (per-entry
 tools only), `${kotlin.version}`, `${project.group|name|version}`, `${host.os}`,
