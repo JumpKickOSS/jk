@@ -171,7 +171,7 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/p", null, "web");
         JobEnvelope env = new JobEnvelope(host, JobLimits.DEFAULTS);
-        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> host.accumulator)
+        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> host.accumulator, id -> 0L, host::log)
                 .enforceDeadline(
                         7L,
                         Session.CancelToken.live(),
@@ -192,7 +192,7 @@ class JobEnvelopeTest {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.clock = System::currentTimeMillis;
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 50L, 100L, 500L, 0L));
         CountDownLatch release = new CountDownLatch(1);
 
         env.submit(
@@ -368,7 +368,7 @@ class JobEnvelopeTest {
     void the_cancel_grace_the_envelope_was_given_is_the_one_the_worker_shutdown_uses() throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "cli");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 0L, 0L));
         AtomicReference<Process> worker = new AtomicReference<>();
         CountDownLatch release = new CountDownLatch(1);
 
@@ -416,7 +416,7 @@ class JobEnvelopeTest {
     void a_cancelled_detached_job_whose_body_ignores_interrupts_is_settled_within_the_grace() throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.accumulator = new BuildAccumulator("build", "/tmp/job-env", null, "web");
-        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L));
+        JobEnvelope env = new JobEnvelope(host, new JobLimits(0L, 0L, 0L, 0L, 100L, 0L));
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
 
@@ -469,7 +469,7 @@ class JobEnvelopeTest {
 
         FakeEnvelopeHost byDeadline = new FakeEnvelopeHost();
         byDeadline.accumulator = new BuildAccumulator("build", "/p", null, "web");
-        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> byDeadline.accumulator)
+        new JobWatchdog(JobLimits.DEFAULTS, () -> 1_000L, id -> byDeadline.accumulator, id -> 0L, byDeadline::log)
                 .enforceDeadline(
                         2L,
                         Session.CancelToken.live(),

@@ -6,6 +6,8 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import com.sun.management.OperatingSystemMXBean;
 import java.lang.management.ManagementFactory;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
@@ -31,6 +33,7 @@ public final class EngineVitals {
     private final LongSupplier logRolledAtMillis;
     private final Supplier<String> ignoredSignals;
     private final IntSupplier queuedBuildPlans;
+    private final Supplier<List<Map<String, Object>>> jobs;
 
     public StatusSnapshot snapshot() {
         Runtime rt = Runtime.getRuntime();
@@ -61,7 +64,8 @@ public final class EngineVitals {
                 logBytes.getAsLong(),
                 logRolledAtMillis.getAsLong(),
                 ignoredSignals.get(),
-                queuedBuildPlans.getAsInt());
+                queuedBuildPlans.getAsInt(),
+                jobs.get());
     }
 
     public int liveConnectionCount() {

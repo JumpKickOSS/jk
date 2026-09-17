@@ -203,7 +203,7 @@ class CancellationPrecedenceTest extends EngineServerHarness {
         // that download on a loaded machine, and far short of the latch's own 30 s release, so the
         // kill lands where the test says it does rather than in an earlier metadata fetch.
         Iterator<String> sse = startEngine(JkEngineConfig.DEFAULTS.withJobLimits(
-                new JobLimits(0L, 3_000L, JobLimits.DEFAULT_DETACHED_DEADLINE_MS, 200L, 500L)));
+                new JobLimits(0L, 3_000L, JobLimits.DEFAULT_DETACHED_DEADLINE_MS, 200L, 500L, 0L)));
         try (Client building = new Client(EnginePaths.activeSocket(paths()))) {
             startLock(building);
             assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -9,6 +10,8 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -65,7 +68,64 @@ public final class EngineProbe {
              */
             @Nullable String ignoredSignals,
             /** Jobs waiting for engine memory; {@code 0} when none or when the engine did not report. */
-            int queuedBuildPlans) {}
+            int queuedBuildPlans,
+            /** Every live and queued job, live first; empty when none or when the engine did not report. */
+            List<Job> jobs) {
+
+        public Status {
+            jobs = jobs == null ? List.of() : List.copyOf(jobs);
+        }
+    }
+
+    /**
+     * One job of the engine's {@code jobs} listing. {@code sinceMillis} is its admission (live) or
+     * arrival (queued) time; {@code workers} and {@code lastEventAt} are {@code -1} while queued,
+     * {@code ahead} is {@code -1} while live.
+     */
+    public record Job(
+            long jid,
+            String kind,
+            String dir,
+            boolean live,
+            long sinceMillis,
+            int workers,
+            long lastEventAt,
+            int ahead) {
+
+        static Job decode(String json) {
+            String kind = Jsonl.str(json, "kind");
+            String dir = Jsonl.str(json, "dir");
+            return new Job(
+                    Jsonl.longValue(json, "jid", -1),
+                    kind == null ? "" : kind,
+                    dir == null ? "" : dir,
+                    "live".equals(Jsonl.str(json, "state")),
+                    Jsonl.longValue(json, "since", -1),
+                    Jsonl.intValue(json, "workers", -1),
+                    Jsonl.longValue(json, "lastEventAt", -1),
+                    Jsonl.intValue(json, "ahead", -1));
+        }
+
+        static List<Job> decodeAll(String ack) {
+            List<Job> out = new ArrayList<>();
+            for (String row : Jsonl.objectArray(ack, "jobs")) out.add(decode(row));
+            return out;
+        }
+
+        /** The row as {@code --output json} carries it, the engine's own field names. */
+        public String toJson() {
+            return JsonFields.object()
+                    .number("jid", jid)
+                    .string("kind", kind)
+                    .string("dir", dir)
+                    .string("state", live ? "live" : "queued")
+                    .number("since", sinceMillis)
+                    .number("workers", workers)
+                    .number("lastEventAt", lastEventAt)
+                    .number("ahead", ahead)
+                    .finish();
+        }
+    }
 
     /**
      * Connect, ping, and get {@code pong} back — the engine-existence check per {@code docs/architecture.md}
@@ -156,7 +216,8 @@ public final class EngineProbe {
                     Jsonl.longValue(ack, "logBytes", -1),
                     Jsonl.longValue(ack, "logRolledAt", -1),
                     Jsonl.str(ack, "ignoredSignals"),
-                    Jsonl.intValue(ack, "queuedBuildPlans", 0)));
+                    Jsonl.intValue(ack, "queuedBuildPlans", 0),
+                    Job.decodeAll(ack)));
         } catch (IOException e) {
             return Optional.empty();
         }

@@ -4,6 +4,7 @@ package cc.jumpkick.wire.protocol;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -203,9 +204,12 @@ public final class ProtoLifecycle {
     }
 
     /** {@link EngineProtocol#JOB_START}: job admitted — {@code jid} is the public cancel handle. */
-    /** The one {@link EngineProtocol#JOB_QUEUED} line a job sends while it waits for memory. */
-    public static String jobQueued(long jid, int ahead) {
-        return new JobQueuedFrame(jid, ahead, JobQueuedFrame.MEMORY).encode();
+    /**
+     * A {@link EngineProtocol#JOB_QUEUED} line: the job waits for memory behind {@code ahead} jobs,
+     * has waited {@code waitedMs} so far, and {@code live} holds the heap it waits for.
+     */
+    public static String jobQueued(long jid, int ahead, long waitedMs, List<JobQueuedFrame.Live> live) {
+        return new JobQueuedFrame(jid, ahead, JobQueuedFrame.MEMORY, waitedMs, live).encode();
     }
 
     public static String jobStart(long jid, String kind, String dir, long buildNumber) {

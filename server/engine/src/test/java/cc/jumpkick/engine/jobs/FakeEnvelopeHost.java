@@ -136,6 +136,13 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
         sequence.add("progress-pinned:" + percent);
     }
 
+    volatile long lastEventAt;
+
+    @Override
+    public long lastEventAt(long id) {
+        return lastEventAt;
+    }
+
     @Override
     public int activeBuildPlans() {
         return activePlans;

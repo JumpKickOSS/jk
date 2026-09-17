@@ -28,6 +28,8 @@ public record LiveJob(
         CountDownLatch cancelSignal,
         String dir,
         String kind,
+        /** When the job was admitted, epoch millis on the engine's clock. */
+        long sinceMillis,
         /**
          * True when the stream's terminal line is {@code workspace-finish}; false for single
          * plans (single build, test, lock, …), whose client loop only ends on {@code plan-finish}.

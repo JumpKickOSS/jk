@@ -31,20 +31,63 @@ Every engine-hosted operation gets a **jid** at admission.
 A second same-kind build in the same checkout is rejected: **Build #N already running**.
 Worktrees are different slots.
 
+### Live and queued jobs
+
+`jk engine status` lists every job the engine holds under its `Live Jobs` and `Queued` rows —
+jid, kind, project directory, when it was admitted or arrived, its live worker processes and
+how long since its last task event:
+
+```
+ Live Jobs: 1
+            #739 test /home/me/app · since 22:36 (2h 05m) · 1 worker · last event 3m ago
+ Queued...: 2 (waiting for engine memory)
+            #741 build /home/me/lib · behind 0 · waiting 12m
+            #742 format /home/me/tool · behind 1 · waiting 4m
+```
+
+`--output json` carries the same rows as `jobs` (`jid`, `kind`, `dir`, `state` = `live` |
+`queued`, `since`, `workers`, `lastEventAt`, `ahead`); `GET /api/status` and the socket status
+frame carry the identical array, and `POST /api/cancel {"jid":N}` takes any jid it lists.
+
 ### Queued for memory
 
 The engine admits a build, test or lock job only when its own heap can hold it beside the jobs
 already running; otherwise the job **queues** — first come, first served — until one of them
-finishes. A queued job is not an error and never dies for lack of memory: the CLI prints one
-line, `waiting for engine memory (2 jobs ahead)`, and then proceeds as usual; `jk engine status`
-shows `Queued: N (waiting for engine memory)` while any job waits (`--output json`:
-`queuedBuildPlans`); the dashboard's Activity feed shows the card as *Queued for memory* until it
-turns live. Ctrl-C and `jk cancel` dequeue a waiting job the same way they cancel a running one.
+finishes. A queued job is not an error and never dies for lack of memory: the CLI prints
+`waiting for engine memory (2 jobs ahead); live: test /home/me/app since 22:36` when it joins the
+queue and `queued behind 2 jobs for 5m, live: test /home/me/app since 22:36` once a minute while
+it waits, then proceeds as usual; `jk engine status` shows `Queued: N (waiting for engine
+memory)` and the rows above while any job waits (`--output json`: `queuedBuildPlans`, `jobs`);
+the dashboard's Activity feed shows the card as *Queued for memory* until it turns live. Ctrl-C
+and `jk cancel` dequeue a waiting job the same way they cancel a running one.
 
 The cost of a job is estimated from what it parses whole — the workspace `jk-lock.toml` and the
 project's metrics ledger; for `jk import`, the reactor's `pom.xml` files, build outputs pruned —
-so a small project queues behind a large one only when the heap is genuinely short. An idle engine always admits the next job. Raising `[engine] max-heap-mb`
-lets more jobs run at once; the default cap runs one build of a large workspace at a time.
+so a small project queues behind a large one only when the heap is genuinely short. An idle
+engine always admits the next job. Raising `[engine] max-heap-mb` lets more jobs run at once; the
+default cap runs one build of a large workspace at a time.
+
+**Fairness.** One long job never holds the whole budget for hours. Two rules admit past the
+plain arithmetic, both only when the host itself has memory to spare (256 MiB beyond the job's
+estimate, read from the OS's available-memory figure):
+
+- A **brief job** — any kind other than `build`, `test`, `compile`, `native` and `image`:
+  `format`, `guard`, `lock`, `explain`, `import`, `tree`, `update`, … — is judged by the ledger
+  of estimates alone, never by the heap a long job has committed (mostly garbage a collection
+  returns), and does not wait its turn behind queued long jobs. `jk format --check` runs beside a
+  running `jk test`.
+- The **head of the queue**, whatever its kind, is admitted after **five minutes** of waiting,
+  even when the estimate says the heap is short.
+
+A job that has waited `queue-wait-ms` (default one hour) without being admitted **gives up**
+with an error that names the jobs ahead of it and the live job holding the heap —
+`gave up after waiting 1h 00m for engine memory behind 2 jobs; live: test /home/me/app (jid 739)
+since 22:36` — rather than a connection that closes without a result; `0` waits without bound.
+
+**Silence.** When a live job has emitted no task event for thirty minutes the engine writes one
+log line naming it — jid, kind, directory, the silence and its live worker processes — and
+another after each further thirty minutes. It never cancels the job: a single test JVM working
+through a long suite is silent and healthy. `jk cancel <jid>` is the operator's call.
 
 ## HTTP and MCP
 
@@ -81,6 +124,7 @@ and `auto-warmup` do not follow CI.
 | `log-max-mb` | `JK_ENGINE_LOG_MAX_MB` | 16 | engine start | Engine log size cap in MiB; at the cap the log rolls to .1 (one generation kept). 0 = no cap. |
 | `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
 | `detached-deadline-ms` | `JK_ENGINE_DETACHED_DEADLINE_MS` | 3600000 | engine start | Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off. |
+| `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound. |
 <!-- engine-config:end -->
 
 Short-lived CI engines should set `JK_AOT_TRAIN=off` (skip train-on-miss; still use

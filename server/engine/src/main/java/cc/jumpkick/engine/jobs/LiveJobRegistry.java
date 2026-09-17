@@ -11,12 +11,16 @@ import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongToIntFunction;
+import java.util.function.LongUnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -95,11 +99,37 @@ public final class LiveJobRegistry {
             CountDownLatch cancelSignal,
             String dir,
             String kind,
+            long sinceMillis,
             boolean workspaceStream) {
         liveJobs.put(
                 jid,
                 new LiveJob(
-                        token, runnerRef, writer, channel, connectionThread, cancelSignal, dir, kind, workspaceStream));
+                        token,
+                        runnerRef,
+                        writer,
+                        channel,
+                        connectionThread,
+                        cancelSignal,
+                        dir,
+                        kind,
+                        sinceMillis,
+                        workspaceStream));
+    }
+
+    /**
+     * Every live job as a status row, oldest first. {@code workersOf} counts a job's live forked
+     * processes and {@code lastEventAt} gives its last task event ({@code 0} when none yet).
+     */
+    public List<JobRow> rows(LongToIntFunction workersOf, LongUnaryOperator lastEventAt) {
+        List<JobRow> out = new ArrayList<>();
+        for (var e : liveJobs.entrySet()) {
+            LiveJob j = e.getValue();
+            long jid = e.getKey();
+            out.add(JobRow.live(
+                    jid, j.kind(), j.dir(), j.sinceMillis(), workersOf.applyAsInt(jid), lastEventAt.applyAsLong(jid)));
+        }
+        out.sort(Comparator.comparingLong(JobRow::sinceMillis).thenComparingLong(JobRow::jid));
+        return out;
     }
 
     public void unregisterLiveJob(long jid) {

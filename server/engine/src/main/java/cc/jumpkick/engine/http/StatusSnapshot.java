@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -69,7 +70,70 @@ public record StatusSnapshot(
          */
         String ignoredSignals,
         /** Jobs waiting for coordinator memory before they may run; not counted in {@link #activeBuildPlans}. */
-        int queuedBuildPlans) {
+        int queuedBuildPlans,
+        /**
+         * Every live and queued job, live first in admission order then queued in arrival order,
+         * each as {@code JobRow.toJson()} renders it: {@code jid}, {@code kind}, {@code dir},
+         * {@code state} ({@code live} | {@code queued}), {@code since}, {@code workers},
+         * {@code lastEventAt}, {@code ahead}.
+         */
+        List<Map<String, Object>> jobs) {
+
+    public StatusSnapshot {
+        jobs = jobs == null ? List.of() : List.copyOf(jobs);
+    }
+
+    /** Compact constructor for tests that omit the job listing. */
+    public StatusSnapshot(
+            String version,
+            long pid,
+            long startedAtMillis,
+            int activeRequests,
+            int activeBuildPlans,
+            long heapUsedBytes,
+            long heapCommittedBytes,
+            long heapMaxBytes,
+            long rssBytes,
+            long aotTrainingPid,
+            int cores,
+            long totalMemoryBytes,
+            long availableMemoryBytes,
+            double systemCpuLoad,
+            double systemLoadAverage,
+            String engineEpoch,
+            int peakActiveRequests,
+            int peakActiveBuildPlans,
+            long idleDropped,
+            long logBytes,
+            long logRolledAt,
+            String ignoredSignals,
+            int queuedBuildPlans) {
+        this(
+                version,
+                pid,
+                startedAtMillis,
+                activeRequests,
+                activeBuildPlans,
+                heapUsedBytes,
+                heapCommittedBytes,
+                heapMaxBytes,
+                rssBytes,
+                aotTrainingPid,
+                cores,
+                totalMemoryBytes,
+                availableMemoryBytes,
+                systemCpuLoad,
+                systemLoadAverage,
+                engineEpoch,
+                peakActiveRequests,
+                peakActiveBuildPlans,
+                idleDropped,
+                logBytes,
+                logRolledAt,
+                ignoredSignals,
+                queuedBuildPlans,
+                List.of());
+    }
 
     /** Compact constructor for tests that omit memory headroom / load / epoch / peaks. */
     public StatusSnapshot(
@@ -108,7 +172,8 @@ public record StatusSnapshot(
                 /* logBytes */ -1L,
                 /* logRolledAt */ -1L,
                 /* ignoredSignals */ "",
-                /* queuedBuildPlans */ 0);
+                /* queuedBuildPlans */ 0,
+                /* jobs */ List.of());
     }
 
     /**
@@ -157,6 +222,7 @@ public record StatusSnapshot(
         m.put("logBytes", logBytes);
         m.put("logRolledAt", logRolledAt);
         m.put("ignoredSignals", ignoredSignals);
+        m.put("jobs", jobs);
         return m;
     }
 }

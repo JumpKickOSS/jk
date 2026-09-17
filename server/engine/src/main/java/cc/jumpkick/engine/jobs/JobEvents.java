@@ -19,6 +19,9 @@ public interface JobEvents {
 
     void putLastProgress(long id, double percent);
 
+    /** Epoch millis of the request's last progress or task event; {@code 0} when it has emitted none. */
+    long lastEventAt(long id);
+
     /** Retire the request's session; the journal must already be written. */
     void clearProgress(long id);
 

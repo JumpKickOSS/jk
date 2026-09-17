@@ -91,6 +91,11 @@ class RepoGroupBuilderWireNoticeTest {
         final ReentrantReadWriteLock gate = new ReentrantReadWriteLock();
 
         @Override
+        public long lastEventAt(long id) {
+            return 0L;
+        }
+
+        @Override
         public boolean tryStartBuildPlan() {
             return true;
         }

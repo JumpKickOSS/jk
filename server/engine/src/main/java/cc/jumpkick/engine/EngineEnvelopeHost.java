@@ -159,6 +159,11 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
+    public long lastEventAt(long id) {
+        return sessions.lastEventAt(id);
+    }
+
+    @Override
     public void clearProgress(long id) {
         sessions.retire(id);
     }

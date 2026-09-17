@@ -168,6 +168,15 @@ public final class JobWorkers {
         for (var f : pending) f.get(10, TimeUnit.SECONDS);
     }
 
+    /** Forked processes of {@code requestId} still alive right now; {@code 0} when none or unknown. */
+    public static int liveCountForRequest(long requestId) {
+        Set<Process> set = BY_REQUEST.get(requestId);
+        if (set == null) return 0;
+        int n = 0;
+        for (Process p : set) if (p.isAlive()) n++;
+        return n;
+    }
+
     /** Forget all processes for {@code requestId} without killing them (scope end after clean exit). */
     public static void clear(long requestId) {
         BY_REQUEST.remove(requestId);
