@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.engine.http.WorkspaceFileAccess.ReadResult;
-import java.io.IOException;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,11 +63,7 @@ class WorkspaceFileAccessTest {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("src"));
         Files.writeString(outside.resolve("Secret.java"), "class Secret {}");
-        try {
-            Files.createSymbolicLink(root.resolve("src/link"), outside);
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return;
-        }
+        Symlinks.create(root.resolve("src/link"), outside);
         assertThat(WorkspaceFileAccess.read(root, "src/link/Secret.java")).isInstanceOf(ReadResult.NotFound.class);
     }
 
@@ -459,18 +455,14 @@ class WorkspaceFileAccessTest {
         Files.createDirectories(root.resolve("src"));
         Path secret = outside.resolve("secret.java");
         Files.writeString(secret, "class Secret {}");
-        try {
-            Files.createSymbolicLink(root.resolve("src/Leak.java"), secret);
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return;
-        }
+        Symlinks.create(root.resolve("src/Leak.java"), secret);
         assertThat(WorkspaceFileAccess.read(root, "src/Leak.java")).isInstanceOf(ReadResult.NotFound.class);
         // list/read parity: the escaping link must not be listed either …
         assertThat(WorkspaceFileAccess.list(root).files())
                 .noneMatch(f -> f.path().equals("src/Leak.java"));
         // … while an in-root symlink stays listed and readable.
         Files.writeString(root.resolve("src/Real.java"), "class Real {}");
-        Files.createSymbolicLink(root.resolve("src/Alias.java"), root.resolve("src/Real.java"));
+        Symlinks.create(root.resolve("src/Alias.java"), root.resolve("src/Real.java"));
         assertThat(WorkspaceFileAccess.list(root).files())
                 .anyMatch(f -> f.path().equals("src/Alias.java"));
         assertThat(WorkspaceFileAccess.read(root, "src/Alias.java")).isInstanceOf(ReadResult.Ok.class);
@@ -481,11 +473,7 @@ class WorkspaceFileAccessTest {
         // The pre-seed must pay the same real-path containment as every BFS entry — an
         // escaping root jk.toml would otherwise be listed (and default-opened) only to 404.
         Files.writeString(outside.resolve("jk.toml"), "name = \"demo\"\n");
-        try {
-            Files.createSymbolicLink(root.resolve("jk.toml"), outside.resolve("jk.toml"));
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return;
-        }
+        Symlinks.create(root.resolve("jk.toml"), outside.resolve("jk.toml"));
         Files.createDirectories(root.resolve("src"));
         Files.writeString(root.resolve("src/Main.java"), "class Main {}");
         assertThat(WorkspaceFileAccess.list(root).files())
@@ -495,7 +483,7 @@ class WorkspaceFileAccessTest {
         // An in-root symlinked manifest still pre-seeds first, exactly once.
         Files.delete(root.resolve("jk.toml"));
         Files.writeString(root.resolve("real.toml"), "name = \"demo\"\n");
-        Files.createSymbolicLink(root.resolve("jk.toml"), root.resolve("real.toml"));
+        Symlinks.create(root.resolve("jk.toml"), root.resolve("real.toml"));
         var list = WorkspaceFileAccess.list(root);
         assertThat(list.files())
                 .extracting(WorkspaceFileAccess.ListedFile::path)
@@ -530,13 +518,9 @@ class WorkspaceFileAccessTest {
         writeJkToml(root, "demo");
         Files.createDirectories(root.resolve("real"));
         Files.writeString(root.resolve("real/A.java"), "class A {}");
-        try {
-            Files.createSymbolicLink(root.resolve("linkdir"), root.resolve("real"));
-            // A link back to the root would cycle the BFS without the visited set.
-            Files.createSymbolicLink(root.resolve("real/loop"), root);
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return;
-        }
+        Symlinks.create(root.resolve("linkdir"), root.resolve("real"));
+        // A link back to the root would cycle the BFS without the visited set.
+        Symlinks.create(root.resolve("real/loop"), root);
         var list = WorkspaceFileAccess.list(root);
         // The target tree is walked exactly once, via whichever name the directory stream
         // yielded first — either spelling is a correct listing, and reads serve both.
@@ -552,11 +536,7 @@ class WorkspaceFileAccessTest {
             throws Exception {
         writeJkToml(root, "demo");
         Files.writeString(outside.resolve("Secret.java"), "class Secret {}");
-        try {
-            Files.createSymbolicLink(root.resolve("esc"), outside);
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return;
-        }
+        Symlinks.create(root.resolve("esc"), outside);
         var list = WorkspaceFileAccess.list(root);
         assertThat(list.files())
                 .extracting(WorkspaceFileAccess.ListedFile::path)

@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -82,8 +83,8 @@ class PathUtilTest {
         Path deep = Files.writeString(outside.resolve("d.txt"), "deeper");
 
         Path tree = Files.createDirectories(tmp.resolve("tree"));
-        Files.createSymbolicLink(tree.resolve("to-dir"), outside.getParent());
-        Files.createSymbolicLink(tree.resolve("to-file"), keep);
+        Symlinks.create(tree.resolve("to-dir"), requireNonNull(outside.getParent()));
+        Symlinks.create(tree.resolve("to-file"), keep);
         Files.writeString(tree.resolve("own.txt"), "mine");
 
         PathUtil.deleteRecursively(tree);
@@ -98,7 +99,7 @@ class PathUtilTest {
     void deleteRecursively_removes_a_link_root_without_touching_its_target(@TempDir Path tmp) throws Exception {
         Path outside = Files.createDirectories(tmp.resolve("outside"));
         Path keep = Files.writeString(outside.resolve("keep.txt"), "precious");
-        Path link = Files.createSymbolicLink(tmp.resolve("link"), outside);
+        Path link = Symlinks.create(tmp.resolve("link"), outside);
 
         PathUtil.deleteRecursively(link);
 
@@ -114,7 +115,7 @@ class PathUtilTest {
      */
     @Test
     void deleteRecursively_removes_a_dangling_link(@TempDir Path tmp) throws Exception {
-        Path dangling = Files.createSymbolicLink(tmp.resolve("dangling"), tmp.resolve("never-existed"));
+        Path dangling = Symlinks.create(tmp.resolve("dangling"), tmp.resolve("never-existed"));
         assertThat(Files.exists(dangling)).as("follows to nothing").isFalse();
 
         PathUtil.deleteRecursively(dangling);
@@ -123,7 +124,7 @@ class PathUtilTest {
                 .isFalse();
 
         Path tree = Files.createDirectories(tmp.resolve("tree"));
-        Files.createSymbolicLink(tree.resolve("broken"), tmp.resolve("never-existed"));
+        Symlinks.create(tree.resolve("broken"), tmp.resolve("never-existed"));
         PathUtil.deleteRecursively(tree);
         assertThat(tree).as("a tree whose only child was a broken link").doesNotExist();
     }
@@ -136,7 +137,7 @@ class PathUtilTest {
 
         Path tree = Files.createDirectories(tmp.resolve("tree"));
         Files.writeString(tree.resolve("own.txt"), "1234567890"); // 10 bytes
-        Files.createSymbolicLink(tree.resolve("to-big"), big);
+        Symlinks.create(tree.resolve("to-big"), big);
 
         var tally = new PathUtil.Removed();
         PathUtil.deleteRecursivelyOrThrow(tree, tally);

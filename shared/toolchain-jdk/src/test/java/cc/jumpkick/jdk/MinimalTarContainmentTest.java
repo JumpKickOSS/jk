@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
  * destination — followed by a file entry written through it — escaped the tree. These cover the
  * containment helpers both extractors now share.
  */
-@DisabledOnOs(OS.WINDOWS)
+@DisabledOnOs(OS.WINDOWS) // the extractor plants these links itself, and "/etc" is not absolute here
 class MinimalTarContainmentTest {
 
     @Test
@@ -54,7 +55,7 @@ class MinimalTarContainmentTest {
         // link were created out-of-band, the file entry's parent must still resolve inside.
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
         Path outside = Files.createDirectories(tmp.resolve("outside"));
-        Files.createSymbolicLink(dest.resolve("lib"), outside);
+        Symlinks.create(dest.resolve("lib"), outside);
         assertThatThrownBy(() -> MinimalTar.requireParentInside(dest, dest.resolve("lib/evil.service")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("outside the destination");
@@ -82,8 +83,8 @@ class MinimalTarContainmentTest {
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
         // The chain as an attacker would leave it: l2 sits in the destination and points above it.
         Files.createDirectories(dest.resolve("d"));
-        Files.createSymbolicLink(dest.resolve("d/l"), Path.of(".."));
-        Files.createSymbolicLink(dest.resolve("l2"), Path.of(".."));
+        Symlinks.create(dest.resolve("d/l"), Path.of(".."));
+        Symlinks.create(dest.resolve("l2"), Path.of(".."));
 
         assertThatThrownBy(() -> MinimalTar.createDirectoryInside(dest, dest.resolve("d/l/l2/pwn/deeper")))
                 .isInstanceOf(IOException.class)
@@ -100,7 +101,7 @@ class MinimalTarContainmentTest {
     void a_link_target_that_routes_through_a_planted_link_is_followed(@TempDir Path tmp) throws Exception {
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
         Path outside = Files.createDirectories(tmp.resolve("outside"));
-        Files.createSymbolicLink(dest.resolve("hop"), outside);
+        Symlinks.create(dest.resolve("hop"), outside);
         // Lexically hop/../etc stays in the tree; on disk hop is <outside>, so it does not.
         assertThatThrownBy(() -> MinimalTar.createSymlinkInside(dest, dest.resolve("lib"), "hop/sub"))
                 .isInstanceOf(IOException.class)

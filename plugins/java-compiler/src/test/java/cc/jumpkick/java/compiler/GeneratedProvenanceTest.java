@@ -4,6 +4,7 @@ package cc.jumpkick.java.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -106,7 +107,7 @@ class GeneratedProvenanceTest {
     void two_spellings_of_one_file_through_a_symlinked_source_root_reconcile_as_one(@TempDir Path tmp)
             throws Exception {
         Path real = Files.createDirectories(tmp.resolve("real"));
-        Path link = symlinkOrSkip(tmp.resolve("link"), real);
+        Path link = Symlinks.create(tmp.resolve("link"), real);
         Files.createDirectories(real.resolve("src"));
         Files.createDirectories(real.resolve("gen-src"));
         Files.createDirectories(real.resolve("classes"));
@@ -177,18 +178,9 @@ class GeneratedProvenanceTest {
     void a_root_reached_through_a_link_resolves_files_beneath_either_spelling_to_one(@TempDir Path tmp)
             throws Exception {
         Path real = Files.createDirectories(tmp.resolve("real"));
-        Path link = symlinkOrSkip(tmp.resolve("link"), real);
+        Path link = Symlinks.create(tmp.resolve("link"), real);
         GeneratedProvenance.Canon canon = new GeneratedProvenance.Canon(List.of(link));
         assertThat(canon.canonical(link.resolve("p/X.java"))).isEqualTo(canon.canonical(real.resolve("p/X.java")));
         assertThat(canon.realPathCalls()).isEqualTo(1);
-    }
-
-    private static Path symlinkOrSkip(Path link, Path target) {
-        try {
-            return Files.createSymbolicLink(link, target);
-        } catch (IOException | UnsupportedOperationException cannot) {
-            assumeTrue(false, "filesystem cannot create a symlink: " + cannot);
-            throw new AssertionError("unreachable");
-        }
     }
 }

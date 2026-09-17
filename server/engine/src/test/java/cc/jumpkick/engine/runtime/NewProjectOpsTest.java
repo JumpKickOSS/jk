@@ -4,7 +4,7 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.io.IOException;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -141,11 +141,7 @@ class NewProjectOpsTest {
                         && !outside.startsWith(tmpDir.toAbsolutePath().normalize()),
                 "needs a directory outside $HOME and the temp dir");
         Path link = tmpDir.resolve("jk-test-escape-" + ProcessHandle.current().pid());
-        try {
-            Files.createSymbolicLink(link, outside);
-        } catch (UnsupportedOperationException | IOException unsupported) {
-            return; // no symlink support — nothing to prove
-        }
+        Symlinks.create(link, outside);
         try {
             assertThatThrownBy(() -> NewProjectOps.assertAllowedParent(link))
                     .isInstanceOf(IllegalArgumentException.class)

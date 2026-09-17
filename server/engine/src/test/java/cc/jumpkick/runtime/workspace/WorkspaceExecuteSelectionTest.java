@@ -10,9 +10,9 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildGraph;
+import cc.jumpkick.testing.Symlinks;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -186,11 +186,7 @@ class WorkspaceExecuteSelectionTest {
         mods.put(cli, JkBuildParser.parse(cli.resolve("jk.toml")));
 
         Path link = tmp.resolve("cli-link");
-        try {
-            Files.createSymbolicLink(link, cli);
-        } catch (UnsupportedOperationException | IOException e) {
-            org.junit.jupiter.api.Assumptions.abort("symlinks unsupported here: " + e);
-        }
+        Symlinks.create(link, cli);
 
         Set<Path> cone = WorkspaceCone.expand(mods, List.of(link), List.of(Scope.values()));
         assertThat(cone).contains(core, cli);

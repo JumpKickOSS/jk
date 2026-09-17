@@ -15,6 +15,7 @@ import cc.jumpkick.command.toolchain.ToolListCommand;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.testing.Symlinks;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -723,11 +724,7 @@ class SelfNukeCommandTest {
         Path realLib = home.resolve("lib");
         Path link = root.resolve("linked-store");
         Files.createDirectories(realLib.resolve("jk-engine"));
-        try {
-            Files.createSymbolicLink(link, realLib);
-        } catch (UnsupportedOperationException | IOException e) {
-            return; // filesystem without symlink support — nothing to verify here
-        }
+        Symlinks.create(link, realLib);
         JkDirs dirs = JkDirs.of(
                 env("JK_HOME", home.toString(), "JK_STORE_DIR", link.toString()),
                 root.resolve("userhome").toString());

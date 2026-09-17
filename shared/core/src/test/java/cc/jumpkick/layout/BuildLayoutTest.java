@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -178,11 +179,7 @@ class BuildLayoutTest {
         Path workspace = Files.createDirectories(tmp.resolve("ws"));
         Path elsewhere = Files.createDirectories(tmp.resolve("elsewhere").resolve("core"));
         Path link = workspace.resolve("core");
-        try {
-            Files.createSymbolicLink(link, elsewhere);
-        } catch (UnsupportedOperationException | IOException e) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "symlinks required");
-        }
+        Symlinks.create(link, elsewhere);
         Path expected = workspace.toAbsolutePath().normalize().resolve("target").resolve("core");
         assertThat(BuildLayout.moduleTargetDir(workspace, link)).isEqualTo(expected);
     }

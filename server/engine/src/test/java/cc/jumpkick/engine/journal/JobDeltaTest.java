@@ -4,6 +4,8 @@ package cc.jumpkick.engine.journal;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.ShortTempDirs;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -15,13 +17,15 @@ import org.junit.jupiter.api.Test;
  */
 class JobDeltaTest {
 
+    private static final Path WS = ShortTempDirs.path().resolve("ws");
+
     private static BuildRecord run(long number, boolean success, long millis, List<BuildRecord.Diag> diags) {
         return new BuildRecord(
                 "r" + number,
                 number,
                 BuildRecord.SCHEMA,
                 "build",
-                "/ws",
+                WS.toString(),
                 "g:a",
                 "p",
                 1_000 * number,
@@ -79,15 +83,15 @@ class JobDeltaTest {
                 false,
                 8_400,
                 List.of(
-                        compileError("/ws/src/main/java/Foo.java", 12, "cannot find symbol"),
+                        compileError(WS.resolve("src/main/java/Foo.java").toString(), 12, "cannot find symbol"),
                         testFailure("FooTest#adds()", "expected 4")));
         BuildRecord after = run(
                 2,
                 false,
                 6_100,
                 List.of(
-                        compileError("/ws/src/main/java/Foo.java", 12, "cannot find symbol"),
-                        compileError("/ws/src/main/java/Bar.java", 3, "';' expected")));
+                        compileError(WS.resolve("src/main/java/Foo.java").toString(), 12, "cannot find symbol"),
+                        compileError(WS.resolve("src/main/java/Bar.java").toString(), 3, "';' expected")));
 
         JobDelta d = JobDelta.compute(before, after, null, null, null, null);
 
@@ -96,7 +100,7 @@ class JobDeltaTest {
         assertThat(d.previousMillis()).isEqualTo(8_400);
         assertThat(d.appeared().count()).isEqualTo(1);
         assertThat(d.appeared().shown())
-                .containsExactly("error · compile-java · src/main/java/Bar.java:3 · ';' expected");
+                .containsExactly("error · compile-java · " + Path.of("src/main/java/Bar.java") + ":3 · ';' expected");
         assertThat(d.gone().count()).isEqualTo(1);
         assertThat(d.gone().shown()).containsExactly("error · run-tests · FooTest#adds() · expected 4");
         assertThat(d.files())

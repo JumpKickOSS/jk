@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.TaskExec;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,10 @@ import org.junit.jupiter.api.Test;
  */
 class QuarkusAugmentArgsTest {
 
-    private static final Path PROPS = Path.of("/store/cas/quarkus-bom-quarkus-platform-properties-3.38.3.properties");
+    private static final Path MODULE = ShortTempDirs.path().resolve("m");
+    private static final Path TEST_MODEL = MODULE.resolve("target/plugin/quarkus-test-model/test-model");
+    private static final Path PROPS =
+            ShortTempDirs.path().resolve("store/cas/quarkus-bom-quarkus-platform-properties-3.38.3.properties");
 
     @Test
     void the_offline_decision_is_the_last_argument_the_augment_is_given() {
@@ -52,10 +56,10 @@ class QuarkusAugmentArgsTest {
     void a_missing_platform_properties_extra_refuses_to_build_the_vector() {
         assertThatThrownBy(() -> QuarkusPlugin.augmentArgs(
                         new ProbeExec(false, null),
-                        Path.of("/m/target/classes/main"),
-                        Path.of("/m/target/quarkus-app"),
+                        MODULE.resolve("target/classes/main"),
+                        MODULE.resolve("target/quarkus-app"),
                         "widget",
-                        Path.of("/m/target/runtime-jars.tsv"),
+                        MODULE.resolve("target/runtime-jars.tsv"),
                         "3.38.3"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(QuarkusPlugin.PLATFORM_PROPS_EXTRA);
@@ -82,37 +86,35 @@ class QuarkusAugmentArgsTest {
         assertThat(offline).hasSize(10).last().isEqualTo("true");
         assertThat(online).last().isEqualTo("false");
         assertThat(offline).element(8).isEqualTo(PROPS.toString());
-        assertThat(offline).element(2).isEqualTo("/m/target/plugin/quarkus-test-model/test-model");
+        assertThat(offline).element(2).isEqualTo(TEST_MODEL.toString());
         assertThat(offline.subList(0, offline.size() - 1)).isEqualTo(online.subList(0, online.size() - 1));
     }
 
     /** The fork's arguments name the model and the metaspace the bootstrap's resident applications need. */
     @Test
     void the_test_jvm_arguments_name_the_model_and_the_metaspace_cap() {
-        assertThat(QuarkusPlugin.testJvmArgs(
-                        Path.of("/m/target/plugin/quarkus-test-model/test-model/test-app-model.json")))
+        Path model = TEST_MODEL.resolve("test-app-model.json");
+        assertThat(QuarkusPlugin.testJvmArgs(model))
                 .containsExactly(
-                        "-Dquarkus-internal-test.serialized-app-model.path="
-                                + "/m/target/plugin/quarkus-test-model/test-model/test-app-model.json",
-                        "-XX:MaxMetaspaceSize=1g");
+                        "-Dquarkus-internal-test.serialized-app-model.path=" + model, "-XX:MaxMetaspaceSize=1g");
     }
 
     private static List<String> testModelArgsFor(boolean offline) {
         return QuarkusPlugin.testModelArgs(
                 new ProbeExec(offline, PROPS),
-                Path.of("/m/target/classes/main"),
-                Path.of("/m/target/plugin/quarkus-test-model/test-model"),
-                Path.of("/m/target/test-runtime-jars.tsv"),
+                MODULE.resolve("target/classes/main"),
+                TEST_MODEL,
+                MODULE.resolve("target/test-runtime-jars.tsv"),
                 "3.38.3");
     }
 
     private static List<String> argsFor(boolean offline) {
         return QuarkusPlugin.augmentArgs(
                 new ProbeExec(offline, PROPS),
-                Path.of("/m/target/classes/main"),
-                Path.of("/m/target/quarkus-app"),
+                MODULE.resolve("target/classes/main"),
+                MODULE.resolve("target/quarkus-app"),
                 "widget",
-                Path.of("/m/target/runtime-jars.tsv"),
+                MODULE.resolve("target/runtime-jars.tsv"),
                 "3.38.3");
     }
 
@@ -120,7 +122,7 @@ class QuarkusAugmentArgsTest {
     private record ProbeExec(boolean offline, @Nullable Path platformProps) implements TaskExec {
         @Override
         public Path moduleDir() {
-            return Path.of("/m");
+            return MODULE;
         }
 
         @Override
@@ -130,7 +132,7 @@ class QuarkusAugmentArgsTest {
 
         @Override
         public Path classesDir() {
-            return Path.of("/m/target/classes/main");
+            return MODULE.resolve("target/classes/main");
         }
 
         @Override
@@ -150,7 +152,7 @@ class QuarkusAugmentArgsTest {
 
         @Override
         public Path scratch() {
-            return Path.of("/m/target");
+            return MODULE.resolve("target");
         }
 
         @Override

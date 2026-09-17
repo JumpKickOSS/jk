@@ -7,6 +7,7 @@ import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -26,7 +27,7 @@ class DoctorCommandTest {
         Path mavenSlug = tempDir.resolve("maven");
         Files.createDirectories(mavenSlug);
         Path link = mavenSlug.resolve("3.9.9");
-        Files.createSymbolicLink(link, tempDir.resolve("nonexistent"));
+        Symlinks.create(link, tempDir.resolve("nonexistent"));
 
         String stdout = capture(() -> Jk.execute("doctor", "--tools-dir", tempDir.toString()));
         assertThat(stdout).containsPattern("pruned:\\s+maven 3.9.9");
@@ -40,7 +41,7 @@ class DoctorCommandTest {
         Path mavenSlug = tempDir.resolve("maven");
         Files.createDirectories(mavenSlug);
         Path link = mavenSlug.resolve("3.9.9");
-        Files.createSymbolicLink(link, tempDir.resolve("nonexistent"));
+        Symlinks.create(link, tempDir.resolve("nonexistent"));
 
         String stdout = capture(() -> Jk.execute("doctor", "--tools-dir", tempDir.toString(), "--output", "json"));
 
@@ -69,7 +70,7 @@ class DoctorCommandTest {
         Path target = Files.createDirectories(tempDir.resolve("host-maven"));
         Files.writeString(target.resolve("README"), "maven 3.9.9\n");
         Path mavenSlug = Files.createDirectories(tempDir.resolve("maven"));
-        Files.createSymbolicLink(mavenSlug.resolve("3.9.9"), target);
+        Symlinks.create(mavenSlug.resolve("3.9.9"), target);
         Path marker = mavenSlug.resolve("3.9.9.fingerprint");
 
         String first = verifyLinked(tempDir);
@@ -96,7 +97,7 @@ class DoctorCommandTest {
     void verify_linked_refuses_to_pass_off_an_empty_target_as_a_fingerprint(@TempDir Path tempDir) throws Exception {
         Path target = Files.createDirectories(tempDir.resolve("hollow"));
         Path mavenSlug = Files.createDirectories(tempDir.resolve("maven"));
-        Files.createSymbolicLink(mavenSlug.resolve("3.9.9"), target);
+        Symlinks.create(mavenSlug.resolve("3.9.9"), target);
 
         String stdout = verifyLinked(tempDir);
         assertThat(stdout).contains("no files");

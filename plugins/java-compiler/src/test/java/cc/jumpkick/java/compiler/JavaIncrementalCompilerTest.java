@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -211,7 +212,7 @@ class JavaIncrementalCompilerTest {
         // exactly why the link is explicit here: on every other platform that one is a green test
         // of a path this defect never takes.
         Path real = Files.createDirectories(dir.resolve("real"));
-        Path link = Files.createSymbolicLink(dir.resolve("link"), real);
+        Path link = Symlinks.create(dir.resolve("link"), real);
 
         Path procDir = dir.resolve("proc");
         writeGenProcessor(procDir);

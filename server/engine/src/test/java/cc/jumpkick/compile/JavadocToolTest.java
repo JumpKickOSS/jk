@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.JavadocMode;
+import cc.jumpkick.testing.ShortTempDirs;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -44,14 +45,26 @@ class JavadocToolTest {
 
     @Test
     void argfile_quotes_every_argument_and_joins_the_classpath() {
+        Path out = ShortTempDirs.path().resolve("out");
+        Path source = ShortTempDirs.path().resolve("ws/lib/src/A.java");
+        Path depWithSpace = ShortTempDirs.path().resolve("ws/dep a.jar");
+        Path classes = ShortTempDirs.path().resolve("ws/classes");
+
         List<String> lines = JavadocTool.argfileLines(
-                Path.of("/tmp/out"),
-                List.of(Path.of("/ws/lib/src/A.java")),
-                List.of(Path.of("/ws/dep a.jar"), Path.of("/ws/classes")),
-                List.of("-quiet", "-Xdoclint:none"));
-        assertThat(lines).startsWith("-d", "\"/tmp/out\"", "\"-quiet\"", "\"-Xdoclint:none\"", "-classpath");
-        assertThat(lines.get(5)).startsWith("\"/ws/dep a.jar").contains("/ws/classes\"");
-        assertThat(lines).endsWith("\"/ws/lib/src/A.java\"");
+                out, List.of(source), List.of(depWithSpace, classes), List.of("-quiet", "-Xdoclint:none"));
+
+        assertThat(lines).startsWith("-d", quoted(out), "\"-quiet\"", "\"-Xdoclint:none\"", "-classpath");
+        assertThat(lines.get(5)).startsWith("\"" + escaped(depWithSpace)).endsWith(escaped(classes) + "\"");
+        assertThat(lines).endsWith(quoted(source));
         assertThat(lines).allSatisfy(l -> assertThat(l).doesNotContain("\n"));
+    }
+
+    /** The argfile syntax read back: the value quoted, with a Windows path's backslashes doubled. */
+    private static String quoted(Path path) {
+        return "\"" + escaped(path) + "\"";
+    }
+
+    private static String escaped(Path path) {
+        return path.toString().replace("\\", "\\\\");
     }
 }

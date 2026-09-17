@@ -5,13 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatIOException;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -58,13 +57,12 @@ class JkOwnershipTest {
     }
 
     @Test
-    @EnabledOnOs({OS.LINUX, OS.MAC})
     void a_link_is_unlinked_and_its_target_is_left_alone(@TempDir Path tmp) throws IOException {
         // The half fixed, pinned here too because this is now the site that decides it: a
         // pointer jk planted into ~/.sdkman must cost the link, never the JDK behind it.
         Path theirs = populated(tmp.resolve("sdkman-candidate"));
         Path link = tmp.resolve("pointer");
-        Files.createSymbolicLink(link, theirs);
+        Symlinks.create(link, theirs);
 
         JkOwnership.removeIfOwned(link);
 
@@ -75,10 +73,9 @@ class JkOwnershipTest {
     }
 
     @Test
-    @EnabledOnOs({OS.LINUX, OS.MAC})
     void a_dangling_link_is_removed_rather_than_mistaken_for_absent(@TempDir Path tmp) throws IOException {
         Path link = tmp.resolve("dangling");
-        Files.createSymbolicLink(link, tmp.resolve("never-existed"));
+        Symlinks.create(link, tmp.resolve("never-existed"));
 
         JkOwnership.removeIfOwned(link);
 

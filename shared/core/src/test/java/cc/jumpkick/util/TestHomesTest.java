@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -12,8 +14,6 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -66,10 +66,9 @@ class TestHomesTest {
 
     /** One directory reached two ways is one module, so it gets one slot. */
     @Test
-    @DisabledOnOs(OS.WINDOWS)
     void a_module_reached_through_a_link_keys_as_the_directory_itself(@TempDir Path tmp) throws Exception {
         Path real = Files.createDirectories(tmp.resolve("real/module"));
-        Path link = Files.createSymbolicLink(tmp.resolve("link"), real.getParent());
+        Path link = Symlinks.create(tmp.resolve("link"), requireNonNull(real.getParent()));
 
         assertThat(TestHomes.keyFor(link.resolve("module"))).isEqualTo(TestHomes.keyFor(real));
     }
