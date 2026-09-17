@@ -358,6 +358,10 @@ jk why com.foo:bar       # why a pin is on the graph, and what each step declare
 <parent>)`, so a surprising transitive version is traced to the declaration that produced it.
 The selector rides the lock's edge lines; see [Lockfile](lockfile.md#what-an-edge-records).
 
+`jk tree` prints a coordinate under each scope section at that section's version: a coordinate the
+lock holds at one version for main and another for test reads its main row under `[main]` and its
+test row under `[test]`, nested and flattened (`-f`) alike.
+
 ## Related
 
 [Lockfile](lockfile.md) · [Repositories](repositories.md) · [Publish](publish.md) (`jk audit` / `jk deny`)
