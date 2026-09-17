@@ -330,8 +330,9 @@ public final class LockOrchestrator {
         if (sharedSource != null) sharedSource.setManagedExclusions(constraints.managedExclusions());
 
         progress.graphPhase(roots.declaredCount());
-        ScopeSolves.Solved solved = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy)
-                .solve(roots, prefs, progress);
+        ScopeSolves scopeSolves = new ScopeSolves(resolverOverride, sharedSource, pomBuilder, kmp, pinPolicy);
+        ScopeSolves.Solved solved = scopeSolves.solve(roots, prefs, progress);
+        for (String line : scopeSolves.overrides()) observer.onOverride(line);
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);

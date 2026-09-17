@@ -6,6 +6,7 @@ import cc.jumpkick.model.PinPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -22,10 +23,12 @@ import org.jspecify.annotations.Nullable;
  * preferred by test and processor rather than re-decided; a module reachable only from a later
  * graph is solved fresh. The test classpath is the main classpath plus the test rows, so a module
  * main pins exactly is that version on it: the test graph takes main's exact pins for every edge
- * onto them under both pin policies, the way its own exact roots govern under {@code nearest}. One
- * {@link MavenPackageSource} serves all three so version and dependency caches survive the scope
- * split, while its per-graph exclusion state is reset between them: main's clean paths must not
- * bleed into the test and processor solves.
+ * onto them under both pin policies, the way its own exact roots govern under {@code nearest}, and a
+ * test root's own exact pin on a module main decided gives way to main's version, since main's is
+ * the one on the test classpath whatever the pin asks ({@link #overrides} names each). One {@link
+ * MavenPackageSource} serves all three so version and dependency caches survive the scope split,
+ * while its per-graph exclusion state is reset between them: main's clean paths must not bleed into
+ * the test and processor solves.
  */
 final class ScopeSolves {
 
@@ -41,6 +44,9 @@ final class ScopeSolves {
     private final EffectivePomBuilder pomBuilder;
     private final KmpRedirects kmp;
     private final PinPolicy pinPolicy;
+
+    /** One sentence per test-scope exact pin that gave way to main's version. */
+    private final List<String> overrides = new ArrayList<>();
 
     /**
      * @param resolverOverride a test's stand-in solver, or {@code null} for PubGrub over {@code sharedSource}
@@ -67,8 +73,12 @@ final class ScopeSolves {
         Map<String, String> mainPins = exactRoots(roots.main());
         EnumMap<LockRoots.GraphGroup, Resolution> solved = new EnumMap<>(LockRoots.GraphGroup.class);
         for (LockRoots.GraphGroup graph : ORDER) {
-            Map<String, String> inherited = graph == LockRoots.GraphGroup.TEST ? mainPins : Map.of();
-            Resolution resolution = resolve(roots.of(graph), inherited, new HashMap<>(prefs), progress);
+            boolean test = graph == LockRoots.GraphGroup.TEST;
+            Map<String, String> inherited = test ? mainPins : Map.of();
+            List<Dependency> graphRoots = test
+                    ? mainGoverned(roots.of(graph), Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)))
+                    : roots.of(graph);
+            Resolution resolution = resolve(graphRoots, inherited, new HashMap<>(prefs), progress);
             progress.noteGraph(resolution);
             // Locked pins and earlier graphs win over this graph's decisions: putIfAbsent, in ORDER.
             for (var e : resolution.modules().entrySet()) {
@@ -81,6 +91,37 @@ final class ScopeSolves {
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.MAIN)),
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.TEST)),
                 Objects.requireNonNull(solved.get(LockRoots.GraphGroup.PROCESSOR)));
+    }
+
+    /** The pins that gave way to main's version, one sentence each, in root order. */
+    List<String> overrides() {
+        return List.copyOf(overrides);
+    }
+
+    /**
+     * The test graph's roots with each exact pin on a module main decided rewritten to main's
+     * version. The test classpath is the main classpath plus the test rows, so main's version is the
+     * one there whatever the pin asks; writing the pin's version as a test row would give the
+     * classpath nothing to read. Each displaced pin is recorded for {@link #overrides}.
+     */
+    private List<Dependency> mainGoverned(List<Dependency> roots, Resolution main) {
+        List<Dependency> out = new ArrayList<>(roots.size());
+        for (Dependency root : roots) {
+            Resolution.ResolvedModule decided = main.modules().get(root.packageKey());
+            if (decided == null
+                    || root.isWorkspace()
+                    || !(root.version() instanceof VersionSelector.Exact exact)
+                    || exact.version().equals(decided.version())) {
+                out.add(root);
+                continue;
+            }
+            overrides.add(root.module() + " is pinned to " + exact.version()
+                    + " in a test scope, but the main graph resolves " + decided.version()
+                    + " and the test classpath carries main's version: the lock writes " + decided.version()
+                    + " for both scopes; move the pin to a main scope or drop it");
+            out.add(root.withVersion(VersionSelector.parse("=" + decided.version())));
+        }
+        return out;
     }
 
     /**

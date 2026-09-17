@@ -271,6 +271,14 @@ whole lock, whichever member brought in the transitive that asked for more. Unde
 `pins = "exact"` that shape is a conflict the lock refuses instead; see
 [Dependencies](dependencies.md#coordinates).
 
+A test-scope exact pin on a module the main graph resolves at another version gives way to main's:
+the test classpath is the main classpath plus the test rows, so main's version is the one there
+whatever the pin asks, and a test row at the pin's version would be content nothing reads. The lock
+writes one row at main's version for both scopes, and `jk lock` says so once per such pin, naming
+the pin and main's version. Move the pin to a main scope to make it the version everywhere, or drop
+it. A test dependency's own edge onto such a module still resolves against main's version the same
+way ([Dependencies](dependencies.md#coordinates)).
+
 `nearest` covers direct pins and BOM order and nothing else: a module only transitive POMs name
 resolves highest-declared under both policies, so a lock row can sit above the version Maven's
 nearer declaration gives the same module. Measured on the Maven top-20 corpus in jk-examples, over

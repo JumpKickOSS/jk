@@ -284,6 +284,26 @@ public record Dependency(
                 false);
     }
 
+    /** The same edge asking for {@code version} instead. */
+    public Dependency withVersion(VersionSelector version) {
+        return new Dependency(
+                library,
+                module,
+                version,
+                gitSource,
+                sha256,
+                pinned,
+                optional,
+                pathSource,
+                requestedFeatures,
+                defaultFeatures,
+                kind,
+                fixtures,
+                classifier,
+                exclusions,
+                impliedBy);
+    }
+
     public Dependency withOptional(boolean optional) {
         return new Dependency(
                 library,

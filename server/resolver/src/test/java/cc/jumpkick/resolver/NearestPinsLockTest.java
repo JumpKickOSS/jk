@@ -226,6 +226,51 @@ class NearestPinsLockTest {
         }
     }
 
+    /**
+     * A test-scope exact pin on a module the main graph resolves is the main version's to give way
+     * to: the test classpath is the main classpath plus the test rows, so main's version is the one
+     * there whatever the pin asks. The lock writes one row at main's version for both scopes, and
+     * one override line names the displaced pin.
+     */
+    @Test
+    void a_test_pin_under_a_main_row_gives_way_to_it(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "leaf", "1.0", "2.0");
+        for (String v : List.of("1.0", "2.0")) {
+            upstream.pom("com.foo", "leaf", v, MavenStub.emptyPom("com.foo", "leaf", v));
+        }
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.pom("com.foo", "middle", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>middle</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>2.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
+        byScope.put(Scope.TEST, List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=1.0"))));
+        JkBuild project = new JkBuild(new Project("com.foo", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+        List<String> overrides = new ArrayList<>();
+
+        Lockfile lock =
+                new LockOrchestrator(repoGroup(tempDir)).lock(project, "test", List.of(), true, recording(overrides));
+
+        List<Lockfile.Artifact> leaf = lock.artifacts().stream()
+                .filter(a -> a.packageKey().equals("com.foo:leaf:jar:"))
+                .toList();
+        assertThat(leaf).hasSize(1);
+        assertThat(leaf.getFirst().version()).isEqualTo("2.0");
+        assertThat(leaf.getFirst().scopes()).contains(Scope.MAIN, Scope.TEST);
+        assertThat(overrides).hasSize(1);
+        assertThat(overrides.getFirst())
+                .contains("com.foo:leaf")
+                .contains("1.0")
+                .contains("2.0");
+    }
+
     private static ResolveObserver recording(List<String> overrides) {
         return new ResolveObserver() {
             @Override
