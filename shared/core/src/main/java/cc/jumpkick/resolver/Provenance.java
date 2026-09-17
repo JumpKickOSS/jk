@@ -117,7 +117,7 @@ public final class Provenance {
     }
 
     private static Path singleStep(String module, LockGraph graph) {
-        return new Path(List.of(stepOf(module, null, graph)));
+        return new Path(List.of(stepOf(module, null, graph)), graph.rootUnits(module));
     }
 
     private static Path reconstruct(String root, String target, Map<String, String> cameFrom, LockGraph graph) {
@@ -131,7 +131,7 @@ public final class Provenance {
             cur = next;
             steps.add(stepOf(cur, parent, graph));
         }
-        return new Path(steps);
+        return new Path(steps, graph.rootUnits(root));
     }
 
     /**
@@ -145,8 +145,12 @@ public final class Provenance {
         return new Task(module, version, declared);
     }
 
-    /** A path from a declared root (first) down to the target (last). */
-    public record Path(List<Task> steps) {
+    /**
+     * A path from a declared root (first) down to the target (last). {@code rootUnit} is the
+     * workspace units that declared the root, as {@link LockGraph#rootUnits}; null for a single
+     * project or a lock top.
+     */
+    public record Path(List<Task> steps, @Nullable String rootUnit) {
         public Path {
             Objects.requireNonNull(steps, "steps");
             steps = List.copyOf(steps);

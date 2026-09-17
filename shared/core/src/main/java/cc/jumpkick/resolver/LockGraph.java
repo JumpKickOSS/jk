@@ -46,8 +46,8 @@ public final class LockGraph {
     private final Map<String, List<String>> forwardSorted;
 
     private final Set<String> declaredRoots;
-    /** Declared root GA → the selector the manifest wrote for it. */
-    private final Map<String, String> rootSelectors;
+    /** Declared root GA → the selector the manifest wrote for it and the units that declared it. */
+    private final Map<String, RootDeclaration> rootDeclarations;
     /** Dep module (and its GA alias) → parent artifact names; built on first reverse walk. */
     private @Nullable Map<String, Set<String>> reverse;
 
@@ -56,12 +56,24 @@ public final class LockGraph {
             Map<String, List<String>> forward,
             Map<String, List<String>> forwardSorted,
             Set<String> declaredRoots,
-            Map<String, String> rootSelectors) {
+            Map<String, RootDeclaration> rootDeclarations) {
         this.byModule = byModule;
         this.forward = forward;
         this.forwardSorted = forwardSorted;
         this.declaredRoots = declaredRoots;
-        this.rootSelectors = rootSelectors;
+        this.rootDeclarations = rootDeclarations;
+    }
+
+    /**
+     * How a manifest declares a root: the selector text of its first declaration and, in a
+     * workspace, the units whose tables list it — each as {@code group:name}, the coordinate the
+     * tree renders the unit under, in unit order and comma-joined; {@code null} for a single
+     * project, whose one manifest declares every root.
+     */
+    public record RootDeclaration(String selector, @Nullable String units) {
+        RootDeclaration withUnit(String unit) {
+            return new RootDeclaration(selector, units == null ? unit : units + ", " + unit);
+        }
     }
 
     /**
@@ -71,7 +83,7 @@ public final class LockGraph {
     public static LockGraph of(@Nullable JkBuild project, @Nullable Lockfile lock, @Nullable Path projectDir) {
         Set<String> roots =
                 project == null ? Set.of() : new LinkedHashSet<>(DependencyTree.collectRoots(project, projectDir));
-        return build(lock, roots, DependencyTree.collectRootSelectors(project, projectDir), Set.of());
+        return build(lock, roots, DependencyTree.collectRootDeclarations(project, projectDir), Set.of());
     }
 
     /** Lock-only graph (no declared roots) — per-member locks in workspace renders. */
@@ -88,7 +100,10 @@ public final class LockGraph {
     }
 
     private static LockGraph build(
-            @Nullable Lockfile lock, Set<String> roots, Map<String, String> rootSelectors, Set<Scope> scopes) {
+            @Nullable Lockfile lock,
+            Set<String> roots,
+            Map<String, RootDeclaration> rootDeclarations,
+            Set<Scope> scopes) {
         if (lock == null && roots.isEmpty()) return EMPTY;
         Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock, scopes);
         Map<String, List<String>> forward = new HashMap<>();
@@ -103,12 +118,22 @@ public final class LockGraph {
             sorted.sort(null);
             forwardSorted.put(pkg.name(), List.copyOf(sorted));
         }
-        return new LockGraph(byModule, forward, forwardSorted, roots, rootSelectors);
+        return new LockGraph(byModule, forward, forwardSorted, roots, rootDeclarations);
     }
 
     /** The selector the manifest declares for root {@code module}, or null when it is not a declared root. */
     public @Nullable String rootSelector(String module) {
-        return rootSelectors.get(ga(module));
+        RootDeclaration d = rootDeclarations.get(ga(module));
+        return d == null ? null : d.selector();
+    }
+
+    /**
+     * The workspace units that declare root {@code module}, as {@link RootDeclaration#units()};
+     * null for a single project or a module that is not a declared root.
+     */
+    public @Nullable String rootUnits(String module) {
+        RootDeclaration d = rootDeclarations.get(ga(module));
+        return d == null ? null : d.units();
     }
 
     /**

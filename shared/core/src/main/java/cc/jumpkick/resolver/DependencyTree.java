@@ -652,29 +652,42 @@ public final class DependencyTree {
     }
 
     /**
-     * The selector each declared Maven root was written with, by {@code group:artifact} — the
-     * same roots as {@link #collectRoots(JkBuild, Path)}, with the manifest text ({@code ^2.21},
-     * {@code =1.15.0}, …) beside each. The first declaration of a module wins; workspace, git,
-     * path and file edges have no Maven selector and are left out.
+     * How each declared Maven root was written, by {@code group:artifact} — the same roots as
+     * {@link #collectRoots(JkBuild, Path)}, with the manifest text ({@code ^2.21}, {@code =1.15.0},
+     * …) of its first declaration and, for a workspace root, every unit that declares it: the root
+     * for its own tables, then the members in declaration order. Workspace, git, path and file edges
+     * have no Maven selector and are left out.
      */
-    static Map<String, String> collectRootSelectors(@Nullable JkBuild project, @Nullable Path projectDir) {
-        Map<String, String> out = new LinkedHashMap<>();
+    static Map<String, LockGraph.RootDeclaration> collectRootDeclarations(
+            @Nullable JkBuild project, @Nullable Path projectDir) {
+        Map<String, LockGraph.RootDeclaration> out = new LinkedHashMap<>();
         if (project == null) return out;
-        putRootSelectors(project, out);
-        if (project.isWorkspaceRoot() && projectDir != null) {
-            for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)) {
-                putRootSelectors(m.build(), out);
-            }
+        if (!project.isWorkspaceRoot() || projectDir == null) {
+            putRootDeclarations(project, false, out);
+            return out;
+        }
+        putRootDeclarations(project, true, out);
+        for (LoadedModule m : WorkspaceGraph.loadModules(project.workspaceModules(), projectDir)) {
+            putRootDeclarations(m.build(), true, out);
         }
         return out;
     }
 
-    private static void putRootSelectors(JkBuild build, Map<String, String> out) {
+    private static void putRootDeclarations(
+            JkBuild build, boolean workspace, Map<String, LockGraph.RootDeclaration> out) {
+        String unit = build.project().group() + ":" + build.project().name();
         for (Scope s : Scope.values()) {
             if (s == Scope.MANAGED) continue;
             for (Dependency d : build.dependencies().of(s)) {
                 if (d.isWorkspace() || d.isGit() || d.isPath() || d.isFile()) continue;
-                out.putIfAbsent(LockGraph.ga(d.module()), d.version().raw().trim());
+                String ga = LockGraph.ga(d.module());
+                LockGraph.RootDeclaration first = out.get(ga);
+                if (first == null) {
+                    out.put(ga, new LockGraph.RootDeclaration(d.version().raw().trim(), workspace ? unit : null));
+                } else if (workspace) {
+                    String units = first.units();
+                    if (units == null || !(", " + units).endsWith(", " + unit)) out.put(ga, first.withUnit(unit));
+                }
             }
         }
     }
