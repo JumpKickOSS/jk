@@ -211,6 +211,8 @@ The sandbox is shared by every suite of the module and kept between runs, so a l
 identity must not be its port: `LoopbackHttp` (and `MockMavenServer` on it) spells its base
 `http://127.0.0.1:<port>/<token>` with a token no other start has had, because version lists,
 fetch memos and the store's `repos/<id>` are all keyed by URL and a kernel reuses ephemeral ports.
+The reaper that bounds `test-homes` walks a slot once and records its size beside the stamp; an
+idle slot is not walked again until a launch re-stamps it or its suite's hold closes.
 
 **The overlay rule.** Layout settings come in two layers: the `jk.env.<NAME>` system properties
 (the in-process seam a test sets per class or method, forwarded by the engine spawner to the

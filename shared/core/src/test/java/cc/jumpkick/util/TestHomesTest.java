@@ -232,6 +232,40 @@ class TestHomesTest {
                 .isZero();
     }
 
+    /**
+     * A root of many idle slots is sized once: the walk's answer is recorded beside the stamp and
+     * stands until the slot is used again, which a launch marks by re-stamping and a finished suite
+     * by dropping the record.
+     */
+    @Test
+    void an_idle_slot_is_sized_from_its_record_until_it_is_used_again(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("homes"));
+        Path slot = slotWithBytes(root, "aaaaaaaaaaaa", 100);
+        long now = System.currentTimeMillis();
+
+        // The blob plus the stamp the slot carries; the record itself is never counted.
+        long walked = TestHomes.reapStale(root, now, NO_CAP).bytes();
+        assertThat(walked).isGreaterThanOrEqualTo(100);
+        Path record = slot.resolve(TestHomes.SIZE);
+        assertThat(record).hasContent(Long.toString(walked));
+
+        // Grown without a use: the record still answers, so the pass walks nothing here.
+        Files.write(slot.resolve("home/store/more"), new byte[50]);
+        Files.setLastModifiedTime(record, FileTime.fromMillis(now + 5_000));
+        assertThat(TestHomes.reapStale(root, now, NO_CAP).bytes()).isEqualTo(walked);
+
+        // Used again: the stamp is newer than the record, so the slot is walked and re-recorded.
+        Files.setLastModifiedTime(slot.resolve(".used-at"), FileTime.fromMillis(now + 10_000));
+        assertThat(TestHomes.reapStale(root, now + 10_000, NO_CAP).bytes()).isEqualTo(walked + 50);
+        assertThat(record).hasContent(Long.toString(walked + 50));
+
+        // A suite that finished drops the record so the next pass measures what it left behind.
+        try (TestHomes.Hold held = TestHomes.hold(slot)) {
+            assertThat(slot.resolve(".holds")).isDirectory();
+        }
+        assertThat(record).doesNotExist();
+    }
+
     @Test
     void a_missing_root_reaps_nothing_and_does_not_throw(@TempDir Path tmp) {
         assertThat(TestHomes.reapStale(tmp.resolve("never-created"), System.currentTimeMillis(), NO_CAP)
