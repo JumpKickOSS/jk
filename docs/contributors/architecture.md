@@ -305,7 +305,9 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
 - **Warm-up ahead of the solver:** the roots before the first decide, and every positive edge
   as its parent expands, are read speculatively on the io pool — the version catalog for a
   floating edge, then the `.module` redirect and the effective POM (parents and imports) of
-  the version the solver will most likely take — so the solver's own reads are memo hits. The
+  the version the solver will most likely take — so the solver's own reads are memo hits. A
+  `.module` is asked only of the repository that served the POM (Gradle publishes the two
+  together), never of the other repositories in the walk. The
   checksum sidecars of a download travel beside its body rather than after it. A POM or
   artifact path a repository answered "not found" is remembered for the metadata TTL, so a
   re-lock in the same engine pays none of those 404s a multi-repository walk produces; a version

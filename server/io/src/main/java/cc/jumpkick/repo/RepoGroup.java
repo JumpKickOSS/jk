@@ -45,9 +45,7 @@ public final class RepoGroup {
      */
     private static final ConcurrentHashMap<String, RepoFetched> POM_HIT_CACHE = new ConcurrentHashMap<>();
 
-    /**
-     * Same for non-POM artifacts (Gradle {@code .module}, jars). Keyed by repositories + GAVC+type.
-     */
+    /** Same for non-POM artifacts (jars, classified artifacts). Keyed by repositories + GAVC+type. */
     private static final ConcurrentHashMap<String, RepoFetched> ARTIFACT_HIT_CACHE = new ConcurrentHashMap<>();
 
     /**
