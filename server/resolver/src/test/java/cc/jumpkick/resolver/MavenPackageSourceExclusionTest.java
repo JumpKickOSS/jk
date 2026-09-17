@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
@@ -11,6 +12,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
@@ -705,6 +707,51 @@ class MavenPackageSourceExclusionTest {
 
         assertThat(requireNonNull(result.modules().get("com.foo:leaf:jar:")).version())
                 .isEqualTo("1.5");
+    }
+
+    /**
+     * The declared edge's exclusion governs before anything below it is walked: {@code plugin}
+     * depends on {@code annotated}, whose every release needs {@code indexer}, a coordinate the
+     * catalog advertises but no repository serves. Without the exclusion the lock refuses; with
+     * it, the unresolvable subtree never enters the solve and the lock holds the plugin alone.
+     */
+    @Test
+    void a_root_exclusion_keeps_an_unresolvable_subtree_out_of_the_solve(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "plugin", "1.0");
+        upstream.metadata("com.foo", "annotated", "1.4", "1.7");
+        upstream.metadata("com.foo", "indexer", "1.4");
+        upstream.pomOnly("com.foo", "plugin", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>plugin</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>annotated</artifactId><version>1.4</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        for (String v : List.of("1.4", "1.7")) {
+            upstream.pomOnly("com.foo", "annotated", v, """
+                    <project>
+                      <groupId>com.foo</groupId><artifactId>annotated</artifactId><version>%s</version>
+                      <dependencies>
+                        <dependency>
+                          <groupId>com.foo</groupId><artifactId>indexer</artifactId><version>1.4</version>
+                        </dependency>
+                      </dependencies>
+                    </project>
+                    """.formatted(v));
+        }
+        Dependency plugin = new Dependency("com.foo:plugin", VersionSelector.parse("=1.0"));
+
+        assertThatThrownBy(() -> new PubGrubResolver(repoGroup(tempDir)).resolve(List.of(plugin)))
+                .isInstanceOf(UnsatisfiableException.class)
+                .hasMessageContaining("indexer");
+
+        Resolution result = new PubGrubResolver(repoGroup(tempDir))
+                .resolve(List.of(plugin.withExclusions(List.of("com.foo:annotated"))));
+
+        assertThat(result.modules()).containsOnlyKeys("com.foo:plugin:jar:");
     }
 
     private RepoGroup repoGroup(Path tempDir) {
