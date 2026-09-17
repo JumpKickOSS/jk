@@ -149,13 +149,22 @@ So a member is resolved on its own exactly when the workspace's answer cannot be
 - it declares an exact version the workspace's row does not carry (`logback-classic = "1.2.13"`
   in one member, `"1.5.32"` in three others), or
 - a coordinate in its graph was pinned by a BOM the member does not hold, and the member's own
-  platform table manages it at another version or an edge of the member's own graph declared
-  something else.
+  platform table manages it at another version or a dependency's POM in the member's own graph
+  declared a version the pinned one cannot stand in for: below the declaration, or past its
+  compatible line (`^` of what the POM declared — `jakarta.jms-api` 2.0.3 lifted to 3.1.0), or
+  outside a range it wrote.
 
 Its rows are then written beside the workspace's, each with `members = ["<path>"]`, and its
 classpath reads those rows instead — [Lockfile](lockfile.md#rows-a-member-owns). Everything the
 member agrees on stays a plain row. A workspace whose members all agree has no `members` key
 anywhere, and nothing about it changes.
+
+A declaration the pinned version does satisfy is a floor, as a sibling's higher edge is: Boot's
+`commons-logging` 1.3.6 stands in for the 1.3.5 a `spring-context` module's graph declares, and
+the member reads the workspace's row. A floating selector on the member's own root — `latest`, a
+caret, the Jupiter the test runner adds to a member that declares no test dependencies — asks
+the workspace for its answer and never disagrees with it; so a member that holds no platform table
+and pins nothing exactly reads the plain rows alone.
 
 `jk why <coord>` lists every version the lock carries for the coordinate, each with the members it
 belongs to. `jk lock` prints one note per member solved on its own, after the summary line, naming
