@@ -228,22 +228,35 @@ final class GuardSuiteRunner {
                                 "true"),
                         listener,
                         null);
-        // What the fork said, next to the report it left: the place to look when a guard is missing from it.
-        StringBuilder log = new StringBuilder("total=" + summary.total() + " succeeded=" + summary.succeeded()
-                + " failed=" + summary.failed() + " skipped=" + summary.skipped() + "\n");
-        for (String l : said) log.append(l).append('\n');
-        Files.writeString(report.resolveSibling("junit.log"), log.toString());
         if (Files.isRegularFile(part))
             Files.move(part, report, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         else Files.deleteIfExists(report);
+        long reported = Files.isRegularFile(report) ? Files.readAllLines(report).size() : 0;
+        // What the fork said, next to the report it left: the place to look when a guard is missing from it.
+        StringBuilder log = new StringBuilder("total=" + summary.total() + " succeeded=" + summary.succeeded()
+                + " failed=" + summary.failed() + " skipped=" + summary.skipped() + " reported=" + reported + "\n");
+        for (String l : said) log.append(l).append('\n');
+        Files.writeString(report.resolveSibling("junit.log"), log.toString());
+        return problems(summary, reported, said);
+    }
+
+    /**
+     * The problems that stop a run from meaning anything, judged from the report first and the
+     * launcher's summary second. The report is the fork's own word on which guards ran: each guard
+     * appends its line as it finishes. The summary is what the launcher counted of the fork's events
+     * on the way past, and under load it counts fewer — down to none — for a suite that ran whole.
+     * So a report holding guards is a suite that ran, whatever the summary says; a summary that
+     * counted more guards than the report holds names a guard that ran and did not report; and a
+     * test the launcher saw fail outside any guard fails the run.
+     */
+    static List<String> problems(TestSummary summary, long reported, List<String> said) {
         List<String> problems = new ArrayList<>();
         if (summary.failed() > 0) {
             problems.add("the guard suite's JUnit run failed " + summary.failed() + " test(s) outside any @Guard: "
                     + summary.failures());
         }
-        if (summary.total() == 0)
+        if (reported == 0 && summary.total() == 0)
             problems.add("the guard suite ran no @Guard method: is the class annotated @GuardSuite?");
-        long reported = Files.isRegularFile(report) ? Files.readAllLines(report).size() : 0;
         if (reported < summary.total()) {
             StringBuilder sb = new StringBuilder("the suite ran " + summary.total() + " guard(s) but reported "
                     + reported + "; the forked JVM said:");

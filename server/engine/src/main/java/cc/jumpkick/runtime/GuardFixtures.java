@@ -173,12 +173,13 @@ public final class GuardFixtures {
             Path caseWork = work.resolve(s.file().getFileName().toString());
             Path tree = caseWork.resolve("tree");
             FixtureCheck.caseTree(c.dir(), s, tree);
-            Evaluation eval = guardEvaluation(root, c.module(), moduleDir, c, none, tree, true, caseWork, cas);
+            SuiteAnswer answer = guardEvaluation(root, c.module(), moduleDir, c, none, tree, true, caseWork, cas);
+            Evaluation eval = answer.evaluation();
             if (eval == null)
                 return new FixtureCheck.Verdict(
                         c.id(),
                         "error",
-                        "the guard suite did not run over " + s.file().getFileName() + "; see the lane's diagnostics");
+                        "the guard suite did not run over " + s.file().getFileName() + ": " + answer.problem());
             // The guard could not run here (its tool is not installed): the case is the notice the
             // lane reports, not a silence of the guard's.
             if (eval.outcome() == Outcome.SKIPPED)
@@ -287,19 +288,21 @@ public final class GuardFixtures {
                         .resolve(c.id());
                 Path badWork = work.resolve("bad");
                 Path okWork = work.resolve("ok");
-                badSites = guardSites(
+                SuiteAnswer overBad = guardEvaluation(
                         root, module, moduleDir, c, badSlice, sliceText(badWork, badText), false, badWork, cas);
-                okSites = okFiles == 0
-                        ? 0
-                        : guardSites(
+                SuiteAnswer overOk = okFiles == 0
+                        ? SuiteAnswer.NONE
+                        : guardEvaluation(
                                 root, module, moduleDir, c, okSlice, sliceText(okWork, okText), false, okWork, cas);
-                if (badSites < 0 || okSites < 0) {
+                SuiteAnswer silent =
+                        overBad.evaluation() == null ? overBad : overOk.evaluation() == null ? overOk : null;
+                if (silent != null) {
                     out.add(new FixtureCheck.Verdict(
-                            c.id(),
-                            "error",
-                            "the guard suite did not run over the fixture; see the lane's diagnostics"));
+                            c.id(), "error", "the guard suite did not run over the fixture: " + silent.problem()));
                     continue;
                 }
+                badSites = overBad.sites();
+                okSites = overOk.sites();
             } else {
                 var badEval = FixtureCheck.evaluate(c, root, badSlice, c.rule().kind() == Kind.TIERS ? badSlice : null);
                 var okEval = FixtureCheck.evaluate(c, root, okSlice, c.rule().kind() == Kind.TIERS ? okSlice : null);
@@ -329,29 +332,27 @@ public final class GuardFixtures {
         return text;
     }
 
-    /** As {@link #guardEvaluation}; the number of sites the guard reported, or -1 when the suite did not run. */
-    private static int guardSites(
-            Path root,
-            String module,
-            Path moduleDir,
-            FixtureCheck.Case c,
-            FactsIndex slice,
-            Path text,
-            boolean tree,
-            Path work,
-            Cas cas)
-            throws IOException {
-        Evaluation eval = guardEvaluation(root, module, moduleDir, c, slice, text, tree, work, cas);
-        return eval == null ? -1 : eval.observations().size();
+    /**
+     * What one run of a guard test's suite over a fixture slice answered: the guard's evaluation, or
+     * why there is none — the suite did not run, or ran and left no line for the guard.
+     */
+    private record SuiteAnswer(
+            @Nullable Evaluation evaluation, @Nullable String problem) {
+        /** No Ok slice to run over: nothing reported, nothing wrong. */
+        static final SuiteAnswer NONE = new SuiteAnswer(Evaluation.of(Map.of(), List.of()), null);
+
+        int sites() {
+            return evaluation == null ? 0 : evaluation.observations().size();
+        }
     }
 
     /**
-     * Run the guard test's suite over one fixture slice; the guard's evaluation over it, or {@code
-     * null} when the suite did not run. {@code text} is what the guard's text view reads: the slice's
-     * files by name, or — {@code tree} — a case directory the view is rooted at, so the guard reads it
-     * as the checkout.
+     * Run the guard test's suite over one fixture slice; the guard's evaluation over it, or the
+     * problem that left none. {@code text} is what the guard's text view reads: the slice's files by
+     * name, or — {@code tree} — a case directory the view is rooted at, so the guard reads it as the
+     * checkout.
      */
-    private static @Nullable Evaluation guardEvaluation(
+    private static SuiteAnswer guardEvaluation(
             Path root,
             String module,
             Path moduleDir,
@@ -390,14 +391,14 @@ public final class GuardFixtures {
                 tree ? text : null);
         try {
             List<String> problems = GuardSuiteRunner.run(in, List.of(moduleDir), report);
-            if (!problems.isEmpty()) return null;
+            if (!problems.isEmpty()) return new SuiteAnswer(null, String.join("; ", problems));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return null;
+            return new SuiteAnswer(null, "the run was interrupted");
         }
         Object line = GuardSuites.readReport(report).get(c.id());
-        if (line == null) return null;
-        return GuardSuites.evaluate(c.rule(), line, module);
+        if (line == null) return new SuiteAnswer(null, "the suite ran and reported no line for " + c.id());
+        return new SuiteAnswer(GuardSuites.evaluate(c.rule(), line, module), null);
     }
 
     private static Path javaHome() {
