@@ -63,6 +63,73 @@ class EffectivePomParentVersionTest {
                 .isEqualTo("2.4.5");
     }
 
+    /**
+     * top 1.0 → intermediate (pom, 2.0) → grandchild. The intermediate manages {@code sdk-commons}
+     * as {@code ${project.parent.version}}: for its own dependency that is its parent's 1.0, for the
+     * grandchild it is the grandchild's parent's 2.0, since Maven values an inherited model in the
+     * child's context.
+     */
+    @Test
+    void an_intermediates_project_parent_version_values_in_each_childs_own_context(@TempDir Path tempDir)
+            throws Exception {
+        registerPom("com.example", "top", "1.0", """
+                <project>
+                  <groupId>com.example</groupId>
+                  <artifactId>top</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+        registerPom("com.example", "intermediate", "2.0", """
+                <project>
+                  <parent>
+                    <groupId>com.example</groupId>
+                    <artifactId>top</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>intermediate</artifactId>
+                  <version>2.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.example</groupId>
+                        <artifactId>sdk-commons</artifactId>
+                        <version>${project.parent.version}</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.example</groupId>
+                      <artifactId>sdk-commons</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        registerPom("com.example", "grandchild", "2.0", childBody("grandchild", "intermediate", "2.0"));
+
+        EffectivePomBuilder builder = newBuilder(tempDir);
+        EffectivePom intermediate = builder.build(Coordinate.of("com.example", "intermediate", "2.0"));
+        EffectivePom grandchild = builder.build(Coordinate.of("com.example", "grandchild", "2.0"));
+
+        assertThat(intermediate.dependencies())
+                .as("the intermediate's own dependency reads its parent's version")
+                .singleElement()
+                .extracting(Pom.Dep::version)
+                .isEqualTo("1.0");
+        assertThat(intermediate.managedDependencies())
+                .as("the intermediate's own managed table is valued in its context")
+                .singleElement()
+                .extracting(Pom.Dep::version)
+                .isEqualTo("1.0");
+        assertThat(grandchild.dependencies())
+                .as("the grandchild's parent is the intermediate, at 2.0")
+                .singleElement()
+                .extracting(Pom.Dep::version)
+                .isEqualTo("2.0");
+    }
+
     private void registerParentManaging(String versionSpelling) {
         registerPom("com.example", "sdk-parent", "2.4.5", parentBody("sdk-parent", versionSpelling));
     }
@@ -92,12 +159,16 @@ class EffectivePomParentVersionTest {
     }
 
     private static String childBody(String artifactId, String parentArtifactId) {
+        return childBody(artifactId, parentArtifactId, "2.4.5");
+    }
+
+    private static String childBody(String artifactId, String parentArtifactId, String parentVersion) {
         return """
                 <project>
                   <parent>
                     <groupId>com.example</groupId>
                     <artifactId>%s</artifactId>
-                    <version>2.4.5</version>
+                    <version>%s</version>
                   </parent>
                   <artifactId>%s</artifactId>
                   <dependencies>
@@ -107,7 +178,7 @@ class EffectivePomParentVersionTest {
                     </dependency>
                   </dependencies>
                 </project>
-                """.formatted(parentArtifactId, artifactId);
+                """.formatted(parentArtifactId, parentVersion, artifactId);
     }
 
     private EffectivePomBuilder newBuilder(Path tempDir) {

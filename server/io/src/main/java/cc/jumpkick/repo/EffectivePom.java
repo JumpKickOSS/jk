@@ -20,6 +20,13 @@ import org.jspecify.annotations.Nullable;
  * rather than this POM or a parent declaring them. A POM importing this one treats those as
  * imports again, so a declaration anywhere in its own chain still beats them.
  *
+ * <p>{@code inheritedManaged} is the managed table as a child of this POM inherits it: the same
+ * entries, every property valued in this POM's context except the implicit {@code project.*} and
+ * {@code parent.*} ones, which Maven values in the child's. A {@code ${project.parent.version}} a
+ * pom-packaged intermediate manages is therefore the intermediate's own version for its children
+ * and its parent's for its own dependencies. Empty for a jar POM, which nothing inherits from; the
+ * same list as {@link #managedDependencies} when no entry spells an implicit property.
+ *
  * <p>{@code hostClassified} maps a dependency's {@code group:artifact} to the {@code ${...}}
  * expression its classifier was written as, for every dependency whose classifier a {@link
  * HostClassifiers host property} filled: the classifier in {@link #dependencies} is this machine's.
@@ -38,9 +45,10 @@ public record EffectivePom(
         Set<String> importedManagedKeys,
         @Nullable Relocation relocation,
         Map<String, String> hostClassified,
-        List<Pom.Repository> repositories) {
+        List<Pom.Repository> repositories,
+        List<Pom.Dep> inheritedManaged) {
 
-    /** A POM whose managed entries are all its own and that declares no relocation. */
+    /** A POM whose managed entries are all its own, inherited as they are, and that declares no relocation. */
     public EffectivePom(
             String groupId,
             String artifactId,
@@ -60,7 +68,8 @@ public record EffectivePom(
                 Set.of(),
                 null,
                 Map.of(),
-                List.of());
+                List.of(),
+                managedDependencies);
     }
 
     public EffectivePom {
@@ -74,5 +83,6 @@ public record EffectivePom(
         importedManagedKeys = Set.copyOf(importedManagedKeys);
         hostClassified = Map.copyOf(hostClassified);
         repositories = List.copyOf(repositories);
+        inheritedManaged = List.copyOf(inheritedManaged);
     }
 }

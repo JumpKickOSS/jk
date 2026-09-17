@@ -102,8 +102,10 @@ public final class PomParser {
         putImplicitProperties(ctx, groupId, artifactId, version, packaging, parent);
 
         List<Pom.Dep> deps = parseDependencies(childElement(project, "dependencies"), ctx);
-        List<Pom.Dep> managed =
-                parseDependencies(childElement(childElement(project, "dependencyManagement"), "dependencies"), ctx);
+        Element management = childElement(childElement(project, "dependencyManagement"), "dependencies");
+        List<Pom.Dep> managed = parseDependencies(management, ctx);
+        // What a child inherits keeps the implicit spellings for the child's own context.
+        List<Pom.Dep> inheritable = parseDependencies(management, properties);
 
         String gav = substituteOrNull(groupId, ctx) + ":" + substitute(artifactId, ctx) + ":"
                 + substituteOrNull(version, ctx);
@@ -117,7 +119,8 @@ public final class PomParser {
                 deps,
                 managed,
                 parseRelocation(project, ctx),
-                parseRepositories(project, ctx, gav));
+                parseRepositories(project, ctx, gav),
+                inheritable.equals(managed) ? managed : inheritable);
     }
 
     /**
@@ -128,6 +131,11 @@ public final class PomParser {
      * A null groupId or version leaves its keys unset, so the reference stays visible to the
      * resolver's diagnostics.
      */
+    /** True for the keys {@link #putImplicitProperties} writes: {@code project.*}, {@code pom.*} and {@code parent.*}. */
+    static boolean isImplicitProperty(String key) {
+        return key.startsWith("project.") || key.startsWith("pom.") || key.startsWith("parent.");
+    }
+
     static void putImplicitProperties(
             Map<String, String> ctx,
             @Nullable String groupId,
