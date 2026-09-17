@@ -352,6 +352,13 @@ Ship layout (`jk build`, under `target/dist/`): slim native `jk` + `lib/jk-engin
   solver was doing when everything stood still. A thousand-dependency reactor on a busy engine
   takes as long as it takes. Conflict **watermarks** fingerprint decision maps that already
   failed so the solver cannot re-enter them (cleared when a universe expands).
+- **Effective-POM tables are shared objects:** `EffectivePomBuilder` values a BOM's managed table
+  once, in the BOM's own merge, and every POM that imports or inherits it carries the same
+  `Pom.Dep` objects — a row is copied only where a `${...}` it spells values differently in the
+  child's context. A pom-packaged intermediate whose table, inheritable table or imported-key set
+  equals its parent's shares the parent's; jar POMs retain no table at all. A reactor whose every
+  module chains to a three-thousand-row BOM therefore holds one table, not one per chain link,
+  which is what keeps a thousand-package lock inside the engine's default heap.
 - **Where a lock's time went:** with `JK_RESOLVE_PROFILE=1` (or `-Djk.resolve.profile=true`) in
   the engine's environment, `LockPipeline` logs one `resolve-profile` line per lock — POM builds
   and their memo hits, dependency and version-catalog reads, the solve, and the prep / resolve /

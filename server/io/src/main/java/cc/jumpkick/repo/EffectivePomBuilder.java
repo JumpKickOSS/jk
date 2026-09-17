@@ -360,11 +360,26 @@ public final class EffectivePomBuilder {
         // retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
         // artifacts already had management applied into finalDeps; keeping a full flattened
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
+        // A table equal to the parent's is the parent's: an intermediate that manages nothing of
+        // its own shares its parent's list and key set rather than holding a second copy of each.
         boolean pomPackaging = "pom".equalsIgnoreCase(child.packaging());
-        List<Pom.Dep> retainedManaged = pomPackaging ? mergedManaged : List.of();
-        List<Pom.Dep> retainedInherited =
-                !pomPackaging ? List.of() : inheritedManaged.equals(mergedManaged) ? retainedManaged : inheritedManaged;
-        Set<String> retainedImportedKeys = pomPackaging ? importedKeys : Set.of();
+        List<Pom.Dep> retainedManaged = !pomPackaging
+                ? List.of()
+                : parent != null && mergedManaged.equals(parent.managedDependencies())
+                        ? parent.managedDependencies()
+                        : mergedManaged;
+        List<Pom.Dep> retainedInherited = !pomPackaging
+                ? List.of()
+                : inheritedManaged.equals(retainedManaged)
+                        ? retainedManaged
+                        : parent != null && inheritedManaged.equals(parent.inheritedManaged())
+                                ? parent.inheritedManaged()
+                                : inheritedManaged;
+        Set<String> retainedImportedKeys = !pomPackaging
+                ? Set.of()
+                : parent != null && importedKeys.equals(parent.importedManagedKeys())
+                        ? parent.importedManagedKeys()
+                        : importedKeys;
 
         // Same rule for properties: the flattened ancestor map is only read when this
         // POM serves as a parent or BOM — always packaging=pom (Maven rejects non-pom parents).
@@ -572,18 +587,32 @@ public final class EffectivePomBuilder {
 
     private static List<Pom.Dep> substituteAll(List<Pom.Dep> deps, Map<String, String> props) {
         List<Pom.Dep> out = new ArrayList<>(deps.size());
-        for (Pom.Dep d : deps) {
-            out.add(new Pom.Dep(
-                    substitute(d.groupId(), props),
-                    substitute(d.artifactId(), props),
-                    substituteOrNull(d.version(), props),
-                    substituteOrNull(d.scope(), props),
-                    d.optional(),
-                    substituteOrNull(d.classifier(), props),
-                    substituteOrNull(d.type(), props),
-                    d.exclusions()));
-        }
+        for (Pom.Dep d : deps) out.add(substitute(d, props));
         return out;
+    }
+
+    /**
+     * {@code d} with every {@code ${...}} its fields spell valued from {@code props} — and {@code d}
+     * itself when they spell none. A BOM's managed table is valued once, in the BOM's own merge;
+     * every POM that imports or inherits it then carries the same {@link Pom.Dep} objects rather
+     * than a copy per table, which is what keeps a reactor whose every module chains to a
+     * three-thousand-row BOM inside the engine heap.
+     */
+    private static Pom.Dep substitute(Pom.Dep d, Map<String, String> props) {
+        String groupId = substitute(d.groupId(), props);
+        String artifactId = substitute(d.artifactId(), props);
+        String version = substituteOrNull(d.version(), props);
+        String scope = substituteOrNull(d.scope(), props);
+        String classifier = substituteOrNull(d.classifier(), props);
+        String type = substituteOrNull(d.type(), props);
+        boolean unchanged = groupId == d.groupId()
+                && artifactId == d.artifactId()
+                && version == d.version()
+                && scope == d.scope()
+                && classifier == d.classifier()
+                && type == d.type();
+        if (unchanged) return d;
+        return new Pom.Dep(groupId, artifactId, version, scope, d.optional(), classifier, type, d.exclusions());
     }
 
     /**
