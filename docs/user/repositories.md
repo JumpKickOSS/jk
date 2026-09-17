@@ -80,7 +80,9 @@ Maven Central is rate-limiting this host (HTTP 429); using the mirror for 4 h
 
 The window lives in `~/.jk/cache/central-rate-limited.stamp`, whose age is the clock, so it
 survives `jk engine stop`. Delete the file to ask Central again now; `touch` it to open the
-window by hand. `JK_CENTRAL_MIRROR=off` keeps asking Central whatever it answers. A 403 without
+window by hand. `JK_CENTRAL_MIRROR=off` keeps asking Central whatever it answers: a Cloudflare
+block then fails the request as `Maven Central is blocking this host (Cloudflare): HTTP 403
+fetching …`, naming the switch that keeps the mirror off, and is not retried. A 403 without
 Cloudflare's headers is a permission answer and is reported as one.
 
 ## Exclusive groups (your internals)

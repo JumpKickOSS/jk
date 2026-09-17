@@ -384,6 +384,11 @@ public final class Http {
                 // failing and being re-run — a re-run would only spend more of a quota that is already
                 // exhausted, or feed a block that escalates on traffic.
                 boolean blocked = CentralMirror.isCloudflareBlock(status, response.headers());
+                if (blocked && centralMirror.matches(request.uri()) && !centralMirror.enabled()) {
+                    // No mirror to reissue against: the block is the answer, named as one.
+                    if (drain != null) drain.handle(response);
+                    throw new CentralMirror.BlockedException(request.uri());
+                }
                 if ((status == 429 || blocked) && centralMirror.matches(request.uri()) && !centralMirror.active()) {
                     if (blocked) {
                         centralMirror.noteBlocked();
@@ -405,8 +410,8 @@ public final class Http {
                     drain.handle(response);
                 }
                 lastStatus = status;
-            } catch (RedirectRefusedException e) {
-                throw e; // a policy answer, not a network fault: the same chain would refuse again
+            } catch (RedirectRefusedException | CentralMirror.BlockedException e) {
+                throw e; // a policy answer, not a network fault: the same answer would come back
             } catch (IOException e) {
                 lastIo = e;
             }
