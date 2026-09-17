@@ -344,7 +344,7 @@ class BuildJournalTest {
                 j.begin(BuildRecord.running(31, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli")));
         assertThat(j.get(locator).orElseThrow().running()).isTrue();
 
-        assertThat(j.abandonStaleRunning("9.9")).isEqualTo(1);
+        assertThat(j.abandonStaleRunning("9.9", owner -> false).abandoned()).isEqualTo(1);
 
         BuildRecord abandoned = j.get(locator).orElseThrow();
         assertThat(abandoned.running()).isFalse();
@@ -352,7 +352,54 @@ class BuildJournalTest {
         assertThat(abandoned.cancelled()).isFalse();
         assertThat(abandoned.exitCode()).isEqualTo(70);
         // Nothing else claims it, so a second sweep is a no-op.
-        assertThat(j.abandonStaleRunning("9.9")).isZero();
+        assertThat(j.abandonStaleRunning("9.9", owner -> false).abandoned()).isZero();
+    }
+
+    /**
+     * A successor's sweep tells a dead engine's row from a draining predecessor's by the owner
+     * sidecar the admission wrote: the pid and start instant of the engine that holds the row.
+     * This JVM is that engine here, so the row is live to the real liveness check and abandoned
+     * only when the owner is judged gone.
+     */
+    @Test
+    void a_running_row_whose_engine_is_alive_is_left_to_it() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        String locator = requireNonNull(
+                j.begin(BuildRecord.running(32, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli")));
+        Path sidecar = j.runDir(locator).orElseThrow().resolve(BuildJournal.ENGINE_OWNER);
+        assertThat(Files.readString(sidecar).trim())
+                .startsWith(ProcessHandle.current().pid() + " ");
+
+        BuildJournal.StaleSweep sweep = j.abandonStaleRunning("9.9");
+        assertThat(sweep.live()).isEqualTo(1);
+        assertThat(sweep.abandoned()).isZero();
+        assertThat(j.get(locator).orElseThrow().running())
+                .as("still the live engine's")
+                .isTrue();
+
+        assertThat(j.abandonStaleRunning("9.9", owner -> false).abandoned()).isEqualTo(1);
+        assertThat(j.get(locator).orElseThrow().running()).isFalse();
+        assertThat(Files.exists(sidecar)).as("a finished row has no owner").isFalse();
+    }
+
+    @Test
+    void a_running_row_without_an_owner_or_with_a_dead_one_is_abandoned() throws Exception {
+        BuildJournal j = new BuildJournal(dir);
+        String orphan = requireNonNull(
+                j.begin(BuildRecord.running(33, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli")));
+        Files.delete(j.runDir(orphan).orElseThrow().resolve(BuildJournal.ENGINE_OWNER));
+        String dead = requireNonNull(
+                j.begin(BuildRecord.running(34, "build", "/proj", "g:a", null, 1_700_000_000_000L, "9.9", "cli")));
+        // No process ever carries a pid this large; a pid nothing runs under is a dead engine.
+        Files.writeString(j.runDir(dead).orElseThrow().resolve(BuildJournal.ENGINE_OWNER), (1L << 40) + " 0\n");
+        assertThat(new EngineOwner(1L << 40, 0L).alive()).isFalse();
+        assertThat(EngineOwner.current().alive()).isTrue();
+
+        BuildJournal.StaleSweep sweep = j.abandonStaleRunning("9.9");
+        assertThat(sweep.abandoned()).isEqualTo(2);
+        assertThat(sweep.live()).isZero();
+        assertThat(j.get(orphan).orElseThrow().running()).isFalse();
+        assertThat(j.get(dead).orElseThrow().running()).isFalse();
     }
 
     /**

@@ -129,11 +129,17 @@ final class EngineStartup {
         http.start();
     }
 
-    /** Leftover {@code running=true} journal rows from a killed engine cannot still be live. */
+    /**
+     * Leftover {@code running=true} journal rows from a killed engine cannot still be live; a
+     * draining predecessor's rows are its own to finish and are left to it.
+     */
     private void abandonStaleJournalRows() {
-        int abandoned = journal.abandonStaleRunning(version);
-        if (abandoned > 0) {
-            log.accept("jk engine: abandoned " + abandoned + " stale in-flight journal entries");
+        BuildJournal.StaleSweep sweep = journal.abandonStaleRunning(version);
+        if (sweep.abandoned() > 0) {
+            log.accept("jk engine: abandoned " + sweep.abandoned() + " stale in-flight journal entries");
+        }
+        if (sweep.live() > 0) {
+            log.accept("jk engine: left " + sweep.live() + " in-flight journal entries to a predecessor still running");
         }
     }
 
