@@ -257,6 +257,10 @@ public final class LockOrchestrator {
         progress.materializePhase(
                 progress.graphPackages() + union.roots().fileDeps().size());
         Lockfile lockfile = assemble(union, project, jkVersion, progress, pomBuilder);
+        // Which POM-declared repositories served a row is known once the rows are assembled.
+        if (union.source() != null) {
+            for (String line : union.source().declaredRepositoryNotes(lockfile.artifacts())) observer.onNote(line);
+        }
         if (!members.isEmpty()) {
             MemberPartitions.MemberSolver solver = (manifest, prefs) -> {
                 // A member solved on its own: its rows, assembled against its own platform table.
@@ -325,7 +329,6 @@ public final class LockOrchestrator {
         if (sharedSource != null) {
             for (String line : sharedSource.nearestOverrides()) observer.onOverride(line);
             for (String line : sharedSource.hostClassifierNotes()) observer.onNote(line);
-            for (String line : sharedSource.declaredRepositoryNotes()) observer.onNote(line);
         }
         return new Solve(constraints, roots, solved, sharedSource, kmp);
     }

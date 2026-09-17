@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.EffectivePom;
@@ -11,6 +12,7 @@ import cc.jumpkick.repo.RepoGroup;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +31,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Trust is the project-declared rule with no way to opt out: a plaintext {@code http://}
  * repository is not used and the lock says so, and an artifact without a published checksum fails
  * the lock naming the repository, as it would for a {@code [repositories]} entry without {@code
- * allow-unverified}. Every repository that is used is named once in a lock note with the POM that
- * introduced it, and a row it serves records it in {@code source}.
+ * allow-unverified}. A row a declared repository serves records it in {@code source}, and every
+ * repository that served a row is named once in a lock note with the POM that introduced it; a
+ * repository merely declared earns none.
  */
 final class DeclaredRepositories {
 
@@ -51,6 +54,9 @@ final class DeclaredRepositories {
 
     private final Set<String> refusedUrls = ConcurrentHashMap.newKeySet();
     private final Set<String> notes = ConcurrentHashMap.newKeySet();
+
+    /** URL → the declaration that first granted it, for the note a served row earns. */
+    private final ConcurrentHashMap<String, Pom.Repository> declared = new ConcurrentHashMap<>();
 
     DeclaredRepositories(RepoGroup base, EffectivePomBuilder baseBuilder) {
         this.base = base;
@@ -79,7 +85,7 @@ final class DeclaredRepositories {
             if (before == null || merged.size() != before.size()) grew.add(key);
         }
         if (!children.isEmpty()) {
-            for (Pom.Repository repository : pom.repositories()) note(repository);
+            for (Pom.Repository repository : pom.repositories()) declared.putIfAbsent(repository.url(), repository);
         }
         return grew;
     }
@@ -95,14 +101,21 @@ final class DeclaredRepositories {
     }
 
     /**
-     * One line per repository used and per repository refused, and one per artifact a declared
-     * repository verified against an {@code .md5} sidecar alone, sorted.
+     * One line per declared repository a row of {@code rows} came from, one per repository refused,
+     * and one per artifact a declared repository verified against an {@code .md5} sidecar alone,
+     * sorted.
      */
-    List<String> notes() {
-        List<String> out = new ArrayList<>(notes);
+    List<String> notes(Collection<Lockfile.Artifact> rows) {
+        Set<String> out = new LinkedHashSet<>(notes);
+        for (Lockfile.Artifact row : rows) {
+            int plus = row.source().indexOf('+');
+            Pom.Repository served = plus < 0 ? null : declared.get(row.source().substring(plus + 1));
+            if (served != null && built.containsKey(served.url())) out.add(consulted(served));
+        }
         for (MavenRepo repo : built.values()) out.addAll(repo.weakChecksumNotes());
-        out.sort(null);
-        return List.copyOf(out);
+        List<String> sorted = new ArrayList<>(out);
+        sorted.sort(null);
+        return List.copyOf(sorted);
     }
 
     private Scoped scopedFor(String pkg) {
@@ -156,16 +169,15 @@ final class DeclaredRepositories {
                 + repository.declaredBy() + ", was not used: " + why);
     }
 
-    /** Once per repository and declaring POM, however many packages inherit it. */
-    private void note(Pom.Repository repository) {
-        if (refusedUrls.contains(repository.url())) return;
+    /** The note a repository earns once a row came from it, however many packages inherit it. */
+    private static String consulted(Pom.Repository repository) {
         String policy = repository.releases() && repository.snapshots()
                 ? ""
                 : repository.snapshots() ? " for snapshots only" : " for releases only";
-        notes.add("repository `" + repository.id() + "` at " + repository.url() + ", declared by the POM of "
+        return "repository `" + repository.id() + "` at " + repository.url() + ", declared by the POM of "
                 + repository.declaredBy() + ", is consulted" + policy + " for that POM's dependencies and theirs"
                 + " after the project's repositories; a row it serves records it as `source`, and it is held to"
-                + " the same trust rule as a declared repository (https, published checksums)");
+                + " the same trust rule as a declared repository (https, published checksums)";
     }
 
     private static String ga(String pkg) {

@@ -103,6 +103,41 @@ class LockDeclaredRepositoryTest {
         assertThat(notes).isEmpty();
     }
 
+    /** A POM that declares a repository no row of the lock came from earns no note. */
+    @Test
+    void a_declared_repository_that_served_no_row_is_not_noted(@TempDir Path dir) throws Exception {
+        new MavenStub(central)
+                .metadata("io.apicurio", "declares-only", "1.0")
+                .pom("io.apicurio", "declares-only", "1.0", """
+                        <project>
+                          <groupId>io.apicurio</groupId>
+                          <artifactId>declares-only</artifactId>
+                          <version>1.0</version>
+                          <repositories>
+                            <repository>
+                              <id>jitpack.io</id>
+                              <url>%s</url>
+                            </repository>
+                          </repositories>
+                          <dependencies>
+                            <dependency>
+                              <groupId>com.foo</groupId>
+                              <artifactId>leaf</artifactId>
+                              <version>1.0</version>
+                            </dependency>
+                          </dependencies>
+                        </project>
+                        """.formatted(jitpack.baseUrl()))
+                .jar("io.apicurio", "declares-only", "1.0")
+                .leaf("com.foo", "leaf", "1.0");
+
+        Lockfile lock = new LockOrchestrator(repos(dir))
+                .lock(project("io.apicurio:declares-only", "=1.0"), "test", List.of(), true, observer());
+
+        assertThat(lock.artifacts()).anyMatch(a -> a.name().startsWith("com.foo:leaf:"));
+        assertThat(notes).isEmpty();
+    }
+
     /** The sources jar of a row a declared repository served is asked of that repository. */
     @Test
     void sources_attach_looks_in_the_repository_that_served_the_row(@TempDir Path dir) throws Exception {
