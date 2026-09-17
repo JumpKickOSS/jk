@@ -74,15 +74,35 @@ class PackageProvidersTest {
                 new PackageProviders(List.of(), List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
 
         assertThat(providers.provider("org.slf4j")).isEqualTo("org.slf4j:slf4j-api (library catalog)");
-        assertThat(providers.provider("com.google.common.collect"))
-                .as("a group that does not prefix the package is not guessed")
-                .isNull();
-        assertThat(providers.provider("com.fasterxml.jackson.databind"))
-                .as("jackson's group ends in .core, which prefixes no package it ships")
-                .isNull();
         assertThat(providers.provider("org.apache.commons.lang3"))
                 .isEqualTo("org.apache.commons:commons-lang3 (library catalog)");
         assertThat(providers.provider("com.nowhere.at.all")).isNull();
+    }
+
+    /** Libraries whose group prefixes none of their packages are answered by the catalog's package table. */
+    @Test
+    void the_catalogs_package_table_answers_where_the_group_prefixes_no_package(@TempDir Path tmp) {
+        PackageProviders providers =
+                new PackageProviders(List.of(), List.of(), tmp.resolve("index"), LibraryCatalog.bundled());
+
+        assertThat(providers.provider("com.google.common.collect"))
+                .isEqualTo("com.google.guava:guava (library catalog)");
+        assertThat(providers.provider("com.fasterxml.jackson.databind.node"))
+                .isEqualTo("com.fasterxml.jackson.core:jackson-databind (library catalog)");
+        assertThat(providers.provider("com.fasterxml.jackson.core"))
+                .isEqualTo("com.fasterxml.jackson.core:jackson-core (library catalog)");
+        assertThat(providers.provider("com.fasterxml.jackson.annotation"))
+                .isEqualTo("com.fasterxml.jackson.core:jackson-annotations (library catalog)");
+        assertThat(providers.provider("tools.jackson.databind"))
+                .isEqualTo("tools.jackson.core:jackson-databind (library catalog)");
+        assertThat(providers.provider("com.google.gson")).isEqualTo("com.google.code.gson:gson (library catalog)");
+        assertThat(providers.provider("org.junit.jupiter.api"))
+                .isEqualTo("org.junit.jupiter:junit-jupiter (library catalog)");
+        assertThat(providers.provider("org.assertj.core.api")).isEqualTo("org.assertj:assertj-core (library catalog)");
+        assertThat(providers.provider("org.mockito")).isEqualTo("org.mockito:mockito-core (library catalog)");
+        assertThat(providers.provider("com.google.commonest"))
+                .as("a package table entry is a package prefix, not a string prefix")
+                .isNull();
     }
 
     @Test
