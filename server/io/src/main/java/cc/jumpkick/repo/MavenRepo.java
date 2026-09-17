@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -263,9 +264,13 @@ public final class MavenRepo {
         this.http = httpOrNull;
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
-        // with an Http client but must keep enumerating via the transport.
+        // with an Http client but must keep enumerating via the transport. A loopback port names
+        // whatever process holds it now, so its list is never trusted for the day: every ask is a
+        // conditional GET, answered 304 when the server still holds the body it stored.
+        Duration ttl =
+                RepositorySpec.loopback(this.fetchBase.getHost()) ? Duration.ZERO : MavenMetadataCache.DEFAULT_TTL;
         this.metadataCache = (httpOrNull != null && isHttp(this.fetchBase))
-                ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), MavenMetadataCache.DEFAULT_TTL)
+                ? new MavenMetadataCache(httpOrNull, cas.root().resolve("metadata"), ttl)
                 : null;
         this.m2 = new M2Adoption(name, transport, credential, isHttp(this.fetchBase), repoStore, m2integration);
         this.download = new DownloadLeg(name, this.fetchBase, transport, credential, storeDir(), allowUnverified);

@@ -20,6 +20,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -522,6 +523,37 @@ class MavenRepoTest {
     }
 
     /** An artifact and the {@code .sha1} every repository publishes beside it. */
+    /**
+     * A loopback port names whatever process holds it now, so a loopback repository's version
+     * list is revalidated on every ask instead of served from the daily cache: a stub that grows
+     * its catalog between two locks in one process is read as it stands.
+     */
+    @Test
+    void a_loopback_repositorys_version_list_is_asked_again_instead_of_trusted_for_a_day(@TempDir Path tempDir)
+            throws Exception {
+        String[] versions = {"1.0"};
+        server.createContext("/com/example/widget/maven-metadata.xml", exchange -> {
+            byte[] body =
+                    ("<metadata><groupId>com.example</groupId><artifactId>widget</artifactId><versioning><versions>"
+                                    + String.join(
+                                            "",
+                                            Arrays.stream(versions)
+                                                    .map(v -> "<version>" + v + "</version>")
+                                                    .toList())
+                                    + "</versions></versioning></metadata>")
+                            .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+        Coordinate widget = Coordinate.of("com.example", "widget", "1.0");
+
+        assertThat(repo.availableVersions(widget)).containsExactly("1.0");
+        versions[0] = "2.0";
+        assertThat(repo.availableVersions(widget)).containsExactly("2.0");
+    }
+
     private void serveArtifact(String path, byte[] body) {
         serve(path, 200, body);
         serve(path + ".sha1", 200, Hashing.hashHex("SHA-1", body).getBytes(StandardCharsets.UTF_8));
