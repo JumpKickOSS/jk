@@ -130,6 +130,179 @@ class PomGeneratorImportTest {
     }
 
     /**
+     * zipkin-server's shape: maven-dependency-plugin unpacks the {@code .proto} files out of
+     * {@code io.zipkin.proto3:zipkin-proto3}, wire-maven-plugin generates Java from them at
+     * generate-test-sources, and build-helper adds the output as a test root. Both plugins land
+     * as one {@code [generate.wire]} recipe over {@code com.squareup.wire:wire-compiler} at the
+     * module's wire-runtime version, the unpacked jar its proto source and the output a
+     * test-sources contribution, so no {@code [test] extra-src} root is written.
+     */
+    @Test
+    void wire_plugin_over_unpacked_protos_becomes_a_generate_recipe_for_the_test_compile(@TempDir Path tempDir)
+            throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>io.zipkin</groupId>
+                  <artifactId>zipkin-server</artifactId>
+                  <version>3.6.2</version>
+                  <properties>
+                    <unpack-proto.directory>${project.build.directory}/test/proto</unpack-proto.directory>
+                    <proto.generatedSourceDirectory>${project.build.directory}/generated-test-sources/wire</proto.generatedSourceDirectory>
+                  </properties>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.squareup.wire</groupId>
+                      <artifactId>wire-runtime-jvm</artifactId>
+                      <version>5.5.1</version>
+                      <scope>test</scope>
+                    </dependency>
+                    <dependency>
+                      <groupId>io.zipkin.proto3</groupId>
+                      <artifactId>zipkin-proto3</artifactId>
+                      <version>1.0.0</version>
+                      <scope>test</scope>
+                    </dependency>
+                  </dependencies>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <version>3.8.1</version>
+                        <executions>
+                          <execution>
+                            <id>unpack-proto</id>
+                            <phase>generate-sources</phase>
+                            <goals><goal>unpack-dependencies</goal></goals>
+                            <configuration>
+                              <includeArtifactIds>zipkin-proto3</includeArtifactIds>
+                              <includes>**/*.proto</includes>
+                              <outputDirectory>${unpack-proto.directory}</outputDirectory>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                      <plugin>
+                        <groupId>de.m3y.maven</groupId>
+                        <artifactId>wire-maven-plugin</artifactId>
+                        <version>1.3</version>
+                        <executions>
+                          <execution>
+                            <phase>generate-test-sources</phase>
+                            <goals><goal>generate-sources</goal></goals>
+                            <configuration>
+                              <protoSourceDirectory>${unpack-proto.directory}</protoSourceDirectory>
+                              <includes><include>zipkin.proto3.*</include></includes>
+                              <generatedSourceDirectory>${proto.generatedSourceDirectory}</generatedSourceDirectory>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                      <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.6.0</version>
+                        <executions>
+                          <execution>
+                            <id>add-test-source</id>
+                            <phase>generate-test-sources</phase>
+                            <goals><goal>add-test-source</goal></goals>
+                            <configuration>
+                              <sources><source>${proto.generatedSourceDirectory}</source></sources>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+        JkBuild build = result.jkBuild();
+
+        PluginConfig generate = build.pluginConfig("generator").orElseThrow();
+        Map<String, Object> wire = generate.entries().get("wire");
+        assertThat(wire).isNotNull();
+        assertThat(wire)
+                .containsEntry("tool", "com.squareup.wire:wire-compiler:5.5.1")
+                .containsEntry("main", "com.squareup.wire.WireCompiler")
+                .containsEntry("unpack", "io.zipkin.proto3:zipkin-proto3:1.0.0")
+                .containsEntry("contributes", "test-sources")
+                .containsEntry(
+                        "args", List.of("--proto_path=${unpacked}", "--java_out=${out}", "--includes=zipkin.proto3.*"))
+                .doesNotContainKey("inputs");
+        assertThat(build.build().testExtraSrc())
+                .as("the recipe's output is its own contribution")
+                .isEmpty();
+
+        List<String> rows = messages(result);
+        assertThat(rows).anySatisfy(m -> assertThat(m)
+                .contains("`build-helper-maven-plugin` adds `target/generated-test-sources/wire`")
+                .contains("`[generate.wire]`"));
+        assertThat(rows)
+                .noneMatch(m -> m.contains("wire-maven-plugin</plugin>` was not imported"))
+                .noneMatch(m -> m.contains("maven-dependency-plugin</plugin>` was not imported"));
+
+        String rendered = JkBuildRenderer.render(build);
+        assertThat(rendered)
+                .contains("[generate.wire]")
+                .contains("tool = \"com.squareup.wire:wire-compiler:5.5.1\"")
+                .contains("unpack = \"io.zipkin.proto3:zipkin-proto3:1.0.0\"")
+                .contains("contributes = \"test-sources\"");
+        Map<String, Object> reparsed = JkBuildParser.parse(rendered)
+                .pluginConfig("generator")
+                .orElseThrow()
+                .entries()
+                .get("wire");
+        assertThat(reparsed).containsAllEntriesOf(wire);
+    }
+
+    /** A wire plugin over protos in the tree, at generate-sources, with no wire-runtime dependency. */
+    @Test
+    void wire_plugin_over_tree_protos_is_a_recipe_over_the_latest_compiler(@TempDir Path tempDir) throws Exception {
+        Path project = Files.createDirectories(tempDir.resolve("project"));
+        Files.createDirectories(project.resolve("src/main/proto"));
+        Files.writeString(project.resolve("src/main/proto/a.proto"), "syntax = \"proto3\";\n");
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>msgs</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>com.squareup.wire</groupId>
+                        <artifactId>wire-maven-plugin</artifactId>
+                        <version>4.9.9</version>
+                        <executions>
+                          <execution>
+                            <goals><goal>generate-sources</goal></goals>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        Map<String, Object> wire = result.jkBuild()
+                .pluginConfig("generator")
+                .orElseThrow()
+                .entries()
+                .get("wire");
+        assertThat(wire)
+                .containsEntry("tool", "com.squareup.wire:wire-compiler:latest")
+                .containsEntry("inputs", List.of("src/main/proto/**/*.proto"))
+                .containsEntry("args", List.of("--proto_path=${module.dir}/src/main/proto", "--java_out=${out}"))
+                .doesNotContainKey("unpack")
+                .doesNotContainKey("contributes");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("`wire-maven-plugin`")
+                .contains("no wire-runtime dependency")
+                .contains("latest"));
+    }
+
+    /**
      * jenkins's {@code cli} shape: localizer-maven-plugin generates {@code hudson.cli.client.Messages}
      * from a resource bundle and build-helper adds the output as a source root. The plugin has no
      * entry point jk can run, so the module gets a Tier-3 row naming the class, and the output is

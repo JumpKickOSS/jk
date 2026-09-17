@@ -27,6 +27,7 @@ public final class TaskSpec {
     private final List<String> contributesClasses = new ArrayList<>();
     private final List<String> contributesResources = new ArrayList<>();
     private final List<String> contributesSources = new ArrayList<>();
+    private final List<String> contributesTestSources = new ArrayList<>();
     private final List<String> contributesTestClasspath = new ArrayList<>();
     private final List<String> contributesTestJvmArgs = new ArrayList<>();
     private @Nullable String transformsClasses;
@@ -79,6 +80,12 @@ public final class TaskSpec {
 
     public TaskSpec contributesSources(String relDir) {
         contributesSources.add(relDir);
+        return this;
+    }
+
+    /** See {@link TaskContribution#contributesTestSources}. */
+    public TaskSpec contributesTestSources(String relDir) {
+        contributesTestSources.add(relDir);
         return this;
     }
 
@@ -138,6 +145,10 @@ public final class TaskSpec {
 
     public List<String> sourcesContributions() {
         return List.copyOf(contributesSources);
+    }
+
+    public List<String> testSourcesContributions() {
+        return List.copyOf(contributesTestSources);
     }
 
     public List<String> testClasspathContributions() {

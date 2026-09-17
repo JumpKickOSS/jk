@@ -42,6 +42,12 @@ public interface TaskContribution {
     /** Fold a declared output dir into the compiler's source set. */
     TaskContribution contributesSources(String relDir);
 
+    /**
+     * Fold a declared output dir into the test compiler's source set: the task runs in the generate
+     * stage and compile-test reads its output beside the suites' own sources.
+     */
+    TaskContribution contributesTestSources(String relDir);
+
     /** Fold a declared output dir into packaging + the native-image classpath as classes. */
     TaskContribution contributesClasses(String relDir);
 

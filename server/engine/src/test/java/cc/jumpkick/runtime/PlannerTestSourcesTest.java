@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,7 +28,8 @@ class PlannerTestSourcesTest {
         Path scala = write(module, "src/test/scala/app/WidgetSpec.scala");
         JkBuild project = manifest(module, "[test]\nextra-src = [\"shared\", \"shared/Helper.java\"]\n");
 
-        var sources = PlannerTest.TestSources.collect(project, module, false, List.of("test", "integration"));
+        var sources = PlannerTest.TestSources.collect(
+                project, module, false, List.of("test", "integration"), BuildLayout.of(module, project), null);
 
         assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/test/java"));
         assertThat(sources.javaTest())
@@ -42,7 +44,9 @@ class PlannerTestSourcesTest {
         write(module, "src/test/java/app/WidgetTest.java");
         Path it = write(module, "src/integration/java/app/WidgetIT.java");
 
-        var sources = PlannerTest.TestSources.collect(manifest(module, ""), module, false, List.of("integration"));
+        JkBuild project = manifest(module, "");
+        var sources = PlannerTest.TestSources.collect(
+                project, module, false, List.of("integration"), BuildLayout.of(module, project), null);
 
         assertThat(sources.javaTestSrc()).isEqualTo(module.resolve("src/integration/java"));
         assertThat(sources.javacSources()).containsExactly(it);

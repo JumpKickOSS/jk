@@ -20,9 +20,10 @@ schema = "generator"
 [sub-schema.generator]
 tool        = { type = "string", required = true, example = "org.openapitools:openapi-generator-cli:7.11.0", hint = "the generator's Maven coordinate; a bare version is an exact pin, ^ and ~ float within the line, latest is the newest stable" }
 main        = { type = "string", example = "org.openapitools.codegen.OpenAPIGenerator", hint = "the class to run; omitted, the tool jar's Main-Class" }
-inputs      = { type = "string-list", required = true, example = "[\"api/openapi.yaml\"]", hint = "module-relative files or globs the tool reads — the step's cache key" }
-args        = { type = "string-list", default = [] }   # ${in} ${inputs} ${out} ${module.dir} expand
-contributes = { type = "string", default = "sources" } # sources | resources
+inputs      = { type = "string-list", default = [], example = "[\"api/openapi.yaml\"]", hint = "module-relative files or globs the tool reads — the step's cache key; an entry with an unpack may leave them out" }
+unpack      = { type = "string", example = "io.zipkin.proto3:zipkin-proto3:1.0.0", hint = "a jar whose contents the tool reads, extracted to ${unpacked} before the run" }
+args        = { type = "string-list", default = [] }   # ${in} ${inputs} ${unpacked} ${out} ${module.dir} expand
+contributes = { type = "string", default = "sources" } # sources | test-sources | resources
 out         = { type = "string" }                      # output dir name; default generated/<name>
 
 # One tool per entry: its full runtime closure, read only by the step that forks it — a bump
@@ -32,4 +33,12 @@ per-entry  = true
 artifact   = "${entry.name}"
 coordinate = "${entry.tool}"
 transitive = true
+for-step   = "generate-${entry.name}"
+
+# The jar an entry unpacks, fetched for that entry's step alone; an entry without `unpack`
+# declares no such tool.
+[[contribute.step-dependency]]
+per-entry  = true
+artifact   = "${entry.name}-unpack"
+coordinate = "${entry.unpack}"
 for-step   = "generate-${entry.name}"

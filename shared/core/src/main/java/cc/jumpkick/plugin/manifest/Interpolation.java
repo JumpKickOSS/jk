@@ -79,6 +79,23 @@ final class Interpolation {
         }
     }
 
+    /**
+     * True when every {@code ${entry.<key>}} the template names has a value in {@code entry} —
+     * false for a per-entry declaration over an optional key this entry leaves unset, which is
+     * then not declared for it. A null template names nothing and provides.
+     */
+    static boolean entryProvides(@Nullable String template, Entry entry) {
+        if (template == null) return true;
+        Matcher m = VAR.matcher(template);
+        while (m.find()) {
+            String var = m.group(1);
+            if (!var.startsWith("entry.")) continue;
+            String key = var.substring("entry.".length());
+            if (!key.equals(ENTRY_NAME) && entry.values().get(key) == null) return false;
+        }
+        return true;
+    }
+
     /** Host OS classifier: {@code linux} / {@code osx} / {@code windows}. */
     static String hostOs() {
         if (Os.isDarwin()) return "osx";

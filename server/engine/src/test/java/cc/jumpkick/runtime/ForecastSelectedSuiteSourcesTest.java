@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.nio.file.Files;
@@ -67,7 +68,12 @@ class ForecastSelectedSuiteSourcesTest {
     /** The forecast's source list: the selected suites through the factory the build uses. */
     private static List<Path> selected(Path module, TestSelection selection) throws Exception {
         return PlannerTest.TestSources.collect(
-                        PROJECT, module, false, TestSupport.selectedSuites(module, false, selection))
+                        PROJECT,
+                        module,
+                        false,
+                        TestSupport.selectedSuites(module, false, selection),
+                        BuildLayout.of(module, PROJECT),
+                        null)
                 .all();
     }
 

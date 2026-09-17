@@ -868,6 +868,7 @@ public final class PlannerSupport {
                 testRuntimeCp,
                 TestStamp.CompileTestKeys.NONE,
                 ClasspathFingerprint.ON_DISK,
+                null,
                 null);
     }
 
@@ -876,7 +877,9 @@ public final class PlannerSupport {
      * compiles tests in — the same inputs the live run-tests folds through {@link
      * TestStamp#withCompileTest}. The runtime classpath is read through {@code identity}: after
      * {@code jk clean} the sibling jars and the fixtures tree the stamp hashes are gone until the
-     * build restores them, and the forecast reads each as the bytes that come back.
+     * build restores them, and the forecast reads each as the bytes that come back. {@code
+     * pluginDecls} are the module's plugin declarations, whose test-source contributions the live
+     * run stamps too; null when the caller has none to offer.
      */
     public static @Nullable String runTestsStampKey(
             Path dir,
@@ -888,7 +891,8 @@ public final class PlannerSupport {
             List<Path> testRuntimeCp,
             TestStamp.CompileTestKeys compileTestKeys,
             ClasspathFingerprint.EntryIdentity identity,
-            @Nullable String profileName)
+            @Nullable String profileName,
+            PluginBuild.@Nullable Declarations pluginDecls)
             throws IOException {
         List<String> discovered = TestSuites.discover(dir, compact);
         // Session selection for suite resolution too — --all widens the suite set, and the
@@ -898,9 +902,9 @@ public final class PlannerSupport {
         // The same factory the live plan fills TEST_SOURCES from, so the forecast stamps exactly
         // the files the run stamps: every selected suite's sources in every language, plus the
         // `[test] extra-src` files that belong to the tier and to no suite.
-        List<Path> stampSrcs =
-                PlannerTest.TestSources.collect(project, dir, compact, suites).all();
         BuildLayout layout = BuildLayout.of(dir, project);
+        List<Path> stampSrcs = PlannerTest.TestSources.collect(project, dir, compact, suites, layout, pluginDecls)
+                .all();
         List<Path> stampRt = PlannerFixtures.withOwnFixtures(project, layout, testRuntimeCp);
         List<String> stampExtras =
                 TestStamp.withCompileTest(testStampExtras(dir, project, profileName, identity), compileTestKeys);

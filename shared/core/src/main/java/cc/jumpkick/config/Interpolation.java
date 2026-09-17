@@ -81,7 +81,11 @@ public final class Interpolation {
             // name, so `env = ["${FOO}"]` stays an error, and the split between "names are
             // literal, values may expand" is enforced by this list rather than by the parser
             // remembering to.
-            "test.env[*].*");
+            "test.env[*].*",
+            // A generator entry's arguments carry the generator worker's own vocabulary — ${in},
+            // ${inputs}, ${unpacked}, ${out}, ${module.dir} — and a tool's own placeholders, none
+            // of them an environment variable; the worker expands them, the manifest never does.
+            "generate.*.args[*]");
 
     private Interpolation() {}
 
@@ -97,7 +101,8 @@ public final class Interpolation {
         if (offenders.isEmpty()) return;
         throw new JkBuildParseException("environment references are not allowed here: "
                 + String.join("; ", offenders)
-                + ". ${VAR} is honoured only in repository credentials, repository object-store keys,"
+                + ". ${VAR} is honoured only in repository credentials, repository object-store keys, a"
+                + " [generate.<name>] entry's args,"
                 + " and [test] env — anything that feeds a compile or package cache key must stay a"
                 + " literal, or the same commit would build differently on different machines.");
     }

@@ -38,6 +38,7 @@ class PluginTestJvmArgsTest {
                 List.of(),
                 List.of(),
                 List.of(),
+                List.of(),
                 jvmArgFiles,
                 null,
                 null);

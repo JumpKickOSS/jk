@@ -254,14 +254,20 @@ public final class JkBuildRenderer {
         for (PluginConfig config : jkBuild.pluginConfigs().values()) {
             PluginDescriptor manifest = PluginTableRegistry.byIdOrTable(config.id());
             String table = manifest != null ? manifest.table() : config.id();
-            sb.append("\n[").append(table).append("]\n");
-            // No manifest installed here: every value as the model carries it, so the table is
-            // never dropped from the file it belongs in.
-            renderPluginKeys(sb, manifest == null ? Map.of() : manifest.schema(), config.values());
+            Map<String, Object> own = new LinkedHashMap<>(config.values());
+            own.remove(PluginConfig.ENTRIES);
+            Map<String, Map<String, Object>> entries = config.entries();
+            // A table of entries alone has no bare header: one [<table>.<name>] sub-table per entry.
+            if (!own.isEmpty() || entries.isEmpty()) {
+                sb.append("\n[").append(table).append("]\n");
+                // No manifest installed here: every value as the model carries it, so the table is
+                // never dropped from the file it belongs in.
+                renderPluginKeys(sb, manifest == null ? Map.of() : manifest.schema(), own);
+            }
             Map<String, PluginDescriptor.SchemaKey> entrySchema = manifest == null || manifest.entrySchema() == null
                     ? Map.of()
                     : manifest.subSchemas().getOrDefault(manifest.entrySchema(), Map.of());
-            for (Map.Entry<String, Map<String, Object>> entry : config.entries().entrySet()) {
+            for (Map.Entry<String, Map<String, Object>> entry : entries.entrySet()) {
                 sb.append("\n[")
                         .append(table)
                         .append('.')

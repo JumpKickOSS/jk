@@ -40,6 +40,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -67,17 +68,36 @@ public final class PlannerKsp {
      */
     static List<Path> pluginContributedSources(
             BuildLayout layout, PluginBuild.@Nullable Declarations decls, String suffix) throws IOException {
+        return contributed(layout, decls, suffix, PluginBuild.TaskDecl::contributesSources);
+    }
+
+    /**
+     * Plugin-contributed generated test sources ({@code contributesTestSources}): files with
+     * {@code suffix} under each contributed scratch dir, for compile-test's source list.
+     */
+    static List<Path> pluginContributedTestSources(
+            BuildLayout layout, PluginBuild.@Nullable Declarations decls, String suffix) throws IOException {
+        return contributed(layout, decls, suffix, PluginBuild.TaskDecl::contributesTestSources);
+    }
+
+    private static List<Path> contributed(
+            BuildLayout layout,
+            PluginBuild.@Nullable Declarations decls,
+            String suffix,
+            Function<PluginBuild.TaskDecl, List<String>> lane)
+            throws IOException {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
         for (PluginBuild.TaskDecl step : decls.steps()) {
-            for (String rel : step.contributesSources()) {
+            for (String rel : lane.apply(step)) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (!Files.isDirectory(dir)) continue;
-                try (var walk = Files.walk(dir)) {
-                    walk.filter(f -> f.toString().endsWith(suffix) && Files.isRegularFile(f))
-                            .sorted()
-                            .forEach(out::add);
-                }
+                List<Path> found = new ArrayList<>();
+                PathUtil.forEachRegularFile(dir, (file, attrs) -> {
+                    if (file.toString().endsWith(suffix)) found.add(file);
+                });
+                found.sort(null);
+                out.addAll(found);
             }
         }
         return out;

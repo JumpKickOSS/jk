@@ -42,6 +42,7 @@ class CapabilityHarnessTest {
                     .inputs(In.projectFiles("src"), In.config())
                     .outputs("gen")
                     .contributesSources("gen")
+                    .contributesTestSources("gen-test")
                     .run(exec -> exec.label("generating"));
         }
 
@@ -64,6 +65,7 @@ class CapabilityHarnessTest {
                 .anyMatch(l -> l.contains("\"t\":\"task\"")
                         && l.contains("\"name\":\"gen-thing\"")
                         && l.contains("\"contributesSources\":[\"gen\"]")
+                        && l.contains("\"contributesTestSources\":[\"gen-test\"]")
                         && l.contains("\"outputs\":[\"gen\"]"));
         // The PackageExtension's packager.
         assertThat(lines).anyMatch(l -> l.contains("\"t\":\"packager\"") && l.contains("\"name\":\"fixture-jar\""));

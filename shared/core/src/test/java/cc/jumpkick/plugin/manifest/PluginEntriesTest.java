@@ -33,12 +33,19 @@ class PluginEntriesTest {
             tool = { type = "string", required = true }
             args = { type = "string-list", default = [] }
             options = { type = "string-map", default = { verbose = "false" } }
+            unpack = { type = "string" }
 
             [[contribute.step-dependency]]
             per-entry  = true
             artifact   = "${entry.name}"
             coordinate = "${entry.tool}"
             transitive = true
+            for-step   = "run-${entry.name}"
+
+            [[contribute.step-dependency]]
+            per-entry  = true
+            artifact   = "${entry.name}-unpack"
+            coordinate = "${entry.unpack}"
             for-step   = "run-${entry.name}"
             """;
 
@@ -100,6 +107,32 @@ class PluginEntriesTest {
                 .containsExactly(
                         tuple("api", "org.acme:api-gen:1.0", true, List.of("run-api")),
                         tuple("grammar", "org.antlr:antlr4:^4.13", true, List.of("run-grammar")));
+    }
+
+    /** A per-entry tool over an optional key is declared only for the entries that set the key. */
+    @Test
+    void a_per_entry_tool_over_an_unset_optional_key_is_not_declared_for_that_entry() {
+        PluginTableRegistry.putBuiltIn(manifest(), null);
+        JkBuild build = JkBuildParser.parse("""
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                java = 25
+
+                [entries-fixture.api]
+                tool = "org.acme:api-gen:1.0"
+
+                [entries-fixture.wire]
+                tool = "com.squareup.wire:wire-compiler:5.5.1"
+                unpack = "io.zipkin.proto3:zipkin-proto3:1.0.0"
+                """);
+
+        assertThat(PluginContributions.stepDependencies(build, null, Map.of()))
+                .extracting(PluginContributions.StepDep::artifact, PluginContributions.StepDep::coordinateSpec)
+                .containsExactly(
+                        tuple("api", "org.acme:api-gen:1.0"),
+                        tuple("wire", "com.squareup.wire:wire-compiler:5.5.1"),
+                        tuple("wire-unpack", "io.zipkin.proto3:zipkin-proto3:1.0.0"));
     }
 
     @Test

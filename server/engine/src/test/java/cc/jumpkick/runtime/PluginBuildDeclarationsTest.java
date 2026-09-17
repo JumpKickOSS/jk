@@ -22,6 +22,7 @@ class PluginBuildDeclarationsTest {
         assertThat(decls.steps()).hasSize(1);
         assertThat(requireNonNull(decls.step("gen")).contributesClasses()).containsExactly("out");
         assertThat(requireNonNull(decls.packager()).name()).isEqualTo("pkg");
+        assertThat(requireNonNull(decls.step("gen")).contributesTestSources()).isEmpty();
         assertThat(decls.commands()).hasSize(1);
         assertThat(requireNonNull(decls.command("devices")).description()).isEqualTo("list attached devices");
         assertThat(decls.command("nope")).isNull();

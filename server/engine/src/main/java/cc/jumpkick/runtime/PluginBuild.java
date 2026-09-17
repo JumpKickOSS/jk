@@ -114,6 +114,8 @@ public final class PluginBuild {
             List<String> contributesClasses,
             List<String> contributesResources,
             List<String> contributesSources,
+            /** Output dirs compile-test folds into the test source set ({@code contributesTestSources}). */
+            List<String> contributesTestSources,
             List<String> contributesTestClasspath,
             /** Output files whose lines ride every forked test JVM ({@code contributesTestJvmArgs}). */
             List<String> contributesTestJvmArgs,
@@ -130,9 +132,14 @@ public final class PluginBuild {
             return transformsClasses != null && !transformsClasses.isBlank();
         }
 
-        /** True when this task feeds the compiler source set. */
+        /** True when this task feeds a compiler source set, main or test. */
         public boolean sourceGenerating() {
-            return contributesSources != null && !contributesSources.isEmpty();
+            return (contributesSources != null && !contributesSources.isEmpty()) || testSourceGenerating();
+        }
+
+        /** True when this task feeds the test compiler's source set. */
+        public boolean testSourceGenerating() {
+            return contributesTestSources != null && !contributesTestSources.isEmpty();
         }
 
         /** True when this task feeds the forked test JVM: its classpath, its arguments, or both. */
@@ -258,6 +265,7 @@ public final class PluginBuild {
                             Jsonl.strArray(line, "contributesClasses"),
                             Jsonl.strArray(line, "contributesResources"),
                             Jsonl.strArray(line, "contributesSources"),
+                            Jsonl.strArray(line, "contributesTestSources"),
                             Jsonl.strArray(line, "contributesTestClasspath"),
                             Jsonl.strArray(line, "contributesTestJvmArgs"),
                             Jsonl.str(line, "transformsClasses"),
