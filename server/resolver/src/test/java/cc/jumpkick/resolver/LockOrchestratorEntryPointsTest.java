@@ -276,7 +276,7 @@ class LockOrchestratorEntryPointsTest {
 
         assertThat(overrides)
                 .containsExactly("org.example:bom-a:1.0 wins over org.example:bom-b:1.0 on 2 modules it manages first:"
-                        + " com.foo:widget 1.0 over 2.0, com.foo:gadget 1.0 over 3.0"
+                        + " com.foo:gadget 1.0 over 3.0, com.foo:widget 1.0 over 2.0"
                         + " — the first-declared BOM wins, as the first import does under Maven");
     }
 

@@ -14,6 +14,7 @@ import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -132,8 +133,10 @@ public final class PlatformConstraints {
                         .append(meetings.size())
                         .append(" modules it manages first: ");
             }
+            List<Meeting> ordered = new ArrayList<>(meetings);
+            ordered.sort(Comparator.comparing(Meeting::module));
             List<String> listed = new ArrayList<>();
-            for (Meeting m : meetings.subList(0, Math.min(LISTED_MODULES, meetings.size()))) {
+            for (Meeting m : ordered.subList(0, Math.min(LISTED_MODULES, ordered.size()))) {
                 String handle = pair.byManifest() ? " (" + m.keptBy() + ")" : "";
                 listed.add(m.module() + " " + m.kept() + handle + " over " + m.asked());
             }
