@@ -135,6 +135,99 @@ class PomInheritedRowsImportTest {
                 .containsExactly(ImportReport.Severity.ERROR);
     }
 
+    /**
+     * zipkin's shape: the root declares {@code maven-dependency-plugin} with the unpack execution
+     * every module inherits; the one module whose wire recipe consumes that execution gets no row
+     * and is not counted onto the root's row either.
+     */
+    @Test
+    void a_member_whose_recipe_consumed_an_inherited_plugin_is_not_counted_at_the_root(@TempDir Path root)
+            throws Exception {
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>lib</module>
+                    <module>app</module>
+                    <module>server</module>
+                  </modules>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <version>3.10.0</version>
+                        <executions>
+                          <execution>
+                            <id>unpack-proto</id>
+                            <phase>generate-sources</phase>
+                            <goals><goal>unpack-dependencies</goal></goals>
+                            <configuration>
+                              <includeArtifactIds>zipkin-proto3</includeArtifactIds>
+                              <outputDirectory>${project.build.directory}/proto</outputDirectory>
+                            </configuration>
+                          </execution>
+                        </executions>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+        write(root, "lib/pom.xml", leaf("lib", "parent", "../pom.xml", ""));
+        write(root, "app/pom.xml", leaf("app", "parent", "../pom.xml", ""));
+        write(root, "server/pom.xml", leaf("server", "parent", "../pom.xml", """
+                <dependencies>
+                  <dependency>
+                    <groupId>com.squareup.wire</groupId>
+                    <artifactId>wire-runtime-jvm</artifactId>
+                    <version>5.5.1</version>
+                  </dependency>
+                  <dependency>
+                    <groupId>io.zipkin.proto3</groupId>
+                    <artifactId>zipkin-proto3</artifactId>
+                    <version>1.0.0</version>
+                  </dependency>
+                </dependencies>
+                <build>
+                  <plugins>
+                    <plugin>
+                      <groupId>de.m3y.maven</groupId>
+                      <artifactId>wire-maven-plugin</artifactId>
+                      <version>1.3</version>
+                      <executions>
+                        <execution>
+                          <phase>generate-test-sources</phase>
+                          <goals><goal>generate-sources</goal></goals>
+                          <configuration>
+                            <protoSourceDirectory>${project.build.directory}/proto</protoSourceDirectory>
+                          </configuration>
+                        </execution>
+                      </executions>
+                    </plugin>
+                  </plugins>
+                </build>
+                """));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+
+        assertThat(requireNonNull(result.modules().get("server")).pluginConfig("generator"))
+                .as("the recipe consumed the unpack execution")
+                .isPresent();
+        assertThat(rows.stream().filter(m -> m.contains("maven-dependency-plugin")))
+                .singleElement()
+                .satisfies(
+                        m -> assertThat(m)
+                                .isEqualTo(
+                                        "`<plugin>maven-dependency-plugin</plugin>` was not imported; docs/user/migration.md"
+                                                + " lists where it lands in jk. Declared by the root pom.xml, inherited by 2 modules."));
+    }
+
     @Test
     void a_pom_imported_on_its_own_keeps_every_row(@TempDir Path root) throws Exception {
         write(root, "pom.xml", """
