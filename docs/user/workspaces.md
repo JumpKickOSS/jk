@@ -132,6 +132,15 @@ in the run record — the `Lock notes` section of `jk-results.md` and its `detai
 web view. `jk update` rewrites the declared pins and relocks, so a partition that stops being
 necessary disappears on its own.
 
+## One repository set
+
+A member's `[repositories]` table joins the workspace's: the lock resolves every member against
+the root's entries followed by each member's, in `[workspace] modules` order, keyed by id. An id
+the root or an earlier member already declared at the same URL adds nothing; the entry that
+declared it first keeps its credentials, exclusive groups and trust flags. The same id at two URLs
+is refused by `jk lock`, naming both modules and both URLs — give the two repositories two ids, or
+one URL.
+
 ## Nothing to build
 
 A workspace that declares no modules, or whose every module has no source tree, no extra
