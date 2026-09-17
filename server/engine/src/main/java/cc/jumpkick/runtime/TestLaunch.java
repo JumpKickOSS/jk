@@ -61,7 +61,7 @@ final class TestLaunch {
      * flags come last, so they win over a framework plugin's.
      */
     static List<String> testJvmArgs(
-            TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, PluginBuild.@Nullable Declarations pluginDecls)
+            TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, @Nullable PluginDeclarations pluginDecls)
             throws IOException {
         List<String> args = new ArrayList<>(PlannerKsp.pluginTestJvmArgs(ctx.require(LAYOUT), pluginDecls));
         args.addAll(PlannerSupport.testJvmArgs(project, in.profileName()));
@@ -152,8 +152,7 @@ final class TestLaunch {
      * provided platform (android.jar) LAST: unit tests calling framework stubs get the platform's
      * throw-on-call contract (AGP's default posture), and anything real on the classpath shadows it.
      */
-    static List<Path> testRuntimeClasspath(TaskContext ctx, PluginBuild.@Nullable Declarations pluginDecls)
-            throws Exception {
+    static List<Path> testRuntimeClasspath(TaskContext ctx, @Nullable PluginDeclarations pluginDecls) throws Exception {
         List<Path> testRtCp = new ArrayList<>(ctx.require(TEST_RUNTIME_CP));
         testRtCp = PlannerFixtures.withOwnFixtures(ctx.require(PROJECT), ctx.require(LAYOUT), testRtCp);
         testRtCp.addAll(pluginTestClasspath(ctx.require(LAYOUT), pluginDecls));

@@ -177,7 +177,7 @@ final class ModuleForecast {
             List<Path> processorCp,
             List<Path> testProcessorCp,
             ActivePlugins.@Nullable Declared plugin,
-            PluginBuild.@Nullable Declarations pkgDecls,
+            @Nullable PluginDeclarations pkgDecls,
             Path mainSrcDir,
             List<Path> mainSrc,
             List<Path> ktSrc,
@@ -272,7 +272,7 @@ final class ModuleForecast {
         // Resolved once: the declarations decide both the generated source roots compile-main
         // folds in and, at package time below, whether jk packs the jar or a plugin does.
         ActivePlugins.@Nullable Declared plugin = PackagingKeys.pluginFor(project, layout, cache);
-        PluginBuild.@Nullable Declarations pkgDecls = plugin == null ? null : plugin.decls();
+        @Nullable PluginDeclarations pkgDecls = plugin == null ? null : plugin.decls();
         Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
         InputTrees.coverModule(dir);
         // The source set the build compiles, derived by its owner: the src walk plus the
@@ -841,7 +841,7 @@ final class ModuleForecast {
         BuildLayout layout = prepared.layout();
         Path javaHome = prepared.javaHome();
         ActivePlugins.@Nullable Declared plugin = prepared.plugin();
-        PluginBuild.@Nullable Declarations pkgDecls = prepared.pkgDecls();
+        @Nullable PluginDeclarations pkgDecls = prepared.pkgDecls();
         List<Path> mainSrc = prepared.mainSrc();
         List<Path> ktSrc = prepared.ktSrc();
         List<Path> gvSrc = prepared.gvSrc();

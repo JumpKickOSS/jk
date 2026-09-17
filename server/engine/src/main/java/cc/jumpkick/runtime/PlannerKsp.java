@@ -51,10 +51,10 @@ public final class PlannerKsp {
     private PlannerKsp() {}
 
     /** The step names of every source-generating plugin step the compilers must wait for. */
-    static List<String> sourceGenStepSteps(PluginBuild.@Nullable Declarations decls) {
+    static List<String> sourceGenStepSteps(@Nullable PluginDeclarations decls) {
         List<String> out = new ArrayList<>();
         if (decls != null) {
-            for (PluginBuild.TaskDecl step : decls.steps()) {
+            for (TaskDecl step : decls.steps()) {
                 if (beforeCompile(step)) out.add("plugin-" + step.name());
             }
         }
@@ -66,9 +66,9 @@ public final class PlannerKsp {
      * files with {@code suffix} under each contributed scratch dir. They join the compiler's
      * source list, so the freshness stamp and the javac action key see them like any source.
      */
-    static List<Path> pluginContributedSources(
-            BuildLayout layout, PluginBuild.@Nullable Declarations decls, String suffix) throws IOException {
-        return contributed(layout, decls, suffix, PluginBuild.TaskDecl::contributesSources);
+    static List<Path> pluginContributedSources(BuildLayout layout, @Nullable PluginDeclarations decls, String suffix)
+            throws IOException {
+        return contributed(layout, decls, suffix, TaskDecl::contributesSources);
     }
 
     /**
@@ -76,19 +76,19 @@ public final class PlannerKsp {
      * {@code suffix} under each contributed scratch dir, for compile-test's source list.
      */
     static List<Path> pluginContributedTestSources(
-            BuildLayout layout, PluginBuild.@Nullable Declarations decls, String suffix) throws IOException {
-        return contributed(layout, decls, suffix, PluginBuild.TaskDecl::contributesTestSources);
+            BuildLayout layout, @Nullable PluginDeclarations decls, String suffix) throws IOException {
+        return contributed(layout, decls, suffix, TaskDecl::contributesTestSources);
     }
 
     private static List<Path> contributed(
             BuildLayout layout,
-            PluginBuild.@Nullable Declarations decls,
+            @Nullable PluginDeclarations decls,
             String suffix,
-            Function<PluginBuild.TaskDecl, List<String>> lane)
+            Function<TaskDecl, List<String>> lane)
             throws IOException {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             for (String rel : lane.apply(step)) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (!Files.isDirectory(dir)) continue;
@@ -104,10 +104,10 @@ public final class PlannerKsp {
     }
 
     /** Plugin steps' declared source-contribution dirs (existing ones only). */
-    static List<Path> pluginContributedSourceDirs(BuildLayout layout, PluginBuild.@Nullable Declarations decls) {
+    static List<Path> pluginContributedSourceDirs(BuildLayout layout, @Nullable PluginDeclarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             for (String rel : step.contributesSources()) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (Files.isDirectory(dir)) out.add(dir);
@@ -117,10 +117,10 @@ public final class PlannerKsp {
     }
 
     /** Plugin steps' declared test-classpath contribution dirs (existing ones only). */
-    static List<Path> pluginTestClasspath(BuildLayout layout, PluginBuild.@Nullable Declarations decls) {
+    static List<Path> pluginTestClasspath(BuildLayout layout, @Nullable PluginDeclarations decls) {
         List<Path> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             for (String rel : step.contributesTestClasspath()) {
                 Path dir = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (Files.isDirectory(dir)) out.add(dir);
@@ -134,11 +134,10 @@ public final class PlannerKsp {
      * every non-blank line of each declared file, in declaration order. A declared file the step
      * did not write contributes nothing.
      */
-    static List<String> pluginTestJvmArgs(BuildLayout layout, PluginBuild.@Nullable Declarations decls)
-            throws IOException {
+    static List<String> pluginTestJvmArgs(BuildLayout layout, @Nullable PluginDeclarations decls) throws IOException {
         List<String> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             for (String rel : step.contributesTestJvmArgs()) {
                 Path file = PluginBuild.taskScratch(layout, step.name()).resolve(rel);
                 if (!Files.isRegularFile(file)) continue;
@@ -217,7 +216,7 @@ public final class PlannerKsp {
      * KSP2 round: fork {@code KSPJvmMain} with KSP processor jars ({@link
      * cc.jumpkick.compile.KspProcessors}); outputs under {@code target/ksp/} join compile sources.
      */
-    static Task kspStep(BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls) {
+    static Task kspStep(BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls) {
         // Plugin-contributed sources (protoc output, variant extra-src) must exist before the
         // round and join its source roots — a contributed @Module/@Entity is processor input
         // like any hand-written one.
@@ -238,7 +237,7 @@ public final class PlannerKsp {
     }
 
     /** The KSP2 round: split the processors, check the stamp, resolve the toolchain, fork, stamp. */
-    private static void runKsp(TaskContext ctx, BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls)
+    private static void runKsp(TaskContext ctx, BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls)
             throws Exception {
         BuildPlanner.Inputs in = cx.in();
         List<Path> processorCp = ctx.require(PROCESSOR_CP);
@@ -372,7 +371,7 @@ public final class PlannerKsp {
             BuildPlanner.Inputs in,
             JkBuild project,
             BuildLayout layout,
-            PluginBuild.@Nullable Declarations pluginDecls,
+            @Nullable PluginDeclarations pluginDecls,
             boolean compact)
             throws Exception {
         List<Path> srcRoots = new ArrayList<>(
@@ -491,11 +490,7 @@ public final class PlannerKsp {
      * extending a generated base must resolve it during Kotlin analysis).
      */
     static @Nullable List<Path> kotlinJavaSourceRoots(
-            boolean mixedWithJava,
-            boolean compact,
-            Path dir,
-            BuildLayout layout,
-            PluginBuild.@Nullable Declarations decls) {
+            boolean mixedWithJava, boolean compact, Path dir, BuildLayout layout, @Nullable PluginDeclarations decls) {
         if (!mixedWithJava) return null;
         List<Path> roots = new ArrayList<>();
         roots.add(compact ? dir.resolve("src") : dir.resolve("src/main/java"));
@@ -504,7 +499,7 @@ public final class PlannerKsp {
         // Plugin-contributed generated dirs can carry Java that Kotlin sources reference
         // (protoc: the --kotlin_out DSL wraps its own --java_out message classes).
         if (decls != null) {
-            for (PluginBuild.TaskDecl step : decls.steps()) {
+            for (TaskDecl step : decls.steps()) {
                 for (String rel : step.contributesSources()) {
                     Path contributed =
                             PluginBuild.taskScratch(layout, step.name()).resolve(rel);

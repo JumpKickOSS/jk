@@ -306,7 +306,7 @@ class BuildPlannerTestOnlyPlanTest {
 
     /** Pre-seed the content-keyed describe cache so coreBuilder never forks a plugin worker. */
     private void seedDescribeCache(Path dir, JkBuild build, List<String> declLines) throws Exception {
-        PluginBuild.Active active = ActivePlugins.of(build, dir).getFirst();
+        ActivePlugin active = ActivePlugins.of(build, dir).getFirst();
         Path target = BuildLayout.of(dir, build).moduleTargetDir();
         // The same jar lookup the planner makes, so the seeded key is the one it computes.
         String key = PluginBuild.describeKey(active, build, PluginBuild.locateWorkerJar(active, tmp.resolve("cache")));
@@ -323,7 +323,7 @@ class BuildPlannerTestOnlyPlanTest {
     void describe_key_follows_the_worker_jar_content() throws Exception {
         Path dir = pluginProject();
         JkBuild build = JkBuildParser.reparse(dir.resolve("jk.toml"));
-        PluginBuild.Active active = ActivePlugins.of(build, dir).getFirst();
+        ActivePlugin active = ActivePlugins.of(build, dir).getFirst();
         Path shipped = tmp.resolve("vendor").resolve("fake-1.0.0.jar");
         Path rebuilt = Files.writeString(tmp.resolve("vendor").resolve("fake-1.0.0-rebuilt.jar"), "other bytes");
         Path sameBytes = Files.copy(shipped, tmp.resolve("vendor").resolve("fake-1.0.0-copy.jar"));

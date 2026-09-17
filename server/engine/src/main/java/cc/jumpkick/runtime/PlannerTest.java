@@ -60,8 +60,7 @@ public final class PlannerTest {
     /** Where compile-test records the suite selection that produced {@code classes/test}. */
     private static final String SUITE_MARKER = ".jk-suites";
 
-    static Task compileTestStep(
-            BuildPlanner.Ctx cx, boolean hasFixtures, PluginBuild.@Nullable Declarations pluginDecls) {
+    static Task compileTestStep(BuildPlanner.Ctx cx, boolean hasFixtures, @Nullable PluginDeclarations pluginDecls) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -178,7 +177,7 @@ public final class PlannerTest {
                 boolean compact,
                 List<String> suiteNames,
                 BuildLayout layout,
-                PluginBuild.@Nullable Declarations decls)
+                @Nullable PluginDeclarations decls)
                 throws IOException {
             LinkedHashSet<Path> javaTest = new LinkedHashSet<>(TestSuites.collectJavaSources(dir, compact, suiteNames));
             javaTest.addAll(TestSupport.testExtraSources(project, dir, ".java"));
@@ -219,10 +218,10 @@ public final class PlannerTest {
     }
 
     /** The plugin steps whose output compile-test reads: every test-source generator. */
-    static List<String> testSourceGenSteps(PluginBuild.@Nullable Declarations decls) {
+    static List<String> testSourceGenSteps(@Nullable PluginDeclarations decls) {
         List<String> out = new ArrayList<>();
         if (decls == null) return out;
-        for (PluginBuild.TaskDecl step : decls.steps()) {
+        for (TaskDecl step : decls.steps()) {
             if (step.testSourceGenerating()) out.add("plugin-" + step.name());
         }
         return out;
@@ -452,7 +451,7 @@ public final class PlannerTest {
     }
 
     static Task runTestsStep(
-            BuildPlanner.Ctx cx, PluginBuild.@Nullable Declarations pluginDecls, List<String> extraRequires) {
+            BuildPlanner.Ctx cx, @Nullable PluginDeclarations pluginDecls, List<String> extraRequires) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -462,7 +461,7 @@ public final class PlannerTest {
         testRequires.add(TaskNames.COPY_RESOURCES);
         testRequires.addAll(extraRequires);
         if (pluginDecls != null) {
-            for (PluginBuild.TaskDecl step : pluginDecls.steps()) {
+            for (TaskDecl step : pluginDecls.steps()) {
                 if (step.testOnly() || step.feedsTests()) {
                     testRequires.add("plugin-" + step.name());
                 }

@@ -65,18 +65,6 @@ public final class PluginBuild {
 
     private PluginBuild() {}
 
-    /**
-     * An installed plugin with a code layer, active on this project (owns a declared table); the
-     * module's set is {@link ActivePlugins#of}. {@code declaration} is the matching
-     * {@code [plugins]} entry for third-party plugins and null for built-ins — it carries the
-     * coordinate the trust gate and jar lookup key on.
-     */
-    public record Active(
-            PluginDescriptor manifest,
-            PluginConfig config,
-            Path moduleDir,
-            @Nullable PluginDeclaration declaration) {}
-
     /** The active packager's static artifact descriptor, or empty — manifest data, no fork. */
     public static Optional<PluginDescriptor.Packaging> shape(JkBuild project, Path moduleDir) {
         for (PluginDescriptor m : PluginTableRegistry.manifestsFor(moduleDir, project.plugins())) {
@@ -93,101 +81,13 @@ public final class PluginBuild {
 
     // ---- declarations (describe, file-cached) -------------------------------------------------
 
-    /** One registered task, as declared over the describe protocol. */
-    public record TaskDecl(
-            String name,
-            List<String> requires,
-            List<String> inputs,
-            List<String> outputs,
-            List<String> contributesClasses,
-            List<String> contributesResources,
-            List<String> contributesSources,
-            /** Output dirs compile-test folds into the test source set ({@code contributesTestSources}). */
-            List<String> contributesTestSources,
-            List<String> contributesTestClasspath,
-            /** Output files whose lines ride every forked test JVM ({@code contributesTestJvmArgs}). */
-            List<String> contributesTestJvmArgs,
-            /** The classes-replacing output dir ({@code TaskSpec.transformsClasses}), or null. */
-            @Nullable String transformsClasses,
-            /**
-             * Optional product stage wire ({@code generate}, {@code compile}, …). Empty/null → engine
-             * infers from contributions / name.
-             */
-            @Nullable String stage) {
-
-        /** True when this task replaces the module's classes dir downstream. */
-        public boolean transforms() {
-            return transformsClasses != null && !transformsClasses.isBlank();
-        }
-
-        /** True when this task feeds a compiler source set, main or test. */
-        public boolean sourceGenerating() {
-            return (contributesSources != null && !contributesSources.isEmpty()) || testSourceGenerating();
-        }
-
-        /** True when this task feeds the test compiler's source set. */
-        public boolean testSourceGenerating() {
-            return contributesTestSources != null && !contributesTestSources.isEmpty();
-        }
-
-        /** True when this task feeds the forked test JVM: its classpath, its arguments, or both. */
-        public boolean feedsTests() {
-            return (contributesTestClasspath != null && !contributesTestClasspath.isEmpty())
-                    || (contributesTestJvmArgs != null && !contributesTestJvmArgs.isEmpty());
-        }
-
-        /** True when this task only contributes to the forked test JVM. */
-        public boolean testOnly() {
-            return feedsTests()
-                    && !sourceGenerating()
-                    && (contributesClasses == null || contributesClasses.isEmpty())
-                    && (contributesResources == null || contributesResources.isEmpty())
-                    && !transforms();
-        }
-
-        /**
-         * True when package/classes consumers must wait on this task (post-compile work, transforms,
-         * class/resource contributions — not pure source generation).
-         */
-        public boolean packageTime() {
-            if (sourceGenerating() && !transforms() && (contributesClasses == null || contributesClasses.isEmpty())) {
-                return false;
-            }
-            if (testOnly()) return false;
-            return transforms()
-                    || (contributesClasses != null && !contributesClasses.isEmpty())
-                    || (contributesResources != null && !contributesResources.isEmpty())
-                    || (inputs != null && inputs.contains("classes"));
-        }
-    }
-
-    /** The registered packager, as declared. */
     /**
      * The {@code [code]} table of a plugin that has one. Every caller here has already established
      * that: a code plugin is precisely a manifest with this table, and {@link ActivePlugins#of}
      * skips the ones without it.
      */
-    static PluginDescriptor.Code code(Active active) {
+    static PluginDescriptor.Code code(ActivePlugin active) {
         return Objects.requireNonNull(active.manifest().code(), "plugin [code] table");
-    }
-
-    public record PackagerDecl(String name, List<String> inputs) {}
-
-    /** One registered plugin command, as declared. */
-    public record CommandDecl(String name, String description) {}
-
-    public record Declarations(
-            List<TaskDecl> steps, @Nullable PackagerDecl packager, List<CommandDecl> commands) {
-
-        public @Nullable TaskDecl step(String name) {
-            for (TaskDecl s : steps) if (s.name().equals(name)) return s;
-            return null;
-        }
-
-        public @Nullable CommandDecl command(@Nullable String name) {
-            for (CommandDecl v : commands) if (v.name().equals(name)) return v;
-            return null;
-        }
     }
 
     /** A step's scratch root — its declared output dirs resolve under this. */
@@ -196,7 +96,7 @@ public final class PluginBuild {
     }
 
     /** Every dir the declared steps contribute as classes/resources, in declaration order. */
-    public static List<Path> contributedDirs(Declarations decls, BuildLayout layout) {
+    public static List<Path> contributedDirs(PluginDeclarations decls, BuildLayout layout) {
         List<Path> out = new ArrayList<>();
         for (TaskDecl step : decls.steps()) {
             Path scratch = taskScratch(layout, step.name());
@@ -210,8 +110,8 @@ public final class PluginBuild {
      * Plugin {@code describe} declarations, file-cached under the module target so a fully-cached
      * rebuild forks nothing.
      */
-    public static Declarations declarations(
-            Active active, JkBuild project, Path moduleDir, Path cache, Path layoutTarget)
+    public static PluginDeclarations declarations(
+            ActivePlugin active, JkBuild project, Path moduleDir, Path cache, Path layoutTarget)
             throws IOException, InterruptedException {
         String key = describeKey(active, project, locateWorkerJar(active, cache));
         Path cacheFile =
@@ -234,41 +134,7 @@ public final class PluginBuild {
             Files.write(cacheFile, lines, StandardCharsets.UTF_8);
         }
 
-        return decode(lines);
-    }
-
-    /** Decode a describe reply's declaration lines (the cached file's exact content). */
-    static Declarations decode(List<String> lines) {
-        List<TaskDecl> steps = new ArrayList<>();
-        PackagerDecl packager = null;
-        List<CommandDecl> commands = new ArrayList<>();
-        for (String line : lines) {
-            switch (String.valueOf(Jsonl.str(line, "t"))) {
-                case "task", "step" ->
-                    steps.add(new TaskDecl(
-                            Jsonl.requiredStr(line, "name"),
-                            Jsonl.strArray(line, "requires"),
-                            Jsonl.strArray(line, "inputs"),
-                            Jsonl.strArray(line, "outputs"),
-                            Jsonl.strArray(line, "contributesClasses"),
-                            Jsonl.strArray(line, "contributesResources"),
-                            Jsonl.strArray(line, "contributesSources"),
-                            Jsonl.strArray(line, "contributesTestSources"),
-                            Jsonl.strArray(line, "contributesTestClasspath"),
-                            Jsonl.strArray(line, "contributesTestJvmArgs"),
-                            Jsonl.str(line, "transformsClasses"),
-                            blankToNull(Jsonl.str(line, "stage"))));
-                case "packager" ->
-                    packager = new PackagerDecl(Jsonl.requiredStr(line, "name"), Jsonl.strArray(line, "inputs"));
-                case "command" ->
-                    commands.add(
-                            new CommandDecl(Jsonl.requiredStr(line, "name"), Jsonl.requiredStr(line, "description")));
-                default -> {
-                    // labels etc. — irrelevant to declarations
-                }
-            }
-        }
-        return new Declarations(steps, packager, commands);
+        return PluginDeclarations.decode(lines);
     }
 
     /**
@@ -280,7 +146,7 @@ public final class PluginBuild {
      * version, and keying on the version alone kept serving its previous describe reply. Package-
      * visible so tests can pre-seed the describe cache without forking a worker.
      */
-    static String describeKey(Active active, JkBuild project, @Nullable Path workerJar) throws IOException {
+    static String describeKey(ActivePlugin active, JkBuild project, @Nullable Path workerJar) throws IOException {
         String key = BuildIdentity.cacheKeyVersion()
                 + '|'
                 + active.manifest().version()
@@ -708,7 +574,7 @@ public final class PluginBuild {
      * The main artifact's path under the packager's declared extension ({@code
      * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
      */
-    public static Path mainArtifactPath(BuildLayout layout, Active active) {
+    public static Path mainArtifactPath(BuildLayout layout, ActivePlugin active) {
         Path jarPath = layout.mainJar();
         var packaging = active.manifest().packaging();
         if (packaging != null) packaging = packaging.resolve(active.config());
@@ -739,7 +605,7 @@ public final class PluginBuild {
      * from the CAS — and it forks only once its coordinate is trusted (plugin-refactor Posture A:
      * the engine refuses untrusted third-party code with the {@code jk trust plugin} remediation).
      */
-    static Path workerJarFor(Active active, Path cache) throws IOException {
+    static Path workerJarFor(ActivePlugin active, Path cache) throws IOException {
         PluginDeclaration declaration = active.declaration();
         if (declaration != null && !"cc.jumpkick".equals(declaration.group())) {
             String stateOverride = System.getProperty("jk.trust.state.dir");
@@ -765,7 +631,7 @@ public final class PluginBuild {
      * plugin whose jar is missing simply keys as absent and fails at the fork with the message
      * that names the remedy.
      */
-    static @Nullable Path locateWorkerJar(Active active, Path cache) {
+    static @Nullable Path locateWorkerJar(ActivePlugin active, Path cache) {
         try {
             return workerJarPath(active, cache);
         } catch (IOException | RuntimeException absent) {
@@ -773,7 +639,7 @@ public final class PluginBuild {
         }
     }
 
-    private static Path workerJarPath(Active active, Path cache) throws IOException {
+    private static Path workerJarPath(ActivePlugin active, Path cache) throws IOException {
         PluginDeclaration declaration = active.declaration();
         if (declaration != null) {
             return PluginDescriptorOps.jarFor(active.moduleDir(), declaration, cache)
@@ -793,16 +659,12 @@ public final class PluginBuild {
                 + " has no matching [plugins] declaration — declare it (or run `jk sync`)");
     }
 
-    private static @Nullable String blankToNull(@Nullable String s) {
-        return (s == null || s.isBlank()) ? null : s;
-    }
-
     /**
      * The SDK floor a pinned third-party plugin forks with: the {@code [[artifact]]} rows its
      * consumer's lock carries under the plugin scope, resolved on this machine. Empty for a
      * first-party or workspace plugin, whose classpath its own POM or the workspace supplies.
      */
-    static List<Path> sdkFloor(Active active) throws IOException {
+    static List<Path> sdkFloor(ActivePlugin active) throws IOException {
         PluginDeclaration declaration = active.declaration();
         if (declaration == null || !PluginSdkFloor.needsFloor(declaration)) return List.of();
         Path lockFile = LockPaths.lockFile(active.moduleDir());
@@ -816,9 +678,9 @@ public final class PluginBuild {
         return floor;
     }
 
-    /** As {@link #runWorker(Active, Path, Path, WorkerEnv, Consumer, Consumer)} with no diagnostic sink. */
+    /** As {@link #runWorker(ActivePlugin, Path, Path, WorkerEnv, Consumer, Consumer)} with no diagnostic sink. */
     public static List<String> runWorker(
-            Active active, Path cache, Path spec, WorkerEnv env, @Nullable Consumer<String> onLabel)
+            ActivePlugin active, Path cache, Path spec, WorkerEnv env, @Nullable Consumer<String> onLabel)
             throws IOException, InterruptedException {
         return runWorker(active, cache, spec, env, onLabel, null);
     }
@@ -830,7 +692,7 @@ public final class PluginBuild {
      * located findings still reach the report.
      */
     public static List<String> runWorker(
-            Active active,
+            ActivePlugin active,
             Path cache,
             Path spec,
             WorkerEnv env,

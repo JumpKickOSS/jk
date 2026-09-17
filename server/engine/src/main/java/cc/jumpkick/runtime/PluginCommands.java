@@ -62,9 +62,9 @@ public final class PluginCommands {
             BuildLayout layout = BuildLayout.of(dir, project);
             ActivePlugins.Declared plugins = ActivePlugins.declared(project, dir, cache, layout.moduleTargetDir());
             if (plugins == null) return PluginCommandReport.notFound();
-            PluginBuild.CommandDecl declared = plugins.decls().command(command);
+            PluginDeclarations.CommandDecl declared = plugins.decls().command(command);
             if (declared == null) return PluginCommandReport.notFound();
-            PluginBuild.Active active = plugins.commandOwners().get(declared.name());
+            ActivePlugin active = plugins.commandOwners().get(declared.name());
             if (active == null) return PluginCommandReport.notFound();
 
             Path scratch = layout.moduleTargetDir().resolve("plugin").resolve("command-" + command);
