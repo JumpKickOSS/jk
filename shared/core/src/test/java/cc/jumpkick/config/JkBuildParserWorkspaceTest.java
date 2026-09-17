@@ -33,6 +33,24 @@ class JkBuildParserWorkspaceTest {
     }
 
     @Test
+    void a_shared_workspace_dependency_refuses_an_unknown_key_by_name() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                        group    = "com.example"
+                        name     = "root"
+                        version  = "1.0.0"
+
+                        [workspace]
+                        modules = ["app"]
+
+                        [workspace.dependencies]
+                        guava = { group = "com.google.guava", name = "guava", version = "33.0.0-jre", optional = true }
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace.dependencies.guava unknown key `optional`")
+                .hasMessageContaining("expected one of:");
+    }
+
+    @Test
     void workspace_root_still_requires_concrete_version() {
         assertThatThrownBy(() -> JkBuildParser.parse("""
                 group    = "com.example"
