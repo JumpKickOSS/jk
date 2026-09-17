@@ -311,6 +311,36 @@ class PomExporterTest {
     }
 
     @Test
+    void exclusions_are_written_on_dependencies_and_managed_entries() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                kafka = { group = "org.apache.kafka", name = "kafka-clients", version = "4.1.0", exclude = ["org.slf4j:slf4j-api", "com.github.luben:*"] }
+
+                [managed-dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.5.0-jre", exclude = ["*:listenablefuture"] }
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        String managed = xml.substring(xml.indexOf("<dependencyManagement>"), xml.indexOf("</dependencyManagement>"));
+        assertThat(managed)
+                .contains("<artifactId>guava</artifactId>")
+                .contains(
+                        "<exclusion>\n            <groupId>*</groupId>\n            <artifactId>listenablefuture</artifactId>");
+        String deps = xml.substring(xml.indexOf("<dependencies>", xml.indexOf("</dependencyManagement>")));
+        assertThat(deps)
+                .contains("<artifactId>kafka-clients</artifactId>")
+                .contains("<exclusions>")
+                .contains("<groupId>org.slf4j</groupId>\n          <artifactId>slf4j-api</artifactId>")
+                .contains("<groupId>com.github.luben</groupId>\n          <artifactId>*</artifactId>");
+    }
+
+    @Test
     void workspace_root_is_pom_packaging_with_modules() {
         JkBuild root = parse("""
                 group = "com.example"

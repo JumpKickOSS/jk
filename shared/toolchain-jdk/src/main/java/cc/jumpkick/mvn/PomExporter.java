@@ -2,7 +2,6 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
@@ -109,7 +108,10 @@ public final class PomExporter {
         sb.append("  </repositories>\n");
     }
 
-    /** BOM imports, then one plain managed {@code <dependency>} per {@code [managed-dependencies]} entry. */
+    /**
+     * BOM imports, then one plain managed {@code <dependency>} per {@code [managed-dependencies]}
+     * entry, its exclusions included.
+     */
     private static void appendDependencyManagement(
             StringBuilder sb,
             List<Dependency> platforms,
@@ -118,12 +120,11 @@ public final class PomExporter {
             ImportReport.Builder report) {
         if (platforms.isEmpty() && managed.isEmpty()) return;
         sb.append('\n'); // export POM separates sections with a blank line (publish POM does not)
-        List<Coordinate> pins = new ArrayList<>(managed.size());
+        List<Dependency> mappable = new ArrayList<>(managed.size());
         for (Dependency d : managed) {
-            if (warnIfUnmappable(d, report)) continue;
-            pins.add(Coordinate.of(d.group(), d.name(), resolveVersion(d, locked, report)));
+            if (!warnIfUnmappable(d, report)) mappable.add(d);
         }
-        PomXml.appendDependencyManagement(sb, platforms, d -> resolveVersion(d, locked, report), pins);
+        PomXml.appendManagedDependencies(sb, platforms, d -> resolveVersion(d, locked, report), mappable);
     }
 
     private static void appendDependencies(

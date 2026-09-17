@@ -80,10 +80,13 @@ public final class PomXml {
             @Nullable String mavenScope,
             @Nullable String type,
             @Nullable String classifier) {
-        appendDependency(sb, group, artifact, version, mavenScope, type, classifier, false);
+        appendDependency(sb, group, artifact, version, mavenScope, type, classifier, false, List.of());
     }
 
-    /** As above; {@code optional} writes Maven's {@code <optional>true</optional>}. */
+    /**
+     * As above; {@code optional} writes Maven's {@code <optional>true</optional>} and each of
+     * {@code exclusions} — {@code group:artifact}, either side {@code *} — one {@code <exclusion>}.
+     */
     private static void appendDependency(
             StringBuilder sb,
             String group,
@@ -92,7 +95,8 @@ public final class PomXml {
             @Nullable String mavenScope,
             @Nullable String type,
             @Nullable String classifier,
-            boolean optional) {
+            boolean optional,
+            List<String> exclusions) {
         sb.append("    <dependency>\n");
         sb.append("      <groupId>").append(escape(group)).append("</groupId>\n");
         sb.append("      <artifactId>").append(escape(artifact)).append("</artifactId>\n");
@@ -107,16 +111,44 @@ public final class PomXml {
             sb.append("      <scope>").append(mavenScope).append("</scope>\n");
         }
         if (optional) sb.append("      <optional>true</optional>\n");
+        appendExclusions(sb, exclusions, "      ");
         sb.append("    </dependency>\n");
     }
 
-    /** Type and classifier for a tests-kind edge (Maven test-jar); {@code <optional>} for an optional one. */
+    /**
+     * Type and classifier for a tests-kind edge (Maven test-jar), {@code <optional>} for an optional
+     * one, and the edge's {@link Dependency#exclusions()} as {@code <exclusions>}.
+     */
     public static void appendDependency(StringBuilder sb, Dependency d, String version, @Nullable String mavenScope) {
         if (d.isTestsKind()) {
-            appendDependency(sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests", d.optional());
+            appendDependency(
+                    sb, d.group(), d.name(), version, mavenScope, "test-jar", "tests", d.optional(), d.exclusions());
         } else {
-            appendDependency(sb, d.group(), d.name(), version, mavenScope, null, null, d.optional());
+            appendDependency(
+                    sb, d.group(), d.name(), version, mavenScope, null, d.classifier(), d.optional(), d.exclusions());
         }
+    }
+
+    /**
+     * {@code <exclusions>} for a list of {@code group:artifact} spellings, {@code *} on either side
+     * kept as Maven's wildcard; nothing for an empty list. {@code indent} is the element's own.
+     */
+    static void appendExclusions(StringBuilder sb, List<String> exclusions, String indent) {
+        if (exclusions.isEmpty()) return;
+        sb.append(indent).append("<exclusions>\n");
+        for (String exclusion : exclusions) {
+            int colon = exclusion.indexOf(':');
+            String group = colon < 0 ? exclusion : exclusion.substring(0, colon);
+            String artifact = colon < 0 ? "*" : exclusion.substring(colon + 1);
+            sb.append(indent).append("  <exclusion>\n");
+            sb.append(indent).append("    <groupId>").append(escape(group)).append("</groupId>\n");
+            sb.append(indent)
+                    .append("    <artifactId>")
+                    .append(escape(artifact))
+                    .append("</artifactId>\n");
+            sb.append(indent).append("  </exclusion>\n");
+        }
+        sb.append(indent).append("</exclusions>\n");
     }
 
     /**
@@ -142,6 +174,15 @@ public final class PomXml {
             Function<Dependency, String> version,
             Collection<Coordinate> closure) {
         if (platforms.isEmpty() && closure.isEmpty()) return;
+        openDependencyManagement(sb, platforms, version);
+        for (Coordinate c : closure) {
+            appendManagedEntry(sb, c.group(), c.artifact(), c.version(), c.type(), c.classifier(), List.of());
+        }
+        closeDependencyManagement(sb);
+    }
+
+    private static void openDependencyManagement(
+            StringBuilder sb, List<Dependency> platforms, Function<Dependency, String> version) {
         sb.append("  <dependencyManagement>\n    <dependencies>\n");
         for (Dependency d : platforms) {
             sb.append("      <dependency>\n");
@@ -152,19 +193,57 @@ public final class PomXml {
             sb.append("        <scope>import</scope>\n");
             sb.append("      </dependency>\n");
         }
-        for (Coordinate c : closure) {
-            sb.append("      <dependency>\n");
-            sb.append("        <groupId>").append(escape(c.group())).append("</groupId>\n");
-            sb.append("        <artifactId>").append(escape(c.artifact())).append("</artifactId>\n");
-            sb.append("        <version>").append(escape(c.version())).append("</version>\n");
-            if (!"jar".equalsIgnoreCase(c.type())) {
-                sb.append("        <type>").append(escape(c.type())).append("</type>\n");
-            }
-            if (c.classifier() != null && !c.classifier().isBlank()) {
-                sb.append("        <classifier>").append(escape(c.classifier())).append("</classifier>\n");
-            }
-            sb.append("      </dependency>\n");
-        }
+    }
+
+    private static void closeDependencyManagement(StringBuilder sb) {
         sb.append("    </dependencies>\n  </dependencyManagement>\n");
+    }
+
+    /**
+     * As {@link #appendDependencyManagement(StringBuilder, List, Function)}, then one managed
+     * {@code <dependency>} per {@code [managed-dependencies]} entry — the version, the classifier
+     * and the test-jar type when the entry names them, and the entry's exclusions, which Maven
+     * applies to every edge onto that module as the jk lock does.
+     */
+    public static void appendManagedDependencies(
+            StringBuilder sb,
+            List<Dependency> platforms,
+            Function<Dependency, String> version,
+            List<Dependency> managed) {
+        if (platforms.isEmpty() && managed.isEmpty()) return;
+        openDependencyManagement(sb, platforms, version);
+        for (Dependency d : managed) {
+            appendManagedEntry(
+                    sb,
+                    d.group(),
+                    d.name(),
+                    version.apply(d),
+                    d.isTestsKind() ? "test-jar" : "jar",
+                    d.isTestsKind() ? "tests" : d.classifier(),
+                    d.exclusions());
+        }
+        closeDependencyManagement(sb);
+    }
+
+    private static void appendManagedEntry(
+            StringBuilder sb,
+            String group,
+            String artifact,
+            String version,
+            String type,
+            @Nullable String classifier,
+            List<String> exclusions) {
+        sb.append("      <dependency>\n");
+        sb.append("        <groupId>").append(escape(group)).append("</groupId>\n");
+        sb.append("        <artifactId>").append(escape(artifact)).append("</artifactId>\n");
+        sb.append("        <version>").append(escape(version)).append("</version>\n");
+        if (!"jar".equalsIgnoreCase(type)) {
+            sb.append("        <type>").append(escape(type)).append("</type>\n");
+        }
+        if (classifier != null && !classifier.isBlank()) {
+            sb.append("        <classifier>").append(escape(classifier)).append("</classifier>\n");
+        }
+        appendExclusions(sb, exclusions, "        ");
+        sb.append("      </dependency>\n");
     }
 }
