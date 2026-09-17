@@ -155,12 +155,15 @@ final class MemberPartitions {
      * the member the merged version does not equal, or a merged version a BOM the member does not
      * hold pinned while the member's own platform table manages the module at another version or an
      * edge in the member's closure declared a version the pinned one cannot stand in for. A root the
-     * member asks for with a floating selector takes the merged row whatever it is. Empty means the
-     * member reads the merged rows as they are.
+     * member asks for with a floating selector takes the merged row whatever it is, and so does a
+     * test-scope exact pin on a module the member's main graph reaches: main's version is the one
+     * on its test classpath, and a solve of its own would say the same. Empty means the member
+     * reads the merged rows as they are.
      */
     private Set<String> flagged(JkBuild manifest, PlatformConstraints own) {
         Set<String> flagged = new LinkedHashSet<>();
         LockRoots.Declared declared = LockRoots.partition(manifest, featuresFor(manifest), withDefaults);
+        Set<String> mainClosure = closure(new ArrayList<>(declared.main().values()));
         List<Dependency> roots = new ArrayList<>();
         roots.addAll(declared.main().values());
         roots.addAll(declared.test().values());
@@ -168,6 +171,11 @@ final class MemberPartitions {
         for (Dependency root : roots) {
             Resolution.ResolvedModule merged = unionByKey.get(root.packageKey());
             if (merged == null || root.isPlatformManaged()) continue;
+            if (declared.test().containsKey(root.packageKey())
+                    && !declared.main().containsKey(root.packageKey())
+                    && mainClosure.contains(root.packageKey())) {
+                continue;
+            }
             if (root.version() instanceof VersionSelector.Exact exact
                     && !exact.version().equals(merged.version())) {
                 flagged.add(PackageId.parse(root.packageKey()).ga());
