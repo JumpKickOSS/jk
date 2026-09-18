@@ -6,7 +6,6 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,15 +28,20 @@ import org.jspecify.annotations.Nullable;
  * {@code <rulesets>} are {@code pmd} — a {@code /category/…} or {@code /rulesets/…} path a built-in
  * one, Maven's own default ruleset included, a {@code file://} URL a module file — {@code
  * <excludeFromFailureFile>} is {@code pmd-exclude}, {@code <includeTests>} adds the test root, and
- * {@code fail-on} follows PMD's own threshold: {@code <failOnViolation>false</failOnViolation>} is
- * {@code never}, a {@code <failurePriority>} of 1 or 2 is {@code error}, anything else — Maven's
- * default of 5 fails on every finding — is {@code warning}. Tools that disagree get the stricter
- * threshold and a row. The PMD release is the plugin's: the {@code pmd-java} its own {@code
- * <dependencies>} pin, else the one the plugin version bundles, written as {@code pmd-version}; a
- * plugin still on PMD 6 is a row, since the step runs PMD 7. {@code spotbugs-maven-plugin}:
- * {@code spotbugs = true}, {@code <excludeFilterFile>} is {@code spotbugs-exclude}, {@code
- * <effort>} is {@code spotbugs-effort}, {@code <threshold>} is {@code spotbugs-threshold}, {@code
- * <plugins>} (fb-contrib, find-sec-bugs) are a row.
+ * PMD's threshold is its own: {@code <failOnViolation>false</failOnViolation>} is {@code never}, a
+ * {@code <failurePriority>} of 1 or 2 is {@code error}, anything else — Maven's default of 5 fails
+ * on every finding — is {@code warning}. The PMD release is the plugin's: the {@code pmd-java} its
+ * own {@code <dependencies>} pin, else the one the plugin version bundles, written as {@code
+ * pmd-version}; a plugin still on PMD 6 is a row, since the step runs PMD 7. {@code
+ * spotbugs-maven-plugin}: {@code spotbugs = true}, {@code <excludeFilterFile>} is {@code
+ * spotbugs-exclude}, {@code <effort>} is {@code spotbugs-effort}, {@code <threshold>} is {@code
+ * spotbugs-threshold}, {@code <plugins>} (fb-contrib, find-sec-bugs) are a row; {@code
+ * spotbugs:check} fails on any bug at the confidence threshold, so its threshold is {@code
+ * warning}, or {@code never} under {@code <failOnError>false</failOnError>}.
+ *
+ * <p>Each tool fails the Maven build on its own terms, and the table says the same: tools that
+ * agree share one {@code fail-on}, tools that differ each carry their {@code <tool>-fail-on}, and
+ * the default {@code error} is never written.
  *
  * <p>A lint plugin that binds no {@code <execution>} runs under Maven only by hand ({@code mvn
  * pmd:check}). A module declaring one in its own POM gets the table all the same — the tool is
@@ -90,21 +94,21 @@ final class LintPlugins {
         Plugin checkstyle = bound(em, CHECKSTYLE, "checkstyle:check", report, inherited);
         if (checkstyle != null) {
             any = true;
-            failOn.put("Checkstyle", checkstyle(checkstyle, baseDir, values, sources, report));
+            failOn.put("checkstyle", checkstyle(checkstyle, baseDir, values, sources, report));
         }
         Plugin pmd = bound(em, PMD, "pmd:check", report, inherited);
         if (pmd != null) {
             any = true;
-            failOn.put("PMD", pmd(pmd, baseDir, values, sources, report));
+            failOn.put("pmd", pmd(pmd, baseDir, values, sources, report));
         }
         Plugin spotbugs = bound(em, SPOTBUGS, "spotbugs:check", report, inherited);
         if (spotbugs != null) {
             any = true;
-            spotbugs(spotbugs, baseDir, values, sources, report);
+            failOn.put("spotbugs", spotbugs(spotbugs, baseDir, values, sources, report));
         }
         if (!any) return null;
         if (sources.size() > 1) values.put("sources", List.copyOf(sources));
-        failOn(failOn, values, report);
+        failOn(failOn, values);
         report.warning("the lint plugins are `[lint]`: each tool runs as a cached step after compile and its findings"
                 + " are diagnostics in jk-results.md with the rule id; `fail-on` says which severity fails the build.");
         return new PluginConfig("lint", values);
@@ -140,27 +144,20 @@ final class LintPlugins {
         return null;
     }
 
-    /** The severities {@code fail-on} takes, least strict first. */
-    private static final List<String> FAIL_ON = List.of("never", "error", "warning");
-
     /**
-     * One {@code fail-on} for the table: the stricter of the tools' thresholds, written when it is
-     * not the default {@code error}; a row when the tools disagree, since under Maven each fails on
-     * its own terms.
+     * The thresholds, keyed by tool id: one {@code fail-on} when every tool shares it, else each
+     * tool's own {@code <tool>-fail-on}; the default {@code error} is left unwritten either way.
      */
-    private static void failOn(Map<String, String> byTool, Map<String, Object> values, ImportReport.Builder report) {
+    private static void failOn(Map<String, String> byTool, Map<String, Object> values) {
         if (byTool.isEmpty()) return;
-        String strictest = byTool.values().stream()
-                .max(Comparator.comparingInt(FAIL_ON::indexOf))
-                .orElseThrow();
-        if (!strictest.equals("error")) values.put("fail-on", strictest);
-        if (byTool.values().stream().distinct().count() > 1) {
-            List<String> parts = new ArrayList<>();
-            byTool.forEach((tool, level) -> parts.add(tool + " fails the build on `" + level + "`"));
-            report.warning("under Maven " + String.join(" and ", parts)
-                    + "; `[lint]` has one threshold, so `fail-on = \"" + strictest
-                    + "\"` applies to every tool of the module — lower it, or drop a tool, to taste.");
+        if (byTool.values().stream().distinct().count() == 1) {
+            String shared = byTool.values().iterator().next();
+            if (!shared.equals("error")) values.put("fail-on", shared);
+            return;
         }
+        byTool.forEach((tool, level) -> {
+            if (!level.equals("error")) values.put(tool + "-fail-on", level);
+        });
     }
 
     /** Maps the plugin and returns the {@code fail-on} Checkstyle's {@code <violationSeverity>} means. */
@@ -312,14 +309,21 @@ final class LintPlugins {
         if (!version.equals(DEFAULT_PMD)) values.put("pmd-version", version);
     }
 
-    private static void spotbugs(
+    /**
+     * Maps the plugin and returns the threshold {@code spotbugs:check} applies: every bug at the
+     * confidence threshold fails the build ({@code warning}), none under {@code
+     * <failOnError>false</failOnError>} ({@code never}).
+     */
+    private static String spotbugs(
             Plugin plugin,
             @Nullable Path baseDir,
             Map<String, Object> values,
             Set<String> sources,
             ImportReport.Builder report) {
         values.put("spotbugs", true);
+        String failOn = "warning";
         for (Xpp3Dom dom : PluginFacts.configurations(plugin)) {
+            if (!EnvValues.parseBool(PluginFacts.child(dom, "failOnError")).orElse(true)) failOn = "never";
             String exclude = PluginFacts.child(dom, "excludeFilterFile");
             if (exclude != null) values.put("spotbugs-exclude", SourceTreePlugins.moduleRelativeFile(exclude, baseDir));
             String effort = PluginFacts.child(dom, "effort");
@@ -349,5 +353,6 @@ final class LintPlugins {
             String spotbugs = dots == 3 ? version.substring(0, version.lastIndexOf('.')) : version;
             if (!spotbugs.equals("4.10.4")) values.put("spotbugs-version", spotbugs);
         }
+        return failOn;
     }
 }

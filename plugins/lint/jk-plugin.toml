@@ -18,7 +18,11 @@ protocol-prefix = "##JKLINT:"
 sources        = { type = "string-list", default = ["src/main/java"], hint = "the module-relative Java source roots the Java tools read; add src/test/java to lint the tests too" }
 kotlin-sources = { type = "string-list", default = ["src/main/kotlin"], hint = "the module-relative Kotlin source roots detekt reads" }
 exclude        = { type = "string-list", default = [], example = "[\"**/generated/**\"]", hint = "module-relative Ant-style path globs Checkstyle and detekt leave out; PMD excludes through its ruleset, SpotBugs through spotbugs-exclude" }
-fail-on        = { type = "string", default = "error", hint = "the finding severity that fails the step: error (the default), warning, or never — findings render as diagnostics either way" }
+fail-on        = { type = "string", default = "error", hint = "the finding severity that fails a step: error (the default), warning, or never — findings render as diagnostics either way; a tool's own <tool>-fail-on takes precedence" }
+checkstyle-fail-on = { type = "string", example = "warning", hint = "Checkstyle's own threshold, in place of fail-on: error, warning or never" }
+pmd-fail-on    = { type = "string", example = "warning", hint = "PMD's own threshold, in place of fail-on: error, warning or never" }
+spotbugs-fail-on = { type = "string", example = "warning", hint = "SpotBugs's own threshold, in place of fail-on: error, warning or never" }
+detekt-fail-on = { type = "string", example = "warning", hint = "detekt's own threshold, in place of fail-on: error, warning or never" }
 checkstyle     = { type = "string", example = "config/checkstyle.xml", hint = "enable Checkstyle with this module-relative configuration file" }
 checkstyle-version = { type = "string", default = "14.1.0", hint = "the Checkstyle release; a bare version is exact" }
 pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category, rulesets/java/maven-pmd-plugin-default.xml (Maven's default, which jk carries) or a module-relative ruleset file" }

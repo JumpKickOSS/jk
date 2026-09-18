@@ -292,9 +292,10 @@ class PomLintImportTest {
         assertThat(noFailure.values()).containsEntry("fail-on", "never");
     }
 
-    /** Checkstyle fails on errors alone under Maven while PMD fails on every finding: one key, the stricter, and a row. */
+    /** Checkstyle fails on errors alone under Maven while PMD fails on every finding: each tool keeps its own threshold. */
     @Test
-    void tools_that_disagree_on_the_threshold_get_the_stricter_one_and_a_row(@TempDir Path tempDir) throws Exception {
+    void tools_that_disagree_on_the_threshold_each_get_their_own_key_and_no_row(@TempDir Path tempDir)
+            throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -312,17 +313,24 @@ class PomLintImportTest {
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-pmd-plugin</artifactId>
                       </plugin>
+                      <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                        <configuration><failOnError>false</failOnError></configuration>
+                      </plugin>
                     </plugins>
                   </build>
                 </project>
                 """);
 
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
-        assertThat(lint.values()).containsEntry("fail-on", "warning");
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("Checkstyle fails the build on `error`")
-                .contains("PMD fails the build on `warning`")
-                .contains("`fail-on = \"warning\"`"));
+        assertThat(lint.values())
+                .as("Checkstyle's error-only threshold is the default and needs no key")
+                .doesNotContainKey("fail-on")
+                .doesNotContainKey("checkstyle-fail-on")
+                .containsEntry("pmd-fail-on", "warning")
+                .containsEntry("spotbugs-fail-on", "never");
+        assertThat(messages(result)).noneMatch(m -> m.contains("has one threshold"));
     }
 
     /** The PMD a POM runs is the plugin's bundled one, or the pmd-java the plugin's own dependencies pin. */
@@ -369,7 +377,11 @@ class PomLintImportTest {
                 """);
 
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
-        assertThat(lint.values()).containsEntry("spotbugs-threshold", "low").doesNotContainKey("spotbugs-version");
+        assertThat(lint.values())
+                .containsEntry("spotbugs-threshold", "low")
+                .as("spotbugs:check fails on any bug at the confidence threshold")
+                .containsEntry("fail-on", "warning")
+                .doesNotContainKey("spotbugs-version");
     }
 
     private static PluginConfig pmdOnly(Path dir, String configuration) throws Exception {
