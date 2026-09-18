@@ -3,6 +3,7 @@ package cc.jumpkick.java.compiler;
 
 import com.sun.source.util.JavacTask;
 import java.io.IOException;
+import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.net.URLClassLoader;
 import java.nio.charset.Charset;
@@ -13,6 +14,7 @@ import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
@@ -117,14 +119,18 @@ final class ProvenanceJavac implements JavaCompiler {
             }
             FileOps fileOps = FileOps.open();
             Iterable<? extends JavaFileObject> units = fileOps.wrapUnits(fm.getJavaFileObjectsFromPaths(srcPaths));
+            // javac's own writer: what a plugin or javac itself prints rather than reports lands
+            // here, and a compile that fails without a diagnostic is explained by it.
+            StringWriter written = new StringWriter();
             JavacTask task =
-                    (JavacTask) javac.getTask(null, fileOps.wrap(fm), diags, Arrays.asList(options), null, units);
+                    (JavacTask) javac.getTask(written, fileOps.wrap(fm), diags, Arrays.asList(options), null, units);
             if (loader != null) {
                 task.setProcessors(provenance.wrap(ZincJavaCompiler.freshProcessors(loader)));
             }
             if (constants != null) constants.listen(task);
             boolean ok = task.call();
             fileOps.write(classOut);
+            if (!ok) explainFailure(diags, written.toString());
             if (keyed != null) {
                 diags.drainTo(keyed::report);
                 return ok && !keyed.hasErrors();
@@ -134,6 +140,28 @@ final class ProvenanceJavac implements JavaCompiler {
             return ok && !bridge.hasErrors();
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /** What a failed compile that reported no diagnostic and wrote no text has to say. */
+    static final String SILENT_FAILURE = "javac reported failure without a diagnostic and wrote nothing; "
+            + "a javac plugin or annotation processor may have failed to start";
+
+    /** The lead of the diagnostic made from javac's own output when it reported no error. */
+    static final String TEXT_FAILURE = "javac reported failure without a diagnostic; it wrote:\n";
+
+    /**
+     * A compile javac judged failed gets a diagnostic saying why: the text javac wrote to its output
+     * writer when no error was reported, as the error; when errors were reported, that text as a
+     * note beside them, since a crashing plugin prints its report there.
+     */
+    static void explainFailure(CollectedDiagnostics diags, String written) {
+        String text = written.strip();
+        if (!diags.hasErrors()) {
+            diags.report(
+                    new TextDiagnostic(Diagnostic.Kind.ERROR, text.isEmpty() ? SILENT_FAILURE : TEXT_FAILURE + text));
+        } else if (!text.isEmpty()) {
+            diags.report(new TextDiagnostic(Diagnostic.Kind.NOTE, text));
         }
     }
 

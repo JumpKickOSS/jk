@@ -335,7 +335,11 @@ that member holds excluded, listed under its `excluded-by`, so the member's clas
 reaches them where every other member's does. A member listed on no row of a coordinate reads the plain one; a coordinate only a member's
 own graph reaches has only its `members` row. A member's row is written with the member's own
 scopes, so a version the workspace holds only as a test row and a member wants on its main
-classpath is a `members` row with `scopes = ["main"]`. `jk lock` keeps the versions such a row holds like
+classpath is a `members` row with `scopes = ["main"]`, and it replaces the plain rows of its own
+classpath family alone — main, runtime and test are one family, since the test classpath carries
+the main rows — while a plain row of the same coordinate on the annotation processor path, a graph
+of its own — the Guava an Error Prone processor path reads beside a main classpath a member pins to
+another Guava — is still the member's to read. `jk lock` keeps the versions such a row holds like
 any other's, and says once per member which coordinates it reads its own rows for, with its version
 and the workspace's. `jk why` shows both versions with their members; every tool that reads one
 module's rows — the build, `jk run`, packaging and its SBOM, `jk native` training, a plugin's
