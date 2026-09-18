@@ -38,6 +38,35 @@ public final class DefaultGraalPolicy {
         return vendor == JdkVendor.ORACLE_GRAALVM || vendor == JdkVendor.GRAALVM_CE;
     }
 
+    /**
+     * The Graal among {@code installed} that can build for {@code javaRelease}: the LOWEST major at
+     * or above it, Oracle before CE, newest within a flavour. Empty when none reaches the floor,
+     * and the whole set when {@code javaRelease} is 0 (nothing declared, so nothing to clear).
+     *
+     * <p>A floor and not an equality. A module targeting Java 21 is served perfectly well by a
+     * GraalVM 25 — {@code --release 21} is what the compiler is for — and downloading a second
+     * GraalVM to match the number exactly would be a few hundred megabytes spent to no effect. The
+     * lowest qualifying major wins rather than the newest, so a workspace does not drift onto a
+     * toolchain no module asked for.
+     */
+    public static Optional<JdkHit> choose(List<JdkHit> installed, int javaRelease) {
+        if (installed == null || installed.isEmpty()) return Optional.empty();
+        return installed.stream()
+                .filter(DefaultGraalPolicy::isGraal)
+                .filter(h -> clearsFloor(h, javaRelease))
+                .min(Comparator.comparingInt((JdkHit h) -> {
+                            Integer major = JdkKeywords.leadingMajor(h.version());
+                            return major == null ? Integer.MAX_VALUE : major;
+                        })
+                        .thenComparing(byPreference()));
+    }
+
+    private static boolean clearsFloor(JdkHit hit, int javaRelease) {
+        if (javaRelease <= 0) return true;
+        Integer major = JdkKeywords.leadingMajor(hit.version());
+        return major != null && major >= javaRelease;
+    }
+
     /** Oracle GraalVM before GraalVM CE; newer version first within a flavour. */
     public static Comparator<JdkHit> byPreference() {
         return Comparator.comparingInt((JdkHit h) -> {

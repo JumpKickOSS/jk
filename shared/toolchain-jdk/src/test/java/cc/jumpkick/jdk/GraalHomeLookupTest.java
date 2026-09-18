@@ -85,6 +85,43 @@ class GraalHomeLookupTest {
     }
 
     @Test
+    void a_flavour_with_a_release_floor_takes_the_lowest_graal_that_can_build_it(@TempDir Path tmp)
+            throws IOException {
+        // What a module linking a native image and pinning no `graal` resolves with: the bare
+        // flavour, which matches any major. Its `java` says which majors can actually build it.
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        Path g21 = jdks.resolve("graalvm-21.0.5");
+        makeGraalvmInstall(g21, "21.0.5");
+        Path g25 = jdks.resolve("graalvm-25.0.4");
+        makeGraalvmInstall(g25, "25.0.4");
+
+        assertThat(GraalHomeLookup.bySpecAtLeast(new JdkRegistry(jdks), "graalvm", 25))
+                .as("a 21 cannot build a module targeting 25, however well the flavour matches")
+                .contains(g25);
+        assertThat(GraalHomeLookup.bySpecAtLeast(new JdkRegistry(jdks), "graalvm", 21))
+                .as("and a 21 is not replaced by a download just because a 25 exists")
+                .contains(g21);
+        assertThat(GraalHomeLookup.bySpecAtLeast(new JdkRegistry(jdks), "graalvm", 26))
+                .as("nothing installed clears the floor, so the caller installs")
+                .isEmpty();
+        assertThat(GraalHomeLookup.bySpecAtLeast(new JdkRegistry(jdks), "graalvm", 0))
+                .as("no declared release is no floor")
+                .isPresent();
+    }
+
+    @Test
+    void a_release_floor_does_not_reach_across_flavours(@TempDir Path tmp) throws IOException {
+        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
+        makeGraalvmInstall(jdks.resolve("graalvm-25.0.4"), "25.0.4");
+        Path plain = jdks.resolve("temurin-25.0.4");
+        makeJdkInstall(plain, "25.0.4");
+
+        assertThat(GraalHomeLookup.bySpecAtLeast(new JdkRegistry(jdks), "temurin", 21))
+                .as("a Temurin clears the floor and is still not a GraalVM")
+                .isEmpty();
+    }
+
+    @Test
     void a_named_install_that_carries_its_own_launcher_answers(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path graal = jdks.resolve("graalvm-25.0.4");

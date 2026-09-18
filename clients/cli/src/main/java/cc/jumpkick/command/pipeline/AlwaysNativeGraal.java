@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.BiFunction;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -27,8 +26,17 @@ final class AlwaysNativeGraal {
 
     private AlwaysNativeGraal() {}
 
-    /** A module whose build links a native image, with its {@code [native] graal} spec. */
-    record Module(Path dir, String graalSpec) {}
+    /**
+     * A module whose build links a native image, with its {@code [native] graal} spec and the
+     * {@code java} release it targets.
+     *
+     * <p>The release is the floor the GraalVM has to clear. Without it the spec a module that
+     * pins no {@code graal} resolves with is the bare flavour {@code "graalvm"}, which matches any
+     * installed major — so a module targeting Java 25 was satisfied by an installed GraalVM 21,
+     * and when nothing was installed the newest GraalVM was downloaded whatever the module asked
+     * for. {@code 0} means the manifest declares none, and then nothing is constrained.
+     */
+    record Module(Path dir, String graalSpec, int javaRelease) {}
 
     /** The spec {@code JkBuild.graal()} answers when a native module pins none. */
     static final String DEFAULT_SPEC = "graalvm";
@@ -74,15 +82,23 @@ final class AlwaysNativeGraal {
         return List.copyOf(out);
     }
 
+    /** {@code GraalResolver::resolve} — a module's directory, its spec, and the release it targets. */
+    @FunctionalInterface
+    interface Resolve {
+        Optional<Path> apply(Path dir, @Nullable String spec, int javaRelease);
+    }
+
     /** {@code dir} as an always-native module, or null when its build links no native image. */
     static @Nullable Module fromManifest(Path dir) {
-        TomlScan scan =
-                TomlScan.scan(ManifestPaths.manifestIn(dir), "application.native", "native.enabled", "native.graal");
+        TomlScan scan = TomlScan.scan(
+                ManifestPaths.manifestIn(dir), "application.native", "native.enabled", "native.graal", "java");
         boolean always = EnvValues.parseBool(scan.get("application.native")).orElse(false)
                 || "always".equalsIgnoreCase(scan.get("native.enabled"));
         if (!always) return null;
         String spec = scan.get("native.graal");
-        return new Module(dir, spec == null || spec.isBlank() ? DEFAULT_SPEC : spec);
+        // The module's own `java`, not the workspace root's inherited one: this is the bootstrap
+        // read, and a member that declares none is left unconstrained rather than guessed at.
+        return new Module(dir, spec == null || spec.isBlank() ? DEFAULT_SPEC : spec, scan.getInt("java", 0));
     }
 
     /**
@@ -90,10 +106,10 @@ final class AlwaysNativeGraal {
      * {@code GraalResolver}) has already printed why, and a build that would fail at its native tail
      * minutes later stops here instead. Homes are keyed by the module dir the engine plans.
      */
-    static Optional<Map<Path, Path>> homes(List<Module> modules, BiFunction<Path, String, Optional<Path>> resolve) {
+    static Optional<Map<Path, Path>> homes(List<Module> modules, Resolve resolve) {
         Map<Path, Path> out = new LinkedHashMap<>();
         for (Module m : modules) {
-            Optional<Path> home = resolve.apply(m.dir(), m.graalSpec());
+            Optional<Path> home = resolve.apply(m.dir(), m.graalSpec(), m.javaRelease());
             if (home.isEmpty()) return Optional.empty();
             out.put(m.dir(), home.get());
         }
