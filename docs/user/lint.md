@@ -24,6 +24,7 @@ detekt     = true                                               # detekt over th
 | `fail-on` | The finding severity that fails a step: `error`, `warning`, or `never`. Findings render as diagnostics either way | `"error"` |
 | `checkstyle-fail-on`, `pmd-fail-on`, `spotbugs-fail-on`, `detekt-fail-on` | One tool's own threshold, taking precedence over `fail-on` for that tool — Maven's plugins each fail on their own terms (Checkstyle on errors, PMD and SpotBugs on every finding), and `jk import` writes these when the tools of a module differ | `fail-on` |
 | `checkstyle` | Enable Checkstyle with this configuration file — a module-relative path, or the rule set at an `https://` URL, fetched once into the store and read from there on every build after | off |
+| `checkstyle-suppressions` | A suppressions file — module-relative, or at an `https://` URL — handed to the rule set the way Maven's `<suppressionsLocation>` is: as the `checkstyle.suppressions.file` property a `SuppressionFilter` reads (`<property name="file" value="${checkstyle.suppressions.file}"/>`) | none |
 | `checkstyle-version` | The Checkstyle release; a bare version is exact | `"14.1.0"` |
 | `pmd` | Enable PMD with these rulesets: a built-in `category/java/…` or `rulesets/java/…`, `rulesets/java/maven-pmd-plugin-default.xml` (Maven's default, which jk carries), or a module-relative ruleset file | off |
 | `pmd-exclude` | A module-relative file in `maven-pmd-plugin`'s `excludeFromFailureFile` shape — `package.Class=Rule,Rule` per line — whose findings are left out of the report | none |
@@ -74,7 +75,10 @@ The files are yours and live in the module: jk ships no house rule set. A Checks
 may instead be the one a build shares from a URL (`checkstyle = "https://raw.githubusercontent.com/…/checkstyle.xml"`,
 the shape `jk import` keeps from a POM's `<configLocation>`): the engine fetches it once into
 the store — `--offline` with no copy yet fails naming the URL — and its content is part of the
-step's cache key, so the file is re-read, never re-fetched, until the URL changes. A PMD ruleset is either
+step's cache key, so the file is re-read, never re-fetched, until the URL changes. A rule set
+whose `SuppressionFilter` reads `${checkstyle.suppressions.file}` — the property
+`maven-checkstyle-plugin` binds `<suppressionsLocation>` to — gets it from
+`checkstyle-suppressions`, through Checkstyle's own `-p` properties file. A PMD ruleset is either
 one of PMD's built-in categories (`category/java/bestpractices.xml`, `rulesets/java/quickstart.xml`),
 `rulesets/java/maven-pmd-plugin-default.xml` — the ruleset `maven-pmd-plugin` runs when a POM names
 none, which PMD itself does not ship and jk carries so an imported build lints as Maven did — or a

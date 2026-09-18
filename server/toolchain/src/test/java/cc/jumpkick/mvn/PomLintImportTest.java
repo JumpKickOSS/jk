@@ -10,6 +10,7 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -109,16 +110,22 @@ class PomLintImportTest {
         assertThat(messages(result)).noneMatch(m -> m.contains("copy the rule set in"));
     }
 
-    /** jenkins's shape: the rule set is named through a property only the Maven launcher sets. */
+    /**
+     * jenkins's shape: the rule set and its suppressions are named through {@code
+     * ${maven.multiModuleProjectDirectory}}, the launcher property that is the reactor root — so
+     * the module's keys are the paths from the module to the root's files, whether the module is
+     * imported with its workspace or on its own.
+     */
     @Test
-    void a_checkstyle_rule_set_named_through_a_launcher_property_is_a_row_and_the_key_keeps_the_spelling(
-            @TempDir Path tempDir) throws Exception {
-        PomImporter.Result result = TestImporters.importXml(tempDir, """
+    void the_launcher_property_for_the_reactor_root_resolves_to_the_root(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve("pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>org.jenkins-ci.main</groupId>
-                  <artifactId>websocket-spi</artifactId>
+                  <artifactId>jenkins-parent</artifactId>
                   <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <modules><module>websocket/spi</module></modules>
                   <build>
                     <plugins>
                       <plugin>
@@ -126,22 +133,48 @@ class PomLintImportTest {
                         <artifactId>maven-checkstyle-plugin</artifactId>
                         <configuration>
                           <configLocation>${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-configuration.xml</configLocation>
+                          <suppressionsLocation>${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-suppressions.xml</suppressionsLocation>
                         </configuration>
+                        <executions><execution><goals><goal>check</goal></goals></execution></executions>
                       </plugin>
                     </plugins>
                   </build>
                 </project>
                 """);
+        Files.createDirectories(root.resolve("src/checkstyle"));
+        Files.writeString(root.resolve("src/checkstyle/checkstyle-configuration.xml"), "<module name=\"Checker\"/>");
+        Files.writeString(root.resolve("src/checkstyle/checkstyle-suppressions.xml"), "<suppressions/>");
+        Path spi = Files.createDirectories(root.resolve("websocket/spi"));
+        Files.writeString(spi.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>org.jenkins-ci.main</groupId>
+                    <artifactId>jenkins-parent</artifactId>
+                    <version>1.0</version>
+                    <relativePath>../../pom.xml</relativePath>
+                  </parent>
+                  <artifactId>websocket-spi</artifactId>
+                </project>
+                """);
 
-        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
-        assertThat(lint.values())
-                .containsEntry(
-                        "checkstyle",
-                        "${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-configuration.xml");
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("`${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-configuration.xml`")
-                .contains("a property no POM defines")
-                .contains("copy the rule set in"));
+        PomImporter.WorkspaceImportResult workspace =
+                TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+        PluginConfig member = Objects.requireNonNull(workspace.modules().get("websocket/spi"))
+                .pluginConfig("lint")
+                .orElseThrow();
+        assertThat(member.values())
+                .containsEntry("checkstyle", "../../src/checkstyle/checkstyle-configuration.xml")
+                .containsEntry("checkstyle-suppressions", "../../src/checkstyle/checkstyle-suppressions.xml");
+        assertThat(workspace.report().issues())
+                .noneMatch(i -> i.message().contains("a property no POM defines"))
+                .noneMatch(i -> i.message().contains("copy the rule set in"));
+
+        PomImporter.Result alone = TestImporters.offline(root.resolve("alone")).importFrom(spi.resolve("pom.xml"));
+        assertThat(alone.jkBuild().pluginConfig("lint").orElseThrow().values())
+                .as("imported on its own, the module still finds the reactor root above it")
+                .containsEntry("checkstyle", "../../src/checkstyle/checkstyle-configuration.xml")
+                .containsEntry("checkstyle-suppressions", "../../src/checkstyle/checkstyle-suppressions.xml");
     }
 
     /** TheAlgorithms-Java's shape: all three plugins, Checkstyle at warning severity over the tests too. */

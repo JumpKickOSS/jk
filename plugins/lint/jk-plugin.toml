@@ -24,6 +24,7 @@ pmd-fail-on    = { type = "string", example = "warning", hint = "PMD's own thres
 spotbugs-fail-on = { type = "string", example = "warning", hint = "SpotBugs's own threshold, in place of fail-on: error, warning or never" }
 detekt-fail-on = { type = "string", example = "warning", hint = "detekt's own threshold, in place of fail-on: error, warning or never" }
 checkstyle     = { type = "string", example = "config/checkstyle.xml", hint = "enable Checkstyle with this module-relative configuration file, or with the rule set at an http(s) URL, fetched once into the store" }
+checkstyle-suppressions = { type = "string", example = "config/checkstyle-suppressions.xml", hint = "a module-relative suppressions file, or one at an http(s) URL, handed to the rule set as Maven does: the checkstyle.suppressions.file property a SuppressionFilter reads" }
 checkstyle-version = { type = "string", default = "14.1.0", hint = "the Checkstyle release; a bare version is exact" }
 pmd            = { type = "string-list", default = [], example = "[\"category/java/bestpractices.xml\", \"config/pmd.xml\"]", hint = "enable PMD with these rulesets: a built-in category, rulesets/java/maven-pmd-plugin-default.xml (Maven's default, which jk carries) or a module-relative ruleset file" }
 pmd-exclude    = { type = "string", example = "pmd-exclude.properties", hint = "a module-relative file in maven-pmd-plugin's excludeFromFailureFile shape — package.Class=Rule,Rule per line — whose findings are left out of the report" }
@@ -50,6 +51,11 @@ for-step   = "lint-checkstyle"
 [[contribute.step-dependency]]
 artifact   = "checkstyle-config"
 url        = "${config.checkstyle}"
+for-step   = "lint-checkstyle"
+
+[[contribute.step-dependency]]
+artifact   = "checkstyle-suppressions"
+url        = "${config.checkstyle-suppressions}"
 for-step   = "lint-checkstyle"
 
 [[contribute.step-dependency]]
