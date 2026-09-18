@@ -494,12 +494,15 @@ public final class PluginDescriptors {
             String coordinate = t.getString("coordinate");
             String sdkComponent = t.getString("sdk-component");
             String sdkPath = t.getString("sdk-path");
-            if ((coordinate == null) == (sdkComponent == null)) {
-                throw new JkBuildParseException(where + " needs exactly one of `coordinate` (a Maven artifact) or"
-                        + " `sdk-component` (a provisioned SDK component)");
+            String url = t.getString("url");
+            int kinds = (coordinate == null ? 0 : 1) + (sdkComponent == null ? 0 : 1) + (url == null ? 0 : 1);
+            if (kinds != 1) {
+                throw new JkBuildParseException(where + " needs exactly one of `coordinate` (a Maven artifact),"
+                        + " `sdk-component` (a provisioned SDK component) or `url` (a file at an http(s) URL)");
             }
             if (coordinate != null) Interpolation.validate(coordinate, schemaKeys, entryKeys, where);
             if (sdkComponent != null) Interpolation.validate(sdkComponent, schemaKeys, where);
+            if (url != null) Interpolation.validate(url, schemaKeys, entryKeys, where + ".url");
             if (sdkPath != null && sdkComponent == null) {
                 throw new JkBuildParseException(where + ": sdk-path only applies to an sdk-component entry");
             }
@@ -546,7 +549,8 @@ public final class PluginDescriptors {
                     with,
                     forSteps,
                     perEntry,
-                    when));
+                    when,
+                    url));
         }
         return deps;
     }

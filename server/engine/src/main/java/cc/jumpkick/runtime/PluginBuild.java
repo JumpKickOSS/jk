@@ -312,6 +312,10 @@ public final class PluginBuild {
                             SdkComponents.resolve(dep.sdkComponent(), dep.sdkPath(), sdkPins.get(dep.sdkComponent())));
                     continue;
                 }
+                if (dep.url() != null) {
+                    out.put(dep.artifact(), UrlTools.fetch(dep.url(), cas));
+                    continue;
+                }
                 if (repos == null) repos = RepoGroupBuilder.buildFor(project, null, cas);
                 if (dep.transitive()) {
                     out.put(dep.artifact(), ToolClosures.materialize(dep, repos, cas));

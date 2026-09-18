@@ -20,8 +20,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The lint plugins are one {@code [lint]} table. {@code maven-checkstyle-plugin}: {@code
- * <configLocation>} is {@code checkstyle} (a built-in {@code sun_checks.xml} / {@code
- * google_checks.xml} is a row, since the preset reads a file in the module), the Checkstyle
+ * <configLocation>} is {@code checkstyle} — a URL as written, which the step fetches; a built-in
+ * {@code sun_checks.xml} / {@code google_checks.xml} is a row, since the key reads a file in the
+ * module — the Checkstyle
  * version the plugin's own {@code <dependencies>} pin is {@code checkstyle-version}, {@code
  * <includeTestSourceDirectory>} adds {@code src/test/java} to {@code sources}, a {@code
  * <violationSeverity>} of {@code warning} is {@code fail-on = "warning"}. {@code maven-pmd-plugin}:
@@ -192,20 +193,19 @@ final class LintPlugins {
                 if (!globs.isEmpty()) values.put("exclude", globs);
             }
         }
-        // A rule set the module does not hold is written as the POM spelled it, so the step's
-        // warning names it; the step runs nothing until the file is there.
+        // A rule set at a URL is the key as written: the step fetches it. One the module does not
+        // hold is written as the POM spelled it, so the step's warning names it; the step runs
+        // nothing until the file is there.
         boolean url = config != null && (config.startsWith("http://") || config.startsWith("https://"));
         boolean property = config != null && config.contains("${");
         boolean builtIn = config != null && (config.endsWith("sun_checks.xml") || config.endsWith("google_checks.xml"));
-        if (config == null || url || property || builtIn) {
+        if (url) {
+            values.put("checkstyle", config);
+        } else if (config == null || property || builtIn) {
             String named = config == null ? "sun_checks.xml" : config;
             report.warning("`" + CHECKSTYLE + "` reads "
                     + (config == null ? "Checkstyle's default rule set" : "`" + config + "`")
-                    + (url
-                            ? ", a rule set at a URL"
-                            : property
-                                    ? ", a path through a property no POM defines"
-                                    : ", a rule set inside the plugin")
+                    + (property ? ", a path through a property no POM defines" : ", a rule set inside the plugin")
                     + "; `[lint] checkstyle` names a configuration file in the module,"
                     + " so copy the rule set in and point the key at it — until then the step lints nothing"
                     + " and says so.");

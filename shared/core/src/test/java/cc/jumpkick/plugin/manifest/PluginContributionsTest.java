@@ -346,6 +346,73 @@ class PluginContributionsTest {
         assertThat(commandDeps.getFirst().sdkPath()).isEqualTo("platform-tools/adb");
     }
 
+    /** A tool at a URL is declared for an http(s) value alone: a module file, or a key left unset, names no tool. */
+    @Test
+    void a_url_step_dependency_is_declared_for_an_http_value_alone() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id = "urltool-fixture"
+                table = "urltool-fixture"
+
+                [schema]
+                rules = { type = "string" }
+
+                [[contribute.step-dependency]]
+                artifact = "rules-file"
+                url = "${config.rules}"
+                for-step = "lint"
+                """, "urltool-fixture.toml");
+        PluginTableRegistry.putBuiltIn(manifest, null);
+        String base = """
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                jdk = "25"
+
+                [urltool-fixture]
+                """;
+
+        var remote = PluginContributions.stepDependencies(
+                JkBuildParser.parse(base + "rules = \"https://example.com/build/rules.xml\"\n"), null, Map.of());
+        assertThat(remote).singleElement().satisfies(dep -> {
+            assertThat(dep.artifact()).isEqualTo("rules-file");
+            assertThat(dep.url()).isEqualTo("https://example.com/build/rules.xml");
+            assertThat(dep.coordinateSpec()).isNull();
+            assertThat(dep.forSteps()).containsExactly("lint");
+        });
+        assertThat(PluginContributions.stepDependencies(
+                        JkBuildParser.parse(base + "rules = \"config/rules.xml\"\n"), null, Map.of()))
+                .as("a module file is the step's own input, not a fetched tool")
+                .isEmpty();
+        assertThat(PluginContributions.stepDependencies(JkBuildParser.parse(base), null, Map.of()))
+                .as("a key left unset declares no tool instead of failing the interpolation")
+                .isEmpty();
+    }
+
+    @Test
+    void a_url_entry_excludes_the_coordinate_fields() {
+        String base = """
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.step-dependency]]
+                artifact = "x"
+                %s
+                """;
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("url = \"https://example.com/x\"\ncoordinate = \"a:b:1\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("needs exactly one of");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("url = \"https://example.com/x\"\ntransitive = true"), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("transitive only applies to a coordinate entry");
+        assertThatThrownBy(() -> PluginDescriptors.parse(base.formatted("url = \"${config.nope}\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("declares no `nope`");
+    }
+
     // ---- manifest-load validation --------------------------------------------------------------
 
     @Test

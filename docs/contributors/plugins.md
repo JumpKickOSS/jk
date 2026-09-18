@@ -167,7 +167,16 @@ for-step   = "android-res"            # that reads it: the named step(s)/package
 artifact      = "adb"                 # shape and rules, but provisioned when the command runs
 sdk-component = "platform-tools"      # and part of no action key: upgrading it invalidates
 sdk-path      = "adb"                 # nothing
+
+[[contribute.step-dependency]]        # a file at a URL in place of a coordinate — fetched once
+artifact   = "checkstyle-config"      # into <store>/tools/url/<sha256 of the URL>/, keyed by
+url        = "${config.checkstyle}"   # content like any tool; declared only when the value is
+for-step   = "lint-checkstyle"        # an http(s) URL (a module path, or an unset key, is no tool)
 ```
+
+An entry names exactly one of `coordinate`, `sdk-component` or `url`; `transitive`, `with` and
+`managed-by` belong to a coordinate. A `url` value is the file's identity: a cached copy is never
+fetched again, and an `--offline` build with no copy fails naming the URL.
 
 A tool both lanes need is declared once, as a `step-dependency` — commands receive both lanes,
 so one artifact may not sit in both (parse error). `[[contribute.provided-classpath]]` resolves

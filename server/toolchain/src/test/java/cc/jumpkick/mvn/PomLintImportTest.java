@@ -83,9 +83,9 @@ class PomLintImportTest {
                 .containsEntry("spotbugs-exclude", "../style/spotbugs-exclude.xml");
     }
 
-    /** spring-cloud-alibaba's shape: the rule set is a URL, which no module-relative path can name. */
+    /** spring-cloud-alibaba's shape: the rule set is a URL, which the step fetches and runs as it is. */
     @Test
-    void a_checkstyle_rule_set_at_a_url_is_a_row_and_the_key_names_the_url(@TempDir Path tempDir) throws Exception {
+    void a_checkstyle_rule_set_at_a_url_is_the_key_and_no_row(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -105,12 +105,8 @@ class PomLintImportTest {
                 """);
 
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
-        assertThat(lint.values())
-                .as("the key says what the POM said, so the step's warning names the rule set")
-                .containsEntry("checkstyle", "https://example.com/build-tools/nohttp-checkstyle.xml");
-        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
-                .contains("https://example.com/build-tools/nohttp-checkstyle.xml")
-                .contains("copy the rule set in"));
+        assertThat(lint.values()).containsEntry("checkstyle", "https://example.com/build-tools/nohttp-checkstyle.xml");
+        assertThat(messages(result)).noneMatch(m -> m.contains("copy the rule set in"));
     }
 
     /** jenkins's shape: the rule set is named through a property only the Maven launcher sets. */

@@ -122,8 +122,11 @@ final class LintStep {
         List<String> args = new ArrayList<>();
         switch (tool) {
             case CHECKSTYLE -> {
-                args.addAll(List.of(
-                        "-c", module.resolve(config.string("checkstyle")).toString()));
+                String configured = config.string("checkstyle");
+                Path ruleSet = LintPlugin.isUrl(configured)
+                        ? exec.requireExtra("checkstyle-config")
+                        : module.resolve(configured);
+                args.addAll(List.of("-c", ruleSet.toString()));
                 args.addAll(List.of("-f", "xml", "-o", report.toString()));
                 for (String glob : config.stringList("exclude")) args.addAll(List.of("-x", excludeRegex(glob)));
                 for (Path root : roots) args.add(root.toString());
@@ -264,13 +267,13 @@ final class LintStep {
 
     /**
      * The configured file {@code tool} cannot run without when the module does not hold it — the
-     * path {@code jk import} writes for a rule set it could not carry — or null when it is there
-     * or the tool needs none.
+     * path {@code jk import} writes for a rule set it could not carry — or null when it is there,
+     * the tool needs none, or the engine fetched it from a URL.
      */
     static @Nullable String missingConfiguration(LintTool tool, Path module, PluginConfig config) {
         Optional<String> configured =
                 switch (tool) {
-                    case CHECKSTYLE -> config.stringOpt("checkstyle");
+                    case CHECKSTYLE -> config.stringOpt("checkstyle").filter(c -> !LintPlugin.isUrl(c));
                     case DETEKT -> config.stringOpt("detekt-config");
                     case PMD, SPOTBUGS -> Optional.empty();
                 };

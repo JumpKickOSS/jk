@@ -170,6 +170,22 @@ class LintStepTest {
         assertThat(tmp.resolve("scratch/lint/checkstyle/checkstyle.xml")).isEmptyFile();
     }
 
+    /** A rule set at a URL reaches the step as the engine-fetched {@code checkstyle-config} extra, not a module file. */
+    @Test
+    void a_rule_set_at_a_url_is_read_from_the_fetched_extra(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = lintModule(tmp, "warning", SOURCE)
+                .config("checkstyle", "https://example.com/build/checks.xml")
+                .extra(
+                        "checkstyle-config",
+                        FakeBuildIo.write(tmp.resolve("fetched/checks.xml"), CONFIG.formatted("warning")));
+        Files.delete(tmp.resolve("checkstyle.xml"));
+
+        LintStep.run(io, LintTool.CHECKSTYLE);
+
+        assertThat(io.diagnostics()).singleElement().asString().contains("[MagicNumber]");
+        assertThat(io.labels()).containsExactly("checkstyle (1 root)");
+    }
+
     /** SpotBugs runs over the compiled classes; a high-priority pattern is an error that fails the step. */
     @Test
     void spotbugs_reports_a_pattern_against_the_classes_and_a_high_priority_one_fails_the_step(@TempDir Path tmp)

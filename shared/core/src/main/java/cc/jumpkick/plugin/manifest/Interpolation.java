@@ -96,6 +96,22 @@ public final class Interpolation {
         return true;
     }
 
+    /**
+     * True when every {@code ${config.<key>}} the template names has a value in {@code config} —
+     * false for a declaration over an optional key the table leaves unset, which then declares
+     * nothing instead of failing the build.
+     */
+    static boolean configProvides(String template, PluginConfig config) {
+        Matcher m = VAR.matcher(template);
+        while (m.find()) {
+            String var = m.group(1);
+            if (var.startsWith("config.") && config.values().get(var.substring("config.".length())) == null) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Host OS classifier: {@code linux} / {@code osx} / {@code windows}. */
     static String hostOs() {
         if (Os.isDarwin()) return "osx";
