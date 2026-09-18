@@ -111,6 +111,73 @@ class PomNestedReactorImportTest {
                 .anyMatch(m -> m.startsWith("workspace module `missing` has no pom.xml"));
     }
 
+    /**
+     * A profile activated by name — {@code jk import -P}, as Maven's {@code -P} — contributes its
+     * modules whether or not the POM would activate it here: Baeldung's tutorials list every module
+     * under profiles with no activation at all, so its reactor imports through {@code -P default}.
+     */
+    @Test
+    void a_profile_activated_by_name_contributes_its_modules(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("root"));
+        write(root, "pom.xml", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0.0</version>
+                  <packaging>pom</packaging>
+                  <profiles>
+                    <profile>
+                      <id>default</id>
+                      <modules>
+                        <module>app</module>
+                      </modules>
+                    </profile>
+                    <profile>
+                      <id>default-heavy</id>
+                      <modules>
+                        <module>heavy</module>
+                      </modules>
+                    </profile>
+                    <profile>
+                      <id>legacy</id>
+                      <activation><jdk>1.8</jdk></activation>
+                      <modules>
+                        <module>legacy</module>
+                      </modules>
+                    </profile>
+                  </profiles>
+                </project>
+                """);
+        write(root, "app/pom.xml", leaf("app", "../pom.xml", "parent"));
+        write(root, "heavy/pom.xml", leaf("heavy", "../pom.xml", "parent"));
+        write(root, "legacy/pom.xml", leaf("legacy", "../pom.xml", "parent"));
+
+        PomImporter.WorkspaceImportResult plain = TestImporters.offline(tmp).importWorkspace(root.resolve("pom.xml"));
+        assertThat(requireNonNull(plain.root().workspace()).modules())
+                .as("no profile activates itself: nothing to build")
+                .isEmpty();
+        assertThat(plain.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(m -> assertThat(m)
+                        .startsWith("`<modules>` are declared only in profiles that are not active on this machine"
+                                + " (default, default-heavy, legacy)")
+                        .contains("`jk import pom.xml -P default`"));
+
+        PomImporter.WorkspaceImportResult activated = TestImporters.offline(tmp)
+                .activeProfiles(List.of("default", "default-heavy", "nowhere"))
+                .importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(requireNonNull(activated.root().workspace()).modules())
+                .as("the named profiles' modules, in profile order; the JDK-gated one stays out")
+                .containsExactly("app", "heavy");
+        assertThat(activated.modules().keySet()).containsExactlyInAnyOrder("app", "heavy");
+        assertThat(activated.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(m -> assertThat(m).startsWith("`-P nowhere` names a profile the root POM does not declare"))
+                .noneMatch(m -> m.startsWith("`<modules>` are declared only in profiles"));
+    }
+
     @Test
     void a_module_outside_the_root_is_reported_and_skipped(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("root"));

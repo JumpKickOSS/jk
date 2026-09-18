@@ -510,7 +510,8 @@ public final class EngineRequests {
             Path tmpDir,
             boolean force,
             @Nullable Path report,
-            Path cache) {}
+            Path cache,
+            List<String> profiles) {}
 
     /** A hosted {@code jk import} run's summary, decoded from the terminal plan-finish. */
     public record ImportOutcome(

@@ -22,6 +22,7 @@ import cc.jumpkick.wire.runtime.HostedEvents;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -56,6 +57,8 @@ public final class ImportCommand implements CliCommand {
         return List.of(
                 Opt.value("<file>", "Path to write jk.toml.", "--out"),
                 Opt.value("<file>", "Path to write the import report.", "--report"),
+                Opt.value("<id>", "Activate Maven profiles by id (mvn -P).", "-P", "--activate-profiles")
+                        .repeat(),
                 Opt.flag("Overwrite existing jk.toml.", "--overwrite"));
     }
 
@@ -77,6 +80,7 @@ public final class ImportCommand implements CliCommand {
         Path out = in.value("out").map(o -> baseDir.resolve(o).normalize()).orElse(null);
         Path reportPath =
                 in.value("report").map(r -> baseDir.resolve(r).normalize()).orElse(null);
+        List<String> profiles = profiles(in.values("activate-profiles"));
 
         if (source == null) {
             source = autoDetectSource(baseDir);
@@ -136,7 +140,8 @@ public final class ImportCommand implements CliCommand {
                             JkDirs.tmp(),
                             force,
                             reportPath,
-                            cache),
+                            cache,
+                            profiles),
                     steps -> new BuildPlanListener() {},
                     observer);
         } catch (IOException e) {
@@ -156,6 +161,17 @@ public final class ImportCommand implements CliCommand {
         if (error != null) CommandWedge.printFail("Import", error);
         if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");
         return exit;
+    }
+
+    /** The profile ids of every {@code -P} given, each split on commas as Maven splits its own. */
+    static List<String> profiles(List<String> values) {
+        List<String> ids = new ArrayList<>();
+        for (String value : values) {
+            for (String id : value.split(",")) {
+                if (!id.isBlank() && !ids.contains(id.trim())) ids.add(id.trim());
+            }
+        }
+        return List.copyOf(ids);
     }
 
     /**

@@ -86,6 +86,9 @@ public final class PomImporter {
     /** How long the POM reads may stand still before the import stops; {@code JK_RESOLVE_TIMEOUT_MS}. */
     private long stallWindowMs = StallWatch.envWindowMs();
 
+    /** The profile ids activated by name ({@code jk import -P}), beside what each POM activates itself. */
+    private List<String> activeProfiles = List.of();
+
     /**
      * Maven's {@code settings.xml}: the repositories of its active profiles join every imported
      * manifest's {@code [repositories]}, the way Maven consults them beside a POM's own.
@@ -128,11 +131,25 @@ public final class PomImporter {
         return this;
     }
 
+    /**
+     * This importer activating {@code ids} in every POM it reads, as Maven's {@code -P} does: a
+     * profile's modules, dependencies and plugins join the effective model whether or not the POM
+     * would activate it here.
+     */
+    public PomImporter activeProfiles(List<String> ids) {
+        this.activeProfiles = List.copyOf(ids);
+        return this;
+    }
+
     public Result importFrom(Path pomXml) throws IOException {
         Path file = pomXml.toAbsolutePath();
         byte[] xml = Files.readAllBytes(file);
         return watched(() -> importModel(
-                        EffectiveModel.build(xml, file, resolver.newCopy(), null), remote, settings, null, null)
+                        EffectiveModel.build(xml, file, resolver.newCopy(), null, activeProfiles),
+                        remote,
+                        settings,
+                        null,
+                        null)
                 .platformManaged());
     }
 
@@ -140,7 +157,11 @@ public final class PomImporter {
     public Result importFromBytes(byte[] xml) {
         try {
             return watched(() -> importModel(
-                            EffectiveModel.build(xml, null, resolver.newCopy(), null), remote, settings, null, null)
+                            EffectiveModel.build(xml, null, resolver.newCopy(), null, activeProfiles),
+                            remote,
+                            settings,
+                            null,
+                            null)
                     .platformManaged());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -363,7 +384,7 @@ public final class PomImporter {
         Model rootRaw = EffectiveModel.rawModel(rootXml);
         if (!ReactorModules.declaresModules(rootRaw)) {
             Result single = importModel(
-                            EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null),
+                            EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null, activeProfiles),
                             remote,
                             settings,
                             null,
@@ -373,7 +394,8 @@ public final class PomImporter {
         }
 
         ImportReport.Builder report = ImportReport.builder();
-        ReactorModelResolver reactor = new ReactorModelResolver(resolver);
+        reportUnknownProfiles(rootRaw, report);
+        ReactorModelResolver reactor = new ReactorModelResolver(resolver, activeProfiles);
         // Each module is imported as the walk reaches it and its effective model is dropped right
         // after: what stays of a module is its JkBuild, its rows and its shade relocations.
         Map<String, Imported> imported = new LinkedHashMap<>();
@@ -490,7 +512,10 @@ public final class PomImporter {
         return ga;
     }
 
-    /** Modules listed only in profiles Maven would not activate here leave nothing to build: a Tier-3 row says which. */
+    /**
+     * Modules listed only in profiles Maven would not activate here leave nothing to build: a Tier-3
+     * row names the profiles and the {@code -P} that activates one, as Maven's does.
+     */
     private static void reportInactiveModules(EffectiveModel root, ImportReport.Builder report) {
         List<String> inactive = new ArrayList<>();
         for (var profile : root.raw().getProfiles()) {
@@ -499,7 +524,19 @@ public final class PomImporter {
         if (inactive.isEmpty()) return;
         report.error("`<modules>` are declared only in profiles that are not active on this machine ("
                 + String.join(", ", inactive) + "); no module was imported, so the workspace builds nothing."
-                + " Activate one with Maven's `-P` and re-import, or list the modules at the top level.");
+                + " Activate one as Maven's `-P` does — `jk import pom.xml -P " + inactive.getFirst()
+                + "` — or list the modules at the top level.");
+    }
+
+    /** A {@code -P} id no {@code <profile>} of the root POM declares is a row; a member's own profile still activates there. */
+    private void reportUnknownProfiles(Model rootRaw, ImportReport.Builder report) {
+        for (String id : activeProfiles) {
+            boolean declared = rootRaw.getProfiles().stream().anyMatch(p -> id.equals(p.getId()));
+            if (!declared) {
+                report.warning("`-P " + id + "` names a profile the root POM does not declare; a member declaring"
+                        + " it activates it there, and the root's module list is as its own profiles leave it.");
+            }
+        }
     }
 
     // --- project ------------------------------------------------------------

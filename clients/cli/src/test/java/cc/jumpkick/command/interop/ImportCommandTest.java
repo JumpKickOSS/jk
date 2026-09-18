@@ -8,6 +8,7 @@ import cc.jumpkick.cli.testing.Capture;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -151,6 +152,56 @@ class ImportCommandTest {
         assertThat(Files.readString(tempDir.resolve("jk.toml")))
                 .contains("name     = \"widget\"")
                 .doesNotContain("\"prior\"");
+    }
+
+    @Test
+    void activate_profiles_lists_the_named_profiles_modules(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.example</groupId>
+                  <artifactId>tutorials</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <profiles>
+                    <profile>
+                      <id>default</id>
+                      <modules><module>core</module></modules>
+                    </profile>
+                    <profile>
+                      <id>default-heavy</id>
+                      <modules><module>heavy</module></modules>
+                    </profile>
+                  </profiles>
+                </project>
+                """, StandardCharsets.UTF_8);
+        for (String module : List.of("core", "heavy")) {
+            Path dir = Files.createDirectories(tempDir.resolve(module));
+            Files.writeString(dir.resolve("pom.xml"), """
+                    <project>
+                      <modelVersion>4.0.0</modelVersion>
+                      <parent>
+                        <groupId>com.example</groupId>
+                        <artifactId>tutorials</artifactId>
+                        <version>1.0</version>
+                      </parent>
+                      <artifactId>%s</artifactId>
+                    </project>
+                    """.formatted(module), StandardCharsets.UTF_8);
+        }
+
+        int exit = run(
+                "import",
+                "-P",
+                "default,default-heavy",
+                "--report",
+                tempDir.resolve("report.md").toString(),
+                tempDir.resolve("pom.xml").toString());
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).contains("modules = [\"core\", \"heavy\"]");
+        assertThat(tempDir.resolve("core/jk.toml")).isRegularFile();
+        assertThat(tempDir.resolve("heavy/jk.toml")).isRegularFile();
     }
 
     @Test

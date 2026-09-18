@@ -100,16 +100,23 @@ final class EffectiveModel {
     /**
      * Build the effective model of {@code xml}. {@code pomFile} (when the bytes came from disk) lets
      * Maven follow {@code <parent><relativePath>} and profile {@code <file>} activations; {@code
-     * reactor} answers parent lookups from sibling POMs before any repository is asked. The bytes
-     * pass through jk's hardened XML parser first, so a DOCTYPE is refused before Maven reads them.
+     * reactor} answers parent lookups from sibling POMs before any repository is asked; {@code
+     * activeProfiles} are the ids activated by name, as Maven's {@code -P} activates them, beside
+     * the ones the POM activates itself. The bytes pass through jk's hardened XML parser first, so
+     * a DOCTYPE is refused before Maven reads them.
      */
     @SuppressWarnings("deprecation") // StringModelSource is the source type ModelBuildingRequest still takes
     static EffectiveModel build(
-            byte[] xml, @Nullable Path pomFile, ModelResolver resolver, @Nullable ReactorModelResolver reactor) {
+            byte[] xml,
+            @Nullable Path pomFile,
+            ModelResolver resolver,
+            @Nullable ReactorModelResolver reactor,
+            List<String> activeProfiles) {
         PomParser.parseXml(xml);
         DefaultModelBuildingRequest request = new DefaultModelBuildingRequest();
         request.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
         request.setProcessPlugins(false);
+        request.setActiveProfileIds(new ArrayList<>(activeProfiles));
         // Two phases on purpose: the phase-one model is inherited and interpolated but its BOM
         // imports are still listed, which is how they reach `[platform]` with resolved versions.
         request.setTwoPhaseBuilding(true);

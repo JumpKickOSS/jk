@@ -87,7 +87,8 @@ public final class ImportVerb implements HostedVerb {
                         JkDirs.tmp().toString(),
                         false,
                         null,
-                        JkDirs.cache().toString())
+                        JkDirs.cache().toString(),
+                        List.of())
                 .encode();
     }
 
@@ -116,7 +117,8 @@ public final class ImportVerb implements HostedVerb {
                         .withCancel(cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 Cas cas = JkStores.storeCas();
-                PomImporter poms = new PomImporter(RepoGroupBuilder.buildForImport(cas), cas);
+                PomImporter poms =
+                        new PomImporter(RepoGroupBuilder.buildForImport(cas), cas).activeProfiles(body.profiles());
                 // Gradle's own evaluation runs in a fork on a provisioned distribution: the engine's
                 // heap never hosts Gradle, and the wrapper's checksum vouches for the download.
                 GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(

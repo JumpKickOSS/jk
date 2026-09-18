@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** A foreign-build import request. */
@@ -12,7 +13,8 @@ public record ImportRequest(
         @Nullable String tmpDir,
         boolean force,
         @Nullable String report,
-        @Nullable String cache) {
+        @Nullable String cache,
+        List<String> profiles) {
 
     public String encode() {
         return RequestJson.request(EngineProtocol.IMPORT_REQUEST)
@@ -23,6 +25,7 @@ public record ImportRequest(
                 .bool("force", force)
                 .string("report", report)
                 .string("cache", cache)
+                .array("profiles", profiles)
                 .finish();
     }
 
@@ -34,6 +37,7 @@ public record ImportRequest(
                 Jsonl.str(json, "tmpDir"),
                 Jsonl.bool(json, "force", false),
                 Jsonl.str(json, "report"),
-                Jsonl.str(json, "cache"));
+                Jsonl.str(json, "cache"),
+                Jsonl.strArray(json, "profiles"));
     }
 }

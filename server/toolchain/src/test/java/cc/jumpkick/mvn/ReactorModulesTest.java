@@ -103,7 +103,7 @@ class ReactorModulesTest {
         Path rootPom = root.resolve("pom.xml");
         byte[] rootXml = Files.readAllBytes(rootPom);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
-        ReactorModelResolver reactor = new ReactorModelResolver(TestImporters.offline(root).resolver);
+        ReactorModelResolver reactor = new ReactorModelResolver(TestImporters.offline(root).resolver, List.of());
         List<String> visited = new ArrayList<>();
         List<Path> retainedWhileVisiting = new ArrayList<>();
         ImportReport.Builder report = ImportReport.builder();
