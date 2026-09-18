@@ -18,7 +18,8 @@ import org.jspecify.annotations.Nullable;
  * The generate step's body: expand the entry's inputs, extract the jar it unpacks, fork
  * {@code java -cp <tool> <main> <args>} on the build's JDK with the output dir as the working
  * directory, report every located line the tool printed as a diagnostic, fail on a non-zero exit
- * with the output's tail.
+ * with the output's tail. Inputs that name no file under the module — a table a reactor parent
+ * hands to a module with nothing to generate — leave the output empty and say so once.
  */
 final class GeneratorStep {
 
@@ -30,8 +31,16 @@ final class GeneratorStep {
     static void run(TaskExec exec, GeneratorEntry entry) throws Exception {
         List<Path> inputs = Inputs.expand(exec.moduleDir(), entry.inputs());
         if (inputs.isEmpty() && !entry.inputs().isEmpty()) {
-            throw new IllegalStateException("[generate." + entry.name() + "] inputs " + entry.inputs()
-                    + " match no file under " + exec.moduleDir());
+            exec.outputDir(entry.out());
+            exec.label(entry.name() + " (no inputs)");
+            exec.diagnostic(
+                    "warning",
+                    null,
+                    0,
+                    0,
+                    "[generate." + entry.name() + "] inputs " + entry.inputs() + " match no file under "
+                            + exec.moduleDir() + "; nothing was generated");
+            return;
         }
         Path unpacked = entry.unpack() == null
                 ? null
