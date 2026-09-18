@@ -17,15 +17,12 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
-import cc.jumpkick.run.TaskNames;
-import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -488,30 +485,7 @@ final class WorkspaceRunView {
 
     /** {@code lis} with this module's served-from-cache tally beside it; see {@link #servedFromCache()}. */
     private BuildPlanListener counting(BuildPlanListener lis) {
-        return CompositeBuildPlanListener.of(lis, new ServedTally());
-    }
-
-    /**
-     * One module's run-tests step, watched for a replay: the engine labels the step {@link
-     * TaskNames#TESTS_UP_TO_DATE} when it serves the suite's green marker and then finishes it
-     * SKIPPED. A SKIPPED suite under any other label — no tests, a {@code --class} that matched
-     * nothing here — was not served anything.
-     */
-    private final class ServedTally implements BuildPlanListener {
-        private volatile boolean replayed;
-
-        @Override
-        public void label(String step, String label) {
-            if (TaskNames.RUN_TESTS.equals(step)) replayed = TaskNames.TESTS_UP_TO_DATE.equals(label);
-        }
-
-        @Override
-        public void stepFinish(
-                String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
-            if (TaskNames.RUN_TESTS.equals(step) && status == TaskStatus.SKIPPED && replayed) {
-                served.incrementAndGet();
-            }
-        }
+        return CompositeBuildPlanListener.of(lis, new ServedTally(served));
     }
 
     /**

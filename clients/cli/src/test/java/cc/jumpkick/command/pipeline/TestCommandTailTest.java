@@ -4,14 +4,22 @@ package cc.jumpkick.command.pipeline;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** The workspace test wedge names how many modules' suites were served from the action cache. */
+/**
+ * The workspace test wedge names how many modules' suites were served from the action cache, and a
+ * plain project's {@code Passed N tests} says when the suite was a replay and not a run.
+ */
 class TestCommandTailTest {
 
     private static WorkspaceResult modules(int n) {
@@ -45,5 +53,36 @@ class TestCommandTailTest {
     void one_module_served() {
         String t = TestAnsi.strip(TestCommand.workspaceTestSuccessTail(modules(1), 1, 1, 30));
         assertThat(t).startsWith("Tests passed, served from cache");
+    }
+
+    @Test
+    void a_plain_projects_replayed_suite_says_it_was_served_from_cache() {
+        TestSummary twelve = new TestSummary(12, 12, 0, 0, List.of());
+        BuildPlanResult result =
+                new BuildPlanResult("test", true, Duration.ofMillis(30), List.of(), List.of(), List.of(), false);
+        assertThat(TestAnsi.strip(TestCommand.testSummary(twelve, result, true)))
+                .isEqualTo("Passed 12 tests (served from cache)");
+        assertThat(TestAnsi.strip(TestCommand.testSummary(twelve, result, false)))
+                .isEqualTo("Passed 12 tests");
+        assertThat(TestAnsi.strip(TestCommand.testSummary(new TestSummary(0, 0, 0, 0, List.of()), result, true)))
+                .isEqualTo("No tests");
+    }
+
+    @Test
+    void the_tally_counts_a_run_tests_step_skipped_under_the_up_to_date_label_only() {
+        ServedTally served = new ServedTally();
+        served.label(TaskNames.RUN_TESTS, TaskNames.TESTS_UP_TO_DATE);
+        served.stepFinish(TaskNames.RUN_TESTS, null, TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
+        assertThat(served.served()).isEqualTo(1);
+
+        ServedTally noTests = new ServedTally();
+        noTests.label(TaskNames.RUN_TESTS, "no tests");
+        noTests.stepFinish(TaskNames.RUN_TESTS, null, TaskStatus.SKIPPED, Duration.ZERO, Duration.ZERO);
+        assertThat(noTests.served()).isZero();
+
+        ServedTally ran = new ServedTally();
+        ran.label(TaskNames.RUN_TESTS, TaskNames.TESTS_UP_TO_DATE);
+        ran.stepFinish(TaskNames.RUN_TESTS, null, TaskStatus.SUCCESS, Duration.ZERO, Duration.ZERO);
+        assertThat(ran.served()).isZero();
     }
 }

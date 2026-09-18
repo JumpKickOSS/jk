@@ -115,8 +115,10 @@ module still finishes (the verdict is the run's, so `## Modules` reads green), a
 empty run for a passing suite. A suite replayed from its green stamp counts as run, and the
 terminal line says how many were: `Tests passed for 49 modules, 47 served from cache` — the two
 others ran — or `all served from cache` over an unchanged tree; a run that replayed nothing reads
-`Tests passed for 49 modules`. The verdict is not raised for `--skip-tests`, for a `--class`
-selection (whose empty match is `no test classes matched`, exit 4), or for a plain project.
+`Tests passed for 49 modules`. A plain project's tail says the same of its one suite: `Passed 12
+tests (served from cache)` is a replayed green marker, `Passed 12 tests` a run. The verdict is not
+raised for `--skip-tests`, for a `--class` selection (whose empty match is `no test classes
+matched`, exit 4), or for a plain project.
 
 ## Debug a test JVM
 
