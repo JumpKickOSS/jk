@@ -134,6 +134,79 @@ class GradleModelQueryNetworkTest {
         assertThat(rows).anySatisfy(r -> assertThat(r).contains("task `release`"));
     }
 
+    /**
+     * A root that imports a BOM for itself while its subprojects apply dependency-management on
+     * their own: a subproject's platforms are the BOMs the blocks reaching it name — its own
+     * script's and the root's {@code subprojects { }} block's — and not the BOM the root's
+     * top-level block imports for the root alone.
+     */
+    @Test
+    void a_roots_own_bom_import_is_not_attributed_to_the_subprojects(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("shop"));
+        Files.createDirectories(root.resolve("gradle/wrapper"));
+        Files.writeString(
+                root.resolve("gradle/wrapper/gradle-wrapper.properties"),
+                "distributionUrl=https\\://services.gradle.org/distributions/gradle-" + GradleResolver.DEFAULT_VERSION
+                        + "-bin.zip\n");
+        Files.writeString(root.resolve("settings.gradle"), """
+                rootProject.name = 'shop'
+                include 'core', 'api'
+                """);
+        Files.writeString(root.resolve("build.gradle"), """
+                plugins {
+                    id 'java'
+                    id 'io.spring.dependency-management' version '1.1.7'
+                }
+                repositories { mavenCentral() }
+                dependencyManagement {
+                    imports { mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.11' }
+                }
+                subprojects {
+                    apply plugin: 'java'
+                    apply plugin: 'io.spring.dependency-management'
+                    group = 'com.acme'
+                    version = '1.2.0'
+                    repositories { mavenCentral() }
+                    dependencyManagement {
+                        imports { mavenBom 'org.junit:junit-bom:6.1.3' }
+                    }
+                }
+                """);
+        Path core = Files.createDirectories(root.resolve("core"));
+        Files.writeString(core.resolve("build.gradle"), """
+                dependencyManagement {
+                    imports { mavenBom 'com.fasterxml.jackson:jackson-bom:2.19.2' }
+                }
+                dependencies {
+                    implementation 'com.fasterxml.jackson.core:jackson-databind'
+                    testImplementation 'org.junit.jupiter:junit-jupiter'
+                }
+                """);
+        Path api = Files.createDirectories(root.resolve("api"));
+        Files.writeString(api.resolve("build.gradle"), """
+                dependencies {
+                    testImplementation 'org.junit.jupiter:junit-jupiter'
+                }
+                """);
+        GradleBuildImport gradle = GradleBuildImport.withModel(GradleModelQuery.provisioning(
+                JkDirs.tools(), new Http(), ToolProvisioning.Policy.DEFAULT, tmp.resolve("tmp")));
+
+        GradleBuildImport.Result result = gradle.importBuild(root.resolve("settings.gradle"), progress -> {});
+
+        List<String> rows = result.report().issues().stream()
+                .map(ImportReport.Issue::message)
+                .toList();
+        assertThat(result.report().hasErrors())
+                .as("Gradle evaluated the build: " + rows)
+                .isFalse();
+        assertThat(module(result, "core").dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::module)
+                .containsExactly("com.fasterxml.jackson:jackson-bom", "org.junit:junit-bom");
+        assertThat(module(result, "api").dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::module)
+                .containsExactly("org.junit:junit-bom");
+    }
+
     private static JkBuild module(GradleBuildImport.Result result, String path) {
         return Objects.requireNonNull(result.modules().get(path), path);
     }

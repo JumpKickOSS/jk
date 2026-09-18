@@ -506,11 +506,14 @@ dependencies; the tool configurations Gradle's own plugins declare (`kotlinCompi
 `dokkaPlugin`, …) are not. `exclude` rules ride the edge (`isTransitive = false` is `*:*`); a
 classifier is kept; a dynamic version (`1.+`, `latest.release`) is written as `latest` with a row;
 refreshVersions' `_` is written as the pin `versions.properties` at the root holds (below). The
-BOMs a module's `dependencyManagement { imports { mavenBom … } }` block names — read from the
-script text, the module's own else the nearest ancestor's, a `$property` in a coordinate as the
-project answers it — are its `[platform-dependencies]` entries, so the version-less dependencies
-they manage stay platform-managed; Boot's own BOM is written only without the Boot plugin, whose
-`[spring-boot]` table brings it. A version the plugin supplies from no BOM (a `dependencyManagement
+BOMs a module's `dependencyManagement { imports { mavenBom … } }` blocks name — read from the
+script text of the module's own build script and its ancestors', counting the blocks that
+configure the module: a script's top-level block for the script's own project alone, a
+`subprojects { }` or `allprojects { }` block for the projects it reaches, a `project(':path') { }`
+block for the project it names; a `$property` in a coordinate as the project answers it — are its
+`[platform-dependencies]` entries, so the version-less dependencies they manage stay
+platform-managed and a root's own import is not written onto a subproject with a block of its
+own; Boot's own BOM is written only without the Boot plugin, whose `[spring-boot]` table brings it. A version the plugin supplies from no BOM (a `dependencyManagement
 { dependencies { } }` entry) is an exact pin with a row, and a BOM whose version reads a property
 nothing defines is a row. A task the build script registers (`tasks.register("release")`, an ad-hoc `Copy`) is a Tier-2 row
 naming the task, never an error; a source set other than `main` and `test`, or a source root
