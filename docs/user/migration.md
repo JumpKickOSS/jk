@@ -350,7 +350,7 @@ neither runs on 25) and read from a fork whose whole evaluation stayed inside th
 | square/moshi | Gradle 9.5.1, 11 modules, Kotlin DSL, version catalog, KSP, dokka, japicmp | 10 s, 18 Tier-2 rows | one manifest per module, sibling edges, `[provided-dependencies]`, `[processor-dependencies]`, two `japicmp` modules named by path; rows name the `checkLegacyAbi` tasks, the `java16` source set, the japicmp `baseline`/`latest` configurations and the publish plugin |
 | spring-petclinic/spring-petclinic-kotlin | Gradle 9.7.0, Kotlin, Boot 4 | 16 s, 3 rows | `kotlin = "2.4.10"`, `[spring-boot]`, `bootstrap = "…:5.3.8"` and `webjars-locator-lite = "…:1.1.4"` from the script's `val`s; rows name the Jib and allopen plugins |
 | junit-pioneer/junit-pioneer | Gradle 8.14.2 on JDK 21 | 37 s | `junit-bom = "org.junit:junit-bom:6.1.0"` from `gradle.properties`, `jimfs = "…:1.3.0"` |
-| mapstruct/mapstruct-examples `mapstruct-on-gradle/` | Gradle 8.3 on JDK 17, Groovy DSL, `ext {}` | 9 s | `mapstruct = "1.7.0.Beta1"`, both comma-listed TestNG/FEST test dependencies |
+| mapstruct/mapstruct-examples `mapstruct-on-gradle/` | Gradle 8.3 on JDK 17, Groovy DSL, `ext {}` | 9 s (21 s when no JDK under 21 is installed: Temurin 17 is provisioned first) | `mapstruct = "1.7.0.Beta1"`, both comma-listed TestNG/FEST test dependencies, `java = 8` from `sourceCompatibility` |
 | junit-team/junit-examples `junit-jupiter-extensions/` | Gradle 9.7.1 | 6 s | `[platform-dependencies] junit-bom`, `junit-jupiter-api` under `[dependencies]` through its `because` closure, both `testRuntimeOnly` entries |
 | jillesvangurp/kotlin4example | Gradle 9.0.0 on JDK 21, refreshVersions | 40 s, 1 row | every `_` version is written as the pin `versions.properties` holds: `kotlin-logging = "…:3.0.5"` and the slf4j entries from their exact `version.<group>..<artifact>` keys, `kotlinx-coroutines-core = "1.10.2"`, `junit-jupiter-api = "5.13.4"` and `kotest-assertions-core = "…:5.9.1"` from the short keys `kotlinx.coroutines`, `junit.jupiter` and `kotest`; the one row names the refreshVersions plugin |
 
@@ -458,14 +458,16 @@ find either — is evaluated by the Gradle the wrapper pins (else jk's default),
 way `jk gradle` provisions it: a healthy install on this machine, or a download verified against
 the wrapper's `distributionSha256Sum` or Gradle's published `.sha256`. Gradle runs in a fork, on
 the engine's JDK when the distribution accepts it and otherwise on the newest installed JDK it
-does (a wrapper pinned to 8.3 runs on JDK 20 or older; none installed is a refusal naming the
-range), and writes the evaluated project model: every project, the plugins it applies, the
-dependencies each configuration declares, its toolchain, source roots, repositories, the BOMs its
-`dependencyManagement` block imports and script-registered tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and
-`gradle.properties` placeholders, `buildSrc` and convention plugins therefore all import as what
-they evaluate to. The fork's output is the import's progress, and a fork whose output stands
-still for the resolve stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with
-the last line it printed, so an import never sits silent.
+does (a wrapper pinned to 8.3 runs on JDK 20 or older); when no installed JDK falls in the
+distribution's range, the newest LTS in it is provisioned first, as a manifest's `jdk` pin is,
+and the download is a progress line. Gradle writes the evaluated project model: every project,
+the plugins it applies, the dependencies each configuration declares, its toolchain, source
+roots, repositories, the BOMs its `dependencyManagement` block imports and script-registered
+tasks. Version catalogs, `subprojects { }` / `allprojects { }`, `ext` and `gradle.properties`
+placeholders, `buildSrc` and convention plugins therefore all import as what they evaluate to.
+The fork's output is the import's progress, and a fork whose output stands still for the resolve
+stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s) is stopped and refused with the last line it
+printed, so an import never sits silent.
 
 The evaluated build imports as a workspace: the root `jk.toml` names every compiled project under
 `[workspace] modules` (root-relative paths, a project that applies no JVM plugin and declares
@@ -495,8 +497,8 @@ nothing defines is a row. A task the build script registers (`tasks.register("re
 naming the task, never an error; a source set other than `main` and `test`, or a source root
 outside jk's layout, is a row; a plugin nothing maps is a row naming its id or class.
 
-When Gradle cannot evaluate the build — no network for a download, no JDK in the distribution's
-range, a plugin the build cannot resolve — the import falls back to scanning the root build script
+When Gradle cannot evaluate the build — no network for a download, a plugin the build cannot
+resolve — the import falls back to scanning the root build script
 alone and says so in a Tier-3 row; a `settings.gradle` with no build script beside it is then
 refused with Gradle's reason. Importing one project's `build.gradle` from inside a larger build
 scans that file alone and points at the root's settings file. The scanner reads the declarative
