@@ -76,8 +76,11 @@ jk new -t quarkus/hello my-api
   its path as `-Dquarkus-internal-test.serialized-app-model.path=…`, the seam Quarkus's Gradle
   plugin uses, so the bootstrap indexes the application archive once and augments once per test
   profile; no `pom.xml` is read or written. The bootstrap keeps one augmented application per
-  profile resident in each suite JVM; the discovery JVM that lists the classes first runs no
-  Quarkus launcher listener and boots nothing ([Testing](test.md#the-test-jvms-flags-test-jvm-args-test-system-properties)). A test
+  profile resident in the suite JVM, and the module's suite is one JVM (Surefire's single
+  fork): Quarkus writes and removes its test-class index under the test classes and binds the
+  application's ports, so parallel suite JVMs of one module would race — `[test] workers = N`
+  overrides that pin ([Testing](test.md#per-module-serial-opt-out)). The discovery JVM that lists
+  the classes first runs no Quarkus launcher listener and boots nothing ([Testing](test.md#the-test-jvms-flags-test-jvm-args-test-system-properties)). A test
   JVM's metaspace is the JVM's own — jk caps it only where `[test] jvm-args` says so, as Surefire
   does. The
   `[quarkus]` table is what turns this on — `jk import` writes it from `quarkus-maven-plugin` at

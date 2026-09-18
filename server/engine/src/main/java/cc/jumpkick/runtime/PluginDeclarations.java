@@ -50,7 +50,8 @@ public record PluginDeclarations(
                             Jsonl.strArray(line, "contributesTestClasspath"),
                             Jsonl.strArray(line, "contributesTestJvmArgs"),
                             Jsonl.str(line, "transformsClasses"),
-                            blankToNull(Jsonl.str(line, "stage"))));
+                            blankToNull(Jsonl.str(line, "stage")),
+                            Jsonl.bool(line, "oneTestJvm", false)));
                 case "packager" ->
                     packager = new PackagerDecl(Jsonl.requiredStr(line, "name"), Jsonl.strArray(line, "inputs"));
                 case "command" ->

@@ -304,12 +304,24 @@ final class TestLaunch {
      * stand. Auto is the one case with something left to decide: the plan share was the jobs budget
      * divided by the graph's widest point, and by the time the last module's suite dispatches that
      * width is long gone. {@link TestWorkers#liveShare} re-reads it, and can only widen.
+     *
+     * <p>A plugin step that declares {@code oneTestJvm} — Quarkus's test model, whose bootstrap keeps
+     * its test-class index beside the classes and binds the application's ports — makes the
+     * module's suite one JVM, as surefire's one fork runs it, unless the module's own {@code [test]
+     * workers} pin says otherwise; {@code -w} does not widen it.
      */
-    static int dispatchWorkers(BuildPlanner.Inputs in, BuildBlock module) {
+    static int dispatchWorkers(BuildPlanner.Inputs in, BuildBlock module, @Nullable PluginDeclarations decls) {
+        boolean modulePinned = module.effectiveTestWorkers(0) > 0;
+        if (!modulePinned && oneTestJvm(decls)) return 1;
         int planned = module.effectiveTestWorkers(in.workerCount());
-        boolean pinned = module.effectiveTestWorkers(0) > 0 || in.session().requestedTestWorkers() > 0;
+        boolean pinned = modulePinned || in.session().requestedTestWorkers() > 0;
         if (pinned) return planned;
         return TestWorkers.liveShare(planned, TestWorkers.effectiveJobs(), LiveUnits.running());
+    }
+
+    /** Whether any plugin step of the module declared that its tests run in one JVM. */
+    static boolean oneTestJvm(@Nullable PluginDeclarations decls) {
+        return decls != null && decls.steps().stream().anyMatch(TaskDecl::oneTestJvm);
     }
 
     /**

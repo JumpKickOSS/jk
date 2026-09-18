@@ -26,5 +26,23 @@ class PluginDeclarationsTest {
         assertThat(decls.commands()).hasSize(1);
         assertThat(requireNonNull(decls.command("devices")).description()).isEqualTo("list attached devices");
         assertThat(decls.command("nope")).isNull();
+        assertThat(requireNonNull(decls.step("gen")).oneTestJvm()).isFalse();
+    }
+
+    /** A step that declares {@code oneTestJvm} makes the module's suite one JVM; steps that say nothing do not. */
+    @Test
+    void a_step_declaring_one_test_jvm_pins_the_modules_suite_to_one_jvm() {
+        var decls = PluginDeclarations.decode(List.of(
+                "{\"t\":\"step\",\"name\":\"quarkus-test-model\",\"inputs\":[\"classes\"],\"outputs\":[\"tm\"],"
+                        + "\"contributesTestJvmArgs\":[\"tm/jvm.args\"],\"oneTestJvm\":true}",
+                "{\"t\":\"step\",\"name\":\"gen\",\"inputs\":[\"classes\"],\"outputs\":[\"out\"]}"));
+        assertThat(requireNonNull(decls.step("quarkus-test-model")).oneTestJvm())
+                .isTrue();
+        assertThat(requireNonNull(decls.step("gen")).oneTestJvm()).isFalse();
+        assertThat(TestLaunch.oneTestJvm(decls)).isTrue();
+        assertThat(TestLaunch.oneTestJvm(
+                        new PluginDeclarations(List.of(requireNonNull(decls.step("gen"))), null, List.of())))
+                .isFalse();
+        assertThat(TestLaunch.oneTestJvm(null)).isFalse();
     }
 }
