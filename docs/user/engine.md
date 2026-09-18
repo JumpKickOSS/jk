@@ -66,8 +66,10 @@ The cost of a job is estimated from what it parses whole — the workspace `jk-l
 project's metrics ledger; for `jk import`, the reactor's `pom.xml` files, build outputs pruned —
 so a small project queues behind a large one only when the heap is genuinely short. A lock is
 sized by the larger of the lock on disk and 64 KiB per distinct dependency the workspace's
-manifests declare, so a first lock of a large reactor is sized before it starts. An idle engine
-admits any job the heap holds alone. Raising `[engine] max-heap-mb` lets more jobs run at once;
+manifests declare, so a first lock of a large reactor is sized before it starts. What a build
+reads per classpath jar is bounded by design — a jar's ABI is keyed from its central directory a
+window of names at a time — so the size of the largest jar on a classpath is not part of the
+estimate. An idle engine admits any job the heap holds alone. Raising `[engine] max-heap-mb` lets more jobs run at once;
 the default cap runs one build of a large workspace at a time.
 
 A job whose estimate exceeds the whole cap is **refused at once** rather than admitted to die of
