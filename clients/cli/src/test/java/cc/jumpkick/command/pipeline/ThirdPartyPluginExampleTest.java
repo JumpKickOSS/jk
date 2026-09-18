@@ -148,7 +148,9 @@ class ThirdPartyPluginExampleTest {
                     .as("the plugin's manifest is materialized for the consumer")
                     .anyMatch(n -> n.endsWith(".jk-plugin.toml"));
         }
-        assertThat(run("trust", "plugin", "path:hello")).isEqualTo(0);
+        // A path pin is trusted by the bytes its row carries, never by the alias that names it.
+        assertThat(run("trust", "plugin", "path:hello")).isEqualTo(64);
+        assertThat(run("trust", "plugin", "sha256:" + Hashing.sha256Hex(jar))).isEqualTo(0);
         buildGreen(app, "first build");
         assertThat(app.resolve("target/lib/app-0.1.0.jar")).exists();
         // The plugin's [[contribute.compiler-args]] adds -parameters: the consumer's compile step

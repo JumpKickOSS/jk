@@ -13,9 +13,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Consent gate for third-party {@code [plugins]} workers: coords must be listed in
- * {@code trusted-plugins.toml} ({@code group:artifact} or group prefix {@code "com.example:"}).
- * First-party plugins are always trusted.
+ * Consent gate for third-party {@code [plugins]} workers: the plugin's trust key must be listed in
+ * {@code trusted-plugins.toml} — a Maven pin's {@code group:artifact} (or its group as the prefix
+ * {@code "com.example:"}), a path pin's {@code sha256:<hex>}. First-party plugins are always
+ * trusted.
  */
 public final class TrustedPlugins {
 
@@ -89,9 +90,10 @@ public final class TrustedPlugins {
 
     private void save() throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("# Third-party build-plugin coordinates allowed to run worker code during builds.\n");
-        sb.append("# Managed by `jk trust plugin|remove`; hand edits are fine. A trailing-colon\n");
-        sb.append("# entry (\"com.example:\") trusts every plugin in the group.\n");
+        sb.append("# Third-party build plugins allowed to run worker code during builds: a Maven\n");
+        sb.append("# coordinate, or sha256:<hex> for a jar pinned by path. Managed by `jk trust\n");
+        sb.append("# plugin|remove`; hand edits are fine. A trailing-colon entry (\"com.example:\")\n");
+        sb.append("# trusts every plugin in the group.\n");
         sb.append("plugins = [\n");
         for (String e : entries) {
             sb.append("  ").append(MinimalToml.quote(e)).append(",\n");

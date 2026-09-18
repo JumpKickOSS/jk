@@ -90,7 +90,10 @@ marketplace: a consumer pins a plugin jar by content (path or Maven coordinate +
 ```
 
 A private jar keeps its `sha256` pin across jk upgrades: the lock's `[[plugin]]` row is the
-declaration's digest, and a jar that disagrees with it is refused. Its worker forks with the SDK
+declaration's digest, and a jar that disagrees with it is refused. Its worker forks only once
+those bytes are trusted on the machine — `jk trust plugin sha256:<hex>`, the digest the row
+carries; the alias `path:<name>` is not a trust key, so replacing the jar behind it asks again
+(a Maven-pinned plugin is trusted by its `group:artifact`). Its worker forks with the SDK
 it compiled against: `jk lock` adds `jk-plugin-sdk` and `jk-host` at the version the plugin's
 manifest names (`[plugin] sdk`) to the lock as `plugin`-scoped rows, resolved from your
 `[repositories]`; a manifest that names none is pinned at the running jk's version, and the lock
