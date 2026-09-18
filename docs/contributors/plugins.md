@@ -304,11 +304,13 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
 - **Action keys include plugin worker jar hashes** — upgrading the plugin invalidates cache.
 - Tasks declare inputs/outputs so incrementality and `jk explain` stay correct.
 - **Repositories** — a step whose own resolver fetches outside the lock (a framework's build-time
-  closure) declares `In.repositories()` and reads `TaskExec.repositories()`: the module's
-  `[repositories]` set over the built-in remotes, in resolve order, each as jk routes it — a
-  `settings.xml` mirror standing in for the repository, Maven Central rewritten to its mirror while
-  Central is refusing this host — with the credential the request carries. The body asks exactly
-  these and never names Central itself. The action key carries the declared set, not the routing.
+  closure) declares `In.repositories()` and reads `TaskExec.repositories()`; a packager that
+  fetches a tool or a base image declares the same input and reads `PackageIo.repositories()`.
+  Either receives the module's `[repositories]` set over the built-in remotes, in resolve order,
+  each as jk routes it — a `settings.xml` mirror standing in for the repository, Maven Central
+  rewritten to its mirror while Central is refusing this host — with the credential the request
+  carries. The body asks exactly these and never names Central itself. The action key carries the
+  declared set, not the routing; a body that did not declare the input reads an empty list.
 - **Diagnostics** — a body reports a located finding with `TaskExec.diagnostic(severity, file,
   line, col, message)`; the engine forwards each as the step's warning or error (the
   `file:line[:col]: message` header the journal parses), before a failing body's throw.

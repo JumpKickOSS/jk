@@ -71,6 +71,14 @@ public interface PackageIo {
     Path artifactPath();
 
     /**
+     * The remote repositories this module resolves against, in resolve order and as the engine
+     * routes them ({@link RepositoryRoute}) — {@link In#repositories()}. A packager that fetches
+     * outside the lock (a native tool, an OCI base) asks exactly these and never names Central
+     * itself. Empty when the packager did not declare the input.
+     */
+    List<RepositoryRoute> repositories();
+
+    /**
      * A resolved secret value (signing credentials — {@code env:}-indirected config the engine
      * resolved and diverted off the flat config so it never reaches describe payloads, tokens, or
      * logs). Package specs only. NEVER echo a secret into labels or errors.
