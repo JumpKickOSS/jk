@@ -3,6 +3,7 @@
 // row carrying its recent builds, its cache benefit and its live overlay. Spread into the root
 // component's `computed`.
 
+import { previousCoverage } from './coverage.js';
 import { historyCard } from './fold.js';
 import { outcomeOf } from './outcome.js';
 import { focusedRun } from './sessions.js';
@@ -133,7 +134,8 @@ export const projectComputed = {
     const focus = focusedRun(records, cards, this.pinnedRun || 0);
     if (!focus) return null;
     const card = focus.live ? focus.run : historyCard(focus.run);
-    return { ...focus, card, outcome: outcomeOf(card) };
+    // The baseline of the Coverage block: the nearest earlier record of this project that measured.
+    return { ...focus, card, outcome: outcomeOf(card), previousCoverage: previousCoverage(records, card) };
   },
   // The open project's detail page: identity + aggregate metrics + a build-history table, all
   // derived from the journal filtered to this project (by projectId).

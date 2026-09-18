@@ -16,12 +16,12 @@ import org.jspecify.annotations.Nullable;
  * roll-up is {@code workspace.html} beside it. A single-module run has no roll-up — its module
  * page is the page.
  */
-final class CoverageRollup {
+public final class CoverageRollup {
 
     private CoverageRollup() {}
 
     /** The roll-up's path for {@code r}, or the one module's own page when there is one module. */
-    static Path pageFor(BuildRecord r) {
+    public static Path pageFor(BuildRecord r) {
         Path dir =
                 Path.of(r.dir()).resolve(BuildLayout.TARGET).resolve("reports").resolve("coverage");
         Path index = dir.resolve("index.html");

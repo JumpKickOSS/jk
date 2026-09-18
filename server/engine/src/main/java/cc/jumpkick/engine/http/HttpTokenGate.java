@@ -109,7 +109,8 @@ final class HttpTokenGate {
         return authorization.substring("Bearer ".length()).trim();
     }
 
-    private boolean tokenValid(@Nullable String presented) {
+    /** Constant-time equality with the minted token; a path segment or query value presents the same way. */
+    boolean tokenValid(@Nullable String presented) {
         if (presented == null || presented.isEmpty()) return false;
         // Constant-time, immune to length/prefix probing.
         return MessageDigest.isEqual(presented.getBytes(StandardCharsets.UTF_8), token);

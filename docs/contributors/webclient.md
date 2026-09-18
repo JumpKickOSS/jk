@@ -27,6 +27,8 @@ stopped providing.
 | `cards.js` | The Activity feed's per-card methods: progress, ETA, badge, diagnostics |
 | `status.js` | The Status view: the `/api/{status,cache,metrics,log,config}` reads and its meters |
 | `projects.js` | The Projects tab and Project page: history records grouped per project, and the run the page follows or pins |
+| `coverage.js` | `<run-coverage>`: the Coverage block on the focused run — the record's `coverage[]` rows, deltas against the previous coverage run, the tokenized `/report/<token>/<id>/` link |
+| `delta.js` | `<run-delta>`: the iteration strip — a record's `delta` as chips with the rows behind them |
 | `sessions.js` | Who asked: origin labels, the Activity feed grouped by session, the followed-or-pinned run, the pin route |
 | `wizard.js` | New Project and the workspace directory browser |
 | `icons.js` | `<jk-icon>`: the inline-SVG glyph set |
@@ -117,6 +119,16 @@ card first, then the newest journal record — folded through `historyCard` so t
 rule and module rows apply as on the Activity feed. `focusedRun` in `sessions.js` is the pure
 rule and is tested headlessly; the panel markup itself is checked only by `shell.test.mjs`'s
 name contract, not rendered.
+
+Under the header the panel shows the iteration strip (`delta.js`) and, for a run that measured
+coverage, the Coverage block (`coverage.js`): `historyCard` carries the record's `coverage[]` onto
+the card (`seedFromHistory` copies it onto a live card on reconcile, as it does `delta`), and
+`projectRun` supplies `previousCoverage` — the nearest older record of the project with non-empty
+coverage — as the baseline. The **HTML report** link is `/report/<token>/<id>/`, the bearer token
+in the path: a report is a tree of pages the browser follows by relative link, and a link carries
+neither a header nor a query string into the next page. The engine redirects the bare run URL to the
+report's entry page and serves only files under the report directories the record names, each
+under `Content-Security-Policy: sandbox` ([HTTP](http.md#get-reporttokenidpath)).
 
 The cyan **code** control (**View/edit this codebase**) sits next to **Build** and opens
 `#project/<id>/files` (tree). It is hidden *on* the files pane — you are already there — which is

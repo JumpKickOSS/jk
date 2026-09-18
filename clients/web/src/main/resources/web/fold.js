@@ -539,6 +539,9 @@ export function seedFromHistory(cards, records) {
       if (rec.trigger && !live.trigger) live.trigger = rec.trigger;
       if (rec.session && !live.session) live.session = rec.session;
       if (rec.delta && !live.delta) live.delta = rec.delta; // what changed since the run before
+      if (Array.isArray(rec.coverage) && rec.coverage.length && !(live.coverage && live.coverage.length)) {
+        live.coverage = rec.coverage; // the record carries the coverage rows a finish frame does not
+      }
       if (rec.running) live.state = 'running';
       else if (live.state === 'running') {
         // The journal says this run is over: a finish frame lost to a connect/reconnect race
@@ -612,6 +615,7 @@ export function historyCard(rec) {
     trigger: rec.trigger || null,
     session: rec.session || null,
     delta: rec.delta || null, // since the previous run from the same origin (delta.js)
+    coverage: Array.isArray(rec.coverage) ? rec.coverage : [], // per-module coverage rows (coverage.js)
     state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
     startedAtClient: null,

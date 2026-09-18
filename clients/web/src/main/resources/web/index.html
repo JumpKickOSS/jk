@@ -429,6 +429,8 @@
         </div>
         <!-- Since the previous run from the same origin: files, diagnostics, tests, wall (delta.js). -->
         <run-delta v-if="projectRun.card.delta" :delta="projectRun.card.delta" :millis="projectRun.card.millis"></run-delta>
+        <!-- Coverage: the record's per-module rows as the results file prints them, and the HTML report (coverage.js). -->
+        <run-coverage v-if="projectRun.card.coverage && projectRun.card.coverage.length" :coverage="projectRun.card.coverage" :previous="projectRun.previousCoverage" :history-id="projectRun.card.historyId"></run-coverage>
         <div v-for="m in failedModules(projectRun.card)" :key="m.dir" class="module">
           <phase-chain v-if="m.steps.length" :steps="m.steps" :module="m.coord || projectRun.card.coord || ''"></phase-chain>
           <div v-if="m.diagnostics.length" class="diag"><div class="console">

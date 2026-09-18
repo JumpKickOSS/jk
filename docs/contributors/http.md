@@ -264,6 +264,21 @@ list already hides) and, when the surface had one, `session` — the MCP connect
 dashboard's **By session** grouping and the project page's followed run read only these
 fields, so they show exactly what `jk-results.md` prints.
 
+### `GET /report/<token>/<id>/<path>`
+
+A run's coverage HTML report, served from the checkout the run measured. The bearer token is a
+path segment — the one place a credential can ride into every page a report links to relatively
+— and is checked with the same constant-time comparison as the header. `<id>` is the journal
+record's id (or its build number / job directory, as `GET /api/history?id=` accepts); a run whose
+record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report's entry page: the
+one module's `index.html`, or the workspace roll-up (`target/reports/coverage/index.html`, or
+`workspace.html` beside it when a module's own report owns `index.html`). Any other `<path>`
+resolves under the record's `dir` and is served only when it is a regular file inside one of the
+report directories the record names (each module's `html` parent, plus the roll-up's). Pages carry
+`Content-Security-Policy: sandbox`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options:
+nosniff` and `Cache-Control: no-cache`; the content type follows the extension (html, css, js,
+gif, png, svg, ico, xml, txt).
+
 ### `GET /api/metrics`
 
 Aggregate build history as a flat array, one object per row, averages pre-computed so clients stay

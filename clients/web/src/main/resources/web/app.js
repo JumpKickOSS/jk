@@ -33,6 +33,7 @@ import {
 } from './format.js';
 import { JkIcon } from './icons.js';
 import { PhaseChain } from './phase.js';
+import { RunCoverage } from './coverage.js';
 import { RunDelta } from './delta.js';
 import { projectComputed } from './projects.js';
 import { FailReport } from './report.js';
@@ -603,6 +604,7 @@ if (typeof Vue !== 'undefined' && typeof document !== 'undefined') {
     .component('jk-icon', JkIcon)
     .component('phase-chain', PhaseChain)
     .component('run-delta', RunDelta)
+    .component('run-coverage', RunCoverage)
     .component('fail-report', FailReport)
     .component('build-bars', BuildBars)
     .component('module-dep-graph', ModuleDepGraph)

@@ -2447,6 +2447,23 @@ main.code-view { max-width: min(96rem, 100%); display: flex; flex-direction: col
 .run-delta-chip.bad { color: var(--err); }
 .run-delta-rows { list-style: none; margin: 6px 0 0 8px; padding: 0; font-size: 11.5px; color: var(--mu); }
 .run-delta-rows li { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
+/* The Coverage block: a headline strip with the report link; click opens the per-module table. */
+.run-coverage { margin: 6px 0 4px; }
+.run-coverage-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.run-coverage-head {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+  font: inherit; font-size: 12px; color: var(--mu);
+  background: none; border: 1px solid var(--bd); border-radius: var(--r-sm);
+  padding: 3px 9px; cursor: pointer; text-align: left;
+}
+.run-coverage-head:hover, .run-coverage.open .run-coverage-head { border-color: var(--cn); }
+.run-coverage-headline { font-variant-numeric: tabular-nums; color: var(--tx); }
+.run-coverage-since { font-variant-numeric: tabular-nums; }
+.run-coverage-link { font-size: 12px; }
+.run-coverage-table { margin-top: 6px; font-size: 12px; }
+.run-coverage-table td.good { color: var(--ok); }
+.run-coverage-table td.bad { color: var(--err); }
+.run-coverage-row.all td { border-top: 1px solid var(--bd); }
 table.stats.history tr.pinnable { cursor: pointer; }
 table.stats.history tr.pinnable:hover td { background: rgba(var(--cn-rgb), 0.06); }
 table.stats.history tr.pinned td { background: rgba(var(--cn-rgb), 0.12); }
