@@ -469,7 +469,7 @@ public final class TestCommand implements CliCommand {
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         var tails = new WorkspaceRunView.Tails(
-                (r, planned) -> workspaceTestSuccessTail(r, planned, elapsedMs),
+                (r, planned) -> workspaceTestSuccessTail(r, planned, run.servedFromCache(), elapsedMs),
                 r -> workspaceTestFailureTail(r, elapsedMs));
         return run.settleLive(view, agg, result, elapsedMs, tails, settled -> {});
     }
@@ -495,7 +495,8 @@ public final class TestCommand implements CliCommand {
         run.absorb(null, result);
         if (result.success()) {
             if (!json) {
-                CommandWedge.printOk("Test", workspaceTestSuccessTail(result, run.planned(), ms));
+                CommandWedge.printOk(
+                        "Test", workspaceTestSuccessTail(result, run.planned(), run.servedFromCache(), ms));
             }
             return 0;
         }
@@ -532,16 +533,30 @@ public final class TestCommand implements CliCommand {
                 .withModules(modules);
     }
 
-    private static String workspaceTestSuccessTail(WorkspaceResult result, int planned, long elapsedMs) {
+    /**
+     * The workspace success wedge: {@code Tests passed for N modules}, then how many of those
+     * modules' suites were served from the action cache — {@code , K served from cache} or {@code
+     * , all served from cache} — when any was, so a line over an unchanged tree reads as a replay
+     * and not as a run.
+     */
+    static String workspaceTestSuccessTail(WorkspaceResult result, int planned, int served, long elapsedMs) {
         int n = result.modules() == null ? 0 : result.modules().size();
         if (n == 0 || planned == 0) {
             return "No tests to run";
         }
         String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
         if (n == 1) {
-            return "Tests passed " + took;
+            return "Tests passed" + (served > 0 ? ", served from cache " : " ") + took;
         }
-        return "Tests passed for " + n + " modules " + took;
+        String servedClause = served <= 0
+                ? ""
+                : served >= n
+                        ? ", all served from cache"
+                        : ", "
+                                + Theme.colorize(
+                                        String.valueOf(served), Theme.active().focused()) + " served from cache";
+        return "Tests passed for "
+                + Theme.colorize(String.valueOf(n), Theme.active().focused()) + " modules" + servedClause + " " + took;
     }
 
     private static String workspaceTestFailureTail(WorkspaceResult result, long elapsedMs) {

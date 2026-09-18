@@ -17,12 +17,15 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -110,6 +113,7 @@ final class WorkspaceRunView {
     private final List<String> deferred = Collections.synchronizedList(new ArrayList<>());
     private final AtomicInteger completed = new AtomicInteger();
     private final AtomicInteger planned = new AtomicInteger();
+    private final AtomicInteger served = new AtomicInteger();
 
     /**
      * @param session transcript to mirror module events into, or null when the verb keeps none
@@ -133,6 +137,11 @@ final class WorkspaceRunView {
 
     int planned() {
         return planned.get();
+    }
+
+    /** Modules whose test suite was served from the action cache — its green marker replayed instead of a run. */
+    int servedFromCache() {
+        return served.get();
     }
 
     /** Buffered module output in completion order, painted. Empty for non-buffered chrome. */
@@ -221,7 +230,7 @@ final class WorkspaceRunView {
                 var lis = new AggregateModuleListener(agg, m.coord(), m.plan().steps());
                 if (chrome.buffered()) lis.bufferOutputInto(buffer(m.dir()));
                 event(JsonlShape.moduleStart(m.dir().toString(), m.coord()));
-                return withMirror(lis);
+                return withMirror(counting(lis));
             }
 
             @Override
@@ -289,10 +298,10 @@ final class WorkspaceRunView {
                 if (toStdout) {
                     // Live step/progress events for agents (same shape as the single-module stream).
                     // Workspace member: no aggregate-rider writes (the engine snapshot owns it).
-                    return new JsonlListener(System.out, false);
+                    return counting(new JsonlListener(System.out, false));
                 }
                 List<String> buf = buffer(m.dir());
-                return withMirror(new BuildPlanListener() {
+                return withMirror(counting(new BuildPlanListener() {
                     @Override
                     public synchronized void output(String step, String line) {
                         buf.add(line);
@@ -309,7 +318,7 @@ final class WorkspaceRunView {
                         if ("test-failure".equals(code)) return;
                         buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
                     }
-                });
+                }));
             }
 
             @Override
@@ -475,6 +484,34 @@ final class WorkspaceRunView {
 
     private BuildPlanListener withMirror(BuildPlanListener lis) {
         return session == null ? lis : CompositeBuildPlanListener.of(lis, new SessionMirrorListener(session));
+    }
+
+    /** {@code lis} with this module's served-from-cache tally beside it; see {@link #servedFromCache()}. */
+    private BuildPlanListener counting(BuildPlanListener lis) {
+        return CompositeBuildPlanListener.of(lis, new ServedTally());
+    }
+
+    /**
+     * One module's run-tests step, watched for a replay: the engine labels the step {@link
+     * TaskNames#TESTS_UP_TO_DATE} when it serves the suite's green marker and then finishes it
+     * SKIPPED. A SKIPPED suite under any other label — no tests, a {@code --class} that matched
+     * nothing here — was not served anything.
+     */
+    private final class ServedTally implements BuildPlanListener {
+        private volatile boolean replayed;
+
+        @Override
+        public void label(String step, String label) {
+            if (TaskNames.RUN_TESTS.equals(step)) replayed = TaskNames.TESTS_UP_TO_DATE.equals(label);
+        }
+
+        @Override
+        public void stepFinish(
+                String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
+            if (TaskNames.RUN_TESTS.equals(step) && status == TaskStatus.SKIPPED && replayed) {
+                served.incrementAndGet();
+            }
+        }
     }
 
     /**
