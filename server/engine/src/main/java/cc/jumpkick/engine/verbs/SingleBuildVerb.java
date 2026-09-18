@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -22,6 +23,7 @@ import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.TestSupport;
 import cc.jumpkick.runtime.workspace.ModuleInputProvenance;
+import cc.jumpkick.runtime.workspace.StandalonePlanTimings;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import cc.jumpkick.wire.protocol.SingleBuildRequest;
@@ -110,6 +112,7 @@ public final class SingleBuildVerb implements HostedVerb {
                 return builder.build();
             });
             long barWeight = plan.estimatedTotalWeight();
+            StandalonePlanTimings.attach(plan, entryDir, cache, Clock.SYSTEM);
 
             PlanBurst.announce(host, plan, writer);
 
