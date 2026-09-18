@@ -8,6 +8,7 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
@@ -34,10 +35,14 @@ final class ConnectionWatch {
      * Read {@code reader} until the job ends or the client goes away. The client never writes on this
      * socket mid-job, so a plain blocking read would park forever after the runner finished; cancel
      * and runner teardown wake this thread so the finish tail can run. EOF or a read error while the
-     * job is still running is a disconnect, and runs {@code onDisconnect} once. Returns with the
-     * interrupt flag cleared, so the joins that follow are not spuriously skipped.
+     * job's body is still running is a disconnect, and runs {@code onDisconnect} once. Once
+     * {@code bodyFinished} holds, the body has sent its terminal and only its teardown remains, so
+     * the EOF is the client half-closing after reading that terminal — the end of the request, not a
+     * disconnect that stops it — and nothing is cancelled. Returns with the interrupt flag cleared,
+     * so the joins that follow are not spuriously skipped.
      */
-    void watchForEof(@Nullable BufferedReader reader, CountDownLatch done, Runnable onDisconnect) {
+    void watchForEof(
+            @Nullable BufferedReader reader, CountDownLatch done, BooleanSupplier bodyFinished, Runnable onDisconnect) {
         try {
             while (reader != null && done.getCount() > 0) {
                 try {
@@ -47,7 +52,7 @@ final class ConnectionWatch {
                     if (line == null) {
                         // EOF / client gone mid-job — same bounded cancel path (not explicit:
                         // an EOF after a reported failure is the terminal-read race).
-                        onDisconnect.run();
+                        if (!bodyFinished.getAsBoolean()) onDisconnect.run();
                         break;
                     }
                     // Any in-band line while a job runs is noise: cancellation arrives
@@ -58,13 +63,13 @@ final class ConnectionWatch {
                     if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
                         break; // runner done / cancel wake — join below
                     }
-                    onDisconnect.run();
+                    if (!bodyFinished.getAsBoolean()) onDisconnect.run();
                     break;
                 }
             }
             parkedOnRead.set(false);
         } catch (RuntimeException ignored) {
-            if (done.getCount() > 0) onDisconnect.run();
+            if (done.getCount() > 0 && !bodyFinished.getAsBoolean()) onDisconnect.run();
         }
         Thread.interrupted();
     }

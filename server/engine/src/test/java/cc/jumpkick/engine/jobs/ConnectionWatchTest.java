@@ -25,9 +25,29 @@ class ConnectionWatchTest {
         ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, s -> {});
         AtomicInteger disconnects = new AtomicInteger();
         watch.watchForEof(
-                new BufferedReader(new StringReader("")), new CountDownLatch(1), disconnects::incrementAndGet);
+                new BufferedReader(new StringReader("")),
+                new CountDownLatch(1),
+                () -> false,
+                disconnects::incrementAndGet);
         assertThat(disconnects).hasValue(1);
         assertThat(Thread.currentThread().isInterrupted()).isFalse();
+        assertThat(watch.parkedOnRead()).isFalse();
+    }
+
+    /**
+     * The client half-closes its socket the moment it has read the body's terminal, which lands
+     * while the runner is still tearing down; that EOF ends the request and cancels nothing.
+     */
+    @Test
+    void eof_after_the_body_has_finished_is_the_end_of_the_request_not_a_disconnect() {
+        ConnectionWatch watch = new ConnectionWatch(System::currentTimeMillis, s -> {});
+        AtomicInteger disconnects = new AtomicInteger();
+        watch.watchForEof(
+                new BufferedReader(new StringReader("")),
+                new CountDownLatch(1),
+                () -> true,
+                disconnects::incrementAndGet);
+        assertThat(disconnects).as("a finished body has nothing left to cancel").hasValue(0);
         assertThat(watch.parkedOnRead()).isFalse();
     }
 
@@ -39,7 +59,7 @@ class ConnectionWatchTest {
         CountDownLatch hold = new CountDownLatch(1);
         AtomicInteger disconnects = new AtomicInteger();
         Thread connection = Thread.ofPlatform().start(() -> {
-            watch.watchForEof(new BufferedReader(never), done, disconnects::incrementAndGet);
+            watch.watchForEof(new BufferedReader(never), done, () -> false, disconnects::incrementAndGet);
             try {
                 hold.await(30, TimeUnit.SECONDS);
             } catch (InterruptedException e) {

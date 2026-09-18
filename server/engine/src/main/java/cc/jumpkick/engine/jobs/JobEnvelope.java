@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
@@ -214,7 +215,8 @@ public final class JobEnvelope {
                 channel,
                 watch,
                 connectionThread,
-                deadline);
+                deadline,
+                new AtomicBoolean());
         // The job body binds its own session inside the verb (SessionContext.where); unstarted so runnerRef is set
         // first.
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
@@ -482,7 +484,13 @@ public final class JobEnvelope {
             @Nullable SocketChannel channel,
             ConnectionWatch watch,
             Thread connectionThread,
-            WallDeadline deadline) {}
+            WallDeadline deadline,
+            /**
+             * Set once the body has returned or thrown — its terminal is on the wire and only the
+             * teardown remains — so the connection thread reads a client's EOF after that as the
+             * end of the request rather than a disconnect to cancel.
+             */
+            AtomicBoolean bodyDone) {}
 
     /** The runner thread: open the request's scopes, run the body, stamp the verdict, tear down. */
     private void runBody(Admitted a) {
@@ -526,6 +534,7 @@ public final class JobEnvelope {
                 if (thrown != null) thrown.addEscapedThrow(t);
                 reportDeadJob(eventRequestId, eventDir, writer, t);
             }
+            a.bodyDone().set(true);
             // The one success law: the body's verdict is stamped here, nowhere else. A
             // declined verdict leaves the journal to the accumulated facts.
             BuildAccumulator acc = host.accumulatorOf(eventRequestId);
@@ -591,6 +600,7 @@ public final class JobEnvelope {
             watch.watchForEof(
                     reader,
                     done,
+                    a.bodyDone()::get,
                     () -> live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false));
             watch.awaitRunner(
                     eventRequestId,
