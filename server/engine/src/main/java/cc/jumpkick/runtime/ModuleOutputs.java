@@ -21,10 +21,11 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Which of a module's PACKAGE outputs are missing while its inputs are unchanged: the main jar,
- * a sourced module's classes tree, the assembly jar, the native binary — {@code jk clean},
- * hand-deleted artifacts, partial wipes. A module that answers yes is scheduled, and its own plan
- * brings the outputs back: every step restores by the action key it computes from its current
- * inputs, so the tree and the jar that return are the ones this build would produce.
+ * a sourced module's classes tree, a resources-only module's copied tree, the assembly jar, the
+ * native binary — {@code jk clean}, hand-deleted artifacts, partial wipes. A module that answers
+ * yes is scheduled, and its own plan brings the outputs back: every step restores by the action
+ * key it computes from its current inputs, so the tree and the jar that return are the ones this
+ * build would produce.
  */
 @NullMarked
 public final class ModuleOutputs {
@@ -32,9 +33,9 @@ public final class ModuleOutputs {
     private ModuleOutputs() {}
 
     /**
-     * True when this module's required PACKAGE outputs are absent: main jar missing, or a sourced
-     * module with an empty classes tree. Without an action cache the classes tree is judged by
-     * presence alone.
+     * True when this module's required PACKAGE outputs are absent: main jar missing, a sourced
+     * module with an empty classes tree, or a resources-only module whose copied tree or jar is
+     * gone. Without an action cache the classes tree is judged by presence alone.
      */
     public static boolean packageOutputsMissing(Path workspaceRoot, Path moduleDir, JkBuild build) {
         return packageOutputsMissing(workspaceRoot, moduleDir, build, null);
@@ -49,12 +50,13 @@ public final class ModuleOutputs {
     public static boolean packageOutputsMissing(
             Path workspaceRoot, Path moduleDir, JkBuild build, @Nullable ActionCache actionCache) {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
-        // Sources-less modules (jk-web: resources/test-only) plan no package-jar step at all —
-        // demanding one flagged them restore-needed on every fully-cached build.
-        boolean hasSources = hasMainSources(moduleDir, build);
-        if (hasSources && !Files.isRegularFile(layout.mainJar())) return true;
-        if (hasSources && !classesDirHasContent(layout.classesDir())) return true;
-        if (hasSources && actionCache != null && !compileOutputsOnDisk(actionCache, layout.classesDir())) return true;
+        if (hasMainSources(moduleDir, build)) {
+            if (!Files.isRegularFile(layout.mainJar())) return true;
+            if (!classesDirHasContent(layout.classesDir())) return true;
+            if (actionCache != null && !compileOutputsOnDisk(actionCache, layout.classesDir())) return true;
+        } else if (resourcesOnlyOutputsMissing(moduleDir, build, layout)) {
+            return true;
+        }
         if (build.assembly() && !Files.isRegularFile(layout.assemblyJar())) return true;
         if (build.nativeMode() == JkBuild.NativeMode.ALWAYS && !nativePresent(layout, build)) return true;
         return false;
@@ -172,6 +174,24 @@ public final class ModuleOutputs {
         return Files.isRegularFile(Path.of(libBase + ".so"))
                 || Files.isRegularFile(Path.of(libBase + ".dylib"))
                 || Files.isRegularFile(Path.of(libBase + ".dll"));
+    }
+
+    /**
+     * A module with resources and no sources: the tree {@code copy-resources} fills is on every
+     * dependent's compile classpath and its jar is what their package steps read, so either gone
+     * while the resources stand is a missing output. A module with neither, or a workspace root,
+     * plans no package step and asks for nothing. Any file in the tree counts — a resource is not
+     * a class file.
+     */
+    private static boolean resourcesOnlyOutputsMissing(Path moduleDir, JkBuild build, BuildLayout layout) {
+        if (build.isWorkspaceRoot()) return false;
+        boolean compact = CompileSupport.isSimpleLayout(build.project(), moduleDir);
+        if (PackagingKeys.packageResourceRoots(moduleDir, compact).isEmpty()) return false;
+        try {
+            return !Files.isRegularFile(layout.mainJar()) || !TaskForecaster.classesDirHasContent(layout.classesDir());
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     private static boolean hasMainSources(Path moduleDir, JkBuild build) {
