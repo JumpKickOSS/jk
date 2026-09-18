@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -181,11 +182,15 @@ final class LockfileAssembler {
         RepoGroup group = reposFor.apply(mod.module());
         // A relocation stub or a packaging=pom row has no artifact to ask for: its POM, read by the
         // solve, already says so. Asking every repository for a jar that exists nowhere turns one
-        // remote's refusal under a download burst into a failed lock.
+        // remote's refusal under a download burst into a failed lock. A Gradle-published module is
+        // the exception: its packaging says nothing about the files it ships, so its jar is asked
+        // for, and a miss leaves it the file-less row a Gradle-published BOM is.
         boolean pomOnly = !kmpAlias && isPomOnlyPackage(coord, pomBuilder);
-        RepoGroup.RepoFetched hit = kmpAlias || pomOnly
-                ? null
-                : group.tryFetchArtifact(coord, abort).orElse(null);
+        RepoGroup.RepoFetched hit = null;
+        if (!kmpAlias && (!pomOnly || gradlePublished(coord, group))) {
+            hit = group.tryFetchArtifact(coord, abort).orElse(null);
+            if (hit != null) pomOnly = false;
+        }
         if (hit == null
                 && !kmpAlias
                 && !pomOnly
@@ -260,6 +265,24 @@ final class LockfileAssembler {
             Pom.Relocation moved = pom.relocation();
             return moved != null && moved.redirects(coord);
         } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * True when the POM of {@code coord} carries Gradle's module-metadata marker: Gradle wrote the
+     * POM beside a {@code .module} file, and its {@code packaging} does not say whether a jar exists.
+     */
+    private static boolean gradlePublished(Coordinate coord, RepoGroup group) {
+        try {
+            Optional<RepoGroup.RepoFetched> pom = group.tryFetchPom(coord);
+            return pom.isPresent()
+                    && KmpRedirects.pomHasGradleMetadataMarker(
+                            pom.get().fetched().cachePath());
+        } catch (IOException e) {
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             return false;
         }
     }
