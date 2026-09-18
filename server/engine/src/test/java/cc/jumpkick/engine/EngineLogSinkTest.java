@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -74,6 +75,40 @@ class EngineLogSinkTest {
                 .isZero();
         assertThat(Files.readString(log)).isEqualTo("jk engine: spawning successor\n");
         assertThat(Files.readString(previous)).startsWith("predecessor, still draining");
+    }
+
+    /**
+     * The ownership decision on its own. The end-to-end test above can only exercise the fallback
+     * on a host whose files have no key (Windows), and only when NTFS happens to hand the
+     * successor the predecessor's creation time — measured at 58% of runs, which is what made that
+     * test flake rather than fail. These pin the rule everywhere, every run.
+     */
+    @Test
+    void a_file_key_decides_by_itself_when_the_host_has_one() {
+        FileTime t = FileTime.fromMillis(1_700_000_000_000L);
+        assertThat(EngineLogSink.sameFile("key-a", t, CAP, "key-a", t, 0))
+                .as("same file, whatever the size says")
+                .isTrue();
+        assertThat(EngineLogSink.sameFile("key-a", t, CAP, "key-b", t, 10 * CAP))
+                .as("a different file, however alike it looks")
+                .isFalse();
+    }
+
+    @Test
+    void without_a_file_key_a_matching_creation_time_is_not_enough() {
+        FileTime t = FileTime.fromMillis(1_700_000_000_000L);
+        // NTFS gives a new file the creation time of the one renamed out of its name moments
+        // before, which is exactly what a successor's spawner does. The successor's log is a
+        // header line, and this sink only asks when it has filled its own file past the cap.
+        assertThat(EngineLogSink.sameFile(null, t, CAP, null, t, 30))
+                .as("a file below the cap is not the file this sink is about to roll")
+                .isFalse();
+        assertThat(EngineLogSink.sameFile(null, t, CAP, null, t, CAP))
+                .as("at the cap it is ours")
+                .isTrue();
+        assertThat(EngineLogSink.sameFile(null, t, CAP, null, FileTime.fromMillis(1L), 10 * CAP))
+                .as("and a different creation time settles it regardless")
+                .isFalse();
     }
 
     @Test
