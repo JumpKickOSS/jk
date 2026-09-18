@@ -45,6 +45,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class QuarkusAugmentMain {
 
+    /** The prefix of every line this fork writes about itself; the plugin keeps those lines when it fails. */
+    static final String LOG_PREFIX = "jk-quarkus-augment";
+
     public static void main(String[] args) throws Exception {
 
         if (args.length != 12) {
@@ -75,7 +78,7 @@ public final class QuarkusAugmentMain {
         boolean offline = EnvValues.parseBool(args[11]).orElse(false);
 
         LockedClosure locked = LockedClosure.parse(runtimeList);
-        System.err.println("jk-quarkus-augment: locked runtime closure="
+        System.err.println(LOG_PREFIX + ": locked runtime closure="
                 + locked.artifacts().size() + (offline ? " offline" : "") + " pure-bootstrap");
 
         Files.createDirectories(targetDir);
@@ -111,7 +114,7 @@ public final class QuarkusAugmentMain {
             }
             Path dest = targetDir.resolve("quarkus-uber.jar");
             Files.copy(uber, dest, StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("jk-quarkus-augment: " + dest);
+            System.out.println(LOG_PREFIX + ": " + dest);
             return;
         }
         promoteFastJar(augmentOut, targetDir);
@@ -164,7 +167,7 @@ public final class QuarkusAugmentMain {
         MavenArtifactResolver mvn = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
         routes.attachMirrors(mvn.getSession());
         routes.attachBearerTokens(mvn.getSession());
-        System.err.println("jk-quarkus-augment: remote repositories: " + routes.describe());
+        System.err.println(LOG_PREFIX + ": remote repositories: " + routes.describe());
         BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(mvn);
         ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
         BootstrapRepo.Installer repo = (g, a, v, type, file) -> modelResolver.install(
@@ -185,14 +188,14 @@ public final class QuarkusAugmentMain {
         }
         ArtifactCoords managing = ArtifactCoords.pom("io.quarkus.platform", "quarkus-bom", quarkusVersion);
 
-        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + " workspaceDeps="
+        System.err.println(LOG_PREFIX + ": resolving ApplicationModel (direct=" + direct.size() + " workspaceDeps="
                 + workspaceDeps + ")…");
         // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
         // Aether owns the deployment closure (build-time only); the lock owns what ships.
         var model = LockedAppModel.enforce(
                 modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey())),
                 locked);
-        System.err.println("jk-quarkus-augment: runtime deps="
+        System.err.println(LOG_PREFIX + ": runtime deps="
                 + model.getRuntimeDependencies().size() + " deployment deps="
                 + model.getDependencies().size());
         return model;
@@ -246,15 +249,14 @@ public final class QuarkusAugmentMain {
                 .setRebuild(false)
                 .build();
 
-        System.err.println(
-                "jk-quarkus-augment: bootstrap + createProductionApplication (package=" + packageType + ")…");
+        System.err.println(LOG_PREFIX + ": bootstrap + createProductionApplication (package=" + packageType + ")…");
         Path producedJar = null;
         try (CuratedApplication curated = bs.bootstrap()) {
             AugmentResult result = curated.createAugmentor().createProductionApplication();
             if (result.getJar() != null) {
                 producedJar = result.getJar().getPath();
             }
-            System.err.println("jk-quarkus-augment: result jar=" + producedJar);
+            System.err.println(LOG_PREFIX + ": result jar=" + producedJar);
         }
         return producedJar;
     }
@@ -285,7 +287,7 @@ public final class QuarkusAugmentMain {
         if (layoutRoot == null) throw new IllegalStateException("quarkus-run.jar has no parent directory: " + runJar);
         copyTree(layoutRoot, destApp);
         Files.copy(runJar, targetDir.resolve("quarkus-run.jar"), StandardCopyOption.REPLACE_EXISTING);
-        System.out.println("jk-quarkus-augment: " + targetDir.resolve("quarkus-run.jar"));
+        System.out.println(LOG_PREFIX + ": " + targetDir.resolve("quarkus-run.jar"));
     }
 
     private static String normalizePackageType(String raw) {
@@ -315,14 +317,14 @@ public final class QuarkusAugmentMain {
     static void injectPlatform(ApplicationModel model, String quarkusVersion, Path platformProps, boolean offline)
             throws Exception {
         if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
-            System.err.println("jk-quarkus-augment: warning: cannot inject platform props (platforms type "
+            System.err.println(LOG_PREFIX + ": warning: cannot inject platform props (platforms type "
                     + (model.getPlatforms() == null
                             ? "null"
                             : model.getPlatforms().getClass().getName()) + ")");
             return;
         }
         injectPlatformProperties(platforms, quarkusVersion, platformProps, offline);
-        System.err.println("jk-quarkus-augment: platform props="
+        System.err.println(LOG_PREFIX + ": platform props="
                 + model.getPlatformProperties().size() + " boms=" + platforms.getImportedPlatformBoms());
     }
 
@@ -376,7 +378,7 @@ public final class QuarkusAugmentMain {
         }
         Files.createDirectories(dest);
         copyTree(found, dest);
-        System.err.println("jk-quarkus-augment: native sources -> " + dest);
+        System.err.println(LOG_PREFIX + ": native sources -> " + dest);
     }
 
     private static void copyTree(Path from, Path to) throws IOException {

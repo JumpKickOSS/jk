@@ -25,6 +25,30 @@ class QuarkusPluginTest {
     }
 
     @Test
+    void failure_text_keeps_the_forks_own_header_lines_above_its_last_sixty() {
+        StringBuilder out = new StringBuilder();
+        out.append("jk-quarkus-augment: remote repositories: central=https://repo1.maven.org/maven2/\n");
+        out.append("jk-quarkus-augment: locked runtime closure=412 jars\n");
+        for (int i = 0; i < 200; i++)
+            out.append("[io.quarkus.deployment] noise line ").append(i).append('\n');
+        out.append("Caused by: java.lang.IllegalStateException: no such artifact\n");
+
+        String text = QuarkusPlugin.failureText("jk-quarkus-augment", out.toString());
+        String[] lines = text.split("\n");
+
+        assertThat(lines[0])
+                .isEqualTo("jk-quarkus-augment: remote repositories: central=https://repo1.maven.org/maven2/");
+        assertThat(lines[1]).isEqualTo("jk-quarkus-augment: locked runtime closure=412 jars");
+        assertThat(text).contains("Caused by: java.lang.IllegalStateException: no such artifact");
+        assertThat(text).doesNotContain("noise line 0\n").contains("noise line 199");
+        // the header rides once: a header line already inside the tail window is not repeated
+        String shortRun = "jk-quarkus-augment: remote repositories: none\nboom\n";
+        assertThat(QuarkusPlugin.failureText("jk-quarkus-augment", shortRun))
+                .isEqualTo("jk-quarkus-augment: remote repositories: none\nboom");
+        assertThat(QuarkusPlugin.failureText("jk-quarkus-augment", "")).isEmpty();
+    }
+
+    @Test
     void fast_jar_promotes_siblings_and_declares_them_produced(@TempDir Path dir) throws Exception {
         Path augment = dir.resolve("augment/quarkus-app");
         Files.createDirectories(augment.resolve("lib/main"));
