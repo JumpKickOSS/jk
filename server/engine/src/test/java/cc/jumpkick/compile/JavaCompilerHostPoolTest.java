@@ -243,8 +243,11 @@ class JavaCompilerHostPoolTest {
 
         assertThat(pump.isAlive()).as("the dead lane's pump unwinds").isFalse();
         assertThat(sent).as("the dead worker is told DONE, never COMPILE").containsExactly("DONE", "<eof>");
-        assertThat(pool.queued()).as("the item waits for a lane that is alive").isEqualTo(1);
-        assertThat(pool.liveLanes()).isEqualTo(1);
+        // Handing the item back and spawning the replacement lane both happen off this thread, so
+        // they are awaited rather than read the instant the pump unwinds: the item was observed
+        // taken-but-not-yet-returned, which is a moment in the hand-back, not a lost item.
+        awaitTrue(() -> pool.queued() == 1, "the item waits for a lane that is alive");
+        awaitTrue(() -> pool.liveLanes() == 1, "a live lane replaces the dead one");
         assertThat(b.compile).isNotDone();
 
         secondDies.countDown();

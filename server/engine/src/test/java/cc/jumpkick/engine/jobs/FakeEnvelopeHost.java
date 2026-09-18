@@ -14,6 +14,7 @@ import java.io.BufferedWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.LongSupplier;
@@ -22,8 +23,16 @@ import org.jspecify.annotations.Nullable;
 /** {@link JobEnvelope.Host} with every seam observable: what the wire and the dashboard would see, in order. */
 final class FakeEnvelopeHost implements JobEnvelope.Host {
     boolean tryStart = true;
-    volatile int abandoned;
-    volatile int finished;
+
+    /*
+     * Counters, not flags. Two threads reach these — the thread that submits and the one a queued
+     * job runs on — and `volatile int` with ++ is a read-modify-write, so a lost update reads back
+     * as a plan slot that was never released. That is what
+     * `a queued job holds no plan slot` saw on the runs where it failed.
+     */
+    final AtomicInteger abandoned = new AtomicInteger();
+    final AtomicInteger finished = new AtomicInteger();
+    final AtomicInteger activePlans = new AtomicInteger();
     volatile BuildAccumulator accumulator = new BuildAccumulator("build", "/p", null, "cli");
     final List<String> events = Collections.synchronizedList(new ArrayList<>());
     final List<Long> cleared = Collections.synchronizedList(new ArrayList<>());
@@ -34,26 +43,24 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
 
     @Override
     public boolean tryStartBuildPlan() {
-        if (tryStart) activePlans++;
+        if (tryStart) activePlans.incrementAndGet();
         return tryStart;
     }
 
     @Override
     public void abandonBuildPlanSlot() {
-        abandoned++;
+        abandoned.incrementAndGet();
     }
 
     @Override
     public void noteBuildPlanFinished() {
-        finished++;
-        activePlans--;
+        finished.incrementAndGet();
+        activePlans.decrementAndGet();
         sequence.add("plan-slot-released");
     }
 
     /** Every host call the envelope makes that the wire or the dashboard can observe, in order. */
     final List<String> sequence = Collections.synchronizedList(new ArrayList<>());
-
-    volatile int activePlans;
 
     @Override
     public boolean draining() {
@@ -160,7 +167,7 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
 
     @Override
     public int activeBuildPlans() {
-        return activePlans;
+        return activePlans.get();
     }
 
     @Override
