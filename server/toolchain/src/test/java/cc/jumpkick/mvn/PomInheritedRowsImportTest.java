@@ -132,6 +132,11 @@ class PomInheritedRowsImportTest {
         assertThat(result.report().issues().stream()
                         .filter(i -> i.message().contains("wagon-ssh"))
                         .map(ImportReport.Issue::severity))
+                .as("a deploy transport is an effect jk has: the inherited row keeps its Tier-2 severity")
+                .containsExactly(ImportReport.Severity.WARNING);
+        assertThat(result.report().issues().stream()
+                        .filter(i -> i.message().contains("my-extension"))
+                        .map(ImportReport.Issue::severity))
                 .containsExactly(ImportReport.Severity.ERROR);
     }
 

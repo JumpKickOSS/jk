@@ -79,9 +79,9 @@ class CoexistenceBuildE2eTest {
               <build>
                 <extensions>
                   <extension>
-                    <groupId>org.apache.maven.wagon</groupId>
-                    <artifactId>wagon-ssh</artifactId>
-                    <version>3.5.3</version>
+                    <groupId>com.acme</groupId>
+                    <artifactId>lifecycle-extension</artifactId>
+                    <version>1.0.0</version>
                   </extension>
                 </extensions>
               </build>
