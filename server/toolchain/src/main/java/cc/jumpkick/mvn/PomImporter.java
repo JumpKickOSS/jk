@@ -338,6 +338,12 @@ public final class PomImporter {
         } else if (!args.main().isEmpty()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main()));
         }
+        if (!args.granted().isEmpty()) {
+            report.warning("`<compilerArgs>` carries " + args.granted().size() + " `-J` line"
+                    + (args.granted().size() == 1 ? "" : "s") + " opening `jdk.compiler` packages jk grants every"
+                    + " compiler worker (" + String.join(", ", packagesOf(args.granted()))
+                    + "); they add nothing to a jk build and are not written.");
+        }
         for (String execution : PluginFacts.mainScopedProcessorPaths(model)) {
             report.warning("`<annotationProcessorPaths>` on execution " + execution
                     + " — jk's [processor-dependencies] serves compile-test as well as compile-main; the paths"
@@ -350,6 +356,17 @@ public final class PomImporter {
         }
         if (!tests.jvm().isEmpty()) build = build.withTestJvm(tests.jvm());
         return build;
+    }
+
+    /** {@code com.sun.tools.javac.api} out of {@code -J--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED}. */
+    private static List<String> packagesOf(List<String> granted) {
+        List<String> out = new ArrayList<>();
+        for (String line : granted) {
+            int slash = line.indexOf('/');
+            int eq = line.indexOf('=', slash);
+            out.add(slash < 0 || eq < 0 ? line : line.substring(slash + 1, eq));
+        }
+        return out;
     }
 
     private static Profiles toProfiles(List<ProfileMapping.CompilerProfile> mapped) {

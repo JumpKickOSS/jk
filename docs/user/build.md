@@ -138,7 +138,7 @@ args    = ["-XDcompilePolicy=simple", "--should-stop=ifError=FLOW"]
 |-----|---------|
 | `plugins.<Name>` | The plugin's registered javac name, case-sensitive (`ErrorProne`, not `errorprone`); passed as `-Xplugin:<Name>` |
 | `plugins.<Name>.options` | Handed to the plugin after its name |
-| `args` | Verbatim javac arguments, appended after every plugin. A `-J<flag>` entry is the javac launcher's spelling of a flag for the JVM running the compiler — `-J--add-opens=…`, `-J-Xss4m` — and starts the compiler worker with it instead of reaching javac, which would refuse it; a flag jk already passes, such as the `jdk.compiler` exports Error Prone documents, is not passed twice, and the flags that remain key the worker's AOT cache, whose trainer starts with the same flags. `jk import` keeps a POM's `<compilerArgs>` `-J` lines as they are |
+| `args` | Verbatim javac arguments, appended after every plugin. A `-J<flag>` entry is the javac launcher's spelling of a flag for the JVM running the compiler — `-J--add-opens=…`, `-J-Xss4m` — and starts the compiler worker with it instead of reaching javac, which would refuse it; a flag jk already passes, such as the `jdk.compiler` exports Error Prone documents, is not passed twice, and the flags that remain key the worker's AOT cache, whose trainer starts with the same flags. `jk import` keeps a POM's `<compilerArgs>` `-J` lines as they are, except the `jdk.compiler` exports jk grants anyway, which it leaves out with one row in the import report |
 
 The table is named `javac`, not `java`: `java = 25` is the release, and a TOML key cannot be
 both a value and a table.

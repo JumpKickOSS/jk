@@ -8,6 +8,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.JdkCompilerAccess;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jsonl.Jsonl;
@@ -129,7 +130,7 @@ public final class ForkedJavac {
          * javac: {@code -J<flag>}. javac itself rejects the argument as an invalid flag, so the
          * engine splits it the way the launcher does.
          */
-        public static final String JVM_FLAG_PREFIX = "-J";
+        public static final String JVM_FLAG_PREFIX = JdkCompilerAccess.LAUNCHER_PREFIX;
 
         /** The flags the worker JVM starts with: every {@code -J} argument, prefix stripped, in order. */
         public List<String> jvmArgs() {
