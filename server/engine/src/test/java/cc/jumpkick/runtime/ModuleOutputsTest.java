@@ -146,6 +146,52 @@ class ModuleOutputsTest {
     }
 
     /**
+     * A module with resources and no sources still has outputs a sibling reads: the classes tree
+     * its resources are copied into is on every dependent's compile classpath, and its jar is what
+     * their package steps read. Both gone while the resources stand is a missing output; a module
+     * with neither sources nor resources asks for nothing.
+     */
+    @Test
+    void a_resources_only_modules_tree_and_jar_are_outputs_too(@TempDir Path root) throws Exception {
+        Path res = Files.createDirectories(root.resolve("res"));
+        Files.writeString(res.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "res"
+                version = "1.0.0"
+                java    = 25
+                """);
+        JkBuild build = JkBuildParser.parse(res.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(root, res, build);
+
+        assertThat(ModuleOutputs.packageOutputsMissing(root, res, build))
+                .as("no sources, no resources: nothing is produced, so nothing is missing")
+                .isFalse();
+
+        Files.createDirectories(res.resolve("src/main/resources"));
+        Files.writeString(res.resolve("src/main/resources/hello.txt"), "hello");
+        assertThat(ModuleOutputs.packageOutputsMissing(root, res, build))
+                .as("resources with no classes tree and no jar")
+                .isTrue();
+
+        Files.createDirectories(layout.classesDir());
+        Files.writeString(layout.classesDir().resolve("hello.txt"), "hello");
+        assertThat(ModuleOutputs.packageOutputsMissing(root, res, build))
+                .as("the copied tree without the jar")
+                .isTrue();
+
+        Files.createDirectories(layout.mainJar().getParent());
+        Files.writeString(layout.mainJar(), "jar");
+        assertThat(ModuleOutputs.packageOutputsMissing(root, res, build))
+                .as("tree and jar present")
+                .isFalse();
+
+        Files.delete(layout.classesDir().resolve("hello.txt"));
+        assertThat(ModuleOutputs.packageOutputsMissing(root, res, build))
+                .as("an empty tree is a missing tree")
+                .isTrue();
+    }
+
+    /**
      * The test view a tests-enabled build leaves: absent test classes for a module with tests, or
      * an absent fixtures tree for a module whose fixtures root holds sources, each read as a
      * missing output; a module with neither asks for nothing.
