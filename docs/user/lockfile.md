@@ -384,6 +384,14 @@ so two builds of one version can be told apart and ordered by the source they we
 and a reinstall of the same jar moves neither; a jk running from a classes directory writes
 neither. The stamps are provenance, not pins: they choose no artifact and never make a lock stale.
 
+`Build-Time` belongs to the archive's content, not to the checkout that happened to package it.
+The assembly is keyed by what goes into it — the classes, the bundled jars, the main class, the
+manifest table, the relocations — and the commit time is not part of that key, so a later commit
+that leaves the engine's inputs untouched restores the same archive from the action cache, stamp
+and all. Two commits with identical code are one build, with one identity and one time, and that
+time names the commit whose source last changed the bytes; a fresher stamp on identical bytes
+would give one build identity two times.
+
 A jk **older than the writer never relocks**. When the manifests move and the build, `jk sync`
 or `jk lock` would rewrite a lock a newer jk wrote — a newer version, or a later build of the same
 version — the command fails naming both:

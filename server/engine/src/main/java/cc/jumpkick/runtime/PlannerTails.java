@@ -290,8 +290,11 @@ public final class PlannerTails {
      * lib and {@code worktree} describes its checkout. The value is the checkout's commit time, so
      * the jar stays a function of its source — the same commit packages the same bytes — while two
      * engines of one version are ordered by the commit they were built from rather than by when a
-     * jar was copied into place. Any other assembly, and one built outside a checkout, carries what
-     * the table says and nothing more.
+     * jar was copied into place. The time is not part of the assembly's key: a commit that leaves
+     * the inputs untouched restores the earlier archive from the action cache, stamp included, so
+     * the stamp names the source the bytes came from rather than the checkout that packaged them.
+     * Any other assembly, and one built outside a checkout, carries what the table says and nothing
+     * more.
      */
     static Map<String, String> assemblyAttributes(JkBuild project, Optional<GitFetcher.Worktree> worktree) {
         Map<String, String> attrs = new LinkedHashMap<>(project.manifest());
