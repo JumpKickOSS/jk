@@ -108,7 +108,13 @@ final class WorkspaceRunPhase {
                     SessionCancel::cancelled,
                     // The root's after-build scripts read what the members produced, native
                     // tails included, so the root waits for the members to finish, not to publish.
-                    unit -> unit.origin() == BuildGraph.Origin.ROOT);
+                    unit -> unit.origin() == BuildGraph.Origin.ROOT,
+                    // Fail-fast stops the siblings still building and waits for them, so every
+                    // module that started is in the record, the stopped ones as stopped.
+                    unit -> {
+                        ModulePlan sibling = prepared.plans().get(unit.dir());
+                        if (sibling != null) sibling.plan().stop();
+                    });
         }
         Perf.end("ws-schedule-run", scheduleStart);
         long executeWallMs = Math.max(0L, clock.millis() - executeStartMs);

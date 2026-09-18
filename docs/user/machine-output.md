@@ -88,7 +88,9 @@ row (`code`, `message`, `detail`, `exceptionClass`). [Test](test.md#when-the-lau
 The headline outcome is the run's own verdict. `FAIL` with the failed step's exit (`1`, or `4` for
 red tests) is a build that stopped at a failure; `CANCELLED` with `exit 130` is a run a user or a
 deadline interrupted, and only that. When one module fails, the build stops admitting the others
-and the modules already in flight are stopped where they stand: their unfinished steps are one
+and the modules already in flight are stopped where they stand and waited for before the record
+is written, so every module that had started is in it — the same failure produces the same record
+however the siblings were timed. Their unfinished steps are one
 line under `## Failed steps` — `_N steps stopped by the failure._` — the module reads `SKIPPED`
 in `## Modules` and in the `Modules:` count, and a test run that was stopped is not a failure
 under `## Failures`. `jk build --continue` runs every module to the end instead. Two verdicts are
