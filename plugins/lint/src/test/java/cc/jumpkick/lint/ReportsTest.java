@@ -68,7 +68,11 @@ class ReportsTest {
                         "This expression contains a magic number."));
     }
 
-    /** Maven's {@code excludeFromFailureFile}: a class's listed rules are left out of the report, the rest stay. */
+    /**
+     * Maven's {@code excludeFromFailureFile}: a class's listed rules are left out of the report, the
+     * rest stay — and the report on disk says the same, so what a guard counts from it is what the
+     * step reported.
+     */
     @Test
     void pmd_violations_the_exclusion_file_lists_for_their_class_are_left_out(@TempDir Path tmp) throws Exception {
         Path report = Files.writeString(tmp.resolve("pmd.xml"), """
@@ -88,6 +92,11 @@ class ReportsTest {
         assertThat(Reports.parse(LintTool.PMD, report, List.of(), excluded))
                 .extracting(Finding::rule)
                 .containsExactly("UselessParentheses");
+        assertThat(Reports.parse(LintTool.PMD, report, List.of(), PmdExclusions.NONE))
+                .as("the report on disk holds the findings the step reported, the excluded ones gone")
+                .extracting(Finding::rule)
+                .containsExactly("UselessParentheses");
+        assertThat(report).content().contains("Useless parentheses.").doesNotContain("UnusedPrivateField");
     }
 
     @Test

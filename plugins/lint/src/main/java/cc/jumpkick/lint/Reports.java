@@ -4,12 +4,21 @@ package cc.jumpkick.lint;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.DomXml;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import javax.xml.XMLConstants;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import org.jspecify.annotations.Nullable;
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
 /**
@@ -17,7 +26,9 @@ import org.w3c.dom.Element;
  * ({@code <file name><error line column severity message source/>}), PMD its own
  * ({@code <file name><violation beginline begincolumn rule priority>text</violation>}), SpotBugs a
  * {@code BugCollection} whose {@code BugInstance}s locate themselves through a primary
- * {@code SourceLine} relative to the source roots.
+ * {@code SourceLine} relative to the source roots. A PMD violation the module's exclusions leave
+ * out leaves the report on disk too, so the report holds what the step reported and a guard
+ * counting it counts the same findings.
  */
 final class Reports {
 
@@ -27,12 +38,35 @@ final class Reports {
     static List<Finding> parse(LintTool tool, Path report, List<Path> sourceRoots, PmdExclusions excluded)
             throws IOException {
         if (Files.size(report) == 0) return List.of();
-        Element root = DomXml.parse(report).getDocumentElement();
+        Document document = DomXml.parse(report);
+        Element root = document.getDocumentElement();
         return switch (tool) {
             case CHECKSTYLE, DETEKT -> checkstyle(root);
-            case PMD -> pmd(root, excluded);
+            case PMD -> {
+                List<Element> left = new ArrayList<>();
+                List<Finding> findings = pmd(root, excluded, left);
+                if (!left.isEmpty()) {
+                    for (Element violation : left) violation.getParentNode().removeChild(violation);
+                    write(document, report);
+                }
+                yield findings;
+            }
             case SPOTBUGS -> spotbugs(root, sourceRoots);
         };
+    }
+
+    /** {@code document} written over {@code report}, as the tool wrote it less what was taken out. */
+    private static void write(Document document, Path report) throws IOException {
+        try {
+            TransformerFactory factory = TransformerFactory.newInstance();
+            factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            Transformer transformer = factory.newTransformer();
+            StringWriter out = new StringWriter();
+            transformer.transform(new DOMSource(document), new StreamResult(out));
+            Files.writeString(report, out.toString(), StandardCharsets.UTF_8);
+        } catch (TransformerException e) {
+            throw new IOException("could not write " + report + ": " + e.getMessage(), e);
+        }
     }
 
     /** Checkstyle's own format, which detekt's XML report shares. */
@@ -57,9 +91,10 @@ final class Reports {
 
     /**
      * PMD's XML: priorities 1 and 2 are errors, 3 to 5 warnings; a violation {@code excluded} lists
-     * for its class is left out; a processing error is an error at the file.
+     * for its class is left out and added to {@code leftOut}; a processing error is an error at the
+     * file.
      */
-    static List<Finding> pmd(Element root, PmdExclusions excluded) {
+    static List<Finding> pmd(Element root, PmdExclusions excluded, List<Element> leftOut) {
         List<Finding> findings = new ArrayList<>();
         for (Element file : DomXml.childElements(root, "file")) {
             String name = file.getAttribute("name");
@@ -68,6 +103,7 @@ final class Reports {
                         violation.getAttribute("package"),
                         violation.getAttribute("class"),
                         violation.getAttribute("rule"))) {
+                    leftOut.add(violation);
                     continue;
                 }
                 int priority = intAttr(violation, "priority");
