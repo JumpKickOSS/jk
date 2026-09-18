@@ -9,6 +9,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.http.InFlightRequests;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.BuildBlock;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
@@ -21,6 +22,7 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.RepoGroup;
@@ -37,6 +39,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -276,7 +279,7 @@ public final class PomImporter {
         Map<Scope, List<Dependency>> byScope =
                 mapDependencies(em, report, processorPaths.all(), hoisted, platformSupplied, bomSupplied);
         mapProcessorPaths(processorPaths, byScope, report);
-        ProfileMapping.Mapped profiles = ProfileMapping.map(em, report);
+        ProfileMapping.Mapped profiles = ProfileMapping.map(em, report, profileBoms(resolver, report));
         addOptionalDeps(byScope, profiles.optionalDeps());
         List<Repository> repositories = new ArrayList<>(em.model().getRepositories());
         repositories.addAll(profiles.repositories());
@@ -980,6 +983,32 @@ public final class PomImporter {
                     .withClassifier(d.classifier());
         }
         return d;
+    }
+
+    /**
+     * The managed tables of the BOMs inactive profiles import, read through the import's
+     * repositories once each; a BOM no repository serves is a row, and the profile's dependencies
+     * it would have versioned stay {@code unresolved}.
+     */
+    private static ProfileMapping.BomTables profileBoms(RepoModelResolver resolver, ImportReport.Builder report) {
+        Map<String, Optional<List<Pom.Dep>>> read = new HashMap<>();
+        EffectivePomBuilder builder = new EffectivePomBuilder(resolver.repos());
+        return (groupId, artifactId, version) -> read.computeIfAbsent(
+                        groupId + ":" + artifactId + ":" + version, gav -> {
+                            try {
+                                return Optional.of(builder.build(Coordinate.of(groupId, artifactId, version))
+                                        .managedDependencies());
+                            } catch (IOException | RuntimeException e) {
+                                report.warning("BOM `" + gav + "`, imported by a profile's `<dependencyManagement>`,"
+                                        + " could not be read (" + e.getMessage() + "); the profile's dependencies"
+                                        + " it versions are written `=unresolved`.");
+                                return Optional.empty();
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return Optional.empty();
+                            }
+                        })
+                .orElse(null);
     }
 
     // --- repositories -------------------------------------------------------
