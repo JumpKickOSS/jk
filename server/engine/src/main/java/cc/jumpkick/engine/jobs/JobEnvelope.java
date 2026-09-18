@@ -373,7 +373,12 @@ public final class JobEnvelope {
                         .put("millis", 0L)
                         .put("activeBuildPlans", host.activeBuildPlans()));
         if (detached) throw new IllegalStateException(message);
-        if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.error(code, message));
+        // A refusal's terminal has landed before submit returns, as a job's finish has: the
+        // connection loop may close the socket the moment it gets it back.
+        if (writer != null) {
+            WireWriter.sendQuiet(writer, ProtoLifecycle.error(code, message));
+            WireWriter.awaitLanded(writer);
+        }
         return -1;
     }
 
@@ -403,7 +408,10 @@ public final class JobEnvelope {
                         .put("millis", 0L)
                         .put("activeBuildPlans", host.activeBuildPlans()));
         if (detached) throw new IllegalStateException("cancelled while waiting for engine memory");
-        if (writer != null) WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
+        if (writer != null) {
+            WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
+            WireWriter.awaitLanded(writer);
+        }
         return -1;
     }
 
@@ -417,6 +425,7 @@ public final class JobEnvelope {
                         ProtoLifecycle.error(
                                 EngineProtocol.ERR_SHUTTING_DOWN,
                                 "the engine is shutting down (draining) — retry; the successor engine takes over"));
+            if (writer != null) WireWriter.awaitLanded(writer);
         } catch (IOException ignored) {
             // Client vanished mid-refusal — nothing to do; the connection is closing anyway.
         }
@@ -439,6 +448,7 @@ public final class JobEnvelope {
         try {
             if (writer != null) {
                 WireWriter.send(writer, ProtoLifecycle.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+                WireWriter.awaitLanded(writer);
             }
         } catch (IOException ignored) {
             // client gone
