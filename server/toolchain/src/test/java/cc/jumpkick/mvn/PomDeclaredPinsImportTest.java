@@ -20,11 +20,15 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
@@ -149,7 +153,7 @@ class PomDeclaredPinsImportTest {
             ImportReport checked = DeclaredPins.check(result.root(), result.modules(), result.report(), importer);
 
             assertThat(checked.issues())
-                    .filteredOn(i -> i.message().contains("swing-layout"))
+                    .filteredOn(i -> i.message().startsWith("`net.java.dev.swing-layout:swing-layout 1.0.2`"))
                     .singleElement()
                     .satisfies(i -> {
                         assertThat(i.severity()).isEqualTo(ImportReport.Severity.WARNING);
@@ -347,6 +351,56 @@ class PomDeclaredPinsImportTest {
                 .satisfies(i -> assertThat(i.message())
                         .startsWith("1 pinned version (1 coordinate) were not checked")
                         .contains("after 0 of 1"));
+    }
+
+    /**
+     * A repository that refuses — a 401 to every request, a rate limit's 429 — is asked once per
+     * import: the first walk to reach it records the answer, and every other walk notes the
+     * repository without a request, so a refusing github.com-hosted repository costs one round
+     * trip rather than one per pinned coordinate.
+     */
+    @Test
+    void a_repository_that_refuses_is_asked_once_per_import(@TempDir Path tmp) throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        HttpServer refusing = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        refusing.createContext("/", exchange -> {
+            asked.incrementAndGet();
+            exchange.sendResponseHeaders(401, -1);
+            exchange.close();
+        });
+        refusing.start();
+        try {
+            Path repo = tmp.resolve("repo");
+            writeMeta(repo, "net.java.dev.swing-layout", "swing-layout", "1.0.2");
+            URI corp = URI.create("http://127.0.0.1:" + refusing.getAddress().getPort() + "/");
+            Path project = Files.createDirectories(tmp.resolve("project"));
+            Path pom = project.resolve("pom.xml");
+            Files.writeString(
+                    pom,
+                    POM.replace(
+                            "<dependencies>",
+                            "<repositories><repository><id>corp</id><url>" + corp
+                                    + "</url></repository></repositories><dependencies>"));
+            PomImporter importer = TestImporters.over(tmp, repo.toUri());
+
+            PomImporter.WorkspaceImportResult result = importer.importWorkspace(pom);
+            ImportReport checked = DeclaredPins.check(result.root(), result.modules(), result.report(), importer);
+
+            assertThat(asked.get())
+                    .as("requests the refusing repository received")
+                    .isEqualTo(1);
+            assertThat(checked.issues())
+                    .filteredOn(i -> i.message().contains("junit:junit"))
+                    .singleElement()
+                    .satisfies(i -> assertThat(i.message())
+                            .contains("was not checked against the repositories the lock reads")
+                            .contains("corp was not asked again after it answered HTTP 401"));
+            assertThat(checked.issues())
+                    .as("the pin the fixture lists has no row")
+                    .noneMatch(i -> i.message().startsWith("`net.java.dev.swing-layout"));
+        } finally {
+            refusing.stop(0);
+        }
     }
 
     private static Path writeReactor(Path tmp, String versionA, String versionB) throws IOException {
