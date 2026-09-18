@@ -108,7 +108,7 @@ final class LintStep {
                 args.addAll(List.of("--rulesets", String.join(",", rulesets)));
             }
             case SPOTBUGS -> {
-                args.addAll(List.of("-textui", "-xml:withMessages", "-output", report.toString(), "-low"));
+                args.addAll(List.of("-xml:withMessages", "-output", report.toString(), "-low"));
                 args.add("-effort:" + config.stringOpt("spotbugs-effort").orElse("default"));
                 if (!roots.isEmpty()) args.addAll(List.of("-sourcepath", Classpaths.join(roots)));
                 List<Path> aux = exec.compileClasspath();
