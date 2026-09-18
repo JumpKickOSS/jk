@@ -173,7 +173,7 @@ public final class BuildLayout {
         return hasMain;
     }
 
-    /** True when this module is a plugin worker (see {@link cc.jumpkick.plugin.PluginModule}). */
+    /** True when this module is a plugin worker (see {@link PluginModule}). */
     public boolean pluginWorker() {
         return pluginWorker;
     }

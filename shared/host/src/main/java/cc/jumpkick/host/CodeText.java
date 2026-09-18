@@ -347,7 +347,7 @@ public final class CodeText {
     /**
      * Every method and constructor body in a Java source, by brace matching over the
      * comments-and-strings-blanked view (offsets are the source's — blanking keeps length). A body
-     * opens where {@code {} follows a parenthesised parameter list, optionally with a {@code throws}
+     * opens where an opening brace follows a parenthesised parameter list, optionally with a {@code throws}
      * clause, whose name is an identifier that is neither a keyword nor preceded by {@code new}
      * (anonymous class) or {@code record} (record header). Lambdas, control statements, initializer
      * blocks and type bodies are not members; their lines count toward the member enclosing them.
