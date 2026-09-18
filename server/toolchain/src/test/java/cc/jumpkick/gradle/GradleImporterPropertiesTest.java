@@ -105,9 +105,43 @@ class GradleImporterPropertiesTest {
                 .noneMatch(m -> m.contains("verbatim"));
     }
 
-    /** kotlin4example: refreshVersions keeps the pins in versions.properties and writes {@code _} in the script. */
+    /** kotlin4example: refreshVersions writes {@code _} in the script and the pin in versions.properties. */
     @Test
-    void the_refresh_versions_placeholder_is_a_row_not_a_version() {
+    void the_refresh_versions_placeholder_reads_its_pin_from_versions_properties(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("versions.properties"), """
+                version.kotlinx.coroutines=1.10.2
+                version.org.slf4j..slf4j-api=2.0.17
+                version.junit.jupiter=5.13.4
+                """);
+        Files.writeString(tmp.resolve("build.gradle.kts"), """
+                dependencies {
+                    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:_")
+                    implementation("org.slf4j:slf4j-api:_")
+                    testImplementation("org.junit.jupiter:junit-jupiter-api:_")
+                    testImplementation("io.kotest:kotest-assertions-core:_")
+                }
+                """);
+
+        GradleImporter.Result result = GradleImporter.importFrom(tmp.resolve("build.gradle.kts"));
+        JkBuild build = result.jkBuild();
+
+        assertThat(build.dependencies().of(Scope.MAIN))
+                .extracting(d -> d.module() + ":" + d.version().raw())
+                .containsExactly("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2", "org.slf4j:slf4j-api:2.0.17");
+        List<Dependency> test = build.dependencies().of(Scope.TEST);
+        assertThat(test.getFirst().version().raw()).isEqualTo("5.13.4");
+        assertThat(test.get(1).isPlatformManaged()).as("no key fits kotest").isTrue();
+        assertThat(messages(result.report()))
+                .hasSize(1)
+                .first()
+                .asString()
+                .contains("io.kotest:kotest-assertions-core")
+                .contains("no entry for it");
+    }
+
+    /** No versions.properties beside the script: the placeholder is a row and the entry is written version-less. */
+    @Test
+    void the_refresh_versions_placeholder_without_a_file_is_a_row_not_a_version() {
         GradleImporter.Result result = GradleImporter.importFromString("""
                 dependencies {
                     implementation("io.github.microutils:kotlin-logging:_")

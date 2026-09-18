@@ -92,9 +92,10 @@ public final class GradleBuildImport {
         Path settings = settingsIn(dir);
         String modelFailure = null;
         if (settings != null && model != null) {
+            RefreshVersions refreshVersions = RefreshVersions.beside(dir);
             try {
                 String json = model.read(dir, GradleModelImporter.probedPluginIds(), progress);
-                return GradleModelImporter.importModel(json, dir);
+                return GradleModelImporter.importModel(json, dir, refreshVersions);
             } catch (IOException e) {
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 if (message.startsWith(PomImporter.BUDGET_EXCEEDED)) throw e;
