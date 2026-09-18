@@ -81,13 +81,7 @@ final class ToolClosures {
             staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
             stage(staging, roots, resolution, coord -> fetch(repos, coord), kmp);
             writeListing(staging);
-            // A directory that is there but incomplete — a jar lost, or no listing — is replaced.
-            if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
-            try {
-                AtomicWrites.publishDir(staging, dir);
-            } catch (IOException e) {
-                if (!complete(dir)) throw e; // lost a race → the winner's dir serves
-            }
+            publish(staging, dir);
         } catch (IOException e) {
             if (staging != null) PathUtil.deleteRecursively(staging);
             throw failure(roots, dir, e);
@@ -172,6 +166,27 @@ final class ToolClosures {
             Files.copy(jar, alias);
         }
         return alias;
+    }
+
+    /**
+     * {@code staging}, a whole closure, becomes {@code dir}. A whole closure already at {@code dir}
+     * — another module materialized the same key meanwhile — is adopted as it stands and the
+     * staging discarded, whether it is seen before the move or the move lands on it; a directory
+     * there but incomplete — a jar lost, or no listing — is replaced. A whole closure is never
+     * deleted: a step may be running on it.
+     */
+    static void publish(Path staging, Path dir) throws IOException {
+        if (complete(dir)) {
+            PathUtil.deleteRecursively(staging);
+            return;
+        }
+        if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
+        try {
+            AtomicWrites.publishDir(staging, dir);
+        } catch (IOException e) {
+            if (!complete(dir)) throw e;
+            PathUtil.deleteRecursively(staging);
+        }
     }
 
     /**

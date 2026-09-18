@@ -114,6 +114,39 @@ class ToolClosuresTest {
         assertThat(staging.resolve("spring-context-6.1.15.jar")).hasSameBinaryContentAs(first);
     }
 
+    /**
+     * Two modules materializing one closure at once: the second finds the first's whole directory
+     * and adopts it — the winner's jars stay, the loser's staging is gone — while a directory that
+     * is there but incomplete is replaced by the staging.
+     */
+    @Test
+    void a_whole_closure_already_published_is_adopted_and_an_incomplete_one_replaced(@TempDir Path tmp)
+            throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("plugin-tools/closure"));
+        Files.writeString(dir.resolve("winner-1.jar"), "winner");
+        ToolClosures.writeListing(dir);
+        Path staging = Files.createDirectories(tmp.resolve("plugin-tools/.closure-loser"));
+        Files.writeString(staging.resolve("loser-1.jar"), "loser");
+        ToolClosures.writeListing(staging);
+
+        ToolClosures.publish(staging, dir);
+
+        assertThat(dir.resolve("winner-1.jar")).hasContent("winner");
+        assertThat(dir.resolve("loser-1.jar")).doesNotExist();
+        assertThat(staging).doesNotExist();
+
+        Files.delete(dir.resolve(ToolClosures.LISTING));
+        Path second = Files.createDirectories(tmp.resolve("plugin-tools/.closure-second"));
+        Files.writeString(second.resolve("second-1.jar"), "second");
+        ToolClosures.writeListing(second);
+
+        ToolClosures.publish(second, dir);
+
+        assertThat(dir.resolve("second-1.jar")).hasContent("second");
+        assertThat(dir.resolve("winner-1.jar")).doesNotExist();
+        assertThat(ToolClosures.complete(dir)).isTrue();
+    }
+
     @Test
     void a_filesystem_failure_names_the_tool_the_directory_and_the_cause(@TempDir Path tmp) {
         List<Coordinate> roots =
