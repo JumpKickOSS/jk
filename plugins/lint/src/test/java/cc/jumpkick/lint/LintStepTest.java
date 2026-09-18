@@ -206,6 +206,26 @@ class LintStepTest {
         assertThat("/w/src/Model.java.bak").doesNotContainPattern(LintStep.excludeRegex("src/Model.java"));
     }
 
+    /**
+     * SpotBugs reads the class files of the JDK it runs on, and a release older than that JDK
+     * cannot: the step refuses such a pin before fetching anything, naming the floor for the build
+     * JDK, so a project keeping an old spotbugs-maven-plugin learns the version to write.
+     */
+    @Test
+    void a_spotbugs_release_below_the_build_jdks_floor_is_refused_with_the_floor_named(@TempDir Path tmp)
+            throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "lint").config(Map.of("spotbugs", true, "spotbugs-version", "4.0.6"));
+        int jdk = Runtime.version().feature();
+        String floor = SpotBugsFloor.floorFor(jdk).orElseThrow();
+
+        assertThatThrownBy(() -> LintStep.run(io, LintTool.SPOTBUGS))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("SpotBugs 4.0.6 cannot read the class files of JDK " + jdk + ", which this step runs on;"
+                        + " the oldest release that can is " + floor + ": set [lint] spotbugs-version = \"" + floor
+                        + "\" or newer");
+        assertThat(io.labels()).isEmpty();
+    }
+
     @Test
     void exit_codes_after_a_completed_analysis_are_not_failures() {
         assertThat(LintStep.ran(LintTool.CHECKSTYLE, 3)).isTrue();
