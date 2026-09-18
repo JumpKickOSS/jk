@@ -249,7 +249,9 @@ its own writer, so a build's progress goes into that client's queue and the buil
 engine status` and a new client's handshake are answered as usual. Once 8 MiB of lines wait for
 such a client, or its oldest unread line is older than `JK_STREAM_IDLE_MS`, the engine drops it:
 its connection is closed, its job ends the way it does when a client disconnects, and the engine
-log says `dropped a client that stopped reading its stream`.
+log says `dropped a client that stopped reading its stream`. A connection no job owns — a probe,
+a status request, a cancel — is held to 10 seconds instead: a reply is one line its client is
+waiting for, and a client that has not read it in that long is gone.
 
 ### Process environment
 

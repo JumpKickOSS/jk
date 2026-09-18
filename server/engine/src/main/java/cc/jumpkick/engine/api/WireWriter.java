@@ -60,6 +60,15 @@ public final class WireWriter {
     }
 
     /**
+     * Move {@code writer}'s idle bound for the lines that follow, in milliseconds ({@code 0} = only
+     * the byte bound). A connection binds loose for request/reply and hands the job's stream-idle
+     * bound over when a job takes the connection; a writer nobody bound gets the process-wide bound.
+     */
+    public static void idleBound(BufferedWriter writer, long idleBoundMillis) {
+        stream(writer).idleBound(idleBoundMillis);
+    }
+
+    /**
      * Queue one line and wait until it has reached the socket, or throw the failure that kept it
      * from getting there: the client gone, or the client not reading within the stream's idle bound.
      * The wait survives the caller's interrupt — the flag is restored before this returns — because
@@ -116,7 +125,7 @@ public final class WireWriter {
     /** One connection's outbound queue and the thread that drains it. Guarded by its own monitor. */
     private static final class Stream {
         private final BufferedWriter writer;
-        private final long idleBoundMillis;
+        private volatile long idleBoundMillis;
         private final ArrayDeque<Pending> queue = new ArrayDeque<>();
         private long queuedBytes;
         private @Nullable Thread drainer;
@@ -130,6 +139,10 @@ public final class WireWriter {
         Stream(BufferedWriter writer, long idleBoundMillis) {
             this.writer = writer;
             this.idleBoundMillis = Math.max(0L, idleBoundMillis);
+        }
+
+        void idleBound(long millis) {
+            idleBoundMillis = Math.max(0L, millis);
         }
 
         void enqueue(String line, boolean await) throws IOException {
