@@ -75,11 +75,7 @@ final class EngineJobs {
                                 session.config().rebuildOr(false),
                                 TimelineOpts.noTimeline(),
                                 session.assemblyOverride()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()),
+                        SessionContext.current()),
                 req.cache(),
                 listener);
     }
@@ -188,11 +184,7 @@ final class EngineJobs {
                                 session.jvm(),
                                 session.config().rebuildOr(false),
                                 TimelineOpts.noTimeline()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()),
+                        SessionContext.current()),
                 listenerFactory,
                 testResultOut,
                 null);
@@ -241,11 +233,7 @@ final class EngineJobs {
                                 session.config().rebuildOr(false),
                                 TimelineOpts.noTimeline(),
                                 session.assemblyOverride()),
-                        SessionContext.current().jdkSpec(),
-                        SessionContext.current().graalSpec(),
-                        SessionContext.current().graalHome() == null
-                                ? null
-                                : SessionContext.current().graalHome().toString()),
+                        SessionContext.current()),
                 listenerFactory,
                 testResultOut,
                 buildOutcomeOut);
@@ -387,11 +375,7 @@ final class EngineJobs {
                         session.jvm(),
                         session.config().rebuildOr(false),
                         TimelineOpts.noTimeline()),
-                SessionContext.current().jdkSpec(),
-                SessionContext.current().graalSpec(),
-                SessionContext.current().graalHome() == null
-                        ? null
-                        : SessionContext.current().graalHome().toString());
+                SessionContext.current());
     }
 
     /** Send {@code requestLine} and replay the workspace event stream into {@code listener}. */

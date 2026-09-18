@@ -206,9 +206,9 @@ class WireProducersFrozenBytesTest {
                 .isEqualTo("{\"type\":\"x\"}");
         assertThat(ProtoSession.withSession("{}", null, null, null, false, true))
                 .isEqualTo("{\"noTimeline\":true}");
-        assertThat(ProtoSession.withToolchain("{\"type\":\"x\"}", "17", null, "  "))
+        assertThat(ProtoSession.withToolchain("{\"type\":\"x\"}", "17", null, "  ", null))
                 .isEqualTo("{\"type\":\"x\",\"jdk\":\"17\"}");
-        assertThat(ProtoSession.withToolchain("{\"type\":\"x\"}", null, "", null))
+        assertThat(ProtoSession.withToolchain("{\"type\":\"x\"}", null, "", null, null))
                 .isEqualTo("{\"type\":\"x\"}");
         assertThat(ProtoSession.withOrigin("{\"type\":\"x\"}", "manual", null))
                 .isEqualTo("{\"type\":\"x\",\"trigger\":\"manual\"}");

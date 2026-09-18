@@ -46,6 +46,7 @@ public final class JavaHomes {
                     lock == null ? null : lock.jdk(),
                     (build != null && build.project() != null) ? build.project().jdk() : null,
                     (build != null && build.project() != null) ? build.project().javaRelease() : 0,
+                    SessionContext.current().javaHome(),
                     env::apply);
             // Non-installing walk of the canonical order — JdkEnsure already
             // installed any pin during sync, so this just locates it. Falls back

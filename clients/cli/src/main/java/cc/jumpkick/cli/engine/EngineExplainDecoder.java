@@ -85,9 +85,7 @@ final class EngineExplainDecoder {
                         session.clientEnv(),
                         session.jvm(),
                         session.config().rebuildOr(false)),
-                session.jdkSpec(),
-                session.graalSpec(),
-                session.graalHome() == null ? null : session.graalHome().toString());
+                session);
         return EngineWire.stream(paths, enveloped, (reader, ch) -> {
             List<TaskForecast.Module> modules = new ArrayList<>();
             Map<String, List<TaskForecast.Task>> stepsByDir = new LinkedHashMap<>();

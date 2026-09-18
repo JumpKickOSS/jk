@@ -42,6 +42,14 @@ public final class JdkResolution {
             @Nullable JdkPin lockJdk,
             @Nullable String projectJdkSpec,
             int projectJavaRelease,
+            /**
+             * The caller's {@code JAVA_HOME}, as the request carried it — typed rather than read
+             * out of {@link #env}, which inside a resident engine answers from whichever shell
+             * started the daemon. {@code JAVA_HOME} is deliberately not on the forwarded
+             * environment (it would seed every test JVM), so the typed field is the only way the
+             * {@link Tier#JAVA_HOME} tier can see what the caller actually set.
+             */
+            @Nullable Path javaHome,
             Function<String, @Nullable String> env) {
         // Spelled out rather than compact: the canonical constructor a compact form synthesizes
         // reaches the class file without the type-argument annotation on {@code env}, and every
@@ -53,6 +61,7 @@ public final class JdkResolution {
                 @Nullable JdkPin lockJdk,
                 @Nullable String projectJdkSpec,
                 int projectJavaRelease,
+                @Nullable Path javaHome,
                 Function<String, @Nullable String> env) {
             this.projectDir = projectDir;
             this.switchSpec = switchSpec;
@@ -60,6 +69,7 @@ public final class JdkResolution {
             this.lockJdk = lockJdk;
             this.projectJdkSpec = projectJdkSpec;
             this.projectJavaRelease = projectJavaRelease;
+            this.javaHome = javaHome;
             this.env = env;
         }
     }
@@ -166,7 +176,7 @@ public final class JdkResolution {
         // Ambient JAVA_HOME / GRAALVM_HOME / PATH — only for the build path; the
         // shell hook must not re-export the shell's own JDK as a jk activation.
         if (envFallback) {
-            if ((r = envHome(req.env().apply("JAVA_HOME"), Tier.JAVA_HOME, lockFloor)) != null) return r;
+            if ((r = envHome(requestJavaHome(req), Tier.JAVA_HOME, lockFloor)) != null) return r;
             if ((r = envHome(req.env().apply("GRAALVM_HOME"), Tier.GRAALVM_HOME, lockFloor)) != null) return r;
             Optional<Path> onPath = ActiveJavac.home();
             if (onPath.isPresent() && hasBin(onPath.get()) && meetsFloor(onPath.get(), lockFloor)) {
@@ -184,7 +194,7 @@ public final class JdkResolution {
                 if (settled.isPresent()) {
                     return Resolved.found(installed(settled.get().home()), Tier.DEFAULT, null);
                 }
-                if ((r = envHome(req.env().apply("JAVA_HOME"), Tier.JAVA_HOME, null)) != null) return r;
+                if ((r = envHome(requestJavaHome(req), Tier.JAVA_HOME, null)) != null) return r;
                 if ((r = envHome(req.env().apply("GRAALVM_HOME"), Tier.GRAALVM_HOME, null)) != null) {
                     return r;
                 }
@@ -265,6 +275,17 @@ public final class JdkResolution {
 
     private static boolean inPool(Path home, List<JdkHit> pool) {
         return LockPinMatch.hitFor(home, pool).isPresent();
+    }
+
+    /**
+     * The caller's {@code JAVA_HOME}. Read off the request and never out of {@link Request#env},
+     * because that falls through to this process — and in the engine this process is a daemon
+     * whose {@code JAVA_HOME} belongs to whichever shell started it, days ago and with a different
+     * JDK. That read is what made a fresh machine compile against a JDK nobody selected.
+     */
+    private static @Nullable String requestJavaHome(Request req) {
+        Path home = req.javaHome();
+        return home == null ? null : home.toString();
     }
 
     private static @Nullable Resolved envHome(@Nullable String home, Tier tier, @Nullable String lockFloor) {

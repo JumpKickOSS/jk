@@ -114,7 +114,7 @@ class ConfigShapeTest {
                 .withCacheDir(Path.of("/tmp/jk-cache-a"))
                 .withJdksDir(Path.of("/tmp/jk-jdks-a"))
                 .withJvm(PluginTuning.NONE)
-                .withToolchainSpecs("21", "graal-21", Path.of("/opt/graal-21"))
+                .withToolchainSpecs("21", "graal-21", Path.of("/opt/graal-21"), null)
                 .withParallelTests(false)
                 .withCancel(Session.CancelToken.live())
                 .withVariant("alpha", Map.of("A", "1"))
