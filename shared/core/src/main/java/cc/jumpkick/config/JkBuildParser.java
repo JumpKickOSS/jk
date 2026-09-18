@@ -424,7 +424,8 @@ public final class JkBuildParser {
                 format,
                 variants,
                 install,
-                publish);
+                publish,
+                ManifestImage.parse(result));
     }
 
     /** The {@link Scope} whose toml section is {@code name}, or null. */
@@ -594,12 +595,6 @@ public final class JkBuildParser {
     public static TrainConfig trainConfig(Path file) {
         TomlParseResult root = documentIfPresent(file);
         return root == null ? TrainConfig.EMPTY : ManifestTrain.parse(root, String.valueOf(file));
-    }
-
-    /** {@code [image]} — the project layer only; {@link GlobalConfig#image()} is the layer under it. */
-    public static ManifestImage.ImageConfigData imageConfig(Path file) {
-        TomlParseResult root = documentIfPresent(file);
-        return root == null ? ManifestImage.ImageConfigData.EMPTY : ManifestImage.parse(root);
     }
 
     /** {@code [jvm]} — worker-fork JVM tuning. {@link PluginTuning#NONE} when the table is absent. */

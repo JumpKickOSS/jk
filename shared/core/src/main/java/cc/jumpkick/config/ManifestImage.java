@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.model.ImageTable;
+import cc.jumpkick.model.JkBuild;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,45 +12,21 @@ import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
- * The {@code [image]} table → plain data (concrete image types live outside {@code :core}). A table
- * parser, not a reader: the project document comes from {@link
- * JkBuildParser#imageConfig(java.nio.file.Path)} and the user-global one from {@link
- * GlobalConfig#image()}, each of which owns its file's read and error policy.
+ * The {@code [image]} table → {@link ImageTable}. A table parser, not a reader: the project
+ * document comes from {@link JkBuildParser}, which carries the result as {@link JkBuild#image()},
+ * and the user-global one from {@link GlobalConfig#image()}; each owns its file's read and error
+ * policy.
  */
 public final class ManifestImage {
-
-    public record ImageConfigData(
-            @Nullable String base,
-            /** {@code image.name} — the image repository; default the module's artifact id. */
-            @Nullable String name,
-            @Nullable String user,
-            List<Integer> ports,
-            Map<String, String> env,
-            Map<String, String> labels,
-            @Nullable String registry,
-            @Nullable String tag,
-            List<String> platforms,
-            @Nullable String main,
-            /** {@code image.docker-executable} — override for the docker/podman CLI. */
-            @Nullable String dockerExecutable,
-            /** {@code image.docker-file} — relative path to a Dockerfile; enables Dockerfile mode. */
-            @Nullable String dockerFile,
-            /** {@code image.aot-cache} — train a JVM AOT cache into the image. */
-            @Nullable Boolean aotCache) {
-
-        /** No {@code [image]} table anywhere — every field unset. */
-        public static final ImageConfigData EMPTY = new ImageConfigData(
-                null, null, null, List.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null);
-    }
 
     private ManifestImage() {}
 
     /**
-     * Merge two {@link ImageConfigData} layers: {@code project} wins over {@code global} for every
+     * Merge two {@link ImageTable} layers: {@code project} wins over {@code global} for every
      * field. String fields use the project value when non-blank; list fields use the project value
      * when non-empty; map fields are union-merged with project keys overriding global keys.
      */
-    public static ImageConfigData merge(ImageConfigData project, ImageConfigData global) {
+    public static ImageTable merge(ImageTable project, ImageTable global) {
         String base = nonBlank(project.base()) != null ? project.base() : global.base();
         String name = nonBlank(project.name()) != null ? project.name() : global.name();
         String user = nonBlank(project.user()) != null ? project.user() : global.user();
@@ -65,7 +43,7 @@ public final class ManifestImage {
                 nonBlank(project.dockerExecutable()) != null ? project.dockerExecutable() : global.dockerExecutable();
         String dockerFile = nonBlank(project.dockerFile()) != null ? project.dockerFile() : global.dockerFile();
         Boolean aotCache = project.aotCache() != null ? project.aotCache() : global.aotCache();
-        return new ImageConfigData(
+        return new ImageTable(
                 base,
                 name,
                 user,
@@ -85,11 +63,11 @@ public final class ManifestImage {
         return (s != null && !s.isBlank()) ? s : null;
     }
 
-    /** {@link ImageConfigData#EMPTY} when the document has no {@code [image]} table. */
-    static ImageConfigData parse(TomlTable root) {
+    /** {@link ImageTable#EMPTY} when the document has no {@code [image]} table. */
+    static ImageTable parse(TomlTable root) {
         TomlTable image = root.getTable("image");
-        if (image == null) return ImageConfigData.EMPTY;
-        return new ImageConfigData(
+        if (image == null) return ImageTable.EMPTY;
+        return new ImageTable(
                 image.getString("base"),
                 image.getString("name"),
                 image.getString("user"),

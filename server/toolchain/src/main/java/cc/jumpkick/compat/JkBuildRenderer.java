@@ -6,6 +6,7 @@ import cc.jumpkick.model.DependencyKind;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
+import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
@@ -32,7 +33,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a {@link JkBuild} as name-as-key {@code jk.toml}: the project block, plugin tables,
- * application / native / manifest, the workspace, {@code [build]} / {@code [test]} source roots,
+ * application / native / image / manifest, the workspace, {@code [build]} / {@code [test]} source roots,
  * {@code [javac]}, profiles, features, repositories and the dependency tables. Dep keys within a
  * scope are alphabetized; a table whose every value is its default is not written.
  */
@@ -47,6 +48,7 @@ public final class JkBuildRenderer {
         renderPluginTables(sb, jkBuild);
         renderApplication(sb, jkBuild.applicationOpt().orElse(null));
         renderNative(sb, jkBuild.nativeConfigOpt().orElse(null));
+        renderImage(sb, jkBuild.image());
         renderManifest(sb, jkBuild.manifest());
         renderWorkspace(sb, jkBuild);
         renderBuild(sb, jkBuild.build());
@@ -405,6 +407,40 @@ public final class JkBuildRenderer {
         if (metadata != null && !metadata.raw().equals(JkBuild.NativeConfig.METADATA_REPOSITORY_DEFAULT.raw())) {
             sb.append("metadata-repository = ").append(quote(metadata.raw())).append('\n');
         }
+    }
+
+    /** {@code [image]} — only the keys that are set, in the table's documented order; no table when none is. */
+    private static void renderImage(StringBuilder sb, ImageTable image) {
+        if (image.isEmpty()) return;
+        sb.append("\n[image]\n");
+        string(sb, "base", image.base());
+        string(sb, "name", image.name());
+        string(sb, "user", image.user());
+        string(sb, "registry", image.registry());
+        string(sb, "tag", image.tag());
+        string(sb, "main", image.main());
+        if (!image.ports().isEmpty()) {
+            sb.append("ports = [");
+            for (int i = 0; i < image.ports().size(); i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(image.ports().get(i));
+            }
+            sb.append("]\n");
+        }
+        if (!image.platforms().isEmpty())
+            sb.append("platforms = ").append(list(image.platforms())).append('\n');
+        if (!image.env().isEmpty())
+            sb.append("env = ").append(inlineTable(image.env())).append('\n');
+        if (!image.labels().isEmpty())
+            sb.append("labels = ").append(inlineTable(image.labels())).append('\n');
+        string(sb, "docker-executable", image.dockerExecutable());
+        string(sb, "docker-file", image.dockerFile());
+        if (image.aotCache() != null)
+            sb.append("aot-cache = ").append(image.aotCache()).append('\n');
+    }
+
+    private static void string(StringBuilder sb, String key, @Nullable String value) {
+        if (value != null) sb.append(key).append(" = ").append(quote(value)).append('\n');
     }
 
     private static void renderWorkspace(StringBuilder sb, JkBuild jkBuild) {

@@ -4,6 +4,8 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.ImageTable;
+import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,8 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code [image]} is read by the manifest owner. Every case here goes through
- * {@link JkBuildParser#imageConfig(Path)} rather than a private {@code [image]} parser, so the
+ * {@code [image]} is read by the manifest owner into {@link JkBuild#image()}. Every case here goes
+ * through {@link JkBuildParser#parse(Path)} rather than a private {@code [image]} parser, so the
  * owner's document policy — the syntax-error message and {@link Interpolation}'s whitelist — decides
  * what these cases.
  */
@@ -23,17 +25,16 @@ class ManifestImageTest {
     @TempDir
     Path dir;
 
-    private ManifestImage.ImageConfigData image(String toml) throws IOException {
+    /** {@code toml} under a project block, read as the manifest owner reads it. */
+    private ImageTable image(String toml) throws IOException {
         Path file = dir.resolve("jk.toml");
-        Files.writeString(file, toml);
-        return JkBuildParser.imageConfig(file);
+        Files.writeString(file, "group = \"demo\"\nname = \"demo\"\nversion = \"1.0\"\n" + toml);
+        return JkBuildParser.parse(file).image();
     }
 
     @Test
     void reads_the_table() throws IOException {
         var data = image("""
-                name = "demo"
-
                 [image]
                 base = "eclipse-temurin:{java-major-version}-jre"
                 name = "acme-demo"
@@ -53,9 +54,8 @@ class ManifestImageTest {
     }
 
     @Test
-    void absent_table_and_absent_file_are_both_empty() throws IOException {
-        assertThat(image("name = \"demo\"\n")).isEqualTo(ManifestImage.ImageConfigData.EMPTY);
-        assertThat(JkBuildParser.imageConfig(dir.resolve("nope.toml"))).isEqualTo(ManifestImage.ImageConfigData.EMPTY);
+    void absent_table_is_empty() throws IOException {
+        assertThat(image("")).isEqualTo(ImageTable.EMPTY);
     }
 
     /**
@@ -83,7 +83,7 @@ class ManifestImageTest {
 
     @Test
     void project_layer_wins_over_global_field_by_field() {
-        var project = new ManifestImage.ImageConfigData(
+        var project = new ImageTable(
                 "project-base",
                 null,
                 null,
@@ -97,7 +97,7 @@ class ManifestImageTest {
                 null,
                 null,
                 null);
-        var global = new ManifestImage.ImageConfigData(
+        var global = new ImageTable(
                 "global-base",
                 "global-name",
                 "nobody",
