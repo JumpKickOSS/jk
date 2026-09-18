@@ -500,13 +500,16 @@ come after jk's tuning and before `[test] jvm-args`, so the module's flags win o
 The Quarkus plugin hands `@QuarkusTest` the path of the application model it wrote this way
 ([Frameworks](frameworks.md#quarkus)); the step prints it with the rest of the list.
 
-Test discovery runs in a JVM of its own before the suite JVMs start, with the same flags. A
-framework that starts the application while classes are still being listed — `@QuarkusTest`
-augments the application once per test profile as its classes load, and keeps each one resident —
-runs inside that JVM's limits too. jk caps no test JVM's metaspace: the limit is the JVM's own, as
-under Surefire and Gradle, unless `[test] jvm-args` or the profile's `jvm-args` sets
-`-XX:MaxMetaspaceSize=…`, and that flag binds the discovery JVM as well. A discovery JVM that dies
-of it says so, naming the framework frames that filled it and the flag to raise or drop.
+Test discovery runs in a JVM of its own before the suite JVMs start, with the same flags. It
+names classes and runs nothing, so the launcher it lists with fires none of the session, discovery
+or execution listeners the classpath registers — those are how a framework readies a JVM for the
+tests it is about to run, and `@QuarkusTest`'s would otherwise augment one application per test
+profile as the classes load and keep each resident, which over hundreds of classes is a heap the
+listing does not have. The suite JVMs run the full launcher, listeners included. jk caps no test
+JVM's metaspace: the limit is the JVM's own, as under Surefire and Gradle, unless `[test] jvm-args`
+or the profile's `jvm-args` sets `-XX:MaxMetaspaceSize=…`, and that flag binds the discovery JVM as
+well. A discovery JVM that dies of it says so, naming the frames that filled it and the flag to
+raise or drop.
 
 ## A suite that needs a display
 
