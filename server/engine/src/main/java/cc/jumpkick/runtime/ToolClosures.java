@@ -79,7 +79,7 @@ final class ToolClosures {
             KmpRedirects kmp = new KmpRedirects(repos, "standard-jvm");
             Resolution resolution = resolve(roots, managedByResolved, repos, kmp);
             staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
-            stage(staging, roots, resolution, repos, kmp);
+            stage(staging, roots, resolution, coord -> fetch(repos, coord), kmp);
             writeListing(staging);
             // A directory that is there but incomplete — a jar lost, or no listing — is replaced.
             if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
@@ -111,28 +111,38 @@ final class ToolClosures {
         return new PubGrubResolver(repos, bomConstraints, Map.of(), kmp).resolve(declared);
     }
 
+    /** The jar of a coordinate, fetched from the declared repositories into the CAS. */
+    interface Fetch {
+        Path fetch(Coordinate coord) throws IOException, InterruptedException;
+    }
+
     /**
-     * Every resolved jar and every root under its alias in {@code staging}, each GAV once. A
-     * multiplatform root whose JVM target is in the resolution is left out: its own jar holds
-     * Kotlin metadata and no class, and the target supplies the classes.
+     * Every resolved jar and every root under its alias in {@code staging}, each GAV once per
+     * classifier: a classified jar is a jar of its own beside the plain one. A multiplatform root
+     * whose JVM target is in the resolution is left out: its own jar holds Kotlin metadata and no
+     * class, and the target supplies the classes.
      */
-    private static void stage(
-            Path staging, List<Coordinate> roots, Resolution resolution, RepoGroup repos, KmpRedirects kmp)
+    static void stage(Path staging, List<Coordinate> roots, Resolution resolution, Fetch fetch, KmpRedirects kmp)
             throws IOException, InterruptedException {
-        // Dedupe by GAV so package-id keys (g:a:type:classifier) don't double-link the same jar.
-        LinkedHashSet<String> seenGav = new LinkedHashSet<>();
+        // Dedupe by GAV and classifier so package-id keys of two types don't double-link one jar.
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (var resolved : resolution.modules().values()) {
             Coordinate coord = resolved.coordinate();
-            if (!seenGav.add(coord.toGav())) continue;
+            if (!seen.add(jarKey(coord))) continue;
             if (kmp.selectionFor(coord.module(), coord.version()).isPresent()) continue;
-            alias(staging, coord, fetch(repos, coord));
+            alias(staging, coord, fetch.fetch(coord));
         }
         // Ensure declared roots are present even if the solver key form differed.
         for (Coordinate root : roots) {
-            if (!seenGav.add(root.toGav())) continue;
+            if (!seen.add(jarKey(root))) continue;
             if (kmp.selectionFor(root.module(), root.version()).isPresent()) continue;
-            alias(staging, root, fetch(repos, root));
+            alias(staging, root, fetch.fetch(root));
         }
+    }
+
+    /** {@code group:artifact:version[:classifier]}: the identity of one jar of the closure. */
+    private static String jarKey(Coordinate coord) {
+        return coord.classifier() == null ? coord.toGav() : coord.toGav() + ":" + coord.classifier();
     }
 
     private static Path fetch(RepoGroup repos, Coordinate coord) throws IOException, InterruptedException {
@@ -144,14 +154,17 @@ final class ToolClosures {
     }
 
     /**
-     * Link (or copy) {@code jar} into {@code staging} as {@code <artifact>-<version>.jar}; a second
-     * artifact of that name from another group lands as {@code <group>_<artifact>-<version>.jar}
-     * so neither hides the other. Answers the alias.
+     * Link (or copy) {@code jar} into {@code staging} as {@code <artifact>-<version>[-<classifier>].jar},
+     * the name the repository serves it under; a second artifact of that name from another group
+     * lands as {@code <group>_<artifact>-<version>[-<classifier>].jar} so neither hides the other.
+     * Answers the alias.
      */
     static Path alias(Path staging, Coordinate coord, Path jar) throws IOException {
-        Path alias = staging.resolve(coord.artifact() + "-" + coord.version() + ".jar");
+        String name = coord.artifact() + "-" + coord.version()
+                + (coord.classifier() == null ? "" : "-" + coord.classifier()) + ".jar";
+        Path alias = staging.resolve(name);
         if (Files.exists(alias)) {
-            alias = staging.resolve(coord.group() + "_" + coord.artifact() + "-" + coord.version() + ".jar");
+            alias = staging.resolve(coord.group() + "_" + name);
         }
         try {
             Files.createLink(alias, jar);
