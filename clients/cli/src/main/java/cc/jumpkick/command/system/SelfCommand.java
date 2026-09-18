@@ -9,6 +9,8 @@ import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.engine.EngineProcessControl;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.cli.engine.JvmClient;
+import cc.jumpkick.cli.engine.ReleaseArtifacts;
+import cc.jumpkick.cli.engine.ReleaseDownloadView;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontDetect;
@@ -16,7 +18,6 @@ import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Arity;
@@ -28,13 +29,11 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -347,17 +346,11 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public int run(Invocation in) throws Exception {
-            URI base = releasesBase();
+            URI base = ReleaseArtifacts.releasesBase();
             String target = in.positionals().isEmpty() ? null : in.positionals().get(0);
-            Http http = new Http();
             String running = JkVersion.VERSION;
-            if (target == null) {
-                target = latestVersion(
-                        ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()),
-                        get(http, URI.create(base + "/latest/LATEST"), "latest-release pointer"),
-                        get(http, URI.create(base + "/latest/LATEST.sig"), "latest-release pointer signature"),
-                        running);
-            }
+            ReleaseVerifier verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
+            if (target == null) target = ReleaseArtifacts.latestVersion(base, verifier, running);
             if (target.isEmpty()) {
                 CommandWedge.printFail("Self", "could not resolve a target version");
                 return Exit.SOFTWARE;
@@ -369,14 +362,15 @@ public final class SelfCommand extends GroupCommand {
                 return 0;
             }
 
+            ReleaseArtifacts.Manifest release = ReleaseArtifacts.manifest(base, target, verifier);
             if (JvmClient.installed()) {
                 // The install the launcher describes: a new jar under <home>/lib/jk and a launcher
                 // rewritten over it, on the JVM this update runs on. Never a native binary — the
                 // host may have none, and a PATH client the launcher does not name is a second jk.
-                EngineInstall.Materialized engine = fetchAndMaterializeJvm(http, base, target, install, cas);
+                EngineInstall.Materialized engine = fetchAndMaterializeJvm(release, target, install, cas);
                 CommandWedge.printOk("Self", target + " installed (" + engine.engineJar() + ")");
             } else {
-                Fetched fetched = fetchAndMaterialize(http, base, target, install, cas);
+                Fetched fetched = fetchAndMaterialize(release, target, install, cas);
                 EngineInstall.installBinaries(cas.pathFor(fetched.clientSha()), JkDirs.binDir());
                 CommandWedge.printOk(
                         "Self", target + " installed (" + fetched.engine().engineJar() + ")");
@@ -400,25 +394,6 @@ public final class SelfCommand extends GroupCommand {
 
         record Fetched(EngineInstall.Materialized engine, String clientSha) {}
 
-        /**
-         * The version the signed latest-release pointer names, once its signature verifies and it
-         * is not older than {@code running}. The pointer is the one mutable input of an update, so
-         * a bucket writer or a mirror that rolls it back to an older, validly signed release must
-         * get a refusal here rather than a downgrade; an explicit {@code jk self update <version>}
-         * never reads the pointer and stays the deliberate way down.
-         */
-        static String latestVersion(ReleaseVerifier verifier, byte[] pointer, byte[] signature, String running)
-                throws IOException {
-            verifier.verify(pointer, new String(signature, StandardCharsets.UTF_8));
-            String latest = ReleaseVerifier.parsePointer(pointer).version();
-            if (Versions.compare(latest, running) < 0) {
-                throw new IOException("the latest-release pointer names " + latest + ", older than the " + running
-                        + " this jk runs — REFUSING a rolled-back pointer (a mirror or the release site may be"
-                        + " stale or compromised; `jk self update " + latest + "` downgrades deliberately)");
-            }
-            return latest;
-        }
-
         static Path pathClient(Path binDir) {
             Path exe = binDir.resolve("jk.exe");
             if (Files.isRegularFile(exe)) return exe;
@@ -429,29 +404,37 @@ public final class SelfCommand extends GroupCommand {
 
         /**
          * The JVM client's update: the engine jar and {@code jk-<version>.jar}, both verified
-         * against the signed sums, the engine materialized, the client jar placed under {@code
-         * <home>/lib/jk} and the launcher rewritten over it.
+         * against the release's signed manifest, the engine materialized, the client jar placed
+         * under {@code <home>/lib/jk} and the launcher rewritten over it.
          */
         static EngineInstall.Materialized fetchAndMaterializeJvm(
-                Http http, URI base, String version, EngineInstall install, Cas cas)
-                throws IOException, InterruptedException {
-            URI dir = URI.create(base + "/" + version + "/");
-            byte[] sums = get(http, dir.resolve("SHA256SUMS"), "release checksums");
-            var verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
-            byte[] sig = get(http, dir.resolve("SHA256SUMS.sig"), "release signature");
-            verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
+                ReleaseArtifacts.Manifest release, String version, EngineInstall install, Cas cas) throws IOException {
+            ReleaseArtifacts.Verified jar = fetch(release, engineJarName(version), "engine jar", version);
+            String clientName = jvmClientArtifact(release.text(), version);
+            ReleaseArtifacts.Verified client = fetch(release, clientName, "client jar", version);
 
-            String jarName = "jk-engine-" + version + ".jar";
-            byte[] jar = verified(get(http, dir.resolve(jarName), "engine jar"), sums, jarName);
-            String clientName = jvmClientArtifact(new String(sums, StandardCharsets.UTF_8), version);
-            byte[] client = verified(get(http, dir.resolve(clientName), "client jar"), sums, clientName);
-
-            String jarSha = Hashing.sha256Hex(jar);
-            cas.put(jar, jarSha);
-            EngineInstall.Materialized engine = install.materialize(version, cas, jarSha);
-            Path placed = JvmClientInstall.installJar(client, JvmClientInstall.libDir(), version);
+            cas.put(jar.bytes(), jar.sha256());
+            EngineInstall.Materialized engine = install.materialize(version, cas, jar.sha256());
+            Path placed = JvmClientInstall.installJar(client.bytes(), JvmClientInstall.libDir(), version);
             JvmClientInstall.writeLauncher(JkDirs.binDir(), placed, JvmClientInstall.runningJava(), Os.isWindows());
             return engine;
+        }
+
+        /** {@code jk-engine-<version>.jar}, the release's platform-neutral engine. */
+        static String engineJarName(String version) {
+            return "jk-engine-" + version + ".jar";
+        }
+
+        /**
+         * One artifact of the update through the release's verified manifest, under the download
+         * bar the engine self-heal and {@code jk mvn}'s extension fetch render.
+         */
+        private static ReleaseArtifacts.Verified fetch(
+                ReleaseArtifacts.Manifest release, String artifactName, String what, String version)
+                throws IOException {
+            try (ReleaseDownloadView view = new ReleaseDownloadView("Self", "jk " + version)) {
+                return release.fetch(artifactName, what, view);
+            }
         }
 
         /** {@code jk-<version>.jar} when the sums list it — the platform-neutral client. */
@@ -462,29 +445,21 @@ public final class SelfCommand extends GroupCommand {
                     + " — this release ships no JVM client; refusing to install an unverifiable one");
         }
 
-        static Fetched fetchAndMaterialize(Http http, URI base, String version, EngineInstall install, Cas cas)
-                throws IOException, InterruptedException {
-            URI dir = URI.create(base + "/" + version + "/");
-            byte[] sums = get(http, dir.resolve("SHA256SUMS"), "release checksums");
-            var verifier = ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys());
-            byte[] sig = get(http, dir.resolve("SHA256SUMS.sig"), "release signature");
-            verifier.verify(sums, new String(sig, StandardCharsets.UTF_8));
-
+        static Fetched fetchAndMaterialize(
+                ReleaseArtifacts.Manifest release, String version, EngineInstall install, Cas cas) throws IOException {
             // Engine jar (platform-neutral) + the platform client. Prefer the .xz (every OS,
             // including Windows); Windows releases also ship a .zip for install.ps1 / jk.bat,
             // which have no system xz. The native CLI never inflates xz — the engine jar does.
-            String jarName = "jk-engine-" + version + ".jar";
-            byte[] jar = verified(get(http, dir.resolve(jarName), "engine jar"), sums, jarName);
-            String clientName = pickClientArtifact(sums, version);
-            byte[] clientArchive = verified(get(http, dir.resolve(clientName), "client binary"), sums, clientName);
+            ReleaseArtifacts.Verified jar = fetch(release, engineJarName(version), "engine jar", version);
+            String clientName = pickClientArtifact(release.text(), version);
+            ReleaseArtifacts.Verified clientArchive = fetch(release, clientName, "client binary", version);
             Path client = clientName.endsWith(".xz")
-                    ? inflateXzViaEngine(jar, clientArchive)
-                    : unzipSingleBinary(clientArchive);
+                    ? inflateXzViaEngine(jar.bytes(), clientArchive.bytes())
+                    : unzipSingleBinary(clientArchive.bytes());
 
-            String jarSha = Hashing.sha256Hex(jar);
-            cas.put(jar, jarSha);
+            cas.put(jar.bytes(), jar.sha256());
             String clientSha = ingestClient(cas, client);
-            EngineInstall.Materialized engine = install.materialize(version, cas, jarSha);
+            EngineInstall.Materialized engine = install.materialize(version, cas, jar.sha256());
             return new Fetched(engine, clientSha);
         }
 
@@ -509,10 +484,10 @@ public final class SelfCommand extends GroupCommand {
          * is signed but not bound to its directory, so a manifest copied from another release names
          * that release's artifacts and cannot satisfy a request for this one.
          */
-        static String pickClientArtifact(byte[] sums, String version) throws IOException {
+        static String pickClientArtifact(String sumsText, String version) throws IOException {
             String os = HostPlatform.currentOs().toLowerCase(Locale.ROOT);
             String arch = HostPlatform.currentArch();
-            return pickClientArtifact(new String(sums, StandardCharsets.UTF_8), os, arch, version);
+            return pickClientArtifact(sumsText, os, arch, version);
         }
 
         /** Visible for tests — pass HostPlatform vocabulary already lower-cased. */
@@ -615,29 +590,6 @@ public final class SelfCommand extends GroupCommand {
                 }
             }
             throw new IOException("release client archive contains no file");
-        }
-
-        private static byte[] verified(byte[] body, byte[] sums, String name) throws IOException {
-            String expected = ReleaseVerifier.sha256For(sums, name);
-            String actual = Hashing.sha256Hex(body);
-            if (!actual.equalsIgnoreCase(expected)) {
-                throw new IOException(name + " checksum mismatch — expected " + expected + ", got " + actual);
-            }
-            return body;
-        }
-
-        private static byte[] get(Http http, URI uri, String what) throws IOException, InterruptedException {
-            HttpResponse<byte[]> response = http.get(uri);
-            if (response.statusCode() != 200) {
-                throw new IOException(
-                        "could not download the " + what + " from " + uri + " — HTTP " + response.statusCode());
-            }
-            return response.body();
-        }
-
-        static URI releasesBase() {
-            String override = System.getenv("JK_RELEASES_URL");
-            return URI.create(override == null || override.isBlank() ? "https://jumpkick.build/releases" : override);
         }
     }
 }

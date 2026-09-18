@@ -140,10 +140,12 @@ public final class CompatPlans {
      *
      * <p>Through the same {@link ToolProvisioning} door {@link #provision} and {@code
      * CompileToolchain.resolveKotlinHome} use, so an ahead-of-time install is a cache hit for the
-     * build that later needs it rather than a second copy under a second layout.
+     * build that later needs it rather than a second copy under a second layout. {@code
+     * acceptUnverified} is the same consent {@link #provision} carries: a distribution no checksum
+     * vouches for installs and its digest is recorded.
      */
     public static Provision provisionTool(
-            String toolSlug, @Nullable String version, Path toolsRoot, boolean noDiscover) {
+            String toolSlug, @Nullable String version, Path toolsRoot, boolean noDiscover, boolean acceptUnverified) {
         ToolDistribution dist = null;
         try {
             BuildTool tool = BuildTool.bySlug(toolSlug)
@@ -154,7 +156,7 @@ public final class CompatPlans {
                     dist,
                     new ToolRegistry(toolsRoot.toAbsolutePath()),
                     new Http(),
-                    new ToolProvisioning.Policy(noDiscover, false, false));
+                    new ToolProvisioning.Policy(noDiscover, false, acceptUnverified));
             return new Provision(
                     result.tool().home().toString(),
                     dist.version(),

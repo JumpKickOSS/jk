@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.api;
 
+import cc.jumpkick.compat.ToolRegistry;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -32,6 +35,24 @@ public final class CommonOpts {
     /** Hidden variant for internal / rarely-needed commands. */
     public static Opt cacheDirHidden() {
         return cacheDir().hide();
+    }
+
+    /**
+     * {@code --accept-unverified-tool}: install a build-tool distribution no checksum vouches for
+     * and record its digest — the one consent {@code jk mvn}, {@code jk gradle} and {@code jk tool
+     * install} share. Held under HelpWidthTest's 78-column budget beside the longest flag name.
+     */
+    public static Opt acceptUnverifiedTool() {
+        return Opt.flag("Accept a distribution no checksum vouches for", ToolRegistry.ACCEPT_FLAG);
+    }
+
+    /**
+     * Whether this run installs a distribution nothing vouches for: {@link #acceptUnverifiedTool}
+     * set, or {@link ToolRegistry#ACCEPT_ENV} true for a CI step that cannot edit the command line.
+     */
+    public static boolean acceptUnverifiedTool(Invocation in) {
+        return in.isSet(ToolRegistry.ACCEPT_FLAG.substring(2))
+                || EnvValues.bool(JkDirs::env, ToolRegistry.ACCEPT_ENV).orElse(false);
     }
 
     /**

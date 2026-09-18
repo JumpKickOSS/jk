@@ -301,13 +301,24 @@ final class EngineHosted {
      * but is unread on this path: the distribution comes from the name, not from a wrapper file.
      */
     static HostedEvents.Provision provisionTool(
-            EnginePaths.Paths paths, String tool, String version, Path toolsRoot, boolean noDiscover)
+            EnginePaths.Paths paths,
+            String tool,
+            String version,
+            Path toolsRoot,
+            boolean noDiscover,
+            boolean acceptUnverified)
             throws IOException {
         return EnginePluginAdapter.provision(
                 paths,
-                new ProvisionRequest(
-                                toolsRoot.toString(), toolsRoot.toString(), noDiscover, false, false, tool, version)
+                toolRequest(tool, version, toolsRoot, noDiscover, acceptUnverified)
                         .encode());
+    }
+
+    /** The {@code jk tool install <tool>:<version>} request: the named distribution, with the one consent it may carry. */
+    static ProvisionRequest toolRequest(
+            String tool, String version, Path toolsRoot, boolean noDiscover, boolean acceptUnverified) {
+        return new ProvisionRequest(
+                toolsRoot.toString(), toolsRoot.toString(), noDiscover, acceptUnverified, false, tool, version);
     }
 
     /**

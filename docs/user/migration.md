@@ -43,7 +43,8 @@ a distribution with none of the three is refused, naming each checksum jk looked
 SHA-256 in `maven-wrapper.properties`, or accept that one download with
 `jk mvn --accept-unverified-tool …` (or `JK_ACCEPT_UNVERIFIED_TOOL=1` in a CI step): jk installs
 the archive, records its SHA-256 as `tools/maven/<version>.accepted.sha256` in the store, and
-verifies every later download of that version against it, so the next run is silent. The flag
+verifies every later download of that version against it, so the next run is silent. `jk tool
+install maven:3.6.3 --accept-unverified-tool` takes the same consent ahead of time. The flag
 never bypasses a checksum that is published.
 
 `jk mvn` also writes jk's run report for the Maven run: `target/jk-results.md` and the history

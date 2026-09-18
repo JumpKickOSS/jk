@@ -6,8 +6,6 @@ import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.compat.PassthroughEnv;
-import cc.jumpkick.compat.ToolRegistry;
-import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkResolver;
@@ -64,8 +62,7 @@ public final class MvnCommand implements CliCommand {
                 Opt.value("<dir>", "Override the tools install root.", "--tools-dir"),
                 CommonOpts.jdksDir(),
                 Opt.flag("Skip tool discovery.", "--no-discover"),
-                // Held under HelpWidthTest's 78-column budget beside the longest flag name here.
-                Opt.flag("Accept a distribution no checksum vouches for", ToolRegistry.ACCEPT_FLAG));
+                CommonOpts.acceptUnverifiedTool());
     }
 
     @Override
@@ -103,7 +100,7 @@ public final class MvnCommand implements CliCommand {
         this.toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         this.jdksDir = CommonOpts.jdksDirValue(in);
         this.noDiscover = in.isSet("no-discover");
-        this.acceptUnverified = acceptUnverified(in);
+        this.acceptUnverified = CommonOpts.acceptUnverifiedTool(in);
         this.args = in.positionals();
 
         Path projectDir = directory != null
@@ -157,15 +154,6 @@ public final class MvnCommand implements CliCommand {
         } finally {
             Files.deleteIfExists(events);
         }
-    }
-
-    /**
-     * Whether this run installs a distribution nothing vouches for: the flag, or {@link
-     * ToolRegistry#ACCEPT_ENV} set true for a CI step that cannot edit the command line.
-     */
-    static boolean acceptUnverified(Invocation in) {
-        return in.isSet(ToolRegistry.ACCEPT_FLAG.substring(2))
-                || EnvValues.bool(JkDirs::env, ToolRegistry.ACCEPT_ENV).orElse(false);
     }
 
     /**
