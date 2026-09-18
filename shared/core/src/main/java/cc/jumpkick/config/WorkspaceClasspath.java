@@ -291,7 +291,11 @@ public final class WorkspaceClasspath {
             if (unitDir.toAbsolutePath().normalize().equals(self)) continue; // exclude self
             JkBuild unit = unit0.getValue();
             String coord = unit.project().group() + ":" + unit.project().name();
-            BuildLayout layout = BuildLayout.of(unitDir, unit);
+            // The root is known here: every unit is one of its members or the root itself. Locating
+            // it again per unit walks the unit's ancestors and scans the root manifest's module list
+            // each time — a thousand-module reactor asked this for every module of a forecast paid
+            // a million such walks.
+            BuildLayout layout = BuildLayout.of(root, unitDir, unit);
             siblingDirByModule.put(coord, unitDir);
             siblingJarByModule.put(coord, layout.mainJar());
             siblingClassesByModule.put(coord, layout.classesDir());

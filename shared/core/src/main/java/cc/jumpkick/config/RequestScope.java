@@ -106,7 +106,16 @@ public final class RequestScope {
      */
     public static void release() {
         IoLedger ledger = ambientLedger();
-        if (ledger != null) SCOPES.remove(ledger);
+        if (ledger != null) release(ledger);
+    }
+
+    /**
+     * Ends the scope of the request that opened {@code ledger}, from any thread. For the job the
+     * engine gave up waiting on: its runner may still be walking a workspace long after the client
+     * has gone, and the scope it fills is not something that thread will ever release itself.
+     */
+    public static void release(IoLedger ledger) {
+        SCOPES.remove(ledger);
     }
 
     /**
