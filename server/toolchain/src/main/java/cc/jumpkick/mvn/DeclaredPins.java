@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -11,15 +12,18 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -29,17 +33,26 @@ import org.jspecify.annotations.Nullable;
 /**
  * The import-time check of every exact pin a POM wrote: a version no repository the lock reads
  * lists is a Tier-3 row here, where the POM is still in front of the user, rather than a refusal
- * at {@code jk lock}. One catalog walk per pinned {@code group:artifact:version}, over the same
- * {@code maven-metadata.xml} the lock reads and in the lock's repository order, stopping at the
- * first repository that lists the version; a repository that cannot be reached makes the pin a
- * note, because an absent answer is not an absent version. A pin whose POM one of those
- * repositories' stores already mirrors — a lock fetched it before — is not walked at all: the
- * mirrored POM is the repository's own word that the version exists.
+ * at {@code jk lock}. One catalog walk per pinned {@code group:artifact} — however many versions
+ * of it the reactor's modules pin — over the same {@code maven-metadata.xml} the lock reads and in
+ * the lock's repository order, stopping at the first repository that lists every version asked; a
+ * repository that cannot be reached makes the pin a note, because an absent answer is not an
+ * absent version. A pin whose POM one of those repositories' stores already mirrors — a lock
+ * fetched it before — is not walked at all: the mirrored POM is the repository's own word that the
+ * version exists. The sweep runs {@link #walksInFlight()} catalogs at a time and under a wall
+ * budget ({@link #BUDGET}): what it has not reached by then is one note naming the count, and
+ * {@code jk lock} decides those pins as it decides every other.
  */
 public final class DeclaredPins {
 
-    /** Catalog walks in flight at once: enough to hide latency, few enough to stay under a host's rate limit. */
-    private static final int WALKS_IN_FLIGHT = 8;
+    /**
+     * The fewest catalog walks in flight at once; the host's download width raises it. A catalog is
+     * a few kilobytes, so what bounds the sweep is round trips, not bytes.
+     */
+    private static final int WALKS_IN_FLIGHT_FLOOR = 8;
+
+    /** The sweep's wall budget; a thousand-coordinate reactor is checked within it or noted. */
+    static final Duration BUDGET = Duration.ofSeconds(90);
 
     /** How many of a catalog's versions a row names before eliding the rest. */
     private static final int VERSIONS_NAMED = 8;
@@ -55,7 +68,12 @@ public final class DeclaredPins {
     public static ImportReport check(
             JkBuild root, Map<String, JkBuild> modules, ImportReport report, PomImporter importer) {
         RepoGroup base = importer.resolver.repos();
-        return check(root, modules, report, lockRepos(base, root, importer.resolver.cas()));
+        return check(root, modules, report, lockRepos(base, root, importer.resolver.cas()), Clock.SYSTEM, BUDGET);
+    }
+
+    /** Catalog walks in flight at once: half the host's download width, {@link #WALKS_IN_FLIGHT_FLOOR} at least. */
+    static int walksInFlight() {
+        return Math.max(WALKS_IN_FLIGHT_FLOOR, DownloadSlots.width() / 2);
     }
 
     /**
@@ -74,13 +92,24 @@ public final class DeclaredPins {
         return base.withReposPrepended(declared);
     }
 
-    /** {@link #check(JkBuild, Map, ImportReport, PomImporter)} over exactly {@code repos}. */
+    /** {@link #check(JkBuild, Map, ImportReport, PomImporter)} over exactly {@code repos}, under the standard budget. */
     static ImportReport check(JkBuild root, Map<String, JkBuild> modules, ImportReport report, RepoGroup repos) {
+        return check(root, modules, report, repos, Clock.SYSTEM, BUDGET);
+    }
+
+    /** {@link #check(JkBuild, Map, ImportReport, RepoGroup)} with the sweep's budget read off {@code clock}. */
+    static ImportReport check(
+            JkBuild root,
+            Map<String, JkBuild> modules,
+            ImportReport report,
+            RepoGroup repos,
+            Clock clock,
+            Duration budget) {
         Map<String, List<String>> ownersByGav = new LinkedHashMap<>();
         collect("", root, ownersByGav);
         for (Map.Entry<String, JkBuild> e : modules.entrySet()) collect(e.getKey(), e.getValue(), ownersByGav);
         if (ownersByGav.isEmpty()) return report;
-        Map<String, Verdict> verdicts = walkAll(ownersByGav.keySet(), repos);
+        Sweep sweep = walkAll(ownersByGav.keySet(), repos, clock, budget);
         ImportReport.Builder out = ImportReport.builder();
         for (ImportReport.Issue issue : report.issues()) {
             if (issue.severity() == ImportReport.Severity.ERROR) out.error(issue.message());
@@ -88,7 +117,7 @@ public final class DeclaredPins {
         }
         ModuleRows rows = new ModuleRows();
         for (Map.Entry<String, List<String>> e : ownersByGav.entrySet()) {
-            Verdict verdict = verdicts.get(e.getKey());
+            Verdict verdict = sweep.verdicts().get(e.getKey());
             if (verdict == null || verdict.listed()) continue;
             ImportReport.Severity severity =
                     verdict.unreachable().isEmpty() ? ImportReport.Severity.ERROR : ImportReport.Severity.WARNING;
@@ -96,6 +125,7 @@ public final class DeclaredPins {
             for (String owner : e.getValue()) rows.add(owner, severity, row);
         }
         rows.flush(out);
+        if (!sweep.unchecked().isEmpty()) out.warning(sweep.budgetNote(budget));
         return out.build();
     }
 
@@ -128,67 +158,128 @@ public final class DeclaredPins {
     }
 
     /**
-     * One walk per GAV the stores do not already answer, {@link #WALKS_IN_FLIGHT} at a time on the
-     * io pool, under the caller's session.
+     * What the sweep found: a verdict per {@code group:artifact:version} it reached, and the pins
+     * it did not — those still queued when the budget ran out.
      */
-    private static Map<String, Verdict> walkAll(Set<String> gavs, RepoGroup repos) {
+    record Sweep(Map<String, Verdict> verdicts, List<String> unchecked) {
+
+        /** The one Tier-2 note for every pin the budget left unchecked. */
+        String budgetNote(Duration budget) {
+            Set<String> coordinates = new LinkedHashSet<>();
+            for (String gav : unchecked) coordinates.add(gav.substring(0, gav.lastIndexOf(':')));
+            return unchecked.size() + (unchecked.size() == 1 ? " pinned version" : " pinned versions") + " ("
+                    + coordinates.size() + (coordinates.size() == 1 ? " coordinate" : " coordinates")
+                    + ") were not checked against the repositories the lock reads: the check stopped at its "
+                    + budget.toSeconds() + "-second budget after " + verdicts.size() + " of "
+                    + (verdicts.size() + unchecked.size()) + ". `jk lock` decides whether each version exists.";
+        }
+    }
+
+    /**
+     * One catalog walk per {@code group:artifact} whose versions the stores do not already answer,
+     * {@link #walksInFlight()} at a time on the io pool, under the caller's session. When {@code
+     * budget} runs out, a walk that has not started is not started and one in flight asks no
+     * further repository: the versions neither has an answer for are the sweep's {@link
+     * Sweep#unchecked}.
+     */
+    private static Sweep walkAll(Set<String> gavs, RepoGroup repos, Clock clock, Duration budget) {
         var session = SessionContext.current();
-        Semaphore permits = new Semaphore(WALKS_IN_FLIGHT);
+        Semaphore permits = new Semaphore(walksInFlight());
+        long deadline = clock.nanos() + budget.toNanos();
         Map<String, Verdict> out = new LinkedHashMap<>();
-        Map<String, Future<Verdict>> pending = new LinkedHashMap<>();
+        Map<String, Set<String>> toWalk = new LinkedHashMap<>();
         for (String gav : gavs) {
-            if (mirrored(coordinate(gav), repos)) {
+            Coordinate coord = coordinate(gav);
+            if (mirrored(coord, repos)) {
                 out.put(gav, Verdict.LISTED);
                 continue;
             }
+            toWalk.computeIfAbsent(coord.module(), k -> new LinkedHashSet<>()).add(coord.version());
+        }
+        Map<String, Future<@Nullable Walked>> pending = new LinkedHashMap<>();
+        for (Map.Entry<String, Set<String>> e : toWalk.entrySet()) {
+            String ga = e.getKey();
+            Set<String> versions = Set.copyOf(e.getValue());
             pending.put(
-                    gav,
+                    ga,
                     JkThreads.io()
                             .submit(() -> SessionContext.where(session, () -> {
                                 permits.acquire();
                                 try {
-                                    return walk(gav, repos);
+                                    if (clock.nanos() >= deadline) return null;
+                                    return walk(ga, versions, repos, clock, deadline);
                                 } finally {
                                     permits.release();
                                 }
                             })));
         }
-        for (Map.Entry<String, Future<Verdict>> e : pending.entrySet()) {
+        List<String> unchecked = new ArrayList<>();
+        for (Map.Entry<String, Future<@Nullable Walked>> e : pending.entrySet()) {
+            Set<String> versions = Objects.requireNonNull(toWalk.get(e.getKey()));
             try {
-                out.put(e.getKey(), e.getValue().get());
+                @Nullable Walked walked = e.getValue().get();
+                for (String version : versions) {
+                    String gav = e.getKey() + ":" + version;
+                    @Nullable
+                    Verdict verdict = walked == null ? null : walked.verdicts().get(version);
+                    if (verdict == null) unchecked.add(gav);
+                    else out.put(gav, verdict);
+                }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                for (Future<Verdict> f : pending.values()) f.cancel(true);
-                return out;
+                for (Future<@Nullable Walked> f : pending.values()) f.cancel(true);
+                return new Sweep(out, List.copyOf(unchecked));
             } catch (ExecutionException failed) {
                 Throwable cause = failed.getCause() == null ? failed : failed.getCause();
-                out.put(e.getKey(), Verdict.unchecked(List.of(), List.of("this check failed: " + describe(cause))));
+                for (String version : versions) {
+                    out.put(
+                            e.getKey() + ":" + version,
+                            Verdict.unchecked(List.of(), List.of("this check failed: " + describe(cause))));
+                }
             }
         }
-        return out;
+        return new Sweep(out, List.copyOf(unchecked));
     }
 
+    /** One coordinate's walk: a verdict per version it reached an answer for; the rest were cut off by the budget. */
+    private record Walked(Map<String, Verdict> verdicts) {}
+
     /**
-     * The repositories the lock asks for {@code gav}, in the lock's order, each read until one
-     * lists the pinned version. A repository that fails to answer is recorded, not skipped.
+     * The repositories the lock asks for {@code ga}, in the lock's order, each read once until every
+     * version in {@code versions} has been listed by one of them or {@code deadline} has passed.
+     * A repository that fails to answer is recorded, not skipped; the verdicts of the versions no
+     * repository listed carry it. A version still open when the deadline cuts the walk short has
+     * no verdict: an unasked repository may list it.
      */
-    private static Verdict walk(String gav, RepoGroup repos) throws InterruptedException {
-        Coordinate coord = coordinate(gav);
+    private static Walked walk(String ga, Set<String> versions, RepoGroup repos, Clock clock, long deadline)
+            throws InterruptedException {
+        Coordinate coord = Coordinate.ofModule(ga, versions.iterator().next());
+        Map<String, Verdict> out = new LinkedHashMap<>();
+        Set<String> remaining = new LinkedHashSet<>(versions);
         List<String> asked = new ArrayList<>();
         Set<String> listed = new LinkedHashSet<>();
         List<String> unreachable = new ArrayList<>();
         for (MavenRepo repo : repos.repositoriesFor(coord)) {
+            if (remaining.isEmpty()) break;
             if (!repo.servesReleases()) continue;
+            if (clock.nanos() >= deadline) return new Walked(out);
             asked.add(repo.name());
             try {
-                List<String> versions = repo.availableVersions(coord);
-                if (versions.contains(coord.version())) return Verdict.LISTED;
-                if (!versions.isEmpty()) listed.add(repo.name() + " lists " + named(versions));
+                List<String> catalog = repo.availableVersions(coord);
+                for (String version : List.copyOf(remaining)) {
+                    if (catalog.contains(version)) {
+                        out.put(version, Verdict.LISTED);
+                        remaining.remove(version);
+                    }
+                }
+                if (!catalog.isEmpty()) listed.add(repo.name() + " lists " + named(catalog));
             } catch (IOException transport) {
                 unreachable.add(repo.name() + " could not be reached (" + describe(transport) + ")");
             }
         }
-        return new Verdict(false, List.copyOf(asked), List.copyOf(listed), List.copyOf(unreachable));
+        Verdict unlisted = new Verdict(false, List.copyOf(asked), List.copyOf(listed), List.copyOf(unreachable));
+        for (String version : remaining) out.put(version, unlisted);
+        return new Walked(out);
     }
 
     /** Whether a release repository the lock asks for {@code coord} holds its POM in the local store, no network read. */

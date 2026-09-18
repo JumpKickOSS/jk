@@ -112,8 +112,11 @@ what the catalogs list instead, so the refusal arrives while the POM is still in
 release whose POM a repository serves while its `maven-metadata.xml` stops short of it (Central's
 `jfree:jfreechart 1.0.13`) is found by the POM, as Maven finds it; a repository
 that cannot be reached during that check leaves a Tier-2 note, not a claim; a pin whose POM a lock
-on this machine already fetched is not checked again. Read that report before trusting the
-generated `jk.toml`.
+on this machine already fetched is not checked again. The check reads each pinned coordinate's
+catalog once, however many versions of it the reactor's modules pin, and runs under a
+ninety-second budget: what it has not reached by then is one Tier-2 note with the count, and `jk
+lock` judges those pins as it judges every other. Read that report before trusting the generated
+`jk.toml`.
 
 **A repository that never answers stops the import.** The parent and BOM reads run under the
 resolve stall window (`JK_RESOLVE_TIMEOUT_MS`, 120 s; `0` never stops): an import whose reads stop

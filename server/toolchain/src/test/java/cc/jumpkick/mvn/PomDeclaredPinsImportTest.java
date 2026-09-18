@@ -8,6 +8,7 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.ProjectImport;
 import cc.jumpkick.gradle.GradleBuildImport;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -17,15 +18,24 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.DeadEndpoint;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /** A version the POM pins that no repository lists is a row at import, and an unreachable repository is a note. */
 class PomDeclaredPinsImportTest {
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
+
+    private final MavenStub upstream = new MavenStub(http);
 
     private static final String POM = """
             <project>
@@ -190,6 +200,164 @@ class PomDeclaredPinsImportTest {
                 .isNull();
         assertThat(DeclaredPins.exactRemoteVersion(Dependency.platformManaged("lib", "g:a")))
                 .isNull();
+    }
+
+    private static final String REACTOR = """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>com.example</groupId>
+              <artifactId>reactor</artifactId>
+              <version>1.0</version>
+              <packaging>pom</packaging>
+              <modules><module>a</module><module>b</module></modules>
+            </project>
+            """;
+
+    private static final String MEMBER = """
+            <project>
+              <modelVersion>4.0.0</modelVersion>
+              <parent>
+                <groupId>com.example</groupId>
+                <artifactId>reactor</artifactId>
+                <version>1.0</version>
+              </parent>
+              <artifactId>%s</artifactId>
+              <dependencies>
+                <dependency>
+                  <groupId>net.java.dev.swing-layout</groupId>
+                  <artifactId>swing-layout</artifactId>
+                  <version>%s</version>
+                </dependency>
+              </dependencies>
+            </project>
+            """;
+
+    /**
+     * Two modules pinning one coordinate at two versions read its catalog once: the walk is per
+     * {@code group:artifact}, and every version the reactor pins is judged against that one read.
+     */
+    @Test
+    void one_coordinate_pinned_at_two_versions_reads_its_catalog_once(@TempDir Path tmp) throws Exception {
+        upstream.metadata("net.java.dev.swing-layout", "swing-layout", "1.0", "1.0.1");
+        Path pom = writeReactor(tmp, "1.0.1", "1.0.2");
+        PomImporter importer = TestImporters.over(tmp, http.base());
+
+        PomImporter.WorkspaceImportResult result = importer.importWorkspace(pom);
+        ImportReport checked = DeclaredPins.check(result.root(), result.modules(), result.report(), importer);
+
+        assertThat(http.requestsFor(MavenStub.metadataPath("net.java.dev.swing-layout", "swing-layout")))
+                .isEqualTo(1);
+        assertThat(checked.issues())
+                .filteredOn(i -> i.message().contains("swing-layout"))
+                .singleElement()
+                .satisfies(i -> assertThat(i.message())
+                        .startsWith("[b] `net.java.dev.swing-layout:swing-layout 1.0.2` is pinned by the POM")
+                        .contains("`jk lock` refuses it"));
+    }
+
+    /**
+     * A sweep that runs out of its budget claims nothing about the pins it did not reach: they are
+     * one Tier-2 note with the count, and {@code jk lock} judges them. Nothing is walked under a
+     * budget of zero, so the note covers every pin.
+     */
+    @Test
+    void pins_the_budget_leaves_unchecked_are_one_note_not_rows(@TempDir Path tmp) throws Exception {
+        Path repo = tmp.resolve("repo");
+        writeMeta(repo, "net.java.dev.swing-layout", "swing-layout", "1.0", "1.0.1");
+        writeMeta(repo, "junit", "junit", "4.13.2");
+        Path pom = writePom(tmp);
+        PomImporter importer = TestImporters.over(tmp, repo.toUri());
+
+        PomImporter.WorkspaceImportResult result = importer.importWorkspace(pom);
+        ImportReport checked = DeclaredPins.check(
+                result.root(),
+                result.modules(),
+                result.report(),
+                DeclaredPins.lockRepos(importer.resolver.repos(), result.root(), importer.resolver.cas()),
+                Clock.SYSTEM,
+                Duration.ZERO);
+
+        assertThat(checked.hasErrors()).isFalse();
+        assertThat(checked.issues())
+                .filteredOn(i -> i.message().contains("were not checked"))
+                .singleElement()
+                .satisfies(i -> {
+                    assertThat(i.severity()).isEqualTo(ImportReport.Severity.WARNING);
+                    assertThat(i.message())
+                            .startsWith("2 pinned versions (2 coordinates) were not checked against the repositories")
+                            .contains("0-second budget after 0 of 2")
+                            .contains("`jk lock` decides whether each version exists");
+                });
+        assertThat(checked.issues()).noneMatch(i -> i.message().contains("is pinned by the POM"));
+    }
+
+    /**
+     * A walk in flight when the budget runs out asks no further repository, and a version the
+     * repositories it did ask do not list is unchecked rather than refused: the one it never asked
+     * may list it. The clock here advances four nanoseconds per reading under a ten-nanosecond
+     * budget, so the first repository is asked and the second is not.
+     */
+    @Test
+    void a_walk_the_budget_cuts_short_claims_nothing_about_the_repositories_it_did_not_ask(@TempDir Path tmp)
+            throws Exception {
+        Path repo = tmp.resolve("repo");
+        writeMeta(repo, "net.java.dev.swing-layout", "swing-layout", "1.0", "1.0.1", "1.0.2");
+        Path corp = tmp.resolve("corp");
+        writeMeta(corp, "net.java.dev.swing-layout", "swing-layout", "1.0");
+        Path project = Files.createDirectories(tmp.resolve("project"));
+        Path pom = project.resolve("pom.xml");
+        Files.writeString(
+                pom,
+                POM.replace(
+                                "<dependencies>",
+                                "<repositories><repository><id>corp</id><url>" + corp.toUri()
+                                        + "</url></repository></repositories><dependencies>")
+                        .replaceAll("(?s)<dependency>\\s*<groupId>junit</groupId>.*?</dependency>", ""));
+        PomImporter importer = TestImporters.over(tmp, repo.toUri());
+        Clock stepping = new Clock() {
+            private long reading;
+
+            @Override
+            public long millis() {
+                return 0;
+            }
+
+            @Override
+            public synchronized long nanos() {
+                long now = reading;
+                reading += 4;
+                return now;
+            }
+        };
+
+        PomImporter.WorkspaceImportResult result = importer.importWorkspace(pom);
+        ImportReport checked = DeclaredPins.check(
+                result.root(),
+                result.modules(),
+                result.report(),
+                DeclaredPins.lockRepos(importer.resolver.repos(), result.root(), importer.resolver.cas()),
+                stepping,
+                Duration.ofNanos(10));
+
+        assertThat(checked.hasErrors()).isFalse();
+        assertThat(checked.issues()).noneMatch(i -> i.message().contains("is pinned by the POM"));
+        assertThat(checked.issues())
+                .filteredOn(i -> i.message().contains("were not checked"))
+                .singleElement()
+                .satisfies(i -> assertThat(i.message())
+                        .startsWith("1 pinned version (1 coordinate) were not checked")
+                        .contains("after 0 of 1"));
+    }
+
+    private static Path writeReactor(Path tmp, String versionA, String versionB) throws IOException {
+        Path project = Files.createDirectories(tmp.resolve("project"));
+        Path pom = project.resolve("pom.xml");
+        Files.writeString(pom, REACTOR);
+        Files.createDirectories(project.resolve("a"));
+        Files.writeString(project.resolve("a/pom.xml"), MEMBER.formatted("a", versionA));
+        Files.createDirectories(project.resolve("b"));
+        Files.writeString(project.resolve("b/pom.xml"), MEMBER.formatted("b", versionB));
+        return pom;
     }
 
     private static Path writePom(Path tmp) throws IOException {
