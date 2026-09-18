@@ -117,7 +117,11 @@ public final class GuardPacks {
         return null;
     }
 
-    /** The pinned pack's jar in the store, by content address then by repository layout; {@code null} when absent. */
+    /**
+     * The pinned pack's jar in the store, by content address then by repository layout; {@code
+     * null} when absent. A content-address hit is the pinned bytes by construction; a layout hit is
+     * whatever sits at that version and is verified against the pin before it is unpacked.
+     */
     public static @Nullable Path locateJar(Coordinate c, Lockfile.PluginEntry pin, Path store) throws IOException {
         String hex = pin.sha256Hex();
         if (hex != null && hex.length() > 4) {
@@ -218,8 +222,22 @@ public final class GuardPacks {
                 problems.add("pack " + c.gav() + " is pinned but neither unpacked nor in the store — run `jk lock`");
                 continue;
             }
+            String actual = Hashing.sha256Hex(jar);
+            if (!actual.equals(hex)) {
+                // The digest is the pin: a jar of another build at the same version is not the pack
+                // the lock names, and unpacking it would make the lock's row mean nothing.
+                problems.add(digestMismatch(c, hex, actual));
+                continue;
+            }
             unpack(jar, dir, hex);
         }
         return problems;
+    }
+
+    /** The refusal for a store jar whose bytes are not the ones the lock pins. */
+    static String digestMismatch(Coordinate c, String pinned, String actual) {
+        return "pack " + c.gav() + ": the jar in the store is sha256 " + actual.substring(0, 12)
+                + "… but jk-lock.toml pins sha256 " + pinned.substring(0, 12)
+                + "… — run `jk lock` to pin the jar you have, or put the pinned jar back in the store";
     }
 }
