@@ -6,13 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.net.ConnectException;
+import java.net.ServerSocket;
 import java.net.URI;
-import java.nio.channels.ClosedChannelException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -109,25 +110,6 @@ class RepoGroupUnreachableTest {
                 .noneMatch(uri -> uri.getPath().contains("/other/"));
     }
 
-    /**
-     * The JDK's HTTP client reports a refused connect as a {@code ConnectException} with no message,
-     * wrapped in another and a {@code ClosedChannelException}; a peer that accepted and dropped the
-     * connection is the same class saying reset, and a reset is one request's failure, not a dead
-     * address.
-     */
-    @Test
-    void a_refused_connect_is_the_message_less_connect_exception_and_a_reset_is_not_one() {
-        ConnectException bare = new ConnectException();
-        bare.initCause(new ClosedChannelException());
-        IOException refused = new IOException("GET failed after 6 attempts", bare);
-        assertThat(MavenRepo.connectFailure(refused)).isEqualTo("ConnectException: the connection was not accepted");
-        assertThat(MavenRepo.connectFailure(new ConnectException("Connection refused")))
-                .isEqualTo("ConnectException: Connection refused");
-        assertThat(MavenRepo.connectFailure(new ConnectException("Connection reset by peer (connect failed)")))
-                .isNull();
-        assertThat(MavenRepo.connectFailure(new IOException("HTTP 503"))).isNull();
-    }
-
     @Test
     void a_version_catalog_read_from_a_repository_that_refuses_the_connection_stops_the_resolve_too(@TempDir Path tmp)
             throws Exception {
@@ -138,6 +120,37 @@ class RepoGroupUnreachableTest {
                         () -> group.availableVersions(Coordinate.of("com.example", "lib", "0"), Set.of("1.0"), false))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining(DEAD.toString());
+    }
+
+    /**
+     * The address, not the repository object, is what answered nothing: a second {@link MavenRepo}
+     * over the same URL — the sync leg builds one per lock source, a declared-repository group one
+     * per subtree — is refused before it dials, and its cause says so.
+     */
+    @Test
+    void a_fresh_repository_object_over_an_address_that_answered_nothing_is_refused_without_a_request(@TempDir Path tmp)
+            throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        int port;
+        try (ServerSocket free = new ServerSocket(0)) {
+            port = free.getLocalPort();
+        }
+        URI closed = URI.create("http://127.0.0.1:" + port + "/maven2/");
+        Coordinate coord = Coordinate.of("com.example", "lib", "1.0");
+
+        // The POM and its checksum sidecars are asked for together, so whichever request's ladder
+        // ends first pays it and the rest are refused; either way the repository is named.
+        assertThatThrownBy(() -> new MavenRepo("dead", closed, Http.failFast(), cas).fetchPom(coord))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("repository dead")
+                .hasMessageContaining("is unreachable");
+
+        assertThatThrownBy(() -> new MavenRepo("dead", closed, Http.failFast(), cas).fetchArtifact(coord))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("repository dead")
+                .cause()
+                .hasMessageContaining("was not attempted")
+                .hasCauseInstanceOf(ConnectFaults.Remembered.class);
     }
 
     @Test

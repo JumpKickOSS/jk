@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.RunNotices;
@@ -76,6 +77,7 @@ public final class RepoGroup {
         POM_HIT_CACHE.clear();
         ARTIFACT_HIT_CACHE.clear();
         RepoMisses.clear();
+        ConnectFaults.forget();
     }
 
     /** Drop process-wide version lists (force / tests). */

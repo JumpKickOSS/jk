@@ -173,7 +173,10 @@ coordinate would only wait out the retry ladder each time. Fix the URL, start th
 remove the entry. A remote that accepts and then drops a request is that request's failure
 alone; the remaining repositories are still asked. Pinned bytes are another matter: a build
 whose lock names an unreachable repository still takes the artifact from any repository that
-serves the same sha256.
+serves the same sha256 — and pays the retry ladder once, not once per artifact: an address that
+answered nothing through a whole ladder is remembered for a minute, and every later request to
+it, from any repository entry or thread, is refused before it dials and falls through to the
+next repository at once.
 
 When a repository has opted out, the lock summary says so — `Resolved 42 dependencies ·
 2 unverified (allowed) · insecure (allowed): mirror` — so the count is visible on every lock

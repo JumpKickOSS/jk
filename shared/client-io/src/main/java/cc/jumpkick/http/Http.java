@@ -9,6 +9,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -439,6 +442,22 @@ public final class Http {
     }
 
     /**
+     * The address a request to {@code uri} dials: the HTTP proxy the client selects for it, else
+     * the URL's own authority. A connect-level fault is a fact about that address.
+     */
+    private String dialled(URI uri) {
+        Optional<ProxySelector> selector = client.proxy();
+        if (selector.isPresent()) {
+            for (Proxy proxy : selector.get().select(uri)) {
+                if (proxy.type() == Proxy.Type.HTTP && proxy.address() instanceof InetSocketAddress address) {
+                    return address.getHostString().toLowerCase(Locale.ROOT) + ":" + address.getPort();
+                }
+            }
+        }
+        return ConnectFaults.authority(uri);
+    }
+
+    /**
      * The one send-with-retry loop shared by {@link #get}, {@link #getStream}, {@link #postForm},
      * and {@link #put}: retry on connect failures and 5xx (never on 4xx), {@code backoffs.length + 1}
      * attempts with jittered backoff, then throw a verb-tagged {@link IOException}. {@code drain}
@@ -478,6 +497,16 @@ public final class Http {
             Optional<Instant> cooling = cooldown.until(request.uri().getHost());
             if (cooling.isPresent()) {
                 throw new RateLimitedException(request.uri().getHost(), cooling.get());
+            }
+            // Nor an address that answered nothing: one ladder found it dead, and every request
+            // to it — a fresh repository object's, a ladder mid-walk on another thread — is refused
+            // here rather than waiting out its own attempts.
+            String dialled = dialled(request.uri());
+            String refusing = ConnectFaults.refusing(dialled);
+            if (refusing != null) {
+                throw new IOException(
+                        verb + " " + SafeUri.forMessage(uri) + " was not attempted",
+                        new ConnectFaults.Remembered(dialled, refusing));
             }
             try {
                 HttpResponse<T> response = send(request, handler, drain);
@@ -547,6 +576,10 @@ public final class Http {
         // put its credential into every exhausted-retry message, which is journalled text.
         String shown = SafeUri.forMessage(uri);
         if (lastIo != null) {
+            // Every attempt met a connect-level fault: nothing listens at the address, so the
+            // address is remembered and asked nothing more until the memory lapses.
+            String fault = ConnectFaults.describe(lastIo);
+            if (fault != null) ConnectFaults.noteRefusing(dialled(request.uri()), fault);
             throw new IOException(verb + " " + shown + " failed after " + (backoffs.length + 1) + " attempts", lastIo);
         }
         throw new IOException(
