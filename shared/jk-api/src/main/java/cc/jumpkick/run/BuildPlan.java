@@ -555,10 +555,14 @@ public final class BuildPlan {
             // otherwise force-killed builds journal as failed/success and poison ETA history.
             boolean cancel = cancelled.get() || SessionCancel.cancelled();
             if (SessionCancel.cancelled()) userRequestedCancel.set(true);
-            boolean stepAlreadyReported =
-                    !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
+            String message = diagnosticMessage(t);
+            // Under a cancel the step's own rows are collateral of the cancel and a cancelled row
+            // is still owed — unless the step already recorded this very failure (a test fork
+            // ended by the cancel's SIGTERM reports its exit, then throws it): the same words
+            // twice, once with the module label and once without, are one diagnostic.
+            boolean stepAlreadyReported = errors.stream()
+                    .anyMatch(d -> step.name().equals(d.step()) && (!cancel || message.equals(d.message())));
             if (!stepAlreadyReported) {
-                String message = diagnosticMessage(t);
                 errors.add(new BuildPlanResult.Diagnostic(step.name(), cancel ? "cancelled" : "exception", message));
                 // Emit too: the result's diagnostics never cross the wire on the workspace
                 // path, so without this a step that throws without ctx.error (e.g. a
