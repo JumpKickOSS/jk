@@ -85,7 +85,7 @@ class PomLintImportTest {
 
     /** spring-cloud-alibaba's shape: the rule set is a URL, which no module-relative path can name. */
     @Test
-    void a_checkstyle_rule_set_at_a_url_is_a_row_and_a_placeholder_path(@TempDir Path tempDir) throws Exception {
+    void a_checkstyle_rule_set_at_a_url_is_a_row_and_the_key_names_the_url(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -105,9 +105,46 @@ class PomLintImportTest {
                 """);
 
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
-        assertThat(lint.values()).containsEntry("checkstyle", "config/checkstyle.xml");
+        assertThat(lint.values())
+                .as("the key says what the POM said, so the step's warning names the rule set")
+                .containsEntry("checkstyle", "https://example.com/build-tools/nohttp-checkstyle.xml");
         assertThat(messages(result)).anySatisfy(m -> assertThat(m)
                 .contains("https://example.com/build-tools/nohttp-checkstyle.xml")
+                .contains("copy the rule set in"));
+    }
+
+    /** jenkins's shape: the rule set is named through a property only the Maven launcher sets. */
+    @Test
+    void a_checkstyle_rule_set_named_through_a_launcher_property_is_a_row_and_the_key_keeps_the_spelling(
+            @TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.jenkins-ci.main</groupId>
+                  <artifactId>websocket-spi</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                        <configuration>
+                          <configLocation>${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-configuration.xml</configLocation>
+                        </configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """);
+
+        PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
+        assertThat(lint.values())
+                .containsEntry(
+                        "checkstyle",
+                        "${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-configuration.xml");
+        assertThat(messages(result)).anySatisfy(m -> assertThat(m)
+                .contains("`${maven.multiModuleProjectDirectory}/src/checkstyle/checkstyle-configuration.xml`")
+                .contains("a property no POM defines")
                 .contains("copy the rule set in"));
     }
 
@@ -204,7 +241,7 @@ class PomLintImportTest {
 
     /** A Checkstyle plugin left at its defaults reads a rule set the module does not hold. */
     @Test
-    void a_built_in_checkstyle_rule_set_is_a_row_and_a_placeholder_path(@TempDir Path tempDir) throws Exception {
+    void a_built_in_checkstyle_rule_set_is_a_row_and_the_key_names_it(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -226,7 +263,7 @@ class PomLintImportTest {
 
         PluginConfig lint = result.jkBuild().pluginConfig("lint").orElseThrow();
         assertThat(lint.values())
-                .containsEntry("checkstyle", "config/checkstyle.xml")
+                .containsEntry("checkstyle", "google_checks.xml")
                 .doesNotContainKey("sources")
                 .doesNotContainKey("fail-on")
                 .doesNotContainKey("checkstyle-version");

@@ -55,7 +55,12 @@ after the message. Severity follows the tool: Checkstyle's `severity` property (
 priority 1 (high) as an error and the rest as warnings, detekt's `warning`. `fail-on` decides
 what fails the step: `error` (the default) lets warnings through, `warning` fails on any finding,
 `never` reports and passes. A tool that cannot run — a rule set that does not parse, a missing
-ruleset — fails the step with the tool's last lines.
+PMD ruleset — fails the step with the tool's last lines. Two cases are not failures: a module
+whose roots hold no file for the tool (Checkstyle's `exclude` globs covering every source, a test
+module with no `src/main/java`) is a step labelled `(no sources)` with an empty report, and a
+`checkstyle` or `detekt-config` file the module does not hold — the spelling `jk import` keeps for
+a rule set it could not carry, `sun_checks.xml` or a URL — is a warning naming it, labelled
+`(no configuration)`, until the file is there.
 
 ## Configuration files
 
