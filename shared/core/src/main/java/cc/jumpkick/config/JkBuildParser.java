@@ -55,6 +55,15 @@ public final class JkBuildParser {
     private JkBuildParser() {}
 
     /**
+     * Manifests either memo holds before it starts over. A parsed manifest is a tomlj tree of tens
+     * of kilobytes, and the engine runs on a 256 MB heap: unbounded, an engine that had built every
+     * corpus workspace held two thousand of them. The bound is above any one workspace, so a build
+     * never evicts its own manifests mid-walk; {@link #dropMemos} is what returns the memory once
+     * the engine has sat idle.
+     */
+    private static final int MANIFEST_MEMO_ENTRIES = 4_096;
+
+    /**
      * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by absolute path and stamped by
      * {@link ManifestStamp}. One entry per file, replaced in place so a long {@code jk watch} cannot
      * grow without bound. Stores the <em>local</em> manifest only; workspace inheritance is applied
@@ -64,7 +73,8 @@ public final class JkBuildParser {
      * re-read the file. {@code parse} fans out over every sibling; without that, a read-only
      * {@code jk status} would re-read the same handful of manifests thousands of times.
      */
-    private static final StampedMemo<Path, ManifestStamp, JkBuild> PARSE_CACHE = StampedMemo.create();
+    private static final StampedMemo<Path, ManifestStamp, JkBuild> PARSE_CACHE =
+            StampedMemo.bounded(MANIFEST_MEMO_ENTRIES);
 
     /**
      * Memo of {@link #document(Path)}, keyed by absolute path and stamped by {@link ManifestStamp} —
@@ -73,7 +83,8 @@ public final class JkBuildParser {
      * {@code [train]}, {@code [image]}, {@code [test]} tags, {@code [jvm]}) share one disk read and
      * one {@link Interpolation#guard} with the full parse instead of each doing their own.
      */
-    private static final StampedMemo<Path, ManifestStamp, TomlParseResult> DOC_CACHE = StampedMemo.create();
+    private static final StampedMemo<Path, ManifestStamp, TomlParseResult> DOC_CACHE =
+            StampedMemo.bounded(MANIFEST_MEMO_ENTRIES);
 
     /**
      * Two-tier staleness stamp for a manifest: {@code (size, mtime)} normally, plus the file's bytes
@@ -288,6 +299,14 @@ public final class JkBuildParser {
     /** Test seam: how many files the parse memo currently holds. */
     static int parseCacheSizeForTest() {
         return PARSE_CACHE.size();
+    }
+
+    /**
+     * Drop every memoized manifest — parses and documents — and return how many entries went. The
+     * engine calls this once it has been idle a while; the next parse of each file re-reads it.
+     */
+    public static int dropMemos() {
+        return PARSE_CACHE.clear() + DOC_CACHE.clear();
     }
 
     public static JkBuild reparse(Path file) throws IOException {

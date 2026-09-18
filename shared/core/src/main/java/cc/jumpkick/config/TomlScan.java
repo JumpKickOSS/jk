@@ -36,6 +36,12 @@ public final class TomlScan {
     private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
 
     /**
+     * Files either memo holds before it starts over: a bound above any one workspace's manifests,
+     * so a scan never evicts what its own build reads, and {@link #dropMemos} for the idle engine.
+     */
+    private static final int FILE_MEMO_ENTRIES = 4_096;
+
+    /**
      * The lines of each scanned file, stamped on {@code (size, mtime)}.
      *
      * <p>Memoized here rather than at each caller because there are twenty-eight of them and only one
@@ -50,7 +56,8 @@ public final class TomlScan {
      * case where that matters; the extra read costs one file for a couple of seconds. Same rule, same
      * constant, as {@code JkBuildParser}'s manifest stamp.
      */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> LINES = StampedMemo.create();
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> LINES =
+            StampedMemo.bounded(FILE_MEMO_ENTRIES);
 
     /** Distrust {@code (size, mtime)} for a file modified within this window. */
     private static final long SETTLE_MS = 2_000;
@@ -78,7 +85,8 @@ public final class TomlScan {
     }
 
     /** The head of each file scanned for its head scalars, stamped like {@link #LINES}; see {@link #scanScalarHead}. */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> HEADS = StampedMemo.create();
+    private static final StampedMemo<Path, StampedMemo.FileStamp, List<String>> HEADS =
+            StampedMemo.bounded(FILE_MEMO_ENTRIES);
 
     /**
      * {@code file}'s lines, from the memo when its stamp still matches. Empty for an absent or
@@ -156,6 +164,14 @@ public final class TomlScan {
         Path key = file.toAbsolutePath().normalize();
         LINES.forget(key);
         HEADS.forget(key);
+    }
+
+    /**
+     * Drop every memoized file — whole and head — and return how many entries went; the counters
+     * stay. The engine calls this once it has been idle a while.
+     */
+    public static int dropMemos() {
+        return LINES.clear() + HEADS.clear();
     }
 
     /** Test seam: drop every cached file. */

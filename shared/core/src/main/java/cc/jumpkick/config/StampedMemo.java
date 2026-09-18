@@ -103,9 +103,14 @@ public final class StampedMemo<K, S, V extends @Nullable Object> {
         entries.remove(key);
     }
 
-    /** Drop every entry. For tests that rewrite a config file inside one JVM. */
-    public void clear() {
+    /**
+     * Drop every entry and say how many went: the idle trim's log line names what a long-lived
+     * engine gave back, and tests that rewrite a config file inside one JVM start clean.
+     */
+    public int clear() {
+        int dropped = entries.size();
         entries.clear();
+        return dropped;
     }
 
     /** How many keys are memoized. */

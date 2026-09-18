@@ -184,7 +184,12 @@ per-build memos, runs a full collection so the heap uncommits down to its live d
 with a low `MaxHeapFreeRatio`), and returns freed native memory to the operating system
 (`malloc_trim`, the same operation as `jcmd <pid> System.trim_native_heap`). Thirty seconds
 of idleness later it does both again, once the harvest and the client disconnects that trail a
-job have finished, and logs one `idle trim:` line with what came back. Two settings on the
+job have finished, and also empties the memos a next build of the same workspace would have
+reused — parsed manifests, scanned TOML files, parsed versions, the interned-string table, and
+the file-hash and ABI stores (persisted first; the next build reloads them from disk) — so an
+engine that has built many workspaces does not keep every one of their manifest trees. It logs
+one `idle trim:` line with what came back and what was dropped. Each manifest and TOML memo is
+also bounded at 4,096 files and starts over past that. Two settings on the
 spawn line keep the native side bounded between trims: HotSpot's periodic trim
 (`-XX:TrimNativeHeapInterval`, every 30 s) and a glibc arena cap (`MALLOC_ARENA_MAX=4`,
 inherited from the shell when it sets its own). `jk engine status` shows heap and RSS.
