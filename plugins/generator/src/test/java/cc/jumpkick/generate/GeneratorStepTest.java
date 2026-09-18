@@ -76,13 +76,25 @@ class GeneratorStepTest {
         assertThat(io.diagnostics()).containsExactly("error: " + spec + ":3:1: deprecated `foo`");
     }
 
+    /**
+     * An inherited table whose inputs name nothing under this module — a reactor parent's Avro
+     * execution on a module with no schema — is a no-op that says so once, not a failed step: the
+     * tool is not forked and the output dir is there, empty, for the compile that reads it.
+     */
     @Test
-    void no_matching_input_is_an_error_naming_the_patterns(@TempDir Path tmp) throws Exception {
+    void no_matching_input_skips_the_tool_with_one_note(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = new FakeBuildIo(tmp, "generate");
         io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
 
-        assertThatThrownBy(() -> GeneratorStep.run(io, entry(null, List.of("api/*.yaml"), List.of())))
-                .hasMessageContaining("[generate.api] inputs [api/*.yaml] match no file");
+        GeneratorStep.run(io, entry(null, List.of("api/*.yaml"), List.of()));
+
+        Path out = tmp.resolve("scratch/generated/api");
+        assertThat(out).isDirectory();
+        assertThat(out.resolve("argv.txt")).as("the tool was not forked").doesNotExist();
+        assertThat(io.labels()).containsExactly("api (no inputs)");
+        assertThat(io.diagnostics())
+                .containsExactly("warning: [generate.api] inputs [api/*.yaml] match no file under " + io.moduleDir()
+                        + "; nothing was generated");
     }
 
     @Test

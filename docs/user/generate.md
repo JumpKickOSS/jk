@@ -21,7 +21,7 @@ contributes = "sources"                                      # sources | resourc
 |---|---|
 | `tool` | The generator's coordinate. A bare version is an exact pin; `^`/`~` float within the line; `latest` is the newest stable. The tool's runtime closure is fetched with it, so a tool that is not a fat jar still runs. |
 | `main` | The class to run. Omitted, jk reads `Main-Class` from the tool's own jar. |
-| `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`; `**` names zero or more directories). A pattern matching nothing fails the step. An entry with an `unpack` may leave them out. |
+| `inputs` | What the tool reads: module-relative paths or globs (`src/main/avro/**/*.avsc`; `**` names zero or more directories). Patterns matching nothing skip the tool: the output stays empty and one warning in the results says so. An entry with an `unpack` may leave them out. |
 | `unpack` | A jar coordinate whose contents the tool reads — a schema published as an artifact (`io.zipkin.proto3:zipkin-proto3:1.0.0`). The jar is fetched like the tool, extracted before the run, and `${unpacked}` names the directory. |
 | `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${unpacked}` the extracted jar, `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
 | `contributes` | `sources` (default) folds the output into the compiler's source set; `test-sources` into the test compiler's, beside the suites' own sources; `resources` into the packaged resources. |
