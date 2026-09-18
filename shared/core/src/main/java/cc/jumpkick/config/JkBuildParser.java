@@ -309,6 +309,15 @@ public final class JkBuildParser {
         return PARSE_CACHE.clear() + DOC_CACHE.clear();
     }
 
+    /**
+     * As {@link #dropMemos}, keeping every manifest under {@code root}: the idle trim's variant for
+     * the workspace built last, whose next build then re-reads nothing.
+     */
+    public static int dropMemosOutside(Path root) {
+        Path keep = root.toAbsolutePath().normalize();
+        return PARSE_CACHE.retain(key -> key.startsWith(keep)) + DOC_CACHE.retain(key -> key.startsWith(keep));
+    }
+
     public static JkBuild reparse(Path file) throws IOException {
         forget(file);
         return parse(file);

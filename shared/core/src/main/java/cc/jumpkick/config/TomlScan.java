@@ -174,6 +174,12 @@ public final class TomlScan {
         return LINES.clear() + HEADS.clear();
     }
 
+    /** As {@link #dropMemos}, keeping every file under {@code root}: the idle trim's variant for the workspace built last. */
+    public static int dropMemosOutside(Path root) {
+        Path keep = root.toAbsolutePath().normalize();
+        return LINES.retain(key -> key.startsWith(keep)) + HEADS.retain(key -> key.startsWith(keep));
+    }
+
     /** Test seam: drop every cached file. */
     public static void clearCache() {
         LINES.clear();
