@@ -4,7 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
-import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -13,15 +12,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The directories a plugin step's {@code sibling:<key>} input names: for every workspace sibling
- * in the module's MAIN/EXPORT closure that declares the plugin's table, the sibling's value under
- * {@code key} — one directory or a list of them, the schema default when its table omits the key —
- * resolved against the sibling's own directory, in dependency order. A sibling without the table contributes nothing: it has no
- * sources of that kind to import.
+ * the module's main compile reads ({@link WorkspaceClasspath#COMPILE_SCOPES} — a provided sibling
+ * among them, as Maven's compile classpath holds a {@code provided} jar and the sources it
+ * carries) that declares the plugin's table, the sibling's value under {@code key} — one directory
+ * or a list of them, the schema default when its table omits the key — resolved against the
+ * sibling's own directory, in dependency order. A sibling without the table contributes nothing:
+ * it has no sources of that kind to import.
  */
 final class SiblingFiles {
 
@@ -41,7 +41,7 @@ final class SiblingFiles {
 
     static List<Path> of(Path moduleDir, JkBuild project, PluginDescriptor plugin, String key) throws IOException {
         Map<Path, JkBuild> siblings =
-                WorkspaceClasspath.closureSiblings(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+                WorkspaceClasspath.closureSiblings(moduleDir, project, WorkspaceClasspath.COMPILE_SCOPES);
         PluginDescriptor.SchemaKey schemaKey = plugin.schema().get(key);
         @Nullable Object fallback = schemaKey == null ? null : schemaKey.normalizedDefault();
         List<Path> out = new ArrayList<>();
