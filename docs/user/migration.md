@@ -79,7 +79,9 @@ writes no report. A project with only a `pom.xml` binds for MCP by its POM coord
 
 **POM import** is the primary path, and it reads the POM the way Maven does: the effective
 model, built by Maven's own model builder. Parents are flattened (a sibling `pom.xml` in the
-reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows),
+reactor answers first, then any `<repository>` the POM declares, then the repositories jk knows;
+a plaintext `http://` `<repository>` is written `blocked = true`, as Maven 3.9 blocks it, and is a
+Tier-2 row — the lock never asks it and names it when an artifact resolves nowhere else),
 `dependencyManagement` is merged so a dependency declared without a version gets the managed one —
 written `managed` or as the versionless coordinate when a published BOM or parent chain the manifest
 carries as a `[platform-dependencies]` row supplied it, and as the version Maven resolved otherwise

@@ -178,7 +178,9 @@ a pre-release belong on `jk update`.
    `allow-unverified = true`; the lock summary then counts those rows as `unverified (allowed)`.
 4. Refuses a plaintext `http://` repository when the manifest is read, unless its table says
    `allow-insecure = true`; the summary then names it as `insecure (allowed)`. Neither key is
-   accepted on `central`. See [Repositories](repositories.md#transport-and-checksum-trust).
+   accepted on `central`. A table that says `blocked = true` parses with a plaintext URL and is
+   asked of nothing; a package no other repository serves then fails the lock naming it, with the
+   same refusal. See [Repositories](repositories.md#transport-and-checksum-trust).
 
 After the lock exists, `jk sync` / builds enforce the **pinned hashes only** — they do not
 re-check upstream sidecars. A digest mismatch against the lock is a cache miss / refetch,

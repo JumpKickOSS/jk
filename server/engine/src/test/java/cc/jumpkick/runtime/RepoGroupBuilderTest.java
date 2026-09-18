@@ -68,6 +68,30 @@ class RepoGroupBuilderTest {
     }
 
     @Test
+    void a_blocked_repository_is_no_repo_of_the_group_and_is_listed_as_blocked(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "demo"
+                name = "demo"
+                version = "1.0.0"
+                java = 25
+
+                [repositories.nm-repo]
+                url = "http://repo.numericalmethod.com/maven/"
+                blocked = true
+                """);
+        var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
+
+        RepoGroup group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")));
+
+        assertThat(group.repos()).extracting(MavenRepo::name).doesNotContain("nm-repo");
+        assertThat(group.blocked()).extracting(RepositorySpec::name).containsExactly("nm-repo");
+        assertThat(group.withReposAppended(List.of(group.repos().getFirst())).blocked())
+                .as("a scoped group keeps the block")
+                .extracting(RepositorySpec::name)
+                .containsExactly("nm-repo");
+    }
+
+    @Test
     void empty_declaration_defaults_to_jumpkick_central_google() {
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(Map.of());
         assertThat(effective)

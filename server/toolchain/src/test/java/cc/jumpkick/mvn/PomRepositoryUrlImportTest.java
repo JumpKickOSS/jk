@@ -3,7 +3,9 @@ package cc.jumpkick.mvn;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.compat.JkBuildRenderer;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.RepositorySpec;
 import java.nio.file.Path;
 import org.assertj.core.groups.Tuple;
@@ -45,5 +47,49 @@ class PomRepositoryUrlImportTest {
                         Tuple.tuple("nexus", "https://nexus.example:8081/repository/releases/"));
         assertThat(JkBuildRenderer.render(result.jkBuild()))
                 .contains("confluent = \"https://packages.confluent.io/maven/\"");
+    }
+
+    /**
+     * Maven 3.9 blocks a plaintext {@code http://} repository and builds on while nothing needs it;
+     * the import writes it blocked and says so, and the manifest it writes parses.
+     */
+    @Test
+    void a_plaintext_http_repository_is_written_blocked_and_is_a_row(@TempDir Path tempDir) throws Exception {
+        PomImporter.Result result = TestImporters.importXml(tempDir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.ex</groupId>
+                  <artifactId>api</artifactId>
+                  <version>1.0.0</version>
+                  <repositories>
+                    <repository>
+                      <id>nm-repo</id>
+                      <url>http://repo.numericalmethod.com/maven/</url>
+                    </repository>
+                    <repository>
+                      <id>local</id>
+                      <url>http://localhost:8081/maven/</url>
+                    </repository>
+                  </repositories>
+                </project>
+                """);
+
+        assertThat(result.jkBuild().repositories())
+                .extracting(RepositorySpec::name, RepositorySpec::blocked)
+                .containsExactly(Tuple.tuple("nm-repo", true), Tuple.tuple("local", false));
+        assertThat(result.report().issues())
+                .filteredOn(i -> i.severity() == ImportReport.Severity.WARNING)
+                .extracting(ImportReport.Issue::message)
+                .anySatisfy(m -> assertThat(m)
+                        .contains("`nm-repo` at http://repo.numericalmethod.com/maven/ is plaintext http")
+                        .contains("`blocked = true`")
+                        .contains("`allow-insecure = true`"));
+        String rendered = JkBuildRenderer.render(result.jkBuild());
+        assertThat(rendered)
+                .contains("nm-repo = { url = \"http://repo.numericalmethod.com/maven/\", blocked = true }")
+                .contains("local = \"http://localhost:8081/maven/\"");
+        assertThat(JkBuildParser.parse(rendered).repositories())
+                .extracting(RepositorySpec::name, RepositorySpec::blocked)
+                .containsExactly(Tuple.tuple("nm-repo", true), Tuple.tuple("local", false));
     }
 }

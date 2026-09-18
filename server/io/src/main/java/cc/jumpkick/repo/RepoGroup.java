@@ -6,6 +6,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -121,6 +122,13 @@ public final class RepoGroup {
      */
     private final int priorityCount;
 
+    /**
+     * The repositories the manifest declares {@code blocked = true}: known, never asked, named in
+     * the failure of a package nothing here serves. Not part of {@link #repoIdentity}, since they
+     * change no answer a memo holds.
+     */
+    private final List<RepositorySpec> blocked;
+
     public RepoGroup(List<MavenRepo> repos) {
         this(repos, null);
     }
@@ -150,6 +158,15 @@ public final class RepoGroup {
             @Nullable List<List<String>> exclusiveGroups,
             @Nullable List<List<String>> routedGroups,
             int priorityCount) {
+        this(repos, exclusiveGroups, routedGroups, priorityCount, List.of());
+    }
+
+    private RepoGroup(
+            List<MavenRepo> repos,
+            @Nullable List<List<String>> exclusiveGroups,
+            @Nullable List<List<String>> routedGroups,
+            int priorityCount,
+            List<RepositorySpec> blocked) {
         Objects.requireNonNull(repos, "repos");
         if (repos.isEmpty()) {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
@@ -158,6 +175,7 @@ public final class RepoGroup {
         this.exclusiveGroups = normalizePatterns(this.repos.size(), exclusiveGroups);
         this.routedGroups = normalizePatterns(this.repos.size(), routedGroups);
         this.priorityCount = priorityCount;
+        this.blocked = List.copyOf(blocked);
         // Bindings and the priority prefix change which repos are eligible for a coordinate, so
         // they are part of the question every memo answers — two groups with the same URLs but
         // different bindings must never share memo entries.
@@ -177,6 +195,17 @@ public final class RepoGroup {
         return new RepoGroup(List.of(single));
     }
 
+    /** This group with {@code blocked} as the repositories it knows of and never asks. */
+    public RepoGroup withBlocked(List<RepositorySpec> blocked) {
+        if (blocked.isEmpty()) return this;
+        return new RepoGroup(repos, exclusiveGroups, routedGroups, priorityCount, blocked);
+    }
+
+    /** The repositories declared {@code blocked = true}: never asked, named when nothing else serves a package. */
+    public List<RepositorySpec> blocked() {
+        return blocked;
+    }
+
     /**
      * Prepend {@code leading} repos ahead of this group, keeping this group's bindings aligned
      * with the trailing repos. Used for path/git materialize repos: they answer before remotes —
@@ -192,7 +221,8 @@ public final class RepoGroup {
                 merged,
                 padded(leading.size(), exclusiveGroups, 0),
                 padded(leading.size(), routedGroups, 0),
-                leading.size() + priorityCount);
+                leading.size() + priorityCount,
+                blocked);
     }
 
     /**
@@ -209,7 +239,8 @@ public final class RepoGroup {
                 merged,
                 padded(0, exclusiveGroups, trailing.size()),
                 padded(0, routedGroups, trailing.size()),
-                priorityCount);
+                priorityCount,
+                blocked);
     }
 
     /** {@code patterns} with {@code before} empty entries ahead of it and {@code after} behind it. */

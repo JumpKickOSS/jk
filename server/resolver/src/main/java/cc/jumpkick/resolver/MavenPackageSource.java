@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.host.Interned;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.InFlightRequests;
@@ -9,6 +10,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.MavenMetaversion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.EffectivePom;
@@ -386,6 +388,7 @@ public final class MavenPackageSource implements PackageSource {
     public List<String> refusalNotes(String pkg) {
         List<String> out = new ArrayList<>();
         RepoGroup group = declared.reposFor(pkg);
+        for (RepositorySpec spec : group.blocked()) out.add(blockedNote(spec));
         for (String wanted : wantedVersions(pkg)) {
             if (!Versions.isSnapshot(wanted)) continue;
             List<MavenRepo> asked = group.repositoriesFor(withVersion(pkg, wanted));
@@ -406,6 +409,22 @@ public final class MavenPackageSource implements PackageSource {
             }
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * The line a blocked repository earns when a package resolves nowhere: it was known and not
+     * asked, and — a plaintext {@code http://} one — the same refusal the manifest parse gives an
+     * unblocked one, with the two ways out.
+     */
+    static String blockedNote(RepositorySpec spec) {
+        String where = "repositories." + spec.name();
+        String url = spec.url().toString();
+        boolean plaintext = "http".equalsIgnoreCase(spec.url().getScheme())
+                && !RepositorySpec.loopback(spec.url().getHost());
+        return "repository `" + spec.name() + "` at " + url + " is blocked and was not asked"
+                + (plaintext
+                        ? ": " + RepositoryToml.plaintextRefusal(where, url)
+                        : "; drop blocked = true on [" + where + "] to ask it");
     }
 
     /** Every transitive constraint a nearest pin overrode so far, one rendered line each, sorted. */
