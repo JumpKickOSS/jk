@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -89,5 +91,35 @@ class PluginProcessWatchdogTest {
                 600L);
 
         assertThat(exit).isZero();
+    }
+
+    /**
+     * The watchdog's kill is owed on time however busy the virtual-thread scheduler is: on a
+     * virtual thread it would wait for a carrier while a plan spinning on every one of them holds
+     * them, so it runs on a daemon platform thread and still kills the silent child.
+     */
+    @Test
+    void the_watchdog_runs_on_a_platform_thread_and_kills_the_silent_child() throws Exception {
+        String java = System.getProperty("java.home") + "/bin/java";
+        Process child = new ProcessBuilder(
+                        java, "-cp", System.getProperty("java.class.path"), SleepForever.class.getName())
+                .redirectErrorStream(true)
+                .start();
+        try {
+            Thread watchdog = PluginProcess.startWatchdog(child, new AtomicLong(0L), 200L);
+            assertThat(watchdog.isVirtual())
+                    .as("the watchdog holds no virtual-thread carrier")
+                    .isFalse();
+            assertThat(watchdog.isDaemon())
+                    .as("the watchdog never keeps the engine alive")
+                    .isTrue();
+            assertThat(child.waitFor(15, TimeUnit.SECONDS))
+                    .as("the 200ms watchdog killed the child")
+                    .isTrue();
+            watchdog.join(TimeUnit.SECONDS.toMillis(15));
+            assertThat(watchdog.isAlive()).isFalse();
+        } finally {
+            child.destroyForcibly();
+        }
     }
 }

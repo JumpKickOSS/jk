@@ -237,23 +237,7 @@ public final class PluginProcess {
         pb.command(WorkerSession.detached(pb.command()));
         Process process = JobWorkers.start(pb);
         final AtomicLong lastLineAt = new AtomicLong(Clock.SYSTEM.millis());
-        Thread watchdog = null;
-        if (idleTimeoutMs > 0) {
-            watchdog = SessionContext.startVirtual("jk-worker-watchdog", () -> {
-                while (process.isAlive() || hasLiveDescendant(process)) {
-                    long idle = Clock.SYSTEM.millis() - lastLineAt.get();
-                    if (idle >= idleTimeoutMs) {
-                        forceStop(process);
-                        return;
-                    }
-                    try {
-                        Thread.sleep(Math.min(idleTimeoutMs - idle + 50, 5_000));
-                    } catch (InterruptedException e) {
-                        return; // conversation finished normally
-                    }
-                }
-            });
-        }
+        Thread watchdog = idleTimeoutMs > 0 ? startWatchdog(process, lastLineAt, idleTimeoutMs) : null;
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
         //
@@ -423,6 +407,29 @@ public final class PluginProcess {
      * Kill the worker and its descendants, then close the parent's read end so {@code readLine}
      * cannot stay blocked on an orphan still holding the write end of the pipe.
      */
+    /**
+     * The inactivity watchdog: once {@code lastLineAt} stands still for {@code idleTimeoutMs}, the
+     * child and its descendants are force-killed. A daemon platform thread, so the kill it owes
+     * fires however busy the virtual-thread scheduler is — a plan spinning on every carrier would
+     * otherwise delay it for as long as the spin lasts. Interrupting it ends the watch.
+     */
+    static Thread startWatchdog(Process process, AtomicLong lastLineAt, long idleTimeoutMs) {
+        return SessionContext.startPlatform("jk-worker-watchdog", () -> {
+            while (process.isAlive() || hasLiveDescendant(process)) {
+                long idle = Clock.SYSTEM.millis() - lastLineAt.get();
+                if (idle >= idleTimeoutMs) {
+                    forceStop(process);
+                    return;
+                }
+                try {
+                    Thread.sleep(Math.min(idleTimeoutMs - idle + 50, 5_000));
+                } catch (InterruptedException e) {
+                    return; // conversation finished normally
+                }
+            }
+        });
+    }
+
     private static void forceStop(Process process) {
         JobWorkers.destroyTree(process);
         try {
