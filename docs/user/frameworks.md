@@ -172,8 +172,10 @@ each entry's `--<id>_out` into one generated directory that joins the module's s
 plugin executable are fetched from the repositories for the host's OS and architecture and pinned
 in `jk-lock.toml`; an entry's `plugin` is a `group:artifact:version` and fewer segments fail the
 parse naming the entry. protoc's include path is the module's `src` roots, then the `src` of every
-workspace sibling the module depends on that has a `[protobuf]` table — a proto imports a sibling's
-by bare name, as it does under Maven where the sibling's jar carries its protos — then the protos
+workspace sibling the module's main compile reads (a `[dependencies]`, `[export-dependencies]` or
+`[provided-dependencies]` sibling, and the siblings those reach) that has a `[protobuf]` table — a
+proto imports a sibling's by bare name, as it does under Maven where the sibling's jar carries its
+protos — then the protos
 the runtime-closure jars carry, then those of the compile-only jars: `google/protobuf/*.proto` in
 protobuf-java, `google/rpc/status.proto` in proto-google-common-protos, a `provided` contract
 library's own are importable, as they are under Maven. The step re-runs when a proto of the module

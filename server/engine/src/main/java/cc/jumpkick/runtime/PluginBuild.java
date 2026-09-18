@@ -430,28 +430,37 @@ public final class PluginBuild {
      */
     public static List<Path> productionClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
-        return closure(projectDir, cas, lockFile, project, ClasspathResolver.RUNTIME);
+        return closure(
+                projectDir, cas, lockFile, project, ClasspathResolver.RUNTIME, WorkspaceClasspath.RUNTIME_SCOPES);
     }
 
     /**
      * The module's compile classpath as a step body sees it: the lock's COMPILE_MAIN closure
      * ({@code provided} included, runtime-only absent) followed by the workspace siblings' jars and
-     * their compile closures — {@link #productionClasspath} over the other scope set.
+     * their compile closures, a provided sibling among them — {@link #productionClasspath} over the
+     * other scope sets.
      */
     public static List<Path> compileClasspath(Path projectDir, Cas cas, Path lockFile, JkBuild project)
             throws IOException {
-        return closure(projectDir, cas, lockFile, project, ClasspathResolver.COMPILE_MAIN);
+        return closure(
+                projectDir, cas, lockFile, project, ClasspathResolver.COMPILE_MAIN, WorkspaceClasspath.COMPILE_SCOPES);
     }
 
-    /** The lock's closure under {@code scopes}, then the siblings' jars and their closures, deduplicated in order. */
-    private static List<Path> closure(Path projectDir, Cas cas, Path lockFile, JkBuild project, Set<Scope> scopes)
+    /**
+     * The lock's closure under {@code scopes}, then the siblings' jars and their closures,
+     * deduplicated in order. The siblings are the edges {@code siblingScopes} names: the compile
+     * view reads a provided sibling as Maven's compile classpath holds a {@code provided} jar,
+     * the runtime view leaves it to the platform.
+     */
+    private static List<Path> closure(
+            Path projectDir, Cas cas, Path lockFile, JkBuild project, Set<Scope> scopes, Set<Scope> siblingScopes)
             throws IOException {
         List<Path> classpath = new ArrayList<>();
         var resolver = new ClasspathResolver(cas);
         if (Files.exists(lockFile)) {
             classpath.addAll(resolver.classpathFor(LockfileReader.read(lockFile), scopes, true, project));
         }
-        WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project);
+        WorkspaceClasspath.Result siblings = siblingsOrNone(projectDir, project, siblingScopes);
         for (Path jar : siblings.jars()) {
             if (!classpath.contains(jar)) classpath.add(jar);
         }
@@ -461,10 +470,10 @@ public final class PluginBuild {
         return classpath;
     }
 
-    /** The MAIN/EXPORT workspace siblings of {@code projectDir}; a module outside any workspace has none. */
-    private static WorkspaceClasspath.Result siblingsOrNone(Path projectDir, JkBuild project) {
+    /** The workspace siblings of {@code projectDir} under {@code scopes}; a module outside any workspace has none. */
+    private static WorkspaceClasspath.Result siblingsOrNone(Path projectDir, JkBuild project, Set<Scope> scopes) {
         try {
-            return WorkspaceClasspath.resolve(projectDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+            return WorkspaceClasspath.resolve(projectDir, project, scopes);
         } catch (IOException | RuntimeException e) {
             Log.debug("productionClasspath: no workspace", e);
             return new WorkspaceClasspath.Result(List.of(), List.of());
