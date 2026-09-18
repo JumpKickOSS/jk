@@ -44,13 +44,23 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The connection is served on a platform thread of its own and its replies go out through
  * {@link WireWriter}'s writer thread for this stream, so hello, ping and status are answered
- * whatever the CPU pool and the virtual-thread scheduler are busy with. The stream's idle bound
- * is the same one the reader applies: a client that stops reading is dropped after it.
+ * whatever the CPU pool and the virtual-thread scheduler are busy with. A client that stops
+ * reading is dropped: a request/reply connection after {@link #REPLY_IDLE_MS}, since a reply is
+ * one line its client is waiting for, and a connection a job owns after the stream-idle bound the
+ * reader applies, since a job's client may be quiet for as long as the job is.
  */
 final class EngineConnection {
 
     /** Grace for a fresh connection to send its first line before it is closed as idle. */
     static final long HELLO_IDLE_MS = 10_000;
+
+    /**
+     * How long a request/reply connection's client may leave a reply unread before it is dropped.
+     * A probe's reply is one line the client is waiting for; one that has not read it in this long
+     * is gone, and its connection thread is released now rather than at the stream-idle bound a
+     * job's quiet client is allowed.
+     */
+    static final long REPLY_IDLE_MS = 10_000;
 
     /** The {@code shutdown} arm belongs to the lifecycle owner; the connection hands it the line and the writer. */
     interface ShutdownHandler {
@@ -97,7 +107,7 @@ final class EngineConnection {
                 reader;
                 BufferedWriter writer = new BufferedWriter(
                         new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8))) {
-            WireWriter.bind(writer, streamIdleMillis);
+            WireWriter.bind(writer, REPLY_IDLE_MS);
             try {
                 String expected = ctx.expectedToken();
                 if (expected != null && !authenticate(reader, expected)) {
@@ -236,13 +246,16 @@ final class EngineConnection {
         return switch (verb.shape()) {
             case VerbShape.AsyncPlan() -> {
                 // The job owns the connection now and watches it for EOF; a silent client is
-                // the normal case for the whole build, so the idle timer must not read it as dead.
+                // the normal case for the whole build, so the idle timer must not read it as dead,
+                // and its unread lines are held to the stream-idle bound rather than a reply's.
                 reader.idleTimeout(0);
+                WireWriter.idleBound(writer, streamIdleMillis);
                 ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
                 yield true;
             }
             case VerbShape.CacheMaint() -> {
                 reader.idleTimeout(0);
+                WireWriter.idleBound(writer, streamIdleMillis);
                 ctx.jobs().submit(line, verb.toJobRequest(line), new JobTransport.SocketWatch(reader, writer, ch));
                 yield true;
             }

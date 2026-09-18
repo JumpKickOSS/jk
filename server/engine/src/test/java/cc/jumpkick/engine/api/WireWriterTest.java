@@ -185,6 +185,31 @@ class WireWriterTest {
         assertThat(pipe.sink().isOpen()).isFalse();
     }
 
+    /**
+     * A connection's bound moves with its phase: bound loose for request/reply, then given the job's
+     * stream-idle bound once a job owns it — or the other way round — and the lines that follow are
+     * held to the bound in force when they wait.
+     */
+    @Test
+    @Timeout(30)
+    void the_idle_bound_of_a_bound_stream_moves_with_the_connections_phase() throws Exception {
+        Pipe pipe = Pipe.open();
+        BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(Channels.newOutputStream(pipe.sink()), StandardCharsets.UTF_8));
+        WireWriter.bind(writer, 0);
+        WireWriter.idleBound(writer, 300);
+        String line = line(0, 0);
+        for (int i = 0; i < 2_000; i++) WireWriter.sendQuiet(writer, line);
+
+        long started = System.nanoTime();
+        assertThatThrownBy(() -> WireWriter.send(writer, line))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("stopped reading");
+        long waitedMs = (System.nanoTime() - started) / 1_000_000;
+        assertThat(waitedMs).as("bounded by the bound set after binding").isLessThan(5_000);
+        assertThat(pipe.sink().isOpen()).isFalse();
+    }
+
     /** Releasing a stream lands what it still holds first, so a job-finish handed over last is read. */
     @Test
     void release_waits_for_the_queued_lines_to_land() throws Exception {
