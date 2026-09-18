@@ -30,6 +30,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.LockFlow;
+import cc.jumpkick.runtime.PlannerSetup;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.JkPluginSync;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
@@ -160,6 +161,7 @@ public final class SyncPlans {
                         var build = parseBuildIfPresent(dir);
                         if (build != null) ctx.put(BUILD, build);
                     } else {
+                        if (AutoLock.markFilelessRows(lockFile)) ctx.output(PlannerSetup.MARKED_FILELESS_ROWS);
                         ctx.put(LOCKFILE, LockfileReader.read(lockFile));
                         var build = parseBuildIfPresent(dir);
                         if (build != null) ctx.put(BUILD, build);
