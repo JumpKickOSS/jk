@@ -6,8 +6,10 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
+import java.nio.file.FileSystem;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,9 +17,10 @@ import java.util.Map;
 
 /**
  * The {@code protoc} step: fork the fetched protoc binary over every {@code .proto} under the
- * configured source dir ({@code [protobuf] src}, default {@code proto/}), generating Java into
- * the {@code gen} output (contributed to the compiler's source set). {@code lite = true} emits
- * the lite-runtime variant (the Android/datastore posture — pairs with protobuf-javalite).
+ * configured source dir ({@code [protobuf] src}, default {@code proto/}) that no {@code exclude}
+ * glob names, generating Java into the {@code gen} output (contributed to the compiler's source
+ * set). {@code lite = true} emits the lite-runtime variant (the Android/datastore posture — pairs
+ * with protobuf-javalite).
  *
  * <p>Each {@code [protobuf.<id>]} entry is one protoc plugin: its fetched executable is named to
  * protoc as {@code protoc-gen-<id>} and its {@code --<id>_out} lands in the same {@code gen}, the
@@ -45,13 +48,29 @@ final class ProtocStep {
         return list.isEmpty() ? List.of("proto") : list;
     }
 
+    /**
+     * The {@code [protobuf] exclude} globs as matchers over a proto's path relative to its root.
+     * {@code *legacy.proto} names files of the root itself, {@code **&#47;*legacy.proto} those of
+     * every directory, the root included, as Maven's {@code <excludes>} read them.
+     */
+    static List<PathMatcher> excluded(PluginConfig config, FileSystem fs) {
+        List<PathMatcher> matchers = new ArrayList<>();
+        for (String glob : config.stringList("exclude")) {
+            if (glob.isBlank()) continue;
+            matchers.add(fs.getPathMatcher("glob:" + glob));
+            if (glob.startsWith("**/")) matchers.add(fs.getPathMatcher("glob:" + glob.substring(3)));
+        }
+        return matchers;
+    }
+
     static void run(TaskExec exec) throws Exception {
         List<Path> protoDirs = new ArrayList<>();
         List<Path> protos = new ArrayList<>();
+        List<PathMatcher> excluded = excluded(exec.config(), exec.moduleDir().getFileSystem());
         for (String root : roots(exec.config())) {
             Path protoDir = exec.moduleDir().resolve(root);
             protoDirs.add(protoDir);
-            protos.addAll(protoFiles(protoDir));
+            protos.addAll(protoFiles(protoDir, excluded));
         }
         Path gen = exec.outputDir("gen");
         if (protos.isEmpty()) {
@@ -102,15 +121,6 @@ final class ProtocStep {
         return String.join(",", items) + ":";
     }
 
-    private static List<Path> protoFiles(Path protoDir) throws IOException {
-        List<Path> protos = new ArrayList<>();
-        PathUtil.forEachRegularFile(protoDir, (file, attrs) -> {
-            if (file.getFileName().toString().endsWith(".proto")) protos.add(file);
-        });
-        protos.sort(null);
-        return protos;
-    }
-
     /**
      * Stage the fetched binary named {@code artifact} into scratch with the executable bit set
      * (cache files are read-only), under its own name so protoc's plugin lookup sees it.
@@ -125,5 +135,18 @@ final class ProtocStep {
             throw new IOException("cannot mark " + artifact + " executable: " + staged);
         }
         return staged;
+    }
+
+    /** Every {@code .proto} under {@code protoDir}, sorted, minus those an {@code excluded} glob names. */
+    private static List<Path> protoFiles(Path protoDir, List<PathMatcher> excluded) throws IOException {
+        List<Path> protos = new ArrayList<>();
+        PathUtil.forEachRegularFile(protoDir, (file, attrs) -> {
+            if (!file.getFileName().toString().endsWith(".proto")) return;
+            Path relative = protoDir.relativize(file);
+            for (PathMatcher matcher : excluded) if (matcher.matches(relative)) return;
+            protos.add(file);
+        });
+        protos.sort(null);
+        return protos;
     }
 }

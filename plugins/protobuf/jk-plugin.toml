@@ -17,6 +17,7 @@ protocol-prefix = "##JKPB:"
 [schema]
 version = { type = "string", required = true, example = "4.33.1", hint = "the protoc release to run (pins com.google.protobuf:protoc in jk-lock.toml)" }
 src     = { type = "string-list", default = ["proto"] }   # proto roots, module-relative: one string or a list
+exclude = { type = "string-list", default = [] }          # root-relative globs protoc never sees (a proto another generation covers)
 lite    = { type = "bool", default = false }       # lite-runtime codegen (Android/datastore posture)
 kotlin  = { type = "bool", default = false }       # also emit Kotlin DSL codegen (--kotlin_out; pairs with protobuf-kotlin[-lite])
 

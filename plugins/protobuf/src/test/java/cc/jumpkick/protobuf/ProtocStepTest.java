@@ -119,6 +119,32 @@ class ProtocStepTest {
                 .contains(a.toAbsolutePath().toString(), b.toAbsolutePath().toString());
     }
 
+    /**
+     * {@code [protobuf] exclude} names root-relative globs protoc never sees: a proto compiled by
+     * another tool (a checked-in legacy generation) stays out of the argv and out of the count.
+     */
+    @Test
+    void excluded_protos_are_left_out_of_the_argv(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "protobuf")
+                .config(Map.of("exclude", List.of("ProtobufRpcEngine.proto", "**/*legacy.proto")));
+        Path protoDir = tmp.resolve("proto");
+        Path kept = write(protoDir.resolve("ProtobufRpcEngine2.proto"), "syntax = \"proto3\";");
+        write(protoDir.resolve("ProtobufRpcEngine.proto"), "syntax = \"proto3\";");
+        write(protoDir.resolve("nested/test_legacy.proto"), "syntax = \"proto3\";");
+        Path argv = tmp.resolve("argv.txt");
+        io.extra("protoc", stubProtoc(tmp, argv, 0));
+
+        ProtocStep.run(io);
+
+        assertThat(Files.readAllLines(argv))
+                .containsExactly(
+                        "--java_out=" + tmp.resolve("scratch/gen").toAbsolutePath(),
+                        "-I",
+                        protoDir.toAbsolutePath().toString(),
+                        kept.toAbsolutePath().toString());
+        assertThat(io.labels()).containsExactly("protoc (1 file)");
+    }
+
     /** No protos is a no-op: nothing forks, no label, an empty gen. */
     @Test
     void an_empty_or_missing_proto_dir_runs_nothing(@TempDir Path tmp) throws Exception {

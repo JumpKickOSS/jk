@@ -5,8 +5,10 @@ import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.PluginConfig;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -23,7 +25,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * {@code protobuf-maven-plugin} is the {@code [protobuf]} preset on a module that owns
  * {@code .proto} sources: {@code <protocArtifact>}'s version is {@code version} (the protobuf-java
- * dependency's when the POM names no protoc), {@code <protoSourceRoot>} is {@code src}, and the
+ * dependency's when the POM names no protoc), {@code <protoSourceRoot>} is {@code src}, the
+ * {@code <excludes>} of the plugin and of its {@code compile} executions are {@code exclude} (a
+ * {@code test-compile} execution's govern the test protos, which the table does not cover), and the
  * protoc plugin the {@code compile-custom} goal runs (gRPC's) is the {@code [protobuf.<pluginId>]}
  * entry — {@code <pluginArtifact>}'s {@code group:artifact:version} as {@code plugin},
  * {@code <pluginParameter>}'s comma-separated items as {@code options}. The plugin's output under
@@ -52,7 +56,13 @@ final class ProtobufPlugin {
 
     /** The {@code <configuration>} children the preset's keys and rows cover; anything else is one row. */
     private static final Set<String> COVERED = Set.of(
-            "protocArtifact", "protoSourceRoot", "outputDirectory", "pluginId", "pluginArtifact", "pluginParameter");
+            "protocArtifact",
+            "protoSourceRoot",
+            "outputDirectory",
+            "pluginId",
+            "pluginArtifact",
+            "pluginParameter",
+            "excludes");
 
     private static final Set<String> GOALS = Set.of("compile", "compile-custom");
     private static final String CUSTOM_GOAL = "compile-custom";
@@ -74,7 +84,8 @@ final class ProtobufPlugin {
         String declaredSrc = value(configs, "protoSourceRoot");
         String src = declaredSrc == null ? DEFAULT_SRC : SourceTreePlugins.moduleRelative(declaredSrc, baseDir);
         Path protoDir = baseDir == null ? Path.of(src) : baseDir.resolve(src);
-        List<Path> protos = baseDir == null ? List.of() : protos(protoDir);
+        List<String> excludes = excludes(plugin);
+        List<Path> protos = baseDir == null ? List.of() : protos(protoDir, excludes);
         Map<String, String> outputRoots = new LinkedHashMap<>();
         String row = protos.isEmpty() ? NO_PROTOS_ROW : ADD_SOURCE_ROW;
         outputRoots.put(DEFAULT_OUTPUT, row);
@@ -86,6 +97,7 @@ final class ProtobufPlugin {
         String version = version(model, configs, report);
         if (version != null) values.put("version", version);
         if (!PRESET_SRC.equals(src)) values.put("src", src);
+        if (!excludes.isEmpty()) values.put("exclude", excludes);
         Map<String, Map<String, Object>> plugins = protocPlugins(plugin, configs, report);
         if (!plugins.isEmpty()) values.put(PluginConfig.ENTRIES, plugins);
         reportOtherGoals(plugin, report);
@@ -190,13 +202,51 @@ final class ProtobufPlugin {
                 + " protoc plugin.");
     }
 
-    /** The {@code .proto} files under {@code dir}, sorted; empty when it is not a directory. */
-    private static List<Path> protos(Path dir) {
+    /**
+     * The {@code <excludes>} the main protos compile under: the plugin's own configuration and
+     * that of every execution running the {@code compile} or {@code compile-custom} goal, in
+     * declaration order without repeats. Each is a root-relative glob as {@code [protobuf] exclude}
+     * reads it.
+     */
+    private static List<String> excludes(Plugin plugin) {
+        List<Xpp3Dom> configs = new ArrayList<>();
+        if (plugin.getConfiguration() instanceof Xpp3Dom dom) configs.add(dom);
+        for (PluginExecution execution : plugin.getExecutions()) {
+            boolean main = execution.getGoals().stream().anyMatch(GOALS::contains);
+            if (main && execution.getConfiguration() instanceof Xpp3Dom dom) configs.add(dom);
+        }
+        Set<String> excludes = new LinkedHashSet<>();
+        for (Xpp3Dom config : configs) {
+            Xpp3Dom declared = config.getChild("excludes");
+            if (declared == null) continue;
+            for (Xpp3Dom exclude : declared.getChildren()) {
+                String glob = PluginFacts.usable(exclude.getValue());
+                if (glob != null) excludes.add(glob.trim());
+            }
+        }
+        return List.copyOf(excludes);
+    }
+
+    /**
+     * The {@code .proto} files under {@code dir} no glob of {@code excludes} names, sorted; empty
+     * when it is not a directory. A glob matches the file's path relative to {@code dir}, and one
+     * starting {@code **&#47;} matches at the root too, as Maven's {@code <excludes>} do.
+     */
+    private static List<Path> protos(Path dir, List<String> excludes) {
         List<Path> protos = new ArrayList<>();
         if (!Files.isDirectory(dir)) return protos;
+        List<PathMatcher> excluded = new ArrayList<>();
+        for (String glob : excludes) {
+            excluded.add(FileSystems.getDefault().getPathMatcher("glob:" + glob));
+            if (glob.startsWith("**/"))
+                excluded.add(FileSystems.getDefault().getPathMatcher("glob:" + glob.substring(3)));
+        }
         try {
             PathUtil.forEachRegularFile(dir, (path, attrs) -> {
-                if (path.getFileName().toString().endsWith(".proto")) protos.add(path);
+                if (!path.getFileName().toString().endsWith(".proto")) return;
+                Path relative = dir.relativize(path);
+                for (PathMatcher matcher : excluded) if (matcher.matches(relative)) return;
+                protos.add(path);
             });
         } catch (IOException e) {
             // An unreadable proto tree owns no protos the import can see; the plugin row still names it.
