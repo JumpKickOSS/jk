@@ -71,17 +71,18 @@ public final class ToolInstallCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<name>", "Launcher name under ~/.jk/bin. Default: the artifact id.", "--bin"),
+                Opt.value("<name>", "PATH launcher name (default: the artifact id)", "--bin"),
                 Opt.value("<class>", "Override Main-Class (from jar manifest)", "--main"),
                 Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
                         .repeat(),
                 Opt.value("<group>", "Maven groupId (local-cache install mode)", "--group"),
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
-                Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
+                Opt.flag("Skip tests for project targets", "--skip-tests"),
                 CommonOpts.guard(),
                 CommonOpts.jdksDir(),
-                Opt.flag("Download a build tool rather than linking a host install.", "--no-discover"),
+                Opt.flag("Download a build tool; never link a host install", "--no-discover"),
+                CommonOpts.acceptUnverifiedTool(),
                 Opt.value(
                                 "<dir>",
                                 "Override cache-tier directory (action outputs; not the artifact store). Default: $JK_CACHE_DIR or ~/.jk/cache.",
@@ -188,7 +189,7 @@ public final class ToolInstallCommand implements CliCommand {
         // A build tool is neither a coordinate nor a launcher: `kotlin:latest` names a
         // distribution the engine unpacks into the tools root and consumes as a home. Checked
         // before classification because `<slug>:<version>` would otherwise read as a coordinate.
-        Integer buildTool = installBuildTool(coord, in.isSet("no-discover"));
+        Integer buildTool = installBuildTool(coord, in.isSet("no-discover"), CommonOpts.acceptUnverifiedTool(in));
         if (buildTool != null) return buildTool;
         // A local script/jar installs as a snapshot env (launcher must not depend on the source
         // path). Project dirs and git URLs delegate to InstallCommand. Local paths resolve
@@ -490,9 +491,12 @@ public final class ToolInstallCommand implements CliCommand {
      *
      * <p>Engine-side, through the same {@code ToolProvisioning} door a build uses when it needs the
      * tool mid-flight — so installing ahead of time makes that build a cache hit rather than
-     * seeding a second copy the engine will not look at.
+     * seeding a second copy the engine will not look at. {@code acceptUnverified} is {@code jk
+     * mvn}'s consent for a distribution no checksum vouches for: the archive installs and its
+     * digest is recorded, so later downloads of that version verify against the record.
      */
-    private @Nullable Integer installBuildTool(String target, boolean noDiscover) throws IOException {
+    private @Nullable Integer installBuildTool(String target, boolean noDiscover, boolean acceptUnverified)
+            throws IOException {
         int colon = target.indexOf(':');
         String slug = colon < 0 ? target : target.substring(0, colon);
         String version = colon < 0 ? BuildTool.LATEST : target.substring(colon + 1);
@@ -509,7 +513,8 @@ public final class ToolInstallCommand implements CliCommand {
         Path toolsRoot = JkDirs.tools();
         HostedEvents.Provision p;
         try {
-            p = EngineClient.provisionTool(EnginePaths.current(), slug, version, toolsRoot, noDiscover);
+            p = EngineClient.provisionTool(
+                    EnginePaths.current(), slug, version, toolsRoot, noDiscover, acceptUnverified);
         } catch (IOException e) {
             CommandWedge.printFail("Tool", e.getMessage());
             return Exit.SOFTWARE;
@@ -520,8 +525,10 @@ public final class ToolInstallCommand implements CliCommand {
         }
         if (p.exit() != Exit.SUCCESS) return p.exit();
         String source = Objects.requireNonNullElse(p.source(), "");
+        String verification = Objects.requireNonNullElse(p.verification(), "");
         CliOutput.out(slug + " " + p.version() + " "
                 + ("CACHED".equals(source) ? "already installed" : source.toLowerCase(Locale.ROOT))
+                + (verification.isEmpty() ? "" : " · " + verification)
                 + " — " + p.bin());
         return Exit.SUCCESS;
     }

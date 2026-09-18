@@ -50,7 +50,8 @@ public final class ProvisionVerb implements HostedVerb {
                 ProvisionRequest body = ProvisionRequest.decode(requestLine);
                 Path toolsRoot = Path.of(body.toolsRoot());
                 var outcome = body.tool() != null && !body.tool().isBlank()
-                        ? CompatPlans.provisionTool(body.tool(), body.version(), toolsRoot, body.noDiscover())
+                        ? CompatPlans.provisionTool(
+                                body.tool(), body.version(), toolsRoot, body.noDiscover(), body.acceptUnverified())
                         : CompatPlans.provision(
                                 Path.of(body.dir()),
                                 toolsRoot,

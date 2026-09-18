@@ -62,7 +62,11 @@ copy — same provisioning path either way.
 
 They live in the **store**, not the cache, because a fetched distribution is an artifact:
 `jk cache nuke` does not cost you an 83 MB Kotlin re-download. `--no-discover` forces a
-download instead of linking a host install.
+download instead of linking a host install. A distribution no published checksum vouches for
+(the Maven 3.6 line) is refused until `--accept-unverified-tool` (or `JK_ACCEPT_UNVERIFIED_TOOL=1`)
+accepts that one download — the same consent `jk mvn` takes: the archive installs, its SHA-256
+is recorded as `tools/<tool>/<version>.accepted.sha256`, and every later download of that version
+verifies against the record ([Migration](migration.md)).
 
 ## Lint is a build step, not a tool
 

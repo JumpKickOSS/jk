@@ -156,7 +156,7 @@ Five names, and `JK_HOME` is the only one most people need.
 | `JK_CLIENT` | Installer only: `native` or `jvm`. Unset picks the native client where one is hosted and the [JVM client](#the-jvm-client) elsewhere |
 | `JK_JAVA_HOME` | The JDK the JVM client (and, by default, its engine) runs on; the launcher checks it before the JDK it was installed with, `JAVA_HOME`, and the PATH |
 | `JK_CLIENT_OPTS` | Extra JVM flags for the JVM client's own launch (the engine's are `JK_JVM_ARGS`) |
-| `JK_ACCEPT_UNVERIFIED_TOOL` | `1`: `jk mvn` / `jk gradle` install a distribution no checksum vouches for and record its digest — the environment spelling of `--accept-unverified-tool` ([migration](migration.md)) |
+| `JK_ACCEPT_UNVERIFIED_TOOL` | `1`: `jk mvn` / `jk gradle` / `jk tool install` install a distribution no checksum vouches for and record its digest — the environment spelling of `--accept-unverified-tool` ([migration](migration.md)) |
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; passed to the resident engine |
 
 Every root override must be an absolute path; shell `~` expansion does not occur inside an

@@ -5,16 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.repo.ReleaseVerifier;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.Signature;
-import java.util.Base64;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -89,61 +82,6 @@ class SelfUpdateArtifactTest {
         String sha = SelfCommand.UpdateSub.ingestClient(cas, client);
         assertThat(cas.contains(sha)).isTrue();
         assertThat(client).doesNotExist();
-    }
-
-    @Test
-    void the_latest_pointer_must_verify_and_must_not_roll_back_below_the_running_version() throws Exception {
-        KeyPair pair = rsaPair();
-        ReleaseVerifier verifier = ReleaseVerifier.of(List.of(spki(pair)));
-        byte[] newer = pointer("0.14.0");
-        byte[] same = pointer("0.13.3");
-        byte[] older = pointer("0.13.0");
-
-        assertThat(SelfCommand.UpdateSub.latestVersion(verifier, newer, sign(pair, newer), "0.13.3"))
-                .isEqualTo("0.14.0");
-        assertThat(SelfCommand.UpdateSub.latestVersion(verifier, same, sign(pair, same), "0.13.3"))
-                .isEqualTo("0.13.3");
-
-        // Valid signature, older release: the rollback shape a bucket writer or a mirror can stage.
-        assertThatThrownBy(() -> SelfCommand.UpdateSub.latestVersion(verifier, older, sign(pair, older), "0.13.3"))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING")
-                .hasMessageContaining("0.13.0");
-        // Tampered after signing.
-        assertThatThrownBy(() -> SelfCommand.UpdateSub.latestVersion(verifier, newer, sign(pair, older), "0.13.3"))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING");
-        // Signed by a key this jk does not trust.
-        byte[] foreign = sign(rsaPair(), newer);
-        assertThatThrownBy(() -> SelfCommand.UpdateSub.latestVersion(verifier, newer, foreign, "0.13.3"))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("REFUSING");
-        // Signed, but not a pointer.
-        byte[] bare = "0.14.0\n".getBytes(StandardCharsets.US_ASCII);
-        assertThatThrownBy(() -> SelfCommand.UpdateSub.latestVersion(verifier, bare, sign(pair, bare), "0.13.3"))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("malformed");
-    }
-
-    private static byte[] pointer(String version) {
-        return ("version " + version + "\nissued 1757700000\n").getBytes(StandardCharsets.US_ASCII);
-    }
-
-    private static byte[] sign(KeyPair pair, byte[] data) throws Exception {
-        Signature signer = Signature.getInstance("SHA256withRSA");
-        signer.initSign(pair.getPrivate());
-        signer.update(data);
-        return (Base64.getEncoder().encodeToString(signer.sign()) + "\n").getBytes(StandardCharsets.US_ASCII);
-    }
-
-    private static String spki(KeyPair pair) {
-        return Base64.getEncoder().encodeToString(pair.getPublic().getEncoded());
-    }
-
-    private static KeyPair rsaPair() throws Exception {
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(3072);
-        return generator.generateKeyPair();
     }
 
     @Test

@@ -55,7 +55,7 @@ public final class GradleCommand implements CliCommand {
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         Path jdksDir = CommonOpts.jdksDirValue(in);
         boolean noDiscover = in.isSet("no-discover");
-        boolean acceptUnverified = MvnCommand.acceptUnverified(in);
+        boolean acceptUnverified = CommonOpts.acceptUnverifiedTool(in);
         List<String> args = in.positionals();
 
         Path projectDir = directory != null

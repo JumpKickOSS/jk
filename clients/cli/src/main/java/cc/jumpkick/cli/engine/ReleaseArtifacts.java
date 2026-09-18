@@ -5,6 +5,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.ReleaseVerifier;
 import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.version.Versions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,10 +16,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 /**
- * One verified download from a release directory ({@code releases/<version>/}): the signed
- * {@code SHA256SUMS} first, then the artifact, whose bytes must hash to the manifest's entry. The
- * engine jar ({@link EngineJarFetcher}) and the Maven spy jar are fetched through here and nowhere
- * else, so both are held to the same evidence.
+ * The verified download path from a release directory ({@code releases/<version>/}): the signed
+ * {@code SHA256SUMS} first ({@link Manifest}), then each artifact, whose bytes must hash to the
+ * manifest's entry. The engine jar ({@link EngineJarFetcher}), the Maven spy jar and {@code jk
+ * self update}'s engine and client are fetched through here and nowhere else, so all are held to
+ * the same evidence; {@link #latestVersion} reads the signed latest-release pointer the same way.
  */
 public final class ReleaseArtifacts {
 
@@ -50,6 +52,51 @@ public final class ReleaseArtifacts {
     /** An artifact's bytes and the SHA-256 they were verified against. */
     public record Verified(byte[] bytes, String sha256) {}
 
+    /**
+     * One release's verified {@code SHA256SUMS}: fetched and signature-checked once, then every
+     * artifact of that release is downloaded and hashed against it. The manifest is signed but not
+     * bound to its directory, so callers name artifacts with the version in the name.
+     */
+    public static final class Manifest {
+        private final Http http;
+        private final URI versionDir;
+        private final byte[] sums;
+
+        private Manifest(Http http, URI versionDir, byte[] sums) {
+            this.http = http;
+            this.versionDir = versionDir;
+            this.sums = sums;
+        }
+
+        /** The manifest text, one {@code <sha256>  <name>} line per artifact. */
+        public String text() {
+            return new String(sums, StandardCharsets.UTF_8);
+        }
+
+        /** Whether the release ships {@code artifactName}. */
+        public boolean has(String artifactName) throws IOException {
+            return ReleaseVerifier.find(sums, artifactName).isPresent();
+        }
+
+        /**
+         * Download {@code artifactName} from this release and verify its bytes against the
+         * manifest's exact entry. {@code what} names the artifact in messages ({@code engine jar}).
+         * Nothing is written here; the caller places the verified bytes.
+         */
+        public Verified fetch(String artifactName, String what, Progress progress) throws IOException {
+            String expectedSha = ReleaseVerifier.sha256For(sums, artifactName);
+            URI uri = versionDir.resolve(artifactName);
+            byte[] bytes = stream(http, uri, artifactName, what, progress);
+            String actualSha = Hashing.sha256Hex(bytes);
+            if (!actualSha.equalsIgnoreCase(expectedSha)) {
+                throw new IOException(what + " checksum mismatch for " + uri
+                        + " — expected sha256 " + expectedSha + ", got " + actualSha
+                        + " (a mirror or proxy may have served a stale/corrupt file)");
+            }
+            return new Verified(bytes, actualSha);
+        }
+    }
+
     private ReleaseArtifacts() {}
 
     /**
@@ -76,10 +123,22 @@ public final class ReleaseArtifacts {
     }
 
     /**
-     * Download {@code artifactName} from {@code releasesBase/version/} and verify it: the manifest
-     * signature against {@code verifier}, then the bytes against the manifest's exact entry.
-     * {@code what} names the artifact in messages ({@code engine jar}). Nothing is written here;
-     * the caller places the verified bytes.
+     * The verified manifest of {@code releasesBase/version/}: {@code SHA256SUMS} and its signature
+     * fetched, the signature checked against {@code verifier}. Every artifact of that release is
+     * then fetched through {@link Manifest#fetch}.
+     */
+    public static Manifest manifest(URI releasesBase, String version, ReleaseVerifier verifier) throws IOException {
+        URI versionDir = URI.create(releasesBase.toString() + "/" + version + "/");
+        Http http = new Http();
+        byte[] sumsBytes = get(http, versionDir.resolve("SHA256SUMS"), "release checksums");
+        byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
+        verifier.verify(sumsBytes, new String(sig, StandardCharsets.UTF_8));
+        return new Manifest(http, versionDir, sumsBytes);
+    }
+
+    /**
+     * Download one artifact of {@code releasesBase/version/} through its verified manifest. {@code
+     * what} names the artifact in messages ({@code engine jar}).
      */
     public static Verified fetch(
             URI releasesBase,
@@ -89,22 +148,35 @@ public final class ReleaseArtifacts {
             ReleaseVerifier verifier,
             Progress progress)
             throws IOException {
-        URI versionDir = URI.create(releasesBase.toString() + "/" + version + "/");
-        Http http = new Http();
+        return manifest(releasesBase, version, verifier).fetch(artifactName, what, progress);
+    }
 
-        byte[] sumsBytes = get(http, versionDir.resolve("SHA256SUMS"), "release checksums");
-        byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
-        verifier.verify(sumsBytes, new String(sig, StandardCharsets.UTF_8));
-        String expectedSha = ReleaseVerifier.sha256For(sumsBytes, artifactName);
-        URI uri = versionDir.resolve(artifactName);
-        byte[] bytes = stream(http, uri, artifactName, what, progress);
-        String actualSha = Hashing.sha256Hex(bytes);
-        if (!actualSha.equalsIgnoreCase(expectedSha)) {
-            throw new IOException(what + " checksum mismatch for " + uri
-                    + " — expected sha256 " + expectedSha + ", got " + actualSha
-                    + " (a mirror or proxy may have served a stale/corrupt file)");
+    /**
+     * The version the signed {@code latest/LATEST} pointer under {@code releasesBase} names, once
+     * its signature verifies and it is not older than {@code running}. The pointer is the one
+     * mutable input of an update, so a bucket writer or a mirror that rolls it back to an older,
+     * validly signed release gets a refusal rather than a downgrade; an explicit {@code jk self
+     * update <version>} never reads the pointer and stays the deliberate way down.
+     */
+    public static String latestVersion(URI releasesBase, ReleaseVerifier verifier, String running) throws IOException {
+        Http http = new Http();
+        byte[] pointer = get(http, URI.create(releasesBase + "/latest/LATEST"), "latest-release pointer");
+        byte[] signature =
+                get(http, URI.create(releasesBase + "/latest/LATEST.sig"), "latest-release pointer signature");
+        return latestVersion(verifier, pointer, signature, running);
+    }
+
+    /** {@link #latestVersion(URI, ReleaseVerifier, String)} over bytes already fetched. */
+    static String latestVersion(ReleaseVerifier verifier, byte[] pointer, byte[] signature, String running)
+            throws IOException {
+        verifier.verify(pointer, new String(signature, StandardCharsets.UTF_8));
+        String latest = ReleaseVerifier.parsePointer(pointer).version();
+        if (Versions.compare(latest, running) < 0) {
+            throw new IOException("the latest-release pointer names " + latest + ", older than the " + running
+                    + " this jk runs — REFUSING a rolled-back pointer (a mirror or the release site may be"
+                    + " stale or compromised; `jk self update " + latest + "` downgrades deliberately)");
         }
-        return new Verified(bytes, actualSha);
+        return latest;
     }
 
     /**

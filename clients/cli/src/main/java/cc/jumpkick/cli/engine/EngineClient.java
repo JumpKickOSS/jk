@@ -517,9 +517,14 @@ public final class EngineClient {
 
     /** Provision a named build tool at a named version, rather than the one a project asks for. */
     public static HostedEvents.Provision provisionTool(
-            EnginePaths.Paths paths, String tool, String version, Path toolsRoot, boolean noDiscover)
+            EnginePaths.Paths paths,
+            String tool,
+            String version,
+            Path toolsRoot,
+            boolean noDiscover,
+            boolean acceptUnverified)
             throws IOException {
-        return EngineHosted.provisionTool(paths, tool, version, toolsRoot, noDiscover);
+        return EngineHosted.provisionTool(paths, tool, version, toolsRoot, noDiscover, acceptUnverified);
     }
 
     public static BuildPlanResult runCompile(
