@@ -36,6 +36,10 @@ detekt     = true                                               # detekt over th
 | `spotbugs-exclude` | A SpotBugs filter file of findings to leave out | none |
 | `spotbugs-effort` | `min`, `less`, `default`, `more`, `max` | `"default"` |
 | `spotbugs-threshold` | The lowest confidence SpotBugs reports: `high`, `medium` (SpotBugs's and the Maven plugin's default), `low` | `"medium"` |
+| `spotbugs-max-rank` | The scariest bug rank SpotBugs reports, 1 to 20, as the Maven plugin's `<maxRank>`; every rank when unset | none |
+| `spotbugs-omit-visitors` | Detectors SpotBugs leaves out, by class name (`["ConstructorThrow", "FindReturnRef"]`), as the Maven plugin's `<omitVisitors>` | `[]` |
+| `spotbugs-visitors` | The only detectors SpotBugs runs, by class name, as the Maven plugin's `<visitors>` | `[]` |
+| `spotbugs-plugins` | Coordinates of detector plugins loaded beside SpotBugs's own — find-sec-bugs, fb-contrib — as the Maven plugin's `<plugins>` (`["com.h3xstream.findsecbugs:findsecbugs-plugin:1.14.0"]`). Each jar is fetched as written, without its dependencies, and a `@SuppressFBWarnings` naming one of its patterns is then a suppression rather than a useless one | `[]` |
 | `spotbugs-version` | The SpotBugs release. SpotBugs reads the class files of the build JDK it runs on, so a release older than that JDK is refused before anything is fetched, with the floor named: `4.2.2` on JDK 17, `4.8.0` on JDK 21, `4.9.4` on JDK 25 | `"4.10.4"` |
 | `detekt` | Enable detekt over the Kotlin sources | `false` |
 | `detekt-config` | A detekt configuration laid over the default rule set | none |
