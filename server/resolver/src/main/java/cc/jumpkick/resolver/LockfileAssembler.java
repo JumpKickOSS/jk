@@ -9,7 +9,6 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
@@ -26,7 +25,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -180,17 +178,16 @@ final class LockfileAssembler {
         String source = fallbackSource;
         String checksum = null;
         RepoGroup group = reposFor.apply(mod.module());
-        // A relocation stub or a packaging=pom row has no artifact to ask for: its POM, read by the
-        // solve, already says so. Asking every repository for a jar that exists nowhere turns one
-        // remote's refusal under a download burst into a failed lock. A Gradle-published module is
-        // the exception: its packaging says nothing about the files it ships, so its jar is asked
-        // for, and a miss leaves it the file-less row a Gradle-published BOM is.
+        // A coordinate of type pom or a relocation stub has no artifact to ask for: its POM, read
+        // by the solve, already says so. A packaging=pom POM says less than it seems — an assembly
+        // publishes one beside its jar, and a type-less dependency means the jar to Maven whatever
+        // the packaging — so the jar is asked for from the repository that served the POM, and a
+        // miss leaves the file-less row a BOM or aggregator is.
         boolean pomOnly = !kmpAlias && isPomOnlyPackage(coord, pomBuilder);
+        boolean pomPackaged = !kmpAlias && !pomOnly && pomPackaged(coord, pomBuilder);
         RepoGroup.RepoFetched hit = null;
-        if (!kmpAlias && (!pomOnly || gradlePublished(coord, group))) {
-            hit = group.tryFetchArtifact(coord, abort).orElse(null);
-            if (hit != null) pomOnly = false;
-        }
+        if (!kmpAlias && !pomOnly) hit = group.tryFetchArtifact(coord, abort).orElse(null);
+        if (hit == null && pomPackaged) pomOnly = true;
         if (hit == null
                 && !kmpAlias
                 && !pomOnly
@@ -251,38 +248,29 @@ final class LockfileAssembler {
     }
 
     /**
-     * True when this package is not expected to publish a primary artifact: coordinate type
-     * {@code pom}, POM {@code packaging=pom} (BOM / aggregator), or a relocation stub, whose POM
-     * points at the target and stands beside no jar of its own.
+     * True when this package publishes no primary artifact by its own account: coordinate type
+     * {@code pom}, or a relocation stub, whose POM points at the target and stands beside no jar
+     * of its own.
      */
     private static boolean isPomOnlyPackage(Coordinate coord, EffectivePomBuilder pomBuilder) {
         if (coord.type() != null && "pom".equalsIgnoreCase(coord.type())) {
             return true;
         }
         try {
-            EffectivePom pom = pomBuilder.build(coord);
-            if ("pom".equalsIgnoreCase(pom.packaging())) return true;
-            Pom.Relocation moved = pom.relocation();
+            Pom.Relocation moved = pomBuilder.build(coord).relocation();
             return moved != null && moved.redirects(coord);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.debug("isPomOnlyPackage: no POM / unparseable, the jar is asked for", e);
             return false;
         }
     }
 
-    /**
-     * True when the POM of {@code coord} carries Gradle's module-metadata marker: Gradle wrote the
-     * POM beside a {@code .module} file, and its {@code packaging} does not say whether a jar exists.
-     */
-    private static boolean gradlePublished(Coordinate coord, RepoGroup group) {
+    /** True when the POM of {@code coord} declares {@code packaging=pom}: a BOM, an aggregator, or an assembly beside its jar. */
+    private static boolean pomPackaged(Coordinate coord, EffectivePomBuilder pomBuilder) {
         try {
-            Optional<RepoGroup.RepoFetched> pom = group.tryFetchPom(coord);
-            return pom.isPresent()
-                    && KmpRedirects.pomHasGradleMetadataMarker(
-                            pom.get().fetched().cachePath());
-        } catch (IOException e) {
-            return false;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            return "pom".equalsIgnoreCase(pomBuilder.build(coord).packaging());
+        } catch (Exception e) {
+            Log.debug("pomPackaged: no POM / unparseable", e);
             return false;
         }
     }
