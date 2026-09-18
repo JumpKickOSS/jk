@@ -251,9 +251,9 @@ public final class JkBuildRenderer {
             sb.append("kotlin   = ")
                     .append(quote(versionLiteral(Objects.requireNonNull(p.kotlin()))))
                     .append('\n');
-        } else if (p.java() > 0) {
-            sb.append("java     = ").append(p.java()).append('\n');
         }
+        // Beside `kotlin` the level is javac's for a mixed module's Java sources.
+        if (p.java() > 0) sb.append("java     = ").append(p.java()).append('\n');
         if (p.isScala()) {
             sb.append("scala    = ")
                     .append(quote(versionLiteral(Objects.requireNonNull(p.scala()))))
