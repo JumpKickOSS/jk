@@ -246,9 +246,11 @@ public final class PlatformConstraints {
     }
 
     /**
-     * Take {@code module}'s version, provenance and BOM exclusions as {@code from}'s table has them,
-     * where this table does not manage it and {@code from} does. A workspace's shared table adopts a
-     * versionless root's module this way from the table that folds every member's BOM.
+     * Take {@code module}'s version and provenance as {@code from}'s table has them, where this
+     * table does not manage it and {@code from} does. A workspace's shared table adopts a
+     * versionless root's module this way from the table that folds every member's BOM. The BOM's
+     * exclusions stay with {@code from}: they prune the rows of the members that hold the BOM, which
+     * read them through rows of their own ({@link MemberPartitions}), not the workspace's plain row.
      */
     void adopt(String module, PlatformConstraints from) {
         String version = from.versions.get(module);
@@ -256,8 +258,6 @@ public final class PlatformConstraints {
         versions.put(module, version);
         collected.put(module, version);
         provenance.put(module, Objects.requireNonNull(from.provenance.get(module)));
-        List<String> exclusions = from.bomExclusions.get(module);
-        if (exclusions != null) bomExclusions.put(module, exclusions);
     }
 
     /**
