@@ -685,7 +685,7 @@ public final class PluginDescriptors {
                 TomlTable map = spec.getTable("default");
                 if (map == null) throw new JkBuildParseException(where + ".default must be an inline table");
                 Map<String, String> out = new LinkedHashMap<>();
-                for (String k : map.keySet()) out.put(k, String.valueOf(map.get(k)));
+                for (String k : map.keySet()) out.put(k, String.valueOf(map.get(List.of(k))));
                 yield out;
             }
         };

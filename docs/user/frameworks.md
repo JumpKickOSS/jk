@@ -156,6 +156,7 @@ src     = "proto"         # module-relative proto root(s), protoc's include root
 exclude = []              # root-relative globs protoc never sees, e.g. ["Legacy.proto", "**/*_legacy.proto"]
 lite    = false           # lite-runtime codegen (pairs with protobuf-javalite)
 kotlin  = false           # also emit the Kotlin DSL (--kotlin_out; pairs with protobuf-kotlin)
+replace = {}              # regular expression = replacement, over every generated file after protoc
 
 [protobuf.grpc-java]      # one protoc plugin per [protobuf.<id>]; <id> is protoc's name for it
 plugin  = "io.grpc:protoc-gen-grpc-java:1.81.0"
@@ -176,7 +177,22 @@ the runtime-closure jars carry, then those of the compile-only jars: `google/pro
 protobuf-java, `google/rpc/status.proto` in proto-google-common-protos, a `provided` contract
 library's own are importable, as they are under Maven. The step re-runs when a proto of the module
 or of one of those siblings, the table, a tool or either classpath changes.
-`jk import` writes the table and its entries from a POM's `protobuf-maven-plugin`
+
+`replace` rewrites what protoc wrote before it compiles: each key is a regular expression, each
+value its replacement (`$1` names a group, as Java's `Matcher.replaceAll` reads it), applied in
+declared order to every generated `.java` and `.kt` file. This is how a module compiles against a
+shaded protobuf runtime — Hadoop's generated sources import `org.apache.hadoop.thirdparty.protobuf`
+where protoc wrote `com.google.protobuf`:
+
+```toml
+[protobuf]
+version = "3.25.5"
+src     = "src/main/proto"
+replace = { "([^\\.])com.google.protobuf" = "$1org.apache.hadoop.thirdparty.protobuf" }
+```
+
+`jk import` writes the table and its entries from a POM's `protobuf-maven-plugin`, and `replace`
+from a `maven-replacer-plugin` execution over the plugin's output
 ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
 
 ## Related

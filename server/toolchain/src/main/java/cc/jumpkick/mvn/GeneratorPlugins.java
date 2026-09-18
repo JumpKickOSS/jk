@@ -132,6 +132,7 @@ final class GeneratorPlugins {
         reportGraphQl(model, report);
         Set<String> consumed = new LinkedHashSet<>(wire.consumed());
         consumed.addAll(taglib.consumed());
+        consumed.addAll(protobuf.consumed());
         return new Generators(
                 openapi,
                 protobuf.table(),

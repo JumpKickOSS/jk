@@ -32,6 +32,7 @@ import java.util.Map;
  *
  * <p>protoc and its plugins publish to Maven as bare native binaries (no jar wrapper), so a fetched
  * file arrives without the executable bit — it is staged into scratch and chmod +x'd before the fork.
+ * What protoc wrote then passes through the table's {@code replace} rules ({@link GeneratedRewrites}).
  */
 final class ProtocStep {
 
@@ -111,6 +112,7 @@ final class ProtocStep {
         if (result.exit() != 0) {
             throw new IllegalStateException("protoc failed (exit " + result.exit() + "):\n" + result.output());
         }
+        GeneratedRewrites.apply(gen, exec.config().stringMap("replace"));
     }
 
     /** An entry's {@code options} as protoc's plugin parameter prefix: {@code a,b:} or nothing. */

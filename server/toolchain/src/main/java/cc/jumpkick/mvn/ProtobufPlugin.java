@@ -33,7 +33,8 @@ import org.jspecify.annotations.Nullable;
  * {@code <pluginParameter>}'s comma-separated items as {@code options}. The plugin's output under
  * {@code target/generated-sources/protobuf} is the preset's contribution, so a build-helper root
  * inside it is not written as an {@code extra-src}; a module the plugin reaches by inheritance
- * without protos of its own gets neither the table nor the root.
+ * without protos of its own gets neither the table nor the root. A {@code replacer} execution
+ * rewriting the generated sources is the table's {@code replace} ({@link ReplacerPlugin}).
  */
 final class ProtobufPlugin {
 
@@ -67,9 +68,9 @@ final class ProtobufPlugin {
     private static final Set<String> GOALS = Set.of("compile", "compile-custom");
     private static final String CUSTOM_GOAL = "compile-custom";
 
-    /** The table, null when the module owns no protos, and the output roots the plugin fills. */
-    record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots) {
-        static final Mapped NONE = new Mapped(null, Map.of());
+    /** The table, null when the module owns no protos, the output roots the plugin fills, the plugins consumed. */
+    record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots, Set<String> consumed) {
+        static final Mapped NONE = new Mapped(null, Map.of(), Set.of());
     }
 
     private ProtobufPlugin() {}
@@ -91,18 +92,21 @@ final class ProtobufPlugin {
         outputRoots.put(DEFAULT_OUTPUT, row);
         String output = value(configs, "outputDirectory");
         if (output != null) outputRoots.put(SourceTreePlugins.moduleRelative(output, baseDir), row);
-        if (protos.isEmpty()) return new Mapped(null, outputRoots);
+        if (protos.isEmpty()) return new Mapped(null, outputRoots, Set.of());
 
         Map<String, Object> values = new LinkedHashMap<>();
         String version = version(model, configs, report);
         if (version != null) values.put("version", version);
         if (!PRESET_SRC.equals(src)) values.put("src", src);
         if (!excludes.isEmpty()) values.put("exclude", excludes);
+        ReplacerPlugin.Mapped replacer = ReplacerPlugin.map(model, mainOutputRoots(plugin, baseDir), baseDir, report);
+        if (!replacer.replace().isEmpty()) values.put("replace", replacer.replace());
         Map<String, Map<String, Object>> plugins = protocPlugins(plugin, configs, report);
         if (!plugins.isEmpty()) values.put(PluginConfig.ENTRIES, plugins);
         reportOtherGoals(plugin, report);
         reportUncovered(configs, report);
-        return new Mapped(new PluginConfig("protobuf", values), outputRoots);
+        Set<String> consumed = replacer.consumed() ? Set.of(ReplacerPlugin.ARTIFACT) : Set.of();
+        return new Mapped(new PluginConfig("protobuf", values), outputRoots, consumed);
     }
 
     /**
@@ -200,6 +204,27 @@ final class ProtobufPlugin {
         report.warning("`" + ARTIFACT + "` " + String.join(", ", names) + " have no `[protobuf]` key; the preset"
                 + " runs protoc with `version`, `src`, `lite` and `kotlin`, and one `[protobuf.<id>]` entry per"
                 + " protoc plugin.");
+    }
+
+    /**
+     * Where the main protos' Java lands: the plugin's default output, and the {@code
+     * <outputDirectory>} of its own configuration or of an execution running a main goal — never a
+     * {@code test-compile} execution's, whose output the table does not cover.
+     */
+    private static Set<String> mainOutputRoots(Plugin plugin, @Nullable Path baseDir) {
+        Set<String> roots = new LinkedHashSet<>();
+        roots.add(DEFAULT_OUTPUT);
+        List<Xpp3Dom> configs = new ArrayList<>();
+        if (plugin.getConfiguration() instanceof Xpp3Dom dom) configs.add(dom);
+        for (PluginExecution execution : plugin.getExecutions()) {
+            boolean main = execution.getGoals().stream().anyMatch(GOALS::contains);
+            if (main && execution.getConfiguration() instanceof Xpp3Dom dom) configs.add(dom);
+        }
+        for (Xpp3Dom config : configs) {
+            String output = PluginFacts.child(config, "outputDirectory");
+            if (output != null) roots.add(SourceTreePlugins.moduleRelative(output, baseDir));
+        }
+        return roots;
     }
 
     /**
