@@ -66,6 +66,68 @@ class ZincJavaCompilerAnalysisOffTest {
     }
 
     /**
+     * The decision is keyed by the classpath: when the library whose supertype could not be loaded
+     * changes — here its signature stops naming the removed API — the next compile tries the
+     * analysis again, keeps it, and says nothing about compiling without it.
+     */
+    @Test
+    void a_classpath_change_that_removes_the_unloadable_supertype_restores_the_analysis(@TempDir Path dir)
+            throws Exception {
+        Path libSrc = dir.resolve("libsrc/lib/Base.java");
+        Files.createDirectories(libSrc.getParent());
+        Files.writeString(libSrc, """
+                package lib;
+                public abstract class Base {
+                    public abstract java.security.acl.Group[] roles();
+                }
+                """);
+        Path lib = dir.resolve("lib");
+        javacAtRelease11(lib, libSrc);
+        Path src = dir.resolve("src/a/Impl.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package a;
+                public class Impl extends lib.Base {
+                    @Override public java.security.acl.Group[] roles() { return null; }
+                }
+                """);
+        Path workdir = dir.resolve("zinc-work");
+        Path classes = dir.resolve("classes");
+        JavaCompileJob job =
+                new JavaCompileJob(List.of(src), List.of(lib), classes, workdir, null, 11, List.of(), List.of());
+        ZincJavaCompiler.Result first = ZincJavaCompiler.compileJava(job);
+        assertThat(first.success()).as("diagnostics: %s", first.diagnostics()).isTrue();
+        assertAnalysisOffWarning(first);
+
+        // The library drops the removed API from its signature; the classes dir on the classpath
+        // now holds other bytes, and the source follows.
+        Files.writeString(libSrc, """
+                package lib;
+                public abstract class Base {
+                    public abstract String[] roles();
+                }
+                """);
+        javacAtRelease11(lib, libSrc);
+        Files.writeString(src, """
+                package a;
+                public class Impl extends lib.Base {
+                    @Override public String[] roles() { return new String[0]; }
+                }
+                """);
+
+        ZincJavaCompiler.Result third = ZincJavaCompiler.compileJava(job);
+
+        assertThat(third.success()).as("diagnostics: %s", third.diagnostics()).isTrue();
+        assertThat(third.diagnostics())
+                .as("no analysis-off warning once the classpath no longer carries the unloadable type")
+                .noneMatch(d -> d.message().startsWith("compiled without incremental analysis"));
+        assertThat(workdir.resolve("zinc")).as("the analysis is back").isRegularFile();
+        assertThat(workdir.resolve("analysis-off"))
+                .as("the stale marker is gone")
+                .doesNotExist();
+    }
+
+    /**
      * One analysis-off warning naming the type, beside javac's own removal warning for the source's
      * use of the API — said once, not once per javac run — and no error.
      */
