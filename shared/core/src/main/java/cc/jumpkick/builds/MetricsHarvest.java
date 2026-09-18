@@ -26,7 +26,7 @@ import java.util.stream.Stream;
 /**
  * Single serial worker that walks project run directories, reaps old runs, and writes host-metrics
  * plus each project's project-metrics as scalar trimmed means and last-success values (no sample
- * rings on disk), with per-class test walls as one table per module ({@link MetricsFile}).
+ * rings on disk), with per-class test walls as one table per package of a module ({@link MetricsFile}).
  *
  * <p>Every build finish calls {@link #request()}; concurrent requests coalesce into one re-run.
  */
@@ -264,10 +264,11 @@ public final class MetricsHarvest {
 
     /**
      * Write the ledger: {@code [mean]}, {@code [last]} and {@code [count]} for every kept scalar
-     * row, then one {@code [test-class."<dir>"]} table per module holding each class's trimmed
-     * mean wall — one value per class, the module named once as the header, no {@code [last]} or
-     * {@code [count]} copy: a class wall is a scheduling weight, and two more copies of two
-     * thousand class names were most of a large ledger's bytes.
+     * row, then the {@code [test-class."<dir>"."<pkg>"]} tables holding each class's trimmed mean
+     * wall by its simple name — one value per class, the module and the package each named once
+     * as a header, no {@code [last]} or {@code [count]} copy: a class wall is a scheduling weight,
+     * and a repeated package prefix or two more copies of two thousand class names were most of a
+     * large ledger's bytes.
      */
     static void writeProjectMetrics(
             Path file,
@@ -300,26 +301,20 @@ public final class MetricsHarvest {
         AtomicWrites.replace(file, sb.toString());
     }
 
-    /** The class tables close the file: every row after a module's header is one of its classes. */
+    /** The class tables close the file: every row after a package's header is one of its classes. */
     private static void appendClassWallTables(StringBuilder sb, Map<String, Agg> classWalls) {
         Map<String, Long> sampled = new LinkedHashMap<>();
         for (var e : classWalls.entrySet())
             sampled.put(e.getKey(), (long) e.getValue().vals.size());
-        String open = null;
+        Map<String, Map<String, String>> byModule = new LinkedHashMap<>();
         for (String key : keptClassRows(sampled)) {
             int at = key.indexOf(CLASS_KEY_SEPARATOR);
-            String module = key.substring(0, at);
-            if (!module.equals(open)) {
-                sb.append('\n').append(MetricsFile.testClassHeader(module)).append('\n');
-                open = module;
-            }
             Agg agg = classWalls.get(key);
             if (agg != null)
-                sb.append(key.substring(at + 1))
-                        .append(" = ")
-                        .append(fmt(agg.trimmedMean()))
-                        .append('\n');
+                byModule.computeIfAbsent(key.substring(0, at), k -> new LinkedHashMap<>())
+                        .put(key.substring(at + 1), fmt(agg.trimmedMean()));
         }
+        for (var e : byModule.entrySet()) MetricsFile.appendClassWalls(sb, e.getKey(), e.getValue());
     }
 
     /** The union of keys across the three scalar sections, capped and returned in key order. */

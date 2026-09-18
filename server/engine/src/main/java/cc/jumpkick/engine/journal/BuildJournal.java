@@ -379,20 +379,20 @@ public final class BuildJournal {
     }
 
     /**
-     * The module's class walls as one {@code [test-class."<dir>"]} table ({@link MetricsFile}).
-     * Written after every scalar row: a row after the header is one of the module's classes.
+     * The module's class walls as one {@code [test-class."<dir>"."<pkg>"]} table per package
+     * ({@link MetricsFile}). Written after every scalar row: a row after a header is one of that
+     * package's classes.
      */
     private static void appendTestClassWalls(StringBuilder sb, String moduleDir, String root) {
         if (moduleDir == null || moduleDir.isBlank()) return;
         Map<String, Long> walls = TestClassWalls.take(moduleDir);
         if (walls.isEmpty()) return;
-        sb.append('\n')
-                .append(MetricsFile.testClassHeader(ModuleKeys.relative(moduleDir, root)))
-                .append('\n');
+        Map<String, String> rows = new LinkedHashMap<>();
         for (var e : walls.entrySet()) {
             if (e.getKey() == null || e.getValue() == null || e.getValue() <= 0) continue;
-            sb.append(sanitize(e.getKey())).append(" = ").append(e.getValue()).append('\n');
+            rows.put(sanitize(e.getKey()), Long.toString(e.getValue()));
         }
+        MetricsFile.appendClassWalls(sb, ModuleKeys.relative(moduleDir, root), rows);
     }
 
     private static void appendStepMetrics(

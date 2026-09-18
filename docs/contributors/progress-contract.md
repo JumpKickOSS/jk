@@ -173,9 +173,12 @@ Web override (browser cannot read process env): `localStorage.jkProgressMode = '
       metrics.toml
 ```
 
-Per-class test walls are one table per module in both files, `[test-class."<dir>"]` with a
-`<fqcn> = <ms>` row per class, closing the file after the scalar rows; the run file carries the
-measured walls, the ledger their trimmed means.
+Per-class test walls are one table per package of a module in both files,
+`[test-class."<dir>"."<pkg>"]` with a `<SimpleName> = <ms>` row per class (a default-package class
+under `[test-class."<dir>"]` by its bare name), closing the file after the scalar rows; the run
+file carries the measured walls, the ledger their trimmed means. Naming the module and the package
+once each, instead of a qualified name per row, is what keeps a two-thousand-class ledger under
+200 KB.
 
 ## Step metrics: wall and wait
 

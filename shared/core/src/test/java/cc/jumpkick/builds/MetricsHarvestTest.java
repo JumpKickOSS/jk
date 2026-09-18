@@ -45,35 +45,44 @@ class MetricsHarvestTest {
         assertThat(hm).doesNotContain("workspace.wall-ms");
     }
 
-    /** Class walls are spelled as one table per module in the run file and in the ledger alike. */
+    /**
+     * Class walls are one table per package of a module in the run file and in the ledger alike,
+     * the classes by their simple names; a default-package class sits under the module's own table.
+     */
     @Test
-    void class_walls_are_one_table_per_module(@TempDir Path root) throws Exception {
+    void class_walls_are_one_table_per_package_with_simple_names(@TempDir Path root) throws Exception {
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
         Files.writeString(run.metricsFile(), """
                 workspace.wall-ms = 1000
                 module.server/io.task.run-tests.wall-ms = 400
 
-                [test-class."server/io"]
-                com.example.IoTest = 300
-                com.example.SlowTest = 5000
+                [test-class."server/io"."com.example"]
+                IoTest = 300
+                SlowTest = 5000
+
+                [test-class."server/io"."com.example.db"]
+                DbTest = 70
 
                 [test-class."_"]
-                com.example.RootTest = 20
+                RootTest = 20
                 """);
         MetricsHarvest.get().configure(50, 90);
         MetricsHarvest.get().runOnce(root);
         String pm = Files.readString(run.projectHome().resolve(ProjectBuilds.PROJECT_METRICS));
         assertThat(pm)
                 .contains("module.server/io.task.run-tests.wall-ms = 400")
-                .contains("[test-class.\"server/io\"]\ncom.example.IoTest = 300\ncom.example.SlowTest = 5000\n")
-                .contains("[test-class.\"_\"]\ncom.example.RootTest = 20\n")
-                .doesNotContain("test-class.com")
+                .contains("[test-class.\"server/io\".\"com.example\"]\nIoTest = 300\nSlowTest = 5000\n")
+                .contains("[test-class.\"server/io\".\"com.example.db\"]\nDbTest = 70\n")
+                .contains("[test-class.\"_\"]\nRootTest = 20\n")
+                .doesNotContain("com.example.IoTest")
                 .doesNotContain("com.example.IoTest.wall-ms");
         assertThat(pm.indexOf("[count]")).as("the class tables close the file").isLessThan(pm.indexOf("[test-class."));
         AggregatedMetrics agg = AggregatedMetrics.load(root, "g:demo", root.resolve("proj"));
         assertThat(agg.testClassWallMs(root.resolve("proj/server/io").toString(), "com.example.SlowTest"))
                 .hasValue(5000);
-        assertThat(agg.testClassWallMs(root.resolve("proj").toString(), "com.example.RootTest"))
+        assertThat(agg.testClassWallMs(root.resolve("proj/server/io").toString(), "com.example.db.DbTest"))
+                .hasValue(70);
+        assertThat(agg.testClassWallMs(root.resolve("proj").toString(), "RootTest"))
                 .hasValue(20);
         assertThat(agg.classWalls())
                 .containsOnlyKeys(
