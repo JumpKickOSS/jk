@@ -38,20 +38,29 @@ final class GradleDependencies {
     private static final Pattern INTRANSITIVE = Pattern.compile("(?:isTransitive|transitive)\\s*=\\s*false");
 
     private final @Nullable GradleVersionCatalog catalog;
+    private final GradleProperties properties;
     private final ImportReport.Builder report;
     private final Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
     /** {@code testCompileOnly} coordinates, named once in the row explaining where they went. */
     private final List<String> testCompileOnly = new ArrayList<>();
 
-    private GradleDependencies(@Nullable GradleVersionCatalog catalog, ImportReport.Builder report) {
+    private GradleDependencies(
+            @Nullable GradleVersionCatalog catalog, GradleProperties properties, ImportReport.Builder report) {
         this.catalog = catalog;
+        this.properties = properties;
         this.report = report;
     }
 
-    /** Every dependency the block declares, by jk scope; empty when the script has no block. */
+    /**
+     * Every dependency the block declares, by jk scope; empty when the script has no block. {@code
+     * properties} resolves the {@code $property} placeholders in coordinates.
+     */
     static Map<Scope, List<Dependency>> parse(
-            String script, @Nullable GradleVersionCatalog catalog, ImportReport.Builder report) {
-        GradleDependencies deps = new GradleDependencies(catalog, report);
+            String script,
+            @Nullable GradleVersionCatalog catalog,
+            GradleProperties properties,
+            ImportReport.Builder report) {
+        GradleDependencies deps = new GradleDependencies(catalog, properties, report);
         GradleScriptText.extractBlock(script, "dependencies").ifPresent(body -> deps.parseBlock(body, false));
         if (!deps.testCompileOnly.isEmpty()) {
             report.warning("`testCompileOnly` dependencies " + String.join(", ", deps.testCompileOnly)
@@ -230,33 +239,59 @@ final class GradleDependencies {
                 + " Re-state the dep in jk.toml under [dependencies] as `\"g:a\" = { version = \"=v\" }`.");
     }
 
-    void addDependency(Scope scope, String coord) {
-        if (coord.isBlank()) return;
+    void addDependency(Scope scope, String rawCoord) {
+        if (rawCoord.isBlank()) return;
+        GradleProperties.Interpolated interpolated = properties.interpolate(rawCoord);
+        String coord = interpolated.text();
         String[] parts = coord.split(":");
-        if (parts.length == 2 && !parts[0].isBlank() && !parts[1].isBlank()) {
-            // Version-less `g:a` -- normal in Boot builds, where the plugin's BOM manages the
-            // version. jk models it as platform-managed; [spring-boot] (or an explicit
-            // [platform-dependencies] BOM) supplies the pin at resolve time.
-            String shortName = shortNameFor(coord).orElse(parts[1]);
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, coord));
-            return;
-        }
-        if (parts.length < 3) {
+        if (parts.length < 2 || parts[0].isBlank() || parts[1].isBlank()) {
             report.error("dependency coord `" + coord + "` is not `group:artifact:version`; dropped.");
             return;
         }
         String module = parts[0] + ":" + parts[1];
+        if (module.indexOf('$') >= 0) {
+            report.error("dependency `" + rawCoord + "` names the Gradle propert" + plural(interpolated.unresolved())
+                    + " in its coordinate, which neither gradle.properties nor the build script defines; dropped."
+                    + " Declare the coordinate directly in jk.toml.");
+            return;
+        }
+        String shortName = shortNameFor(module).orElse(parts[1]);
+        if (parts.length == 2) {
+            // Version-less `g:a` -- normal in Boot builds, where the plugin's BOM manages the
+            // version. jk models it as platform-managed; [spring-boot] (or an explicit
+            // [platform-dependencies] BOM) supplies the pin at resolve time.
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, module));
+            return;
+        }
         String versionToken = parts[2];
         if (parts.length > 3) {
             report.warning("classifier/type on `" + coord + "` dropped; jk support arrives in a later slice.");
         }
-        if (versionToken.contains("$")) {
-            report.warning("dependency `" + coord + "` uses a Gradle variable for its version;" + " jk wrote `"
-                    + versionToken + "` verbatim — resolve the variable manually.");
+        if (versionToken.indexOf('$') >= 0) {
+            report.warning("dependency `" + module + "` takes its version from the Gradle propert"
+                    + plural(interpolated.unresolved())
+                    + ", which neither gradle.properties nor the build script defines; written without a version"
+                    + " — pin it in jk.toml or supply it from a [platform-dependencies] BOM.");
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, module));
+            return;
+        }
+        if (versionToken.equals(REFRESH_VERSIONS_PLACEHOLDER)) {
+            report.warning("dependency `" + module + "` has the version `_` (refreshVersions keeps the pin in"
+                    + " versions.properties); written without a version — pin it in jk.toml.");
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, module));
+            return;
         }
         VersionSelector selector = VersionSelector.parse(versionToken);
-        String shortName = shortNameFor(module).orElse(parts[1]);
         byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.of(shortName, module, selector));
+    }
+
+    /** The version refreshVersions writes in a script while the pin lives in {@code versions.properties}. */
+    static final String REFRESH_VERSIONS_PLACEHOLDER = "_";
+
+    /** {@code y `a`} or {@code ies `a`, `b`}, finishing the word "propert". */
+    private static String plural(List<String> names) {
+        List<String> quoted = names.stream().map(n -> "`" + n + "`").toList();
+        return (quoted.size() == 1 ? "y " : "ies ") + String.join(", ", quoted);
     }
 
     /**

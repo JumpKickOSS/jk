@@ -430,7 +430,12 @@ in the table that means the same thing: `implementation` and `api` in `[dependen
 `testCompileOnly` too, with a row saying jk has no test-provided table. A declaration's closure is
 read for its `exclude` rules (`isTransitive = false` is `*:*`) and otherwise skipped, so an
 `api("g:a") { because "…" }` imports; a Groovy comma list of coordinates imports each one.
-Keep `jk gradle` for modules that still need full Gradle.
+A version spelled through a property — `$junitVersion`, `${mapstructVersion}` — is written as the
+value the property has in `gradle.properties`, an `ext { }` block, a Kotlin `extra` entry or a
+script-level `val` / `def`, and `${libs.versions.x.get()}` reads the catalog; the same holds for
+`id("…") version someVal` in the plugins block. A property nothing defines, or refreshVersions'
+`_`, is a row naming it and the dependency is written without a version — a `$` never reaches the
+manifest. Keep `jk gradle` for modules that still need full Gradle.
 
 **Export** writes what the manifest says: `jk export maven` writes each dependency's `exclude`
 list as `<exclusions>`, a `[managed-dependencies]` entry's included on its
