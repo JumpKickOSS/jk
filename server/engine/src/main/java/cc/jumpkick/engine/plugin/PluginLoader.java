@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.protocol.SpecWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -54,14 +55,17 @@ public final class PluginLoader {
     /**
      * Fork a plugin and stream its events. Returns the plugin's exit code.
      *
-     * @param javaExe the JVM to launch (the project-pinned JDK's {@code java})
+     * @param javaHome the JDK to launch under (the project-pinned one) — the HOME, not its
+     *     launcher: the worker needs both the {@code java} to run and a {@code JAVA_HOME} to
+     *     agree with it, and a caller that hands over only the launcher leaves the second to
+     *     be guessed or inherited from the daemon
      * @param classpath the plugin's classpath (must include the plugin jar)
      * @param jvmFlags heap/GC/etc. tuning flags (see {@link cc.jumpkick.engine.plugin.JvmOptions})
      * @param prefix the protocol-line marker the plugin emits (its manifest prefix)
      * @param args program args passed after {@code PluginMain}
      */
     public static int run(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -69,7 +73,7 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(javaExe, classpath, jvmFlags, prefix, args, WorkerEnv.strict(), onProtocol, onPassthrough);
+        return run(javaHome, classpath, jvmFlags, prefix, args, WorkerEnv.strict(), onProtocol, onPassthrough);
     }
 
     /**
@@ -81,7 +85,7 @@ public final class PluginLoader {
      * {@code JK_HOME} / platform product layout.
      */
     public static int run(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -90,12 +94,12 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return run(javaExe, classpath, jvmFlags, prefix, args, env, null, onProtocol, onPassthrough);
+        return run(javaHome, classpath, jvmFlags, prefix, args, env, null, onProtocol, onPassthrough);
     }
 
     /** As {@link #run} with an optional working directory for the child process. */
     public static int run(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -108,7 +112,12 @@ public final class PluginLoader {
         // One-shot: close the child's stdin immediately so suite tests that hit Confirm /
         // System.in.readLine() see EOF instead of hanging on an open protocol pipe.
         return PluginProcess.run(
-                command(javaExe, classpath, jvmFlags, args), env, workDir, prefix, onProtocol, onPassthrough);
+                command(javaHome, classpath, jvmFlags, args),
+                env.withJavaHome(javaHome),
+                workDir,
+                prefix,
+                onProtocol,
+                onPassthrough);
     }
 
     /**
@@ -117,7 +126,7 @@ public final class PluginLoader {
      * plugin's stdin.
      */
     public static int converse(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -125,12 +134,12 @@ public final class PluginLoader {
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(javaExe, classpath, jvmFlags, prefix, args, WorkerEnv.strict(), onProtocol, onPassthrough);
+        return converse(javaHome, classpath, jvmFlags, prefix, args, WorkerEnv.strict(), onProtocol, onPassthrough);
     }
 
     /** As {@link #converse(Path, String, List, String, List, BiConsumer, Consumer)} with the child's {@link WorkerEnv}. */
     public static int converse(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -139,12 +148,12 @@ public final class PluginLoader {
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(javaExe, classpath, jvmFlags, prefix, args, env, null, onProtocol, onPassthrough);
+        return converse(javaHome, classpath, jvmFlags, prefix, args, env, null, onProtocol, onPassthrough);
     }
 
     /** As {@link #converse} with optional working directory. */
     public static int converse(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -155,12 +164,17 @@ public final class PluginLoader {
             @Nullable Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         return PluginProcess.converse(
-                command(javaExe, classpath, jvmFlags, args), env, workDir, prefix, onProtocol, onPassthrough);
+                command(javaHome, classpath, jvmFlags, args),
+                env.withJavaHome(javaHome),
+                workDir,
+                prefix,
+                onProtocol,
+                onPassthrough);
     }
 
     /** As {@link #converse} with an inactivity watchdog — see {@link PluginProcess#converse}. */
     public static int converse(
-            Path javaExe,
+            Path javaHome,
             String classpath,
             List<String> jvmFlags,
             String prefix,
@@ -172,8 +186,8 @@ public final class PluginLoader {
             long idleTimeoutMs)
             throws IOException, InterruptedException {
         return PluginProcess.converse(
-                command(javaExe, classpath, jvmFlags, args),
-                env,
+                command(javaHome, classpath, jvmFlags, args),
+                env.withJavaHome(javaHome),
                 workDir,
                 prefix,
                 onProtocol,
@@ -187,8 +201,8 @@ public final class PluginLoader {
      * cc.jumpkick.plugin.process.PluginMain <args>} without running it — for callers that drive
      * the stream themselves via {@link PluginClient}.
      */
-    public static List<String> command(Path javaExe, String classpath, List<String> jvmFlags, List<String> args) {
-        return command(javaExe, classpath, jvmFlags, WORKER_MAIN, args);
+    public static List<String> command(Path javaHome, String classpath, List<String> jvmFlags, List<String> args) {
+        return command(javaHome, classpath, jvmFlags, WORKER_MAIN, args);
     }
 
     /**
@@ -200,9 +214,9 @@ public final class PluginLoader {
      * being one.
      */
     public static List<String> command(
-            Path javaExe, String classpath, List<String> jvmFlags, String mainClass, List<String> args) {
+            Path javaHome, String classpath, List<String> jvmFlags, String mainClass, List<String> args) {
         var cmd = new ArrayList<String>();
-        cmd.add(javaExe.toString());
+        cmd.add(JdkFingerprint.java(javaHome).toString());
         cmd.addAll(jvmFlags);
         cmd.add("-cp");
         cmd.add(classpath);

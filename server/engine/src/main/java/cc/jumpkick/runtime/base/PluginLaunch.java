@@ -46,7 +46,7 @@ public final class PluginLaunch {
     public static List<String> javaCommand(
             Path workerJar, List<String> extraJvmArgs, Path spec, List<Path> extraClasspath) throws IOException {
         PluginLoader.sealNetworkPolicy(spec);
-        Path javaExe = JdkFingerprint.java(JavaHomes.runningJavaHome());
+        Path javaHome = JavaHomes.runningJavaHome();
         List<Path> classpath = new ArrayList<>(WorkerLaunchClasspath.paths(workerJar));
         for (Path extra : extraClasspath) {
             if (!classpath.contains(extra)) classpath.add(extra);
@@ -55,12 +55,12 @@ public final class PluginLaunch {
         // binary plus this job's memory flags — the heap plan is what this launcher adds over a
         // bare PluginLoader.command fork, and concurrency=1 is "one requested JVM".
         List<String> command = PluginLoader.command(
-                javaExe,
+                javaHome,
                 Classpaths.join(classpath),
                 extraJvmArgs,
                 mainClassOf(workerJar),
                 List.of(spec.toAbsolutePath().toString()));
-        return JvmOptions.javaCommand(javaExe.toString(), 1, command.subList(1, command.size()));
+        return JvmOptions.javaCommand(javaHome, 1, command.subList(1, command.size()));
     }
 
     /**

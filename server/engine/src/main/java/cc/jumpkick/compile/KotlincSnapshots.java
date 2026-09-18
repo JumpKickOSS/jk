@@ -83,10 +83,9 @@ public final class KotlincSnapshots {
                     (aotOutput, scratch) ->
                             KotlincSpec.trainerCommand(request, classpath, hostJavaHome, aotOutput, scratch)));
             jvmFlags.add("--enable-native-access=ALL-UNNAMED");
-            Path javaExe = JdkFingerprint.java(hostJavaHome);
             List<String> assembled =
-                    PluginLoader.command(javaExe, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
-            List<String> cmd = JvmOptions.javaCommand(javaExe.toString(), 1, assembled.subList(1, assembled.size()));
+                    PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
+            List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
 
             Map<Path, String> digests = new LinkedHashMap<>();
             ArrayDeque<String> chatter = new ArrayDeque<>();
@@ -104,7 +103,7 @@ public final class KotlincSnapshots {
                         if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
                         chatter.addLast(line);
                     })
-                    .run(cmd, env);
+                    .run(cmd, env.withJavaHome(hostJavaHome));
             if (exit != 0) {
                 Log.warn(
                         "kotlinc snapshot worker exited " + exit + "; keying " + (entries.size() - digests.size())

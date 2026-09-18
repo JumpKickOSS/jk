@@ -166,15 +166,14 @@ public final class WorkerCompileDriver {
             List<String> jvmFlags = new ArrayList<>(fork.jvmFlags());
             // Silence the JDK's native-access / Unsafe warnings the compiler triggers.
             jvmFlags.add("--enable-native-access=ALL-UNNAMED");
-            Path javaExe = JdkFingerprint.java(hostJavaHome);
             // One worker argv assembly for the whole engine (PluginLoader.command); JvmOptions
             // re-heads it with the java binary plus this job's memory flags.
             List<String> assembled = PluginLoader.command(
-                    javaExe,
+                    hostJavaHome,
                     fork.classpath(),
                     jvmFlags,
                     List.of("@" + fork.spec().toAbsolutePath()));
-            List<String> cmd = JvmOptions.javaCommand(javaExe.toString(), 1, assembled.subList(1, assembled.size()));
+            List<String> cmd = JvmOptions.javaCommand(hostJavaHome, 1, assembled.subList(1, assembled.size()));
 
             List<CompileResult.Diagnostic> diagnostics = new ArrayList<>();
             @Nullable String[] status = {null};
@@ -192,7 +191,7 @@ public final class WorkerCompileDriver {
                         if (chatter.size() >= CHATTER_TAIL) chatter.removeFirst();
                         chatter.addLast(line);
                     })
-                    .run(cmd, job.env());
+                    .run(cmd, job.env().withJavaHome(hostJavaHome));
             boolean success = exit == 0 && "COMPILATION_SUCCESS".equals(status[0]);
             if (!success && diagnostics.isEmpty() && !chatter.isEmpty()) {
                 StringBuilder tail =

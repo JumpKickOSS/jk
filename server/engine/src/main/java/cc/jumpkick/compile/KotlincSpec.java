@@ -119,7 +119,6 @@ final class KotlincSpec {
         jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
         jvmFlags.addAll(JvmOptions.batchFlags(1));
         jvmFlags.add("--enable-native-access=ALL-UNNAMED");
-        Path javaExe = JdkFingerprint.java(hostJavaHome);
-        return PluginLoader.command(javaExe, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
+        return PluginLoader.command(hostJavaHome, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
     }
 }
