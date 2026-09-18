@@ -45,11 +45,13 @@ class PomLintImportTest {
                           <excludes>**/api/grpc/auto/**,**/istio/**
                           </excludes>
                         </configuration>
+                        <executions><execution><goals><goal>check</goal></goals></execution></executions>
                       </plugin>
                       <plugin>
                         <groupId>com.github.spotbugs</groupId>
                         <artifactId>spotbugs-maven-plugin</artifactId>
                         <configuration><excludeFilterFile>style/spotbugs-exclude.xml</excludeFilterFile></configuration>
+                        <executions><execution><goals><goal>check</goal></goals></execution></executions>
                       </plugin>
                     </plugins>
                   </build>
