@@ -6,7 +6,6 @@ import cc.jumpkick.cli.run.ToolchainInstalls;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.jdk.HostPlatform;
@@ -28,7 +27,6 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -79,12 +77,11 @@ public final class GraalResolver {
         // Tiers 1-4 are GraalHomeLookup's — the same policy the engine runs for a request that
         // shipped no client answer. What is the CLI's alone is what happens when a tier names a
         // Graal that is not installed: install it, or offer to.
-        Function<String, @Nullable String> env = BuildEnv.ambient();
 
         // 1. Explicit spec: --graal switch (jk.graal) > project.graal > JK_GRAAL env.
         String effective = firstNonBlank(SessionContext.current().graalSpec(), graalSpec, System.getenv("JK_GRAAL"));
         if (effective != null && !effective.isBlank()) {
-            Optional<Path> hit = GraalHomeLookup.bySpec(registry, effective, env);
+            Optional<Path> hit = GraalHomeLookup.bySpec(registry, effective);
             if (hit.isPresent()) return hit.get();
             return install(effective, registry, /*announce*/ "graal = \"" + effective + "\"");
         }
@@ -95,7 +92,7 @@ public final class GraalResolver {
         //    installs the pinned spec rather than falling through to an older Graal.
         GraalPin lockGraal = ToolchainPins.scan(projectDir).graal();
         if (lockGraal != null) {
-            Optional<Path> locked = GraalHomeLookup.byLockPin(registry, lockGraal, env);
+            Optional<Path> locked = GraalHomeLookup.byLockPin(registry, lockGraal);
             if (locked.isPresent()) return locked.get();
             String spec = LockPinMatch.installSpec(lockGraal);
             return install(
@@ -105,11 +102,11 @@ public final class GraalResolver {
         }
 
         // 3. The `jk jdk graal` default-graal pointer, if one is set and usable.
-        Optional<Path> pointer = GraalHomeLookup.byInventory(registry, env);
+        Optional<Path> pointer = GraalHomeLookup.byInventory(registry);
         if (pointer.isPresent()) return pointer.get();
 
         // 4. De-facto preferred installed Graal (same policy as the shell hook).
-        Optional<Path> defacto = GraalHomeLookup.byPolicy(registry, env);
+        Optional<Path> defacto = GraalHomeLookup.byPolicy(registry);
         if (defacto.isPresent()) return defacto.get();
 
         // 5. Ambient native-image search (project JDK → $GRAALVM_HOME → PATH).
