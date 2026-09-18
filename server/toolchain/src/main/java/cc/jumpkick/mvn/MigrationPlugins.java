@@ -28,7 +28,8 @@ final class MigrationPlugins {
             String url = value(flyway, "url");
             String locations = value(flyway, "locations");
             report.warning("`" + FLYWAY + "` is the Flyway tool recipe, not a build step: `jk tool install"
-                    + " org.flywaydb:flyway-commandline:<version> --with <jdbc driver>` once, then `flyway migrate`"
+                    + " org.flywaydb:flyway-commandline:<version> --main org.flywaydb.commandline.Main"
+                    + " --with <jdbc driver>` once, then `flyway migrate`"
                     + " with `FLYWAY_URL`" + (url == null ? "" : " (`" + url + "`)") + " in `.env`"
                     + (locations == null ? "" : " and `FLYWAY_LOCATIONS=" + locations + "`")
                     + " — see docs/user/database.md; nothing was written.");
