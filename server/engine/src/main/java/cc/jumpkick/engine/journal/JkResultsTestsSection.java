@@ -179,7 +179,11 @@ final class JkResultsTestsSection {
                                     && !e.failureStack().isBlank()
                             ? e.failureStack().trim()
                             : (e.failureMessage() != null ? e.failureMessage().trim() : "");
-                    if (!detail.isEmpty()) fence(sb, JkResultsStack.clip(detail, e.className(), MAX_STACK_LINES));
+                    if (!detail.isEmpty()) {
+                        String clipped = JkResultsStack.clip(detail, e.className(), MAX_STACK_LINES);
+                        fence(sb, clipped);
+                        JkResultsCause.append(sb, detail, clipped);
+                    }
                     shown++;
                 }
             }
