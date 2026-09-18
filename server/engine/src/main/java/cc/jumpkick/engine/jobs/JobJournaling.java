@@ -23,6 +23,12 @@ public interface JobJournaling {
     @Nullable
     BuildAccumulator accumulatorOf(long id);
 
+    /** Bind the request's results sink on the calling thread; see {@code JournalWriter#openResults}. */
+    void openResults(long id);
+
+    /** Drop the calling thread's results sink. */
+    void closeResults();
+
     void writeJournal(long id, boolean cancelled, long millis, @Nullable BufferedWriter writer);
 
     BuildJournal journal();

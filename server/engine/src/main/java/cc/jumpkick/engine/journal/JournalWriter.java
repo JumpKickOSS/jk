@@ -21,6 +21,7 @@ import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JkTestsAffectedMarkdown;
 import cc.jumpkick.test.MarkdownTestReport;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.TimelineEvent;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -85,6 +86,23 @@ public final class JournalWriter {
                         buildNumber,
                         journalId,
                         requestId));
+    }
+
+    /**
+     * Bind the request's {@link RunResults} sink as the ambient sink of the calling thread — the
+     * runner's, before the body starts — so every test run and coverage a step publishes under it
+     * lands on this request's record. A request with no accumulator gets a sink nothing drains.
+     * Every path that runs a plan and then {@link #write writes} its record binds this way; a plan
+     * run with no sink bound publishes to nobody.
+     */
+    public void openResults(long requestId) {
+        BuildAccumulator a = sessions.accumulator(requestId);
+        RunResults.open(a != null ? a.results() : new RunResults());
+    }
+
+    /** Drop the calling thread's ambient sink once the request's body has returned. */
+    public void closeResults() {
+        RunResults.close();
     }
 
     /** {@code group:name} from {@code jk.toml}, else the POM's coordinate for a Maven-only checkout. */
@@ -179,9 +197,7 @@ public final class JournalWriter {
             log.accept("jk engine: build journal skip requestId=" + requestId + " (no accumulator)");
             return;
         }
-        // Taken first: this build's runs are its own, then what no live build covers is nobody's.
-        List<MarkdownTestReport.ModuleRun> tests = takeTests(a.dir());
-        MarkdownTestReport.retainUnder(sessions.accumulatorDirs());
+        List<MarkdownTestReport.ModuleRun> tests = a.results().takeTests();
         try {
             if (a.discarded()) {
                 deleteStub(a);
@@ -197,7 +213,7 @@ public final class JournalWriter {
             a.flushTimeline().ifPresent(path -> {
                 if (writer != null) WireWriter.sendQuiet(writer, new TimelineEvent(path.toString()).encode());
             });
-            List<BuildRecord.Coverage> coverage = takeCoverage(a.dir());
+            List<BuildRecord.Coverage> coverage = coverageRows(a.results().takeCoverage());
             if (!coverage.isEmpty()) record = record.withCoverage(coverage);
             if (record.synthetic()) {
                 if (historyConfig.enabled()) {
@@ -313,34 +329,20 @@ public final class JournalWriter {
         }
     }
 
-    /** The coverage every module under {@code dir} published this run, as record rows. */
-    static List<BuildRecord.Coverage> takeCoverage(String dir) {
-        if (dir == null || dir.isBlank()) return List.of();
+    /** The coverage this run's modules published, as record rows. */
+    static List<BuildRecord.Coverage> coverageRows(List<CoverageResults.Module> published) {
         List<BuildRecord.Coverage> out = new ArrayList<>();
-        try {
-            for (CoverageResults.Module m : CoverageResults.takeUnder(Path.of(dir))) {
-                out.add(new BuildRecord.Coverage(
-                        m.dir(),
-                        m.label(),
-                        m.linesCovered(),
-                        m.linesMissed(),
-                        m.branchesCovered(),
-                        m.branchesMissed(),
-                        m.html()));
-            }
-        } catch (RuntimeException e) {
-            return List.of();
+        for (CoverageResults.Module m : published) {
+            out.add(new BuildRecord.Coverage(
+                    m.dir(),
+                    m.label(),
+                    m.linesCovered(),
+                    m.linesMissed(),
+                    m.branchesCovered(),
+                    m.branchesMissed(),
+                    m.html()));
         }
         return out;
-    }
-
-    static List<MarkdownTestReport.ModuleRun> takeTests(String dir) {
-        if (dir == null || dir.isBlank()) return List.of();
-        try {
-            return MarkdownTestReport.takeUnder(Path.of(dir));
-        } catch (RuntimeException e) {
-            return List.of();
-        }
     }
 
     /** {@code target/jk-results.md} at the invocation root. */

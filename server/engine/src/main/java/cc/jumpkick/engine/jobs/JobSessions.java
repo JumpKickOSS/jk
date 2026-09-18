@@ -5,8 +5,6 @@ import cc.jumpkick.engine.journal.BuildAccumulator;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
@@ -104,17 +102,6 @@ public final class JobSessions {
     public @Nullable BuildAccumulator accumulator(long id) {
         JobSession s = get(id);
         return s == null ? null : s.accumulator();
-    }
-
-    /** The project directory of every live session whose record is still accumulating. */
-    public List<String> accumulatorDirs() {
-        List<String> out = new ArrayList<>();
-        for (var e : byId.entrySet()) {
-            if (retired.containsKey(e.getKey())) continue;
-            BuildAccumulator a = e.getValue().accumulator();
-            if (a != null && a.dir() != null && !a.dir().isBlank()) out.add(a.dir());
-        }
-        return out;
     }
 
     /**

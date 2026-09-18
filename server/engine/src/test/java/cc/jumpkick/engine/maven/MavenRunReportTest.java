@@ -9,6 +9,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JkResultsMarkdown;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.test.MarkdownTestReport;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -96,6 +97,7 @@ class MavenRunReportTest {
         Path events = MavenRunFixture.write(tmp);
         MavenRunReport report = MavenRunReport.read(tmp, events);
         BuildAccumulator acc = new BuildAccumulator("mvn", tmp.toString(), "com.example:reactor", "cli");
+        RunResults.open(acc.results());
         for (MavenRunReport.Module m : report.modules()) {
             String dir = m.dir().toString();
             for (MavenEvents.Step s : m.steps()) acc.addTask(dir, s.goal(), "", s.status(), s.millis(), 0);
@@ -117,7 +119,8 @@ class MavenRunReportTest {
         acc.addTests(report.tests());
         acc.stamp(JobOutcome.failed(1));
         BuildRecord record = acc.toRecord(5_000, false, 1_600, "0.13.7", null);
-        String md = JkResultsMarkdown.render(record, null, null, MarkdownTestReport.takeUnder(tmp));
+        RunResults.close();
+        String md = JkResultsMarkdown.render(record, null, null, acc.results().takeTests());
 
         assertThat(md).startsWith("# jk results — FAIL\n\n**FAIL** · `com.example:reactor`");
         assertThat(md).contains("trigger: cli · tool: mvn");

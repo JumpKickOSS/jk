@@ -126,13 +126,22 @@ class IterationDeltaE2eTest {
                 .isNull();
     }
 
-    /** One build journaled the way the engine journals it: register, run, fold the plan and tests, write. */
+    /**
+     * One build journaled the way the engine journals it: register, bind the request's results
+     * sink around the run, fold the plan and tests, write.
+     */
     private static BuildPlanResult attempt(JournalWriter writer, long requestId, Path project, Path cache)
             throws Exception {
         writer.register(requestId, "build", project.toString(), "mcp", SESSION, true, false, 0L, null);
         BuildPlan plan = plan(project, cache);
         long start = System.nanoTime();
-        BuildPlanResult result = plan.run();
+        BuildPlanResult result;
+        writer.openResults(requestId);
+        try {
+            result = plan.run();
+        } finally {
+            writer.closeResults();
+        }
         long millis = Math.max(1, (System.nanoTime() - start) / 1_000_000);
         writer.accBuildPlanFinish(requestId, "", result);
         writer.accTests(requestId, plan.get(BuildPlanner.TEST_RESULT).orElse(null));

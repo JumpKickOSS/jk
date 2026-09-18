@@ -666,7 +666,7 @@ public final class JUnitLauncher {
         return summary;
     }
 
-    /** Fold this launch's JUnit events into the store {@code jk-results.md} drains. */
+    /** Fold this launch's JUnit events into the request's sink, which {@code jk-results.md} drains. */
     private void publishTests(MarkdownTestReport md, Path testClassesDir) {
         if (md == null) return;
         Path scope = inferredModuleDir != null ? inferredModuleDir : testClassesDir;

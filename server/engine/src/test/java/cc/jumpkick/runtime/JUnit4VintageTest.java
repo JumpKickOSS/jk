@@ -11,6 +11,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.test.MarkdownTestReport;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -101,7 +102,14 @@ class JUnit4VintageTest {
                 false,
                 Set.of(),
                 SessionContext.current());
-        BuildPlanResult result = BuildPlanner.fullPlan(in).run();
+        RunResults results = new RunResults();
+        RunResults.open(results);
+        BuildPlanResult result;
+        try {
+            result = BuildPlanner.fullPlan(in).run();
+        } finally {
+            RunResults.close();
+        }
 
         assertThat(result.success()).as("one of the two JUnit 4 tests fails").isFalse();
         assertThat(result.errors())
@@ -112,7 +120,7 @@ class JUnit4VintageTest {
                     assertThat(d.engine()).isEqualTo("junit-vintage");
                 });
 
-        List<MarkdownTestReport.Entry> entries = MarkdownTestReport.takeUnder(project).stream()
+        List<MarkdownTestReport.Entry> entries = results.takeTests().stream()
                 .flatMap(run -> run.entries().stream())
                 .toList();
         assertThat(entries)

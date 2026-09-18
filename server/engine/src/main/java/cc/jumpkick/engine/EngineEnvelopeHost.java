@@ -134,6 +134,16 @@ public final class EngineEnvelopeHost implements JobEnvelope.Host {
     }
 
     @Override
+    public void openResults(long id) {
+        journalWriter.openResults(id);
+    }
+
+    @Override
+    public void closeResults() {
+        journalWriter.closeResults();
+    }
+
+    @Override
     public void putLastProgress(long id, double percent) {
         sessions.lastProgress(id, percent);
     }
