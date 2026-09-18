@@ -21,7 +21,10 @@ class TestLauncherReportTest {
                 .startsWith("test discovery exited 3 before any test ran — java.lang.OutOfMemoryError: Metaspace\n"
                         + "caused by: java.lang.IllegalStateException: A synthetic bean is already registered");
         assertThat(message).contains("Fix: the test discovery JVM ran out of memory (Metaspace)");
-        assertThat(message).contains("-XX:MaxMetaspaceSize=1g");
+        assertThat(message)
+                .contains("jk caps no test JVM's metaspace")
+                .contains("`[test] jvm-args`")
+                .contains("-XX:MaxMetaspaceSize");
         assertThat(message).doesNotContain("the runner's full output is above");
     }
 

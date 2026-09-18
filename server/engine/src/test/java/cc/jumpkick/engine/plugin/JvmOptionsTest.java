@@ -50,13 +50,14 @@ class JvmOptionsTest {
     }
 
     @Test
-    void suite_flags_keep_the_platform_thread_stack() {
-        // Test suites run on the JVM's default stack, as Surefire's and Gradle's forks do; the
-        // batch reserve is for compilers and plugin tools.
+    void suite_flags_keep_the_platform_thread_stack_and_metaspace() {
+        // Test suites run on the JVM's default stack and metaspace, as Surefire's and Gradle's
+        // forks do; the batch reserve and the metaspace cap are for compilers and plugin tools.
         List<String> suite = JvmOptions.suiteFlags(1);
-        assertThat(suite).noneMatch(f -> f.startsWith("-Xss"));
+        assertThat(suite).noneMatch(f -> f.startsWith("-Xss")).noneMatch(f -> f.startsWith("-XX:MaxMetaspaceSize"));
         List<String> expected = new ArrayList<>(JvmOptions.workerFlags(1));
         expected.remove("-Xss512k");
+        expected.remove("-XX:MaxMetaspaceSize=256m");
         assertThat(suite).containsExactlyElementsOf(expected);
     }
 
