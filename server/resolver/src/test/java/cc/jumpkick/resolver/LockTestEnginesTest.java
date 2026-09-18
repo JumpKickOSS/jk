@@ -31,6 +31,8 @@ import org.junit.jupiter.api.io.TempDir;
  * The injected Vintage engine declares a {@code junit:junit} of its own; the suite's declared pin is
  * the one the lock keeps. Vintage's POM is hand-written here in the shape Maven Central serves — a
  * bare version, which the resolver reads as a floor — so the mediation is exercised, not bypassed.
+ * The TestNG engine is versioned on its own line: it is injected at its own newest release, not
+ * the Platform's number, and the declared TestNG pin mediates its {@code org.testng:testng} edge.
  */
 class LockTestEnginesTest {
 
@@ -73,6 +75,52 @@ class LockTestEnginesTest {
         Lockfile.Artifact vintage = requireNonNull(byKey.get("org.junit.vintage:junit-vintage-engine:jar:"));
         assertThat(vintage.version()).isEqualTo("6.1.0");
         assertThat(vintage.scopes()).as("and it is a test-classpath artifact").containsExactly(Scope.TEST);
+    }
+
+    @Test
+    void a_testng_suite_gets_the_testng_engine_at_its_own_line(@TempDir Path tempDir) throws Exception {
+        upstream.metadata("org.testng", "testng", "6.14.3", "7.12.0");
+        upstream.pom("org.testng", "testng", "6.14.3", MavenStub.emptyPom("org.testng", "testng", "6.14.3"));
+        upstream.pom("org.testng", "testng", "7.12.0", MavenStub.emptyPom("org.testng", "testng", "7.12.0"));
+        upstream.metadata("org.junit.support", "testng-engine", "1.1.0");
+        upstream.pom("org.junit.support", "testng-engine", "1.1.0", """
+                <project>
+                  <groupId>org.junit.support</groupId><artifactId>testng-engine</artifactId><version>1.1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.testng</groupId><artifactId>testng</artifactId><version>6.14.3</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.TEST, List.of(new Dependency("org.testng:testng", VersionSelector.parse("=7.12.0"))));
+        JkBuild project = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+
+        Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
+
+        Map<String, Lockfile.Artifact> byKey = new HashMap<>();
+        for (Lockfile.Artifact a : lock.artifacts()) byKey.put(a.packageKey(), a);
+        assertThat(requireNonNull(byKey.get("org.testng:testng:jar:")).version())
+                .isEqualTo("7.12.0");
+        Lockfile.Artifact engine = requireNonNull(byKey.get("org.junit.support:testng-engine:jar:"));
+        assertThat(engine.version())
+                .as("the engine's own newest release, not the Platform launcher's 6.1.0")
+                .isEqualTo("1.1.0");
+        assertThat(engine.scopes()).containsExactly(Scope.TEST);
+        assertThat(byKey).doesNotContainKey("org.junit.vintage:junit-vintage-engine:jar:");
+    }
+
+    @Test
+    void a_testng_pin_the_engine_cannot_run_is_refused_before_any_solve(@TempDir Path tempDir) {
+        EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        byScope.put(Scope.TEST, List.of(new Dependency("org.testng:testng", VersionSelector.parse("=6.9.10"))));
+        JkBuild project = new JkBuild(new Project("com.example", "app", "1.0", 25), new JkBuild.Dependencies(byScope));
+
+        assertThatThrownBy(() -> new LockOrchestrator(repoGroup(tempDir)).lock(project, "test"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("org.junit.support:testng-engine")
+                .hasMessageContaining("raise the pin to 7.12.0");
     }
 
     @Test

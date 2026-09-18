@@ -122,6 +122,7 @@ final class TestLauncherReport {
         return switch (engineId) {
             case "junit-jupiter" -> "org.junit.jupiter:junit-jupiter-engine";
             case "junit-vintage" -> "org.junit.vintage:junit-vintage-engine";
+            case "testng" -> "org.junit.support:testng-engine";
             default -> engineId;
         };
     }
