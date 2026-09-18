@@ -17,6 +17,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TaskContext;
@@ -304,7 +305,7 @@ final class TestLaunch {
      * divided by the graph's widest point, and by the time the last module's suite dispatches that
      * width is long gone. {@link TestWorkers#liveShare} re-reads it, and can only widen.
      */
-    static int dispatchWorkers(BuildPlanner.Inputs in, JkBuild.Build module) {
+    static int dispatchWorkers(BuildPlanner.Inputs in, BuildBlock module) {
         int planned = module.effectiveTestWorkers(in.workerCount());
         boolean pinned = module.effectiveTestWorkers(0) > 0 || in.session().requestedTestWorkers() > 0;
         if (pinned) return planned;

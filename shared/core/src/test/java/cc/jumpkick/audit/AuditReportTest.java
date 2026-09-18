@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.audit.AuditReport.Finding;
 import cc.jumpkick.audit.AuditReport.Severity;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.BuildBlock;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -21,8 +21,9 @@ class AuditReportTest {
 
     @Test
     void an_entry_naming_the_advisory_ignores_it_and_the_first_match_wins() {
-        List<JkBuild.AuditIgnore> ignores = List.of(
-                new JkBuild.AuditIgnore("GHSA-1", "first", null), new JkBuild.AuditIgnore("GHSA-1", "second", null));
+        List<BuildBlock.AuditIgnore> ignores = List.of(
+                new BuildBlock.AuditIgnore("GHSA-1", "first", null),
+                new BuildBlock.AuditIgnore("GHSA-1", "second", null));
         Finding judged = finding("GHSA-1", Severity.HIGH).under(ignores, TODAY);
         assertThat(judged.ignored()).isTrue();
         assertThat(judged.ignore()).isEqualTo(new AuditReport.Ignore("first", null, false));
@@ -34,13 +35,14 @@ class AuditReportTest {
     @Test
     void ids_match_case_insensitively() {
         Finding judged = finding("GHSA-abcd-efgh", Severity.HIGH)
-                .under(List.of(new JkBuild.AuditIgnore("ghsa-ABCD-efgh", "typed by hand", null)), TODAY);
+                .under(List.of(new BuildBlock.AuditIgnore("ghsa-ABCD-efgh", "typed by hand", null)), TODAY);
         assertThat(judged.ignored()).isTrue();
     }
 
     @Test
     void a_dated_entry_ignores_through_its_last_day_and_expires_after_it() {
-        List<JkBuild.AuditIgnore> ignores = List.of(new JkBuild.AuditIgnore("GHSA-1", "waiting on upstream", TODAY));
+        List<BuildBlock.AuditIgnore> ignores =
+                List.of(new BuildBlock.AuditIgnore("GHSA-1", "waiting on upstream", TODAY));
         Finding onTheDay = finding("GHSA-1", Severity.HIGH).under(ignores, TODAY);
         assertThat(onTheDay.ignored()).isTrue();
         assertThat(onTheDay.ignoreExpired()).isFalse();

@@ -30,6 +30,7 @@ import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -956,7 +957,7 @@ public final class PlannerSupport {
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             TestSelection selection,
-            JkBuild.Build build,
+            BuildBlock build,
             List<String> jvmArgs,
             Path moduleDir,
             ClasspathFingerprint.EntryIdentity identity) {
@@ -971,7 +972,7 @@ public final class PlannerSupport {
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             TestSelection selection,
-            JkBuild.Build build,
+            BuildBlock build,
             List<String> jvmArgs,
             SecretRedactor redactor,
             EnvLookup lookup,

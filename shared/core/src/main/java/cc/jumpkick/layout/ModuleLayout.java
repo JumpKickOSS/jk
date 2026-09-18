@@ -5,7 +5,7 @@ import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Layout;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -195,7 +195,7 @@ public final class ModuleLayout {
             addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/scala", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
-            addIfDir(out, seen, moduleDir, JkBuild.Build.DEFAULT_FIXTURES, Kind.TEST);
+            addIfDir(out, seen, moduleDir, BuildBlock.DEFAULT_FIXTURES, Kind.TEST);
         }
         appendSuiteRoots(moduleDir, compact, seen, out);
         return List.copyOf(out);

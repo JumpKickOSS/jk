@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.base.CompileSupport;
@@ -54,7 +55,7 @@ final class NothingToBuild {
                 || Files.isDirectory(dir.resolve("test"))) {
             return true;
         }
-        JkBuild.Build build = unit.manifest().build();
+        BuildBlock build = unit.manifest().build();
         if (!build.extraSrc().isEmpty() || !build.testExtraSrc().isEmpty()) return true;
         return BuildLogicToml.resolve(dir).isPresent();
     }

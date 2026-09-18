@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compat.JkBuildRenderer;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.gradle.GradleImporter;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Path;
@@ -48,9 +49,9 @@ class PomDokkaImportTest {
         JkBuild build = result.jkBuild();
         List<String> messages = TestImporters.messages(result);
 
-        JkBuild.Dokka dokka = build.build().dokka();
+        BuildBlock.Dokka dokka = build.build().dokka();
         assertThat(dokka.version()).isEqualTo(VersionSelector.parse("2.1.0"));
-        assertThat(dokka.format()).isEqualTo(JkBuild.Dokka.Format.JAVADOC);
+        assertThat(dokka.format()).isEqualTo(BuildBlock.Dokka.Format.JAVADOC);
         assertThat(messages).noneMatch(m -> m.startsWith("`<plugin>"));
 
         String rendered = JkBuildRenderer.render(build);
@@ -69,8 +70,8 @@ class PomDokkaImportTest {
                   <executions><execution><goals><goal>dokka</goal></goals></execution></executions>
                 </plugin>
                 """ + TAIL);
-        JkBuild.Dokka dokka = result.jkBuild().build().dokka();
-        assertThat(dokka.format()).isEqualTo(JkBuild.Dokka.Format.HTML);
+        BuildBlock.Dokka dokka = result.jkBuild().build().dokka();
+        assertThat(dokka.format()).isEqualTo(BuildBlock.Dokka.Format.HTML);
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("\n[dokka]\nformat = \"html\"\n");
         assertThat(rendered).doesNotContain("version = \"2.2.0\"");
@@ -79,7 +80,7 @@ class PomDokkaImportTest {
     @Test
     void a_pom_without_the_plugin_renders_no_table(@TempDir Path tempDir) throws Exception {
         PomImporter.Result result = TestImporters.importXml(tempDir, HEAD + TAIL);
-        assertThat(result.jkBuild().build().dokka()).isEqualTo(JkBuild.Dokka.DEFAULT);
+        assertThat(result.jkBuild().build().dokka()).isEqualTo(BuildBlock.Dokka.DEFAULT);
         assertThat(JkBuildRenderer.render(result.jkBuild())).doesNotContain("[dokka]");
     }
 

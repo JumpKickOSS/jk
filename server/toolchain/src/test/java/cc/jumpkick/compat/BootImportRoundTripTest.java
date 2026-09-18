@@ -4,7 +4,7 @@ package cc.jumpkick.compat;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.gradle.GradleImporter;
-import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.BuildBlock;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -52,7 +52,7 @@ class BootImportRoundTripTest {
                     id("com.gorylenko.gradle-git-properties") version "2.5.0"
                 }
                 """, "demo");
-        assertThat(gitProperties.jkBuild().build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(gitProperties.jkBuild().build().buildInfo()).isEqualTo(BuildBlock.BuildInfo.DEFAULT);
         assertThat(gitProperties.report().issues()).noneMatch(i -> i.message().contains("gradle-git-properties"));
         assertThat(JkBuildRenderer.render(gitProperties.jkBuild())).contains("\n[build-info]\n");
 
@@ -66,7 +66,7 @@ class BootImportRoundTripTest {
                     buildInfo()
                 }
                 """, "demo");
-        assertThat(bootInfo.jkBuild().build().buildInfo()).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(bootInfo.jkBuild().build().buildInfo()).isEqualTo(BuildBlock.BuildInfo.DEFAULT);
         assertThat(bootInfo.report().issues()).noneMatch(i -> i.message().contains("buildInfo"));
     }
 

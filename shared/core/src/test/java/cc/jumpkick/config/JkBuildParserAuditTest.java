@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import java.time.LocalDate;
 import java.util.List;
@@ -22,12 +23,12 @@ class JkBuildParserAuditTest {
                   { id = "CVE-2025-0001", reason = "not reachable from this code" },
                 ]
                 """);
-        List<JkBuild.AuditIgnore> ignores = b.build().auditIgnores();
+        List<BuildBlock.AuditIgnore> ignores = b.build().auditIgnores();
         assertThat(ignores)
                 .containsExactly(
-                        new JkBuild.AuditIgnore(
+                        new BuildBlock.AuditIgnore(
                                 "GHSA-aaaa-bbbb-cccc", "test-only dependency", LocalDate.of(2026, 12, 31)),
-                        new JkBuild.AuditIgnore("CVE-2025-0001", "not reachable from this code", null));
+                        new BuildBlock.AuditIgnore("CVE-2025-0001", "not reachable from this code", null));
     }
 
     @Test
@@ -40,7 +41,7 @@ class JkBuildParserAuditTest {
                 until  = 2026-12-31
                 """);
         assertThat(b.build().auditIgnores())
-                .containsExactly(new JkBuild.AuditIgnore(
+                .containsExactly(new BuildBlock.AuditIgnore(
                         "GHSA-aaaa-bbbb-cccc", "test-only dependency", LocalDate.of(2026, 12, 31)));
     }
 
@@ -146,10 +147,10 @@ class JkBuildParserAuditTest {
 
     @Test
     void an_entry_expires_the_day_after_until_and_never_without_one() {
-        JkBuild.AuditIgnore dated = new JkBuild.AuditIgnore("GHSA-x", "r", LocalDate.of(2026, 12, 31));
+        BuildBlock.AuditIgnore dated = new BuildBlock.AuditIgnore("GHSA-x", "r", LocalDate.of(2026, 12, 31));
         assertThat(dated.expiredOn(LocalDate.of(2026, 12, 31))).isFalse();
         assertThat(dated.expiredOn(LocalDate.of(2027, 1, 1))).isTrue();
-        assertThat(new JkBuild.AuditIgnore("GHSA-x", "r", null).expiredOn(LocalDate.of(2999, 1, 1)))
+        assertThat(new BuildBlock.AuditIgnore("GHSA-x", "r", null).expiredOn(LocalDate.of(2999, 1, 1)))
                 .isFalse();
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static cc.jumpkick.config.JkBuildParser.*;
 
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.DevReady;
@@ -288,16 +289,16 @@ public final class ManifestBuild {
     /**
      * Optional {@code [build]} and/or {@code [test]} tables. Either may appear alone: a lone
      * {@code [test] workers = 1} is enough for Mill-style serial opt-out without a {@code [build]}
-     * block. Absent both → {@link JkBuild.Build#EMPTY}.
+     * block. Absent both → {@link BuildBlock#EMPTY}.
      */
-    static JkBuild.Build parseBuild(TomlTable root) {
+    static BuildBlock parseBuild(TomlTable root) {
         TomlTable build = root.getTable("build");
         TomlTable test = root.getTable("test");
         TomlTable resolve = root.getTable("resolve");
         ResolvePolicies policies = resolvePolicies(resolve);
-        if (build == null && test == null && resolve == null) return JkBuild.Build.EMPTY;
+        if (build == null && test == null && resolve == null) return BuildBlock.EMPTY;
         if (build == null && test == null) {
-            return new JkBuild.Build(
+            return new BuildBlock(
                     List.of(),
                     List.of(),
                     true,
@@ -325,11 +326,11 @@ public final class ManifestBuild {
                     List.of(),
                     EnvConfig.EMPTY,
                     null,
-                    JkBuild.Dokka.DEFAULT);
+                    BuildBlock.Dokka.DEFAULT);
         }
         ManifestBuildTable.Settings s = ManifestBuildTable.read(build, test);
         JkBuildParser.TestTomlTags tags = ManifestTables.parseTestTags(root);
-        return new JkBuild.Build(
+        return new BuildBlock(
                 s.orderAfter,
                 s.testPluginJars,
                 s.lint,
@@ -357,7 +358,7 @@ public final class ManifestBuild {
                 List.of(),
                 EnvConfig.EMPTY,
                 null,
-                JkBuild.Dokka.DEFAULT);
+                BuildBlock.Dokka.DEFAULT);
     }
 
     /** The three {@code [resolve]} policies, at their defaults when the table or key is absent. */
@@ -844,7 +845,7 @@ public final class ManifestBuild {
      * ({@code YYYY-MM-DD}, quoted or a bare TOML date). Unknown keys fail the parse, so a misspelt
      * {@code untill} cannot silently turn a dated ignore into a permanent one.
      */
-    static List<JkBuild.AuditIgnore> parseAuditIgnores(TomlTable root) {
+    static List<BuildBlock.AuditIgnore> parseAuditIgnores(TomlTable root) {
         Object raw = root.get(List.of("audit"));
         if (raw == null) return List.of();
         if (!(raw instanceof TomlTable audit)) {
@@ -863,7 +864,7 @@ public final class ManifestBuild {
             throw new JkBuildParseException(
                     "[audit].ignore must be an array of tables: ignore = [{ id = \"GHSA-…\", reason = \"…\" }]");
         }
-        List<JkBuild.AuditIgnore> out = new ArrayList<>();
+        List<BuildBlock.AuditIgnore> out = new ArrayList<>();
         for (int i = 0; i < entries.size(); i++) {
             String where = "[audit].ignore[" + i + "]";
             if (!(entries.get(i) instanceof TomlTable entry)) {
@@ -874,7 +875,7 @@ public final class ManifestBuild {
         return List.copyOf(out);
     }
 
-    private static JkBuild.AuditIgnore parseAuditIgnore(TomlTable entry, String where) {
+    private static BuildBlock.AuditIgnore parseAuditIgnore(TomlTable entry, String where) {
         for (String key : entry.keySet()) {
             if (!AUDIT_IGNORE_KEYS.contains(key)) {
                 throw new JkBuildParseException(where + " unknown key `" + key + "` — expected one of: "
@@ -901,17 +902,17 @@ public final class ManifestBuild {
         } else if (rawUntil != null) {
             throw new JkBuildParseException(at + " until must be an ISO date (YYYY-MM-DD)");
         }
-        return new JkBuild.AuditIgnore(id.trim(), reason.trim(), until);
+        return new BuildBlock.AuditIgnore(id.trim(), reason.trim(), until);
     }
 
     /**
      * {@code [[kotlin-plugins]]}: {@code coordinate} is {@code group:artifact[:version]} (omitted)
      * version → project Kotlin version); {@code id} defaults to the artifact.
      */
-    static List<JkBuild.KotlinPluginDecl> parseKotlinPlugins(TomlTable root) {
+    static List<BuildBlock.KotlinPluginDecl> parseKotlinPlugins(TomlTable root) {
         TomlArray arr = root.getArray("kotlin-plugins");
         if (arr == null) return List.of();
-        List<JkBuild.KotlinPluginDecl> out = new ArrayList<>();
+        List<BuildBlock.KotlinPluginDecl> out = new ArrayList<>();
         for (int i = 0; i < arr.size(); i++) {
             if (!(arr.get(i) instanceof TomlTable t)) {
                 throw new JkBuildParseException("[[kotlin-plugins]] entries must be tables");
@@ -937,7 +938,7 @@ public final class ManifestBuild {
                     options.add(o);
                 }
             }
-            out.add(new JkBuild.KotlinPluginDecl(id == null || id.isBlank() ? parts[1] : id, coordinate, options));
+            out.add(new BuildBlock.KotlinPluginDecl(id == null || id.isBlank() ? parts[1] : id, coordinate, options));
         }
         return out;
     }

@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
 import java.nio.file.Files;
@@ -28,21 +29,21 @@ class ManifestDokkaTest {
 
     @Test
     void absent_means_the_default_release_in_javadoc_format() throws Exception {
-        JkBuild.Dokka dokka = parse("").build().dokka();
-        assertThat(dokka).isEqualTo(JkBuild.Dokka.DEFAULT);
+        BuildBlock.Dokka dokka = parse("").build().dokka();
+        assertThat(dokka).isEqualTo(BuildBlock.Dokka.DEFAULT);
         assertThat(dokka.isDefault()).isTrue();
         assertThat(dokka.version()).isInstanceOf(VersionSelector.Exact.class);
-        assertThat(((VersionSelector.Exact) dokka.version()).version()).isEqualTo(JkBuild.Dokka.DEFAULT_VERSION);
-        assertThat(dokka.format()).isEqualTo(JkBuild.Dokka.Format.JAVADOC);
+        assertThat(((VersionSelector.Exact) dokka.version()).version()).isEqualTo(BuildBlock.Dokka.DEFAULT_VERSION);
+        assertThat(dokka.format()).isEqualTo(BuildBlock.Dokka.Format.JAVADOC);
     }
 
     @Test
     void version_and_format_are_read() throws Exception {
-        JkBuild.Dokka dokka =
+        BuildBlock.Dokka dokka =
                 parse("[dokka]\nversion = \"^2\"\nformat = \"html\"\n").build().dokka();
         assertThat(dokka.version()).isInstanceOf(VersionSelector.Caret.class);
         assertThat(dokka.version().raw()).isEqualTo("^2");
-        assertThat(dokka.format()).isEqualTo(JkBuild.Dokka.Format.HTML);
+        assertThat(dokka.format()).isEqualTo(BuildBlock.Dokka.Format.HTML);
         assertThat(dokka.isDefault()).isFalse();
     }
 

@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static cc.jumpkick.config.JkBuildParser.*;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Feature;
 import cc.jumpkick.model.Features;
@@ -193,9 +194,9 @@ public final class ManifestTables {
 
     /**
      * {@code [dokka]} — the Dokka release and output format a Kotlin or mixed module's javadoc jar
-     * is built with; see {@link JkBuild.Dokka}. Absent keys keep their defaults.
+     * is built with; see {@link BuildBlock.Dokka}. Absent keys keep their defaults.
      */
-    static Optional<JkBuild.Dokka> parseDokka(TomlTable root) {
+    static Optional<BuildBlock.Dokka> parseDokka(TomlTable root) {
         if (root.contains("dokka") && !root.isTable("dokka")) {
             throw new JkBuildParseException("`dokka` must be a table — use [dokka] with version and format keys");
         }
@@ -203,7 +204,7 @@ public final class ManifestTables {
         if (table == null) return Optional.empty();
         rejectUnknownKeys(table, DOKKA_KEYS, "[dokka]");
         String version = stringOrThrow(table, "version", "dokka.version");
-        VersionSelector selector = JkBuild.Dokka.DEFAULT.version();
+        VersionSelector selector = BuildBlock.Dokka.DEFAULT.version();
         if (version != null) {
             try {
                 selector = VersionSelector.parse(version);
@@ -212,24 +213,24 @@ public final class ManifestTables {
             }
         }
         String format = stringOrThrow(table, "format", "dokka.format");
-        JkBuild.Dokka.Format shape = JkBuild.Dokka.DEFAULT.format();
+        BuildBlock.Dokka.Format shape = BuildBlock.Dokka.DEFAULT.format();
         if (format != null) {
             try {
-                shape = JkBuild.Dokka.Format.parse(format);
+                shape = BuildBlock.Dokka.Format.parse(format);
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("[dokka] format: " + e.getMessage());
             }
         }
-        return Optional.of(new JkBuild.Dokka(selector, shape));
+        return Optional.of(new BuildBlock.Dokka(selector, shape));
     }
 
     static final List<String> BUILD_INFO_KEYS = List.of("file", "time");
 
     /**
      * {@code [build-info]} — the git build-info resources the jar carries; see {@link
-     * JkBuild.BuildInfo}. An empty table is the whole battery at its defaults.
+     * BuildBlock.BuildInfo}. An empty table is the whole battery at its defaults.
      */
-    static Optional<JkBuild.BuildInfo> parseBuildInfo(TomlTable root) {
+    static Optional<BuildBlock.BuildInfo> parseBuildInfo(TomlTable root) {
         if (root.contains(TaskNames.BUILD_INFO) && !root.isTable(TaskNames.BUILD_INFO)) {
             throw new JkBuildParseException(
                     "`build-info` must be a table — use [build-info], optionally with file and time keys");
@@ -252,7 +253,8 @@ public final class ManifestTables {
                                 "[build-info] time must be \"commit\" (the HEAD"
                                         + " commit's time; reproducible) or \"build\" (the wall clock; every build repackages)");
                 };
-        return Optional.of(new JkBuild.BuildInfo(file == null ? JkBuild.BuildInfo.DEFAULT_FILE : file, buildTime));
+        return Optional.of(
+                new BuildBlock.BuildInfo(file == null ? BuildBlock.BuildInfo.DEFAULT_FILE : file, buildTime));
     }
 
     static final List<String> PUBLISH_KEYS = List.of("name", "url", "licenses", "developers", "scm");

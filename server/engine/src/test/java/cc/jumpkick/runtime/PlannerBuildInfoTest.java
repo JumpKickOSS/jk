@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.testing.FakeClock;
 import java.io.IOException;
@@ -51,7 +52,7 @@ class PlannerBuildInfoTest {
         Path module = Files.createDirectories(repo.resolve("svc"));
         Path classes = Files.createDirectories(module.resolve("target/classes/main"));
         JkBuild project = JkBuildParser.parse(MANIFEST + "\n[build-info]\n");
-        JkBuild.BuildInfo info = Objects.requireNonNull(project.build().buildInfo());
+        BuildBlock.BuildInfo info = Objects.requireNonNull(project.build().buildInfo());
 
         assertThat(PlannerBuildInfo.write(module, project, info, classes, clock, this::warn))
                 .isTrue();
@@ -103,7 +104,7 @@ class PlannerBuildInfoTest {
                 file = "app-git.properties"
                 time = "build"
                 """);
-        JkBuild.BuildInfo info = Objects.requireNonNull(project.build().buildInfo());
+        BuildBlock.BuildInfo info = Objects.requireNonNull(project.build().buildInfo());
 
         assertThat(PlannerBuildInfo.write(repo, project, info, classes, clock, this::warn))
                 .isTrue();
@@ -131,7 +132,7 @@ class PlannerBuildInfoTest {
         Path classes = Files.createDirectories(module.resolve("target/classes/main"));
         Files.writeString(classes.resolve("git.properties"), "git.commit.id=stale\n");
         JkBuild project = JkBuildParser.parse(MANIFEST + "\n[build-info]\n");
-        JkBuild.BuildInfo info = Objects.requireNonNull(project.build().buildInfo());
+        BuildBlock.BuildInfo info = Objects.requireNonNull(project.build().buildInfo());
 
         assertThat(PlannerBuildInfo.write(module, project, info, classes, clock, this::warn))
                 .isTrue();

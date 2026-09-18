@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JavacConfig;
 import cc.jumpkick.model.JkBuild;
@@ -219,7 +220,7 @@ public final class PomImporter {
         for (PluginConfig table : generators.tables()) builder.pluginConfig(table);
         JkBuild jkBuild = builder.build(buildBlock(em.model(), sourceTree, tests, report)
                         .withBuildInfo(BuildInfoPlugins.map(em, report).orElse(null))
-                        .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(JkBuild.Dokka.DEFAULT)))
+                        .withDokka(BuildInfoPlugins.mapDokka(em, report).orElse(BuildBlock.Dokka.DEFAULT)))
                 .build();
         Map<String, String> manifest = PluginFacts.manifestEntries(em.model());
         if (!manifest.isEmpty()) jkBuild = jkBuild.withManifest(manifest);
@@ -232,13 +233,13 @@ public final class PomImporter {
      * source roots; {@code [test]} tag filters, JVM flags and system properties from Surefire and
      * Failsafe.
      */
-    private static JkBuild.Build buildBlock(
+    private static BuildBlock buildBlock(
             Model model,
             SourceTreePlugins.SourceTree sourceTree,
             TestPlugins.TestSettings tests,
             ImportReport.Builder report) {
         // A POM's direct version is the version Maven used, whatever a transitive asked for.
-        JkBuild.Build build = JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST);
+        BuildBlock build = BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST);
         PluginFacts.CompilerArgs args = PluginFacts.compilerArgs(model);
         if (args.split()) {
             build = build.withJavac(new JavacConfig(Map.of(), args.main(), new JavacConfig(Map.of(), args.test())));
@@ -352,7 +353,7 @@ public final class PomImporter {
                                 mapRepositories(rootModel.model().getRepositories(), report), settings),
                         members.values()))
                 .application(rootApplication)
-                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         // Rewrite inter-module Maven deps to workspace edges (and test-jar → kind=tests).
         Map<String, String> siblingByGa = SiblingEdges.siblingGaIndex(rootJkBuild, members.values());

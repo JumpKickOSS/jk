@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
@@ -134,7 +135,7 @@ class NearestPinsLockTest {
     void a_members_pin_wins_over_a_siblings_open_floor_across_the_workspace(@TempDir Path tempDir) throws Exception {
         JkBuild root = JkBuild.builder(new Project("org.neo4j", "parent", "1.0", 25))
                 .workspace(new Workspace(List.of("server", "security")))
-                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         JkBuild server =
                 member("server", new Dependency("jakarta.inject:jakarta.inject-api", VersionSelector.parse("=2.0.1")));

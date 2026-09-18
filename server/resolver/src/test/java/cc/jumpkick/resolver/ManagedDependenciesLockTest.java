@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PinPolicy;
@@ -141,7 +142,7 @@ class ManagedDependenciesLockTest {
         JkBuild root = JkBuild.builder(new Project("com.example", "parent", "1.0", 25))
                 .workspace(new Workspace(List.of("app")))
                 .dependencies(new JkBuild.Dependencies(rootDeps))
-                .build(JkBuild.Build.EMPTY.withPinPolicy(PinPolicy.NEAREST))
+                .build(BuildBlock.EMPTY.withPinPolicy(PinPolicy.NEAREST))
                 .build();
         EnumMap<Scope, List<Dependency>> appDeps = new EnumMap<>(Scope.class);
         appDeps.put(Scope.MAIN, List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));

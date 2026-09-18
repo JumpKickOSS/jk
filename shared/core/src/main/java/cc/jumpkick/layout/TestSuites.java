@@ -96,7 +96,7 @@ public final class TestSuites {
      *
      * <p>Matched by the directory name under {@code src/}, which is the level discovery works at.
      * A module that points {@code [test] fixtures} somewhere else is not covered here — the
-     * manifest is not in scope at this call — but {@code JkBuild.Build.DEFAULT_FIXTURES} is the
+     * manifest is not in scope at this call — but {@code BuildBlock.DEFAULT_FIXTURES} is the
      * spelling {@code fixtures = true} stores, and the only one in this tree.
      */
     static final String FIXTURES_DIR = "fixtures";

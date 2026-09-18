@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,16 +35,16 @@ class ManifestBuildInfoTest {
 
     @Test
     void an_empty_table_is_the_battery_at_its_defaults() throws Exception {
-        JkBuild.BuildInfo info =
+        BuildBlock.BuildInfo info =
                 Objects.requireNonNull(parse("[build-info]\n").build().buildInfo());
-        assertThat(info).isEqualTo(JkBuild.BuildInfo.DEFAULT);
+        assertThat(info).isEqualTo(BuildBlock.BuildInfo.DEFAULT);
         assertThat(info.file()).isEqualTo("git.properties");
         assertThat(info.buildTime()).isFalse();
     }
 
     @Test
     void file_and_time_are_read() throws Exception {
-        JkBuild.BuildInfo info =
+        BuildBlock.BuildInfo info =
                 Objects.requireNonNull(parse("[build-info]\nfile = \"apollo-git.properties\"\ntime = \"build\"\n")
                         .build()
                         .buildInfo());
