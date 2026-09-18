@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.PubGrubResolver;
@@ -10,9 +11,10 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * What is Groovy-specific about resolving the Groovy runtime closure: the root coordinate, the 5.0
- * floor, and the single {@code groovy} jar. The resolve, fetch and CAS closure cache themselves are
- * {@link ToolClosure}, shared with {@link KotlinBtaResolver}.
+ * What is Groovy-specific about resolving the Groovy runtime closure: the root coordinate, the
+ * {@value GroovyResolver#FLOOR_VERSION} floor a version below it is raised past, and the single
+ * {@code groovy} jar. The resolve, fetch and CAS closure cache themselves are {@link ToolClosure},
+ * shared with {@link KotlinBtaResolver}.
  */
 public final class GroovyToolResolver {
 
@@ -30,12 +32,13 @@ public final class GroovyToolResolver {
      * @param repos the repositories to resolve against (build via {@link RepoGroupBuilder#buildFor},
      *     so project mirrors / credentials apply)
      * @param cas the content-addressed store the jars land in
-     * @param groovyVersion the exact Groovy version to match (e.g. {@code 5.0.4})
+     * @param groovyVersion the exact Groovy version to match (e.g. {@code 5.0.4}); one below the
+     *     floor resolves {@link GroovyResolver#DEFAULT_VERSION}'s closure
      */
     public static List<Path> resolveClasspath(RepoGroup repos, Cas cas, String groovyVersion)
             throws IOException, InterruptedException {
-        requireSupportedVersion(groovyVersion);
-        return ToolClosure.resolve(repos, cas, "groovy", "Groovy", GROOVY_MODULE, groovyVersion);
+        String version = GroovyResolver.floored(groovyVersion);
+        return ToolClosure.resolve(repos, cas, "groovy", "Groovy", GROOVY_MODULE, version);
     }
 
     /**
@@ -50,19 +53,11 @@ public final class GroovyToolResolver {
     /**
      * Resolve (and fetch into the CAS) the version-matched single {@code groovy} jar. It must go on
      * the <em>compilation</em> classpath: user Groovy code compiles against the Groovy runtime
-     * types.
+     * types. A version below the floor is the floored compiler's own jar.
      */
     public static Path resolveGroovyJar(RepoGroup repos, Cas cas, String groovyVersion)
             throws IOException, InterruptedException {
-        return ToolClosure.single(repos, Coordinate.of("org.apache.groovy", "groovy", groovyVersion));
-    }
-
-    /** Guard the 5.0 floor: the groovy-compiler worker drives the Groovy 5 compiler APIs. */
-    static void requireSupportedVersion(String version) {
-        if (ToolClosure.versionPart(version, 0) < 5) {
-            throw new IllegalArgumentException("jk requires Groovy 5.0 or newer, but the project targets "
-                    + version
-                    + ". Pin a newer version in jk.toml (project.groovy).");
-        }
+        String version = GroovyResolver.floored(groovyVersion);
+        return ToolClosure.single(repos, Coordinate.of("org.apache.groovy", "groovy", version));
     }
 }

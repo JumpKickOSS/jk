@@ -48,8 +48,8 @@ their plugins.
 | `java` | Language + bytecode (`--release`). Default **25**. Prefer this over `jdk` — [Concepts](concepts.md) |
 | `jdk` | Specific JDK *install* (rare) |
 | `kotlin` | Kotlin compiler version (Kotlin modules). jk's floor is **2.4.10**, the oldest Kotlin its compile path drives: a version below it compiles with the floor — the lock pins `2.4.10` and notes it, the build warns once per module — and `jk import` writes the floor with a row |
-| `groovy` | Groovy compiler version — **5+** (Groovy modules) |
-| `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — `"3.8.4"` holds both, an opt-in `"^3.8"` moves compiler and library together (`scala-library`; on 3.8+ that jar *is* the Scala 3 library) |
+| `groovy` | Groovy compiler version (Groovy modules). jk's floor is **5.0**, the oldest line its compiler worker drives: a version below it compiles and runs with jk's bundled Groovy (`5.0.4`) — the lock carries that runtime and notes it, the build warns once per module |
+| `scala` | Scala 3 compiler version (Scala 3 only; mixed Java+Scala compile in one Zinc session). jk injects the stdlib pinned to the resolved compiler version — `"3.8.4"` holds both, an opt-in `"^3.8"` moves compiler and library together (`scala-library`; on 3.8+ that jar *is* the Scala 3 library). jk's floor is **3.0**: a Scala 2 version compiles with jk's bundled Scala 3 (`3.8.4`) and its library — the lock pins that compiler and notes it, the build warns once per module |
 | `description` | Optional; does **not** auto-inherit in workspaces unless you set it or `description.workspace = true` |
 | `sources` | Sources jar: a library (no `[application]`) builds it always; `true` = `jk publish` assembles it for an application; `"always"` = `jk build` writes it for any module — [Packaging](packaging.md#library-artefacts-sources-and-javadoc-jars) |
 | `javadoc` | Javadoc jar for a library: default lenient (doclint off; javadoc's warnings and errors are warnings in the results, the step never fails); `"strict"` fails on javadoc errors; `false` skips it |

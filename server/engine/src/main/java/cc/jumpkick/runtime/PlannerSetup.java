@@ -11,6 +11,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.JavacDefaults;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
@@ -44,6 +45,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.SiblingArtifacts;
+import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -69,7 +71,7 @@ public final class PlannerSetup {
      * What the manifest has to say once it is parsed: a shadowed module says once, on the build
      * after its POM changed, what the effective POM declares that the in-place build does not
      * carry; a declared language set says which sources of another language it leaves uncompiled;
-     * a Kotlin below jk's floor says the module compiles with the floor.
+     * a Kotlin, Groovy or Scala below its floor says what the module compiles with instead.
      */
     private static void warnManifestRows(TaskContext ctx, Path dir, JkBuild project) {
         for (String row : ShadowManifests.drainTier3(dir)) ctx.warn("pom", row);
@@ -77,6 +79,14 @@ public final class PlannerSetup {
         if (project.project().kotlin() instanceof VersionSelector.Exact exact
                 && KotlinResolver.belowFloor(exact.version())) {
             ctx.warn("kotlin", KotlinResolver.floorNote(exact.version()));
+        }
+        if (project.project().groovy() instanceof VersionSelector.Exact exact
+                && GroovyResolver.belowFloor(exact.version())) {
+            ctx.warn("groovy", GroovyResolver.floorNote(exact.version()));
+        }
+        if (project.project().scala() instanceof VersionSelector.Exact exact
+                && ScalaResolver.belowFloor(exact.version())) {
+            ctx.warn("scala", ScalaResolver.floorNote(exact.version()));
         }
     }
 

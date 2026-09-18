@@ -46,6 +46,25 @@ class LanguageRuntimeInjectTest {
         assertThat(deps).doesNotContainKey(key(KOTLIN_STDLIB));
     }
 
+    /**
+     * The Groovy runtime is the compiler's runtime: a {@code groovy} below jk's floor resolves to
+     * the compiler jk drives for it, and the runtime the lock carries follows that version, not the
+     * manifest's literal — one Groovy compiles and runs the module.
+     */
+    @Test
+    void injected_groovy_runtime_follows_the_resolved_compiler_version(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
+        JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"4.0.28\"\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        LanguageRuntimeInject.inject(
+                p, dir, Map.of(), deps, new LanguageRuntimeInject.ToolVersions(null, null, "5.0.4"));
+        assertThat(requireNonNull(deps.get(key(GROOVY))).version())
+                .isInstanceOf(VersionSelector.Exact.class)
+                .extracting(v -> ((VersionSelector.Exact) v).version())
+                .isEqualTo("5.0.4");
+    }
+
     @Test
     void explicit_java_release_disables_inference_like_the_lanes(@TempDir Path dir) throws IOException {
         // Mirrors BuildPlanner: java = 25 declared → groovy sources are ignored, no lane,
@@ -71,7 +90,7 @@ class LanguageRuntimeInjectTest {
         JkBuild p = project("group=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nscala=\"3.8.4\"\nkotlin=\"^2.2\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LanguageRuntimeInject.inject(
-                p, dir, Map.of(), deps, new LanguageRuntimeInject.ToolVersions("2.2.20", "3.8.4"));
+                p, dir, Map.of(), deps, new LanguageRuntimeInject.ToolVersions("2.2.20", "3.8.4", null));
         assertThat(requireNonNull(deps.get(key("org.scala-lang:scala3-library_3")))
                         .version())
                 .isInstanceOf(VersionSelector.Exact.class)

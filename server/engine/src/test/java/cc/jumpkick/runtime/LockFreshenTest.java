@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.LockFreshness;
@@ -13,6 +14,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
@@ -261,6 +263,61 @@ class LockFreshenTest {
 
         assertThat(first.status()).as(String.valueOf(first.error())).isZero();
         assertThat(requireNonNull(first.lockfile()).kotlin()).isEqualTo(KotlinResolver.FLOOR_VERSION);
+    }
+
+    /**
+     * A Scala 2 pin is below jk's floor: the lock pins the Scala 3 jk drives for it and notes it,
+     * instead of refusing; the manifest keeps saying what the project declared.
+     */
+    @Test
+    void a_scala_below_the_floor_is_locked_at_the_default(@TempDir Path tmp) throws Exception {
+        serveLib("1.0");
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                java = 25
+                scala = "2.13.16"
+
+                [dependencies]
+                lib = { group = "com.foo", name = "lib", version = "^1.0" }
+                """);
+
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
+
+        assertThat(first.status()).as(String.valueOf(first.error())).isZero();
+        assertThat(requireNonNull(first.lockfile()).scala()).isEqualTo(ScalaResolver.DEFAULT_VERSION);
+    }
+
+    /**
+     * A Groovy 4 pin is below jk's floor: the runtime the lock carries — Groovy's one pin — is the
+     * Groovy 5 jk compiles and runs the module with, not the declared release the repository would
+     * have had to serve.
+     */
+    @Test
+    void a_groovy_below_the_floor_locks_the_default_runtime(@TempDir Path tmp) throws Exception {
+        serveLib("1.0");
+        upstream.leaf("org.apache.groovy", "groovy", GroovyResolver.DEFAULT_VERSION);
+        Files.createDirectories(tmp.resolve("src/main/groovy"));
+        Files.writeString(tmp.resolve("src/main/groovy/A.groovy"), "class A {}");
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                jdk = 25
+                groovy = "4.0.28"
+
+                [dependencies]
+                lib = { group = "com.foo", name = "lib", version = "^1.0" }
+                """);
+
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, http.base());
+
+        assertThat(first.status()).as(String.valueOf(first.error())).isZero();
+        assertThat(requireNonNull(first.lockfile()).artifacts())
+                .filteredOn(a -> a.name().startsWith("org.apache.groovy:groovy:"))
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly(GroovyResolver.DEFAULT_VERSION);
     }
 
     /** Run the lock plan for {@code tmp} under {@code mode} and return the lockfile it wrote. */

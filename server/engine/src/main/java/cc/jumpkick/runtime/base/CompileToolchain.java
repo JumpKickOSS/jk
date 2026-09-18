@@ -7,11 +7,13 @@ import cc.jumpkick.compat.ToolInstaller;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.groovy.GroovyResolver;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.scala.ScalaResolver;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -58,30 +60,32 @@ public final class CompileToolchain {
      * Pick the Groovy compiler version to provision, mirroring {@link #kotlinVersionFor}:
      * the locked {@code org.apache.groovy:groovy} runtime first — the compiler must match what
      * actually ships (caret/tilde pins and BOM-managed grails floats resolve here,
-     * else an exact {@code groovy} pin, else {@code null} (bundled default).
+     * else an exact {@code groovy} pin, else {@code null} (bundled default). A version below jk's
+     * floor is the floored compiler.
      */
     public static @Nullable String groovyVersionFor(Lockfile lock, JkBuild project) {
         if (lock != null) {
             for (Lockfile.Artifact a : lock.artifacts()) {
                 String name = a.name();
                 if (name.equals("org.apache.groovy:groovy") || name.startsWith("org.apache.groovy:groovy:")) {
-                    return a.version();
+                    return GroovyResolver.floored(a.version());
                 }
             }
         }
         if (project != null && project.project().groovy() instanceof VersionSelector.Exact exact) {
-            return exact.version();
+            return GroovyResolver.floored(exact.version());
         }
         return null;
     }
 
     /**
      * Pick the Scala 3 compiler version: lock pin first, else the locked {@code scala3-library_3}
-     * artifact, else an exact {@code scala} pin, else {@code null} (bundled default).
+     * artifact, else an exact {@code scala} pin, else {@code null} (bundled default). A version
+     * below jk's floor is the floored compiler.
      */
     public static @Nullable String scalaVersionFor(@Nullable Lockfile lock, JkBuild project) {
         if (lock != null && lock.scala() != null && !lock.scala().isBlank()) {
-            return lock.scala();
+            return ScalaResolver.floored(lock.scala());
         }
         if (lock != null) {
             for (Lockfile.Artifact a : lock.artifacts()) {
@@ -93,7 +97,7 @@ public final class CompileToolchain {
             }
         }
         if (project != null && project.project().scala() instanceof VersionSelector.Exact exact) {
-            return exact.version();
+            return ScalaResolver.floored(exact.version());
         }
         return null;
     }

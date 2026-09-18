@@ -25,7 +25,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Resolves/fetches the Scala 3 compiler + published sbt bridge (and transitives) into the CAS
  * under {@code tools/scala/}. That closure is extra worker classpath for mixed Java+Scala
- * Zinc sessions — not the project's compile classpath.
+ * Zinc sessions — not the project's compile classpath. A version below the {@value
+ * ScalaResolver#FLOOR_VERSION} floor resolves {@link ScalaResolver#DEFAULT_VERSION}'s closure.
  */
 public final class ScalaToolResolver {
 
@@ -35,9 +36,9 @@ public final class ScalaToolResolver {
      * Resolve and fetch compiler + bridge for {@code scalaVersion}, returning local jar paths
      * for the java-compiler worker {@code -cp}.
      */
-    public static List<Path> resolveClasspath(RepoGroup repos, Cas cas, String scalaVersion)
+    public static List<Path> resolveClasspath(RepoGroup repos, Cas cas, String declaredVersion)
             throws IOException, InterruptedException {
-        requireSupportedVersion(scalaVersion);
+        String scalaVersion = ScalaResolver.floored(declaredVersion);
         Path cacheFile = cacheFile(cas, scalaVersion);
         Path libDir = libDir(cas, scalaVersion);
         boolean refresh = SessionContext.current().config().forceOr(false);
@@ -191,24 +192,6 @@ public final class ScalaToolResolver {
             throw new IOException("Scala compiler closure is missing " + artifactPrefix);
         }
         return p;
-    }
-
-    /** Scala 3 only: Zinc's published bridge matches the compiler version. */
-    static void requireSupportedVersion(String version) {
-        int major = 0;
-        String[] parts = version.split("[.-]");
-        if (parts.length > 0) major = parseLeadingInt(parts[0]);
-        if (major < 3) {
-            throw new IllegalArgumentException("jk requires Scala 3 or newer, but the project targets "
-                    + version
-                    + ". Set a Scala 3 version in jk.toml (scala = \"^3\").");
-        }
-    }
-
-    private static int parseLeadingInt(String s) {
-        int i = 0;
-        while (i < s.length() && Character.isDigit(s.charAt(i))) i++;
-        return i == 0 ? 0 : Integer.parseInt(s.substring(0, i));
     }
 
     private static Path cacheFile(Cas cas, String scalaVersion) {
