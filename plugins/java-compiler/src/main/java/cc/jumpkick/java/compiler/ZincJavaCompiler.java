@@ -242,7 +242,10 @@ public final class ZincJavaCompiler {
             VirtualFile[] cpFiles = ZincSetup.virtual(cp, converter);
             phases.mark("virtualise");
             String[] javacOpts = javacOptions(release, extraOptions, sourceOutput, processorPath, sources, classpath);
-            Optional<String> analysisOff = zinced.analysisOff();
+            // The analysis-off marker is keyed by the classpath: the entry whose supertype the
+            // analysis could not load may have changed, and then the analysis is tried again.
+            String classpathDigest = ZincWorkdir.classpathDigest(classpath);
+            Optional<String> analysisOff = zinced.analysisOff(classpathDigest);
             if (analysisOff.isPresent()) {
                 return AnalysisOffCompile.run(
                         javac, sourceFiles, javacOpts, cp, classOutput, reporter, analysisOff.get());
@@ -290,12 +293,13 @@ public final class ZincJavaCompiler {
                 // reflected over members whose signatures name a type this JDK no longer has (a
                 // release-11 module extending a class that returns java.security.acl.Group[]).
                 // javac had no such trouble — --release reads the older API from ct.sym — so the
-                // module compiles without the analysis, from here on for this workdir.
+                // module compiles without the analysis, from here on for this workdir while the
+                // classpath stays what it is.
                 if (reporter.hasErrors()) {
                     return new Result(false, reporter.diagnostics(), javac.compiledSources(), provenance.generated);
                 }
                 String missing = AnalysisOffCompile.missingType(e);
-                zinced.markAnalysisOff(missing);
+                zinced.markAnalysisOff(missing, classpathDigest);
                 return AnalysisOffCompile.run(javac, sourceFiles, javacOpts, cp, classOutput, reporter, missing);
             }
             phases.mark("zinc-compile");

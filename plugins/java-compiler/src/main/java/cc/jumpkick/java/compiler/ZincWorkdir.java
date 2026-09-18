@@ -1,15 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPInputStream;
 import sbt.internal.inc.FileAnalysisStore;
 import xsbti.compile.AnalysisContents;
@@ -81,25 +91,68 @@ final class ZincWorkdir {
     }
 
     /**
-     * The type Zinc's Java analysis could not load with this worker's JDK the last time it ran here,
-     * or empty when the analysis runs. While set, every compile in this workdir is a full javac run
-     * with no analysis; {@code jk clean} takes the marker with the workdir.
+     * The type Zinc's Java analysis could not load with this worker's JDK the last time it ran here
+     * over a classpath digesting to {@code classpathDigest}, or empty when the analysis runs. While
+     * set, every compile in this workdir over that classpath is a full javac run with no analysis.
+     * A marker left by another classpath is stale — the entry whose supertype could not be loaded
+     * may have changed — so it is dropped and the analysis is tried again; {@code jk clean} takes the
+     * marker with the workdir.
      */
-    Optional<String> analysisOff() {
+    Optional<String> analysisOff(String classpathDigest) {
         try {
-            return Files.isRegularFile(analysisOffMarker)
-                    ? Optional.of(Files.readString(analysisOffMarker).strip())
-                    : Optional.empty();
+            if (!Files.isRegularFile(analysisOffMarker)) return Optional.empty();
+            List<String> lines = Files.readAllLines(analysisOffMarker);
+            if (lines.size() >= 2 && lines.get(0).strip().equals(classpathDigest)) {
+                return Optional.of(lines.get(1).strip());
+            }
+            Files.deleteIfExists(analysisOffMarker);
+            return Optional.empty();
         } catch (IOException e) {
             return Optional.empty();
         }
     }
 
-    /** Turn the analysis off for this workdir, naming the type it could not load, and drop what it wrote. */
-    void markAnalysisOff(String missingType) throws IOException {
+    /**
+     * Turn the analysis off for this workdir under the classpath digesting to {@code
+     * classpathDigest}, naming the type it could not load, and drop what it wrote.
+     */
+    void markAnalysisOff(String missingType, String classpathDigest) throws IOException {
         Files.createDirectories(analysisOffMarker.getParent());
-        Files.writeString(analysisOffMarker, missingType + "\n");
+        Files.writeString(analysisOffMarker, classpathDigest + "\n" + missingType + "\n");
         tryDeleteAnalysis();
+    }
+
+    /**
+     * What a compile classpath looks like right now, as one digest: each entry's path, then for a
+     * jar its size and mtime and for a classes directory the sorted (relative path, size, mtime) of
+     * every file in it; an absent entry digests as absent. Cheap against reading the bytes, and
+     * different whenever a compiler rewrote, added or deleted a class an entry holds or the lock
+     * moved a jar.
+     */
+    static String classpathDigest(List<Path> classpath) throws IOException {
+        MessageDigest digest = Hashing.newSha256();
+        for (Path entry : classpath) {
+            digest.update((entry.toAbsolutePath().normalize() + "\n").getBytes(StandardCharsets.UTF_8));
+            if (Files.isDirectory(entry)) {
+                List<String> listing = new ArrayList<>();
+                PathUtil.forEachRegularFile(
+                        entry,
+                        (file, attrs) -> listing.add(
+                                entry.relativize(file).toString().replace(File.separatorChar, '/') + shape(attrs)));
+                Collections.sort(listing);
+                for (String line : listing) digest.update((line + "\n").getBytes(StandardCharsets.UTF_8));
+            } else if (Files.isRegularFile(entry)) {
+                digest.update((shape(Files.readAttributes(entry, BasicFileAttributes.class)) + "\n")
+                        .getBytes(StandardCharsets.UTF_8));
+            } else {
+                digest.update("absent\n".getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        return Hashing.hex(digest.digest());
+    }
+
+    private static String shape(BasicFileAttributes attrs) {
+        return "\t" + attrs.size() + "\t" + attrs.lastModifiedTime().to(TimeUnit.NANOSECONDS);
     }
 
     /**
