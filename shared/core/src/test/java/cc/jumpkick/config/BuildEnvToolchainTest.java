@@ -114,11 +114,25 @@ class BuildEnvToolchainTest {
         // its own field, and it needs one for the same reason: a getenv inside a resident engine
         // answers from the shell that started the daemon.
         Path home = Path.of("/opt/graal-25");
-        Session session = Session.defaults().withToolchainSpecs("temurin-21", "graal-25", home);
+        Path javaHome = Path.of("/opt/temurin-21");
+        Session session = Session.defaults().withToolchainSpecs("temurin-21", "graal-25", home, javaHome);
 
         assertThat(session.jdkSpec()).isEqualTo("temurin-21");
         assertThat(session.graalSpec()).isEqualTo("graal-25");
         assertThat(session.graalHome()).isEqualTo(home);
+        assertThat(session.javaHome()).isEqualTo(javaHome);
+    }
+
+    @Test
+    void java_home_travels_as_a_typed_field_and_never_on_the_forwarded_environment() {
+        // JAVA_HOME has to reach the JdkResolution tier that names it, and must NOT reach
+        // clientEnv: everything there is merged into every forked test JVM, where a JDK would
+        // change outcomes through a channel no action key can see.
+        Path javaHome = Path.of("/opt/temurin-21");
+        Session session = Session.defaults().withToolchainSpecs(null, null, null, javaHome);
+
+        assertThat(session.javaHome()).isEqualTo(javaHome);
+        assertThat(session.clientEnv()).doesNotContainKey("JAVA_HOME");
     }
 
     @Test
@@ -127,8 +141,11 @@ class BuildEnvToolchainTest {
         // would fall back to its own environment and be right by accident.
         assertThat(Session.defaults().graalHome()).isNull();
         assertThat(Session.defaults()
-                        .withToolchainSpecs("temurin-21", null, null)
+                        .withToolchainSpecs("temurin-21", null, null, null)
                         .graalHome())
+                .isNull();
+        assertThat(Session.defaults().javaHome())
+                .as("and the same for JAVA_HOME: absent is not the daemon's")
                 .isNull();
     }
 }

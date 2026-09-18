@@ -49,7 +49,7 @@ public final class ProtoSession {
                 .withCoverage(Jsonl.bool(request, ProtoJobs.COVERAGE, false))
                 .withAffected(Jsonl.bool(request, "affected", false))
                 .withVariant(variantOf(request), clientEnvOf(request))
-                .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request))
+                .withToolchainSpecs(jdkSpecOf(request), graalSpecOf(request), graalHomeOf(request), javaHomeOf(request))
                 .withAssemblyOverride(assemblyOverrideOf(request));
         Path cache = pathOf(Jsonl.str(request, "cache"));
         return cache == null ? session : session.withCacheDir(cache);
@@ -198,12 +198,36 @@ public final class ProtoSession {
      * arities and only some callers reach the widest, so threading it there would have added two
      * arguments to every one of them. Nothing selected → the line rides unchanged.
      */
+    /**
+     * {@link #withToolchain(String, String, String, String, String)} for a session's own
+     * selection — all four fields read in one place, so a caller cannot forward three of them and
+     * leave the fourth behind. Which is how {@code JAVA_HOME} came to be the one the daemon was
+     * started with rather than the one the caller set.
+     */
+    public static String withToolchain(String request, Session session) {
+        return withToolchain(
+                request,
+                session.jdkSpec(),
+                session.graalSpec(),
+                asString(session.graalHome()),
+                asString(session.javaHome()));
+    }
+
+    private static @Nullable String asString(@Nullable Path path) {
+        return path == null ? null : path.toString();
+    }
+
     public static String withToolchain(
-            String request, @Nullable String jdk, @Nullable String graal, @Nullable String graalHome) {
+            String request,
+            @Nullable String jdk,
+            @Nullable String graal,
+            @Nullable String graalHome,
+            @Nullable String javaHome) {
         String body = RequestJson.fields()
                 .optionalNonBlankString("jdk", jdk)
                 .optionalNonBlankString("graal", graal)
                 .optionalNonBlankString("graalHome", graalHome)
+                .optionalNonBlankString("javaHome", javaHome)
                 .body();
         if (body.isEmpty()) return request;
         return Jsonl.append(request, body);
@@ -272,6 +296,19 @@ public final class ProtoSession {
      */
     public static @Nullable Path graalHomeOf(String request) {
         String v = Jsonl.topStr(request, "graalHome");
+        return v == null || v.isBlank() ? null : Path.of(v);
+    }
+
+    /**
+     * Decode side of {@link #withToolchain}: the caller's {@code JAVA_HOME}, or {@code null}.
+     *
+     * <p>Rides as its own field rather than on {@code clientEnv} because that map is merged into
+     * every forked test JVM, and a JDK chosen there would change test outcomes through a channel
+     * no action key can see. Typed, it reaches {@code JdkResolution}'s late {@code JAVA_HOME} tier
+     * and nothing else.
+     */
+    public static @Nullable Path javaHomeOf(String request) {
+        String v = Jsonl.topStr(request, "javaHome");
         return v == null || v.isBlank() ? null : Path.of(v);
     }
 

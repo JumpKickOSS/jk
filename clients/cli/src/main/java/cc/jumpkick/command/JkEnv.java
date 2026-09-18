@@ -102,6 +102,9 @@ public final class JkEnv {
                 lockPins.jdk(),
                 projectJdk,
                 javaRelease,
+                // The shell hook must not re-export the shell's own JDK as a jk activation, so
+                // resolveForHook does not walk the env tiers at all — null says so at the call.
+                null,
                 System::getenv);
         var resolved = JdkResolution.resolveForHook(req, registry, globalDefault);
         if (resolved.jdkOpt().isEmpty()) return Target.empty();

@@ -44,7 +44,8 @@ class ProtoSessionRequestTest {
                 ProtoSession.withSession(line, "release", Map.of("SIGNING_KEY", "k"), TUNING, rebuild),
                 "temurin-21",
                 "graal-25",
-                GRAAL);
+                GRAAL,
+                null);
     }
 
     /**
