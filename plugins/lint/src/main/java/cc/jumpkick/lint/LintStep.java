@@ -24,9 +24,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * The lint step's body: fork {@code java -cp <tool closure> <main> <args>} on the build JDK with
  * the tool's XML report as its output, read the report back as {@link Finding}s, report each as a
- * diagnostic with its rule id, and fail the step when a finding reaches the table's
- * {@code fail-on}. A tool that wrote no report failed on its own terms: the step fails with the
- * tool's last lines.
+ * diagnostic with its rule id, and fail the step when a finding reaches the tool's threshold —
+ * its own {@code <tool>-fail-on}, else the table's {@code fail-on}. A tool that wrote no report
+ * failed on its own terms: the step fails with the tool's last lines.
  */
 final class LintStep {
 
@@ -83,7 +83,8 @@ final class LintStep {
                     + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
         }
         List<Finding> findings = Reports.parse(tool, report, roots, exclusions(tool, exec));
-        String failOn = config.stringOpt("fail-on").orElse(Finding.ERROR).toLowerCase(Locale.ROOT);
+        String failOnKey = config.stringOpt(tool.id() + "-fail-on").isPresent() ? tool.id() + "-fail-on" : "fail-on";
+        String failOn = config.stringOpt(failOnKey).orElse(Finding.ERROR).toLowerCase(Locale.ROOT);
         int errors = 0;
         for (Finding finding : findings) {
             exec.diagnostic(finding.severity(), finding.file(), finding.line(), finding.col(), finding.text());
@@ -91,7 +92,7 @@ final class LintStep {
         }
         if (errors > 0) {
             throw new IllegalStateException(tool.id() + ": " + errors + (errors == 1 ? " finding" : " findings")
-                    + " at or above `fail-on = \"" + failOn + "\"` (" + findings.size() + " in all)");
+                    + " at or above `" + failOnKey + " = \"" + failOn + "\"` (" + findings.size() + " in all)");
         }
     }
 

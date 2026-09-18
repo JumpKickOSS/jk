@@ -108,6 +108,21 @@ class LintStepTest {
         assertThat(lenient.diagnostics()).singleElement().asString().startsWith("error: ");
     }
 
+    /** A tool's own threshold sits beside the table's: Checkstyle at error-only while the table fails on warnings. */
+    @Test
+    void a_tools_own_fail_on_overrides_the_tables(@TempDir Path tmp) throws Exception {
+        FakeBuildIo own = lintModule(tmp.resolve("own"), "warning", SOURCE)
+                .config("fail-on", "warning")
+                .config("checkstyle-fail-on", "error");
+        LintStep.run(own, LintTool.CHECKSTYLE);
+        assertThat(own.diagnostics()).singleElement().asString().startsWith("warning: ");
+
+        FakeBuildIo strict =
+                lintModule(tmp.resolve("strict"), "warning", SOURCE).config("checkstyle-fail-on", "warning");
+        assertThatThrownBy(() -> LintStep.run(strict, LintTool.CHECKSTYLE))
+                .hasMessageContaining("checkstyle: 1 finding at or above `checkstyle-fail-on = \"warning\"`");
+    }
+
     @Test
     void a_clean_source_has_no_finding(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = lintModule(tmp, "error", SOURCE.replace("n * 42", "n * 2"));
